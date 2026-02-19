@@ -74,10 +74,25 @@ extract_section_summary() {
   python3 "$TOOLS/extract-summary-md" "$section_file" | tail -n +2
 }
 
-# --- Helper: extract file docstring ---
+# --- Helper: extract file docstring/summary ---
 extract_file_docstring() {
   local source_file="$1"
   local ext="${source_file##*.}"
+
+  # .md files use extract-summary-md (returns YAML summary, not docstring)
+  if [ "$ext" = "md" ]; then
+    local summary
+    summary=$(python3 "$TOOLS/extract-summary-md" "$source_file" 2>/dev/null | tail -n +2)
+    if [ -z "$summary" ] || [ "$summary" = "NO SUMMARY" ]; then
+      # Fallback: first heading + first paragraph
+      head -20 "$source_file" | sed -n '/^#/{p;q;}; /^[^-#]/{p;q;}'
+    else
+      echo "$summary"
+    fi
+    return 0
+  fi
+
+  # All other files: use extension-keyed extraction tool
   local tool
   tool=$(get_tool "$ext") || return 1
   python3 "$tool" "$source_file" | tail -n +2
@@ -139,12 +154,14 @@ open('$section_file', 'w').write(new_content)
 
 # --- Enumerate source files (relative to codespace) ---
 find_source_files() {
-  (cd "$CODESPACE" && find scripts/spec_manager/spec_manager -type f \
+  (cd "$CODESPACE" && find . -type f \
+    \( -name "*.py" -o -name "*.sh" -o -name "*.md" \) \
+    -not -path "./.git/*" \
     -not -path "*/__pycache__/*" \
-    -not -path "*/tests/*" \
-    -not -name "__init__.py" \
+    -not -path "*/node_modules/*" \
     -not -name "*.pyc" \
-    -name "*.py" \
+    -not -name "LICENSE" \
+    | sed 's|^\./||' \
     | sort)
 }
 
@@ -195,7 +212,7 @@ do_quick_scan() {
 
       # Build GLM prompt — use safe filename (replace / with __)
       local safe_name
-      safe_name=$(echo "$source_file" | tr '/' '__' | sed 's/\.py$//')
+      safe_name=$(echo "$source_file" | tr '/' '__' | sed 's/\.[^.]*$//')
       local prompt_file="$RESPONSE_DIR/quick-${section_name}-${safe_name}.md"
       local response_file="$RESPONSE_DIR/quick-${section_name}-${safe_name}-response.md"
 
@@ -270,7 +287,7 @@ do_deep_scan() {
 
       local abs_source="$CODESPACE/$source_file"
       local safe_name
-      safe_name=$(echo "$source_file" | tr '/' '__' | sed 's/\.py$//')
+      safe_name=$(echo "$source_file" | tr '/' '__' | sed 's/\.[^.]*$//')
       local prompt_file="$RESPONSE_DIR/deep-${section_name}-${safe_name}.md"
       local response_file="$RESPONSE_DIR/deep-${section_name}-${safe_name}-response.md"
 
