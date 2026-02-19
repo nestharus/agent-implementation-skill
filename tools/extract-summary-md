@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Extract summary block from a markdown file.
+
+Looks for a YAML-style summary block at the top of the file:
+
+    ---
+    summary: One-line summary of the section
+    keywords: comma, separated, keywords
+    ---
+
+Usage: extract-summary-md <file-path>
+       extract-summary-md --batch <file1> <file2> ...
+       find ... | extract-summary-md --stdin
+
+Output: file path + summary fields (or "NO SUMMARY" if absent).
+Batch/stdin mode outputs one block per file, separated by ---
+"""
+import re
+import sys
+
+
+def extract_summary(filepath: str) -> tuple[str, dict[str, str] | None]:
+    """Return (filepath, {summary, keywords}) or (filepath, None)."""
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+
+        # Match YAML frontmatter at start of file
+        match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+        if not match:
+            return filepath, None
+
+        block = match.group(1)
+        fields = {}
+        for line in block.strip().split("\n"):
+            if ":" in line:
+                key, _, value = line.partition(":")
+                fields[key.strip()] = value.strip()
+
+        if "summary" not in fields:
+            return filepath, None
+
+        return filepath, fields
+    except (OSError, ValueError):
+        return filepath, None
+
+
+def print_result(filepath: str, fields: dict[str, str] | None) -> None:
+    if fields:
+        print(filepath)
+        for key, value in fields.items():
+            print(f"{key}: {value}")
+    else:
+        print(filepath)
+        print("NO SUMMARY")
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    if not args:
+        print(__doc__, file=sys.stderr)
+        sys.exit(1)
+
+    if args[0] == "--stdin":
+        files = [line.strip() for line in sys.stdin if line.strip()]
+        for i, f in enumerate(files):
+            if i > 0:
+                print("---")
+            filepath, fields = extract_summary(f)
+            print_result(filepath, fields)
+    elif args[0] == "--batch":
+        files = args[1:]
+        for i, f in enumerate(files):
+            if i > 0:
+                print("---")
+            filepath, fields = extract_summary(f)
+            print_result(filepath, fields)
+    else:
+        filepath, fields = extract_summary(args[0])
+        print_result(filepath, fields)
+
+
+if __name__ == "__main__":
+    main()

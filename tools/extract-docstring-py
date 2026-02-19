@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""Extract module-level docstring from a Python file.
+
+Usage: extract-docstring-py <file-path>
+       extract-docstring-py --batch <file1> <file2> ...
+       find ... | extract-docstring-py --stdin
+
+Output: file path + docstring (or "NO DOCSTRING" if absent).
+Batch/stdin mode outputs one block per file, separated by ---
+"""
+import ast
+import sys
+
+
+def extract_docstring(filepath: str) -> tuple[str, str | None]:
+    """Return (filepath, docstring) or (filepath, None)."""
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+            source = f.read()
+        tree = ast.parse(source, filename=filepath)
+        docstring = ast.get_docstring(tree)
+        return filepath, docstring
+    except (SyntaxError, ValueError):
+        return filepath, None
+
+
+def print_result(filepath: str, docstring: str | None) -> None:
+    if docstring:
+        print(f"{filepath}")
+        print(docstring)
+    else:
+        print(f"{filepath}")
+        print("NO DOCSTRING")
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    if not args:
+        print(__doc__, file=sys.stderr)
+        sys.exit(1)
+
+    if args[0] == "--stdin":
+        files = [line.strip() for line in sys.stdin if line.strip()]
+        for i, f in enumerate(files):
+            if i > 0:
+                print("---")
+            filepath, doc = extract_docstring(f)
+            print_result(filepath, doc)
+    elif args[0] == "--batch":
+        files = args[1:]
+        for i, f in enumerate(files):
+            if i > 0:
+                print("---")
+            filepath, doc = extract_docstring(f)
+            print_result(filepath, doc)
+    else:
+        filepath, doc = extract_docstring(args[0])
+        print_result(filepath, doc)
+
+
+if __name__ == "__main__":
+    main()
