@@ -10,9 +10,7 @@ and prepare for retry.
 
 ## Paths
 
-```bash
-WORKFLOW_HOME="$HOME/.claude/skills/workflow"
-```
+`$WORKFLOW_HOME` is the skill directory (containing SKILL.md). Set by the caller in your prompt or environment.
 
 ## Input
 

@@ -42,7 +42,7 @@ from pathlib import Path
 
 WORKFLOW_HOME = Path(os.environ.get(
     "WORKFLOW_HOME",
-    Path.home() / ".claude" / "skills" / "workflow",
+    Path(__file__).resolve().parent.parent,
 ))
 MAILBOX = WORKFLOW_HOME / "scripts" / "mailbox.sh"
 AGENT_NAME = "section-loop"

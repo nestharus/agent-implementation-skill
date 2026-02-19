@@ -14,7 +14,8 @@ set -euo pipefail
 #
 # Resume-safe: skips pairs already recorded in section files.
 
-WORKFLOW_HOME="$HOME/.claude/skills/workflow"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKFLOW_HOME="${WORKFLOW_HOME:-$(dirname "$SCRIPT_DIR")}"
 TOOLS="$WORKFLOW_HOME/tools"
 
 cmd="${1:?Usage: scan.sh <quick|deep|both> <planspace> <codespace>}"

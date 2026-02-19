@@ -11,10 +11,11 @@ relevant sub-file from this directory.
 
 ## Paths
 
-Everything lives in this skill folder:
-```bash
-WORKFLOW_HOME="$HOME/.claude/skills/workflow"
-```
+Everything lives in this skill folder. WORKFLOW_HOME is: !`for d in "$HOME/.claude/skills/agent-implementation-skill" ".claude/skills/agent-implementation-skill"; do [ -f "$d/SKILL.md" ] && cd "$d" && pwd && break; done`
+
+When dispatching scripts or agents, export `WORKFLOW_HOME` with the path
+above. Scripts also self-locate via `dirname` as a fallback when invoked
+directly.
 
 ```
 $WORKFLOW_HOME/
@@ -123,8 +124,6 @@ errors and reliability issues. The agent runner automatically unsets
 `CLAUDECODE` so sibling Claude sessions can launch.
 
 ```bash
-WORKFLOW_HOME="$HOME/.claude/skills/workflow"
-
 # Sequential dispatch — model directly with prompt file
 uv run agents --model <model> --file <planspace>/artifacts/step-N-prompt.md \
   > <planspace>/artifacts/step-N-output.md 2>&1
@@ -191,8 +190,6 @@ Each workflow gets a planspace at `~/.claude/workspaces/<task-slug>/`:
 File-based message passing for agent coordination.
 
 ```bash
-WORKFLOW_HOME="$HOME/.claude/skills/workflow"
-
 # Send a message to an agent
 bash "$WORKFLOW_HOME/scripts/mailbox.sh" send <planspace> <target> "message text"
 

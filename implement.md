@@ -73,7 +73,7 @@ result and immediately start another `recv` if more messages are
 expected. This ensures you are always listening.
 
 ```bash
-MAILBOX="$HOME/.claude/skills/workflow/scripts/mailbox.sh"
+MAILBOX="$WORKFLOW_HOME/scripts/mailbox.sh"
 
 # 1. Register orchestrator mailbox
 bash "$MAILBOX" register <planspace> orchestrator
@@ -159,7 +159,7 @@ Language-specific tools for extracting docstrings live in
 `$WORKFLOW_HOME/tools/`. Named `extract-docstring-<ext>`.
 
 ```bash
-TOOLS="$HOME/.claude/skills/workflow/tools"
+TOOLS="$WORKFLOW_HOME/tools"
 
 # Single file
 python3 "$TOOLS/extract-docstring-py" <file>

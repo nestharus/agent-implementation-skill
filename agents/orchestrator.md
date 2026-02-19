@@ -14,10 +14,8 @@ Never use Claude's Task tool to spawn sub-agents.
 
 ## Paths
 
-All workflow components live under `$WORKFLOW_HOME`:
-```bash
-WORKFLOW_HOME="$HOME/.claude/skills/workflow"
-```
+All workflow components live under `$WORKFLOW_HOME` (the directory containing this skill's SKILL.md).
+The caller must set `WORKFLOW_HOME` in your prompt or environment before dispatch.
 Scripts, agents, and templates are referenced relative to this.
 
 ## Input

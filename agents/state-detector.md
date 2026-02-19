@@ -9,9 +9,7 @@ Given a workspace, report exactly where the workflow stands.
 
 ## Paths
 
-```bash
-WORKFLOW_HOME="$HOME/.claude/skills/workflow"
-```
+`$WORKFLOW_HOME` is the skill directory (containing SKILL.md). Set by the caller in your prompt or environment.
 
 ## Input
 
