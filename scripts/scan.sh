@@ -165,9 +165,12 @@ find_source_files() {
     | sort)
 }
 
-# --- Quick scan: summaries only ---
+# --- Quick scan: summaries only (parallel GLM dispatch) ---
+MAX_PARALLEL="${SCAN_PARALLEL:-8}"
+
 do_quick_scan() {
   echo "=== Quick Scan: file docstrings × section summaries ==="
+  echo "Parallel GLM dispatch: up to $MAX_PARALLEL concurrent"
 
   local section_files
   section_files=$(find "$SECTIONS_DIR" -name "section-*.md" | sort)
@@ -180,23 +183,22 @@ do_quick_scan() {
   total_files=$(echo "$source_files" | wc -l)
   echo "Sections: $total_sections, Files: $total_files, Pairs: $((total_sections * total_files))"
 
-  local section_num=0
+  # --- Phase 1: Build all prompts (no GLM yet) ---
+  local manifest="$RESPONSE_DIR/quick-manifest.txt"
+  : > "$manifest"
+
   while IFS= read -r section_file; do
-    section_num=$((section_num + 1))
     local section_name
     section_name=$(basename "$section_file" .md)
 
     local section_summary
     section_summary=$(extract_section_summary "$section_file")
     if [ "$section_summary" = "NO SUMMARY" ]; then
-      echo "[SKIP] $section_name — no summary (run Phase C first)"
+      echo "[SKIP] $section_name — no summary"
       continue
     fi
 
-    local file_num=0
     while IFS= read -r source_file; do
-      file_num=$((file_num + 1))
-
       # Resume: skip if already scanned
       if already_scanned "$section_file" "$source_file"; then
         continue
@@ -210,11 +212,15 @@ do_quick_scan() {
         continue
       fi
 
-      # Build GLM prompt — use safe filename (replace / with __)
       local safe_name
       safe_name=$(echo "$source_file" | tr '/' '__' | sed 's/\.[^.]*$//')
       local prompt_file="$RESPONSE_DIR/quick-${section_name}-${safe_name}.md"
       local response_file="$RESPONSE_DIR/quick-${section_name}-${safe_name}-response.md"
+
+      # Skip if response already exists (resume)
+      if [ -f "$response_file" ]; then
+        continue
+      fi
 
       cat > "$prompt_file" << PROMPT
 # Task: File-Section Relevance Check
@@ -236,26 +242,66 @@ NOT_RELATED
 Nothing else.
 PROMPT
 
-      uv run agents --model glm --file "$prompt_file" \
-        > "$response_file" 2>&1 || {
-        echo "[FAIL] $section_name × $source_file"
-        continue
-      }
-
-      # Parse response
-      if grep -q "^RELATED:" "$response_file" 2>/dev/null; then
-        local reason
-        reason=$(grep "^RELATED:" "$response_file" | sed 's/^RELATED: *//')
-        append_match "$section_file" "$source_file" "$reason"
-        echo "[MATCH] $section_name × $source_file"
-      fi
+      # Record: section_file|source_file|prompt_file|response_file
+      printf '%s|%s|%s|%s\n' "$section_file" "$source_file" "$prompt_file" "$response_file" >> "$manifest"
 
     done <<< "$source_files"
-
-    echo "[DONE] $section_name ($section_num/$total_sections)"
   done <<< "$section_files"
 
-  echo "=== Quick Scan Complete ==="
+  local total_prompts
+  total_prompts=$(wc -l < "$manifest")
+  echo "Prompts to dispatch: $total_prompts"
+
+  if [ "$total_prompts" -eq 0 ]; then
+    echo "=== Quick Scan Complete (nothing to do) ==="
+    return 0
+  fi
+
+  # --- Phase 2: Dispatch GLM in parallel ---
+  local dispatched=0
+  local running=0
+
+  while IFS='|' read -r section_file source_file prompt_file response_file; do
+    # Concurrency gate: wait if at limit
+    while [ "$running" -ge "$MAX_PARALLEL" ]; do
+      wait -n 2>/dev/null || true
+      running=$((running - 1))
+    done
+
+    (uv run agents --model glm --file "$prompt_file" \
+      > "$response_file" 2>&1 || true) &
+    running=$((running + 1))
+    dispatched=$((dispatched + 1))
+
+    if [ $((dispatched % 10)) -eq 0 ]; then
+      echo "[DISPATCH] $dispatched / $total_prompts"
+    fi
+  done < "$manifest"
+
+  # Wait for remaining
+  wait
+  echo "[DISPATCH] All $total_prompts GLM calls complete"
+
+  # --- Phase 3: Parse responses and append matches ---
+  local matches=0
+  while IFS='|' read -r section_file source_file prompt_file response_file; do
+    if [ ! -f "$response_file" ]; then
+      continue
+    fi
+
+    if grep -q "^RELATED:" "$response_file" 2>/dev/null; then
+      local reason
+      reason=$(grep "^RELATED:" "$response_file" | head -1 | sed 's/^RELATED: *//')
+      # Re-check in case another parallel run already appended
+      if ! already_scanned "$section_file" "$source_file"; then
+        append_match "$section_file" "$source_file" "$reason"
+        echo "[MATCH] $(basename "$section_file" .md) × $source_file"
+        matches=$((matches + 1))
+      fi
+    fi
+  done < "$manifest"
+
+  echo "=== Quick Scan Complete: $matches matches from $total_prompts comparisons ==="
 }
 
 # --- Deep scan: full content for hits ---
