@@ -11,7 +11,7 @@ relevant sub-file from this directory.
 
 ## Paths
 
-Everything lives in this skill folder. WORKFLOW_HOME is: !`for d in "$HOME/.claude/skills/agent-implementation-skill" ".claude/skills/agent-implementation-skill"; do [ -f "$d/SKILL.md" ] && cd "$d" && pwd && break; done`
+Everything lives in this skill folder. WORKFLOW_HOME is: !`dirname "$(grep -rl '^name: agent-implementation-skill' ~/.claude/skills/*/SKILL.md .claude/skills/*/SKILL.md 2>/dev/null | head -1)" 2>/dev/null`
 
 When dispatching scripts or agents, export `WORKFLOW_HOME` with the path
 above. Scripts also self-locate via `dirname` as a fallback when invoked
