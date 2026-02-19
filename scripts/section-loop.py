@@ -11,18 +11,36 @@ with its parent (the orchestrator or interactive session) via mailbox
 messages. When paused (waiting for user input, research results, etc.),
 the script blocks on its own mailbox recv until the parent sends a resume.
 
-Signal protocol (sent TO parent mailbox):
+Mail protocol (sent TO parent mailbox):
+    summary:solve:<section>:<text>
+    summary:plan:<section>:<file>:<text>
+    summary:impl:<section>:<file>:<text>
+    summary:align:<section>:<text>
+    status:reschedule:<section>:<targets>
+    done:<section>:<summary>
+    fail:<section>:<error>
+    complete
     pause:underspec:<section>:<description>
     pause:need_decision:<section>:<question>
     pause:dependency:<section>:<needed_section>
-    done:<section>
-    fail:<section>:<error>
-    complete
 
-Signal protocol (received FROM parent mailbox):
+Mail protocol (received FROM parent mailbox):
     resume:<payload>          — continue with answer/result
     abort                     — clean shutdown
     alignment_changed         — user input changed alignment, re-evaluate
+
+Pipeline state file (<planspace>/pipeline-state):
+    running   — normal execution (default if file missing)
+    paused    — finish current agent, then wait
+    Checked between each agent dispatch. Monitor or orchestrator writes
+    this file to control the pipeline.
+
+Multi-tier monitoring:
+    - Each dispatched agent gets mail instructions + a per-agent GLM monitor
+    - Agents narrate actions via mailbox (plan:/done:/LOOP_DETECTED:)
+    - Per-agent monitors detect loops within a single agent dispatch
+    - Task-level monitor detects cycles across sections (alignment stuck,
+      rescheduling cycles)
 
 Usage:
     section-loop.py <planspace> <codespace>
@@ -37,6 +55,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -120,6 +139,33 @@ def mailbox_cleanup(planspace: Path) -> None:
     )
 
 
+def check_pipeline_state(planspace: Path) -> str:
+    """Read the pipeline state file. Returns 'running' if missing."""
+    state_file = planspace / "pipeline-state"
+    if state_file.exists():
+        return state_file.read_text().strip()
+    return "running"
+
+
+def wait_if_paused(planspace: Path, parent: str) -> None:
+    """Block if pipeline is paused. Polls until state returns to running."""
+    state = check_pipeline_state(planspace)
+    if state != "paused":
+        return
+    log("Pipeline paused — waiting for resume")
+    mailbox_send(planspace, parent, "status:paused")
+    while check_pipeline_state(planspace) == "paused":
+        # Also check mailbox for abort while paused
+        for msg in mailbox_drain(planspace):
+            if msg.startswith("abort"):
+                log("Received abort while paused — shutting down")
+                mailbox_cleanup(planspace)
+                sys.exit(0)
+        time.sleep(5)
+    log("Pipeline resumed")
+    mailbox_send(planspace, parent, "status:resumed")
+
+
 def pause_for_parent(planspace: Path, parent: str, signal: str) -> str:
     """Send a pause signal to parent and block until we get a response."""
     mailbox_send(planspace, parent, signal)
@@ -191,8 +237,43 @@ def build_file_to_sections(sections: list[Section]) -> dict[str, list[str]]:
 # Agent dispatch
 # ---------------------------------------------------------------------------
 
-def dispatch_agent(model: str, prompt_path: Path, output_path: Path) -> str:
-    """Run an agent via uv run agents and return the output text."""
+def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
+                   planspace: Path | None = None,
+                   parent: str | None = None,
+                   agent_name: str | None = None) -> str:
+    """Run an agent via uv run agents and return the output text.
+
+    If planspace and parent are provided, checks pipeline state before
+    dispatching and waits if paused.
+
+    If agent_name is provided, launches an agent-monitor alongside the
+    agent to watch for loops and stuck states. The monitor is a GLM
+    agent that reads the agent's mailbox.
+    """
+    if planspace and parent:
+        wait_if_paused(planspace, parent)
+
+    monitor_name = f"{agent_name}-monitor" if agent_name else None
+    monitor_proc = None
+
+    if planspace and agent_name:
+        # Register agent's mailbox (agents send narration here)
+        subprocess.run(
+            ["bash", str(MAILBOX), "register", str(planspace), agent_name],
+            check=True, capture_output=True, text=True,
+        )
+        # Launch agent-monitor (GLM) in background
+        monitor_prompt = _write_agent_monitor_prompt(
+            planspace, agent_name, monitor_name, parent or AGENT_NAME,
+        )
+        monitor_proc = subprocess.Popen(
+            ["uv", "run", "agents", "--agent-file",
+             str(WORKFLOW_HOME / "agents" / "agent-monitor.md"),
+             "--file", str(monitor_prompt)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        log(f"  agent-monitor started (pid={monitor_proc.pid})")
+
     log(f"  dispatch {model} → {prompt_path.name}")
     result = subprocess.run(
         ["uv", "run", "agents", "--model", model, "--file", str(prompt_path)],
@@ -204,7 +285,107 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path) -> str:
     output_path.write_text(output)
     if result.returncode != 0:
         log(f"  WARNING: agent returned {result.returncode}")
+
+    # Shut down agent-monitor after agent finishes
+    if monitor_proc:
+        # Send stop signal to monitor
+        subprocess.run(
+            ["bash", str(MAILBOX), "send", str(planspace),
+             monitor_name, "agent-finished"],
+            capture_output=True, text=True,
+        )
+        try:
+            monitor_proc.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            monitor_proc.terminate()
+        # Drain any loop detection messages the monitor sent
+        loop_msgs = []
+        drain_result = subprocess.run(
+            ["bash", str(MAILBOX), "drain", str(planspace), AGENT_NAME],
+            capture_output=True, text=True,
+        )
+        for chunk in drain_result.stdout.split("---"):
+            chunk = chunk.strip()
+            if chunk and "LOOP_DETECTED" in chunk:
+                loop_msgs.append(chunk)
+        # Clean up agent mailbox
+        subprocess.run(
+            ["bash", str(MAILBOX), "cleanup", str(planspace), agent_name],
+            capture_output=True, text=True,
+        )
+        subprocess.run(
+            ["bash", str(MAILBOX), "unregister", str(planspace), agent_name],
+            capture_output=True, text=True,
+        )
+        if loop_msgs:
+            log(f"  LOOP DETECTED by monitor: {loop_msgs[0][:100]}")
+            # Append loop signal to output so check_agent_signals catches it
+            output += "\nLOOP_DETECTED: " + loop_msgs[0]
+
     return output
+
+
+def _write_agent_monitor_prompt(
+    planspace: Path, agent_name: str, monitor_name: str,
+    escalation_target: str,
+) -> Path:
+    """Write the prompt file for a per-agent GLM monitor."""
+    prompt_path = planspace / "artifacts" / f"{monitor_name}-prompt.md"
+    prompt_path.write_text(f"""# Agent Monitor: {agent_name}
+
+## Your Job
+Watch mailbox `{agent_name}` for messages from a running agent.
+Detect if the agent is looping (repeating the same actions).
+Report loops to `{escalation_target}` via mailbox.
+
+## Setup
+```bash
+bash "{MAILBOX}" register "{planspace}" {monitor_name}
+```
+
+## Paths
+- Planspace: `{planspace}`
+- Agent mailbox to watch: `{agent_name}`
+- Your mailbox: `{monitor_name}`
+- Escalation target: `{escalation_target}`
+
+## Monitor Loop
+1. Drain all messages from `{agent_name}` mailbox
+2. Track "plan:" messages in memory
+3. If you see the same plan repeated (same action on same file) → loop detected
+4. Check your own mailbox for `agent-finished` signal → exit
+5. Wait 10 seconds, repeat
+
+## Loop Detection
+Keep a list of all `plan:` messages received. If a new `plan:` message
+is substantially similar to a previous one (same file, same action),
+the agent is looping.
+
+When loop detected:
+```bash
+bash "{MAILBOX}" send "{planspace}" {escalation_target} "LOOP_DETECTED:{agent_name}:<repeated action>"
+```
+
+## Exit Conditions
+- Receive `agent-finished` on your mailbox → exit normally
+- 5 minutes with no messages from agent → send stalled warning, exit
+""")
+    return prompt_path
+
+
+def summarize_output(output: str, max_len: int = 200) -> str:
+    """Extract a brief summary from agent output for status messages."""
+    # Look for explicit summary lines first
+    for line in output.split("\n"):
+        stripped = line.strip()
+        if stripped.lower().startswith("summary:"):
+            return stripped[len("summary:"):].strip()[:max_len]
+    # Fall back to first non-empty, non-heading line
+    for line in output.split("\n"):
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and not stripped.startswith("---"):
+            return stripped[:max_len]
+    return "(no output)"
 
 
 def check_agent_signals(output: str) -> tuple[str | None, str]:
@@ -219,6 +400,7 @@ def check_agent_signals(output: str) -> tuple[str | None, str]:
             ("UNDERSPECIFIED:", "underspec"),
             ("NEED_DECISION:", "need_decision"),
             ("DEPENDENCY:", "dependency"),
+            ("LOOP_DETECTED:", "loop_detected"),
         ]:
             if line.startswith(prefix):
                 detail = line[len(prefix):].strip()
@@ -265,6 +447,40 @@ Only use these if you truly cannot proceed. Otherwise complete the task.
 """
 
 
+def agent_mail_instructions(planspace: Path, agent_name: str,
+                            monitor_name: str) -> str:
+    """Return narration-via-mailbox instructions for an agent."""
+    mailbox_cmd = f'bash "{MAILBOX}" send "{planspace}" {monitor_name}'
+    return f"""
+## Progress Reporting (CRITICAL — do this throughout)
+
+Your agent name: `{agent_name}`
+Your monitor: `{monitor_name}`
+
+**Before each significant action**, send a mail message describing what
+you are about to do. Use this exact command:
+
+```bash
+{mailbox_cmd} "plan: <what you are about to do>"
+```
+
+Send mail at these points:
+- Before reading a file: `plan: reading <filepath> to understand <why>`
+- Before making a decision: `plan: deciding <what> because <reasoning>`
+- Before editing a file: `plan: editing <filepath> to <what change>`
+- After completing a step: `done: <what was completed>`
+
+**If you notice you are about to do something you already did**, you have
+entered a loop (likely from context compaction). Send:
+```bash
+{mailbox_cmd} "LOOP_DETECTED: <what task was repeated>"
+```
+and stop immediately. Do NOT continue working.
+
+This mail goes to a monitor that watches for problems. Do NOT skip it.
+"""
+
+
 def write_solution_prompt(
     planspace: Path, codespace: Path, section: Section,
 ) -> Path:
@@ -275,6 +491,8 @@ def write_solution_prompt(
 
     prompt_path = artifacts / f"solution-{section.number}-prompt.md"
     solution_path = solutions_dir / f"section-{section.number}-solution.md"
+    a_name = f"solve-{section.number}"
+    m_name = f"{a_name}-monitor"
     summary = extract_section_summary(section.path)
 
     file_list = []
@@ -315,6 +533,7 @@ This is DIRECTION SETTING — not detailed code changes.
 
 Write your solution to: `{solution_path}`
 {SIGNAL_INSTRUCTIONS}
+{agent_mail_instructions(planspace, a_name, m_name)}
 """)
     return prompt_path
 
@@ -331,6 +550,8 @@ def write_plan_prompt(
     filename = Path(rel_path).name
     prompt_path = artifacts / f"plan-{section.number}-{filename}-prompt.md"
     plan_path = plans_dir / f"{filename}-plan.md"
+    a_name = f"plan-{section.number}-{filename}"
+    m_name = f"{a_name}-monitor"
 
     solution_path = (artifacts / "solutions"
                      / f"section-{section.number}-solution.md")
@@ -357,6 +578,7 @@ The alignment check found issues. Read the existing plan and fix it
 in place to address the alignment feedback. Only change the parts
 that need fixing — preserve what's working.
 {SIGNAL_INSTRUCTIONS}
+{agent_mail_instructions(planspace, a_name, m_name)}
 """)
     else:
         prompt_path.write_text(f"""# Task: Write Change Plan for {rel_path}
@@ -383,6 +605,7 @@ If the file needs no changes (read-only reference), write:
 
 Write your plan to: `{plan_path}`
 {SIGNAL_INSTRUCTIONS}
+{agent_mail_instructions(planspace, a_name, m_name)}
 """)
     return prompt_path
 
@@ -396,6 +619,8 @@ def write_implement_prompt(
     plans_dir = artifacts / "plans" / f"section-{section.number}"
     filename = Path(rel_path).name
     prompt_path = artifacts / f"impl-{section.number}-{filename}-prompt.md"
+    a_name = f"impl-{section.number}-{filename}"
+    m_name = f"{a_name}-monitor"
 
     plan_path = plans_dir / f"{filename}-plan.md"
     solution_path = (artifacts / "solutions"
@@ -425,6 +650,7 @@ After fixing, report which files you modified by writing a list to:
 
 One file path per line (relative to codespace root).
 {SIGNAL_INSTRUCTIONS}
+{agent_mail_instructions(planspace, a_name, m_name)}
 """)
     else:
         prompt_path.write_text(f"""# Task: Implement Changes to {rel_path}
@@ -450,6 +676,7 @@ After implementation, report which files you modified by writing a list to:
 One file path per line (relative to codespace root). Include `{rel_path}`
 itself and any other files you had to touch.
 {SIGNAL_INSTRUCTIONS}
+{agent_mail_instructions(planspace, a_name, m_name)}
 """)
     return prompt_path
 
@@ -556,14 +783,15 @@ def run_section(
     artifacts = planspace / "artifacts"
 
     # Stage 4: Solution (once per section, unless rescheduled)
-    mailbox_send(planspace, parent,
-                 f"status:section-start:{section.number}")
     log(f"Section {section.number}: solving")
-    mailbox_send(planspace, parent,
-                 f"status:solve:{section.number}")
     prompt = write_solution_prompt(planspace, codespace, section)
     output_path = artifacts / f"solution-{section.number}-output.md"
-    output = dispatch_agent("claude-opus", prompt, output_path)
+    solve_agent = f"solve-{section.number}"
+    output = dispatch_agent("claude-opus", prompt, output_path,
+                            planspace, parent, solve_agent)
+    mailbox_send(planspace, parent,
+                 f"summary:solve:{section.number}:"
+                 f"{summarize_output(output)}")
 
     signal, detail = check_agent_signals(output)
     if signal:
@@ -574,7 +802,8 @@ def run_section(
         if not response.startswith("resume"):
             return None
         # Parent handled it — re-solve with updated context
-        output = dispatch_agent("claude-opus", prompt, output_path)
+        output = dispatch_agent("claude-opus", prompt, output_path,
+                                planspace, parent, solve_agent)
 
     # Stage 5: Plan + Implement per file, with alignment loop
     alignment_feedback = None
@@ -587,16 +816,19 @@ def run_section(
             # Plan
             tag = "fix " if alignment_feedback else ""
             log(f"Section {section.number}: {tag}plan {filename}")
-            mailbox_send(planspace, parent,
-                         f"status:{tag}plan:{section.number}:{rel_path}")
             plan_prompt = write_plan_prompt(
                 planspace, codespace, section, rel_path, alignment_feedback,
             )
             plan_output = (artifacts
                            / f"plan-{section.number}-{filename}-output.md")
+            plan_agent = f"plan-{section.number}-{filename}"
             plan_result = dispatch_agent(
                 "gpt-5.3-codex-high", plan_prompt, plan_output,
+                planspace, parent, plan_agent,
             )
+            mailbox_send(planspace, parent,
+                         f"summary:{tag}plan:{section.number}:{rel_path}:"
+                         f"{summarize_output(plan_result)}")
 
             signal, detail = check_agent_signals(plan_result)
             if signal:
@@ -607,18 +839,37 @@ def run_section(
                 if not response.startswith("resume"):
                     return None
 
+            # Skip implement if plan says read-only (no changes needed)
+            plans_dir = artifacts / "plans" / f"section-{section.number}"
+            plan_file = plans_dir / f"{filename}-plan.md"
+            if plan_file.exists() and \
+                    "no changes needed" in plan_file.read_text().lower():
+                log(f"Section {section.number}: skip impl (read-only) "
+                    f"{rel_path}")
+                # Write empty modified file so collect_modified_files()
+                # doesn't report this file, preventing infinite
+                # rescheduling cycles
+                empty_mod = (artifacts
+                             / f"impl-{section.number}-{filename}"
+                               f"-modified.txt")
+                empty_mod.write_text("")
+                continue
+
             # Implement
             log(f"Section {section.number}: {tag}implement {filename}")
-            mailbox_send(planspace, parent,
-                         f"status:{tag}impl:{section.number}:{rel_path}")
             impl_prompt = write_implement_prompt(
                 planspace, codespace, section, rel_path, alignment_feedback,
             )
             impl_output = (artifacts
                            / f"impl-{section.number}-{filename}-output.md")
+            impl_agent = f"impl-{section.number}-{filename}"
             impl_result = dispatch_agent(
                 "gpt-5.3-codex-high", impl_prompt, impl_output,
+                planspace, parent, impl_agent,
             )
+            mailbox_send(planspace, parent,
+                         f"summary:{tag}impl:{section.number}:{rel_path}:"
+                         f"{summarize_output(impl_result)}")
 
             signal, detail = check_agent_signals(impl_result)
             if signal:
@@ -637,18 +888,17 @@ def run_section(
         align_attempt += 1
         log(f"Section {section.number}: alignment check "
             f"(attempt {align_attempt})")
-        mailbox_send(planspace, parent,
-                     f"status:align:{section.number}:"
-                     f"attempt-{align_attempt}")
         align_prompt = write_alignment_prompt(planspace, codespace, section)
         align_output = artifacts / f"align-{section.number}-output.md"
-        result = dispatch_agent("claude-opus", align_prompt, align_output)
+        align_agent = f"align-{section.number}"
+        result = dispatch_agent("claude-opus", align_prompt, align_output,
+                                planspace, parent, align_agent)
 
         if "ALIGNED" in result and "MISALIGNED" not in result \
                 and "UNDERSPECIFIED" not in result:
             log(f"Section {section.number}: ALIGNED")
             mailbox_send(planspace, parent,
-                         f"status:align:{section.number}:ALIGNED")
+                         f"summary:align:{section.number}:ALIGNED")
             break
 
         signal, detail = check_agent_signals(result)
@@ -668,7 +918,7 @@ def run_section(
         log(f"Section {section.number}: MISALIGNED (attempt "
             f"{align_attempt}) — fixing plan/impl")
         mailbox_send(planspace, parent,
-                     f"status:align:{section.number}:"
+                     f"summary:align:{section.number}:"
                      f"MISALIGNED-attempt-{align_attempt}:{short_feedback}")
 
     return collect_modified_files(planspace, section)
@@ -756,6 +1006,9 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
 
         if rescheduled:
             log(f"Section {sec_num}: rescheduling {sorted(rescheduled)}")
+            mailbox_send(planspace, parent,
+                         f"status:reschedule:{sec_num}:"
+                         f"{','.join(sorted(rescheduled))}")
             for r in sorted(rescheduled):
                 completed.discard(r)
                 if r not in queue:

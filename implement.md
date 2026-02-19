@@ -432,18 +432,28 @@ scripts. It spawns task agents and receives their reports.
 
 ```
 UI Orchestrator (talks to user, high-level decisions)
-  ├─ recv on orchestrator mailbox (listens for task agent reports)
-  └─ Task Agent × N (one per task, via uv run agents)
-       ├─ recv on task-agent mailbox (listens for section-loop status)
+  ├─ recv on orchestrator mailbox (listens for monitor/task-agent reports)
+  └─ Task Agent (one per task, via uv run agents)
+       ├─ launches section-loop + monitor
+       ├─ recv on task-agent mailbox (listens for escalations)
        ├─ send to orchestrator mailbox (reports progress + problems)
+       ├─ Task Monitor (GLM, section-level pattern matcher)
+       │    ├─ recv on section-loop mailbox (reads summaries)
+       │    ├─ writes pipeline-state file (pause/resume)
+       │    └─ send to task-agent mailbox (escalations)
        └─ section-loop.py (background subprocess)
-            ├─ send to task-agent mailbox (status events)
-            ├─ recv on section-loop mailbox (when paused)
-            └─ agents (sequential uv run agents calls)
+            ├─ send to task-monitor mailbox (agent summaries)
+            ├─ reads pipeline-state file (pause check before each dispatch)
+            ├─ recv on section-loop mailbox (when paused by signals)
+            └─ per agent dispatch:
+                 ├─ agent (uv run agents, sends narration via mailbox)
+                 └─ Agent Monitor (GLM, per-dispatch loop detector)
+                      ├─ reads agent's narration mailbox
+                      └─ send to section-loop mailbox (LOOP_DETECTED)
 ```
 
 All communication uses the file-based mailbox system. No team/SendMessage
-infrastructure — task agents are standalone processes launched via
+infrastructure — agents are standalone processes launched via
 `uv run agents`, not Claude teammates.
 
 **UI Orchestrator**: Launches task agents via `uv run agents --file`,
@@ -451,38 +461,57 @@ runs recv on its own mailbox, receives reports, makes decisions,
 communicates with user. Does NOT directly launch or monitor section-loop
 scripts.
 
-**Task Agent**: Intelligent monitor launched via `uv run agents`. The
-prompt file specifies planspace, codespace, tag, and monitoring
-instructions. The agent has full filesystem access to diagnose issues.
+**Task Agent**: Intelligent overseer launched via `uv run agents`. Launches
+the section-loop script and monitor agent. Has full filesystem access to
+investigate issues when the monitor escalates. Reads logs, diagnoses root
+causes, fixes what it can autonomously, and escalates to the orchestrator
+what it can't.
 
-The task agent: launches the section-loop script, reads status mail via
-mailbox recv, detects patterns (repeated identical MISALIGNED feedback,
-stalled progress, crashes). Fixes what it can autonomously, sends
-problem reports to the UI orchestrator via mailbox, and waits for
-guidance on issues it can't resolve. Can be told to reload skills and
-rewrite/restart scripts.
+**Task Monitor** (GLM): Section-level pattern matcher. Reads section-loop's
+summary stream, tracks counters (alignment attempts, reschedule counts),
+detects stuck states and cycles. Can pause the pipeline by writing
+`paused` to `<planspace>/pipeline-state`. Escalates to task agent with
+diagnosis. Does NOT read files, fix issues, or make judgment calls beyond
+pattern detection.
+
+**Agent Monitor** (GLM): Per-dispatch loop detector. Launched by
+section-loop alongside each agent dispatch. Reads the agent's narration
+mailbox, tracks `plan:` messages, detects repetition patterns indicating
+the agent has entered an infinite loop (typically from context compaction).
+Reports `LOOP_DETECTED` to section-loop. One monitor per agent dispatch,
+exits when agent finishes.
 
 **Section-loop script**: Dumb executor. Runs sections sequentially,
-dispatches agents, sends status mail for every significant event. Does
-not make judgment calls about stuck states — that's the task agent's job.
+dispatches agents, sends agent result summaries via mailbox. Checks
+`pipeline-state` file before each agent dispatch — if paused, waits
+until resumed. For each agent dispatch, creates a narration mailbox and
+launches a per-agent GLM monitor alongside the agent.
+
+**Pipeline state file** (`<planspace>/pipeline-state`): Controls the
+pipeline. Values: `running` (default), `paused`. The task monitor writes
+this file to pause; the task agent writes it to resume after investigating.
+
+**Agent narration**: Each dispatched agent (solve, plan, implement) is
+instructed to send mail about what it's planning before each action.
+Messages go to its per-agent monitor's mailbox. The agent narrates
+instead of maintaining state files — agents are reliable narrators but
+unreliable at file management. If an agent detects it's repeating work,
+it sends `LOOP_DETECTED` and stops.
 
 ### Mail protocols
 
-**Section-loop → Task Agent** (status events):
+**Section-loop → Task Agent** (summaries + lifecycle):
 
 | Message | Meaning |
 |---------|---------|
-| `status:section-start:<num>` | Starting work on a section |
-| `status:solve:<num>` | Running Opus solution |
-| `status:plan:<num>:<file>` | Planning a file |
-| `status:fix plan:<num>:<file>` | Re-planning after MISALIGNED |
-| `status:impl:<num>:<file>` | Implementing a file |
-| `status:fix impl:<num>:<file>` | Re-implementing after MISALIGNED |
-| `status:align:<num>:attempt-N` | Running alignment check |
-| `status:align:<num>:ALIGNED` | Section passed alignment |
-| `status:align:<num>:MISALIGNED-attempt-N:<feedback>` | Failed alignment |
+| `summary:solve:<num>:<text>` | Solution agent result summary |
+| `summary:plan:<num>:<file>:<text>` | Plan agent result summary |
+| `summary:impl:<num>:<file>:<text>` | Implement agent result summary |
+| `summary:align:<num>:ALIGNED` | Section passed alignment |
+| `summary:align:<num>:MISALIGNED-attempt-N:<feedback>` | Failed alignment with feedback |
+| `status:reschedule:<num>:<targets>` | Section triggered rescheduling of other sections |
 | `done:<num>:<count> files modified` | Section complete |
-| `status:complete` | All sections done |
+| `complete` | All sections done |
 | `pause:<signal>:<num>:<detail>` | Script paused, needs parent input |
 
 **Task Agent → UI Orchestrator** (progress reports + escalations):
