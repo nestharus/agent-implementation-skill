@@ -55,7 +55,7 @@ The tool must:
 After writing the tool, run: chmod +x $tool
 EOF
 
-  uv run agents --model claude-opus --file "$tool_prompt" \
+  uv run agents --model claude-opus --project "$CODESPACE" --file "$tool_prompt" \
     > "$RESPONSE_DIR/create-tool-${ext}.log" 2>&1
 
   if [ -f "$tool" ]; then
@@ -280,7 +280,7 @@ PROMPT
       running=$((running - 1))
     done
 
-    (uv run agents --model glm --file "$prompt_file" \
+    (uv run agents --model glm --project "$CODESPACE" --file "$prompt_file" \
       > "$response_file" 2>&1 || true) &
     running=$((running + 1))
     dispatched=$((dispatched + 1))
@@ -374,7 +374,7 @@ Write your analysis in this exact format (nothing else):
 - Open questions: <what you're not sure about, or "none">
 PROMPT
 
-      uv run agents --model glm --file "$prompt_file" \
+      uv run agents --model glm --project "$CODESPACE" --file "$prompt_file" \
         > "$response_file" 2>&1 || {
         echo "[FAIL] deep: $section_name × $(basename "$source_file")"
         continue
