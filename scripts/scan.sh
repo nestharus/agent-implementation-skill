@@ -92,6 +92,18 @@ extract_file_docstring() {
     return 0
   fi
 
+  # .sh files: extract header comment block (lines starting with #, after shebang)
+  if [ "$ext" = "sh" ]; then
+    local comment
+    comment=$(sed -n '2,/^[^#]/{ /^#/s/^# *//p; }' "$source_file" | head -10)
+    if [ -n "$comment" ]; then
+      echo "$comment"
+    else
+      echo "NO DOCSTRING"
+    fi
+    return 0
+  fi
+
   # All other files: use extension-keyed extraction tool
   local tool
   tool=$(get_tool "$ext") || return 1
