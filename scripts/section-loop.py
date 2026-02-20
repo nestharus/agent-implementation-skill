@@ -1,10 +1,28 @@
 #!/usr/bin/env python3
 """Section loop orchestrator for the implementation pipeline.
 
-Manages the per-section execution cycle: solution → plan/implement per file
-→ alignment check → rescheduling. Handles dynamic queue management,
-alignment branching, cross-section rescheduling, and underspecification
-routing via mailbox.
+Manages the per-section execution cycle using a strategic, agent-driven flow:
+
+Phase 1 — Initial pass (per-section):
+  1. Section setup — extract proposal/alignment excerpts from global docs
+  2. Integration proposal loop — GPT proposes how to wire the proposal into
+     the codebase, Opus checks alignment, iterate until aligned
+  3. Strategic implementation — GPT implements holistically with sub-agents,
+     Opus checks alignment, iterate until aligned
+
+Phase 2 — Global coordination:
+  4. Re-check alignment across ALL sections (cross-section changes may have
+     introduced problems invisible during the per-section pass)
+  5. Global coordinator collects outstanding problems, groups related ones
+     (GLM confirms relationships), sizes work, and dispatches coordinated
+     fixes (Codex agents)
+  6. Re-run per-section alignment to verify fixes
+  7. Repeat steps 5-6 until all sections ALIGNED or max rounds reached
+
+Agents are strategic throughout: GPT dispatches sub-agents (GLM for cheap
+exploration, Codex for targeted implementation), reasons about problems,
+and proposes integration strategies. Opus checks shape and direction — not
+tiny details.
 
 All agent dispatches run as background subprocesses. The script communicates
 with its parent (the orchestrator or interactive session) via mailbox
@@ -12,17 +30,22 @@ messages. When paused (waiting for user input, research results, etc.),
 the script blocks on its own mailbox recv until the parent sends a resume.
 
 Mail protocol (sent TO parent mailbox):
-    summary:solve:<section>:<text>
-    summary:plan:<section>:<file>:<text>
-    summary:impl:<section>:<file>:<text>
-    summary:align:<section>:<text>
-    status:reschedule:<section>:<targets>
-    done:<section>:<summary>
+    summary:setup:<section>:<text>
+    summary:proposal:<section>:<text>
+    summary:proposal-align:<section>:<text>
+    summary:impl:<section>:<text>
+    summary:impl-align:<section>:<text>
+    status:coordination:round-<N>
+    done:<section>:<count> files modified
     fail:<section>:<error>
-    complete
+    fail:<section>:aborted
+    fail:<section>:coordination_exhausted:<summary>
+    fail:aborted                         (global abort, any time)
+    complete                             (ONLY when all aligned)
     pause:underspec:<section>:<description>
     pause:need_decision:<section>:<question>
     pause:dependency:<section>:<needed_section>
+    pause:loop_detected:<section>:<detail>
 
 Mail protocol (received FROM parent mailbox):
     resume:<payload>          — continue with answer/result
@@ -36,28 +59,43 @@ Pipeline state file (<planspace>/pipeline-state):
     this file to control the pipeline.
 
 Multi-tier monitoring:
-    - Each dispatched agent gets mail instructions + a per-agent GLM monitor
+    - Per-section agents (setup, proposal, implementation) get mail
+      instructions + a per-agent GLM monitor
     - Agents narrate actions via mailbox (plan:/done:/LOOP_DETECTED:)
     - Per-agent monitors detect loops within a single agent dispatch
     - Task-level monitor detects cycles across sections (alignment stuck,
       rescheduling cycles)
+    - Opus alignment checks are dispatched WITHOUT a per-agent monitor
+      (alignment prompts have no narration instructions; a monitor would
+      false-positive STALLED after 5 minutes of expected silence)
+    - Coordinator fix agents are dispatched WITHOUT per-agent monitors
+      (fix prompts use strategic GLM sub-agents internally for validation;
+      the task-level monitor detects cross-section stuck states)
 
 Usage:
-    section-loop.py <planspace> <codespace>
+    section-loop.py <planspace> <codespace> --global-proposal <path>
+                    --global-alignment <path> [--parent <name>]
 
 Requires:
     - Section files in <planspace>/artifacts/sections/section-*.md
     - Each section file has ## Related Files with ### <filepath> entries
+    - Global proposal and alignment documents
     - uv run agents available for dispatching models
     - mailbox.sh available at $WORKFLOW_HOME/scripts/mailbox.sh
 """
+import difflib
+import hashlib
+import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 WORKFLOW_HOME = Path(os.environ.get(
     "WORKFLOW_HOME",
@@ -65,36 +103,55 @@ WORKFLOW_HOME = Path(os.environ.get(
 ))
 MAILBOX = WORKFLOW_HOME / "scripts" / "mailbox.sh"
 AGENT_NAME = "section-loop"
+# Maximum rounds the global coordinator will attempt before declaring done.
+MAX_COORDINATION_ROUNDS = 3
 
 
 @dataclass
 class Section:
+    """A single section with its metadata and execution state."""
+
     number: str  # e.g., "01"
     path: Path
+    global_proposal_path: Path = field(default_factory=Path)
+    global_alignment_path: Path = field(default_factory=Path)
     related_files: list[str] = field(default_factory=list)
     solve_count: int = 0
 
 
 def log(msg: str) -> None:
+    """Print a timestamped log message to stdout."""
     print(f"[section-loop] {msg}", flush=True)
 
 
 def mailbox_send(planspace: Path, target: str, message: str) -> None:
-    """Send a message to a target mailbox."""
-    subprocess.run(
-        ["bash", str(MAILBOX), "send", str(planspace), target, message],
+    """Send a message to a target mailbox.
+
+    Also writes to the summary stream log for messages that the task-level
+    monitor should be able to see (summary, done, complete, status, fail,
+    pause). This avoids the monitor needing to consume the same mailbox
+    messages that the task agent also needs.
+    """
+    subprocess.run(  # noqa: S603
+        ["bash", str(MAILBOX), "send", str(planspace), target, message],  # noqa: S607
         check=True,
         capture_output=True,
         text=True,
     )
     log(f"  mail → {target}: {message[:80]}")
+    # Auto-log messages that the monitor should see
+    for prefix in ("summary:", "done:", "complete", "status:", "fail:",
+                   "pause:"):
+        if message.startswith(prefix):
+            log_summary(planspace, message)
+            break
 
 
 def mailbox_recv(planspace: Path, timeout: int = 0) -> str:
     """Block until a message arrives in our mailbox. Returns message text."""
     log(f"  mail ← waiting (timeout={timeout})...")
-    result = subprocess.run(
-        ["bash", str(MAILBOX), "recv", str(planspace), AGENT_NAME,
+    result = subprocess.run(  # noqa: S603
+        ["bash", str(MAILBOX), "recv", str(planspace), AGENT_NAME,  # noqa: S607
          str(timeout)],
         capture_output=True,
         text=True,
@@ -108,13 +165,16 @@ def mailbox_recv(planspace: Path, timeout: int = 0) -> str:
 
 def mailbox_drain(planspace: Path) -> list[str]:
     """Read all pending messages without blocking."""
-    result = subprocess.run(
-        ["bash", str(MAILBOX), "drain", str(planspace), AGENT_NAME],
+    result = subprocess.run(  # noqa: S603
+        ["bash", str(MAILBOX), "drain", str(planspace), AGENT_NAME],  # noqa: S607
         capture_output=True,
         text=True,
     )
     msgs = []
-    for chunk in result.stdout.split("---"):
+    # Split on line-delimited separator (matches mailbox.sh's "---" on its
+    # own line).  Using regex to avoid misparse when message body contains
+    # the literal string "---".
+    for chunk in re.split(r'\n---\n', result.stdout):
         chunk = chunk.strip()
         if chunk:
             msgs.append(chunk)
@@ -122,19 +182,21 @@ def mailbox_drain(planspace: Path) -> list[str]:
 
 
 def mailbox_register(planspace: Path) -> None:
-    subprocess.run(
-        ["bash", str(MAILBOX), "register", str(planspace), AGENT_NAME],
+    """Register this agent's mailbox for receiving messages."""
+    subprocess.run(  # noqa: S603
+        ["bash", str(MAILBOX), "register", str(planspace), AGENT_NAME],  # noqa: S607
         check=True, capture_output=True, text=True,
     )
 
 
 def mailbox_cleanup(planspace: Path) -> None:
-    subprocess.run(
-        ["bash", str(MAILBOX), "cleanup", str(planspace), AGENT_NAME],
+    """Clean up and unregister this agent's mailbox."""
+    subprocess.run(  # noqa: S603
+        ["bash", str(MAILBOX), "cleanup", str(planspace), AGENT_NAME],  # noqa: S607
         capture_output=True, text=True,
     )
-    subprocess.run(
-        ["bash", str(MAILBOX), "unregister", str(planspace), AGENT_NAME],
+    subprocess.run(  # noqa: S603
+        ["bash", str(MAILBOX), "unregister", str(planspace), AGENT_NAME],  # noqa: S607
         capture_output=True, text=True,
     )
 
@@ -143,25 +205,71 @@ def check_pipeline_state(planspace: Path) -> str:
     """Read the pipeline state file. Returns 'running' if missing."""
     state_file = planspace / "pipeline-state"
     if state_file.exists():
-        return state_file.read_text().strip()
+        return state_file.read_text(encoding="utf-8").strip()
     return "running"
 
 
+def _invalidate_excerpts(planspace: Path) -> None:
+    """Delete all section excerpt files, forcing setup to rerun."""
+    sections_dir = planspace / "artifacts" / "sections"
+    if sections_dir.exists():
+        for f in sections_dir.glob("section-*-proposal-excerpt.md"):
+            f.unlink(missing_ok=True)
+        for f in sections_dir.glob("section-*-alignment-excerpt.md"):
+            f.unlink(missing_ok=True)
+
+
+def _set_alignment_changed_flag(planspace: Path) -> None:
+    """Write flag file so the main loop knows to requeue sections."""
+    flag = planspace / "artifacts" / "alignment-changed-pending"
+    flag.parent.mkdir(parents=True, exist_ok=True)
+    flag.write_text("1", encoding="utf-8")
+
+
+def alignment_changed_pending(planspace: Path) -> bool:
+    """Check if alignment_changed flag is set (non-clearing)."""
+    return (planspace / "artifacts" / "alignment-changed-pending").exists()
+
+
+def _check_and_clear_alignment_changed(planspace: Path) -> bool:
+    """Check if alignment_changed flag is set. Clears it if so."""
+    flag = planspace / "artifacts" / "alignment-changed-pending"
+    if flag.exists():
+        flag.unlink(missing_ok=True)
+        return True
+    return False
+
+
 def wait_if_paused(planspace: Path, parent: str) -> None:
-    """Block if pipeline is paused. Polls until state returns to running."""
+    """Block if pipeline is paused. Polls until state returns to running.
+
+    Buffers non-abort messages in memory while paused and replays them
+    after resume (avoids the re-send-to-self infinite loop).
+    """
     state = check_pipeline_state(planspace)
     if state != "paused":
         return
     log("Pipeline paused — waiting for resume")
     mailbox_send(planspace, parent, "status:paused")
+    buffered: list[str] = []
     while check_pipeline_state(planspace) == "paused":
-        # Also check mailbox for abort while paused
-        for msg in mailbox_drain(planspace):
-            if msg.startswith("abort"):
-                log("Received abort while paused — shutting down")
-                mailbox_cleanup(planspace)
-                sys.exit(0)
-        time.sleep(5)
+        msg = mailbox_recv(planspace, timeout=5)
+        if msg == "TIMEOUT":
+            continue
+        if msg.startswith("abort"):
+            log("Received abort while paused — shutting down")
+            mailbox_send(planspace, parent, "fail:aborted")
+            mailbox_cleanup(planspace)
+            sys.exit(0)
+        if msg.startswith("alignment_changed"):
+            log("Alignment changed while paused — invalidating excerpts")
+            _invalidate_excerpts(planspace)
+            _set_alignment_changed_flag(planspace)
+            continue
+        buffered.append(msg)
+    # Replay buffered messages after resume
+    for msg in buffered:
+        mailbox_send(planspace, AGENT_NAME, msg)
     log("Pipeline resumed")
     mailbox_send(planspace, parent, "status:resumed")
 
@@ -173,12 +281,54 @@ def pause_for_parent(planspace: Path, parent: str, signal: str) -> str:
         msg = mailbox_recv(planspace, timeout=0)
         if msg.startswith("abort"):
             log("Received abort — shutting down")
+            mailbox_send(planspace, parent, "fail:aborted")
             mailbox_cleanup(planspace)
             sys.exit(0)
         if msg.startswith("alignment_changed"):
-            log("Alignment changed — waiting for resume with updated context")
+            log("Alignment changed during pause — invalidating excerpts")
+            _invalidate_excerpts(planspace)
+            _set_alignment_changed_flag(planspace)
             continue
         return msg
+
+
+def poll_control_messages(
+    planspace: Path, parent: str,
+    current_section: str | None = None,
+) -> str | None:
+    """Non-blocking poll for abort / alignment_changed control messages.
+
+    Drains the section-loop mailbox and processes control messages:
+    - abort: sends fail:aborted (with section if known), cleans up, exits.
+    - alignment_changed: invalidates excerpts, sets flag, returns
+      "alignment_changed" so the caller can restart.
+
+    Returns "alignment_changed" if the flag was set, None otherwise.
+    Non-control messages are re-queued to our own mailbox (replay).
+    """
+    msgs = mailbox_drain(planspace)
+    alignment_changed = False
+    for msg in msgs:
+        if msg.startswith("abort"):
+            if current_section:
+                mailbox_send(planspace, parent,
+                             f"fail:{current_section}:aborted")
+            else:
+                mailbox_send(planspace, parent, "fail:aborted")
+            log("Received abort — shutting down")
+            mailbox_cleanup(planspace)
+            sys.exit(0)
+        if msg.startswith("alignment_changed"):
+            log("Alignment changed — invalidating excerpts and setting flag")
+            _invalidate_excerpts(planspace)
+            _set_alignment_changed_flag(planspace)
+            alignment_changed = True
+        else:
+            # Replay non-control messages back to our mailbox
+            mailbox_send(planspace, AGENT_NAME, msg)
+    if alignment_changed:
+        return "alignment_changed"
+    return None
 
 
 def check_for_messages(planspace: Path) -> list[str]:
@@ -193,7 +343,10 @@ def handle_pending_messages(planspace: Path, queue: list[str],
         if msg.startswith("abort"):
             return True
         if msg.startswith("alignment_changed"):
-            log("Alignment changed — marking all completed sections dirty")
+            log("Alignment changed — invalidating excerpts and setting flag")
+            _invalidate_excerpts(planspace)
+            _set_alignment_changed_flag(planspace)
+            # Requeue completed sections (works when real structures passed)
             for sec_num in list(completed):
                 completed.discard(sec_num)
                 if sec_num not in queue:
@@ -206,20 +359,37 @@ def handle_pending_messages(planspace: Path, queue: list[str],
 # ---------------------------------------------------------------------------
 
 def parse_related_files(section_path: Path) -> list[str]:
-    """Extract file paths from ## Related Files / ### <path> entries."""
-    text = section_path.read_text()
-    return re.findall(r'^### (.+)$', text, re.MULTILINE)
+    """Extract file paths from ## Related Files / ### <path> entries.
+
+    Only parses lines after the ``## Related Files`` header and skips
+    content inside markdown code fences (``` blocks).
+    """
+    text = section_path.read_text(encoding="utf-8")
+    # Only look at the content after ## Related Files header
+    marker = "## Related Files"
+    idx = text.find(marker)
+    if idx == -1:
+        return []
+    tail = text[idx + len(marker):]
+    # Strip code fences before matching
+    tail = re.sub(r'```.*?```', '', tail, flags=re.DOTALL)
+    return re.findall(r'^### (.+)$', tail, re.MULTILINE)
 
 
 def load_sections(sections_dir: Path) -> list[Section]:
-    """Load all section files and their related file maps."""
+    """Load all section files and their related file maps.
+
+    Only matches files named ``section-<number>.md`` (the actual spec
+    files). Excerpt artifacts like ``section-01-proposal-excerpt.md`` are
+    explicitly excluded so they are never mistaken for section specs.
+    """
     sections = []
     for path in sorted(sections_dir.glob("section-*.md")):
-        num = re.search(r'section-(\d+)', path.name)
-        if not num:
+        m = re.match(r'^section-(\d+)\.md$', path.name)
+        if not m:
             continue
         related = parse_related_files(path)
-        sections.append(Section(number=num.group(1), path=path,
+        sections.append(Section(number=m.group(1), path=path,
                                 related_files=related))
     return sections
 
@@ -240,7 +410,8 @@ def build_file_to_sections(sections: list[Section]) -> dict[str, list[str]]:
 def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
                    planspace: Path | None = None,
                    parent: str | None = None,
-                   agent_name: str | None = None) -> str:
+                   agent_name: str | None = None,
+                   codespace: Path | None = None) -> str:
     """Run an agent via uv run agents and return the output text.
 
     If planspace and parent are provided, checks pipeline state before
@@ -249,48 +420,72 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
     If agent_name is provided, launches an agent-monitor alongside the
     agent to watch for loops and stuck states. The monitor is a GLM
     agent that reads the agent's mailbox.
+
+    If codespace is provided, passes --project to the agent so it runs
+    with the correct working directory and model config lookup.
     """
     if planspace and parent:
         wait_if_paused(planspace, parent)
+        # If alignment_changed was received during the pause (or was
+        # already pending), do NOT launch the agent — excerpts are stale.
+        if alignment_changed_pending(planspace):
+            log("  dispatch_agent: alignment_changed pending — skipping")
+            return "ALIGNMENT_CHANGED_PENDING"
 
     monitor_name = f"{agent_name}-monitor" if agent_name else None
     monitor_proc = None
+    loop_signal_file = None
 
     if planspace and agent_name:
         # Register agent's mailbox (agents send narration here)
-        subprocess.run(
-            ["bash", str(MAILBOX), "register", str(planspace), agent_name],
+        subprocess.run(  # noqa: S603
+            ["bash", str(MAILBOX), "register", str(planspace), agent_name],  # noqa: S607
             check=True, capture_output=True, text=True,
         )
+        # File-based loop signal: monitor writes here instead of sending
+        # to section-loop's mailbox (avoids draining and losing messages)
+        loop_signal_file = (planspace / "artifacts"
+                            / f"{agent_name}-loop-signal.txt")
+        if loop_signal_file.exists():
+            loop_signal_file.unlink()
         # Launch agent-monitor (GLM) in background
+        assert monitor_name is not None  # narrowed by `if agent_name`  # noqa: S101
         monitor_prompt = _write_agent_monitor_prompt(
-            planspace, agent_name, monitor_name, parent or AGENT_NAME,
+            planspace, agent_name, monitor_name, loop_signal_file,
         )
-        monitor_proc = subprocess.Popen(
-            ["uv", "run", "agents", "--agent-file",
+        monitor_proc = subprocess.Popen(  # noqa: S603
+            ["uv", "run", "--frozen", "agents", "--agent-file",  # noqa: S607
              str(WORKFLOW_HOME / "agents" / "agent-monitor.md"),
              "--file", str(monitor_prompt)],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         log(f"  agent-monitor started (pid={monitor_proc.pid})")
 
     log(f"  dispatch {model} → {prompt_path.name}")
-    result = subprocess.run(
-        ["uv", "run", "agents", "--model", model, "--file", str(prompt_path)],
-        capture_output=True,
-        text=True,
-        timeout=600,
-    )
-    output = result.stdout + result.stderr
-    output_path.write_text(output)
-    if result.returncode != 0:
-        log(f"  WARNING: agent returned {result.returncode}")
+    cmd = ["uv", "run", "--frozen", "agents", "--model", model,
+           "--file", str(prompt_path)]
+    if codespace:
+        cmd.extend(["--project", str(codespace)])
+    try:
+        result = subprocess.run(  # noqa: S603
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        output = result.stdout + result.stderr
+        if result.returncode != 0:
+            log(f"  WARNING: agent returned {result.returncode}")
+    except subprocess.TimeoutExpired:
+        output = "TIMEOUT: Agent exceeded 600s time limit"
+        log("  WARNING: agent timed out after 600s")
 
     # Shut down agent-monitor after agent finishes
     if monitor_proc:
+        assert monitor_name is not None  # set when monitor_proc created  # noqa: S101
         # Send stop signal to monitor
-        subprocess.run(
-            ["bash", str(MAILBOX), "send", str(planspace),
+        subprocess.run(  # noqa: S603
+            ["bash", str(MAILBOX), "send", str(planspace),  # noqa: S607
              monitor_name, "agent-finished"],
             capture_output=True, text=True,
         )
@@ -298,36 +493,46 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
             monitor_proc.wait(timeout=30)
         except subprocess.TimeoutExpired:
             monitor_proc.terminate()
-        # Drain any loop detection messages the monitor sent
-        loop_msgs = []
-        drain_result = subprocess.run(
-            ["bash", str(MAILBOX), "drain", str(planspace), AGENT_NAME],
-            capture_output=True, text=True,
-        )
-        for chunk in drain_result.stdout.split("---"):
-            chunk = chunk.strip()
-            if chunk and "LOOP_DETECTED" in chunk:
-                loop_msgs.append(chunk)
+        # Check file-based loop signal (no mailbox drain needed)
+        if loop_signal_file and loop_signal_file.exists():
+            loop_text = loop_signal_file.read_text(encoding="utf-8").strip()
+            if loop_text:
+                log(f"  LOOP DETECTED by monitor: {loop_text[:100]}")
+                output += "\nLOOP_DETECTED: " + loop_text
+            loop_signal_file.unlink(missing_ok=True)
+
+    # Write output AFTER loop signal has been appended (so the saved
+    # file includes the LOOP_DETECTED line for forensic debugging)
+    output_path.write_text(output, encoding="utf-8")
+
+    if monitor_proc:
+        assert monitor_name is not None  # set when monitor_proc created  # noqa: S101
+        assert agent_name is not None  # noqa: S101  # monitor_proc only set when agent_name provided
         # Clean up agent mailbox
-        subprocess.run(
-            ["bash", str(MAILBOX), "cleanup", str(planspace), agent_name],
+        subprocess.run(  # noqa: S603
+            ["bash", str(MAILBOX), "cleanup", str(planspace), agent_name],  # noqa: S607
             capture_output=True, text=True,
         )
-        subprocess.run(
-            ["bash", str(MAILBOX), "unregister", str(planspace), agent_name],
+        subprocess.run(  # noqa: S603
+            ["bash", str(MAILBOX), "unregister", str(planspace), agent_name],  # noqa: S607
             capture_output=True, text=True,
         )
-        if loop_msgs:
-            log(f"  LOOP DETECTED by monitor: {loop_msgs[0][:100]}")
-            # Append loop signal to output so check_agent_signals catches it
-            output += "\nLOOP_DETECTED: " + loop_msgs[0]
+        # Clean up monitor mailbox
+        subprocess.run(  # noqa: S603
+            ["bash", str(MAILBOX), "cleanup", str(planspace), monitor_name],  # noqa: S607
+            capture_output=True, text=True,
+        )
+        subprocess.run(  # noqa: S603
+            ["bash", str(MAILBOX), "unregister", str(planspace), monitor_name],  # noqa: S607
+            capture_output=True, text=True,
+        )
 
     return output
 
 
 def _write_agent_monitor_prompt(
     planspace: Path, agent_name: str, monitor_name: str,
-    escalation_target: str,
+    loop_signal_file: Path,
 ) -> Path:
     """Write the prompt file for a per-agent GLM monitor."""
     prompt_path = planspace / "artifacts" / f"{monitor_name}-prompt.md"
@@ -336,7 +541,7 @@ def _write_agent_monitor_prompt(
 ## Your Job
 Watch mailbox `{agent_name}` for messages from a running agent.
 Detect if the agent is looping (repeating the same actions).
-Report loops to `{escalation_target}` via mailbox.
+Report loops by writing to a signal file.
 
 ## Setup
 ```bash
@@ -347,7 +552,7 @@ bash "{MAILBOX}" register "{planspace}" {monitor_name}
 - Planspace: `{planspace}`
 - Agent mailbox to watch: `{agent_name}`
 - Your mailbox: `{monitor_name}`
-- Escalation target: `{escalation_target}`
+- Loop signal file: `{loop_signal_file}`
 
 ## Monitor Loop
 1. Drain all messages from `{agent_name}` mailbox
@@ -361,15 +566,25 @@ Keep a list of all `plan:` messages received. If a new `plan:` message
 is substantially similar to a previous one (same file, same action),
 the agent is looping.
 
-When loop detected:
+**Agent self-reported loop:** If ANY drained message starts with
+`LOOP_DETECTED:`, the agent has self-detected a loop. Immediately write
+that payload to the signal file and exit — no further analysis needed.
+
+When loop detected (either self-reported or by your analysis), write to
+the signal file:
 ```bash
-bash "{MAILBOX}" send "{planspace}" {escalation_target} "LOOP_DETECTED:{agent_name}:<repeated action>"
+echo "LOOP_DETECTED:{agent_name}:<repeated action>" > "{loop_signal_file}"
 ```
+
+Do NOT send loop signals via mailbox — only write to the file above.
 
 ## Exit Conditions
 - Receive `agent-finished` on your mailbox → exit normally
-- 5 minutes with no messages from agent → send stalled warning, exit
-""")
+- 5 minutes with no messages from agent → write stalled warning to signal file, exit:
+  ```bash
+  echo "STALLED:{agent_name}:no messages for 5 minutes" > "{loop_signal_file}"
+  ```
+""", encoding="utf-8")
     return prompt_path
 
 
@@ -413,12 +628,338 @@ def check_agent_signals(output: str) -> tuple[str | None, str]:
 
 
 # ---------------------------------------------------------------------------
+# Content-hash change detection
+# ---------------------------------------------------------------------------
+
+def hash_file(path: Path) -> str:
+    """Return SHA-256 hex digest of a file, or empty string if missing."""
+    if not path.exists():
+        return ""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def snapshot_files(codespace: Path, rel_paths: list[str]) -> dict[str, str]:
+    """Hash all files before implementation. Returns {rel_path: hash}."""
+    return {rp: hash_file(codespace / rp) for rp in rel_paths}
+
+
+def diff_files(codespace: Path, before: dict[str, str],
+               reported: list[str]) -> list[str]:
+    """Filter reported modified files to only those that actually changed."""
+    changed = []
+    for rp in reported:
+        after = hash_file(codespace / rp)
+        if after != before.get(rp, ""):
+            changed.append(rp)
+    return changed
+
+
+# ---------------------------------------------------------------------------
+# Cross-section communication
+# ---------------------------------------------------------------------------
+
+def compute_text_diff(old_path: Path, new_path: Path) -> str:
+    """Compute a unified text diff between two files.
+
+    Returns a human-readable unified diff string. If either file is
+    missing, returns an appropriate message instead.
+    """
+    if not old_path.exists() and not new_path.exists():
+        return ""
+    if not old_path.exists():
+        old_lines: list[str] = []
+        old_label = "(did not exist)"
+    else:
+        old_lines = old_path.read_text(encoding="utf-8").splitlines(keepends=True)
+        old_label = str(old_path)
+    if not new_path.exists():
+        new_lines: list[str] = []
+        new_label = "(deleted)"
+    else:
+        new_lines = new_path.read_text(encoding="utf-8").splitlines(keepends=True)
+        new_label = str(new_path)
+
+    diff = difflib.unified_diff(
+        old_lines, new_lines,
+        fromfile=old_label, tofile=new_label,
+        lineterm="",
+    )
+    return "\n".join(diff)
+
+
+def post_section_completion(
+    section: Section,
+    modified_files: list[str],
+    all_sections: list[Section],
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+) -> None:
+    """Post-completion steps after a section is ALIGNED.
+
+    a) Snapshot modified files to artifacts/snapshots/section-NN/
+    b) Run semantic impact analysis via GLM
+    c) Leave consequence notes for materially impacted sections
+    """
+    artifacts = planspace / "artifacts"
+    sec_num = section.number
+
+    # -----------------------------------------------------------------
+    # (a) Snapshot modified files
+    # -----------------------------------------------------------------
+    snapshot_dir = artifacts / "snapshots" / f"section-{sec_num}"
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+    codespace_resolved = codespace.resolve()
+    snapshot_resolved = snapshot_dir.resolve()
+    for rel_path in modified_files:
+        src = (codespace / rel_path).resolve()
+        if not src.exists():
+            continue
+        # Verify src is under codespace (belt-and-suspenders)
+        if not src.is_relative_to(codespace_resolved):
+            log(f"Section {sec_num}: WARNING — snapshot path escapes "
+                f"codespace, skipping: {rel_path}")
+            continue
+        # Preserve relative directory structure inside the snapshot
+        dest = (snapshot_dir / rel_path).resolve()
+        if not dest.is_relative_to(snapshot_resolved):
+            log(f"Section {sec_num}: WARNING — dest path escapes "
+                f"snapshot dir, skipping: {rel_path}")
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(src), str(dest))
+
+    log(f"Section {sec_num}: snapshotted {len(modified_files)} files "
+        f"to {snapshot_dir}")
+
+    # -----------------------------------------------------------------
+    # (b) Semantic impact analysis via GLM
+    # -----------------------------------------------------------------
+    other_sections = [s for s in all_sections if s.number != sec_num
+                      and s.related_files]
+    if not other_sections:
+        log(f"Section {sec_num}: no other sections to check for impact")
+        return
+
+    # Build file-change description
+    change_lines = []
+    for rel_path in modified_files:
+        change_lines.append(f"- `{rel_path}`")
+    changes_text = "\n".join(change_lines) if change_lines else "(none)"
+
+    # Build other-sections description
+    other_section_lines = []
+    for other in other_sections:
+        files_str = ", ".join(f"`{f}`" for f in other.related_files[:10])
+        if len(other.related_files) > 10:
+            files_str += f" (+{len(other.related_files) - 10} more)"
+        summary = extract_section_summary(other.path)
+        other_section_lines.append(
+            f"- SECTION-{other.number}: {summary}\n"
+            f"  Related files: {files_str}"
+        )
+    other_text = "\n".join(other_section_lines)
+
+    section_summary = extract_section_summary(section.path)
+
+    impact_prompt_path = artifacts / f"impact-{sec_num}-prompt.md"
+    impact_output_path = artifacts / f"impact-{sec_num}-output.md"
+    heading = f"# Task: Semantic Impact Analysis for Section {sec_num}"
+    impact_prompt_path.write_text(f"""{heading}
+
+## What Section {sec_num} Did
+{section_summary}
+
+## Files Modified by Section {sec_num}
+{changes_text}
+
+## Other Sections and Their Files
+{other_text}
+
+## Instructions
+
+For each other section listed above, determine if the changes made by
+section {sec_num} have a MATERIAL impact on that section's problem, or
+if it is just a coincidental file overlap that does not affect the other
+section's work.
+
+A change is MATERIAL if:
+- It modifies an interface, contract, or API that the other section depends on
+- It changes control flow or data structures the other section needs to work with
+- It introduces constraints or assumptions the other section must accommodate
+
+A change is NO_IMPACT if:
+- The files overlap but the changes are in unrelated parts
+- The other section only reads data that was not affected
+- The change is purely cosmetic or stylistic
+
+Reply with one line per section, using EXACTLY this format:
+SECTION-NN: MATERIAL <brief reason>
+or
+SECTION-NN: NO_IMPACT
+""", encoding="utf-8")
+
+    log(f"Section {sec_num}: running impact analysis")
+    impact_result = dispatch_agent(
+        "glm", impact_prompt_path, impact_output_path,
+        planspace, parent, codespace=codespace,
+    )
+
+    # -----------------------------------------------------------------
+    # (c) Parse impact results and leave consequence notes
+    # -----------------------------------------------------------------
+    # Normalize section numbers to canonical form (handles "4" vs "04")
+    sec_num_map = build_section_number_map(all_sections)
+
+    impacted_sections: list[tuple[str, str]] = []
+    for line in impact_result.split("\n"):
+        line = line.strip()
+        match = re.match(r'SECTION-(\d+):\s*MATERIAL\s*(.*)', line)
+        if match:
+            canonical = normalize_section_number(
+                match.group(1), sec_num_map,
+            )
+            impacted_sections.append((canonical, match.group(2)))
+
+    if not impacted_sections:
+        log(f"Section {sec_num}: no material impacts on other sections")
+        return
+
+    log(f"Section {sec_num}: material impact on sections "
+        f"{[s[0] for s in impacted_sections]}")
+
+    notes_dir = artifacts / "notes"
+    notes_dir.mkdir(parents=True, exist_ok=True)
+
+    # Read the section's integration proposal for contract/interface context
+    integration_proposal = (artifacts / "proposals"
+                            / f"section-{sec_num}-integration-proposal.md")
+    contracts_context = ""
+    if integration_proposal.exists():
+        contracts_context = integration_proposal.read_text(encoding="utf-8")
+
+    # Extract contract/interface sections from proposal for inline notes
+    contracts_summary = _extract_contracts_summary(contracts_context)
+
+    for target_num, reason in impacted_sections:
+        note_path = notes_dir / f"from-{sec_num}-to-{target_num}.md"
+
+        # Build the list of modified files with brief context
+        file_changes = "\n".join(
+            f"- `{rel_path}`" for rel_path in modified_files
+        )
+        heading = (
+            f"# Consequence Note: Section {sec_num}"
+            f" -> Section {target_num}"
+        )
+        contracts = (
+            contracts_summary
+            if contracts_summary
+            else "(No explicit contracts extracted "
+                 "from integration proposal.)"
+        )
+
+        note_path.write_text(f"""{heading}
+
+## What Changed
+{file_changes}
+
+## Why
+Section {sec_num} ({section_summary}) implemented changes to solve its
+designated problem. Impact reason: {reason}
+
+## Contracts/Interfaces Affected
+{contracts}
+
+Full integration proposal: `{integration_proposal}`
+
+## What Section {target_num} Must Accommodate
+{reason}
+
+Check the snapshot at `{snapshot_dir}` and compare against the current
+file state to see exactly what changed.
+""", encoding="utf-8")
+        log(f"Section {sec_num}: left note for section {target_num} "
+            f"at {note_path}")
+
+
+def read_incoming_notes(
+    section: Section,
+    planspace: Path,
+    codespace: Path,
+) -> str:
+    """Read incoming consequence notes from other sections.
+
+    Globs for artifacts/notes/from-*-to-{section.number}.md, reads each
+    note, and computes text diffs for shared files that have changed
+    since the authoring section last saw them.
+
+    Returns a combined context string suitable for inclusion in prompts.
+    Empty string if no notes exist.
+    """
+    artifacts = planspace / "artifacts"
+    notes_dir = artifacts / "notes"
+    sec_num = section.number
+
+    if not notes_dir.exists():
+        return ""
+
+    note_pattern = f"from-*-to-{sec_num}.md"
+    note_files = sorted(notes_dir.glob(note_pattern))
+
+    if not note_files:
+        return ""
+
+    log(f"Section {sec_num}: found {len(note_files)} incoming notes")
+
+    parts: list[str] = []
+    for note_path in note_files:
+        note_text = note_path.read_text(encoding="utf-8")
+        parts.append(note_text)
+
+        # Extract the source section number from the filename
+        name_match = re.match(r'from-(\d+)-to-\d+\.md', note_path.name)
+        if not name_match:
+            continue
+        source_num = name_match.group(1)
+
+        # Compute diffs for files this section shares with the source
+        source_snapshot_dir = (artifacts / "snapshots"
+                               / f"section-{source_num}")
+        if not source_snapshot_dir.exists():
+            continue
+
+        diff_parts: list[str] = []
+        for rel_path in section.related_files:
+            snapshot_file = source_snapshot_dir / rel_path
+            current_file = codespace / rel_path
+            if not snapshot_file.exists():
+                continue
+            diff_text = compute_text_diff(snapshot_file, current_file)
+            if diff_text:
+                diff_parts.append(
+                    f"### Diff: `{rel_path}` "
+                    f"(section {source_num}'s snapshot vs current)\n"
+                    f"```diff\n{diff_text}\n```"
+                )
+
+        if diff_parts:
+            parts.append(
+                f"### File Diffs Since Section {source_num}\n\n"
+                + "\n\n".join(diff_parts)
+            )
+
+    return "\n\n---\n\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def extract_section_summary(section_path: Path) -> str:
     """Extract summary from YAML frontmatter of a section file."""
-    text = section_path.read_text()
+    text = section_path.read_text(encoding="utf-8")
     match = re.search(r'^---\s*\n.*?^summary:\s*(.+?)$.*?^---',
                       text, re.MULTILINE | re.DOTALL)
     if match:
@@ -429,6 +970,97 @@ def extract_section_summary(section_path: Path) -> str:
         if line and not line.startswith('---') and not line.startswith('#'):
             return line[:200]
     return "(no summary available)"
+
+
+def log_summary(planspace: Path, message: str) -> None:
+    """Append a summary message to the summary stream log.
+
+    The summary log is a plain text file that the task-level monitor can
+    tail-read for pattern detection, independent of mailbox recv. This
+    avoids the problem of mailbox message consumption conflicts between
+    the monitor and the task agent.
+
+    Messages are sanitized to collapse embedded newlines into spaces so
+    each log entry stays on a single line (the monitor parses line by line).
+    """
+    log_path = planspace / "artifacts" / "summary-stream.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    timestamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    # Collapse newlines/carriage returns so each entry is one line
+    sanitized = message.replace("\r", " ").replace("\n", " ")
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write(f"{timestamp} {sanitized}\n")
+
+
+def read_decisions(planspace: Path, section_number: str) -> str:
+    """Read accumulated decisions from parent for a section.
+
+    Returns the decisions text (may be multi-entry), or empty string
+    if no decisions file exists.
+    """
+    decisions_file = (planspace / "artifacts" / "decisions"
+                      / f"section-{section_number}.md")
+    if decisions_file.exists():
+        return decisions_file.read_text(encoding="utf-8")
+    return ""
+
+
+def persist_decision(planspace: Path, section_number: str,
+                     payload: str) -> None:
+    """Persist a resume payload as a decision for a section."""
+    decisions_dir = planspace / "artifacts" / "decisions"
+    decisions_dir.mkdir(parents=True, exist_ok=True)
+    decision_file = decisions_dir / f"section-{section_number}.md"
+    with decision_file.open("a", encoding="utf-8") as f:
+        f.write(f"\n## Decision (from parent)\n{payload}\n")
+
+
+def normalize_section_number(
+    raw_num: str,
+    sec_num_map: dict[int, str],
+) -> str:
+    """Normalize a parsed section number to its canonical form.
+
+    Handles mismatches like "4" vs "04" by mapping through int values.
+    Falls back to the raw string if no canonical mapping exists.
+    """
+    try:
+        return sec_num_map.get(int(raw_num), raw_num)
+    except ValueError:
+        return raw_num
+
+
+def build_section_number_map(sections: list[Section]) -> dict[int, str]:
+    """Build a mapping from int section number to canonical string form."""
+    return {int(s.number): s.number for s in sections}
+
+
+def _extract_contracts_summary(proposal_text: str) -> str:
+    """Extract contract/interface mentions from an integration proposal.
+
+    Scans for headings containing 'contract', 'interface', 'api', or
+    'integration point' and returns their content. Returns empty string
+    if no relevant sections found.
+    """
+    if not proposal_text:
+        return ""
+    lines = proposal_text.split("\n")
+    parts: list[str] = []
+    capturing = False
+    for line in lines:
+        stripped = line.strip().lower()
+        if stripped.startswith("#") and any(
+            kw in stripped for kw in
+            ["contract", "interface", "api", "integration point",
+             "change strategy", "risks"]
+        ):
+            capturing = True
+            parts.append(line)
+        elif capturing and line.strip().startswith("#"):
+            capturing = False
+        elif capturing:
+            parts.append(line)
+    return "\n".join(parts).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -449,12 +1081,18 @@ Only use these if you truly cannot proceed. Otherwise complete the task.
 
 def agent_mail_instructions(planspace: Path, agent_name: str,
                             monitor_name: str) -> str:
-    """Return narration-via-mailbox instructions for an agent."""
-    mailbox_cmd = f'bash "{MAILBOX}" send "{planspace}" {monitor_name}'
+    """Return narration-via-mailbox instructions for an agent.
+
+    Agents send narration to their OWN mailbox (agent_name), which the
+    per-agent monitor watches. This keeps narration separate from the
+    section-loop's control mailbox.
+    """
+    mailbox_cmd = f'bash "{MAILBOX}" send "{planspace}" {agent_name}'
     return f"""
 ## Progress Reporting (CRITICAL — do this throughout)
 
 Your agent name: `{agent_name}`
+Your narration mailbox: `{agent_name}`
 Your monitor: `{monitor_name}`
 
 **Before each significant action**, send a mail message describing what
@@ -477,21 +1115,114 @@ entered a loop (likely from context compaction). Send:
 ```
 and stop immediately. Do NOT continue working.
 
-This mail goes to a monitor that watches for problems. Do NOT skip it.
+This mail goes to your narration mailbox where a monitor watches for
+problems. Do NOT skip it.
 """
 
 
-def write_solution_prompt(
-    planspace: Path, codespace: Path, section: Section,
+def write_section_setup_prompt(
+    section: Section, planspace: Path, codespace: Path,
+    global_proposal: Path, global_alignment: Path,
 ) -> Path:
-    """Write the prompt file for Stage 4 (Solution)."""
-    artifacts = planspace / "artifacts"
-    solutions_dir = artifacts / "solutions"
-    solutions_dir.mkdir(parents=True, exist_ok=True)
+    """Write the prompt for extracting section-level excerpts from globals.
 
-    prompt_path = artifacts / f"solution-{section.number}-prompt.md"
-    solution_path = solutions_dir / f"section-{section.number}-solution.md"
-    a_name = f"solve-{section.number}"
+    Produces a prompt for an agent to read the global proposal and global
+    alignment documents, find the parts relevant to this section, and write
+    two excerpt files: section-NN-proposal-excerpt.md and
+    section-NN-alignment-excerpt.md.
+    """
+    artifacts = planspace / "artifacts"
+    sections_dir = artifacts / "sections"
+    sections_dir.mkdir(parents=True, exist_ok=True)
+
+    prompt_path = artifacts / f"setup-{section.number}-prompt.md"
+    proposal_excerpt = sections_dir / f"section-{section.number}-proposal-excerpt.md"
+    alignment_excerpt = sections_dir / f"section-{section.number}-alignment-excerpt.md"
+    a_name = f"setup-{section.number}"
+    m_name = f"{a_name}-monitor"
+    summary = extract_section_summary(section.path)
+
+    # Include any accumulated decisions from parent (from prior pause/resume)
+    decisions = read_decisions(planspace, section.number)
+    decisions_block = ""
+    if decisions:
+        decisions_block = f"""
+## Parent Decisions (from prior pause/resume cycles)
+{decisions}
+
+Use this context to inform your excerpt extraction — the parent has
+provided additional guidance about this section.
+"""
+
+    prompt_path.write_text(f"""# Task: Extract Section {section.number} Excerpts
+
+## Summary
+{summary}
+{decisions_block}
+## Files to Read
+1. Section specification: `{section.path}`
+2. Global proposal: `{global_proposal}`
+3. Global alignment: `{global_alignment}`
+
+## Instructions
+
+Read the section specification first to understand what section {section.number}
+covers. Then read both global documents.
+
+### Output 1: Proposal Excerpt
+From the global proposal, extract the parts relevant to this section.
+Copy/paste the relevant content WITH enough surrounding context to be
+self-contained. Do NOT rewrite or interpret — use the original text.
+Include any context paragraphs needed for the excerpt to make sense
+on its own.
+
+Write to: `{proposal_excerpt}`
+
+### Output 2: Alignment Excerpt
+From the global alignment, extract the parts relevant to this section.
+Same rules: copy/paste with context, do NOT rewrite. Include alignment
+criteria, constraints, examples, and anti-patterns that apply to this
+section's problem space.
+
+Write to: `{alignment_excerpt}`
+
+### Important
+- These are EXCERPTS, not summaries. Use the original text.
+- Include enough surrounding context that each file stands alone.
+- If the global document covers this section across multiple places,
+  include all relevant parts.
+- Preserve section headings and structure from the originals.
+{SIGNAL_INSTRUCTIONS}
+{agent_mail_instructions(planspace, a_name, m_name)}
+""", encoding="utf-8")
+    return prompt_path
+
+
+def write_integration_proposal_prompt(
+    section: Section, planspace: Path, codespace: Path,
+    alignment_problems: str | None = None,
+    incoming_notes: str | None = None,
+) -> Path:
+    """Write the prompt for GPT to create an integration proposal.
+
+    GPT reads the section excerpts + source files, explores the codebase
+    strategically using sub-agents, and writes a high-level integration
+    proposal: HOW to wire the existing proposal into the codebase.
+    """
+    artifacts = planspace / "artifacts"
+    proposals_dir = artifacts / "proposals"
+    proposals_dir.mkdir(parents=True, exist_ok=True)
+
+    prompt_path = artifacts / f"intg-proposal-{section.number}-prompt.md"
+    proposal_excerpt = (artifacts / "sections"
+                        / f"section-{section.number}-proposal-excerpt.md")
+    alignment_excerpt = (artifacts / "sections"
+                         / f"section-{section.number}-alignment-excerpt.md")
+    integration_proposal = (
+        proposals_dir
+        / f"section-{section.number}-integration-proposal.md"
+    )
+    a_name = f"intg-proposal-{section.number}"
     m_name = f"{a_name}-monitor"
     summary = extract_section_summary(section.path)
 
@@ -502,201 +1233,333 @@ def write_solution_prompt(
         file_list.append(f"   - `{full_path}`{status}")
     files_block = "\n".join(file_list) if file_list else "   (none)"
 
-    existing_note = ""
-    if solution_path.exists():
-        existing_note = f"""
-## Existing Solution
-There is an existing solution from a previous round at: `{solution_path}`
-Read it and update it to account for the current file states.
+    problems_block = ""
+    if alignment_problems:
+        problems_block = f"""
+## Previous Alignment Problems
+
+The alignment check found these problems with your previous integration
+proposal. Address ALL of them in this revision:
+
+{alignment_problems}
 """
 
-    prompt_path.write_text(f"""# Task: Write Solution Doc for Section {section.number}
+    existing_note = ""
+    if integration_proposal.exists():
+        existing_note = f"""
+## Existing Integration Proposal
+There is an existing proposal from a previous round at:
+`{integration_proposal}`
+Read it and revise it to address the alignment problems above.
+"""
+
+    notes_block = ""
+    if incoming_notes:
+        notes_block = f"""
+## Notes from Other Sections
+
+Other sections have completed work that may affect this section. Read
+these notes carefully — they describe consequences, contracts, and
+interfaces that may constrain or inform your integration strategy.
+
+{incoming_notes}
+"""
+
+    decisions_text = read_decisions(planspace, section.number)
+    decisions_block = ""
+    if decisions_text:
+        decisions_block = f"""
+## Decisions from Parent (answers to earlier questions)
+
+The following decisions were provided in response to earlier signals.
+Incorporate them into your proposal:
+
+{decisions_text}
+"""
+
+    prompt_path.write_text(f"""# Task: Integration Proposal for Section {section.number}
 
 ## Summary
 {summary}
 
 ## Files to Read
-1. Section specification: `{section.path}`
-2. Related source files (read each one):
+1. Section proposal excerpt: `{proposal_excerpt}`
+2. Section alignment excerpt: `{alignment_excerpt}`
+3. Section specification: `{section.path}`
+4. Related source files (read each one):
 {files_block}
-{existing_note}
+{existing_note}{problems_block}{notes_block}{decisions_block}
 ## Instructions
 
-Read the section specification and all related source files listed above.
-Write a solution doc covering:
-- How to approach the changes
-- Per-file: what needs to change and why
-- Constraints and risks
-- Cross-section dependencies (which other sections' files are affected)
+You are writing an INTEGRATION PROPOSAL — a strategic document describing
+HOW to wire the existing proposal into the codebase. The proposal excerpt
+already says WHAT to build. Your job is to figure out how it maps onto the
+real code.
 
-This is DIRECTION SETTING — not detailed code changes.
+### Phase 1: Explore and Understand
 
-Write your solution to: `{solution_path}`
+Before writing anything, explore the codebase strategically. You MUST
+understand the existing code before proposing how to integrate.
+
+**Dispatch GLM sub-agents for targeted exploration:**
+```bash
+uv run --frozen agents --model glm --project "{codespace}" "<instructions>"
+```
+
+Use GLM to:
+- Read files related to this section and understand their structure
+- Find callers/callees of functions you need to modify
+- Check what interfaces or contracts currently exist
+- Understand the module organization and import patterns
+- Verify assumptions about how the code works
+
+Do NOT try to understand everything upfront. Explore strategically:
+form a hypothesis, verify it with a targeted read, adjust, repeat.
+
+### Phase 2: Write the Integration Proposal
+
+After exploring, write a high-level integration strategy covering:
+
+1. **Problem mapping** — How does the section proposal map onto what
+   currently exists in the code? What's the gap between current and target?
+2. **Integration points** — Where does the new functionality connect to
+   existing code? Which interfaces, call sites, or data flows are affected?
+3. **Change strategy** — High-level approach: which files change, what kind
+   of changes (new functions, modified control flow, new modules, etc.),
+   and in what order?
+4. **Risks and dependencies** — What could go wrong? What assumptions are
+   we making? What depends on other sections?
+
+This is STRATEGIC — not line-by-line changes. Think about the shape of
+the solution, not the exact code.
+
+Write your integration proposal to: `{integration_proposal}`
 {SIGNAL_INSTRUCTIONS}
 {agent_mail_instructions(planspace, a_name, m_name)}
-""")
+""", encoding="utf-8")
     return prompt_path
 
 
-def write_plan_prompt(
-    planspace: Path, codespace: Path, section: Section, rel_path: str,
-    alignment_feedback: str | None = None,
+def write_integration_alignment_prompt(
+    section: Section, planspace: Path, codespace: Path,
 ) -> Path:
-    """Write the prompt file for planning changes to one file."""
+    """Write the prompt for Opus to review the integration proposal.
+
+    Checks shape and direction: is the integration proposal still solving
+    the right problem? Has intent drifted? NOT checking tiny details.
+    """
     artifacts = planspace / "artifacts"
-    plans_dir = artifacts / "plans" / f"section-{section.number}"
-    plans_dir.mkdir(parents=True, exist_ok=True)
-
-    filename = Path(rel_path).name
-    prompt_path = artifacts / f"plan-{section.number}-{filename}-prompt.md"
-    plan_path = plans_dir / f"{filename}-plan.md"
-    a_name = f"plan-{section.number}-{filename}"
-    m_name = f"{a_name}-monitor"
-
-    solution_path = (artifacts / "solutions"
-                     / f"section-{section.number}-solution.md")
-    full_path = codespace / rel_path
+    prompt_path = artifacts / f"intg-align-{section.number}-prompt.md"
+    alignment_excerpt = (artifacts / "sections"
+                         / f"section-{section.number}-alignment-excerpt.md")
+    proposal_excerpt = (artifacts / "sections"
+                        / f"section-{section.number}-proposal-excerpt.md")
+    integration_proposal = (artifacts / "proposals"
+                            / f"section-{section.number}-integration-proposal.md")
     summary = extract_section_summary(section.path)
+    sec = section.number
+    heading = (
+        f"# Task: Integration Proposal Alignment Check"
+        f" — Section {sec}"
+    )
 
-    if alignment_feedback and plan_path.exists():
-        prompt_path.write_text(f"""# Task: Fix Change Plan for {rel_path}
+    prompt_path.write_text(f"""{heading}
 
 ## Summary
 {summary}
 
-## Alignment Feedback
-{alignment_feedback}
-
 ## Files to Read
-1. Existing plan to fix: `{plan_path}`
-2. Solution doc: `{solution_path}`
-3. Source file: `{full_path}`
+1. Section alignment excerpt: `{alignment_excerpt}`
+2. Section proposal excerpt: `{proposal_excerpt}`
+3. Section specification: `{section.path}`
+4. Integration proposal to review: `{integration_proposal}`
 
 ## Instructions
 
-The alignment check found issues. Read the existing plan and fix it
-in place to address the alignment feedback. Only change the parts
-that need fixing — preserve what's working.
-{SIGNAL_INSTRUCTIONS}
-{agent_mail_instructions(planspace, a_name, m_name)}
-""")
-    else:
-        prompt_path.write_text(f"""# Task: Write Change Plan for {rel_path}
+Read the alignment excerpt and proposal excerpt first — these define the
+PROBLEM and CONSTRAINTS. Then read the integration proposal.
+
+Check SHAPE AND DIRECTION only:
+- Is the integration proposal still solving the RIGHT PROBLEM?
+- Has the intent drifted from what the proposal/alignment describe?
+- Does the integration strategy make sense given the actual codebase?
+- Are there any fundamental misunderstandings about what's needed?
+
+Do NOT check:
+- Tiny implementation details (those get resolved during implementation)
+- Exact code patterns or style choices
+- Whether every edge case is covered
+- Completeness of the strategy (some details are fetched on demand later)
+
+Reply with EXACTLY one of:
+
+ALIGNED
+
+or
+
+PROBLEMS:
+- <specific problem 1: what's wrong and why it matters>
+- <specific problem 2: what's wrong and why it matters>
+...
+
+or
+
+UNDERSPECIFIED: <what information is missing and why alignment can't be checked>
+
+Each problem must be specific and actionable. "Needs more detail" is NOT
+a valid problem. "The proposal routes X through Y, but the alignment says
+X must go through Z because of constraint C" IS a valid problem.
+""", encoding="utf-8")
+    return prompt_path
+
+
+def write_strategic_impl_prompt(
+    section: Section, planspace: Path, codespace: Path,
+    alignment_problems: str | None = None,
+) -> Path:
+    """Write the prompt for GPT to implement strategically.
+
+    GPT reads the aligned integration proposal + source files, thinks
+    strategically, and implements. Dispatches sub-agents as needed.
+    Tackles the section holistically — multiple files at once.
+    """
+    artifacts = planspace / "artifacts"
+    prompt_path = artifacts / f"impl-{section.number}-prompt.md"
+    integration_proposal = (artifacts / "proposals"
+                            / f"section-{section.number}-integration-proposal.md")
+    proposal_excerpt = (artifacts / "sections"
+                        / f"section-{section.number}-proposal-excerpt.md")
+    alignment_excerpt = (artifacts / "sections"
+                         / f"section-{section.number}-alignment-excerpt.md")
+    modified_report = artifacts / f"impl-{section.number}-modified.txt"
+    a_name = f"impl-{section.number}"
+    m_name = f"{a_name}-monitor"
+    summary = extract_section_summary(section.path)
+
+    file_list = []
+    for rel_path in section.related_files:
+        full_path = codespace / rel_path
+        status = "" if full_path.exists() else " (to be created)"
+        file_list.append(f"   - `{full_path}`{status}")
+    files_block = "\n".join(file_list) if file_list else "   (none)"
+
+    problems_block = ""
+    if alignment_problems:
+        problems_block = f"""
+## Previous Implementation Alignment Problems
+
+The alignment check found these problems with your previous implementation.
+Address ALL of them:
+
+{alignment_problems}
+"""
+
+    decisions_text = read_decisions(planspace, section.number)
+    decisions_block = ""
+    if decisions_text:
+        decisions_block = f"""
+## Decisions from Parent (answers to earlier questions)
+
+{decisions_text}
+"""
+
+    impl_heading = (
+        f"# Task: Strategic Implementation"
+        f" for Section {section.number}"
+    )
+    prompt_path.write_text(f"""{impl_heading}
 
 ## Summary
 {summary}
 
 ## Files to Read
-1. Solution doc: `{solution_path}`
-2. Section specification: `{section.path}`
-3. Source file: `{full_path}`
-
+1. Integration proposal (ALIGNED): `{integration_proposal}`
+2. Section proposal excerpt: `{proposal_excerpt}`
+3. Section alignment excerpt: `{alignment_excerpt}`
+4. Section specification: `{section.path}`
+5. Related source files:
+{files_block}
+{problems_block}{decisions_block}
 ## Instructions
 
-Read all files listed above. Write a change plan for `{rel_path}` covering:
-- Specific changes needed
-- Interface contracts (function signatures, types)
-- Control flow changes
-- Error handling changes
-- Integration points (what calls this, what this calls)
+You are implementing the changes described in the integration proposal.
+The proposal has been alignment-checked and approved. Your job is to
+execute it strategically.
 
-If the file needs no changes (read-only reference), write:
-"No changes needed — read-only reference" and explain why.
+### How to Work
 
-Write your plan to: `{plan_path}`
+**Think strategically, not mechanically.** Read the integration proposal
+and understand the SHAPE of the changes. Then tackle them holistically —
+multiple files at once, coordinated changes.
+
+**Dispatch sub-agents for exploration and targeted work:**
+
+For cheap exploration (reading, checking, verifying):
+```bash
+uv run --frozen agents --model glm --project "{codespace}" "<instructions>"
+```
+
+For targeted implementation of specific areas:
+```bash
+uv run --frozen agents --model gpt-5.3-codex-high \\
+  --project "{codespace}" "<instructions>"
+```
+
+Use sub-agents when:
+- You need to read several files to understand context before changing them
+- A specific area of the implementation is self-contained and can be delegated
+- You want to verify your changes didn't break something
+
+Do NOT use sub-agents for everything — handle straightforward changes
+yourself directly.
+
+### Implementation Guidelines
+
+1. Follow the integration proposal's strategy
+2. Make coordinated changes across files — don't treat each file in isolation
+3. If you discover the proposal missed something (a file that needs changing,
+   an interface that doesn't work as expected), handle it — you have authority
+   to go beyond the proposal where necessary
+4. Update docstrings and comments to reflect changes
+5. Ensure imports and references are consistent across modified files
+
+### Report Modified Files
+
+After implementation, write a list of ALL files you modified to:
+`{modified_report}`
+
+One file path per line (relative to codespace root `{codespace}`).
+Include files modified by sub-agents. Include ALL files — both directly
+modified and indirectly affected.
 {SIGNAL_INSTRUCTIONS}
 {agent_mail_instructions(planspace, a_name, m_name)}
-""")
+""", encoding="utf-8")
     return prompt_path
 
 
-def write_implement_prompt(
-    planspace: Path, codespace: Path, section: Section, rel_path: str,
-    alignment_feedback: str | None = None,
+def write_impl_alignment_prompt(
+    section: Section, planspace: Path, codespace: Path,
 ) -> Path:
-    """Write the prompt file for implementing changes to one file."""
+    """Write the prompt for Opus to verify implementation alignment.
+
+    Same shape/direction check as the integration alignment, but applied
+    to the actual code changes.
+    """
     artifacts = planspace / "artifacts"
-    plans_dir = artifacts / "plans" / f"section-{section.number}"
-    filename = Path(rel_path).name
-    prompt_path = artifacts / f"impl-{section.number}-{filename}-prompt.md"
-    a_name = f"impl-{section.number}-{filename}"
-    m_name = f"{a_name}-monitor"
-
-    plan_path = plans_dir / f"{filename}-plan.md"
-    solution_path = (artifacts / "solutions"
-                     / f"section-{section.number}-solution.md")
-    full_path = codespace / rel_path
-
-    if alignment_feedback:
-        prompt_path.write_text(f"""# Task: Fix Implementation of {rel_path}
-
-## Alignment Feedback
-{alignment_feedback}
-
-## Files to Read
-1. Change plan (updated): `{plan_path}`
-2. Solution doc: `{solution_path}`
-
-## Instructions
-
-The alignment check found issues. Fix the implementation in place to
-match the solution and updated plan. Only change the parts that need
-fixing — preserve what's working.
-
-Source file to edit: `{full_path}`
-
-After fixing, report which files you modified by writing a list to:
-`{artifacts}/impl-{section.number}-{filename}-modified.txt`
-
-One file path per line (relative to codespace root).
-{SIGNAL_INSTRUCTIONS}
-{agent_mail_instructions(planspace, a_name, m_name)}
-""")
-    else:
-        prompt_path.write_text(f"""# Task: Implement Changes to {rel_path}
-
-## Files to Read
-1. Change plan: `{plan_path}`
-2. Solution doc (context): `{solution_path}`
-
-## Instructions
-
-Read the change plan and solution doc. Implement the changes described
-in the change plan.
-
-1. Implement the changes described in the change plan
-2. Update the module docstring to reflect the changes
-3. Do NOT make changes beyond what the plan specifies
-
-Source file to edit: `{full_path}`
-
-After implementation, report which files you modified by writing a list to:
-`{artifacts}/impl-{section.number}-{filename}-modified.txt`
-
-One file path per line (relative to codespace root). Include `{rel_path}`
-itself and any other files you had to touch.
-{SIGNAL_INSTRUCTIONS}
-{agent_mail_instructions(planspace, a_name, m_name)}
-""")
-    return prompt_path
-
-
-def write_alignment_prompt(
-    planspace: Path, codespace: Path, section: Section,
-) -> Path:
-    """Write the prompt for the alignment check."""
-    artifacts = planspace / "artifacts"
-    prompt_path = artifacts / f"align-{section.number}-prompt.md"
-
-    solution_path = (artifacts / "solutions"
-                     / f"section-{section.number}-solution.md")
+    prompt_path = artifacts / f"impl-align-{section.number}-prompt.md"
+    alignment_excerpt = (artifacts / "sections"
+                         / f"section-{section.number}-alignment-excerpt.md")
+    proposal_excerpt = (artifacts / "sections"
+                        / f"section-{section.number}-proposal-excerpt.md")
+    integration_proposal = (artifacts / "proposals"
+                            / f"section-{section.number}-integration-proposal.md")
     summary = extract_section_summary(section.path)
 
-    # Merge section's related files with files Codex reported as modified
-    # (handles new files created during implementation, e.g. .dockerignore)
-    all_paths = set(section.related_files)
-    modified = collect_modified_files(planspace, section)
-    all_paths.update(modified)
+    # Collect modified files via the validated collector (sanitizes
+    # absolute/traversal paths) and union with section's related files.
+    all_paths = set(section.related_files) | set(
+        collect_modified_files(planspace, section, codespace)
+    )
 
     file_list = []
     for rel_path in sorted(all_paths):
@@ -704,16 +1567,19 @@ def write_alignment_prompt(
         if full_path.exists():
             file_list.append(f"   - `{full_path}`")
     files_block = "\n".join(file_list) if file_list else "   (none)"
+    sec = section.number
 
-    prompt_path.write_text(f"""# Task: Alignment Check for Section {section.number}
+    prompt_path.write_text(f"""# Task: Implementation Alignment Check — Section {sec}
 
 ## Summary
 {summary}
 
 ## Files to Read
-1. Section specification: `{section.path}`
-2. Solution doc: `{solution_path}`
-3. Known implemented files (read each one):
+1. Section alignment excerpt: `{alignment_excerpt}`
+2. Section proposal excerpt: `{proposal_excerpt}`
+3. Integration proposal: `{integration_proposal}`
+4. Section specification: `{section.path}`
+5. Implemented files (read each one):
 {files_block}
 
 ## Worktree root
@@ -721,30 +1587,45 @@ def write_alignment_prompt(
 
 ## Instructions
 
-Read the section specification and solution doc first. Then read the
-known implemented files listed above.
+Read the alignment excerpt and proposal excerpt first — these define the
+PROBLEM and CONSTRAINTS. Then read the integration proposal to understand
+WHAT was planned. Finally read the implemented files.
+
+Check SHAPE AND DIRECTION:
+- Is the implementation still solving the RIGHT PROBLEM?
+- Does the code match the intent of the integration proposal?
+- Has anything drifted from the original problem definition?
+- Are the changes internally consistent across files?
 
 **Go beyond the file list.** The section spec may require creating new
-files, modifying files not listed above, or producing artifacts at
-specific paths. Check the worktree for any file the section mentions
-that should exist. If the spec says "create X" — verify X exists and
-has the right content. Do not limit your review to the listed files.
+files or producing artifacts at specific paths. Check the worktree for
+any file the section mentions that should exist.
 
-Check whether the implementations match the section's intent:
-- Do the file changes fulfill ALL section requirements?
-- Are the changes internally consistent across files?
-- Did any implementation drift from what the solution specified?
-- Do all files that should exist actually exist in the worktree?
+Do NOT check:
+- Code style or formatting preferences
+- Whether variable names are perfect
+- Minor documentation wording
+- Edge cases that weren't in the alignment constraints
 
 Reply with EXACTLY one of:
-ALIGNED
-or
-MISALIGNED: <description of what's wrong and what needs to change>
-or
-UNDERSPECIFIED: <what information is missing from the section/solution>
 
-Nothing else.
-""")
+ALIGNED
+
+or
+
+PROBLEMS:
+- <specific problem 1: what's wrong, why it matters, what should change>
+- <specific problem 2: what's wrong, why it matters, what should change>
+...
+
+or
+
+UNDERSPECIFIED: <what information is missing and why alignment can't be checked>
+
+Each problem must be specific and actionable.
+""",
+        encoding="utf-8",
+    )
     return prompt_path
 
 
@@ -752,20 +1633,107 @@ Nothing else.
 # Modified file collection
 # ---------------------------------------------------------------------------
 
-def collect_modified_files(planspace: Path, section: Section) -> list[str]:
-    """Collect all modified file paths reported by implement agents."""
+def collect_modified_files(
+    planspace: Path, section: Section, codespace: Path,
+) -> list[str]:
+    """Collect modified file paths from the implementation report.
+
+    Normalizes all paths to safe relative paths under ``codespace``.
+    Absolute paths are converted to relative (if under codespace) or
+    rejected. Paths containing ``..`` that escape codespace are rejected.
+    """
     artifacts = planspace / "artifacts"
+    modified_report = artifacts / f"impl-{section.number}-modified.txt"
+    codespace_resolved = codespace.resolve()
     modified = set()
-    for rel_path in section.related_files:
-        filename = Path(rel_path).name
-        mod_file = (artifacts
-                    / f"impl-{section.number}-{filename}-modified.txt")
-        if mod_file.exists():
-            for line in mod_file.read_text().strip().split("\n"):
-                line = line.strip()
-                if line:
-                    modified.add(line)
+    if modified_report.exists():
+        for line in modified_report.read_text(encoding="utf-8").strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            pp = Path(line)
+            if pp.is_absolute():
+                # Convert absolute to relative if under codespace
+                try:
+                    rel = pp.resolve().relative_to(codespace_resolved)
+                except ValueError:
+                    log(f"  WARNING: reported path outside codespace, "
+                        f"skipping: {line}")
+                    continue
+            else:
+                # Resolve relative path and ensure it stays under codespace
+                full = (codespace / pp).resolve()
+                try:
+                    rel = full.relative_to(codespace_resolved)
+                except ValueError:
+                    log(f"  WARNING: reported path escapes codespace, "
+                        f"skipping: {line}")
+                    continue
+            modified.add(str(rel))
     return list(modified)
+
+
+def _extract_problems(result: str) -> str | None:
+    """Extract problem list from an alignment check result.
+
+    Returns the problems text if PROBLEMS: found, None if ALIGNED.
+    Uses first non-empty line for exact-match classification to avoid
+    misclassifying outputs containing substrings like "MISALIGNED".
+    """
+    # Find the first non-empty line for exact classification
+    first_line = ""
+    for line in result.split("\n"):
+        stripped = line.strip()
+        if stripped:
+            first_line = stripped
+            break
+
+    # Exact match ALIGNED on first line (not a substring of MISALIGNED etc.)
+    if first_line == "ALIGNED" and "PROBLEMS:" not in result \
+            and "UNDERSPECIFIED" not in result:
+        return None
+    # Extract everything after PROBLEMS:
+    idx = result.find("PROBLEMS:")
+    if idx != -1:
+        return result[idx + len("PROBLEMS:"):].strip()
+    # Fallback: return the whole result as problems if not ALIGNED
+    return result.strip()
+
+
+def _run_alignment_check_with_retries(
+    section: Section, planspace: Path, codespace: Path, parent: str,
+    sec_num: str,
+    output_prefix: str = "align",
+    max_retries: int = 2,
+) -> str | None:
+    """Run an alignment check with TIMEOUT retry logic.
+
+    Dispatches Opus for an implementation alignment check. If the agent
+    times out, retries up to max_retries times. Returns the alignment
+    result text, or None if all retries exhausted.
+    """
+    artifacts = planspace / "artifacts"
+    for attempt in range(1, max_retries + 2):  # 1 initial + max_retries
+        # Poll for control messages before each dispatch attempt
+        ctrl = poll_control_messages(planspace, parent,
+                                     current_section=sec_num)
+        if ctrl == "alignment_changed":
+            return "ALIGNMENT_CHANGED_PENDING"
+        align_prompt = write_impl_alignment_prompt(
+            section, planspace, codespace,
+        )
+        align_output = artifacts / f"{output_prefix}-{sec_num}-output.md"
+        result = dispatch_agent(
+            "claude-opus", align_prompt, align_output,
+            planspace, parent, codespace=codespace,
+        )
+        if result == "ALIGNMENT_CHANGED_PENDING":
+            return result  # Caller must handle
+        if not result.startswith("TIMEOUT:"):
+            return result
+        log(f"  alignment check for section {sec_num} timed out "
+            f"(attempt {attempt}/{max_retries + 1})")
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -774,134 +1742,191 @@ def collect_modified_files(planspace: Path, section: Section) -> list[str]:
 
 def run_section(
     planspace: Path, codespace: Path, section: Section, parent: str,
+    all_sections: list[Section] | None = None,
 ) -> list[str] | None:
-    """Run a section through solution → plan/implement → alignment.
+    """Run a section through the strategic flow.
+
+    0. Read incoming notes from other sections (pre-section)
+    1. Section setup (once) — extract proposal/alignment excerpts
+    2. Integration proposal loop — GPT proposes, Opus checks alignment
+    3. Strategic implementation — GPT implements, Opus checks alignment
+    4. Post-completion — snapshot, impact analysis, consequence notes
 
     Returns modified files on success, or None if paused (waiting for
     parent to handle underspec/decision/dependency and send resume).
     """
     artifacts = planspace / "artifacts"
 
-    # Stage 4: Solution (once per section, unless rescheduled)
-    log(f"Section {section.number}: solving")
-    prompt = write_solution_prompt(planspace, codespace, section)
-    output_path = artifacts / f"solution-{section.number}-output.md"
-    solve_agent = f"solve-{section.number}"
-    output = dispatch_agent("claude-opus", prompt, output_path,
-                            planspace, parent, solve_agent)
-    mailbox_send(planspace, parent,
-                 f"summary:solve:{section.number}:"
-                 f"{summarize_output(output)}")
+    # -----------------------------------------------------------------
+    # Step 0: Read incoming notes from other sections
+    # -----------------------------------------------------------------
+    incoming_notes = read_incoming_notes(section, planspace, codespace)
+    if incoming_notes:
+        log(f"Section {section.number}: received incoming notes from "
+            f"other sections")
 
-    signal, detail = check_agent_signals(output)
-    if signal:
-        response = pause_for_parent(
-            planspace, parent,
-            f"pause:{signal}:{section.number}:{detail}",
+    # -----------------------------------------------------------------
+    # Step 1: Section setup — extract excerpts from global documents
+    # -----------------------------------------------------------------
+    proposal_excerpt = (artifacts / "sections"
+                        / f"section-{section.number}-proposal-excerpt.md")
+    alignment_excerpt = (artifacts / "sections"
+                         / f"section-{section.number}-alignment-excerpt.md")
+
+    # Setup loop: runs until excerpts exist. Retries after pause/resume.
+    while not proposal_excerpt.exists() or not alignment_excerpt.exists():
+        log(f"Section {section.number}: setup — extracting excerpts")
+        setup_prompt = write_section_setup_prompt(
+            section, planspace, codespace,
+            section.global_proposal_path,
+            section.global_alignment_path,
         )
-        if not response.startswith("resume"):
+        setup_output = artifacts / f"setup-{section.number}-output.md"
+        setup_agent = f"setup-{section.number}"
+        output = dispatch_agent("claude-opus", setup_prompt, setup_output,
+                                planspace, parent, setup_agent,
+                                codespace=codespace)
+        if output == "ALIGNMENT_CHANGED_PENDING":
             return None
-        # Parent handled it — re-solve with updated context
-        output = dispatch_agent("claude-opus", prompt, output_path,
-                                planspace, parent, solve_agent)
+        mailbox_send(planspace, parent,
+                     f"summary:setup:{section.number}:"
+                     f"{summarize_output(output)}")
 
-    # Stage 5: Plan + Implement per file, with alignment loop
-    alignment_feedback = None
-    align_attempt = 0
+        signal, detail = check_agent_signals(output)
+        if signal:
+            response = pause_for_parent(
+                planspace, parent,
+                f"pause:{signal}:{section.number}:{detail}",
+            )
+            if not response.startswith("resume"):
+                return None
+            # Persist resume payload and retry setup
+            payload = response.partition(":")[2].strip()
+            if payload:
+                persist_decision(planspace, section.number, payload)
+            if alignment_changed_pending(planspace):
+                return None
+            continue  # Retry setup with new decisions context
+
+        # Verify excerpts were created
+        if not proposal_excerpt.exists() or not alignment_excerpt.exists():
+            log(f"Section {section.number}: ERROR — setup failed to create "
+                f"excerpt files")
+            mailbox_send(planspace, parent,
+                         f"fail:{section.number}:setup failed to create "
+                         f"excerpt files")
+            return None
+        break  # Excerpts exist, proceed
+
+    if proposal_excerpt.exists() and alignment_excerpt.exists():
+        log(f"Section {section.number}: setup — excerpts ready")
+
+    # -----------------------------------------------------------------
+    # Step 2: Integration proposal loop
+    # -----------------------------------------------------------------
+    integration_proposal = (artifacts / "proposals"
+                            / f"section-{section.number}-integration-proposal.md")
+    proposal_problems: str | None = None
+    proposal_attempt = 0
 
     while True:
-        for rel_path in section.related_files:
-            filename = Path(rel_path).name
-
-            # Plan
-            tag = "fix " if alignment_feedback else ""
-            log(f"Section {section.number}: {tag}plan {filename}")
-            plan_prompt = write_plan_prompt(
-                planspace, codespace, section, rel_path, alignment_feedback,
-            )
-            plan_output = (artifacts
-                           / f"plan-{section.number}-{filename}-output.md")
-            plan_agent = f"plan-{section.number}-{filename}"
-            plan_result = dispatch_agent(
-                "gpt-5.3-codex-high", plan_prompt, plan_output,
-                planspace, parent, plan_agent,
-            )
-            mailbox_send(planspace, parent,
-                         f"summary:{tag}plan:{section.number}:{rel_path}:"
-                         f"{summarize_output(plan_result)}")
-
-            signal, detail = check_agent_signals(plan_result)
-            if signal:
-                response = pause_for_parent(
-                    planspace, parent,
-                    f"pause:{signal}:{section.number}:{detail}",
-                )
-                if not response.startswith("resume"):
-                    return None
-
-            # Skip implement if plan says read-only (no changes needed)
-            plans_dir = artifacts / "plans" / f"section-{section.number}"
-            plan_file = plans_dir / f"{filename}-plan.md"
-            if plan_file.exists() and \
-                    "no changes needed" in plan_file.read_text().lower():
-                log(f"Section {section.number}: skip impl (read-only) "
-                    f"{rel_path}")
-                # Write empty modified file so collect_modified_files()
-                # doesn't report this file, preventing infinite
-                # rescheduling cycles
-                empty_mod = (artifacts
-                             / f"impl-{section.number}-{filename}"
-                               f"-modified.txt")
-                empty_mod.write_text("")
-                continue
-
-            # Implement
-            log(f"Section {section.number}: {tag}implement {filename}")
-            impl_prompt = write_implement_prompt(
-                planspace, codespace, section, rel_path, alignment_feedback,
-            )
-            impl_output = (artifacts
-                           / f"impl-{section.number}-{filename}-output.md")
-            impl_agent = f"impl-{section.number}-{filename}"
-            impl_result = dispatch_agent(
-                "gpt-5.3-codex-high", impl_prompt, impl_output,
-                planspace, parent, impl_agent,
-            )
-            mailbox_send(planspace, parent,
-                         f"summary:{tag}impl:{section.number}:{rel_path}:"
-                         f"{summarize_output(impl_result)}")
-
-            signal, detail = check_agent_signals(impl_result)
-            if signal:
-                response = pause_for_parent(
-                    planspace, parent,
-                    f"pause:{signal}:{section.number}:{detail}",
-                )
-                if not response.startswith("resume"):
-                    return None
-
-        # Check for pending messages between alignment iterations
+        # Check for pending messages between iterations
         if handle_pending_messages(planspace, [], set()):
+            mailbox_send(planspace, parent,
+                         f"fail:{section.number}:aborted")
             return None  # abort
 
-        # Alignment check
-        align_attempt += 1
-        log(f"Section {section.number}: alignment check "
-            f"(attempt {align_attempt})")
-        align_prompt = write_alignment_prompt(planspace, codespace, section)
-        align_output = artifacts / f"align-{section.number}-output.md"
-        align_agent = f"align-{section.number}"
-        result = dispatch_agent("claude-opus", align_prompt, align_output,
-                                planspace, parent, align_agent)
+        # Bail out if alignment_changed arrived (excerpts deleted)
+        if alignment_changed_pending(planspace):
+            log(f"Section {section.number}: alignment changed — "
+                "aborting section to restart Phase 1")
+            return None
 
-        if "ALIGNED" in result and "MISALIGNED" not in result \
-                and "UNDERSPECIFIED" not in result:
-            log(f"Section {section.number}: ALIGNED")
+        proposal_attempt += 1
+        tag = "revise " if proposal_problems else ""
+        log(f"Section {section.number}: {tag}integration proposal "
+            f"(attempt {proposal_attempt})")
+
+        # 2a: GPT writes integration proposal
+        intg_prompt = write_integration_proposal_prompt(
+            section, planspace, codespace, proposal_problems,
+            incoming_notes=incoming_notes,
+        )
+        intg_output = artifacts / f"intg-proposal-{section.number}-output.md"
+        intg_agent = f"intg-proposal-{section.number}"
+        intg_result = dispatch_agent(
+            "gpt-5.3-codex-high", intg_prompt, intg_output,
+            planspace, parent, intg_agent, codespace=codespace,
+        )
+        if intg_result == "ALIGNMENT_CHANGED_PENDING":
+            return None
+        mailbox_send(planspace, parent,
+                     f"summary:proposal:{section.number}:"
+                     f"{summarize_output(intg_result)}")
+
+        # Detect timeout explicitly (callers handle, not dispatch_agent)
+        if intg_result.startswith("TIMEOUT:"):
+            log(f"Section {section.number}: integration proposal agent "
+                f"timed out")
             mailbox_send(planspace, parent,
-                         f"summary:align:{section.number}:ALIGNED")
-            break
+                         f"fail:{section.number}:integration proposal "
+                         f"agent timed out")
+            return None
 
-        signal, detail = check_agent_signals(result)
+        signal, detail = check_agent_signals(intg_result)
+        if signal:
+            response = pause_for_parent(
+                planspace, parent,
+                f"pause:{signal}:{section.number}:{detail}",
+            )
+            if not response.startswith("resume"):
+                return None
+            # Persist resume payload and retry the step
+            payload = response.partition(":")[2].strip()
+            if payload:
+                persist_decision(planspace, section.number, payload)
+            # Check if alignment changed during the pause
+            if alignment_changed_pending(planspace):
+                return None
+            continue  # Restart proposal step with new context
+
+        # Verify proposal was written
+        if not integration_proposal.exists():
+            log(f"Section {section.number}: ERROR — integration proposal "
+                f"not written")
+            mailbox_send(planspace, parent,
+                         f"fail:{section.number}:integration proposal "
+                         f"not written")
+            return None
+
+        # 2b: Opus checks alignment
+        log(f"Section {section.number}: proposal alignment check")
+        align_prompt = write_integration_alignment_prompt(
+            section, planspace, codespace,
+        )
+        align_output = (artifacts
+                        / f"intg-align-{section.number}-output.md")
+        # No agent_name → no per-agent monitor for alignment checks
+        # (Opus alignment prompts don't include narration instructions,
+        # so a monitor would false-positive STALLED after 5 min silence)
+        align_result = dispatch_agent(
+            "claude-opus", align_prompt, align_output,
+            planspace, parent, codespace=codespace,
+        )
+        if align_result == "ALIGNMENT_CHANGED_PENDING":
+            return None
+
+        # Detect timeout on alignment check
+        if align_result.startswith("TIMEOUT:"):
+            log(f"Section {section.number}: proposal alignment check "
+                f"timed out — retrying")
+            proposal_problems = "Previous alignment check timed out."
+            continue
+
+        # 2c/2d: Check result
+        problems = _extract_problems(align_result)
+
+        signal, detail = check_agent_signals(align_result)
         if signal == "underspec":
             response = pause_for_parent(
                 planspace, parent,
@@ -909,19 +1934,849 @@ def run_section(
             )
             if not response.startswith("resume"):
                 return None
-            # After research/eval cycle, re-run alignment
+            payload = response.partition(":")[2].strip()
+            if payload:
+                persist_decision(planspace, section.number, payload)
+            if alignment_changed_pending(planspace):
+                return None
             continue
 
-        # MISALIGNED — extract feedback and report to parent
-        alignment_feedback = result.replace("MISALIGNED:", "").strip()
-        short_feedback = alignment_feedback[:200]
-        log(f"Section {section.number}: MISALIGNED (attempt "
-            f"{align_attempt}) — fixing plan/impl")
-        mailbox_send(planspace, parent,
-                     f"summary:align:{section.number}:"
-                     f"MISALIGNED-attempt-{align_attempt}:{short_feedback}")
+        if problems is None:
+            # ALIGNED — proceed to implementation
+            log(f"Section {section.number}: integration proposal ALIGNED")
+            mailbox_send(planspace, parent,
+                         f"summary:proposal-align:{section.number}:ALIGNED")
+            break
 
-    return collect_modified_files(planspace, section)
+        # Problems found — feed back into next proposal attempt
+        proposal_problems = problems
+        short = problems[:200]
+        log(f"Section {section.number}: integration proposal problems "
+            f"(attempt {proposal_attempt}): {short}")
+        mailbox_send(planspace, parent,
+                     f"summary:proposal-align:{section.number}:"
+                     f"PROBLEMS-attempt-{proposal_attempt}:{short}")
+
+    # -----------------------------------------------------------------
+    # Step 3: Strategic implementation
+    # -----------------------------------------------------------------
+
+    # Snapshot all known files before implementation.
+    # Used after alignment to detect real vs. phantom modifications.
+    all_known_paths = list(section.related_files)
+    pre_hashes = snapshot_files(codespace, all_known_paths)
+
+    impl_problems: str | None = None
+    impl_attempt = 0
+
+    while True:
+        # Check for pending messages between iterations
+        if handle_pending_messages(planspace, [], set()):
+            mailbox_send(planspace, parent,
+                         f"fail:{section.number}:aborted")
+            return None  # abort
+
+        # Bail out if alignment_changed arrived (excerpts deleted)
+        if alignment_changed_pending(planspace):
+            log(f"Section {section.number}: alignment changed — "
+                "aborting section to restart Phase 1")
+            return None
+
+        impl_attempt += 1
+        tag = "fix " if impl_problems else ""
+        log(f"Section {section.number}: {tag}strategic implementation "
+            f"(attempt {impl_attempt})")
+
+        # 3a: GPT implements strategically
+        impl_prompt = write_strategic_impl_prompt(
+            section, planspace, codespace, impl_problems,
+        )
+        impl_output = artifacts / f"impl-{section.number}-output.md"
+        impl_agent = f"impl-{section.number}"
+        impl_result = dispatch_agent(
+            "gpt-5.3-codex-high", impl_prompt, impl_output,
+            planspace, parent, impl_agent, codespace=codespace,
+        )
+        if impl_result == "ALIGNMENT_CHANGED_PENDING":
+            return None
+        mailbox_send(planspace, parent,
+                     f"summary:impl:{section.number}:"
+                     f"{summarize_output(impl_result)}")
+
+        # Detect timeout explicitly
+        if impl_result.startswith("TIMEOUT:"):
+            log(f"Section {section.number}: implementation agent timed out")
+            mailbox_send(planspace, parent,
+                         f"fail:{section.number}:implementation agent "
+                         f"timed out")
+            return None
+
+        signal, detail = check_agent_signals(impl_result)
+        if signal:
+            response = pause_for_parent(
+                planspace, parent,
+                f"pause:{signal}:{section.number}:{detail}",
+            )
+            if not response.startswith("resume"):
+                return None
+            # Persist resume payload and retry the step
+            payload = response.partition(":")[2].strip()
+            if payload:
+                persist_decision(planspace, section.number, payload)
+            if alignment_changed_pending(planspace):
+                return None
+            continue  # Restart implementation step with new context
+
+        # 3b: Opus checks implementation alignment
+        log(f"Section {section.number}: implementation alignment check")
+        impl_align_prompt = write_impl_alignment_prompt(
+            section, planspace, codespace,
+        )
+        impl_align_output = (artifacts
+                             / f"impl-align-{section.number}-output.md")
+        # No agent_name → no per-agent monitor (same rationale as 2b)
+        impl_align_result = dispatch_agent(
+            "claude-opus", impl_align_prompt, impl_align_output,
+            planspace, parent, codespace=codespace,
+        )
+        if impl_align_result == "ALIGNMENT_CHANGED_PENDING":
+            return None
+
+        # Detect timeout on alignment check
+        if impl_align_result.startswith("TIMEOUT:"):
+            log(f"Section {section.number}: implementation alignment check "
+                f"timed out — retrying")
+            impl_problems = "Previous alignment check timed out."
+            continue
+
+        # 3c/3d: Check result
+        problems = _extract_problems(impl_align_result)
+
+        signal, detail = check_agent_signals(impl_align_result)
+        if signal == "underspec":
+            response = pause_for_parent(
+                planspace, parent,
+                f"pause:underspec:{section.number}:{detail}",
+            )
+            if not response.startswith("resume"):
+                return None
+            payload = response.partition(":")[2].strip()
+            if payload:
+                persist_decision(planspace, section.number, payload)
+            if alignment_changed_pending(planspace):
+                return None
+            continue
+
+        if problems is None:
+            # ALIGNED — section complete
+            log(f"Section {section.number}: implementation ALIGNED")
+            mailbox_send(planspace, parent,
+                         f"summary:impl-align:{section.number}:ALIGNED")
+            break
+
+        # Problems found — feed back into next implementation attempt
+        impl_problems = problems
+        short = problems[:200]
+        log(f"Section {section.number}: implementation problems "
+            f"(attempt {impl_attempt}): {short}")
+        mailbox_send(planspace, parent,
+                     f"summary:impl-align:{section.number}:"
+                     f"PROBLEMS-attempt-{impl_attempt}:{short}")
+
+    # Validate modifications against actual file content changes.
+    # Two categories:
+    # 1. Snapshotted files (related_files) — verified via content-hash diff
+    # 2. Reported-but-not-snapshotted files — trusted as "touched" only if
+    #    they exist on disk (avoids inflated counts from empty-hash default)
+    reported = collect_modified_files(planspace, section, codespace)
+    snapshotted_set = set(section.related_files)
+    # Diff snapshotted files (related_files union reported that were snapshotted)
+    snapshotted_candidates = sorted(
+        snapshotted_set | (set(reported) & set(pre_hashes))
+    )
+    verified_changed = diff_files(codespace, pre_hashes, snapshotted_candidates)
+    # Files reported but NOT in the pre-snapshot — include if they exist
+    unsnapshotted_reported = [
+        rp for rp in reported
+        if rp not in pre_hashes and (codespace / rp).exists()
+    ]
+    if unsnapshotted_reported:
+        log(f"Section {section.number}: {len(unsnapshotted_reported)} "
+            f"reported files were outside the pre-snapshot set (trusted)")
+    actually_changed = sorted(set(verified_changed) | set(unsnapshotted_reported))
+    if len(reported) != len(actually_changed):
+        log(f"Section {section.number}: {len(reported)} reported, "
+            f"{len(actually_changed)} actually changed (detected via diff)")
+
+    # -----------------------------------------------------------------
+    # Step 4: Post-completion — snapshots, impact analysis, notes
+    # -----------------------------------------------------------------
+    if actually_changed and all_sections:
+        post_section_completion(
+            section, actually_changed, all_sections,
+            planspace, codespace, parent,
+        )
+
+    return actually_changed
+
+
+# ---------------------------------------------------------------------------
+# Global problem coordinator
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SectionResult:
+    """Stores the outcome of a section's initial pass."""
+    section_number: str
+    aligned: bool = False
+    problems: str | None = None
+    modified_files: list[str] = field(default_factory=list)
+
+
+def _collect_outstanding_problems(
+    section_results: dict[str, SectionResult],
+    sections_by_num: dict[str, Section],
+    planspace: Path,
+) -> list[dict[str, Any]]:
+    """Collect all outstanding problems across sections.
+
+    Includes both misaligned sections AND unaddressed consequence notes
+    from the cross-section communication system.
+
+    Returns a list of problem dicts, each with:
+      - section: section number
+      - type: "misaligned" | "unaddressed_note"
+      - description: the problem text
+      - files: list of files related to this section
+    """
+    problems = []
+    for sec_num, result in section_results.items():
+        if result.aligned:
+            continue
+        section = sections_by_num.get(sec_num)
+        files = list(section.related_files) if section else []
+
+        if result.problems:
+            problems.append({
+                "section": sec_num,
+                "type": "misaligned",
+                "description": result.problems,
+                "files": files,
+            })
+
+    # Scan for unaddressed consequence notes:
+    # Notes targeting aligned sections whose content hasn't been
+    # incorporated (the aligned section completed before the note arrived).
+    notes_dir = planspace / "artifacts" / "notes"
+    if notes_dir.exists():
+        for note_path in sorted(notes_dir.glob("from-*-to-*.md")):
+            name_match = re.match(
+                r'from-(\d+)-to-(\d+)\.md', note_path.name,
+            )
+            if not name_match:
+                continue
+            target_num = name_match.group(2)
+            source_num = name_match.group(1)
+            target_result = section_results.get(target_num)
+            # If the target is aligned (completed before or after the
+            # note) but the source completed AFTER the target, the note
+            # may be unaddressed.
+            if (target_result and target_result.aligned
+                    and int(source_num) > int(target_num)):
+                section = sections_by_num.get(target_num)
+                files = list(section.related_files) if section else []
+                note_text = note_path.read_text(encoding="utf-8")
+                problems.append({
+                    "section": target_num,
+                    "type": "unaddressed_note",
+                    "description": (
+                        f"Consequence note from section {source_num} "
+                        f"arrived after section {target_num} was aligned. "
+                        f"Note content:\n{note_text[:500]}"
+                    ),
+                    "files": files,
+                })
+    return problems
+
+
+def _find_file_overlaps(problems: list[dict[str, Any]]) -> list[list[int]]:
+    """Find groups of problems that share files.
+
+    Returns a list of groups, where each group is a list of problem
+    indices that share at least one file.
+    """
+    n = len(problems)
+    if n == 0:
+        return []
+
+    # Build adjacency: problems that share files
+    adj: dict[int, set[int]] = {i: set() for i in range(n)}
+    for i in range(n):
+        files_i = set(problems[i].get("files", []))
+        if not files_i:
+            continue
+        for j in range(i + 1, n):
+            files_j = set(problems[j].get("files", []))
+            if files_i & files_j:
+                adj[i].add(j)
+                adj[j].add(i)
+
+    # Connected components via BFS
+    visited: set[int] = set()
+    groups: list[list[int]] = []
+    for start in range(n):
+        if start in visited:
+            continue
+        component = []
+        frontier = [start]
+        while frontier:
+            node = frontier.pop()
+            if node in visited:
+                continue
+            visited.add(node)
+            component.append(node)
+            frontier.extend(adj[node] - visited)
+        groups.append(sorted(component))
+    return groups
+
+
+def write_coordinator_grouping_prompt(
+    candidate_group: list[dict[str, Any]], planspace: Path,
+    group_id: int,
+) -> Path:
+    """Write a GLM prompt to confirm whether candidate problems are related.
+
+    GLM checks if problems sharing files have the same root cause.
+    """
+    artifacts = planspace / "artifacts" / "coordination"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    prompt_path = artifacts / f"grouping-{group_id}-prompt.md"
+
+    problem_descriptions = []
+    for i, p in enumerate(candidate_group):
+        desc = (
+            f"### Problem {i + 1} (Section {p['section']}, "
+            f"type: {p['type']})\n"
+            f"{p['description']}\n"
+            f"Files: {', '.join(p.get('files', [])) or '(none)'}"
+        )
+        problem_descriptions.append(desc)
+    problems_text = "\n\n".join(problem_descriptions)
+
+    # Collect all unique files across the group
+    all_files: list[str] = []
+    seen: set[str] = set()
+    for p in candidate_group:
+        for f in p.get("files", []):
+            if f not in seen:
+                all_files.append(f)
+                seen.add(f)
+
+    prompt_path.write_text(f"""# Task: Analyze Problem Relationships
+
+## Problems to Analyze
+
+{problems_text}
+
+## Shared Files
+{chr(10).join(f'- `{f}`' for f in all_files)}
+
+## Instructions
+
+These problems share one or more files. Determine if they are RELATED
+(same root cause or tightly coupled issues that should be fixed together)
+or INDEPENDENT (different issues that happen to touch the same files).
+
+Read the shared files listed above to understand the context.
+
+Reply with EXACTLY one of:
+
+RELATED: <brief explanation of the shared root cause>
+
+or
+
+INDEPENDENT: <brief explanation of why these are separate issues>
+""", encoding="utf-8")
+    return prompt_path
+
+
+def write_coordinator_fix_prompt(
+    group: list[dict[str, Any]], planspace: Path, codespace: Path,
+    group_id: int,
+) -> Path:
+    """Write a Codex prompt to fix a group of related problems.
+
+    The prompt lists the grouped problems with section context, the
+    affected files, and instructs the agent to fix ALL listed problems
+    in a coordinated way.
+    """
+    artifacts = planspace / "artifacts" / "coordination"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    prompt_path = artifacts / f"fix-{group_id}-prompt.md"
+    modified_report = artifacts / f"fix-{group_id}-modified.txt"
+
+    problem_descriptions = []
+    for i, p in enumerate(group):
+        desc = (
+            f"### Problem {i + 1} (Section {p['section']}, "
+            f"type: {p['type']})\n"
+            f"{p['description']}"
+        )
+        problem_descriptions.append(desc)
+    problems_text = "\n\n".join(problem_descriptions)
+
+    # Collect all unique files across the group
+    all_files: list[str] = []
+    seen: set[str] = set()
+    for p in group:
+        for f in p.get("files", []):
+            if f not in seen:
+                all_files.append(f)
+                seen.add(f)
+
+    file_list = "\n".join(f"- `{codespace / f}`" for f in all_files)
+
+    # Collect section specs for context (include both actual spec and excerpts)
+    section_nums = sorted({p["section"] for p in group})
+    sec_dir = planspace / "artifacts" / "sections"
+    section_specs = "\n".join(
+        f"- Section {n} specification:"
+        f" `{sec_dir / f'section-{n}.md'}`\n"
+        f"  - Proposal excerpt:"
+        f" `{sec_dir / f'section-{n}-proposal-excerpt.md'}`"
+        for n in section_nums
+    )
+    alignment_specs = "\n".join(
+        f"- Section {n} alignment excerpt:"
+        f" `{sec_dir / f'section-{n}-alignment-excerpt.md'}`"
+        for n in section_nums
+    )
+
+    prompt_path.write_text(f"""# Task: Coordinated Fix for Problem Group {group_id}
+
+## Problems to Fix
+
+{problems_text}
+
+## Affected Files
+{file_list}
+
+## Section Context
+{section_specs}
+{alignment_specs}
+
+## Instructions
+
+Fix ALL the problems listed above in a COORDINATED way. These problems
+are related — they share files and/or have a common root cause. Fixing
+them together avoids the cascade where fixing one problem in isolation
+creates or re-triggers another.
+
+### Strategy
+
+1. **Explore first.** Before making changes, understand the full picture.
+   Dispatch GLM sub-agents to read files and understand context:
+   ```bash
+   uv run --frozen agents --model glm --project "{codespace}" "<instructions>"
+   ```
+
+2. **Plan holistically.** Consider how all the problems interact. A single
+   coordinated change may fix multiple problems at once.
+
+3. **Implement.** Make the changes. For targeted sub-tasks:
+   ```bash
+   uv run --frozen agents --model gpt-5.3-codex-high \\
+     --project "{codespace}" "<instructions>"
+   ```
+
+4. **Verify.** After implementation, dispatch GLM to verify the fixes
+   address all listed problems without introducing new issues.
+
+### Report Modified Files
+
+After implementation, write a list of ALL files you modified to:
+`{modified_report}`
+
+One file path per line (relative to codespace root `{codespace}`).
+Include files modified by sub-agents.
+""", encoding="utf-8")
+    return prompt_path
+
+
+def _dispatch_fix_group(
+    group: list[dict[str, Any]], group_id: int,
+    planspace: Path, codespace: Path, parent: str,
+) -> tuple[int, list[str] | None]:
+    """Dispatch a Codex agent to fix a single problem group.
+
+    Returns (group_id, list_of_modified_files) on success.
+    Returns (group_id, None) if ALIGNMENT_CHANGED_PENDING sentinel received.
+    """
+    artifacts = planspace / "artifacts" / "coordination"
+    fix_prompt = write_coordinator_fix_prompt(
+        group, planspace, codespace, group_id,
+    )
+    fix_output = artifacts / f"fix-{group_id}-output.md"
+    modified_report = artifacts / f"fix-{group_id}-modified.txt"
+
+    log(f"  coordinator: dispatching fix for group {group_id} "
+        f"({len(group)} problems)")
+    result = dispatch_agent(
+        "gpt-5.3-codex-high", fix_prompt, fix_output,
+        planspace, parent, codespace=codespace,
+    )
+    if result == "ALIGNMENT_CHANGED_PENDING":
+        return group_id, None  # Sentinel — caller must check
+
+    # Collect modified files from the report (validated to be safe
+    # relative paths under codespace — same logic as collect_modified_files)
+    codespace_resolved = codespace.resolve()
+    modified: list[str] = []
+    if modified_report.exists():
+        for line in modified_report.read_text(encoding="utf-8").strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            pp = Path(line)
+            if pp.is_absolute():
+                try:
+                    rel = pp.resolve().relative_to(codespace_resolved)
+                except ValueError:
+                    log(f"  coordinator: WARNING — fix path outside "
+                        f"codespace, skipping: {line}")
+                    continue
+            else:
+                full = (codespace / pp).resolve()
+                try:
+                    rel = full.relative_to(codespace_resolved)
+                except ValueError:
+                    log(f"  coordinator: WARNING — fix path escapes "
+                        f"codespace, skipping: {line}")
+                    continue
+            modified.append(str(rel))
+    return group_id, modified
+
+
+def run_global_coordination(
+    sections: list[Section],
+    section_results: dict[str, SectionResult],
+    sections_by_num: dict[str, Section],
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+) -> bool:
+    """Run the global problem coordinator.
+
+    Collects outstanding problems across all sections, groups related
+    problems, dispatches coordinated fixes, and re-runs alignment on
+    affected sections.
+
+    Returns True if all sections are ALIGNED (or no problems remain).
+    """
+    coord_dir = planspace / "artifacts" / "coordination"
+    coord_dir.mkdir(parents=True, exist_ok=True)
+
+    # -----------------------------------------------------------------
+    # Step 1: Collect all outstanding problems
+    # -----------------------------------------------------------------
+    problems = _collect_outstanding_problems(
+        section_results, sections_by_num, planspace,
+    )
+
+    if not problems:
+        log("  coordinator: no outstanding problems — all ALIGNED")
+        return True
+
+    log(f"  coordinator: {len(problems)} outstanding problems across "
+        f"{len({p['section'] for p in problems})} sections")
+
+    # Save coordination state for debugging / inspection
+    state_path = coord_dir / "problems.json"
+    state_path.write_text(json.dumps(problems, indent=2), encoding="utf-8")
+
+    # -----------------------------------------------------------------
+    # Step 2: Group related problems
+    # -----------------------------------------------------------------
+    candidate_groups = _find_file_overlaps(problems)
+
+    # For groups with >1 problem that share files, confirm with GLM
+    confirmed_groups: list[list[dict[str, Any]]] = []
+    for gidx, indices in enumerate(candidate_groups):
+        group_problems = [problems[i] for i in indices]
+
+        if len(group_problems) == 1:
+            # Single-problem group, no confirmation needed
+            confirmed_groups.append(group_problems)
+            continue
+
+        # Poll for control messages before dispatch
+        ctrl = poll_control_messages(planspace, parent)
+        if ctrl == "alignment_changed":
+            return False
+
+        # Dispatch GLM to confirm relationship
+        grouping_prompt = write_coordinator_grouping_prompt(
+            group_problems, planspace, gidx,
+        )
+        grouping_output = coord_dir / f"grouping-{gidx}-output.md"
+        log(f"  coordinator: checking if group {gidx} "
+            f"({len(group_problems)} problems) is related")
+        result = dispatch_agent(
+            "glm", grouping_prompt, grouping_output,
+            planspace, parent, codespace=codespace,
+        )
+        if result == "ALIGNMENT_CHANGED_PENDING":
+            return False
+
+        # Parse first non-empty line for exact classification
+        first_line = ""
+        for ln in result.split("\n"):
+            stripped = ln.strip()
+            if stripped:
+                first_line = stripped
+                break
+
+        if first_line.startswith("RELATED:"):
+            # Keep as one group
+            log(f"  coordinator: group {gidx} confirmed RELATED")
+            confirmed_groups.append(group_problems)
+        elif first_line.startswith("INDEPENDENT:"):
+            # Split into individual problems
+            log(f"  coordinator: group {gidx} is INDEPENDENT, splitting")
+            for p in group_problems:
+                confirmed_groups.append([p])
+        else:
+            # Malformed output — default to splitting (safe) with warning
+            log(f"  coordinator: WARNING — group {gidx} grouping output "
+                f"malformed (first line: {first_line!r}), treating as "
+                f"INDEPENDENT")
+            for p in group_problems:
+                confirmed_groups.append([p])
+
+    log(f"  coordinator: {len(confirmed_groups)} problem groups after "
+        f"analysis")
+
+    # Save groups for debugging
+    groups_path = coord_dir / "groups.json"
+    groups_data = []
+    for i, g in enumerate(confirmed_groups):
+        groups_data.append({
+            "group_id": i,
+            "problem_count": len(g),
+            "sections": sorted({p["section"] for p in g}),
+            "files": sorted({f for p in g for f in p.get("files", [])}),
+        })
+    groups_path.write_text(json.dumps(groups_data, indent=2), encoding="utf-8")
+
+    # -----------------------------------------------------------------
+    # Step 3: Size the work and dispatch
+    # -----------------------------------------------------------------
+    total_problem_count = sum(len(g) for g in confirmed_groups)
+    all_related = len(confirmed_groups) == 1
+
+    if all_related and total_problem_count <= 5:
+        # One Codex agent can handle everything
+        # Poll for control messages before dispatch
+        ctrl = poll_control_messages(planspace, parent)
+        if ctrl == "alignment_changed":
+            return False
+        log(f"  coordinator: single agent for {total_problem_count} "
+            f"related problems")
+        _, modified = _dispatch_fix_group(
+            confirmed_groups[0], 0, planspace, codespace, parent,
+        )
+        if modified is None:
+            return False  # Sentinel — alignment changed
+        all_modified = modified
+    elif len(confirmed_groups) <= 3:
+        # Few groups — one agent per group, sequential
+        log(f"  coordinator: {len(confirmed_groups)} groups, "
+            f"dispatching sequentially")
+        all_modified = []
+        for gidx, group in enumerate(confirmed_groups):
+            # Poll for control messages between dispatches
+            ctrl = poll_control_messages(planspace, parent)
+            if ctrl == "alignment_changed":
+                return False
+            _, modified = _dispatch_fix_group(
+                group, gidx, planspace, codespace, parent,
+            )
+            if modified is None:
+                return False  # Sentinel — alignment changed
+            all_modified.extend(modified)
+    else:
+        # Many groups — fan out with ThreadPoolExecutor, but only
+        # parallelize groups with DISJOINT file sets to avoid concurrent
+        # edits to the same file.
+        log(f"  coordinator: {len(confirmed_groups)} groups, "
+            f"building disjoint batches for safe parallelism")
+
+        # Build batches: groups in the same batch have no file overlap.
+        # Groups with empty file sets are NOT safe to parallelize (the
+        # fix agent may touch unknown files), so they go in their own batch.
+        group_file_sets = [
+            set(f for p in g for f in p.get("files", []))
+            for g in confirmed_groups
+        ]
+        batches: list[list[int]] = []
+        for gidx, files in enumerate(group_file_sets):
+            # Empty file set = unknown scope, isolate in own batch
+            if not files:
+                batches.append([gidx])
+                continue
+            placed = False
+            for batch in batches:
+                batch_files = set()
+                for bidx in batch:
+                    batch_files |= group_file_sets[bidx]
+                # Don't merge into a batch that has an unknown-scope group
+                if not batch_files:
+                    continue
+                if not (files & batch_files):
+                    batch.append(gidx)
+                    placed = True
+                    break
+            if not placed:
+                batches.append([gidx])
+
+        log(f"  coordinator: {len(batches)} disjoint batches")
+
+        all_modified = []
+        for batch_num, batch in enumerate(batches):
+            # Poll for control messages between batches
+            ctrl = poll_control_messages(planspace, parent)
+            if ctrl == "alignment_changed":
+                return False
+            if len(batch) == 1:
+                gidx = batch[0]
+                _, modified = _dispatch_fix_group(
+                    confirmed_groups[gidx], gidx,
+                    planspace, codespace, parent,
+                )
+                if modified is None:
+                    return False  # Sentinel — alignment changed
+                all_modified.extend(modified)
+            else:
+                log(f"  coordinator: batch {batch_num} — "
+                    f"{len(batch)} groups in parallel")
+                with ThreadPoolExecutor(max_workers=4) as pool:
+                    futures = {
+                        pool.submit(
+                            _dispatch_fix_group,
+                            confirmed_groups[gidx], gidx,
+                            planspace, codespace, parent,
+                        ): gidx
+                        for gidx in batch
+                    }
+                    sentinel_hit = False
+                    for future in as_completed(futures):
+                        gidx = futures[future]
+                        try:
+                            _, modified = future.result()
+                            if modified is None:
+                                sentinel_hit = True
+                                continue
+                            all_modified.extend(modified)
+                            log(f"  coordinator: group {gidx} fix "
+                                f"complete ({len(modified)} files "
+                                f"modified)")
+                        except Exception as exc:
+                            log(f"  coordinator: group {gidx} fix "
+                                f"FAILED: {exc}")
+                if sentinel_hit:
+                    return False  # Alignment changed during parallel fix
+
+    log(f"  coordinator: fixes complete, "
+        f"{len(all_modified)} total files modified")
+
+    # -----------------------------------------------------------------
+    # Step 4: Re-run per-section alignment on affected sections
+    # -----------------------------------------------------------------
+    # Determine which sections need re-checking:
+    # sections that had problems + sections whose files were modified
+    affected_sections: set[str] = set()
+
+    # Sections that had problems
+    for p in problems:
+        affected_sections.add(p["section"])
+
+    # Sections whose files were modified by the coordinator
+    file_to_sections = build_file_to_sections(sections)
+    for mod_file in all_modified:
+        for sec_num in file_to_sections.get(mod_file, []):
+            affected_sections.add(sec_num)
+
+    log(f"  coordinator: re-checking alignment for sections "
+        f"{sorted(affected_sections)}")
+
+    for sec_num in sorted(affected_sections):
+        section = sections_by_num.get(sec_num)
+        if not section:
+            continue
+
+        # Poll for control messages before each re-check
+        ctrl = poll_control_messages(planspace, parent, sec_num)
+        if ctrl == "alignment_changed":
+            log("  coordinator: alignment changed — aborting re-checks")
+            return False
+
+        # Read any incoming notes for this section (cross-section context)
+        notes = read_incoming_notes(section, planspace, codespace)
+        if notes:
+            log(f"  coordinator: section {sec_num} has incoming notes "
+                f"from other sections")
+
+        # Re-run implementation alignment check with TIMEOUT retry
+        align_result = _run_alignment_check_with_retries(
+            section, planspace, codespace, parent, sec_num,
+            output_prefix="coord-align",
+        )
+        if align_result == "ALIGNMENT_CHANGED_PENDING":
+            return False  # Let outer loop restart Phase 1
+        if align_result is None:
+            # All retries timed out
+            log(f"  coordinator: section {sec_num} alignment check "
+                f"timed out after retries")
+            section_results[sec_num] = SectionResult(
+                section_number=sec_num,
+                aligned=False,
+                problems="alignment check timed out after retries",
+            )
+            continue
+
+        align_problems = _extract_problems(align_result)
+        signal, detail = check_agent_signals(align_result)
+
+        if align_problems is None and signal is None:
+            log(f"  coordinator: section {sec_num} now ALIGNED")
+            section_results[sec_num] = SectionResult(
+                section_number=sec_num,
+                aligned=True,
+            )
+        else:
+            log(f"  coordinator: section {sec_num} still has problems")
+            # Fold signal info into problems string (SectionResult has
+            # no signal fields — only problems)
+            combined_problems = align_problems or ""
+            if signal:
+                combined_problems += (
+                    f"\n[signal:{signal}] {detail}" if combined_problems
+                    else f"[signal:{signal}] {detail}"
+                )
+            section_results[sec_num] = SectionResult(
+                section_number=sec_num,
+                aligned=False,
+                problems=combined_problems or None,
+            )
+
+    # Check if everything is now aligned
+    remaining = [r for r in section_results.values() if not r.aligned]
+    if not remaining:
+        log("  coordinator: all sections now ALIGNED")
+        return True
+
+    log(f"  coordinator: {len(remaining)} sections still not aligned")
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -929,98 +2784,340 @@ def run_section(
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    if len(sys.argv) < 3:
-        print("Usage: section-loop.py <planspace> <codespace> [parent]")
+    """Run the section loop orchestrator CLI."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Section loop orchestrator for the implementation pipeline.",
+    )
+    parser.add_argument("planspace", type=Path,
+                        help="Path to the planspace directory")
+    parser.add_argument("codespace", type=Path,
+                        help="Path to the codespace directory")
+    parser.add_argument("--global-proposal", type=Path, required=True,
+                        dest="global_proposal",
+                        help="Path to the global proposal document")
+    parser.add_argument("--global-alignment", type=Path, required=True,
+                        dest="global_alignment",
+                        help="Path to the global alignment document")
+    parser.add_argument("--parent", type=str, default="orchestrator",
+                        help="Parent agent mailbox name (default: orchestrator)")
+
+    args = parser.parse_args()
+
+    # Validate paths
+    if not args.global_proposal.exists():
+        print(f"Error: global proposal not found: {args.global_proposal}")
+        sys.exit(1)
+    if not args.global_alignment.exists():
+        print(f"Error: global alignment not found: {args.global_alignment}")
         sys.exit(1)
 
-    planspace = Path(sys.argv[1])
-    codespace = Path(sys.argv[2])
-    parent = sys.argv[3] if len(sys.argv) > 3 else "orchestrator"
-    sections_dir = planspace / "artifacts" / "sections"
+    sections_dir = args.planspace / "artifacts" / "sections"
 
     # Register our mailbox
-    mailbox_register(planspace)
-    log(f"Registered mailbox: {AGENT_NAME} (parent: {parent})")
+    mailbox_register(args.planspace)
+    log(f"Registered mailbox: {AGENT_NAME} (parent: {args.parent})")
 
     try:
-        _run_loop(planspace, codespace, parent, sections_dir)
+        _run_loop(args.planspace, args.codespace, args.parent, sections_dir,
+                  args.global_proposal, args.global_alignment)
     finally:
-        mailbox_cleanup(planspace)
+        mailbox_cleanup(args.planspace)
         log("Mailbox cleaned up")
 
 
 def _run_loop(planspace: Path, codespace: Path, parent: str,
-              sections_dir: Path) -> None:
+              sections_dir: Path, global_proposal: Path,
+              global_alignment: Path) -> None:
     # Load sections and build cross-reference map
     all_sections = load_sections(sections_dir)
+
+    # Attach global document paths to each section
+    for sec in all_sections:
+        sec.global_proposal_path = global_proposal
+        sec.global_alignment_path = global_alignment
+
     sections_by_num = {s.number: s for s in all_sections}
-    file_to_sections = build_file_to_sections(all_sections)
 
     log(f"Loaded {len(all_sections)} sections")
 
-    queue = [s.number for s in all_sections]
-    completed: set[str] = set()
+    # Outer loop: alignment_changed during Phase 2 restarts from Phase 1.
+    # Each iteration runs Phase 1 (per-section) then Phase 2 (global).
+    # The loop exits on: complete, fail, abort, or exhaustion.
+    while True:
 
-    while queue:
-        # Check for abort or alignment changes before each section
-        if handle_pending_messages(planspace, queue, completed):
-            log("Aborted by parent")
-            mailbox_send(planspace, parent, "fail:aborted")
-            return
+        # -----------------------------------------------------------------
+        # Phase 1: Initial pass through all sections
+        # -----------------------------------------------------------------
+        section_results: dict[str, SectionResult] = {}
+        queue = [s.number for s in all_sections]
+        completed: set[str] = set()
 
-        sec_num = queue.pop(0)
+        while queue:
+            # Check for abort or alignment changes before each section
+            if handle_pending_messages(planspace, queue, completed):
+                log("Aborted by parent")
+                mailbox_send(planspace, parent, "fail:aborted")
+                return
 
-        if sec_num in completed:
-            continue
+            # If alignment_changed flag is already pending (set by
+            # handle_pending_messages above or a prior run_section),
+            # skip directly to the _check_and_clear below instead of
+            # wasting an Opus setup call.
+            if alignment_changed_pending(planspace):  # noqa: SIM102
+                # Clear the flag and requeue all completed sections so
+                # they re-run setup with fresh excerpts.
+                if _check_and_clear_alignment_changed(planspace):
+                    log("Alignment changed (pre-section) — "
+                        "requeuing all completed sections")
+                    for done_num in list(completed):
+                        completed.discard(done_num)
+                        if done_num not in queue:
+                            queue.append(done_num)
+                    continue
 
-        section = sections_by_num[sec_num]
-        log(f"=== Section {sec_num} ({len(queue)} remaining) ===")
+            sec_num = queue.pop(0)
 
-        if not section.related_files:
-            log(f"Section {sec_num}: no related files, skipping")
+            if sec_num in completed:
+                continue
+
+            section = sections_by_num[sec_num]
+            section.solve_count += 1
+            log(f"=== Section {sec_num} ({len(queue)} remaining) "
+                f"[round {section.solve_count}] ===")
+
+            if not section.related_files:
+                log(f"Section {sec_num}: no related files, skipping")
+                completed.add(sec_num)
+                section_results[sec_num] = SectionResult(
+                    section_number=sec_num, aligned=True,
+                )
+                mailbox_send(planspace, parent,
+                             f"done:{sec_num}:0 files modified")
+                continue
+
+            # Run the section
+            modified_files = run_section(
+                planspace, codespace, section, parent,
+                all_sections=all_sections,
+            )
+
+            # Check if alignment_changed arrived during run_section
+            # (via handle_pending_messages or pause_for_parent)
+            if _check_and_clear_alignment_changed(planspace):
+                log("Alignment changed during section processing — "
+                    "requeuing all completed sections")
+                for done_num in list(completed):
+                    completed.discard(done_num)
+                    if done_num not in queue:
+                        queue.append(done_num)
+                # Re-add current section to front of queue
+                if sec_num not in queue:
+                    queue.insert(0, sec_num)
+                continue
+
+            if modified_files is None:
+                # Section was paused and parent told us to stop
+                log(f"Section {sec_num}: paused, exiting")
+                return
+
             completed.add(sec_num)
             mailbox_send(planspace, parent,
-                         f"done:{sec_num}:no related files")
-            continue
+                         f"done:{sec_num}:{len(modified_files)} files "
+                         f"modified")
 
-        # Run the section
-        modified_files = run_section(
-            planspace, codespace, section, parent,
-        )
+            # Record result — section passed its internal alignment
+            # loop, so it's initially ALIGNED. The coordinator may find
+            # cross-section issues later.
+            section_results[sec_num] = SectionResult(
+                section_number=sec_num,
+                aligned=True,
+                modified_files=modified_files,
+            )
 
-        if modified_files is None:
-            # Section was paused and parent told us to stop
-            log(f"Section {sec_num}: paused, exiting")
-            return
+            log(f"Section {sec_num}: done")
 
-        completed.add(sec_num)
-        mailbox_send(planspace, parent,
-                     f"done:{sec_num}:{len(modified_files)} files modified")
+        log(f"=== Phase 1 complete: {len(completed)} sections "
+            f"processed ===")
 
-        # Rescheduling: check if modified files appear in other sections
-        rescheduled = set()
-        for mod_file in modified_files:
-            for other_num in file_to_sections.get(mod_file, []):
-                if other_num != sec_num and other_num not in rescheduled:
-                    rescheduled.add(other_num)
+        # -------------------------------------------------------------
+        # Phase 2: Global coordination loop
+        # -------------------------------------------------------------
+        # Re-run alignment on ALL sections to get a global snapshot.
+        # Sections may have been individually aligned but cross-section
+        # changes (shared files modified by later sections) can
+        # introduce problems invisible during the initial pass.
+        log("=== Phase 2: global coordination ===")
+        log("Re-checking alignment across all sections...")
 
-        if rescheduled:
-            log(f"Section {sec_num}: rescheduling {sorted(rescheduled)}")
-            mailbox_send(planspace, parent,
-                         f"status:reschedule:{sec_num}:"
-                         f"{','.join(sorted(rescheduled))}")
-            for r in sorted(rescheduled):
-                completed.discard(r)
-                if r not in queue:
-                    queue.append(r)
-                sections_by_num[r].related_files = parse_related_files(
-                    sections_by_num[r].path,
+        restart_phase1 = False
+        for sec_num, section in sections_by_num.items():
+            if not section.related_files:
+                continue
+
+            # Poll for control messages before each dispatch
+            ctrl = poll_control_messages(planspace, parent, sec_num)
+            if ctrl == "alignment_changed":
+                log("Alignment changed during Phase 2 — restarting "
+                    "from Phase 1")
+                restart_phase1 = True
+                break
+
+            # Read incoming notes for cross-section awareness
+            notes = read_incoming_notes(section, planspace, codespace)
+            if notes:
+                log(f"Section {sec_num}: has incoming notes for global "
+                    f"alignment check")
+
+            # Alignment check with TIMEOUT retry (max 2 retries)
+            align_result = _run_alignment_check_with_retries(
+                section, planspace, codespace, parent, sec_num,
+                output_prefix="global-align",
+            )
+            if align_result == "ALIGNMENT_CHANGED_PENDING":
+                # Alignment changed mid-check — let outer loop restart
+                restart_phase1 = True
+                break
+            if align_result is None:
+                # All retries timed out
+                log(f"Section {sec_num}: global alignment check timed "
+                    f"out after retries")
+                section_results[sec_num] = SectionResult(
+                    section_number=sec_num,
+                    aligned=False,
+                    problems="alignment check timed out after retries",
+                    modified_files=section_results.get(
+                        sec_num, SectionResult(sec_num)
+                    ).modified_files,
+                )
+                continue
+
+            problems = _extract_problems(align_result)
+            signal, detail = check_agent_signals(align_result)
+
+            if problems is None and signal is None:
+                section_results[sec_num] = SectionResult(
+                    section_number=sec_num,
+                    aligned=True,
+                    modified_files=section_results.get(
+                        sec_num, SectionResult(sec_num)
+                    ).modified_files,
+                )
+            else:
+                log(f"Section {sec_num}: global alignment found "
+                    f"problems")
+                combined_problems = problems or ""
+                if signal:
+                    combined_problems += (
+                        f"\n[signal:{signal}] {detail}"
+                        if combined_problems
+                        else f"[signal:{signal}] {detail}"
+                    )
+                section_results[sec_num] = SectionResult(
+                    section_number=sec_num,
+                    aligned=False,
+                    problems=combined_problems or None,
+                    modified_files=section_results.get(
+                        sec_num, SectionResult(sec_num)
+                    ).modified_files,
                 )
 
-        log(f"Section {sec_num}: done")
+        if restart_phase1:
+            continue  # outer while True → restart Phase 1
 
-    log(f"=== All {len(completed)} sections complete ===")
-    mailbox_send(planspace, parent, "complete")
+        # Check if everything is already aligned
+        misaligned = [
+            r for r in section_results.values() if not r.aligned
+        ]
+        if not misaligned:
+            # Final control-message drain — catch alignment_changed or
+            # abort that arrived during the last dispatch.
+            ctrl = poll_control_messages(planspace, parent)
+            if ctrl == "alignment_changed":
+                log("Alignment changed just before completion — "
+                    "restarting from Phase 1")
+                continue  # outer while True → restart Phase 1
+            log("=== All sections ALIGNED after initial pass ===")
+            mailbox_send(planspace, parent, "complete")
+            return
+
+        log(f"{len(misaligned)} sections need coordination: "
+            f"{sorted(r.section_number for r in misaligned)}")
+
+        # Run the coordinator loop
+        for round_num in range(1, MAX_COORDINATION_ROUNDS + 1):
+            # Poll for control messages before each round
+            ctrl = poll_control_messages(planspace, parent)
+            if ctrl == "alignment_changed":
+                log("Alignment changed during coordination — "
+                    "restarting from Phase 1")
+                restart_phase1 = True
+                break
+
+            log(f"=== Coordination round "
+                f"{round_num}/{MAX_COORDINATION_ROUNDS} ===")
+            mailbox_send(planspace, parent,
+                         f"status:coordination:round-{round_num}")
+
+            all_done = run_global_coordination(
+                all_sections, section_results, sections_by_num,
+                planspace, codespace, parent,
+            )
+
+            # Check if alignment_changed was received during
+            # coordination (consumed inside run_global_coordination,
+            # which sets the flag file)
+            if _check_and_clear_alignment_changed(planspace):
+                log("Alignment changed during coordination — "
+                    "restarting from Phase 1")
+                restart_phase1 = True
+                break
+
+            if all_done:
+                # Final control-message drain — catch alignment_changed
+                # or abort that arrived during the last dispatch.
+                ctrl = poll_control_messages(planspace, parent)
+                if ctrl == "alignment_changed":
+                    log("Alignment changed just before completion — "
+                        "restarting from Phase 1")
+                    restart_phase1 = True
+                    break
+                log(f"=== All sections ALIGNED after coordination "
+                    f"round {round_num} ===")
+                mailbox_send(planspace, parent, "complete")
+                return
+
+            remaining = [
+                r for r in section_results.values() if not r.aligned
+            ]
+            log(f"Coordination round {round_num}: "
+                f"{len(remaining)} sections still unresolved")
+        else:
+            # Coordination exhausted — do NOT send "complete".
+            # Report failure for each remaining misaligned section so
+            # the parent can investigate or escalate.
+            remaining = [
+                r for r in section_results.values() if not r.aligned
+            ]
+            log(f"=== Coordination exhausted "
+                f"({MAX_COORDINATION_ROUNDS} rounds), "
+                f"{len(remaining)} sections still unresolved ===")
+            for r in remaining:
+                summary = (r.problems or "unknown")[:120]
+                log(f"  - Section {r.section_number}: {summary}")
+                mailbox_send(
+                    planspace, parent,
+                    f"fail:{r.section_number}:"
+                    f"coordination_exhausted:{summary}",
+                )
+            return  # exhausted — exit
+
+        if restart_phase1:
+            continue  # outer while True → restart Phase 1
+
+        # If we reach here without restart, we're done
+        return
 
 
 if __name__ == "__main__":

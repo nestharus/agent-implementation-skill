@@ -1,6 +1,6 @@
 ---
 name: agent-implementation-skill
-description: Multi-model agent implementation workflow for software development. Orchestrates research, evaluation, design baseline, implementation, RCA, auditing, constraint discovery, and model selection across external AI models (GPT, GLM, Claude). Use when implementing features through a structured multi-phase pipeline with worktrees, dynamic scheduling, and file-based agent coordination.
+description: Multi-model agent implementation workflow for software development. Orchestrates research, evaluation, design baseline, implementation, RCA, auditing, constraint discovery, model selection, and tiered Stage 3 codemap construction (Tier 1 structural scan, Tier 2 concurrent Opus region exploration with GLM file reads, Tier 3 synthesis) across external AI models (GPT, GLM, Claude). Use when implementing features through a structured multi-phase pipeline with worktrees, dynamic scheduling, and file-based agent coordination.
 ---
 
 # Development Workflow
@@ -31,8 +31,9 @@ $WORKFLOW_HOME/
   scripts/
     workflow.sh         # schedule driver ([wait]/[run]/[done]/[fail])
     mailbox.sh          # file-based message passing
-    scan.sh             # file relevance scan (Stage 3 of implement.md)
-    section-loop.py     # section queue orchestrator (Stages 4-5 of implement.md)
+    scan.sh             # Stage 3 coordinator: runs Tier 1 scan, invokes Tier 2-3 codemap build, then downstream per-section exploration
+    codemap_build.py    # workflow-owned Tier 2-3 builder: dispatches uv run --frozen agents for Opus region exploration + GLM file characterization, then synthesizes codemap.md
+    section-loop.py     # strategic section-loop orchestrator: integration proposals, strategic implementation, cross-section communication, global coordination (Stages 4-5 of implement.md)
   tools/
     extract-docstring-py  # extract Python module docstrings
     extract-summary-md    # extract YAML frontmatter from markdown
@@ -108,7 +109,7 @@ issues requiring RCA.
     ↓
 [Design Baseline]                ← baseline.md (constraints/, patterns/, TRADEOFFS.md)
     ↓
-[Section Files → TODOs → ALGORITHM → IMPL → Code]  ← implement.md
+[Section Files → Integration Proposals → Strategic Implementation → Code]  ← implement.md
     ↓
 [Tests → Debug → Audit → Lint → Commit]             ← implement.md + rca.md
 ```
@@ -141,6 +142,14 @@ uv run agents --agent-file "$WORKFLOW_HOME/agents/exception-handler.md" \
   bash "$WORKFLOW_HOME/scripts/mailbox.sh" send <planspace> orchestrator "done:block-B") &
 bash "$WORKFLOW_HOME/scripts/mailbox.sh" recv <planspace> orchestrator
 bash "$WORKFLOW_HOME/scripts/mailbox.sh" recv <planspace> orchestrator
+
+# Tier 2 nested dispatch pattern (concurrent Opus regions, GLM file reads inside each region)
+uv run agents --model claude-opus --project <codespace> \
+  --file <planspace>/artifacts/codemap-region-<region>-prompt.md \
+  > <planspace>/artifacts/codemap-region-<region>-output.md 2>&1
+# Inside that region prompt/session: dispatch per-file characterization with GLM
+uv run agents --model glm --project <codespace> \
+  --file <planspace>/artifacts/codemap-file-<region>-<file>-prompt.md
 ```
 
 ### Schedule Templates
@@ -153,15 +162,31 @@ Pre-built schedules in `$WORKFLOW_HOME/templates/`. Each step specifies its mode
 - `research-cycle.md` — research → evaluate → propose → refine
 - `rca-cycle.md` — investigate → plan fix → apply → verify
 
+### Stage 3 Codemap Orchestration
+
+Stage 3 runs in this order:
+1. Tier 1 structural scan completes.
+2. Tier 2 dispatches one `claude-opus` region exploration agent per region (parallel where possible).
+3. Inside each region flow, `glm` handles per-file characterization/file reads.
+4. Tier 3 synthesizes region summaries into `<planspace>/artifacts/codemap.md`.
+5. Per-section exploration begins only after codemap synthesis succeeds.
+
+Control and recovery:
+- If `codemap.md` already exists, codemap construction can be skipped.
+- Region-level cache reuse is allowed when policy/config enables it.
+- Region failures degrade gracefully: continue synthesis with successful regions.
+- Hard-fail when synthesis cannot proceed (for example, no usable region summaries).
+- Non-zero codemap construction exit stops Stage 3 before downstream section exploration.
+
 ### Model Roles
 
 | Model | Used For |
 |-------|----------|
-| `claude-opus` | Architectural decisions, decomposition, direction-setting, integration |
-| `gpt-5.3-codex-high` | Planning, implementation, extraction, investigation |
+| `claude-opus` | Section setup (excerpt extraction), alignment checks (shape/direction), decomposition, codemap region exploration, codemap synthesis |
+| `gpt-5.3-codex-high` | Integration proposals, strategic implementation, coordinated fixes, extraction, investigation |
 | `gpt-5.3-codex-high2` | Constraint audit (same capability, different quota) |
 | `gpt-5.3-codex-xhigh` | Deep architectural synthesis, proposal drafting |
-| `glm` | Test running, verification, quick commands |
+| `glm` | Test running, verification, quick commands, codemap per-file characterization/read support, semantic impact analysis, sub-agent exploration during integration proposals |
 
 ### Prompt Files
 
@@ -182,6 +207,13 @@ Each workflow gets a planspace at `~/.claude/workspaces/<task-slug>/`:
 - `state.md` — current position + accumulated facts
 - `log.md` — append-only execution log
 - `artifacts/` — prompt files, output files, working files for steps
+  - `artifacts/sections/` — section excerpts (proposal + alignment excerpts)
+  - `artifacts/proposals/` — integration proposals per section
+  - `artifacts/snapshots/` — post-completion file snapshots per section
+  - `artifacts/notes/` — cross-section consequence notes
+  - `artifacts/coordination/` — global coordinator state and fix prompts
+  - `artifacts/decisions/` — accumulated parent decisions per section (from pause/resume)
+  - `artifacts/summary-stream.log` — append-only log of all lifecycle messages (monitor reads this)
 - `constraints/` — discovered constraints (promote later)
 - `tradeoffs/` — discovered tradeoffs (promote later)
 - `mailboxes/<name>/` — per-agent message queues
@@ -214,6 +246,10 @@ bash "$WORKFLOW_HOME/scripts/mailbox.sh" cleanup <planspace> [name]
 **Key patterns**:
 - Orchestrator blocks on `recv` waiting for parallel step results
 - Step agents send `done:<step>:<summary>` or `fail:<step>:<error>` when finished
+- Section-loop sends `summary:setup:`, `summary:proposal:`, `summary:proposal-align:`, `summary:impl:`, `summary:impl-align:`, `status:coordination:` messages; `complete` only on full success; `fail:<num>:coordination_exhausted:<summary>` on coordination timeout
+- Mailbox is required for orchestrator/step coordination boundaries
+- Codemap region concurrency may be implemented internally by the codemap tool (for example `codemap_build.py`), not only through mailbox-driven fan-out
+- When mailbox-backed codemap region dispatch is used, terminal status contract is explicit: `done:<region>` on success or `fail:<region>:<error>` on failure, with exactly one terminal message per dispatched region
 - Agents needing user input send `ask:<step>:<question>`, then block on their own mailbox
 - User or orchestrator can send `abort` to any agent to trigger graceful shutdown
 - `agents` command shows who's registered and who's waiting — detect stuck agents

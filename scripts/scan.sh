@@ -1,335 +1,210 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# scan.sh — File relevance scan (Stage 3)
+# scan.sh — Stage 3 scan entrypoint and phase coordinator.
 #
-# Shell-script driven: enumerates section files × source files, extracts
-# summaries via tools, dispatches GLM for matching, appends results to
-# section files. No Claude orchestrator agent needed.
+# Public CLI contract (unchanged):
+#   scan.sh <quick|deep|both> <planspace> <codespace>
 #
-# Usage:
-#   scan.sh quick <planspace> <codespace>   # quick scan (summaries only)
-#   scan.sh deep  <planspace> <codespace>   # deep scan (full content for hits)
-#   scan.sh both  <planspace> <codespace>   # quick then deep
+# quick:
+# - reuse or generate structural scan
+# - delegate codemap orchestration to scripts/codemap_build.py
+# - delegate section exploration orchestration to scripts/section_explore.py
 #
-# Resume-safe: skips pairs already recorded in section files.
+# deep:
+# - analyze confirmed related files from each section's `## Related Files` block
+# - dispatch deep analysis via `uv run --frozen agents --model glm`
+# - emit canonical deep prompt output format without a blank line before bullets
+# - validate and append deep analysis fields in-place:
+#   - Affected areas
+#   - Confidence
+#   - Open questions
+#
+# both:
+# - run quick, then deep
+#
+# Artifacts and section output contracts remain unchanged.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKFLOW_HOME="${WORKFLOW_HOME:-$(dirname "$SCRIPT_DIR")}"
-TOOLS="$WORKFLOW_HOME/tools"
 
 cmd="${1:?Usage: scan.sh <quick|deep|both> <planspace> <codespace>}"
 PLANSPACE="${2:?Missing planspace path}"
 CODESPACE="${3:?Missing codespace path}"
 
+ARTIFACTS_DIR="$PLANSPACE/artifacts"
 SECTIONS_DIR="$PLANSPACE/artifacts/sections"
-RESPONSE_DIR="$PLANSPACE/artifacts/scan-responses"
-mkdir -p "$RESPONSE_DIR"
+STRUCTURAL_SCAN_PATH="$ARTIFACTS_DIR/structural-scan.md"
+CODEMAP_PATH="$ARTIFACTS_DIR/codemap.md"
+SCAN_LOG_DIR="$ARTIFACTS_DIR/scan-logs"
+mkdir -p "$SCAN_LOG_DIR"
 
-# --- Helper: get extraction tool for a file extension ---
-get_tool() {
-  local ext="$1"
-  local tool="$TOOLS/extract-docstring-${ext}"
-  if [ -f "$tool" ]; then
-    echo "$tool"
-    return 0
+validate_preflight() {
+  if [ ! -d "$CODESPACE" ] || [ ! -r "$CODESPACE" ]; then
+    echo "[ERROR] Missing or inaccessible codespace: $CODESPACE" >&2
+    return 1
   fi
 
-  echo "[TOOL] No extractor for .${ext} — dispatching Opus to create one..." >&2
+  if [ ! -d "$SECTIONS_DIR" ]; then
+    echo "[ERROR] Missing sections directory: $SECTIONS_DIR" >&2
+    return 1
+  fi
 
-  local tool_prompt="$RESPONSE_DIR/create-tool-${ext}-prompt.md"
-  cat > "$tool_prompt" << EOF
-# Task: Create Docstring Extraction Tool
-
-Read the interface specification at: $TOOLS/README.md
-
-Write a new extraction tool for .${ext} files at: $tool
-
-The tool must:
-1. Extract the module-level docstring/comment from .${ext} files
-2. Support --batch and --stdin modes
-3. Output "NO DOCSTRING" if no docstring found
-4. Follow the exact interface from README.md
-5. Be executable (include shebang line)
-
-After writing the tool, run: chmod +x $tool
-EOF
-
-  uv run agents --model claude-opus --project "$CODESPACE" --file "$tool_prompt" \
-    > "$RESPONSE_DIR/create-tool-${ext}.log" 2>&1
-
-  if [ -f "$tool" ]; then
-    chmod +x "$tool"
-    echo "$tool"
-    return 0
-  else
-    echo "[ERROR] Failed to create tool for .${ext}" >&2
+  local section_count
+  section_count=$(find "$SECTIONS_DIR" -name "section-*.md" | wc -l | tr -d ' ')
+  if [ "$section_count" -eq 0 ]; then
+    echo "[ERROR] No section files found in: $SECTIONS_DIR" >&2
     return 1
   fi
 }
 
-# --- Helper: extract section summary ---
-extract_section_summary() {
-  local section_file="$1"
-  python3 "$TOOLS/extract-summary-md" "$section_file" | tail -n +2
+list_section_files() {
+  find "$SECTIONS_DIR" -name "section-*.md" | sort
 }
 
-# --- Helper: extract file docstring/summary ---
-extract_file_docstring() {
+log_phase_failure() {
+  local phase="$1"
+  local context="$2"
+  local message="$3"
+  local failure_log="$SCAN_LOG_DIR/failures.log"
+
+  printf '%s phase=%s context=%s message=%s\n' \
+    "$(date -Iseconds 2>/dev/null || date)" \
+    "$phase" "$context" "$message" >> "$failure_log"
+  echo "[FAIL] phase=$phase context=$context message=$message" >&2
+}
+
+deep_already_annotated() {
+  local section_file="$1"
+  local source_file="$2"
+  awk -v target="$source_file" '
+    $0 == "### " target { in_block = 1; next }
+    in_block && ($0 ~ /^### / || $0 ~ /^## /) { exit }
+    in_block { print }
+  ' "$section_file" | grep -q "Affected areas:" 2>/dev/null
+}
+
+deep_scan_file_type_hint() {
   local source_file="$1"
-  local ext="${source_file##*.}"
-
-  # .md files use extract-summary-md (returns YAML summary, not docstring)
-  if [ "$ext" = "md" ]; then
-    local summary
-    summary=$(python3 "$TOOLS/extract-summary-md" "$source_file" 2>/dev/null | tail -n +2)
-    if [ -z "$summary" ] || [ "$summary" = "NO SUMMARY" ]; then
-      # Fallback: first heading + first paragraph
-      head -20 "$source_file" | sed -n '/^#/{p;q;}; /^[^-#]/{p;q;}'
-    else
-      echo "$summary"
-    fi
-    return 0
-  fi
-
-  # .sh files: extract header comment block (lines starting with #, after shebang)
-  if [ "$ext" = "sh" ]; then
-    local comment
-    comment=$(sed -n '2,/^[^#]/{ /^#/s/^# *//p; }' "$source_file" | head -10)
-    if [ -n "$comment" ]; then
-      echo "$comment"
-    else
-      echo "NO DOCSTRING"
-    fi
-    return 0
-  fi
-
-  # All other files: use extension-keyed extraction tool
-  local tool
-  tool=$(get_tool "$ext") || return 1
-  python3 "$tool" "$source_file" | tail -n +2
+  case "$source_file" in
+    *.py) echo "Affected areas should reference specific functions, classes, methods, or code regions." ;;
+    *.md) echo "Affected areas should reference specific headings, sections, rules, or instruction blocks." ;;
+    *.sh) echo "Affected areas should reference specific functions, sections, or command blocks." ;;
+    *) echo "Affected areas should reference the most specific structural elements available." ;;
+  esac
 }
 
-# --- Helper: check if file already scanned for this section ---
-already_scanned() {
+deep_scan_response_valid() {
+  local response_file="$1"
+  grep -q "^- Affected areas:" "$response_file" 2>/dev/null || return 1
+  grep -q "^- Confidence:" "$response_file" 2>/dev/null || return 1
+  grep -q "^- Open questions:" "$response_file" 2>/dev/null || return 1
+}
+
+deep_scan_related_files() {
   local section_file="$1"
-  local source_file="$2"
-  grep -qF "### ${source_file}" "$section_file" 2>/dev/null
+  awk '
+    /^## Related Files$/ { in_related = 1; next }
+    in_related && /^## / { in_related = 0 }
+    in_related && /^### / { sub(/^### /, ""); print }
+  ' "$section_file"
 }
 
-# --- Helper: append match to section file ---
-append_match() {
-  local section_file="$1"
-  local source_file="$2"
-  local relevance="$3"
-
-  # Ensure Related Files header exists
-  if ! grep -q "^## Related Files" "$section_file" 2>/dev/null; then
-    printf "\n## Related Files\n" >> "$section_file"
-  fi
-
-  printf "\n### %s\n- Relevance: %s\n" "$source_file" "$relevance" >> "$section_file"
-}
-
-# --- Helper: update match with deep scan results ---
 update_match() {
   local section_file="$1"
   local source_file="$2"
   local details_file="$3"
 
-  # Read deep scan details and append after the existing Relevance line
-  local details
-  details=$(cat "$details_file")
-
-  # Use python for reliable multi-line insertion after the match header
-  python3 -c "
+  uv run python - "$section_file" "$source_file" "$details_file" << 'PY'
+import re
 import sys
-section = open('$section_file', 'r').read()
-marker = '### $source_file'
+from pathlib import Path
+
+section_path = Path(sys.argv[1])
+source_file = sys.argv[2]
+details_path = Path(sys.argv[3])
+
+section = section_path.read_text()
+details = details_path.read_text().strip()
+if not details:
+    raise SystemExit(0)
+
+marker = f"### {source_file}"
 idx = section.find(marker)
 if idx == -1:
-    sys.exit(0)
-# Find the next ### or ## or end of file
+    raise SystemExit(0)
+
 rest = section[idx + len(marker):]
-# Find end of this entry (next ### or ## at start of line, or EOF)
-import re
-m = re.search(r'\n(?=###\s|##\s[^#])', rest)
-if m:
-    insert_pos = idx + len(marker) + m.start()
-else:
-    insert_pos = len(section)
-# Build replacement
-new_content = section[:insert_pos].rstrip() + '\n' + '''$details''' + '\n' + section[insert_pos:]
-open('$section_file', 'w').write(new_content)
-"
+match = re.search(r"\n(?=###\s|##\s[^#])", rest)
+insert_pos = idx + len(marker) + (match.start() if match else len(rest))
+
+new_section = section[:insert_pos].rstrip() + "\n" + details + "\n" + section[insert_pos:]
+section_path.write_text(new_section)
+PY
 }
 
-# --- Enumerate source files (relative to codespace) ---
-find_source_files() {
-  (cd "$CODESPACE" && find . -type f \
-    \( -name "*.py" -o -name "*.sh" -o -name "*.md" \) \
-    -not -path "./.git/*" \
-    -not -path "*/__pycache__/*" \
-    -not -path "*/node_modules/*" \
-    -not -name "*.pyc" \
-    -not -name "LICENSE" \
-    | sed 's|^\./||' \
-    | sort)
-}
-
-# --- Quick scan: summaries only (parallel GLM dispatch) ---
-MAX_PARALLEL="${SCAN_PARALLEL:-8}"
-
-do_quick_scan() {
-  echo "=== Quick Scan: file docstrings × section summaries ==="
-  echo "Parallel GLM dispatch: up to $MAX_PARALLEL concurrent"
-
-  local section_files
-  section_files=$(find "$SECTIONS_DIR" -name "section-*.md" | sort)
-
-  local source_files
-  source_files=$(find_source_files)
-
-  local total_sections total_files
-  total_sections=$(echo "$section_files" | wc -l)
-  total_files=$(echo "$source_files" | wc -l)
-  echo "Sections: $total_sections, Files: $total_files, Pairs: $((total_sections * total_files))"
-
-  # --- Phase 1: Build all prompts (no GLM yet) ---
-  local manifest="$RESPONSE_DIR/quick-manifest.txt"
-  : > "$manifest"
-
-  while IFS= read -r section_file; do
-    local section_name
-    section_name=$(basename "$section_file" .md)
-
-    local section_summary
-    section_summary=$(extract_section_summary "$section_file")
-    if [ "$section_summary" = "NO SUMMARY" ]; then
-      echo "[SKIP] $section_name — no summary"
-      continue
-    fi
-
-    while IFS= read -r source_file; do
-      # Resume: skip if already scanned
-      if already_scanned "$section_file" "$source_file"; then
-        continue
-      fi
-
-      local abs_source="$CODESPACE/$source_file"
-
-      local docstring
-      docstring=$(extract_file_docstring "$abs_source") || continue
-      if [ "$docstring" = "NO DOCSTRING" ]; then
-        continue
-      fi
-
-      local safe_name
-      safe_name=$(echo "$source_file" | tr '/' '__' | sed 's/\.[^.]*$//')
-      local prompt_file="$RESPONSE_DIR/quick-${section_name}-${safe_name}.md"
-      local response_file="$RESPONSE_DIR/quick-${section_name}-${safe_name}-response.md"
-
-      # Skip if response already exists (resume)
-      if [ -f "$response_file" ]; then
-        continue
-      fi
-
-      cat > "$prompt_file" << PROMPT
-# Task: File-Section Relevance Check
-
-Is this source file related to this proposal section?
-
-## Section Summary
-$section_summary
-
-## File Docstring ($source_file)
-$docstring
-
-## Instructions
-Reply with exactly one line:
-RELATED: <brief reason why this file relates to the section>
-or
-NOT_RELATED
-
-Nothing else.
-PROMPT
-
-      # Record: section_file|source_file|prompt_file|response_file
-      printf '%s|%s|%s|%s\n' "$section_file" "$source_file" "$prompt_file" "$response_file" >> "$manifest"
-
-    done <<< "$source_files"
-  done <<< "$section_files"
-
-  local total_prompts
-  total_prompts=$(wc -l < "$manifest")
-  echo "Prompts to dispatch: $total_prompts"
-
-  if [ "$total_prompts" -eq 0 ]; then
-    echo "=== Quick Scan Complete (nothing to do) ==="
+run_structural_scan() {
+  if [ -s "$STRUCTURAL_SCAN_PATH" ]; then
+    echo "[STRUCTURAL] Reusing existing artifact: $STRUCTURAL_SCAN_PATH"
     return 0
   fi
 
-  # --- Phase 2: Dispatch GLM in parallel ---
-  local dispatched=0
-  local running=0
+  mkdir -p "$(dirname "$STRUCTURAL_SCAN_PATH")"
+  local stderr_file="$SCAN_LOG_DIR/structural-scan.stderr.log"
 
-  while IFS='|' read -r section_file source_file prompt_file response_file; do
-    # Concurrency gate: wait if at limit
-    while [ "$running" -ge "$MAX_PARALLEL" ]; do
-      wait -n 2>/dev/null || true
-      running=$((running - 1))
-    done
+  if ! uv run python "$SCRIPT_DIR/structural-scan.py" "$CODESPACE" "$STRUCTURAL_SCAN_PATH" 2> "$stderr_file"; then
+    log_phase_failure "quick-structural-scan" "$(basename "$STRUCTURAL_SCAN_PATH")" "structural scan command failed (see $stderr_file)"
+    return 1
+  fi
 
-    (uv run agents --model glm --project "$CODESPACE" --file "$prompt_file" \
-      > "$response_file" 2>&1 || true) &
-    running=$((running + 1))
-    dispatched=$((dispatched + 1))
+  if ! grep -q '[^[:space:]]' "$STRUCTURAL_SCAN_PATH"; then
+    log_phase_failure "quick-structural-scan" "$(basename "$STRUCTURAL_SCAN_PATH")" "structural scan output is empty"
+    return 1
+  fi
 
-    if [ $((dispatched % 10)) -eq 0 ]; then
-      echo "[DISPATCH] $dispatched / $total_prompts"
-    fi
-  done < "$manifest"
-
-  # Wait for remaining
-  wait
-  echo "[DISPATCH] All $total_prompts GLM calls complete"
-
-  # --- Phase 3: Parse responses and append matches ---
-  local matches=0
-  while IFS='|' read -r section_file source_file prompt_file response_file; do
-    if [ ! -f "$response_file" ]; then
-      continue
-    fi
-
-    if grep -q "^RELATED:" "$response_file" 2>/dev/null; then
-      local reason
-      reason=$(grep "^RELATED:" "$response_file" | head -1 | sed 's/^RELATED: *//')
-      # Re-check in case another parallel run already appended
-      if ! already_scanned "$section_file" "$source_file"; then
-        append_match "$section_file" "$source_file" "$reason"
-        echo "[MATCH] $(basename "$section_file" .md) × $source_file"
-        matches=$((matches + 1))
-      fi
-    fi
-  done < "$manifest"
-
-  echo "=== Quick Scan Complete: $matches matches from $total_prompts comparisons ==="
+  echo "[STRUCTURAL] Wrote: $STRUCTURAL_SCAN_PATH"
 }
 
-# --- Deep scan: full content for hits ---
-do_deep_scan() {
-  echo "=== Deep Scan: full content for related files ==="
+run_quick_scan() {
+  echo "=== Quick Scan: structural scan + codemap + per-section strategic exploration ==="
+
+  if ! run_structural_scan; then
+    return 1
+  fi
+
+  if ! uv run python "$SCRIPT_DIR/codemap_build.py" \
+    "$PLANSPACE" "$CODESPACE" "$STRUCTURAL_SCAN_PATH" "$CODEMAP_PATH" "$SCAN_LOG_DIR"; then
+    log_phase_failure "quick-codemap" "$(basename "$CODEMAP_PATH")" "codemap helper failed"
+    return 1
+  fi
+
+  if ! uv run python "$SCRIPT_DIR/section_explore.py" \
+    "$PLANSPACE" "$CODESPACE" "$CODEMAP_PATH" "$SECTIONS_DIR" "$SCAN_LOG_DIR" "$WORKFLOW_HOME"; then
+    log_phase_failure "quick-explore" "$(basename "$SECTIONS_DIR")" "section exploration helper failed"
+    return 1
+  fi
+
+  echo "=== Quick Scan Complete ==="
+  return 0
+}
+
+run_deep_scan() {
+  echo "=== Deep Scan: full content for confirmed related files ==="
+
+  local phase_failed=0
 
   local section_files
-  section_files=$(find "$SECTIONS_DIR" -name "section-*.md" | sort)
+  section_files=$(list_section_files)
 
   while IFS= read -r section_file; do
     local section_name
     section_name=$(basename "$section_file" .md)
 
-    # Find all related files in this section
+    local section_log_dir="$SCAN_LOG_DIR/$section_name"
+    mkdir -p "$section_log_dir"
+
     local related_files
-    related_files=$(grep "^### " "$section_file" 2>/dev/null | sed 's/^### //' || true)
+    related_files=$(deep_scan_related_files "$section_file" || true)
 
     if [ -z "$related_files" ]; then
       continue
@@ -338,16 +213,32 @@ do_deep_scan() {
     while IFS= read -r source_file; do
       [ -z "$source_file" ] && continue
 
-      # Resume: skip if deep scan already done (has "Affected areas" line)
-      if grep -A5 "### ${source_file}" "$section_file" | grep -q "Affected areas:" 2>/dev/null; then
+      if deep_already_annotated "$section_file" "$source_file"; then
         continue
       fi
 
       local abs_source="$CODESPACE/$source_file"
+      if [ ! -f "$abs_source" ]; then
+        log_phase_failure "deep-scan" "${section_name}:${source_file}" "source file missing in codespace"
+        phase_failed=1
+        continue
+      fi
+
+      local file_type_hint
+      file_type_hint=$(deep_scan_file_type_hint "$source_file")
+
       local safe_name
-      safe_name=$(echo "$source_file" | tr '/' '__' | sed 's/\.[^.]*$//')
-      local prompt_file="$RESPONSE_DIR/deep-${section_name}-${safe_name}.md"
-      local response_file="$RESPONSE_DIR/deep-${section_name}-${safe_name}-response.md"
+      local path_token extension_token source_hash
+      path_token=$(echo "$source_file" | tr '/.' '__' | tr -cd '[:alnum:]_-' | cut -c1-80)
+      extension_token="${source_file##*.}"
+      if [ "$extension_token" = "$source_file" ]; then
+        extension_token="noext"
+      fi
+      source_hash=$(printf '%s' "$source_file" | sha1sum | awk '{print $1}' | cut -c1-10)
+      safe_name="${path_token}.${extension_token}.${source_hash}"
+      local prompt_file="$section_log_dir/deep-${safe_name}-prompt.md"
+      local response_file="$section_log_dir/deep-${safe_name}-response.md"
+      local stderr_file="$section_log_dir/deep-${safe_name}.stderr.log"
 
       local section_content
       section_content=$(cat "$section_file")
@@ -358,8 +249,6 @@ do_deep_scan() {
       cat > "$prompt_file" << PROMPT
 # Task: Detailed File-Section Relevance Analysis
 
-Analyze how this source file relates to this proposal section in detail.
-
 ## Section
 $section_content
 
@@ -367,32 +256,59 @@ $section_content
 $file_content
 
 ## Instructions
-Write your analysis in this exact format (nothing else):
-
-- Affected areas: <specific functions, classes, or regions of the file>
+$file_type_hint
+Write your analysis in this exact format:
+- Affected areas: <specific functions, classes, or regions>
 - Confidence: <high | medium | low>
-- Open questions: <what you're not sure about, or "none">
+- Open questions: <uncertainties, or "none">
 PROMPT
 
-      uv run agents --model glm --project "$CODESPACE" --file "$prompt_file" \
-        > "$response_file" 2>&1 || {
-        echo "[FAIL] deep: $section_name × $(basename "$source_file")"
+      uv run --frozen agents --model glm --project "$CODESPACE" --file "$prompt_file" \
+        > "$response_file" 2> "$stderr_file" || {
+        log_phase_failure "deep-scan" "${section_name}:${source_file}" "deep analysis failed (see $stderr_file)"
+        phase_failed=1
         continue
       }
 
-      update_match "$section_file" "$source_file" "$response_file"
+      if ! deep_scan_response_valid "$response_file"; then
+        log_phase_failure "deep-scan-validate" "${section_name}:${source_file}" "invalid deep analysis format (see $response_file)"
+        phase_failed=1
+        continue
+      fi
+
+      update_match "$section_file" "$source_file" "$response_file" || {
+        log_phase_failure "deep-update" "${section_name}:${source_file}" "failed to update section file"
+        phase_failed=1
+        continue
+      }
+
       echo "[DEEP] $section_name × $(basename "$source_file")"
 
     done <<< "$related_files"
   done <<< "$section_files"
 
+  if [ "$phase_failed" -ne 0 ]; then
+    echo "=== Deep Scan Complete (with failures) ==="
+    return 1
+  fi
   echo "=== Deep Scan Complete ==="
+  return 0
 }
 
-# --- Main ---
+validate_preflight || exit 1
 case "$cmd" in
-  quick) do_quick_scan ;;
-  deep)  do_deep_scan ;;
-  both)  do_quick_scan; do_deep_scan ;;
-  *)     echo "Usage: scan.sh <quick|deep|both> <planspace> <codespace>" >&2; exit 1 ;;
+  quick)
+    run_quick_scan || exit 1
+    ;;
+  deep)
+    run_deep_scan || exit 1
+    ;;
+  both)
+    run_quick_scan || exit 1
+    run_deep_scan || exit 1
+    ;;
+  *)
+    echo "Usage: scan.sh <quick|deep|both> <planspace> <codespace>" >&2
+    exit 1
+    ;;
 esac

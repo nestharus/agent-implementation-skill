@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Extract module-level docstring/comment from a shell (.sh) file.
+
+Usage: extract-docstring-sh <file-path>
+       extract-docstring-sh --batch <file1> <file2> ...
+       find ... | extract-docstring-sh --stdin
+
+Output: file path + docstring (or "NO DOCSTRING" if absent).
+Batch/stdin mode outputs one block per file, separated by ---
+"""
+import sys
+
+
+def extract_docstring(filepath: str) -> tuple[str, str | None]:
+    """Return (filepath, docstring) or (filepath, None).
+
+    Extracts the first contiguous block of comment lines at the top of
+    the file, skipping the shebang line and any blank lines after it.
+    Strips the leading '# ', '#\t', or '#' from each line.
+    """
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+    except OSError:
+        return filepath, None
+
+    doc_lines: list[str] = []
+    found_comment = False
+
+    for line in lines:
+        stripped = line.rstrip("\n\r")
+
+        # Skip shebang
+        if not found_comment and not doc_lines and stripped.startswith("#!"):
+            continue
+
+        # Skip blank lines before the comment block starts
+        if not found_comment and stripped.strip() == "":
+            continue
+
+        # Collect comment lines
+        if stripped.lstrip().startswith("#"):
+            found_comment = True
+            # Strip the leading '#' and at most one space/tab after it
+            content = stripped.lstrip()
+            if content.startswith("# ") or content.startswith("#\t"):
+                content = content[2:]
+            elif content == "#":
+                content = ""
+            else:
+                content = content[1:]
+            doc_lines.append(content)
+        else:
+            # Non-comment line ends the block
+            break
+
+    if not doc_lines:
+        return filepath, None
+
+    docstring = "\n".join(doc_lines).strip()
+    return filepath, docstring if docstring else None
+
+
+def print_result(filepath: str, docstring: str | None) -> None:
+    if docstring:
+        print(f"{filepath}")
+        print(docstring)
+    else:
+        print(f"{filepath}")
+        print("NO DOCSTRING")
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    if not args:
+        print(__doc__, file=sys.stderr)
+        sys.exit(1)
+
+    if args[0] == "--stdin":
+        files = [line.strip() for line in sys.stdin if line.strip()]
+        for i, f in enumerate(files):
+            if i > 0:
+                print("---")
+            filepath, doc = extract_docstring(f)
+            print_result(filepath, doc)
+    elif args[0] == "--batch":
+        files = args[1:]
+        for i, f in enumerate(files):
+            if i > 0:
+                print("---")
+            filepath, doc = extract_docstring(f)
+            print_result(filepath, doc)
+    else:
+        filepath, doc = extract_docstring(args[0])
+        print_result(filepath, doc)
+
+
+if __name__ == "__main__":
+    main()

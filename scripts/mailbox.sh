@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2012  # ls is safe here — filenames are controlled numeric .msg sequences
 # File-based mailbox system for agent coordination.
 # Agents block on recv until a message arrives. Atomic send/claim via mv.
 #
@@ -68,7 +69,9 @@ case "$cmd" in
     timeout="${4:-0}"
     _ensure_dirs "$name"
     _update_status "$name" "waiting"
-    elapsed=0
+    elapsed_ms=0
+    timeout_ms=$((timeout * 1000))
+    poll_ms=500   # matches POLL_INTERVAL=0.5
     while true; do
       oldest=$(ls "$root/mailboxes/$name"/*.msg 2>/dev/null | sort -V | head -1 || true)
       if [ -n "$oldest" ]; then
@@ -81,15 +84,13 @@ case "$cmd" in
         fi
         continue
       fi
-      if [ "$timeout" != "0" ]; then
-        if [ "$(echo "$elapsed >= $timeout" | bc)" = "1" ]; then
-          _update_status "$name" "running"
-          echo "TIMEOUT"
-          exit 1
-        fi
+      if [ "$timeout" != "0" ] && [ "$elapsed_ms" -ge "$timeout_ms" ]; then
+        _update_status "$name" "running"
+        echo "TIMEOUT"
+        exit 1
       fi
       sleep "$POLL_INTERVAL"
-      elapsed=$(echo "$elapsed + $POLL_INTERVAL" | bc)
+      elapsed_ms=$((elapsed_ms + poll_ms))
     done
     ;;
 

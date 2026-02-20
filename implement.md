@@ -1,17 +1,34 @@
 # Implement Proposal: Multi-Model Execution Pipeline
 
+Stage 3 prompt templates are canonical in
+`artifacts/sections/section-07.md` (prompts 7.1, 7.2, 7.3), and any inline
+template retained here must remain byte-for-byte aligned with section-07.
+This document defines orchestration flow, dispatch mechanics, and parsing/output
+constraints only, including Tier 2 intermediate region-summary artifacts
+at `artifacts/scan-logs/codemap-region-*-output.md`, with Stage 3
+per-section strategic exploration defined as concurrent dispatch
+(max 5 in-flight) without requiring a specific orchestration mechanism.
+
 ## Workflow Orchestration
 
 This skill is designed to be executed via the workflow orchestration system.
 Each stage below corresponds to a schedule step in the `implement-proposal.md`
 template. The orchestrator pops steps and dispatches agents to the matching
-stage section.
+stage section. Stage 3 uses a Tier 1 + Tier 2 + Tier 3 scan contract: quick
+mode starts with a local structural scan artifact generation step (Tier 1),
+then concurrent Opus region exploration with GLM file-characterization reads
+(Tier 2), then codemap synthesis into `planspace/artifacts/codemap.md`
+(Tier 3), then concurrent per-section Opus strategic agents that run
+codemap reasoning + targeted GLM verification + adjacency/beyond-codemap
+discovery before a deep refinement pass over quick-confirmed matches while preserving the public
+`scan.sh quick|deep|both` interface and
+`## Related Files` output format.
 
 Schedule step → Skill section mapping:
 - `decompose` → Stage 1: Section Decomposition
 - `docstrings` → Stage 2: Docstring Infrastructure
 - `scan` → Stage 3: File Relevance Scan
-- `section-loop` → Stages 4–5: Per-Section Execution (includes alignment)
+- `section-loop` → Stages 4–5: Integration Proposals + Strategic Implementation + Global Coordination
 - `verify` → Stage 6: Verification
 - `post-verify` → Stage 7: Post-Task Verification
 
@@ -40,8 +57,8 @@ the agent to read them.
 **Embed only**: summaries (1-3 line section summaries from YAML frontmatter),
 alignment feedback (short diagnostic text), and task instructions.
 
-**Reference by filepath**: section files, solution docs, source files, plan
-files, integration stories — anything with substantial content.
+**Reference by filepath**: section files, integration proposals, source files,
+alignment excerpts, consequence notes — anything with substantial content.
 
 This keeps prompts small (under 1KB typically) and avoids "prompt too long"
 errors that occur when embedding large source files or SQL dumps.
@@ -103,16 +120,19 @@ Only clean up the mailbox when no more messages are expected.
 
 1. **Section Decomposition** — Recursive decomposition into atomic section files
 2. **Docstring Infrastructure** — Ensure all source files have module docstrings
-3. **File Relevance Scan** — GLM checks each file's docstring against each section
+3. **File Relevance Scan** — Quick mode runs Tier 1 structural scan, Tier 2 concurrent Opus region exploration with GLM file reads, and Tier 3 synthesis into `planspace/artifacts/codemap.md`; then run per-section strategic exploration and deep scan confirmed matches (preserving `## Related Files`)
 
---- Per-section loop (one section at a time) ---
+--- Per-section loop (strategic, agent-driven) ---
 
-4. **Solution** — Opus reads section + related files → writes solution doc
-5. **Plan + Implement** — Per file: Codex plans then implements, Codex updates docstrings
-→ After all files: Opus exploratory alignment check → if misaligned, redo plan/impl
-→ Cross-section file changes → reschedule affected sections
+4. **Section Setup + Integration Proposal** — Extract proposal/alignment excerpts from
+   global documents, then GPT writes integration proposal (how to wire proposal into
+   codebase), Opus checks alignment on shape/direction, iterate until aligned
+5. **Strategic Implementation + Global Coordination** — GPT implements holistically with
+   sub-agents (GLM for exploration, Codex for targeted areas), Opus checks alignment
+→ After all sections: cross-section alignment re-check, global coordinator collects
+  problems, groups related ones, dispatches coordinated fixes, re-verifies per-section
 
---- End per-section loop (queue empty = all sections clean) ---
+--- End per-section loop (all sections aligned = done) ---
 
 6. **Verification** — Constraint audit + lint + tests
 7. **Post-Task Verification** — Full suite + commit
@@ -130,7 +150,7 @@ task worktree (one per task)
   ├── Stage 1: writes to planspace only
   ├── Stage 2: updates docstrings in source files
   ├── Stage 3: writes to planspace only (relevance map)
-  ├── Stages 4-5: agents edit source files sequentially
+  ├── Stages 4-5: agents implement strategically per section + global coordination
   ├── Stage 6: verify in-place
   └── Stage 7: final verification + commit
 ```
@@ -138,9 +158,10 @@ task worktree (one per task)
 **Cross-task parallelism**: Multiple tasks can run simultaneously in
 separate worktrees. Each task is fully independent.
 
-**Within-task sequencing**: All stages and all agents within a stage run
-one at a time. Each agent sees the full accumulated state from all prior
-agents — no merge conflicts, no stale snapshots.
+**Within-task sequencing**: Default behavior is sequential execution
+within a task, with explicit per-stage concurrency exceptions documented in
+the Stage Concurrency Model. Each agent sees the accumulated state
+required by its stage contract.
 
 ## Stage Concurrency Model
 
@@ -148,15 +169,19 @@ agents — no merge conflicts, no stale snapshots.
 |-------|-------------|
 | 1: Decomposition | **Parallel** — writes to planspace only |
 | 2: Docstrings | **Sequential** — one GLM per file, edits source |
-| 3: Scan | **Shell script** — GLM per file×section (quick) + per hit (deep) |
-| 4–5: Section Loop | **Sequential** — one section at a time, one file at a time |
+| 3: Scan | **Shell script** — quick: sequential local structural scan (Tier 1), concurrent Opus region exploration (Tier 2), sequential single-compare GLM sub-reads within each region, single-run codemap synthesis (Tier 3), then concurrent per-section Opus strategic agents (max 5 in-flight); each section agent coordinates single-compare GLM verification calls and writes only to its own section file; deep: full-content analysis for confirmed matches |
+| 4–5: Section Loop | **Sequential** — one section at a time, strategic agent-driven implementation with sub-agent dispatch; global coordination after initial pass |
 | 6: Verification | **Sequential** — lint, test, fix cycles |
 | 7: Post-Verify | **Single run** — full suite + commit |
 
 ## Extraction Tools
 
-Language-specific tools for extracting docstrings live in
-`$WORKFLOW_HOME/tools/`. Named `extract-docstring-<ext>`.
+Language-specific extraction helpers live in `$WORKFLOW_HOME/tools/`.
+Named `extract-docstring-<ext>`.
+
+Stage 3 quick mode does not depend on brute-force per-file docstring
+extraction. These tools are used only where targeted verification/deep
+scan needs extension-specific extraction support.
 
 ```bash
 TOOLS="$WORKFLOW_HOME/tools"
@@ -168,7 +193,7 @@ python3 "$TOOLS/extract-docstring-py" <file>
 find <codespace> -name "*.py" | python3 "$TOOLS/extract-docstring-py" --stdin
 ```
 
-If the pipeline encounters a file extension with no extraction tool,
+If targeted verification needs an extension with no extraction tool,
 dispatch an Opus agent to write one following the interface in
 `$WORKFLOW_HOME/tools/README.md`.
 
@@ -317,80 +342,275 @@ bash "$WORKFLOW_HOME/scripts/scan.sh" quick <planspace> <codespace>
 bash "$WORKFLOW_HOME/scripts/scan.sh" deep  <planspace> <codespace>
 ```
 
-The script enumerates all section files × source files, extracts
-summaries from each using the extraction tools, passes the two summaries
-to GLM for matching, and appends GLM's response to the section file.
+Stage placement is unchanged: this runs after Stage 2 and before the
+section-loop (Stages 4-5). Quick mode now starts with a local Tier 1
+structural scan pre-step (pure Python/shell, no LLM/agent calls) before
+codemap construction. The public CLI remains unchanged.
 
-### Script behavior
+### CLI contract (public interface)
 
-```
-for each section file:
-  extract section summary (via extract-summary-md)
-  for each source file:
-    determine extraction tool by file extension
-    if no tool exists:
-      dispatch Opus agent to write one → $WORKFLOW_HOME/tools/
-    extract file docstring (via extract-docstring-<ext>)
-    dispatch GLM with: section summary + file docstring
-    GLM writes response file (RELATED/NOT_RELATED + reasoning)
-    if RELATED:
-      script appends the match to the section file's ## Related Files
+- `bash "$WORKFLOW_HOME/scripts/scan.sh" quick <planspace> <codespace>`
+- `bash "$WORKFLOW_HOME/scripts/scan.sh" deep <planspace> <codespace>`
+- `bash "$WORKFLOW_HOME/scripts/scan.sh" both <planspace> <codespace>`
+
+### Tier 1 helper contract (internal sub-step)
+
+```bash
+python3 "$WORKFLOW_HOME/scripts/structural-scan.py" <codespace> <output-path>
 ```
 
-### Extraction tool discovery
+Implementation requirement (Section 02): `scripts/scan.sh` quick mode
+invokes this helper via `run_structural_scan()`. Therefore
+`$WORKFLOW_HOME/scripts/structural-scan.py` is a required concrete
+deliverable for this section, not a deferred/future task.
 
-The script checks for `$WORKFLOW_HOME/tools/extract-docstring-<ext>`
-where `<ext>` is the source file's extension. If the tool doesn't exist,
-it dispatches an Opus agent to write one following the interface in
-`$WORKFLOW_HOME/tools/README.md`, then continues.
+- `<codespace>`: directory path to repository root
+- `<output-path>`: file path for markdown structural artifact
+- Output: non-empty markdown artifact containing directory tree summary,
+  file-type distribution, and key files/project markers
 
-### GLM input
+### Parameter types
 
-Each GLM call receives exactly two summaries:
-- The section summary (from YAML frontmatter)
-- The file docstring (from module-level docstring)
+- `<mode>`: enum `{quick, deep, both}`
+- `<planspace>`: path to directory containing `artifacts/sections/section-*.md`
+- `<codespace>`: path to target repository root
+- `project_size`: enum `{small, medium, large}` derived from file-count thresholds
+- `region`: directory-path string
+- `region_summary`: markdown artifact per region
+- `codemap`: markdown artifact with required sections: `Project Shape`, `Directory Map`, `Cross-Cutting Patterns`
 
-GLM outputs: `RELATED` or `NOT_RELATED` + brief reasoning about why.
+### Input contract
 
-### Section file accumulation
+- Required:
+  - `<planspace>/artifacts/sections/section-*.md`
+  - `<codespace>/`
+- Optional:
+  - `<planspace>/proposal.md`
+  - Alignment/evaluation/research docs used to improve exploration quality
 
-For each `RELATED` match, the script appends to the section file:
+### Output contract
+
+- Canonical output:
+  - Append/update `## Related Files` blocks in each section file with `### <filepath>` entries
+- Intermediate artifacts:
+  - `<planspace>/artifacts/structural-scan.md`
+  - `<planspace>/artifacts/codemap.md`
+  - `<planspace>/artifacts/scan-logs/codemap-region-*-output.md` (region summaries)
+  - Per-section exploration logs (for debug/resume)
+
+### Tier contracts (internal)
+
+- Tier 1 input: `<codespace>`; output: non-empty `structural-scan.md`
+- Tier 2 input: structural scan artifact + region list; output: region summaries
+  (region characterization template is canonical in section-07 prompt 7.3)
+- Tier 3 input: region summaries + codemap schema template; output: `codemap.md`
+
+### Codemap prompt contract (`scripts/codemap_build.py`)
+
+- `build_region_summary()` must embed the canonical section-07 prompt 7.3
+  wording verbatim for region characterization:
+
+```markdown
+# Task: Characterize Directory Region
+
+Read the following files in {directory}:
+{file_list}
+
+Write a summary covering:
+- What this directory is for (1-2 sentences)
+- Key files and their roles
+- How this directory relates to the rest of the project
+```
+
+- `build_region_summary()` must also include this explicit graceful-degradation
+  instruction in the prompt body:
+  `If a GLM dispatch fails, note the failure and continue with the remaining files. Produce a region summary from whatever files you successfully read.`
+- `build_codemap_small()` prompt must include:
+  `Total output should be under 5KB.`
+- `synthesize_codemap()` prompt must include a size-adaptive budget line:
+  - medium projects: `Total output should be under 15KB.`
+  - large projects: `Total output should be under 30KB.`
+- All `scripts/codemap_build.py` subprocess dispatch lists that launch
+  agents must use the canonical command token order:
+  `"uv", "run", "--frozen", "agents", ...` (all three call sites:
+  region summary dispatch, small-project codemap dispatch, and codemap
+  synthesis dispatch).
+
+### Quick mode control flow
+
+1. Validate Tier 1 artifact: run local structural scan once (resume-safe)
+   and require a non-empty `structural-scan.md`.
+2. Derive `project_size` (`small|medium|large`) from file-count thresholds.
+3. Identify scan regions from repository structure.
+4. Run Tier 2 region exploration: dispatch Opus agents concurrently by
+   region (size-adaptive strategy), and collect all region summaries.
+   Use section-07 prompt 7.3 as the canonical region-characterization template.
+5. Inside each region agent, run GLM file-characterization reads as
+   single-compare sequential calls (no batching).
+6. Run Tier 3 synthesis once: combine region summaries into
+   `<planspace>/artifacts/codemap.md`.
+7. Dispatch one Opus strategic agent per section file concurrently
+   (max 5 in-flight). Each agent receives: section file
+   path (`<planspace>/artifacts/sections/section-*.md`), codemap path
+   (`<planspace>/artifacts/codemap.md`), codespace root (`<codespace>`),
+   and an embedded 1-2 line section summary extracted from YAML frontmatter.
+8. Inside each section agent, execute this loop:
+   - Step 1: reason from codemap + section to form candidate hypotheses.
+   - Step 2: run targeted GLM verification for each `(section, file)` pair
+     as single-compare calls (`RELATED: <reason>` or `NOT_RELATED`).
+   - Step 3: expand from confirmed matches via adjacency exploration.
+   - Step 4: perform beyond-codemap discovery (directory listing, grep,
+     direct reads) when coverage appears incomplete.
+   - Step 5: append canonical `## Related Files` entries (`### <repo-relative-path>`
+     + `- Relevance: <reason>`) to that section file.
+   - Exploration bound: verify approximately 20-30 candidate files per
+     section unless hard evidence requires additional checks.
+9. Persist section-local outputs only; each agent writes to its own section
+   file and local diagnostics.
+10. Per-section strategic exploration is partial-success tolerant: if some
+    section agents fail but others succeed, keep diagnostics for failed
+    sections, keep artifacts for successful sections, and continue the
+    pipeline (including deep scan) for successfully explored sections.
+
+### Section-agent prompt contract (Stage 3 quick)
+
+- The prompt must prescribe the full 5-step strategy above
+  (hypothesize -> GLM verify -> adjacency -> beyond-codemap -> write).
+- The prompt must source the full GLM quick verification template from
+  section-07 prompt 7.1. Write this exact template to a prompt file for
+  each GLM check:
+  ```text
+  # Task: File-Section Relevance Check
+
+  Is this source file related to this proposal section?
+
+  ## Section Summary
+  {section_summary}
+
+  ## File: {filepath}
+  {file_content_or_docstring}
+
+  ## Instructions
+  Reply with exactly one line:
+  RELATED: <brief reason>
+  or
+  NOT_RELATED
+
+  Nothing else.
+  ```
+- This inline block must remain byte-for-byte aligned with
+  `artifacts/sections/section-07.md` prompt 7.1.
+- The prompt must include this GLM dispatch command pattern exactly:
+  `uv run --frozen agents --model glm --project <codespace> --file <prompt-file>`.
+- Prompt size discipline: reference section/codemap by filepath, and embed
+  only the short section summary from YAML frontmatter.
+
+Strategic exploration is Opus-driven. GLM verification calls are
+single-compare only (no batching assumptions).
+
+### Deep mode control flow
+
+1. Run after quick exploration and process only confirmed matches already
+   listed under `## Related Files`.
+2. For each `(section, file)` pair, skip entries already deep-annotated
+   (resume-safe).
+3. Read full section content + full file content, then run one GLM
+   single-compare deep call for that pair.
+   - Source the deep prompt body from section-07 prompt 7.2; keep
+     `implement.md` limited to execution constraints and parse contracts.
+4. Deep prompt guidance for `Affected areas` is file-type-aware:
+   - `.py`: functions/classes/methods/code regions
+   - `.md`: headings/sections/rules/instruction blocks
+   - `.sh`: functions/sections/command blocks
+   - other: most specific structural elements for that file type
+5. Refresh details under each `### <filepath>` entry using the canonical
+   deep output fields:
+   - `Relevance`
+   - `Affected areas`
+   - `Confidence`
+   - `Open questions`
+6. For exact deep template wording, see section-07 prompt 7.2
+   (including `Write your analysis in this exact format:`).
+   - Prompt structure alignment: do not insert any extra sentence between
+     the deep prompt title and `## Section`; it must transition directly.
+   - Output placeholders must use:
+     - `- Affected areas: <specific functions, classes, or regions>`
+     - `- Open questions: <uncertainties, or "none">`
+7. Skip missing/invalid related file paths with diagnostics. On per-pair
+   GLM/update failures, record diagnostics and continue remaining pairs.
+
+GLM deep calls are also single-compare only: one full section and one
+full file per call.
+
+### Both mode control flow
+
+Run `quick` then `deep` in sequence. Deep flow is unchanged, with the
+inherited dependency that quick has already produced Tier 1 structural
+scan output and completed the Tier 2/3 codemap pipeline.
+
+### Related-files accumulation format
+
+For each confirmed match, the script appends/updates in the section file:
 
 ```markdown
 ## Related Files
 
 ### path/to/file.py
-- Relevance: <GLM's reasoning for why this file relates>
+- Relevance: <why this file relates>
 ```
 
 The section file becomes the single source of truth — it contains the
-verbatim proposal text, the YAML summary, and all related file matches.
-A file can appear in multiple section files. That's expected.
-
-### Deep scan (GLM per hit)
-
-After the quick scan populates Related Files, a second pass reads the
-full source file + full section for each hit. GLM writes detailed notes:
-
-- WHY this file relates to the section
-- WHICH parts of the file are affected (functions, classes, regions)
-- Confidence: high | medium | low
-- Open questions: what GLM isn't sure about
-
-The script updates the match entry in the section file:
-
-```markdown
-### path/to/file.py
-- Relevance: <GLM's reasoning>
-- Affected areas: <functions, classes, or regions>
-- Confidence: high | medium | low
-- Open questions: <what GLM isn't sure about>
-```
+verbatim proposal text, the YAML summary, and related file matches.
+A file can appear in multiple section files.
 
 ### Resume support
 
-The script skips file × section pairs that already have an entry in
-the section file's Related Files block.
+- Full resume: if `<planspace>/artifacts/codemap.md` already exists and is
+  valid, skip Tier 1/2/3 codemap build and continue with section/deep flows.
+- Partial resume: if region summaries are retained from an interrupted run,
+  they may be reused for synthesis when policy/config allows.
+- Diagnostics retention: failures in one region must remain inspectable via
+  per-region logs without discarding other region diagnostics.
+- Existing `## Related Files` entries must be read before exploration;
+  already-listed files are skipped on reruns (no duplicate rework).
+
+### Error handling
+
+- Unknown mode or missing path args: exit non-zero with usage.
+- Missing section files or inaccessible codespace: exit non-zero with an
+  explicit diagnostic.
+- If structural scan invocation fails: stop Stage 3 before codemap build
+  (Tier 2/3) and per-section exploration.
+- If structural scan artifact validation fails (missing/empty/unreadable):
+  stop Stage 3 before codemap build (Tier 2/3) and per-section exploration.
+- If a GLM sub-read fails inside a region: record per-file diagnostics and
+  continue region processing with available data.
+- If a region agent fails: record region-level diagnostics; continue only if
+  synthesis policy allows incomplete regions, otherwise fail fast.
+- If codemap synthesis (Tier 3) fails: stop Stage 3 before per-section
+  exploration.
+- If one section strategic agent fails: record section-local diagnostics,
+  keep artifacts, and continue with other section agents where possible
+  (per-section failure isolation under concurrent section-agent execution).
+- Quick scan orchestration must treat partial section-agent failure as
+  non-fatal when at least one section exploration succeeds: return success
+  after logging failed sections so downstream deep scan can run on
+  successfully explored sections.
+- If a GLM verification sub-read fails inside a section agent: record
+  section-local diagnostics and continue remaining candidates/adjacencies.
+- Deep scan runs only on confirmed matches.
+- No fallback to deprecated brute-force paths.
+
+### What Stage 3 replaces
+
+The strategic scan replaces v1 scan internals entirely:
+
+| Removed v1 component | Replacement |
+|---|---|
+| Import graph builder | Codemap structural characterization (`codemap.md`) |
+| Seed ingestion / frontier walk / convergence sweeps / sentinel scan | Per-section strategic exploration against codemap |
+| Controls index | Shared codemap + per-section exploration logs |
+| Structured seed YAML | Candidate discovery inside section exploration and targeted verification |
 
 ## Section-at-a-Time Execution
 
@@ -398,7 +618,7 @@ the section file's Related Files block.
 
 | File | Purpose |
 |------|---------|
-| `$WORKFLOW_HOME/scripts/section-loop.py` | Section-loop template (adapt per task) |
+| `$WORKFLOW_HOME/scripts/section-loop.py` | Strategic section-loop orchestrator (integration proposals, implementation, cross-section communication, global coordination) |
 | `$WORKFLOW_HOME/scripts/task-agent-prompt.md` | Task agent prompt template |
 | `$WORKFLOW_HOME/scripts/mailbox.sh` | File-based mailbox system |
 
@@ -414,14 +634,16 @@ The UI orchestrator:
 The task agent then owns the section-loop lifecycle:
 
 ```bash
-python3 "$WORKFLOW_HOME/scripts/section-loop.py" <planspace> <codespace> <tag> <agent-name>
+python3 "$WORKFLOW_HOME/scripts/section-loop.py" <planspace> <codespace> \
+  --global-proposal <proposal-path> --global-alignment <alignment-path> \
+  --parent <agent-name>
 ```
 
 The script runs as a **background task** under a **task agent**. The task
 agent is launched via `uv run agents` and is responsible for:
 - Starting the section-loop script as a background subprocess
 - Monitoring status mail from the script via mailbox recv
-- Detecting stuck states (repeated MISALIGNED, stalled progress, crashes)
+- Detecting stuck states (repeated alignment problems, stalled progress, crashes)
 - Reporting progress and problems to the UI orchestrator
 - Fixing issues autonomously when possible
 
@@ -432,24 +654,24 @@ scripts. It spawns task agents and receives their reports.
 
 ```
 UI Orchestrator (talks to user, high-level decisions)
-  ├─ recv on orchestrator mailbox (listens for monitor/task-agent reports)
+  ├─ recv on orchestrator mailbox (listens for task-agent reports)
   └─ Task Agent (one per task, via uv run agents)
        ├─ launches section-loop + monitor
-       ├─ recv on task-agent mailbox (listens for escalations)
+       ├─ recv on task-agent mailbox (section-loop messages + escalations)
        ├─ send to orchestrator mailbox (reports progress + problems)
        ├─ Task Monitor (GLM, section-level pattern matcher)
-       │    ├─ recv on section-loop mailbox (reads summaries)
+       │    ├─ tail-reads summary-stream.log (NOT mailbox)
        │    ├─ writes pipeline-state file (pause/resume)
        │    └─ send to task-agent mailbox (escalations)
        └─ section-loop.py (background subprocess)
-            ├─ send to task-monitor mailbox (agent summaries)
+            ├─ send to task-agent mailbox + append to summary-stream.log
             ├─ reads pipeline-state file (pause check before each dispatch)
             ├─ recv on section-loop mailbox (when paused by signals)
             └─ per agent dispatch:
                  ├─ agent (uv run agents, sends narration via mailbox)
                  └─ Agent Monitor (GLM, per-dispatch loop detector)
                       ├─ reads agent's narration mailbox
-                      └─ send to section-loop mailbox (LOOP_DETECTED)
+                      └─ writes to signal file (NOT mailbox)
 ```
 
 All communication uses the file-based mailbox system. No team/SendMessage
@@ -467,52 +689,93 @@ investigate issues when the monitor escalates. Reads logs, diagnoses root
 causes, fixes what it can autonomously, and escalates to the orchestrator
 what it can't.
 
-**Task Monitor** (GLM): Section-level pattern matcher. Reads section-loop's
-summary stream, tracks counters (alignment attempts, reschedule counts),
+**Task Monitor** (GLM): Section-level pattern matcher. Reads the summary
+stream log file (`<planspace>/artifacts/summary-stream.log`) by tail-reading
+new lines. Tracks counters (alignment attempts, coordination rounds),
 detects stuck states and cycles. Can pause the pipeline by writing
 `paused` to `<planspace>/pipeline-state`. Escalates to task agent with
 diagnosis. Does NOT read files, fix issues, or make judgment calls beyond
-pattern detection.
+pattern detection. Does NOT use mailbox recv for summary data — reads
+the log file instead, avoiding message consumption conflicts with the
+task agent.
 
 **Agent Monitor** (GLM): Per-dispatch loop detector. Launched by
 section-loop alongside each agent dispatch. Reads the agent's narration
-mailbox, tracks `plan:` messages, detects repetition patterns indicating
-the agent has entered an infinite loop (typically from context compaction).
-Reports `LOOP_DETECTED` to section-loop. One monitor per agent dispatch,
-exits when agent finishes.
+mailbox (the agent's own named mailbox), tracks `plan:` messages, detects
+repetition patterns indicating the agent has entered an infinite loop
+(typically from context compaction). Reports `LOOP_DETECTED` by writing
+to a signal file (`<planspace>/artifacts/<agent-name>-loop-signal.txt`),
+NOT via mailbox. One monitor per agent dispatch, exits when agent finishes.
 
-**Section-loop script**: Dumb executor. Runs sections sequentially,
-dispatches agents, sends agent result summaries via mailbox. Checks
-`pipeline-state` file before each agent dispatch — if paused, waits
-until resumed. For each agent dispatch, creates a narration mailbox and
-launches a per-agent GLM monitor alongside the agent.
+**Section-loop script**: Strategic orchestrator. Runs sections sequentially
+through the integration proposal + implementation flow, dispatches agents,
+manages cross-section communication (snapshots, impact analysis, consequence
+notes), and runs the global coordination phase after the initial pass.
+Sends lifecycle messages (summaries, done, complete, pause signals) to the
+task agent's mailbox AND writes them to the summary stream log. Checks
+`pipeline-state` file before each agent dispatch — if paused, waits until
+resumed. For each per-section Codex/GPT agent dispatch (setup, proposal,
+implementation), creates a narration mailbox and launches a per-agent GLM
+monitor alongside the agent. Two categories of dispatch are exempt from
+per-agent monitoring: (1) Opus alignment checks — alignment prompts do not
+include narration instructions, and a monitor would false-positive STALLED
+after 5 minutes of expected silence; (2) Coordinator fix agents — fix
+prompts use strategic GLM sub-agents internally for verification, and the
+task-level monitor detects cross-section stuck states at the coordination
+round level. Cleans up both agent and monitor mailboxes after each
+per-section dispatch.
 
 **Pipeline state file** (`<planspace>/pipeline-state`): Controls the
 pipeline. Values: `running` (default), `paused`. The task monitor writes
 this file to pause; the task agent writes it to resume after investigating.
 
-**Agent narration**: Each dispatched agent (solve, plan, implement) is
-instructed to send mail about what it's planning before each action.
-Messages go to its per-agent monitor's mailbox. The agent narrates
-instead of maintaining state files — agents are reliable narrators but
-unreliable at file management. If an agent detects it's repeating work,
-it sends `LOOP_DETECTED` and stops.
+**Summary stream log** (`<planspace>/artifacts/summary-stream.log`):
+Append-only log of all summary, status, done, complete, fail, and pause
+messages. Written by section-loop alongside mailbox sends. The task monitor
+tail-reads this file. The task agent reads the mailbox directly.
+
+**Agent narration**: Each dispatched agent (setup, integration proposal,
+strategic implementation) is instructed to send mail about what it's
+planning before each action. Messages go to the agent's own named mailbox
+(e.g., `intg-proposal-01`), which the per-agent monitor watches. The agent
+narrates instead of maintaining state files — agents are reliable narrators
+but unreliable at file management. If an agent detects it's repeating work,
+it sends `LOOP_DETECTED` to its own mailbox and stops.
 
 ### Mail protocols
 
-**Section-loop → Task Agent** (summaries + lifecycle):
+**Section-loop → Task Agent** (via mailbox + summary stream log):
 
 | Message | Meaning |
 |---------|---------|
-| `summary:solve:<num>:<text>` | Solution agent result summary |
-| `summary:plan:<num>:<file>:<text>` | Plan agent result summary |
-| `summary:impl:<num>:<file>:<text>` | Implement agent result summary |
-| `summary:align:<num>:ALIGNED` | Section passed alignment |
-| `summary:align:<num>:MISALIGNED-attempt-N:<feedback>` | Failed alignment with feedback |
-| `status:reschedule:<num>:<targets>` | Section triggered rescheduling of other sections |
+| `summary:setup:<num>:<text>` | Section setup (excerpt extraction) result summary |
+| `summary:proposal:<num>:<text>` | Integration proposal agent result summary |
+| `summary:proposal-align:<num>:<text>` | Integration proposal alignment check result |
+| `summary:impl:<num>:<text>` | Strategic implementation agent result summary |
+| `summary:impl-align:<num>:<text>` | Implementation alignment check result |
+| `status:coordination:round-<N>` | Global coordinator starting round N |
+| `status:paused` | Pipeline entered paused state (pipeline-state file) |
+| `status:resumed` | Pipeline resumed from paused state |
 | `done:<num>:<count> files modified` | Section complete |
-| `complete` | All sections done |
-| `pause:<signal>:<num>:<detail>` | Script paused, needs parent input |
+| `fail:<num>:<error>` | Section failed (includes `fail:<num>:aborted`, `fail:<num>:coordination_exhausted:<summary>`) |
+| `fail:aborted` | Global abort (may occur at any time when no specific section context is available) |
+| `complete` | All sections aligned and coordination done |
+| `pause:underspec:<num>:<detail>` | Script paused — needs information |
+| `pause:need_decision:<num>:<question>` | Script paused — needs human answer |
+| `pause:dependency:<num>:<needed_section>` | Script paused — needs other section first |
+| `pause:loop_detected:<num>:<detail>` | Script paused — agent entered infinite loop |
+
+All messages above are sent to the task agent's mailbox AND appended to
+`<planspace>/artifacts/summary-stream.log` (dual-write). The task monitor
+reads the log file; the task agent reads the mailbox.
+
+**Task Agent → Section-loop** (control):
+
+| Message | Meaning |
+|---------|---------|
+| `resume:<payload>` | Continue after pause — payload contains answer/context |
+| `abort` | Clean shutdown |
+| `alignment_changed` | User input changed alignment docs, re-evaluate |
 
 **Task Agent → UI Orchestrator** (progress reports + escalations):
 
@@ -524,46 +787,65 @@ it sends `LOOP_DETECTED` and stops.
 | `problem:crash:<task>:<detail>` | Script crashed |
 | `problem:escalate:<task>:<detail>` | Issue needs human input |
 
+**Task Monitor → Task Agent** (escalations):
+
+| Message | Meaning |
+|---------|---------|
+| `problem:stuck:<section>:<diagnosis>` | Alignment stuck for section |
+| `problem:coordination:<round>:<diagnosis>` | Coordination not converging |
+| `problem:loop:<section>:<agent-detail>` | Agent loop detected |
+| `problem:stalled` | No activity detected |
+
 **Two signal routes per background task:**
 1. Task completion — the background process exits (done or error)
 2. Mailbox message — the process sends a signal while still running
 
-The parent always has a `recv` running as a background task so it is
+The task agent always has a `recv` running as a background task so it is
 always listening. When `recv` completes (message arrived), process it,
 then immediately start another `recv`.
 
 ### Signal protocol
 
-**section-loop → parent:**
+**section-loop → task agent (parent):**
 - `pause:underspec:<section>:<description>` — needs research/proposal
 - `pause:need_decision:<section>:<question>` — needs human answer
 - `pause:dependency:<section>:<needed_section>` — needs another section first
-- `done:<section>:<summary>` — section completed
-- `fail:<section>:<error>` — section failed
+- `done:<num>:<count> files modified` — section completed
+- `fail:<num>:<error>` — section failed
 - `complete` — all sections done
 
-**parent → section-loop:**
-- `resume:<payload>` — continue (answer or context attached)
+**task agent → section-loop:**
+- `resume:<payload>` — continue (answer or context attached; payload
+  is persisted to `artifacts/decisions/section-NN.md` and included in
+  subsequent prompts)
 - `abort` — clean shutdown
-- `alignment_changed` — user input changed alignment docs, re-evaluate
+- `alignment_changed` — user input changed alignment docs; section-loop
+  invalidates all excerpt files and re-queues completed sections
 
 ### Pause/resume flow
 
 When an agent signals underspecification, dependency, or needs a decision:
 
-1. section-loop sends `pause:*` to parent mailbox
+1. section-loop sends `pause:*` to task agent's mailbox
 2. section-loop blocks on its own `recv` (waiting for response)
-3. Parent's `recv` fires, parent reads the signal
-4. Parent handles it:
+3. Task agent's `recv` fires, task agent reads the signal
+4. Task agent handles it:
    - `underspec` → trigger research/evaluate cycle, or ask user
    - `need_decision` → present question to user, collect answer
-   - `dependency` → reorder queue, implement dependency first
-5. Parent sends `resume:<answer>` to section-loop's mailbox
-6. section-loop's `recv` fires, reads answer, continues
+   - `dependency` → resolve the dependency, then resume
+5. Task agent sends `resume:<answer>` to section-loop's mailbox
+6. section-loop's `recv` fires, reads answer, persists to decisions
+   file, and **retries the current step** (not continues forward)
 
-If the parent is the orchestrator (not interactive session), it may need
-to bubble the signal up further — send its own `pause` to its parent
-(the interactive session) and block on its own `recv`.
+After resume, section-loop:
+- Persists the payload to `artifacts/decisions/section-NN.md`
+- Re-runs the step (proposal generation or implementation) with the
+  decision context included in the prompt
+- The decisions file accumulates across multiple pause/resume cycles
+
+If the task agent is not the top-level orchestrator, it may need
+to bubble the signal up further — send its own `pause` to the
+orchestrator and block on its own `recv`.
 
 ### User input cascade
 
@@ -571,86 +853,175 @@ When the user answers a tradeoff/constraint question, their answer may
 change alignment documentation or design constraints. This cascades:
 
 1. User provides answer → alignment docs updated
-2. Parent sends `alignment_changed` to section-loop's mailbox
-3. section-loop marks ALL completed sections dirty (back in queue)
-4. When dirty sections re-run, they re-solve with updated context
-5. Changed solutions cascade to new plans and implementations
+2. Task agent sends `alignment_changed` to section-loop's mailbox
+3. section-loop invalidates ALL excerpt files (deletes them) and marks
+   ALL completed sections dirty (back in queue)
+4. When dirty sections re-run, setup re-extracts excerpts from the
+   updated global documents, then re-creates integration proposals
+   with updated context
+5. Updated proposals cascade to new implementations
 
 The cascade is intentionally coarse-grained: any alignment change
-reschedules everything. Fine-grained invalidation would be fragile.
+invalidates excerpts and re-queues everything.
 
 ### Per-section flow
 
 ```
-For each section in queue:
-  Check for pending messages (abort, alignment_changed)
-  Stage 4: Solution (Opus) — direction for the section
-    → if agent signals: pause, wait for parent, resume
-  Stage 5: For each file in section:
-    Plan (Codex) — what to change in this file
-      → if agent signals: pause, wait for parent, resume
-    Implement (Codex) — make the changes, update docstring
-      → if agent signals: pause, wait for parent, resume
-  Alignment check (Opus) — do implementations match the solution?
-    → ALIGNED: continue
-    → MISALIGNED: patch plan/impl (back to Stage 5, solution unchanged)
-    → UNDERSPECIFIED: pause, wait for parent, resume
-  Send done:<section> to parent
-  Rescheduling check → mark other sections dirty if their files changed
+Phase 1 — Initial pass (per-section):
+
+  For each section in queue:
+    Check for pending messages (abort, alignment_changed)
+    Read incoming notes from other sections (consequence notes + diffs)
+
+    Step 1: Section setup (Opus, once per section)
+      Extract proposal excerpt from global proposal (copy/paste + context)
+      Extract alignment excerpt from global alignment (copy/paste + context)
+      → if excerpts already exist: skip (idempotent)
+
+    Step 2: Integration proposal loop
+      GPT (Codex) reads excerpts + source files, explores codebase (GLM sub-agents)
+      Writes integration proposal: how to wire proposal into codebase
+        → if agent signals: pause, wait for parent, resume
+      Opus checks alignment (shape and direction, NOT tiny details)
+        → ALIGNED: proceed to implementation
+        → PROBLEMS: feed problems back, GPT revises proposal, re-check
+        → UNDERSPECIFIED: pause, wait for parent, resume
+
+    Step 3: Strategic implementation
+      GPT (Codex) implements holistically with sub-agents
+        (GLM for exploration, Codex for targeted areas)
+        → if agent signals: pause, wait for parent, resume
+      Opus checks implementation alignment (still solving right problem?)
+        → ALIGNED: section done
+        → PROBLEMS: feed problems back, GPT fixes, re-check
+        → UNDERSPECIFIED: pause, wait for parent, resume
+
+    Step 4: Post-completion (cross-section communication)
+      Snapshot modified files to artifacts/snapshots/section-NN/
+      Run semantic impact analysis via GLM (MATERIAL vs NO_IMPACT)
+      Leave consequence notes for impacted sections:
+        what changed, why, contracts defined, scope exceeded
+      Send done:<section> to parent
+
+Phase 2 — Global coordination (after all sections complete):
+
+  Re-check alignment across ALL sections (cross-section changes may
+  have introduced problems invisible during per-section pass)
+
+  Coordination loop (max rounds):
+    Collect outstanding problems across all sections
+    Group related problems (GLM confirms file-overlap relationships)
+    Size work and dispatch:
+      Few related → single Codex agent
+      Many unrelated → fan out to multiple Codex agents
+    Re-run per-section alignment to verify fixes
+    Repeat until all sections ALIGNED or max rounds reached
 ```
 
 ### Queue management
 
 1. All sections start in the queue (ordered by dependency if known)
 2. Pop one section, run it through the per-section flow
-3. If implementing this section modifies files in other sections,
-   reschedule those sections (mark dirty, add back to queue)
-4. Pop next section from queue
-5. Queue empty = all sections clean → send `complete` to parent
+3. After each section completes: snapshot modified files, run semantic
+   impact analysis (GLM), leave consequence notes for affected sections
+4. Pop next section from queue (next section reads incoming notes
+   from previously completed sections before starting)
+5. Queue empty = all sections done → enter Phase 2 (global coordination)
+6. Global alignment re-check across ALL sections
+7. Coordinator collects problems, groups related ones, dispatches fixes
+8. Re-verify per-section alignment, repeat until all ALIGNED
+9. All sections ALIGNED → send `complete` to parent
 
-### Alignment check (exploratory)
+### Alignment checks (shape and direction)
 
-After all files in a section have been plan+implemented, Opus reads:
-- The section specification (the requirements)
-- The solution doc (the source of truth)
-- Known implemented files (from section file list + Codex modified-file reports)
+There are two alignment checks per section, both applied by Opus:
+
+**Integration proposal alignment** — after GPT writes the integration
+proposal, Opus reads the section alignment excerpt, proposal excerpt,
+section specification, and the integration proposal. Checks whether
+the integration strategy is still solving the RIGHT PROBLEM. Has intent
+drifted? Does the strategy make sense given the codebase?
+
+**Implementation alignment** — after GPT implements strategically, Opus
+reads the same alignment/proposal context plus all implemented files.
+Checks whether the code changes match the intent. Has anything drifted
+from the original problem definition?
+
+Both checks answer: "Is this still addressing the problem?" — not "Did
+you follow every instruction?" Tiny details (code style, variable names,
+edge cases not in constraints) are NOT checked.
 
 Opus checks **go beyond the listed files**. The section spec may require
 creating new files, modifying files not in the original list, or producing
 artifacts at specific worktree paths. Opus verifies the worktree for any
 file the section mentions should exist — not just what's enumerated.
 
-Specific checks:
-- Do the implementations match the solution direction?
-- Are the file changes internally consistent?
-- Did any implementation drift from what the solution specified?
-- Do all files that should exist (per the section spec) actually exist?
+If problems found → feedback goes back to GPT, which revises the
+integration proposal or fixes the implementation. Each check is a loop:
+propose/implement, check alignment, iterate until ALIGNED.
 
-The solution is NEVER modified by alignment. If issues found → Codex
-gets the alignment feedback and patches the existing plans and
-implementations in place to match the solution. Not a rewrite — a fix.
+The integration proposal is NEVER modified by the implementation
+alignment check. If implementation drifts, GPT fixes the implementation,
+not the proposal.
 
-The solution only gets updated during **rescheduling** — when other
-sections' implementations change files that this section depends on.
+### Cross-section communication
 
-### Rescheduling
+When a section completes, it communicates consequences to other sections
+through three mechanisms:
 
-**Triggers** (during Stage 5):
-- Direct edits to files that appear in another section's relevance map
-- The implementing agent reports which files it modified
+**File snapshots** — modified files are copied to
+`artifacts/snapshots/section-NN/`, preserving the state as the
+completing section left them. Later sections can diff these snapshots
+against current file state to see exactly what changed.
 
-**When a rescheduled section starts its turn**:
-1. Opus re-reads the section + all related files (with accumulated
-   changes from other sections' implementations)
-2. Writes a new solution doc accounting for the changes
-3. Proceeds through 4 → 5 as normal
+**Semantic impact analysis** — GLM evaluates whether the changes
+MATERIALLY affect other sections' problems, or are just coincidental
+file overlap. A change is material if it modifies interfaces, control
+flow, or data structures another section depends on. A change is
+no-impact if the overlap is in unrelated parts.
 
-**Rescheduling is at the section level.** Changes accumulate before
-re-alignment. When Opus re-solves a rescheduled section, it sees all
-changes at once.
+**Consequence notes** — for materially impacted sections, the script
+writes notes to `artifacts/notes/from-NN-to-MM.md` explaining: what
+changed, why, contracts/interfaces defined, what the target section may
+need to accommodate. Notes reference the integration proposal for
+contract details and the snapshot directory for exact diffs.
 
-If a section keeps getting rescheduled, escalate — possible circular
-dependency needing restructuring.
+When a section starts (including during the global coordination phase),
+it reads all incoming notes addressed to it. Notes provide context about
+cross-section dependencies that inform the integration proposal and
+implementation strategy.
+
+### Global problem coordinator
+
+After the initial per-section pass, a global coordination phase handles
+cross-section issues that are invisible during isolated per-section
+execution.
+
+**Step 1**: Re-run alignment checks across ALL sections. Cross-section
+changes (shared files modified by later sections) may have introduced
+problems that were not visible during each section's individual pass.
+
+**Step 2**: Collect all outstanding problems (MISALIGNED sections,
+unresolved signals, consequence conflicts).
+
+**Step 3**: Group related problems. Problems sharing files are candidate
+groups. GLM confirms whether shared-file groups are truly related (same
+root cause) or independent (different issues on the same files).
+
+**Step 4**: Size the work and dispatch fixes:
+- Few related problems → single Codex agent
+- Few independent groups → one agent per group, sequential
+- Many groups → fan out to multiple Codex agents in parallel
+
+**Step 5**: Re-run per-section alignment on affected sections to verify
+fixes actually resolved the problems.
+
+**Step 6**: Repeat steps 2-5 until all sections ALIGNED or max
+coordination rounds reached.
+
+The coordinator replaces blind rescheduling cascades. Instead of redoing
+entire sections when shared files change, problems are analyzed
+holistically, grouped by root cause, and fixed in coordinated batches.
 
 ### Cleanup
 
@@ -659,59 +1030,142 @@ abort, or error). The `finally` block in `main()` ensures cleanup
 runs even on exceptions. The parent should also verify cleanup after
 the background task exits.
 
-## Stage 4: Solution (Opus per section)
+## Stage 4: Section Setup + Integration Proposal
 
-**Per-section** — one Opus run per section in the queue.
+**Per-section** — run for each section in the queue.
 
-Opus is given filepaths to read (per Prompt Construction Rules):
-- The section file path
-- The related source file paths (from relevance map)
-- The existing solution path (if rescheduled)
+### Document hierarchy
 
-Opus writes a solution doc to
-`<planspace>/artifacts/solutions/section-NN-solution.md`:
-- How to approach the changes for this section
-- Per-file: what needs to change and why
-- Constraints and risks
-- Resolution of GLM's open questions (Opus determines if the file is
-  truly related and what the uncertainty means)
-- Cross-section dependencies (which other sections' files are affected)
+The pipeline uses a three-level document hierarchy:
 
-NOT detailed code changes — setting direction for the planner.
+**Global level** (exist before the pipeline runs):
+- **Global proposal** — the original proposal document. Says WHAT to build.
+- **Global alignment** — problem definition, constraints, what good/bad
+  looks like, alignment criteria. Agents check their work against this.
 
-## Stage 5: Plan + Implement (Codex per file)
+**Section level** (derived from global, copy/paste with context):
+- **Section proposal excerpt** — copied/pasted excerpt from the global
+  proposal with enough surrounding context to be self-contained. NOT
+  interpreted or rewritten — literal excerpt.
+- **Section alignment excerpt** — copied/pasted excerpt from the global
+  alignment with section-specific context. Same principle.
 
-**Per-section** — for each related file in the current section, Codex
-plans then implements, one file at a time.
+**Integration level** (GPT's new work):
+- **Integration proposal** — GPT reads the section excerpts + actual
+  source files, explores the codebase, then writes HOW to wire the
+  existing proposal into the codebase. Strategic, not line-by-line.
 
-### Per-file flow
+### Section setup (Opus, once per section)
 
-For each file in the section's relevance map:
+Opus reads the global proposal and global alignment, finds the parts
+relevant to this section, and writes two excerpt files:
+- `<planspace>/artifacts/sections/section-NN-proposal-excerpt.md`
+- `<planspace>/artifacts/sections/section-NN-alignment-excerpt.md`
 
-**Plan**: Codex is given filepaths to the solution doc, section file, and
-source file (it reads them itself). Writes a change plan to
-`<planspace>/artifacts/plans/section-NN/<filename>-plan.md`:
-- Specific changes needed in this file
-- Interface contracts (function signatures, types)
-- Control flow changes
-- Error handling changes
-- Integration points (what calls this, what this calls)
+These are excerpts, not summaries. The original text is preserved with
+enough surrounding context for each file to stand alone. Setup is
+idempotent — if excerpts already exist, this step is skipped.
 
-**Implement**: Codex is given filepaths to the change plan and solution doc
-(it reads them itself). Source file path is provided for editing.
-- Implements code changes in the file
-- Updates the module docstring to reflect the changes
-- Reports which files it modified
+### Integration proposal (GPT, iterative with Opus alignment)
 
-Plans are external artifacts — no markers placed in source code.
+GPT reads the section proposal excerpt, alignment excerpt, section
+specification, and related source files. Before writing anything, GPT
+explores the codebase strategically:
 
-### Cross-section rescheduling
+**Dispatch GLM sub-agents for targeted exploration:**
+```bash
+uv run --frozen agents --model glm --project <codespace> "<instructions>"
+```
 
-The implementing agent reports which files it modified. The orchestrator
-checks if any modified files appear in other sections' relevance maps.
-If so, those sections are rescheduled (marked dirty, added back to queue).
+Use GLM to read files, find callers/callees, check existing interfaces,
+understand module organization, and verify assumptions. Explore
+strategically: form a hypothesis, verify with a targeted read, adjust.
 
-Changes accumulate — the rescheduled section re-solves when its turn comes.
+After exploring, GPT writes an integration proposal to
+`<planspace>/artifacts/proposals/section-NN-integration-proposal.md`:
+1. **Problem mapping** — how the section proposal maps onto existing code
+2. **Integration points** — where new functionality connects to existing code
+3. **Change strategy** — which files change, what kind of changes, in what order
+4. **Risks and dependencies** — what could go wrong, what depends on other sections
+
+This is STRATEGIC — not line-by-line changes. The shape of the solution,
+not the exact code.
+
+### Integration alignment check (Opus)
+
+Opus reads the alignment excerpt, proposal excerpt, section spec, and
+integration proposal. Checks SHAPE AND DIRECTION only:
+- Is the integration proposal still solving the RIGHT PROBLEM?
+- Has intent drifted from the original proposal/alignment?
+- Does the strategy make sense given the actual codebase?
+
+Does NOT check tiny details (exact code patterns, edge cases,
+completeness). Those get resolved during implementation.
+
+If problems found → GPT receives the specific problems and revises the
+integration proposal. Iterate until ALIGNED.
+
+## Stage 5: Strategic Implementation + Global Coordination
+
+**Per-section** — GPT implements the aligned integration proposal.
+
+### Strategic implementation (GPT, iterative with Opus alignment)
+
+GPT reads the aligned integration proposal, section excerpts, and
+source files. Implements the changes **holistically** — multiple files
+at once, coordinated changes. NOT mechanical per-file execution.
+
+**Dispatch sub-agents as needed:**
+
+For cheap exploration (reading, checking, verifying):
+```bash
+uv run --frozen agents --model glm --project <codespace> "<instructions>"
+```
+
+For targeted implementation of specific areas:
+```bash
+uv run --frozen agents --model gpt-5.3-codex-high --project <codespace> "<instructions>"
+```
+
+GPT has authority to go beyond the integration proposal where necessary
+(e.g., a file that needs changing but was not in the proposal, an
+interface that does not work as expected).
+
+After implementation, GPT writes a list of all modified files to
+`<planspace>/artifacts/impl-NN-modified.txt`.
+
+### Implementation alignment check (Opus)
+
+Opus reads the alignment excerpt, proposal excerpt, integration proposal,
+section spec, and all implemented files. Checks whether the
+implementation is still solving the right problem. Same shape/direction
+check as the integration alignment.
+
+If problems found → GPT receives the problems and fixes the
+implementation. Iterate until ALIGNED.
+
+### Post-completion (cross-section communication)
+
+After a section is ALIGNED:
+1. Snapshot modified files to `artifacts/snapshots/section-NN/`
+2. Run semantic impact analysis (GLM): which other sections are
+   materially affected by these changes?
+3. Leave consequence notes for impacted sections at
+   `artifacts/notes/from-NN-to-MM.md`
+
+### Global coordination (Phase 2)
+
+After all sections complete their initial pass:
+1. Re-check alignment across ALL sections (cross-section changes may
+   have broken previously-aligned sections)
+2. Global coordinator collects outstanding problems across all sections
+3. Groups related problems (GLM confirms relationships via shared files)
+4. Dispatches coordinated fixes (Codex agents, sized by problem count)
+5. Re-runs per-section alignment to verify fixes
+6. Repeats until all sections ALIGNED or max coordination rounds reached
+
+Integration proposals, consequence notes, and file snapshots are
+external artifacts — no markers placed in source code.
 
 ## Stage 6: Verification
 
@@ -749,7 +1203,7 @@ Persistent after one round → escalate.
 
 ## Test Baseline
 
-Capture before Stage 5 (in the task worktree):
+Capture before Stages 4-5 (in the task worktree):
 ```bash
 uv run pytest <test-dir> -v -p no:randomly > <planspace>/artifacts/baseline-failures.log 2>&1
 ```
@@ -767,7 +1221,7 @@ Agent output contains UNDERSPECIFIED/NEED_DECISION/DEPENDENCY
   → section-loop detects signal
   → section-loop sends pause:* to parent mailbox
   → section-loop blocks on its own recv (context preserved)
-  → parent handles the signal (research cycle, ask user, reorder queue)
+  → parent handles the signal (research cycle, ask user, resolve dependency)
   → parent sends resume:<answer> to section-loop mailbox
   → section-loop unblocks, incorporates answer, continues
 ```
@@ -789,11 +1243,14 @@ The parent handles:
 3. **Human gate**: present proposal to user for approval
    (if parent is orchestrator, bubble up to interactive session)
 4. **Decompose**: the sub-proposal becomes new section files added to
-   the section queue (same decomposition pipeline as Stage 1)
+   the planspace (same decomposition pipeline as Stage 1)
 5. **Resume**: send `resume:researched` to section-loop's mailbox
-6. section-loop re-solves the section with updated context
-7. New sections from the sub-proposal run through the queue normally
-8. Original section is rescheduled to pick up changes
+6. section-loop re-runs the current section with updated context
+7. **Important**: newly created section files are NOT visible to the
+   running section-loop process (sections are loaded once at startup).
+   The parent must **restart** section-loop to pick up new sections.
+8. Original section picks up changes via cross-section communication
+   (consequence notes + snapshots from the new sections)
 
 ### Case 2: Dependency on another section in the queue
 
@@ -801,10 +1258,12 @@ Agent signals: `DEPENDENCY: <which section and why>`
 section-loop sends: `pause:dependency:<section>:<needed_section>`
 
 The parent handles:
-1. **Reorder**: push the dependency section to the front of the queue
-2. **Resume**: send `resume:reordered` to section-loop's mailbox
-3. section-loop exits the current section, processes the dependency
-   section next, then reschedules the original
+1. **Resolve** the dependency externally (ensure the needed section has
+   been implemented, or provide the missing context through other means)
+2. **Resume**: send `resume:proceed` to section-loop's mailbox
+3. section-loop retries the current step with updated context (including
+   any changes the dependency resolution made visible through cross-section
+   communication — consequence notes and snapshots)
 
 Do NOT try to work around the dependency or implement both simultaneously.
 
@@ -823,19 +1282,21 @@ The parent handles:
 
 ### Case 4: Missing information clearly available elsewhere
 
-The agent does NOT signal — it notes in the solution doc referencing
-the existing code and continues. No pause needed.
+The agent does NOT signal — it notes in the integration proposal
+referencing the existing code and continues. No pause needed.
 
-If the target is in another section, that section is rescheduled
-when the current section's modified files overlap.
+If the target is in another section, cross-section communication
+handles it. Consequence notes and file snapshots from the completing
+section inform the dependent section's integration proposal.
 
 ## Other Escape Hatches
 
-**Mutual dependency (same section)** → Implement files back-to-back.
-Test as a unit before moving on.
+**Mutual dependency (same section)** → GPT handles holistically during
+strategic implementation. Multiple files at once, coordinated changes.
 
-**Cross-section dependency** → Rescheduling handles it. Changes accumulate
-and re-solve when that section's turn comes.
+**Cross-section dependency** → Cross-section communication handles it.
+Consequence notes, file snapshots, and the global coordinator resolve
+conflicts after the initial pass.
 
 ## Model Roles
 
@@ -844,26 +1305,34 @@ and re-solve when that section's turn comes.
 | 1: Decomposition | Opus | Recursive section identification + materialization |
 | 1C: Section Summaries | GLM | YAML frontmatter per section file |
 | 2: Docstrings | GLM | Add/update module docstrings per file |
-| 3: Quick Scan | GLM | Per file×section: docstring vs section summary match |
-| 3: Deep Scan | GLM | Per hit: full file + full section detailed relevance |
-| 3: Tool Creation | Opus | Write extraction tool if file extension unrecognized |
-| 4: Solution | Opus | Per-section solution direction from related files |
-| 5: Plan | Codex | Per-file change plans from solution doc |
-| 5: Implement | Codex | Code changes + docstring updates |
-| 5: Alignment | Opus | Per-section coherence check after all files done |
+| 3: Structural Scan | (local) | Directory walk, file counts/types, and project markers; produce structural scan artifact |
+| 3: Codemap Region Exploration | Opus | Per-region characterization using structural scan context and region-level reasoning |
+| 3: Codemap File Characterization | GLM | Single-compare file reads inside each region agent to characterize key files |
+| 3: Codemap Synthesis | Opus (or orchestrator) | Combine region summaries into `codemap.md` with `Project Shape`, `Directory Map`, and `Cross-Cutting Patterns` |
+| 3: Strategic Exploration | Opus | Per-section strategic agent: reason over codemap + section, orchestrate targeted single-compare GLM checks, explore adjacencies and beyond-codemap candidates, and append section-local `## Related Files` entries |
+| 3: Verification + Deep Scan | GLM | Single-compare verification/deep analysis for quick-confirmed matches only; one `(section, file)` pair per call with file-type-aware `Affected areas` analysis |
+| 3: Tool Creation | Opus | Write extraction tools needed for targeted verification/deep scan |
+| 4: Section Setup | Opus | Extract proposal/alignment excerpts from global documents |
+| 4: Integration Proposal | Codex (GPT) | Write integration proposal with GLM sub-agent exploration |
+| 4: Integration Alignment | Opus | Shape/direction check on integration proposal |
+| 5: Strategic Implementation | Codex (GPT) | Holistic implementation with sub-agents (GLM + Codex) |
+| 5: Implementation Alignment | Opus | Shape/direction check on implemented code |
+| 5: Impact Analysis | GLM | Semantic impact analysis for cross-section communication |
+| 5: Global Coordination | Codex (GPT) | Coordinated fixes for grouped cross-section problems |
+| 5: Coordination Alignment | Opus | Per-section re-verification after coordinated fixes |
 | 6a: Constraint Audit | Codex-high2 | Design principle check |
 | 6d: Debug/RCA | Codex-high | Fix test failures |
 
 ## Anti-Patterns
 
 - **DO NOT edit source files yourself** — delegate ALL editing to agents
-- **DO NOT place markers in source code** — relevance and plans are external artifacts
+- **DO NOT place markers in source code** — integration proposals, consequence notes, and snapshots are external artifacts
 - **DO NOT skip the docstring stage** — it's the scan infrastructure
-- **DO NOT combine multiple files into one agent call**
-- **DO NOT put detailed changes in solution docs** — Opus sets direction only
-- **DO NOT solve underspecified problems in-place** — stop the section, trigger a research/evaluate cycle, decompose the sub-proposal into new sections, and reschedule
-- **DO NOT work around section dependencies** — if section A needs section B, push B to the front and implement it first. Do not guess or stub the dependency
-- **DO NOT reschedule individual files** — reschedule sections, let changes accumulate
-- **DO NOT skip alignment check** — verify section coherence before moving on
+- **DO NOT prescribe solutions in alignment docs** — alignment defines constraints and the problem, NOT the solution. GPT writes integration proposals.
+- **DO NOT check tiny details in alignment** — alignment checks shape and direction only. Code style, variable names, and edge cases are resolved during implementation.
+- **DO NOT solve underspecified problems in-place** — stop the section, trigger a research/evaluate cycle, decompose the sub-proposal into new sections
+- **DO NOT work around section dependencies** — if section A needs section B, resolve the dependency externally (ensure B is implemented or provide the missing context), then `resume:proceed`. Do not guess or stub the dependency
+- **DO NOT skip alignment checks** — both integration proposal and implementation alignment are mandatory
 - **DO NOT skip tests** — verify before moving to next section
 - **DO NOT skip constraint audit** — verify before committing
+- **DO NOT reschedule entire sections on shared-file changes** — use cross-section communication (snapshots, impact analysis, consequence notes) and global coordination instead
