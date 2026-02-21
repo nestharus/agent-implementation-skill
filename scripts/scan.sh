@@ -209,9 +209,9 @@ run_quick_scan() {
 }
 
 # --- Deep Scan ---
-# For each section's related files, dispatch an agent to reason about
-# specific relevance details in context. No fixed output format — the
-# agent writes what it discovers.
+# For each section's related files, dispatch an agent to analyze relevance
+# in context. Agent writes analysis prose + structured feedback JSON
+# (relevant, missing_files, reason) for post-scan aggregation.
 
 deep_already_annotated() {
   local section_file="$1"
