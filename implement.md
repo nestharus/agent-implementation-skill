@@ -33,8 +33,13 @@ edit source files directly.
 - **Manage** section queue, dynamic scheduling
 - **Verify** agent outputs match expectations
 
-**You NEVER**: edit `.py` files, place markers yourself, fix code yourself,
-combine multiple files into one agent call.
+**You NEVER**: edit `.py` files, place markers yourself, fix code yourself.
+
+**Strategic agents handle multiple files holistically.** When dispatching
+implementation agents (GPT/Codex), they tackle coordinated changes across
+files. This is intentional — strategic implementation requires understanding
+the shape of changes, not file-by-file mechanical edits. The orchestrator
+dispatches the agent once per section; the agent handles file scope.
 
 ## Prompt Construction Rules
 

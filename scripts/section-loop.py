@@ -13,9 +13,9 @@ Phase 1 — Initial pass (per-section):
 Phase 2 — Global coordination:
   4. Re-check alignment across ALL sections (cross-section changes may have
      introduced problems invisible during the per-section pass)
-  5. Global coordinator collects outstanding problems, groups related ones
-     (GLM confirms relationships), sizes work, and dispatches coordinated
-     fixes (Codex agents)
+  5. Global coordinator collects outstanding problems, dispatches Opus
+     coordination-planner agent to group and strategize, then executes
+     the plan with Codex fix agents
   6. Re-run per-section alignment to verify fixes
   7. Repeat steps 5-6 until all sections ALIGNED or max rounds reached
 
@@ -102,8 +102,10 @@ WORKFLOW_HOME = Path(os.environ.get(
 ))
 DB_SH = WORKFLOW_HOME / "scripts" / "db.sh"
 AGENT_NAME = "section-loop"
-# Maximum rounds the global coordinator will attempt before declaring done.
-MAX_COORDINATION_ROUNDS = 3
+# Coordination round limits: hard cap to prevent runaway, but rounds
+# continue adaptively while problem count decreases.
+MAX_COORDINATION_ROUNDS = 10  # hard safety cap
+MIN_COORDINATION_ROUNDS = 2   # always try at least this many
 
 
 @dataclass
@@ -479,7 +481,8 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
                    parent: str | None = None,
                    agent_name: str | None = None,
                    codespace: Path | None = None,
-                   section_number: str | None = None) -> str:
+                   section_number: str | None = None,
+                   agent_file: str | None = None) -> str:
     """Run an agent via uv run agents and return the output text.
 
     If planspace and parent are provided, checks pipeline state before
@@ -491,6 +494,10 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
 
     If codespace is provided, passes --project to the agent so it runs
     with the correct working directory and model config lookup.
+
+    If agent_file is provided (basename like "alignment-judge.md"), the
+    agent definition is prepended to the prompt via --agent-file. The
+    agent file encodes the "method of thinking" for the role.
     """
     if planspace and parent:
         wait_if_paused(planspace, parent)
@@ -549,6 +556,9 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
         )
     cmd = ["uv", "run", "--frozen", "agents", "--model", model,
            "--file", str(prompt_path)]
+    if agent_file:
+        cmd.extend(["--agent-file",
+                     str(WORKFLOW_HOME / "agents" / agent_file)])
     if codespace:
         cmd.extend(["--project", str(codespace)])
     try:
@@ -714,12 +724,117 @@ def summarize_output(output: str, max_len: int = 200) -> str:
     return "(no output)"
 
 
-def check_agent_signals(output: str) -> tuple[str | None, str]:
-    """Check agent output for signals.
+def read_agent_signal(signal_path: Path) -> tuple[str | None, str]:
+    """Read a structured signal file written by an agent.
 
-    Skips template placeholders (lines with <...>) to avoid false positives
-    from SIGNAL_INSTRUCTIONS echoed in stdout.
+    Agents write JSON signal files when they need to pause the pipeline.
+    Returns (signal_type, detail) or (None, "") if no signal file exists.
     """
+    if not signal_path.exists():
+        return None, ""
+    try:
+        data = json.loads(signal_path.read_text(encoding="utf-8"))
+        state = data.get("state", "").lower()
+        detail = data.get("detail", "")
+        if state in ("underspec", "underspecified"):
+            return "underspec", detail
+        if state in ("need_decision",):
+            return "need_decision", detail
+        if state in ("dependency",):
+            return "dependency", detail
+        if state in ("loop_detected",):
+            return "loop_detected", detail
+        return None, ""
+    except (json.JSONDecodeError, KeyError):
+        return None, ""
+
+
+def adjudicate_agent_output(
+    output_path: Path, planspace: Path, parent: str,
+    codespace: Path | None = None,
+) -> tuple[str | None, str]:
+    """Dispatch GLM state-adjudicator to classify ambiguous agent output.
+
+    Used when structured signal file is absent but output may contain
+    signals. Returns (signal_type, detail) or (None, "").
+    """
+    artifacts = planspace / "artifacts"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    adj_prompt = artifacts / "adjudicate-prompt.md"
+    adj_output = artifacts / "adjudicate-output.md"
+
+    adj_prompt.write_text(f"""# Task: Classify Agent Output
+
+Read the agent output file and determine its state.
+
+## Agent Output File
+`{output_path}`
+
+## Instructions
+
+Classify the output into exactly one state. Reply with a JSON block:
+
+```json
+{{
+  "state": "<STATE>",
+  "detail": "<brief explanation>"
+}}
+```
+
+States: ALIGNED, PROBLEMS, UNDERSPECIFIED, NEED_DECISION, DEPENDENCY,
+LOOP_DETECTED, COMPLETED, UNKNOWN.
+""", encoding="utf-8")
+
+    result = dispatch_agent(
+        "glm", adj_prompt, adj_output,
+        planspace, parent, codespace=codespace,
+    )
+    if result == "ALIGNMENT_CHANGED_PENDING":
+        return None, "ALIGNMENT_CHANGED_PENDING"
+
+    # Parse JSON from adjudicator output
+    try:
+        json_start = result.find("{")
+        json_end = result.rfind("}")
+        if json_start >= 0 and json_end > json_start:
+            data = json.loads(result[json_start:json_end + 1])
+            state = data.get("state", "").lower()
+            detail = data.get("detail", "")
+            if state in ("underspecified", "underspec"):
+                return "underspec", detail
+            if state == "need_decision":
+                return "need_decision", detail
+            if state == "dependency":
+                return "dependency", detail
+            if state == "loop_detected":
+                return "loop_detected", detail
+    except (json.JSONDecodeError, KeyError):
+        pass
+    return None, ""
+
+
+def check_agent_signals(
+    output: str, signal_path: Path | None = None,
+    output_path: Path | None = None,
+    planspace: Path | None = None,
+    parent: str | None = None,
+    codespace: Path | None = None,
+) -> tuple[str | None, str]:
+    """Check for agent signals using structured file + adjudicator fallback.
+
+    Priority:
+    1. Read structured signal file (agents write JSON when they need input)
+    2. Quick pattern scan of output (catches explicit signal lines)
+    3. If ambiguous, dispatch GLM state-adjudicator (expensive, only when
+       needed)
+    """
+    # 1. Structured signal file (most reliable)
+    if signal_path:
+        sig, detail = read_agent_signal(signal_path)
+        if sig:
+            return sig, detail
+
+    # 2. Quick pattern scan (fast, handles well-formatted signals)
     for line in output.split("\n"):
         line = line.strip()
         for prefix, signal_type in [
@@ -735,6 +850,20 @@ def check_agent_signals(output: str) -> tuple[str | None, str]:
                     continue
                 if detail:
                     return signal_type, detail
+
+    # 3. Adjudicator for ambiguous output (only if we have dispatch context)
+    # Skip adjudication for clearly classified outputs
+    if output_path and planspace and parent:
+        # Only adjudicate if output looks suspicious (mentions signal keywords
+        # but didn't match prefix patterns)
+        suspicious_keywords = ["underspecified", "need decision",
+                               "dependency", "blocked", "loop detected"]
+        output_lower = output.lower()
+        if any(kw in output_lower for kw in suspicious_keywords):
+            return adjudicate_agent_output(
+                output_path, planspace, parent, codespace,
+            )
+
     return None, ""
 
 
@@ -1171,10 +1300,26 @@ def _extract_contracts_summary(proposal_text: str) -> str:
 # Prompt builders (filepath-based — agents read files themselves)
 # ---------------------------------------------------------------------------
 
-SIGNAL_INSTRUCTIONS = """
+def signal_instructions(signal_path: Path) -> str:
+    """Return signal instructions for an agent prompt.
+
+    Includes the signal file path so agents know where to write.
+    """
+    return f"""
 ## Signals (if you encounter problems)
 
-If you cannot complete the task, output EXACTLY ONE of these on its own line:
+If you cannot complete the task, write a JSON signal file AND output the
+signal line. The signal file is the primary channel — the output line is
+a backup.
+
+**Signal file**: Write to `{signal_path}`
+Format:
+```json
+{{"state": "<STATE>", "detail": "<brief explanation>"}}
+```
+States: UNDERSPECIFIED, NEED_DECISION, DEPENDENCY
+
+**Output line** (backup): Also output EXACTLY ONE of these on its own line:
 UNDERSPECIFIED: <what information is missing and why you can't proceed>
 NEED_DECISION: <what tradeoff or constraint question needs a human answer>
 DEPENDENCY: <which other section must be implemented first and why>
@@ -1246,13 +1391,14 @@ def write_section_setup_prompt(
     m_name = f"{a_name}-monitor"
     summary = extract_section_summary(section.path)
 
-    # Include any accumulated decisions from parent (from prior pause/resume)
-    decisions = read_decisions(planspace, section.number)
+    # Reference decisions file if it exists (filepath-based, not embedded)
+    decisions_file = (planspace / "artifacts" / "decisions"
+                      / f"section-{section.number}.md")
     decisions_block = ""
-    if decisions:
+    if decisions_file.exists():
         decisions_block = f"""
 ## Parent Decisions (from prior pause/resume cycles)
-{decisions}
+Read decisions file: `{decisions_file}`
 
 Use this context to inform your excerpt extraction — the parent has
 provided additional guidance about this section.
@@ -1296,7 +1442,7 @@ Write to: `{alignment_excerpt}`
 - If the global document covers this section across multiple places,
   include all relevant parts.
 - Preserve section headings and structure from the originals.
-{SIGNAL_INSTRUCTIONS}
+{signal_instructions(artifacts / "signals" / f"setup-{section.number}-signal.json")}
 {agent_mail_instructions(planspace, a_name, m_name)}
 """, encoding="utf-8")
     _log_artifact(planspace, f"prompt:setup-{section.number}")
@@ -1338,15 +1484,18 @@ def write_integration_proposal_prompt(
         file_list.append(f"   - `{full_path}`{status}")
     files_block = "\n".join(file_list) if file_list else "   (none)"
 
+    # Write alignment problems to file if present (avoid inline embedding)
     problems_block = ""
     if alignment_problems:
+        problems_file = (artifacts
+                         / f"intg-proposal-{section.number}-problems.md")
+        problems_file.write_text(alignment_problems, encoding="utf-8")
         problems_block = f"""
 ## Previous Alignment Problems
 
-The alignment check found these problems with your previous integration
-proposal. Address ALL of them in this revision:
-
-{alignment_problems}
+The alignment check found problems with your previous integration
+proposal. Read them and address ALL of them in this revision:
+`{problems_file}`
 """
 
     existing_note = ""
@@ -1358,34 +1507,55 @@ There is an existing proposal from a previous round at:
 Read it and revise it to address the alignment problems above.
 """
 
+    # Write incoming notes to file if present (avoid inline embedding)
     notes_block = ""
     if incoming_notes:
+        notes_file = (artifacts
+                      / f"intg-proposal-{section.number}-notes.md")
+        notes_file.write_text(incoming_notes, encoding="utf-8")
         notes_block = f"""
 ## Notes from Other Sections
 
 Other sections have completed work that may affect this section. Read
 these notes carefully — they describe consequences, contracts, and
-interfaces that may constrain or inform your integration strategy.
-
-{incoming_notes}
+interfaces that may constrain or inform your integration strategy:
+`{notes_file}`
 """
 
-    decisions_text = read_decisions(planspace, section.number)
+    # Reference decisions file if it exists (filepath-based)
+    decisions_file = (planspace / "artifacts" / "decisions"
+                      / f"section-{section.number}.md")
     decisions_block = ""
-    if decisions_text:
+    if decisions_file.exists():
         decisions_block = f"""
 ## Decisions from Parent (answers to earlier questions)
 
-The following decisions were provided in response to earlier signals.
-Incorporate them into your proposal:
-
-{decisions_text}
+Read the decisions provided in response to earlier signals and
+incorporate them into your proposal: `{decisions_file}`
 """
 
     codemap_path = artifacts / "codemap.md"
     codemap_ref = ""
     if codemap_path.exists():
         codemap_ref = f"\n5. Codemap (project understanding): `{codemap_path}`"
+
+    # Detect project mode for context
+    mode_file = artifacts / "project-mode.txt"
+    project_mode = "brownfield"
+    if mode_file.exists():
+        project_mode = mode_file.read_text(encoding="utf-8").strip()
+    mode_block = ""
+    if project_mode == "greenfield":
+        mode_block = """
+## Project Mode: GREENFIELD
+
+This is a new project with no existing source code. Your integration
+proposal should focus on:
+- What files and modules to CREATE (not modify)
+- What project structure to establish
+- What interfaces to define between components
+- There is no existing code to integrate with — you are designing fresh
+"""
 
     prompt_path.write_text(f"""# Task: Integration Proposal for Section {section.number}
 
@@ -1398,7 +1568,7 @@ Incorporate them into your proposal:
 3. Section specification: `{section.path}`
 4. Related source files (read each one):
 {files_block}{codemap_ref}
-{existing_note}{problems_block}{notes_block}{decisions_block}
+{existing_note}{problems_block}{notes_block}{decisions_block}{mode_block}
 ## Instructions
 
 You are writing an INTEGRATION PROPOSAL — a strategic document describing
@@ -1448,7 +1618,7 @@ This is STRATEGIC — not line-by-line changes. Think about the shape of
 the solution, not the exact code.
 
 Write your integration proposal to: `{integration_proposal}`
-{SIGNAL_INSTRUCTIONS}
+{signal_instructions(artifacts / "signals" / f"proposal-{section.number}-signal.json")}
 {agent_mail_instructions(planspace, a_name, m_name)}
 """, encoding="utf-8")
     _log_artifact(planspace, f"prompt:proposal-{section.number}")
@@ -1559,30 +1729,40 @@ def write_strategic_impl_prompt(
         file_list.append(f"   - `{full_path}`{status}")
     files_block = "\n".join(file_list) if file_list else "   (none)"
 
+    # Write alignment problems to file if present (avoid inline embedding)
     problems_block = ""
     if alignment_problems:
+        problems_file = artifacts / f"impl-{section.number}-problems.md"
+        problems_file.write_text(alignment_problems, encoding="utf-8")
         problems_block = f"""
 ## Previous Implementation Alignment Problems
 
-The alignment check found these problems with your previous implementation.
-Address ALL of them:
-
-{alignment_problems}
+The alignment check found problems with your previous implementation.
+Read them and address ALL of them: `{problems_file}`
 """
 
-    decisions_text = read_decisions(planspace, section.number)
+    # Reference decisions file if it exists (filepath-based)
+    decisions_file = (planspace / "artifacts" / "decisions"
+                      / f"section-{section.number}.md")
     decisions_block = ""
-    if decisions_text:
+    if decisions_file.exists():
         decisions_block = f"""
 ## Decisions from Parent (answers to earlier questions)
 
-{decisions_text}
+Read decisions: `{decisions_file}`
 """
 
     codemap_path = artifacts / "codemap.md"
     codemap_ref = ""
     if codemap_path.exists():
-        codemap_ref = f"\n6. Codemap (project understanding): `{codemap_path}`"
+        codemap_ref = f"\n7. Codemap (project understanding): `{codemap_path}`"
+
+    microstrategy_path = (artifacts / "proposals"
+                          / f"section-{section.number}-microstrategy.md")
+    micro_ref = ""
+    if microstrategy_path.exists():
+        micro_ref = (f"\n6. Microstrategy (tactical per-file breakdown): "
+                     f"`{microstrategy_path}`")
 
     impl_heading = (
         f"# Task: Strategic Implementation"
@@ -1599,7 +1779,7 @@ Address ALL of them:
 3. Section alignment excerpt: `{alignment_excerpt}`
 4. Section specification: `{section.path}`
 5. Related source files:
-{files_block}{codemap_ref}
+{files_block}{micro_ref}{codemap_ref}
 {problems_block}{decisions_block}
 ## Instructions
 
@@ -1653,7 +1833,7 @@ After implementation, write a list of ALL files you modified to:
 One file path per line (relative to codespace root `{codespace}`).
 Include files modified by sub-agents. Include ALL files — both directly
 modified and indirectly affected.
-{SIGNAL_INSTRUCTIONS}
+{signal_instructions(artifacts / "signals" / f"impl-{section.number}-signal.json")}
 {agent_mail_instructions(planspace, a_name, m_name)}
 """, encoding="utf-8")
     _log_artifact(planspace, f"prompt:impl-{section.number}")
@@ -1851,6 +2031,7 @@ def _run_alignment_check_with_retries(
             "claude-opus", align_prompt, align_output,
             planspace, parent, codespace=codespace,
             section_number=sec_num,
+            agent_file="alignment-judge.md",
         )
         if result == "ALIGNMENT_CHANGED_PENDING":
             return result  # Caller must handle
@@ -1918,7 +2099,14 @@ def run_section(
                      f"summary:setup:{section.number}:"
                      f"{summarize_output(output)}")
 
-        signal, detail = check_agent_signals(output)
+        signal_dir = artifacts / "signals"
+        signal_dir.mkdir(parents=True, exist_ok=True)
+        signal, detail = check_agent_signals(
+            output,
+            signal_path=signal_dir / f"setup-{section.number}-signal.json",
+            output_path=setup_output,
+            planspace=planspace, parent=parent, codespace=codespace,
+        )
         if signal:
             response = pause_for_parent(
                 planspace, parent,
@@ -1984,6 +2172,7 @@ def run_section(
             "gpt-5.3-codex-high", intg_prompt, intg_output,
             planspace, parent, intg_agent, codespace=codespace,
             section_number=section.number,
+            agent_file="integration-proposer.md",
         )
         if intg_result == "ALIGNMENT_CHANGED_PENDING":
             return None
@@ -2000,7 +2189,14 @@ def run_section(
                          f"agent timed out")
             return None
 
-        signal, detail = check_agent_signals(intg_result)
+        signal_dir = artifacts / "signals"
+        signal_dir.mkdir(parents=True, exist_ok=True)
+        signal, detail = check_agent_signals(
+            intg_result,
+            signal_path=signal_dir / f"proposal-{section.number}-signal.json",
+            output_path=intg_output,
+            planspace=planspace, parent=parent, codespace=codespace,
+        )
         if signal:
             response = pause_for_parent(
                 planspace, parent,
@@ -2040,6 +2236,7 @@ def run_section(
             "claude-opus", align_prompt, align_output,
             planspace, parent, codespace=codespace,
             section_number=section.number,
+            agent_file="alignment-judge.md",
         )
         if align_result == "ALIGNMENT_CHANGED_PENDING":
             return None
@@ -2054,7 +2251,16 @@ def run_section(
         # 2c/2d: Check result
         problems = _extract_problems(align_result)
 
-        signal, detail = check_agent_signals(align_result)
+        signal_dir = artifacts / "signals"
+        signal_dir.mkdir(parents=True, exist_ok=True)
+        signal, detail = check_agent_signals(
+            align_result,
+            signal_path=(signal_dir
+                         / f"proposal-align-{section.number}-signal.json"),
+            output_path=(artifacts
+                         / f"align-proposal-{section.number}-output.md"),
+            planspace=planspace, parent=parent, codespace=codespace,
+        )
         if signal == "underspec":
             response = pause_for_parent(
                 planspace, parent,
@@ -2084,6 +2290,75 @@ def run_section(
         mailbox_send(planspace, parent,
                      f"summary:proposal-align:{section.number}:"
                      f"PROBLEMS-attempt-{proposal_attempt}:{short}")
+
+    # -----------------------------------------------------------------
+    # Step 2.5: Generate microstrategy (tactical per-file breakdown)
+    # -----------------------------------------------------------------
+    # The microstrategy bridges the gap between the high-level integration
+    # proposal and the actual implementation. It captures per-file tactical
+    # decisions: what changes in each file, in what order, and why.
+    microstrategy_path = (artifacts / "proposals"
+                          / f"section-{section.number}-microstrategy.md")
+    if not microstrategy_path.exists():
+        log(f"Section {section.number}: generating microstrategy")
+        micro_prompt_path = (artifacts
+                             / f"microstrategy-{section.number}-prompt.md")
+        micro_output_path = (artifacts
+                             / f"microstrategy-{section.number}-output.md")
+        integration_proposal = (
+            artifacts / "proposals"
+            / f"section-{section.number}-integration-proposal.md"
+        )
+        a_name = f"microstrategy-{section.number}"
+        m_name = f"{a_name}-monitor"
+
+        file_list = "\n".join(
+            f"- `{codespace / rp}`"
+            for rp in section.related_files
+        )
+        micro_prompt_path.write_text(f"""# Task: Microstrategy for Section {section.number}
+
+## Context
+Read the integration proposal: `{integration_proposal}`
+Read the alignment excerpt: `{artifacts / "sections" / f"section-{section.number}-alignment-excerpt.md"}`
+
+## Related Files
+{file_list}
+
+## Instructions
+
+The integration proposal describes the HIGH-LEVEL strategy for this
+section. Your job is to produce a MICROSTRATEGY — a tactical per-file
+breakdown that an implementation agent can follow directly.
+
+For each file that needs changes, write:
+1. **File path** and whether it's new or modified
+2. **What changes** — specific functions, classes, or blocks to add/modify
+3. **Order** — which file changes depend on which others
+4. **Risks** — what could go wrong with this specific change
+
+Write the microstrategy to: `{microstrategy_path}`
+
+Keep it tactical and concrete. The integration proposal already justified
+WHY — you're capturing WHAT and WHERE at the file level.
+{agent_mail_instructions(planspace, a_name, m_name)}
+""", encoding="utf-8")
+        _log_artifact(planspace, f"prompt:microstrategy-{section.number}")
+
+        ctrl = poll_control_messages(planspace, parent,
+                                     current_section=section.number)
+        if ctrl == "alignment_changed":
+            return None
+        micro_result = dispatch_agent(
+            "gpt-5.3-codex-high", micro_prompt_path, micro_output_path,
+            planspace, parent, a_name, codespace=codespace,
+            section_number=section.number,
+        )
+        if micro_result == "ALIGNMENT_CHANGED_PENDING":
+            return None
+        log(f"Section {section.number}: microstrategy generated")
+        mailbox_send(planspace, parent,
+                     f"summary:microstrategy:{section.number}:generated")
 
     # -----------------------------------------------------------------
     # Step 3: Strategic implementation
@@ -2125,6 +2400,7 @@ def run_section(
             "gpt-5.3-codex-high", impl_prompt, impl_output,
             planspace, parent, impl_agent, codespace=codespace,
             section_number=section.number,
+            agent_file="implementation-strategist.md",
         )
         if impl_result == "ALIGNMENT_CHANGED_PENDING":
             return None
@@ -2140,7 +2416,15 @@ def run_section(
                          f"timed out")
             return None
 
-        signal, detail = check_agent_signals(impl_result)
+        signal_dir = artifacts / "signals"
+        signal_dir.mkdir(parents=True, exist_ok=True)
+        signal, detail = check_agent_signals(
+            impl_result,
+            signal_path=signal_dir / f"impl-{section.number}-signal.json",
+            output_path=(artifacts
+                         / f"impl-{section.number}-output.md"),
+            planspace=planspace, parent=parent, codespace=codespace,
+        )
         if signal:
             response = pause_for_parent(
                 planspace, parent,
@@ -2168,6 +2452,7 @@ def run_section(
             "claude-opus", impl_align_prompt, impl_align_output,
             planspace, parent, codespace=codespace,
             section_number=section.number,
+            agent_file="alignment-judge.md",
         )
         if impl_align_result == "ALIGNMENT_CHANGED_PENDING":
             return None
@@ -2182,7 +2467,15 @@ def run_section(
         # 3c/3d: Check result
         problems = _extract_problems(impl_align_result)
 
-        signal, detail = check_agent_signals(impl_align_result)
+        signal_dir = artifacts / "signals"
+        signal_dir.mkdir(parents=True, exist_ok=True)
+        signal, detail = check_agent_signals(
+            impl_align_result,
+            signal_path=(signal_dir
+                         / f"impl-align-{section.number}-signal.json"),
+            output_path=impl_align_output,
+            planspace=planspace, parent=parent, codespace=codespace,
+        )
         if signal == "underspec":
             response = pause_for_parent(
                 planspace, parent,
@@ -2329,105 +2622,144 @@ def _collect_outstanding_problems(
     return problems
 
 
-def _find_file_overlaps(problems: list[dict[str, Any]]) -> list[list[int]]:
-    """Find groups of problems that share files.
+def _parse_coordination_plan(
+    agent_output: str, problems: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Parse JSON coordination plan from agent output.
 
-    Returns a list of groups, where each group is a list of problem
-    indices that share at least one file.
+    Returns the parsed plan dict, or None if parsing fails or the plan
+    is structurally invalid (missing indices, duplicate indices, etc.).
     """
+    # Extract JSON block from agent output (may be in a code fence)
+    json_text = None
+    in_fence = False
+    fence_lines: list[str] = []
+    for line in agent_output.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("```") and not in_fence:
+            in_fence = True
+            fence_lines = []
+            continue
+        if stripped.startswith("```") and in_fence:
+            in_fence = False
+            candidate = "\n".join(fence_lines)
+            if '"groups"' in candidate:
+                json_text = candidate
+                break
+            continue
+        if in_fence:
+            fence_lines.append(line)
+
+    if json_text is None:
+        # Try raw JSON (no code fence)
+        start = agent_output.find("{")
+        end = agent_output.rfind("}")
+        if start >= 0 and end > start:
+            json_text = agent_output[start:end + 1]
+
+    if json_text is None:
+        log("  coordinator: no JSON found in coordination plan output")
+        return None
+
+    try:
+        plan = json.loads(json_text)
+    except json.JSONDecodeError as exc:
+        log(f"  coordinator: JSON parse error in coordination plan: {exc}")
+        return None
+
+    # Validate structure
+    if "groups" not in plan or not isinstance(plan["groups"], list):
+        log("  coordinator: coordination plan missing 'groups' array")
+        return None
+
+    # Validate all problem indices are covered exactly once
+    seen_indices: set[int] = set()
     n = len(problems)
-    if n == 0:
-        return []
+    for g in plan["groups"]:
+        if "problems" not in g or not isinstance(g["problems"], list):
+            log("  coordinator: group missing 'problems' array")
+            return None
+        for idx in g["problems"]:
+            if not isinstance(idx, int) or idx < 0 or idx >= n:
+                log(f"  coordinator: invalid problem index {idx}")
+                return None
+            if idx in seen_indices:
+                log(f"  coordinator: duplicate problem index {idx}")
+                return None
+            seen_indices.add(idx)
 
-    # Build adjacency: problems that share files
-    adj: dict[int, set[int]] = {i: set() for i in range(n)}
-    for i in range(n):
-        files_i = set(problems[i].get("files", []))
-        if not files_i:
-            continue
-        for j in range(i + 1, n):
-            files_j = set(problems[j].get("files", []))
-            if files_i & files_j:
-                adj[i].add(j)
-                adj[j].add(i)
+    if len(seen_indices) != n:
+        missing = set(range(n)) - seen_indices
+        log(f"  coordinator: coordination plan missing indices: {missing}")
+        return None
 
-    # Connected components via BFS
-    visited: set[int] = set()
-    groups: list[list[int]] = []
-    for start in range(n):
-        if start in visited:
-            continue
-        component = []
-        frontier = [start]
-        while frontier:
-            node = frontier.pop()
-            if node in visited:
-                continue
-            visited.add(node)
-            component.append(node)
-            frontier.extend(adj[node] - visited)
-        groups.append(sorted(component))
-    return groups
+    return plan
 
 
-def write_coordinator_grouping_prompt(
-    candidate_group: list[dict[str, Any]], planspace: Path,
-    group_id: int,
+def write_coordination_plan_prompt(
+    problems: list[dict[str, Any]], planspace: Path,
 ) -> Path:
-    """Write a GLM prompt to confirm whether candidate problems are related.
+    """Write an Opus prompt to plan coordination strategy for problems.
 
-    GLM checks if problems sharing files have the same root cause.
+    The coordination-planner agent receives the full problem list and
+    produces a JSON plan with groups, strategies, and execution order.
+    The script then executes the plan mechanically.
     """
     artifacts = planspace / "artifacts" / "coordination"
     artifacts.mkdir(parents=True, exist_ok=True)
-    prompt_path = artifacts / f"grouping-{group_id}-prompt.md"
+    prompt_path = artifacts / "coordination-plan-prompt.md"
 
-    problem_descriptions = []
-    for i, p in enumerate(candidate_group):
-        desc = (
-            f"### Problem {i + 1} (Section {p['section']}, "
-            f"type: {p['type']})\n"
-            f"{p['description']}\n"
-            f"Files: {', '.join(p.get('files', [])) or '(none)'}"
-        )
-        problem_descriptions.append(desc)
-    problems_text = "\n\n".join(problem_descriptions)
+    # Write problems as JSON for the agent
+    problems_json = json.dumps(problems, indent=2)
 
-    # Collect all unique files across the group
-    all_files: list[str] = []
-    seen: set[str] = set()
-    for p in candidate_group:
-        for f in p.get("files", []):
-            if f not in seen:
-                all_files.append(f)
-                seen.add(f)
+    prompt_path.write_text(f"""# Task: Plan Coordination Strategy
 
-    prompt_path.write_text(f"""# Task: Analyze Problem Relationships
+## Outstanding Problems
 
-## Problems to Analyze
-
-{problems_text}
-
-## Shared Files
-{chr(10).join(f'- `{f}`' for f in all_files)}
+```json
+{problems_json}
+```
 
 ## Instructions
 
-These problems share one or more files. Determine if they are RELATED
-(same root cause or tightly coupled issues that should be fixed together)
-or INDEPENDENT (different issues that happen to touch the same files).
+You are the coordination planner. Read the problems above and produce
+a JSON coordination plan. Think strategically about problem relationships —
+don't just match files. Understand whether problems share root causes,
+whether fixing one affects another, and what order minimizes rework.
 
-Read the shared files listed above to understand the context.
+Reply with a JSON block:
 
-Reply with EXACTLY one of:
+```json
+{{
+  "groups": [
+    {{
+      "problems": [0, 1],
+      "reason": "Both problems stem from incomplete event model in config.py",
+      "strategy": "sequential"
+    }},
+    {{
+      "problems": [2],
+      "reason": "Independent API endpoint issue",
+      "strategy": "parallel"
+    }}
+  ],
+  "execution_order": "Groups can run in parallel if files don't overlap.",
+  "notes": "Optional observations about cross-group dependencies."
+}}
+```
 
-RELATED: <brief explanation of the shared root cause>
+Each group's `problems` array contains indices into the problems list above.
+Every problem index (0 through {len(problems) - 1}) must appear in exactly
+one group.
 
-or
+Strategy values:
+- `sequential`: problems within this group must be fixed in order
+- `parallel`: problems within this group can be fixed concurrently
 
-INDEPENDENT: <brief explanation of why these are separate issues>
+The `execution_order` field describes how GROUPS relate to each other —
+which groups can run in parallel and which must wait.
 """, encoding="utf-8")
-    _log_artifact(planspace, f"prompt:coordinator-grouping-{group_id}")
+    _log_artifact(planspace, "prompt:coordination-plan")
     return prompt_path
 
 
@@ -2638,84 +2970,63 @@ def run_global_coordination(
     _log_artifact(planspace, "coordination:problems")
 
     # -----------------------------------------------------------------
-    # Step 2: Group related problems
+    # Step 2: Dispatch coordination-planner agent to group problems
     # -----------------------------------------------------------------
-    candidate_groups = _find_file_overlaps(problems)
+    ctrl = poll_control_messages(planspace, parent)
+    if ctrl == "alignment_changed":
+        return False
 
-    # For groups with >1 problem that share files, confirm with GLM
+    plan_prompt = write_coordination_plan_prompt(problems, planspace)
+    plan_output = coord_dir / "coordination-plan-output.md"
+    log("  coordinator: dispatching coordination-planner agent")
+    plan_result = dispatch_agent(
+        "claude-opus", plan_prompt, plan_output,
+        planspace, parent, agent_file="coordination-planner.md",
+    )
+    if plan_result == "ALIGNMENT_CHANGED_PENDING":
+        return False
+
+    # Parse the JSON coordination plan from agent output
+    coord_plan = _parse_coordination_plan(plan_result, problems)
+    if coord_plan is None:
+        # Fallback: treat each problem as its own group, sequential
+        log("  coordinator: WARNING — could not parse coordination plan, "
+            "falling back to one-problem-per-group")
+        coord_plan = {
+            "groups": [
+                {"problems": [i], "reason": "fallback", "strategy": "parallel"}
+                for i in range(len(problems))
+            ],
+            "execution_order": "all sequential (fallback)",
+        }
+
+    # Build confirmed groups from the plan
     confirmed_groups: list[list[dict[str, Any]]] = []
-    for gidx, indices in enumerate(candidate_groups):
-        group_problems = [problems[i] for i in indices]
+    group_strategies: list[str] = []
+    for g in coord_plan["groups"]:
+        group_problems = [problems[i] for i in g["problems"]]
+        confirmed_groups.append(group_problems)
+        group_strategies.append(g.get("strategy", "sequential"))
+        log(f"  coordinator: group {len(confirmed_groups) - 1} — "
+            f"{len(group_problems)} problems, "
+            f"strategy={group_strategies[-1]}, "
+            f"reason={g.get('reason', '(none)')}")
 
-        if len(group_problems) == 1:
-            # Single-problem group, no confirmation needed
-            confirmed_groups.append(group_problems)
-            continue
+    log(f"  coordinator: {len(confirmed_groups)} problem groups from "
+        f"coordination plan")
 
-        # Poll for control messages before dispatch
-        ctrl = poll_control_messages(planspace, parent)
-        if ctrl == "alignment_changed":
-            return False
+    # Save plan and groups for debugging
+    plan_path = coord_dir / "coordination-plan.json"
+    plan_path.write_text(json.dumps(coord_plan, indent=2), encoding="utf-8")
+    _log_artifact(planspace, "coordination:plan")
 
-        # Dispatch GLM to confirm relationship
-        grouping_prompt = write_coordinator_grouping_prompt(
-            group_problems, planspace, gidx,
-        )
-        grouping_output = coord_dir / f"grouping-{gidx}-output.md"
-        log(f"  coordinator: checking if group {gidx} "
-            f"({len(group_problems)} problems) is related")
-        # Emit GLM exploration events for QA monitor rule C2
-        for p in group_problems:
-            subprocess.run(  # noqa: S603
-                ["bash", str(DB_SH), "log",  # noqa: S607
-                 str(planspace / "run.db"),
-                 "summary", f"glm-explore:{p['section']}",
-                 f"coordinator grouping (group {gidx})",
-                 "--agent", AGENT_NAME],
-                capture_output=True, text=True,
-            )
-        result = dispatch_agent(
-            "glm", grouping_prompt, grouping_output,
-            planspace, parent, codespace=codespace,
-        )
-        if result == "ALIGNMENT_CHANGED_PENDING":
-            return False
-
-        # Parse first non-empty line for exact classification
-        first_line = ""
-        for ln in result.split("\n"):
-            stripped = ln.strip()
-            if stripped:
-                first_line = stripped
-                break
-
-        if first_line.startswith("RELATED:"):
-            # Keep as one group
-            log(f"  coordinator: group {gidx} confirmed RELATED")
-            confirmed_groups.append(group_problems)
-        elif first_line.startswith("INDEPENDENT:"):
-            # Split into individual problems
-            log(f"  coordinator: group {gidx} is INDEPENDENT, splitting")
-            for p in group_problems:
-                confirmed_groups.append([p])
-        else:
-            # Malformed output — default to splitting (safe) with warning
-            log(f"  coordinator: WARNING — group {gidx} grouping output "
-                f"malformed (first line: {first_line!r}), treating as "
-                f"INDEPENDENT")
-            for p in group_problems:
-                confirmed_groups.append([p])
-
-    log(f"  coordinator: {len(confirmed_groups)} problem groups after "
-        f"analysis")
-
-    # Save groups for debugging
     groups_path = coord_dir / "groups.json"
     groups_data = []
     for i, g in enumerate(confirmed_groups):
         groups_data.append({
             "group_id": i,
             "problem_count": len(g),
+            "strategy": group_strategies[i],
             "sections": sorted({p["section"] for p in g}),
             "files": sorted({f for p in g for f in p.get("files", [])}),
         })
@@ -2723,122 +3034,82 @@ def run_global_coordination(
     _log_artifact(planspace, "coordination:groups")
 
     # -----------------------------------------------------------------
-    # Step 3: Size the work and dispatch
+    # Step 3: Execute the coordination plan
     # -----------------------------------------------------------------
-    total_problem_count = sum(len(g) for g in confirmed_groups)
-    all_related = len(confirmed_groups) == 1
+    # Identify which groups can run in parallel (disjoint file sets)
+    # and which must be sequential (overlapping files). The agent's
+    # execution_order notes inform us, but we enforce file safety.
+    group_file_sets = [
+        set(f for p in g for f in p.get("files", []))
+        for g in confirmed_groups
+    ]
 
-    if all_related and total_problem_count <= 5:
-        # One Codex agent can handle everything
-        # Poll for control messages before dispatch
+    # Build safe parallel batches: groups with disjoint files
+    batches: list[list[int]] = []
+    for gidx, files in enumerate(group_file_sets):
+        if not files:
+            # Unknown scope — isolate
+            batches.append([gidx])
+            continue
+        placed = False
+        for batch in batches:
+            batch_files = set()
+            for bidx in batch:
+                batch_files |= group_file_sets[bidx]
+            if not batch_files:
+                continue
+            if not (files & batch_files):
+                batch.append(gidx)
+                placed = True
+                break
+        if not placed:
+            batches.append([gidx])
+
+    log(f"  coordinator: {len(batches)} execution batches")
+
+    all_modified: list[str] = []
+    for batch_num, batch in enumerate(batches):
         ctrl = poll_control_messages(planspace, parent)
         if ctrl == "alignment_changed":
             return False
-        log(f"  coordinator: single agent for {total_problem_count} "
-            f"related problems")
-        _, modified = _dispatch_fix_group(
-            confirmed_groups[0], 0, planspace, codespace, parent,
-        )
-        if modified is None:
-            return False  # Sentinel — alignment changed
-        all_modified = modified
-    elif len(confirmed_groups) <= 3:
-        # Few groups — one agent per group, sequential
-        log(f"  coordinator: {len(confirmed_groups)} groups, "
-            f"dispatching sequentially")
-        all_modified = []
-        for gidx, group in enumerate(confirmed_groups):
-            # Poll for control messages between dispatches
-            ctrl = poll_control_messages(planspace, parent)
-            if ctrl == "alignment_changed":
-                return False
+        if len(batch) == 1:
+            gidx = batch[0]
             _, modified = _dispatch_fix_group(
-                group, gidx, planspace, codespace, parent,
+                confirmed_groups[gidx], gidx,
+                planspace, codespace, parent,
             )
             if modified is None:
-                return False  # Sentinel — alignment changed
-            all_modified.extend(modified)
-    else:
-        # Many groups — fan out with ThreadPoolExecutor, but only
-        # parallelize groups with DISJOINT file sets to avoid concurrent
-        # edits to the same file.
-        log(f"  coordinator: {len(confirmed_groups)} groups, "
-            f"building disjoint batches for safe parallelism")
-
-        # Build batches: groups in the same batch have no file overlap.
-        # Groups with empty file sets are NOT safe to parallelize (the
-        # fix agent may touch unknown files), so they go in their own batch.
-        group_file_sets = [
-            set(f for p in g for f in p.get("files", []))
-            for g in confirmed_groups
-        ]
-        batches: list[list[int]] = []
-        for gidx, files in enumerate(group_file_sets):
-            # Empty file set = unknown scope, isolate in own batch
-            if not files:
-                batches.append([gidx])
-                continue
-            placed = False
-            for batch in batches:
-                batch_files = set()
-                for bidx in batch:
-                    batch_files |= group_file_sets[bidx]
-                # Don't merge into a batch that has an unknown-scope group
-                if not batch_files:
-                    continue
-                if not (files & batch_files):
-                    batch.append(gidx)
-                    placed = True
-                    break
-            if not placed:
-                batches.append([gidx])
-
-        log(f"  coordinator: {len(batches)} disjoint batches")
-
-        all_modified = []
-        for batch_num, batch in enumerate(batches):
-            # Poll for control messages between batches
-            ctrl = poll_control_messages(planspace, parent)
-            if ctrl == "alignment_changed":
                 return False
-            if len(batch) == 1:
-                gidx = batch[0]
-                _, modified = _dispatch_fix_group(
-                    confirmed_groups[gidx], gidx,
-                    planspace, codespace, parent,
-                )
-                if modified is None:
-                    return False  # Sentinel — alignment changed
-                all_modified.extend(modified)
-            else:
-                log(f"  coordinator: batch {batch_num} — "
-                    f"{len(batch)} groups in parallel")
-                with ThreadPoolExecutor(max_workers=4) as pool:
-                    futures = {
-                        pool.submit(
-                            _dispatch_fix_group,
-                            confirmed_groups[gidx], gidx,
-                            planspace, codespace, parent,
-                        ): gidx
-                        for gidx in batch
-                    }
-                    sentinel_hit = False
-                    for future in as_completed(futures):
-                        gidx = futures[future]
-                        try:
-                            _, modified = future.result()
-                            if modified is None:
-                                sentinel_hit = True
-                                continue
-                            all_modified.extend(modified)
-                            log(f"  coordinator: group {gidx} fix "
-                                f"complete ({len(modified)} files "
-                                f"modified)")
-                        except Exception as exc:
-                            log(f"  coordinator: group {gidx} fix "
-                                f"FAILED: {exc}")
-                if sentinel_hit:
-                    return False  # Alignment changed during parallel fix
+            all_modified.extend(modified)
+        else:
+            log(f"  coordinator: batch {batch_num} — "
+                f"{len(batch)} groups in parallel")
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                futures = {
+                    pool.submit(
+                        _dispatch_fix_group,
+                        confirmed_groups[gidx], gidx,
+                        planspace, codespace, parent,
+                    ): gidx
+                    for gidx in batch
+                }
+                sentinel_hit = False
+                for future in as_completed(futures):
+                    gidx = futures[future]
+                    try:
+                        _, modified = future.result()
+                        if modified is None:
+                            sentinel_hit = True
+                            continue
+                        all_modified.extend(modified)
+                        log(f"  coordinator: group {gidx} fix "
+                            f"complete ({len(modified)} files "
+                            f"modified)")
+                    except Exception as exc:
+                        log(f"  coordinator: group {gidx} fix "
+                            f"FAILED: {exc}")
+            if sentinel_hit:
+                return False
 
     log(f"  coordinator: fixes complete, "
         f"{len(all_modified)} total files modified")
@@ -2899,7 +3170,15 @@ def run_global_coordination(
             continue
 
         align_problems = _extract_problems(align_result)
-        signal, detail = check_agent_signals(align_result)
+        coord_signal_dir = coord_dir / "signals"
+        coord_signal_dir.mkdir(parents=True, exist_ok=True)
+        signal, detail = check_agent_signals(
+            align_result,
+            signal_path=(coord_signal_dir
+                         / f"coord-align-{sec_num}-signal.json"),
+            output_path=coord_dir / f"coord-align-{sec_num}-output.md",
+            planspace=planspace, parent=parent, codespace=codespace,
+        )
 
         if align_problems is None and signal is None:
             log(f"  coordinator: section {sec_num} now ALIGNED")
@@ -2985,9 +3264,42 @@ def main() -> None:
         log("Mailbox cleaned up")
 
 
+def detect_project_mode(codespace: Path) -> str:
+    """Detect whether the codespace is greenfield or brownfield.
+
+    Greenfield: empty or near-empty codespace (only config files like
+    pyproject.toml, README, etc.). No substantive source code yet.
+    Brownfield: existing source code that the implementation must integrate
+    with.
+
+    Returns "greenfield" or "brownfield".
+    """
+    source_extensions = {
+        ".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".java",
+        ".rb", ".c", ".cpp", ".h", ".cs", ".swift", ".kt",
+    }
+    source_count = 0
+    for item in codespace.rglob("*"):
+        if item.is_file() and item.suffix in source_extensions:
+            # Ignore common non-substantive files
+            if item.name in ("__init__.py", "conftest.py"):
+                continue
+            source_count += 1
+            if source_count >= 3:
+                return "brownfield"
+    return "greenfield"
+
+
 def _run_loop(planspace: Path, codespace: Path, parent: str,
               sections_dir: Path, global_proposal: Path,
               global_alignment: Path) -> None:
+    # Detect project mode (greenfield vs brownfield)
+    project_mode = detect_project_mode(codespace)
+    mode_file = planspace / "artifacts" / "project-mode.txt"
+    mode_file.parent.mkdir(parents=True, exist_ok=True)
+    mode_file.write_text(project_mode, encoding="utf-8")
+    log(f"Project mode: {project_mode}")
+
     # Load sections and build cross-reference map
     all_sections = load_sections(sections_dir)
 
@@ -3182,7 +3494,16 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 continue
 
             problems = _extract_problems(align_result)
-            signal, detail = check_agent_signals(align_result)
+            main_signal_dir = (planspace / "artifacts" / "signals")
+            main_signal_dir.mkdir(parents=True, exist_ok=True)
+            signal, detail = check_agent_signals(
+                align_result,
+                signal_path=(main_signal_dir
+                             / f"global-align-{sec_num}-signal.json"),
+                output_path=(planspace / "artifacts"
+                             / f"global-align-{sec_num}-output.md"),
+                planspace=planspace, parent=parent, codespace=codespace,
+            )
 
             if problems is None and signal is None:
                 section_results[sec_num] = SectionResult(
@@ -3233,8 +3554,12 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
         log(f"{len(misaligned)} sections need coordination: "
             f"{sorted(r.section_number for r in misaligned)}")
 
-        # Run the coordinator loop
-        for round_num in range(1, MAX_COORDINATION_ROUNDS + 1):
+        # Run the coordinator loop (adaptive: continues while improving)
+        prev_unresolved = len(misaligned)
+        stall_count = 0
+        round_num = 0
+        while round_num < MAX_COORDINATION_ROUNDS:
+            round_num += 1
             # Poll for control messages before each round
             ctrl = poll_control_messages(planspace, parent)
             if ctrl == "alignment_changed":
@@ -3243,8 +3568,8 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 restart_phase1 = True
                 break
 
-            log(f"=== Coordination round "
-                f"{round_num}/{MAX_COORDINATION_ROUNDS} ===")
+            log(f"=== Coordination round {round_num} "
+                f"(prev unresolved: {prev_unresolved}) ===")
             mailbox_send(planspace, parent,
                          f"status:coordination:round-{round_num}")
 
@@ -3279,27 +3604,40 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             remaining = [
                 r for r in section_results.values() if not r.aligned
             ]
+            cur_unresolved = len(remaining)
             log(f"Coordination round {round_num}: "
-                f"{len(remaining)} sections still unresolved")
-        else:
-            # Coordination exhausted — do NOT send "complete".
-            # Report failure for each remaining misaligned section so
-            # the parent can investigate or escalate.
+                f"{cur_unresolved} sections still unresolved "
+                f"(was {prev_unresolved})")
+
+            # Adaptive termination: stop if not making progress
+            if cur_unresolved >= prev_unresolved:
+                stall_count += 1
+                if round_num >= MIN_COORDINATION_ROUNDS and stall_count >= 2:
+                    log(f"Coordination stalled ({stall_count} rounds "
+                        f"without improvement) — stopping")
+                    break
+            else:
+                stall_count = 0  # reset on progress
+
+            prev_unresolved = cur_unresolved
+
+        if not restart_phase1:
+            # Coordination exhausted or stalled — do NOT send "complete".
             remaining = [
                 r for r in section_results.values() if not r.aligned
             ]
-            log(f"=== Coordination exhausted "
-                f"({MAX_COORDINATION_ROUNDS} rounds), "
-                f"{len(remaining)} sections still unresolved ===")
-            for r in remaining:
-                summary = (r.problems or "unknown")[:120]
-                log(f"  - Section {r.section_number}: {summary}")
-                mailbox_send(
-                    planspace, parent,
-                    f"fail:{r.section_number}:"
-                    f"coordination_exhausted:{summary}",
-                )
-            return  # exhausted — exit
+            if remaining:
+                log(f"=== Coordination finished after {round_num} rounds, "
+                    f"{len(remaining)} sections still unresolved ===")
+                for r in remaining:
+                    summary = (r.problems or "unknown")[:120]
+                    log(f"  - Section {r.section_number}: {summary}")
+                    mailbox_send(
+                        planspace, parent,
+                        f"fail:{r.section_number}:"
+                        f"coordination_exhausted:{summary}",
+                    )
+                return  # exhausted — exit
 
         if restart_phase1:
             continue  # outer while True → restart Phase 1

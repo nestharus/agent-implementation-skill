@@ -83,6 +83,33 @@ Check these in order:
 | `constraints.md` | Surface implicit constraints, validate design principles |
 | `models.md` | Model selection guide for multi-model workflows |
 
+## Design Philosophy
+
+These principles govern all pipeline behavior. Violations are alignment
+failures.
+
+1. **Alignment over audit** — Check directional coherence between adjacent
+   layers ("is it solving the right problem?"), never feature coverage
+   against a checklist ("is it done?"). The system is never done.
+2. **Strategy over brute force** — Strategy collapses many waves of problems
+   in one go. Brute force leads to countless cycles. Fewer tokens, fewer
+   cycles, same quality.
+3. **Scripts dispatch, agents decide** — Scripts do mechanical coordination
+   (dispatch, check, log). Agents do reasoning (explore, understand, decide).
+   Strategic decisions (grouping, relatedness, signal interpretation) belong
+   to agents, not scripts.
+4. **Heuristic exploration, not exhaustive scanning** — Build a routing map
+   (codemap), then use it for targeted investigation. Never catalog every
+   file. The cost of occasionally routing wrong is far less than exhaustive
+   scanning.
+5. **Problems, not features** — We decompose problems all the way down, then
+   solve tiny problems. Proposals describe strategies, not implementations.
+   We never do feature coverage because we generate as we go.
+6. **Proposals must solve the same problems** — Alternative proposals are
+   valid only if they solve the original problems. An optimization or
+   complexity argument is an excuse. Do not introduce constraints the user
+   did not specify.
+
 ## The Full Lifecycle
 
 ```
