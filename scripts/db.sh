@@ -110,8 +110,11 @@ CREATE TABLE IF NOT EXISTS agents (
 
 CREATE INDEX IF NOT EXISTS idx_messages_target_unclaimed
   ON messages(target) WHERE claimed = 0;
+CREATE INDEX IF NOT EXISTS idx_messages_target_claimed_id
+  ON messages(target, claimed, id);
 CREATE INDEX IF NOT EXISTS idx_events_kind ON events(kind);
 CREATE INDEX IF NOT EXISTS idx_events_kind_tag ON events(kind, tag);
+CREATE INDEX IF NOT EXISTS idx_events_kind_id ON events(kind, id);
 CREATE INDEX IF NOT EXISTS idx_agents_name ON agents(name);
 ''')
 conn.close()
@@ -119,11 +122,6 @@ conn.close()
 }
 
 # ─── helpers ─────────────────────────────────────────────────────────
-
-# Allocate a globally-ordered ID from id_seq.
-_next_id() {
-  _sql "INSERT INTO id_seq DEFAULT VALUES; SELECT last_insert_rowid();"
-}
 
 # Update agent status by appending a new row (append-only).
 _update_status() {
@@ -237,23 +235,27 @@ conn.execute('PRAGMA journal_mode=WAL')
 conn.execute('PRAGMA busy_timeout=5000')
 cur = conn.cursor()
 
-# Find oldest unclaimed message
-cur.execute('''SELECT id, body FROM messages
-               WHERE target=? AND claimed=0
-               ORDER BY id ASC LIMIT 1''', (name,))
-row = cur.fetchone()
-if row:
+while True:
+    cur.execute('BEGIN IMMEDIATE')
+    cur.execute('''SELECT id, body FROM messages
+                   WHERE target=? AND claimed=0
+                   ORDER BY id ASC LIMIT 1''', (name,))
+    row = cur.fetchone()
+    if not row:
+        conn.execute('COMMIT')
+        conn.close()
+        sys.exit(1)
     msg_id, body = row
     cur.execute('''UPDATE messages
                    SET claimed=1, claimed_by=?, claimed_at=strftime('%Y-%m-%dT%H:%M:%f','now')
-                   WHERE id=?''', (name, msg_id))
-    conn.commit()
+                   WHERE id=? AND claimed=0''', (name, msg_id))
+    if cur.rowcount == 0:
+        conn.execute('COMMIT')
+        continue  # another process claimed it, retry
+    conn.execute('COMMIT')
     conn.close()
     print(body)
     sys.exit(0)
-else:
-    conn.close()
-    sys.exit(1)
 " "$db" "$name" 2>/dev/null) && {
         _update_status "$name" "running"
         printf '%s\n' "$result"
@@ -293,6 +295,7 @@ conn.execute('PRAGMA journal_mode=WAL')
 conn.execute('PRAGMA busy_timeout=5000')
 cur = conn.cursor()
 
+cur.execute('BEGIN IMMEDIATE')
 cur.execute('''SELECT id, body FROM messages
                WHERE target=? AND claimed=0
                ORDER BY id ASC''', (name,))
@@ -303,10 +306,12 @@ if rows:
     placeholders = ','.join('?' * len(ids))
     cur.execute(f'''UPDATE messages
                     SET claimed=1, claimed_by=?, claimed_at=strftime('%Y-%m-%dT%H:%M:%f','now')
-                    WHERE id IN ({placeholders})''', [name] + ids)
-    conn.commit()
-    for i, (_, body) in enumerate(rows):
-        print(body)
+                    WHERE id IN ({placeholders}) AND claimed=0''', [name] + ids)
+conn.execute('COMMIT')
+
+for i, (_, body) in enumerate(rows):
+    print(body)
+    if i < len(rows) - 1:
         print('---')
 
 conn.close()
@@ -316,7 +321,7 @@ conn.close()
   # ── register ──────────────────────────────────────────────────────
   register)
     name="${1:?Missing agent name}"
-    pid="${2:-$$}"
+    pid="${2:-$PPID}"
 
     result=$(python3 -c "
 import sqlite3, sys

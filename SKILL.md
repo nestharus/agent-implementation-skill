@@ -41,6 +41,7 @@ $WORKFLOW_HOME/
   agents/
     orchestrator.md     # event-driven step dispatcher (model: claude-opus)
     monitor.md          # task-level pipeline monitor — detects cycles/stuck (model: glm)
+    qa-monitor.md       # deep QA monitor — 26 rules, 5 categories, PAUSE authority (model: opus)
     agent-monitor.md    # per-agent loop detector — watches narration (model: glm)
     state-detector.md   # workspace state reporter (model: claude-opus)
     exception-handler.md # RCA on failed steps (model: claude-opus)

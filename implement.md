@@ -666,6 +666,12 @@ UI Orchestrator (talks to user, high-level decisions)
        │    ├─ db.sh tail summary --since <cursor> (cursor-based event query)
        │    ├─ db.sh log lifecycle pipeline-state "paused" (pause/resume)
        │    └─ send to task-agent queue (escalations)
+       ├─ QA Monitor (Opus, deep QA detection)
+       │    ├─ db.sh tail summary + signal (cursor-based event queries)
+       │    ├─ reads artifact files for content analysis
+       │    ├─ db.sh log qa-finding (structured findings)
+       │    ├─ db.sh log lifecycle pipeline-state "paused" (PAUSE authority)
+       │    └─ send to task-agent queue (qa:warning, qa:paused, qa:abort-recommended)
        └─ section-loop.py (background subprocess)
             ├─ db.sh send (messages) + db.sh log summary (events)
             ├─ db.sh query lifecycle --tag pipeline-state (pause check)
@@ -706,6 +712,20 @@ Escalates to task agent with diagnosis. Does NOT read files, fix issues,
 or make judgment calls beyond pattern detection. Does NOT use `recv` for
 summary data — queries events instead, avoiding message consumption
 conflicts with the task agent.
+
+**QA Monitor** (Opus): Deep QA detection agent with 26 rules across 5
+categories: cycle detection (A1-A6), workflow compliance (B1-B6), strategic
+behavior (C1-C6), bug detection (D1-D4), and big-picture friction (E1-E4).
+Runs alongside section-loop for the duration of the pipeline. Unlike the
+lightweight task monitor, the QA monitor actively reads artifact files,
+compares outputs for similarity, and performs content analysis. Uses
+graduated escalation levels: LOG (record only), WARN (notify task agent),
+PAUSE (pause pipeline + notify), ABORT-RECOMMEND (recommend abort, does
+not abort autonomously). Writes findings to
+`<planspace>/artifacts/qa-report.md` and logs them as `qa-finding` events
+in the database. Has authority to PAUSE the pipeline — if both the task
+monitor and QA monitor detect the same issue, the QA monitor's PAUSE takes
+priority over the task monitor's escalation.
 
 **Agent Monitor** (GLM): Per-dispatch loop detector. Launched by
 section-loop alongside each agent dispatch. Reads the agent's narration
@@ -810,6 +830,14 @@ writes go to `run.db`. The task monitor queries summary events via
 | `problem:coordination:<round>:<diagnosis>` | Coordination not converging |
 | `problem:loop:<section>:<agent-detail>` | Agent loop detected |
 | `problem:stalled` | No activity detected |
+
+**QA Monitor → Task Agent** (findings):
+
+| Message | Meaning |
+|---------|---------|
+| `qa:warning:<category>:<detail>` | Compliance or strategic issue detected |
+| `qa:paused:<category>:<detail>` | Critical issue — pipeline PAUSED |
+| `qa:abort-recommended:<category>:<detail>` | Abort recommended (not autonomous) |
 
 **Two signal routes per background task:**
 1. Task completion — the background process exits (done or error)

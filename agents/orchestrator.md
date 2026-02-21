@@ -21,7 +21,7 @@ Scripts, agents, and templates are referenced relative to this.
 ## Input
 
 The workspace has two directories passed in by the user:
-- **planspace**: `~/.claude/workspaces/<task-slug>/` — schedule, state, log, artifacts, mailboxes
+- **planspace**: `~/.claude/workspaces/<task-slug>/` — schedule, state, log, artifacts, run.db
 - **codespace**: project root or worktree — where source code lives
 
 The planspace contains:

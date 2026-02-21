@@ -24,6 +24,7 @@ You own this task's execution end-to-end:
 - **Orchestrator mailbox target**: `{{ORCHESTRATOR_NAME}}`
 - **Your agent name** (for mailbox): `{{AGENT_NAME}}`
 - **Monitor agent name**: `{{MONITOR_NAME}}`
+- **QA monitor agent name**: `{{QA_MONITOR_NAME}}`
 - **Global proposal**: `{{GLOBAL_PROPOSAL}}`
 - **Global alignment**: `{{GLOBAL_ALIGNMENT}}`
 
@@ -61,9 +62,35 @@ MONITOR_EOF
 uv run --frozen agents --agent-file "{{WORKFLOW_HOME}}/agents/monitor.md" \
   --file {{PLANSPACE}}/artifacts/monitor-prompt.md &
 MONITOR_PID=$!
+
+# Create QA monitor prompt
+cat > {{PLANSPACE}}/artifacts/qa-monitor-prompt.md << 'QA_MONITOR_EOF'
+# QA Monitor Configuration
+
+## Paths
+- Planspace: `{{PLANSPACE}}`
+- Database: `{{PLANSPACE}}/run.db`
+
+## Mailbox
+- Your agent name: `{{QA_MONITOR_NAME}}`
+- Escalation target (task agent): `{{AGENT_NAME}}`
+- WORKFLOW_HOME: `{{WORKFLOW_HOME}}`
+
+Register your mailbox via `bash "{{WORKFLOW_HOME}}/scripts/db.sh" register {{PLANSPACE}}/run.db {{QA_MONITOR_NAME}}`, then begin your detection loop.
+QA_MONITOR_EOF
+
+# Launch QA monitor agent (deep QA detection, 26 rules, escalation authority)
+uv run --frozen agents --agent-file "{{WORKFLOW_HOME}}/agents/qa-monitor.md" \
+  --file {{PLANSPACE}}/artifacts/qa-monitor-prompt.md &
+QA_MONITOR_PID=$!
 ```
 
-Note both PIDs so you can check if they're still running.
+Note all PIDs so you can check if they're still running.
+
+**Precedence**: The QA monitor has authority to PAUSE the pipeline. The
+lightweight monitor only WARNs and escalates to you. If both detect the
+same issue, the QA monitor's action (PAUSE) takes priority — do not
+override a QA monitor pause based on a lighter monitor warning.
 
 
 ## Step 2: Register your mailbox and report start
@@ -75,9 +102,10 @@ bash "{{WORKFLOW_HOME}}/scripts/db.sh" send {{PLANSPACE}}/run.db {{ORCHESTRATOR_
 
 ## Step 3: Wait for messages
 
-Enter a monitoring loop. You receive messages from two sources:
+Enter a monitoring loop. You receive messages from three sources:
 - **section-loop** sends summaries, lifecycle messages, and pause signals to your mailbox
 - **monitor** sends escalation messages to your mailbox
+- **qa-monitor** sends QA findings (`qa:warning:*`, `qa:paused:*`, `qa:abort-recommended:*`) to your mailbox
 
 1. Run recv to wait for mail:
    ```bash
@@ -120,6 +148,13 @@ Enter a monitoring loop. You receive messages from two sources:
      restart the section-loop.
    - **`problem:stalled`** — monitor detected silence. Check if section-loop
      and monitor processes are still running. Restart as needed.
+   - **`qa:warning:<category>:<detail>`** — QA monitor detected a compliance
+     or strategic issue. Informational — investigate if pattern repeats.
+   - **`qa:paused:<category>:<detail>`** — QA monitor detected a critical
+     issue and PAUSED the pipeline. Investigate immediately. The QA monitor
+     has already paused — do not override. Fix the root cause, then resume.
+   - **`qa:abort-recommended:<category>:<detail>`** — QA monitor recommends
+     aborting. Review the evidence, decide whether to abort or continue.
    - **`done:<num>:<count> files modified`** — section complete. Send progress:
      ```bash
      bash "{{WORKFLOW_HOME}}/scripts/db.sh" send {{PLANSPACE}}/run.db {{ORCHESTRATOR_NAME}} --from {{AGENT_NAME}} "progress:{{TASK_NAME}}:<section>:ALIGNED"
@@ -171,18 +206,20 @@ filesystem access. Use it:
    — problem groupings and fix dispatches from the global coordinator.
 7. **Read decisions** at `{{PLANSPACE}}/artifacts/decisions/` — accumulated
    parent decisions per section.
-8. **Fix the root cause** — edit integration proposals, create missing
+8. **Read QA report** at `{{PLANSPACE}}/artifacts/qa-report.md` — the QA
+   monitor's findings, statistics, and assessment.
+9. **Fix the root cause** — edit integration proposals, create missing
    files, update alignment excerpts. Do NOT edit source code directly.
-9. **Notify alignment changes** — if you edit `{{GLOBAL_PROPOSAL}}` or
-   `{{GLOBAL_ALIGNMENT}}`, send an `alignment_changed` message so the
-   pipeline invalidates stale excerpts and restarts Phase 1:
-   ```bash
-   bash "{{WORKFLOW_HOME}}/scripts/db.sh" send {{PLANSPACE}}/run.db section-loop --from {{AGENT_NAME}} "alignment_changed"
-   ```
-10. **Resume the pipeline**:
-   ```bash
-   bash "{{WORKFLOW_HOME}}/scripts/db.sh" log {{PLANSPACE}}/run.db lifecycle pipeline-state "running" --agent {{AGENT_NAME}}
-   ```
+10. **Notify alignment changes** — if you edit `{{GLOBAL_PROPOSAL}}` or
+    `{{GLOBAL_ALIGNMENT}}`, send an `alignment_changed` message so the
+    pipeline invalidates stale excerpts and restarts Phase 1:
+    ```bash
+    bash "{{WORKFLOW_HOME}}/scripts/db.sh" send {{PLANSPACE}}/run.db section-loop --from {{AGENT_NAME}} "alignment_changed"
+    ```
+11. **Resume the pipeline**:
+    ```bash
+    bash "{{WORKFLOW_HOME}}/scripts/db.sh" log {{PLANSPACE}}/run.db lifecycle pipeline-state "running" --agent {{AGENT_NAME}}
+    ```
 
 ## Reporting
 

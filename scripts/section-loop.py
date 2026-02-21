@@ -279,6 +279,12 @@ def _set_alignment_changed_flag(planspace: Path) -> None:
     flag = planspace / "artifacts" / "alignment-changed-pending"
     flag.parent.mkdir(parents=True, exist_ok=True)
     flag.write_text("1", encoding="utf-8")
+    subprocess.run(  # noqa: S603
+        ["bash", str(DB_SH), "log", str(planspace / "run.db"),  # noqa: S607
+         "lifecycle", "alignment-changed", "pending",
+         "--agent", AGENT_NAME],
+        capture_output=True, text=True,
+    )
 
 
 def alignment_changed_pending(planspace: Path) -> bool:
@@ -291,6 +297,12 @@ def _check_and_clear_alignment_changed(planspace: Path) -> bool:
     flag = planspace / "artifacts" / "alignment-changed-pending"
     if flag.exists():
         flag.unlink(missing_ok=True)
+        subprocess.run(  # noqa: S603
+            ["bash", str(DB_SH), "log", str(planspace / "run.db"),  # noqa: S607
+             "lifecycle", "alignment-changed", "cleared",
+             "--agent", AGENT_NAME],
+            capture_output=True, text=True,
+        )
         return True
     return False
 
@@ -466,7 +478,8 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
                    planspace: Path | None = None,
                    parent: str | None = None,
                    agent_name: str | None = None,
-                   codespace: Path | None = None) -> str:
+                   codespace: Path | None = None,
+                   section_number: str | None = None) -> str:
     """Run an agent via uv run agents and return the output text.
 
     If planspace and parent are provided, checks pipeline state before
@@ -524,6 +537,16 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
         log(f"  agent-monitor started (pid={monitor_proc.pid})")
 
     log(f"  dispatch {model} → {prompt_path.name}")
+    # Emit per-section dispatch summary event for QA monitor rule C1
+    if planspace and section_number:
+        name_label = agent_name or model
+        subprocess.run(  # noqa: S603
+            ["bash", str(DB_SH), "log", str(planspace / "run.db"),  # noqa: S607
+             "summary", f"dispatch:{section_number}",
+             f"{name_label} dispatched",
+             "--agent", AGENT_NAME],
+            capture_output=True, text=True,
+        )
     cmd = ["uv", "run", "--frozen", "agents", "--model", model,
            "--file", str(prompt_path)]
     if codespace:
@@ -572,6 +595,15 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
                     if sig_body:
                         log(f"  SIGNAL from monitor: {sig_body[:100]}")
                         output += "\nLOOP_DETECTED: " + sig_body
+                        # Re-log signal from section-loop for QA monitor rule A4
+                        subprocess.run(  # noqa: S603
+                            ["bash", str(DB_SH), "log",  # noqa: S607
+                             str(planspace / "run.db"),
+                             "signal", f"loop_detected:{agent_name}",
+                             sig_body,
+                             "--agent", AGENT_NAME],
+                            capture_output=True, text=True,
+                        )
 
     # Write output AFTER signal check (so the saved file includes
     # the LOOP_DETECTED line for forensic debugging)
@@ -882,9 +914,18 @@ SECTION-NN: NO_IMPACT
     _log_artifact(planspace, f"prompt:impact-{sec_num}")
 
     log(f"Section {sec_num}: running impact analysis")
+    # Emit GLM exploration event for QA monitor rule C2
+    subprocess.run(  # noqa: S603
+        ["bash", str(DB_SH), "log", str(planspace / "run.db"),  # noqa: S607
+         "summary", f"glm-explore:{sec_num}",
+         "impact analysis",
+         "--agent", AGENT_NAME],
+        capture_output=True, text=True,
+    )
     impact_result = dispatch_agent(
         "glm", impact_prompt_path, impact_output_path,
         planspace, parent, codespace=codespace,
+        section_number=sec_num,
     )
 
     # -----------------------------------------------------------------
@@ -1794,6 +1835,7 @@ def _run_alignment_check_with_retries(
         result = dispatch_agent(
             "claude-opus", align_prompt, align_output,
             planspace, parent, codespace=codespace,
+            section_number=sec_num,
         )
         if result == "ALIGNMENT_CHANGED_PENDING":
             return result  # Caller must handle
@@ -1853,7 +1895,8 @@ def run_section(
         setup_agent = f"setup-{section.number}"
         output = dispatch_agent("claude-opus", setup_prompt, setup_output,
                                 planspace, parent, setup_agent,
-                                codespace=codespace)
+                                codespace=codespace,
+                                section_number=section.number)
         if output == "ALIGNMENT_CHANGED_PENDING":
             return None
         mailbox_send(planspace, parent,
@@ -1925,6 +1968,7 @@ def run_section(
         intg_result = dispatch_agent(
             "gpt-5.3-codex-high", intg_prompt, intg_output,
             planspace, parent, intg_agent, codespace=codespace,
+            section_number=section.number,
         )
         if intg_result == "ALIGNMENT_CHANGED_PENDING":
             return None
@@ -1980,6 +2024,7 @@ def run_section(
         align_result = dispatch_agent(
             "claude-opus", align_prompt, align_output,
             planspace, parent, codespace=codespace,
+            section_number=section.number,
         )
         if align_result == "ALIGNMENT_CHANGED_PENDING":
             return None
@@ -2064,6 +2109,7 @@ def run_section(
         impl_result = dispatch_agent(
             "gpt-5.3-codex-high", impl_prompt, impl_output,
             planspace, parent, impl_agent, codespace=codespace,
+            section_number=section.number,
         )
         if impl_result == "ALIGNMENT_CHANGED_PENDING":
             return None
@@ -2106,6 +2152,7 @@ def run_section(
         impl_align_result = dispatch_agent(
             "claude-opus", impl_align_prompt, impl_align_output,
             planspace, parent, codespace=codespace,
+            section_number=section.number,
         )
         if impl_align_result == "ALIGNMENT_CHANGED_PENDING":
             return None
@@ -2592,6 +2639,16 @@ def run_global_coordination(
         grouping_output = coord_dir / f"grouping-{gidx}-output.md"
         log(f"  coordinator: checking if group {gidx} "
             f"({len(group_problems)} problems) is related")
+        # Emit GLM exploration events for QA monitor rule C2
+        for p in group_problems:
+            subprocess.run(  # noqa: S603
+                ["bash", str(DB_SH), "log",  # noqa: S607
+                 str(planspace / "run.db"),
+                 "summary", f"glm-explore:{p['section']}",
+                 f"coordinator grouping (group {gidx})",
+                 "--agent", AGENT_NAME],
+                capture_output=True, text=True,
+            )
         result = dispatch_agent(
             "glm", grouping_prompt, grouping_output,
             planspace, parent, codespace=codespace,
@@ -2962,6 +3019,14 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             section.solve_count += 1
             log(f"=== Section {sec_num} ({len(queue)} remaining) "
                 f"[round {section.solve_count}] ===")
+            # Emit section lifecycle start event for QA monitor rule A6
+            subprocess.run(  # noqa: S603
+                ["bash", str(DB_SH), "log", str(planspace / "run.db"),  # noqa: S607
+                 "lifecycle", f"start:section:{sec_num}",
+                 f"round {section.solve_count}",
+                 "--agent", AGENT_NAME],
+                capture_output=True, text=True,
+            )
 
             if not section.related_files:
                 log(f"Section {sec_num}: no related files, skipping")
@@ -2971,6 +3036,14 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 )
                 mailbox_send(planspace, parent,
                              f"done:{sec_num}:0 files modified")
+                subprocess.run(  # noqa: S603
+                    ["bash", str(DB_SH), "log",  # noqa: S607
+                     str(planspace / "run.db"),
+                     "lifecycle", f"end:section:{sec_num}",
+                     "done (no related files)",
+                     "--agent", AGENT_NAME],
+                    capture_output=True, text=True,
+                )
                 continue
 
             # Run the section
@@ -2996,6 +3069,13 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             if modified_files is None:
                 # Section was paused and parent told us to stop
                 log(f"Section {sec_num}: paused, exiting")
+                subprocess.run(  # noqa: S603
+                    ["bash", str(DB_SH), "log",  # noqa: S607
+                     str(planspace / "run.db"),
+                     "lifecycle", f"end:section:{sec_num}", "failed",
+                     "--agent", AGENT_NAME],
+                    capture_output=True, text=True,
+                )
                 return
 
             completed.add(sec_num)
@@ -3013,6 +3093,13 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             )
 
             log(f"Section {sec_num}: done")
+            subprocess.run(  # noqa: S603
+                ["bash", str(DB_SH), "log",  # noqa: S607
+                 str(planspace / "run.db"),
+                 "lifecycle", f"end:section:{sec_num}", "done",
+                 "--agent", AGENT_NAME],
+                capture_output=True, text=True,
+            )
 
         log(f"=== Phase 1 complete: {len(completed)} sections "
             f"processed ===")
