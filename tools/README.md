@@ -1,19 +1,11 @@
 # Workflow Tools
 
-Language-specific extraction tools used by the workflow pipeline for Python and shell sources.
+Language-specific extraction tools used by the workflow pipeline.
 
 ## Naming Convention
 
 `extract-docstring-<ext>` — extracts module-level docstring/comment for
 files with the given extension.
-
-## Available Tools
-
-| Tool | Extension | What it extracts |
-|------|-----------|-----------------|
-| `extract-docstring-py` | `.py` | Module-level docstring (ast.get_docstring) |
-| `extract-docstring-sh` | `.sh` | Module-level comment block (top-of-file comments) |
-| `extract-summary-md` | `.md` | YAML frontmatter summary + keywords |
 
 ## Adding New Extensions
 
