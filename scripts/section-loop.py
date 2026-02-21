@@ -1382,6 +1382,11 @@ Incorporate them into your proposal:
 {decisions_text}
 """
 
+    codemap_path = artifacts / "codemap.md"
+    codemap_ref = ""
+    if codemap_path.exists():
+        codemap_ref = f"\n5. Codemap (project understanding): `{codemap_path}`"
+
     prompt_path.write_text(f"""# Task: Integration Proposal for Section {section.number}
 
 ## Summary
@@ -1392,7 +1397,7 @@ Incorporate them into your proposal:
 2. Section alignment excerpt: `{alignment_excerpt}`
 3. Section specification: `{section.path}`
 4. Related source files (read each one):
-{files_block}
+{files_block}{codemap_ref}
 {existing_note}{problems_block}{notes_block}{decisions_block}
 ## Instructions
 
@@ -1405,6 +1410,10 @@ real code.
 
 Before writing anything, explore the codebase strategically. You MUST
 understand the existing code before proposing how to integrate.
+
+**Start with the codemap** if available — it captures the project's
+structure, key files, and how parts relate. Use it to orient yourself
+before diving into individual files.
 
 **Dispatch GLM sub-agents for targeted exploration:**
 ```bash
@@ -1570,6 +1579,11 @@ Address ALL of them:
 {decisions_text}
 """
 
+    codemap_path = artifacts / "codemap.md"
+    codemap_ref = ""
+    if codemap_path.exists():
+        codemap_ref = f"\n6. Codemap (project understanding): `{codemap_path}`"
+
     impl_heading = (
         f"# Task: Strategic Implementation"
         f" for Section {section.number}"
@@ -1585,7 +1599,7 @@ Address ALL of them:
 3. Section alignment excerpt: `{alignment_excerpt}`
 4. Section specification: `{section.path}`
 5. Related source files:
-{files_block}
+{files_block}{codemap_ref}
 {problems_block}{decisions_block}
 ## Instructions
 
@@ -1597,7 +1611,8 @@ execute it strategically.
 
 **Think strategically, not mechanically.** Read the integration proposal
 and understand the SHAPE of the changes. Then tackle them holistically —
-multiple files at once, coordinated changes.
+multiple files at once, coordinated changes. Use the codemap if available
+to understand how your changes fit into the broader project structure.
 
 **Dispatch sub-agents for exploration and targeted work:**
 
@@ -2468,6 +2483,14 @@ def write_coordinator_fix_prompt(
         for n in section_nums
     )
 
+    codemap_path = planspace / "artifacts" / "codemap.md"
+    codemap_block = ""
+    if codemap_path.exists():
+        codemap_block = (
+            f"\n## Project Understanding\n"
+            f"- Codemap: `{codemap_path}`\n"
+        )
+
     prompt_path.write_text(f"""# Task: Coordinated Fix for Problem Group {group_id}
 
 ## Problems to Fix
@@ -2480,7 +2503,7 @@ def write_coordinator_fix_prompt(
 ## Section Context
 {section_specs}
 {alignment_specs}
-
+{codemap_block}
 ## Instructions
 
 Fix ALL the problems listed above in a COORDINATED way. These problems
@@ -2491,7 +2514,9 @@ creates or re-triggers another.
 ### Strategy
 
 1. **Explore first.** Before making changes, understand the full picture.
-   Dispatch GLM sub-agents to read files and understand context:
+   Read the codemap if available to understand how these files fit into
+   the broader project structure. Then dispatch GLM sub-agents to read
+   files and understand context:
    ```bash
    uv run --frozen agents --model glm --project "{codespace}" "<instructions>"
    ```

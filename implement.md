@@ -1,28 +1,18 @@
 # Implement Proposal: Multi-Model Execution Pipeline
 
-Stage 3 prompt templates are canonical in
-`artifacts/sections/section-07.md` (prompts 7.1, 7.2, 7.3), and any inline
-template retained here must remain byte-for-byte aligned with section-07.
-This document defines orchestration flow, dispatch mechanics, and parsing/output
-constraints only, including Tier 2 intermediate region-summary artifacts
-at `artifacts/scan-logs/codemap-region-*-output.md`, with Stage 3
-per-section strategic exploration defined as concurrent dispatch
-(max 5 in-flight) without requiring a specific orchestration mechanism.
+Stage 3 dispatches agents to explore and understand the codebase.
+Agents reason about what they find — the script only coordinates dispatch,
+checks outputs, and logs failures.
 
 ## Workflow Orchestration
 
 This skill is designed to be executed via the workflow orchestration system.
 Each stage below corresponds to a schedule step in the `implement-proposal.md`
 template. The orchestrator pops steps and dispatches agents to the matching
-stage section. Stage 3 uses a Tier 1 + Tier 2 + Tier 3 scan contract: quick
-mode starts with a local structural scan artifact generation step (Tier 1),
-then concurrent Opus region exploration with GLM file-characterization reads
-(Tier 2), then codemap synthesis into `planspace/artifacts/codemap.md`
-(Tier 3), then concurrent per-section Opus strategic agents that run
-codemap reasoning + targeted GLM verification + adjacency/beyond-codemap
-discovery before a deep refinement pass over quick-confirmed matches while preserving the public
-`scan.sh quick|deep|both` interface and
-`## Related Files` output format.
+stage section. Stage 3 dispatches agents to explore the codebase and build
+a codemap, then per-section agents identify related files, preserving the
+public `scan.sh quick|deep|both` interface and `## Related Files` output
+format.
 
 Schedule step → Skill section mapping:
 - `decompose` → Stage 1: Section Decomposition
@@ -123,7 +113,7 @@ Only clean up the mailbox when no more messages are expected.
 
 1. **Section Decomposition** — Recursive decomposition into atomic section files
 2. **Docstring Infrastructure** — Ensure all source files have module docstrings
-3. **File Relevance Scan** — Quick mode runs Tier 1 structural scan, Tier 2 concurrent Opus region exploration with GLM file reads, and Tier 3 synthesis into `planspace/artifacts/codemap.md`; then run per-section strategic exploration and deep scan confirmed matches (preserving `## Related Files`)
+3. **File Relevance Scan** — Quick mode dispatches an Opus agent to explore the codespace and build a codemap, then per-section Opus agents identify related files; deep mode dispatches GLM agents to reason about specific file relevance (preserving `## Related Files`)
 
 --- Per-section loop (strategic, agent-driven) ---
 
@@ -172,7 +162,7 @@ required by its stage contract.
 |-------|-------------|
 | 1: Decomposition | **Parallel** — writes to planspace only |
 | 2: Docstrings | **Sequential** — one GLM per file, edits source |
-| 3: Scan | **Shell script** — quick: sequential local structural scan (Tier 1), concurrent Opus region exploration (Tier 2), sequential single-compare GLM sub-reads within each region, single-run codemap synthesis (Tier 3), then concurrent per-section Opus strategic agents (max 5 in-flight); each section agent coordinates single-compare GLM verification calls and writes only to its own section file; deep: full-content analysis for confirmed matches |
+| 3: Scan | **Shell script** — quick: Opus agent explores codespace and builds codemap, then per-section Opus agents identify related files using the codemap; deep: GLM agents reason about specific file relevance in context |
 | 4–5: Section Loop | **Sequential** — one section at a time, strategic agent-driven implementation with sub-agent dispatch; global coordination after initial pass |
 | 6: Verification | **Sequential** — lint, test, fix cycles |
 | 7: Post-Verify | **Single run** — full suite + commit |
@@ -182,9 +172,8 @@ required by its stage contract.
 Language-specific extraction helpers live in `$WORKFLOW_HOME/tools/`.
 Named `extract-docstring-<ext>`.
 
-Stage 3 quick mode does not depend on brute-force per-file docstring
-extraction. These tools are used only where targeted verification/deep
-scan needs extension-specific extraction support.
+These tools are used where targeted extraction is needed for specific
+file types.
 
 ```bash
 TOOLS="$WORKFLOW_HOME/tools"
@@ -336,7 +325,7 @@ If docstrings already exist from a previous run:
 
 ## Stage 3: File Relevance Scan
 
-**Shell-script driven** — no Claude orchestrator agent needed.
+**Shell-script driven** — dispatches agents, checks outputs, logs failures.
 
 ```bash
 bash "$WORKFLOW_HOME/scripts/scan.sh" both <planspace> <codespace>
@@ -346,9 +335,7 @@ bash "$WORKFLOW_HOME/scripts/scan.sh" deep  <planspace> <codespace>
 ```
 
 Stage placement is unchanged: this runs after Stage 2 and before the
-section-loop (Stages 4-5). Quick mode now starts with a local Tier 1
-structural scan pre-step (pure Python/shell, no LLM/agent calls) before
-codemap construction. The public CLI remains unchanged.
+section-loop (Stages 4-5). The public CLI remains unchanged.
 
 ### CLI contract (public interface)
 
@@ -356,31 +343,11 @@ codemap construction. The public CLI remains unchanged.
 - `bash "$WORKFLOW_HOME/scripts/scan.sh" deep <planspace> <codespace>`
 - `bash "$WORKFLOW_HOME/scripts/scan.sh" both <planspace> <codespace>`
 
-### Tier 1 helper contract (internal sub-step)
-
-```bash
-python3 "$WORKFLOW_HOME/scripts/structural-scan.py" <codespace> <output-path>
-```
-
-Implementation requirement (Section 02): `scripts/scan.sh` quick mode
-invokes this helper via `run_structural_scan()`. Therefore
-`$WORKFLOW_HOME/scripts/structural-scan.py` is a required concrete
-deliverable for this section, not a deferred/future task.
-
-- `<codespace>`: directory path to repository root
-- `<output-path>`: file path for markdown structural artifact
-- Output: non-empty markdown artifact containing directory tree summary,
-  file-type distribution, and key files/project markers
-
 ### Parameter types
 
 - `<mode>`: enum `{quick, deep, both}`
 - `<planspace>`: path to directory containing `artifacts/sections/section-*.md`
 - `<codespace>`: path to target repository root
-- `project_size`: enum `{small, medium, large}` derived from file-count thresholds
-- `region`: directory-path string
-- `region_summary`: markdown artifact per region
-- `codemap`: markdown artifact with required sections: `Project Shape`, `Directory Map`, `Cross-Cutting Patterns`
 
 ### Input contract
 
@@ -396,170 +363,50 @@ deliverable for this section, not a deferred/future task.
 - Canonical output:
   - Append/update `## Related Files` blocks in each section file with `### <filepath>` entries
 - Intermediate artifacts:
-  - `<planspace>/artifacts/structural-scan.md`
   - `<planspace>/artifacts/codemap.md`
-  - `<planspace>/artifacts/scan-logs/codemap-region-*-output.md` (region summaries)
-  - Per-section exploration logs (for debug/resume)
-
-### Tier contracts (internal)
-
-- Tier 1 input: `<codespace>`; output: non-empty `structural-scan.md`
-- Tier 2 input: structural scan artifact + region list; output: region summaries
-  (region characterization template is canonical in section-07 prompt 7.3)
-- Tier 3 input: region summaries + codemap schema template; output: `codemap.md`
-
-### Codemap prompt contract (`scripts/codemap_build.py`)
-
-- `build_region_summary()` must embed the canonical section-07 prompt 7.3
-  wording verbatim for region characterization:
-
-```markdown
-# Task: Characterize Directory Region
-
-Read the following files in {directory}:
-{file_list}
-
-Write a summary covering:
-- What this directory is for (1-2 sentences)
-- Key files and their roles
-- How this directory relates to the rest of the project
-```
-
-- `build_region_summary()` must also include this explicit graceful-degradation
-  instruction in the prompt body:
-  `If a GLM dispatch fails, note the failure and continue with the remaining files. Produce a region summary from whatever files you successfully read.`
-- `build_codemap_small()` prompt must include:
-  `Total output should be under 5KB.`
-- `synthesize_codemap()` prompt must include a size-adaptive budget line:
-  - medium projects: `Total output should be under 15KB.`
-  - large projects: `Total output should be under 30KB.`
-- All `scripts/codemap_build.py` subprocess dispatch lists that launch
-  agents must use the canonical command token order:
-  `"uv", "run", "--frozen", "agents", ...` (all three call sites:
-  region summary dispatch, small-project codemap dispatch, and codemap
-  synthesis dispatch).
+  - Per-section exploration logs in `<planspace>/artifacts/scan-logs/`
 
 ### Quick mode control flow
 
-1. Validate Tier 1 artifact: run local structural scan once (resume-safe)
-   and require a non-empty `structural-scan.md`.
-2. Derive `project_size` (`small|medium|large`) from file-count thresholds.
-3. Identify scan regions from repository structure.
-4. Run Tier 2 region exploration: dispatch Opus agents concurrently by
-   region (size-adaptive strategy), and collect all region summaries.
-   Use section-07 prompt 7.3 as the canonical region-characterization template.
-5. Inside each region agent, run GLM file-characterization reads as
-   single-compare sequential calls (no batching).
-6. Run Tier 3 synthesis once: combine region summaries into
-   `<planspace>/artifacts/codemap.md`.
-7. Dispatch one Opus strategic agent per section file concurrently
-   (max 5 in-flight). Each agent receives: section file
-   path (`<planspace>/artifacts/sections/section-*.md`), codemap path
-   (`<planspace>/artifacts/codemap.md`), codespace root (`<codespace>`),
-   and an embedded 1-2 line section summary extracted from YAML frontmatter.
-8. Inside each section agent, execute this loop:
-   - Step 1: reason from codemap + section to form candidate hypotheses.
-   - Step 2: run targeted GLM verification for each `(section, file)` pair
-     as single-compare calls (`RELATED: <reason>` or `NOT_RELATED`).
-   - Step 3: expand from confirmed matches via adjacency exploration.
-   - Step 4: perform beyond-codemap discovery (directory listing, grep,
-     direct reads) when coverage appears incomplete.
-   - Step 5: append canonical `## Related Files` entries (`### <repo-relative-path>`
-     + `- Relevance: <reason>`) to that section file.
-   - Exploration bound: verify approximately 20-30 candidate files per
-     section unless hard evidence requires additional checks.
-9. Persist section-local outputs only; each agent writes to its own section
-   file and local diagnostics.
-10. Per-section strategic exploration is partial-success tolerant: if some
-    section agents fail but others succeed, keep diagnostics for failed
-    sections, keep artifacts for successful sections, and continue the
-    pipeline (including deep scan) for successfully explored sections.
+1. Dispatch an Opus agent to explore the codespace. The agent reads files,
+   follows its curiosity, and writes `codemap.md` capturing its understanding
+   of the codebase (what it is, how it's organized, key files, relationships).
+2. For each section, dispatch an Opus agent with the codemap + section content.
+   The agent reasons about which files are relevant to this section's goals
+   and writes `## Related Files` entries into the section file.
+3. If a section already has `## Related Files`, skip it (resume-safe).
+4. Section exploration failures are isolated — if one section agent fails,
+   others continue.
 
-### Section-agent prompt contract (Stage 3 quick)
-
-- The prompt must prescribe the full 5-step strategy above
-  (hypothesize -> GLM verify -> adjacency -> beyond-codemap -> write).
-- The prompt must source the full GLM quick verification template from
-  section-07 prompt 7.1. Write this exact template to a prompt file for
-  each GLM check:
-  ```text
-  # Task: File-Section Relevance Check
-
-  Is this source file related to this proposal section?
-
-  ## Section Summary
-  {section_summary}
-
-  ## File: {filepath}
-  {file_content_or_docstring}
-
-  ## Instructions
-  Reply with exactly one line:
-  RELATED: <brief reason>
-  or
-  NOT_RELATED
-
-  Nothing else.
-  ```
-- This inline block must remain byte-for-byte aligned with
-  `artifacts/sections/section-07.md` prompt 7.1.
-- The prompt must include this GLM dispatch command pattern exactly:
-  `uv run --frozen agents --model glm --project <codespace> --file <prompt-file>`.
-- Prompt size discipline: reference section/codemap by filepath, and embed
-  only the short section summary from YAML frontmatter.
-
-Strategic exploration is Opus-driven. GLM verification calls are
-single-compare only (no batching assumptions).
+The codemap format is not prescribed — it should reflect what the agent
+discovered. The agent decides what's important, not a template.
 
 ### Deep mode control flow
 
-1. Run after quick exploration and process only confirmed matches already
+1. Run after quick exploration. Process only confirmed matches already
    listed under `## Related Files`.
-2. For each `(section, file)` pair, skip entries already deep-annotated
-   (resume-safe).
-3. Read full section content + full file content, then run one GLM
-   single-compare deep call for that pair.
-   - Source the deep prompt body from section-07 prompt 7.2; keep
-     `implement.md` limited to execution constraints and parse contracts.
-4. Deep prompt guidance for `Affected areas` is file-type-aware:
-   - `.py`: functions/classes/methods/code regions
-   - `.md`: headings/sections/rules/instruction blocks
-   - `.sh`: functions/sections/command blocks
-   - other: most specific structural elements for that file type
-5. Refresh details under each `### <filepath>` entry using the canonical
-   deep output fields:
-   - `Relevance`
-   - `Affected areas`
-   - `Confidence`
-   - `Open questions`
-6. For exact deep template wording, see section-07 prompt 7.2
-   (including `Write your analysis in this exact format:`).
-   - Prompt structure alignment: do not insert any extra sentence between
-     the deep prompt title and `## Section`; it must transition directly.
-   - Output placeholders must use:
-     - `- Affected areas: <specific functions, classes, or regions>`
-     - `- Open questions: <uncertainties, or "none">`
-7. Skip missing/invalid related file paths with diagnostics. On per-pair
-   GLM/update failures, record diagnostics and continue remaining pairs.
-
-GLM deep calls are also single-compare only: one full section and one
-full file per call.
+2. For each `(section, file)` pair, skip entries that already have deep
+   analysis content (resume-safe).
+3. Dispatch a GLM agent with the full section content + full file content.
+   The agent reasons about what specific parts of the file matter for this
+   section — functions, classes, configurations, risks, dependencies.
+4. No fixed output format — the agent writes what it discovers naturally.
+5. Skip missing/invalid file paths with diagnostics. On per-pair failures,
+   record diagnostics and continue remaining pairs.
 
 ### Both mode control flow
 
-Run `quick` then `deep` in sequence. Deep flow is unchanged, with the
-inherited dependency that quick has already produced Tier 1 structural
-scan output and completed the Tier 2/3 codemap pipeline.
+Run `quick` then `deep` in sequence.
 
 ### Related-files accumulation format
 
-For each confirmed match, the script appends/updates in the section file:
+For each confirmed match, the section file contains:
 
 ```markdown
 ## Related Files
 
 ### path/to/file.py
-- Relevance: <why this file relates>
+<reason this file is relevant>
 ```
 
 The section file becomes the single source of truth — it contains the
@@ -568,52 +415,20 @@ A file can appear in multiple section files.
 
 ### Resume support
 
-- Full resume: if `<planspace>/artifacts/codemap.md` already exists and is
-  valid, skip Tier 1/2/3 codemap build and continue with section/deep flows.
-- Partial resume: if region summaries are retained from an interrupted run,
-  they may be reused for synthesis when policy/config allows.
-- Diagnostics retention: failures in one region must remain inspectable via
-  per-region logs without discarding other region diagnostics.
-- Existing `## Related Files` entries must be read before exploration;
-  already-listed files are skipped on reruns (no duplicate rework).
+- Full resume: if `codemap.md` already exists, skip codemap exploration.
+- Section resume: if a section already has `## Related Files`, skip it.
+- Deep resume: if a file entry already has deep analysis, skip it.
+- Diagnostics retention: failures are logged to `scan-logs/failures.log`.
 
 ### Error handling
 
 - Unknown mode or missing path args: exit non-zero with usage.
-- Missing section files or inaccessible codespace: exit non-zero with an
+- Missing section files or inaccessible codespace: exit non-zero with
   explicit diagnostic.
-- If structural scan invocation fails: stop Stage 3 before codemap build
-  (Tier 2/3) and per-section exploration.
-- If structural scan artifact validation fails (missing/empty/unreadable):
-  stop Stage 3 before codemap build (Tier 2/3) and per-section exploration.
-- If a GLM sub-read fails inside a region: record per-file diagnostics and
-  continue region processing with available data.
-- If a region agent fails: record region-level diagnostics; continue only if
-  synthesis policy allows incomplete regions, otherwise fail fast.
-- If codemap synthesis (Tier 3) fails: stop Stage 3 before per-section
-  exploration.
-- If one section strategic agent fails: record section-local diagnostics,
-  keep artifacts, and continue with other section agents where possible
-  (per-section failure isolation under concurrent section-agent execution).
-- Quick scan orchestration must treat partial section-agent failure as
-  non-fatal when at least one section exploration succeeds: return success
-  after logging failed sections so downstream deep scan can run on
-  successfully explored sections.
-- If a GLM verification sub-read fails inside a section agent: record
-  section-local diagnostics and continue remaining candidates/adjacencies.
+- If codemap agent fails or produces empty output: stop Stage 3.
+- If a section exploration agent fails: log failure, continue others.
 - Deep scan runs only on confirmed matches.
-- No fallback to deprecated brute-force paths.
-
-### What Stage 3 replaces
-
-The strategic scan replaces v1 scan internals entirely:
-
-| Removed v1 component | Replacement |
-|---|---|
-| Import graph builder | Codemap structural characterization (`codemap.md`) |
-| Seed ingestion / frontier walk / convergence sweeps / sentinel scan | Per-section strategic exploration against codemap |
-| Controls index | Shared codemap + per-section exploration logs |
-| Structured seed YAML | Candidate discovery inside section exploration and targeted verification |
+- No fixed output format enforcement — agents reason freely.
 
 ## Section-at-a-Time Execution
 
@@ -1350,13 +1165,9 @@ conflicts after the initial pass.
 | 1: Decomposition | Opus | Recursive section identification + materialization |
 | 1C: Section Summaries | GLM | YAML frontmatter per section file |
 | 2: Docstrings | GLM | Add/update module docstrings per file |
-| 3: Structural Scan | (local) | Directory walk, file counts/types, and project markers; produce structural scan artifact |
-| 3: Codemap Region Exploration | Opus | Per-region characterization using structural scan context and region-level reasoning |
-| 3: Codemap File Characterization | GLM | Single-compare file reads inside each region agent to characterize key files |
-| 3: Codemap Synthesis | Opus (or orchestrator) | Combine region summaries into `codemap.md` with `Project Shape`, `Directory Map`, and `Cross-Cutting Patterns` |
-| 3: Strategic Exploration | Opus | Per-section strategic agent: reason over codemap + section, orchestrate targeted single-compare GLM checks, explore adjacencies and beyond-codemap candidates, and append section-local `## Related Files` entries |
-| 3: Verification + Deep Scan | GLM | Single-compare verification/deep analysis for quick-confirmed matches only; one `(section, file)` pair per call with file-type-aware `Affected areas` analysis |
-| 3: Tool Creation | Opus | Write extraction tools needed for targeted verification/deep scan |
+| 3: Codemap Exploration | Opus | Explore the codespace, build understanding, write `codemap.md` |
+| 3: Section File Identification | Opus | Per-section agent: reason over codemap + section goals, identify related files |
+| 3: Deep Scan | GLM | Per-file analysis: reason about specific relevance in section context |
 | 4: Section Setup | Opus | Extract proposal/alignment excerpts from global documents |
 | 4: Integration Proposal | Codex (GPT) | Write integration proposal with GLM sub-agent exploration |
 | 4: Integration Alignment | Opus | Shape/direction check on integration proposal |
