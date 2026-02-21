@@ -12,7 +12,7 @@ You own this task's execution end-to-end:
 5. When section-loop sends `pause:*`, handle the signal and send `resume:*` back
 6. Fix what you can autonomously (edit plans, update prompts, restart script)
 7. Report progress and problems to the UI orchestrator via mailbox
-8. Resume the pipeline after fixing issues (write `running` to pipeline-state)
+8. Resume the pipeline after fixing issues (log `running` pipeline-state event via db.sh)
 9. When the script completes, report completion
 
 ## Task Details
@@ -31,7 +31,7 @@ You own this task's execution end-to-end:
 
 ```bash
 # Ensure pipeline state is running
-echo "running" > {{PLANSPACE}}/pipeline-state
+bash "{{WORKFLOW_HOME}}/scripts/db.sh" log {{PLANSPACE}}/run.db lifecycle pipeline-state "running" --agent {{AGENT_NAME}}
 mkdir -p {{PLANSPACE}}/artifacts
 
 # Launch section-loop with you as the parent (you handle pause/resume)
@@ -47,14 +47,14 @@ cat > {{PLANSPACE}}/artifacts/monitor-prompt.md << 'MONITOR_EOF'
 
 ## Paths
 - Planspace: `{{PLANSPACE}}`
-- Summary stream log: `{{PLANSPACE}}/artifacts/summary-stream.log`
+- Database: `{{PLANSPACE}}/run.db`
 
 ## Mailbox
 - Your agent name: `{{MONITOR_NAME}}`
 - Escalation target (task agent): `{{AGENT_NAME}}`
 - WORKFLOW_HOME: `{{WORKFLOW_HOME}}`
 
-Register your mailbox, then begin monitoring the summary stream log.
+Register your mailbox, then begin monitoring summary events via `bash "{{WORKFLOW_HOME}}/scripts/db.sh" tail {{PLANSPACE}}/run.db summary`.
 MONITOR_EOF
 
 # Launch monitor agent (reads summary stream log, detects stuck states)
@@ -65,11 +65,12 @@ MONITOR_PID=$!
 
 Note both PIDs so you can check if they're still running.
 
+
 ## Step 2: Register your mailbox and report start
 
 ```bash
-bash "{{WORKFLOW_HOME}}/scripts/mailbox.sh" register {{PLANSPACE}} {{AGENT_NAME}}
-bash "{{WORKFLOW_HOME}}/scripts/mailbox.sh" send {{PLANSPACE}} {{ORCHESTRATOR_NAME}} "progress:{{TASK_NAME}}:started"
+bash "{{WORKFLOW_HOME}}/scripts/db.sh" register {{PLANSPACE}}/run.db {{AGENT_NAME}}
+bash "{{WORKFLOW_HOME}}/scripts/db.sh" send {{PLANSPACE}}/run.db {{ORCHESTRATOR_NAME}} --from {{AGENT_NAME}} "progress:{{TASK_NAME}}:started"
 ```
 
 ## Step 3: Wait for messages
@@ -80,7 +81,7 @@ Enter a monitoring loop. You receive messages from two sources:
 
 1. Run recv to wait for mail:
    ```bash
-   bash "{{WORKFLOW_HOME}}/scripts/mailbox.sh" recv {{PLANSPACE}} {{AGENT_NAME}} 600
+   bash "{{WORKFLOW_HOME}}/scripts/db.sh" recv {{PLANSPACE}}/run.db {{AGENT_NAME}} 600
    ```
    This blocks until a message arrives or 600s timeout.
 
@@ -121,7 +122,7 @@ Enter a monitoring loop. You receive messages from two sources:
      and monitor processes are still running. Restart as needed.
    - **`done:<num>:<count> files modified`** — section complete. Send progress:
      ```bash
-     bash "{{WORKFLOW_HOME}}/scripts/mailbox.sh" send {{PLANSPACE}} {{ORCHESTRATOR_NAME}} "progress:{{TASK_NAME}}:<section>:ALIGNED"
+     bash "{{WORKFLOW_HOME}}/scripts/db.sh" send {{PLANSPACE}}/run.db {{ORCHESTRATOR_NAME}} --from {{AGENT_NAME}} "progress:{{TASK_NAME}}:<section>:ALIGNED"
      ```
    - **`fail:<num>:<error>`** — section failed. Includes `aborted`,
      `coordination_exhausted:<summary>`, agent timeouts, and setup failures.
@@ -131,7 +132,7 @@ Enter a monitoring loop. You receive messages from two sources:
      or pipeline-state check).
    - **`complete`** — all sections aligned and coordination done! Report:
      ```bash
-     bash "{{WORKFLOW_HOME}}/scripts/mailbox.sh" send {{PLANSPACE}} {{ORCHESTRATOR_NAME}} "progress:{{TASK_NAME}}:complete"
+     bash "{{WORKFLOW_HOME}}/scripts/db.sh" send {{PLANSPACE}}/run.db {{ORCHESTRATOR_NAME}} --from {{AGENT_NAME}} "progress:{{TASK_NAME}}:complete"
      ```
    - **Timeout** — check if both processes are still running. If not,
      restart the dead one.
@@ -146,7 +147,7 @@ to continue:
 
 ```bash
 # After investigating and resolving the issue:
-bash "{{WORKFLOW_HOME}}/scripts/mailbox.sh" send {{PLANSPACE}} section-loop "resume:<your answer or context>"
+bash "{{WORKFLOW_HOME}}/scripts/db.sh" send {{PLANSPACE}}/run.db section-loop --from {{AGENT_NAME}} "resume:<your answer or context>"
 ```
 
 If you cannot resolve the issue, escalate to the orchestrator and wait
@@ -157,8 +158,8 @@ for their response before sending resume to section-loop.
 When the monitor pauses the pipeline and escalates, you have full
 filesystem access. Use it:
 
-1. **Read the summary stream** at `{{PLANSPACE}}/artifacts/summary-stream.log`
-   — the full history of all summary/status messages.
+1. **Query summary events** via `bash "{{WORKFLOW_HOME}}/scripts/db.sh" query {{PLANSPACE}}/run.db summary`
+   — the full history of all summary/status events.
 2. **Read agent outputs** at `{{PLANSPACE}}/artifacts/` — the detailed
    logs of what each agent produced.
 3. **Read source files** in `{{CODESPACE}}` — see the actual code state.
@@ -176,18 +177,18 @@ filesystem access. Use it:
    `{{GLOBAL_ALIGNMENT}}`, send an `alignment_changed` message so the
    pipeline invalidates stale excerpts and restarts Phase 1:
    ```bash
-   bash "{{WORKFLOW_HOME}}/scripts/mailbox.sh" send {{PLANSPACE}} section-loop "alignment_changed"
+   bash "{{WORKFLOW_HOME}}/scripts/db.sh" send {{PLANSPACE}}/run.db section-loop --from {{AGENT_NAME}} "alignment_changed"
    ```
 10. **Resume the pipeline**:
    ```bash
-   echo "running" > {{PLANSPACE}}/pipeline-state
+   bash "{{WORKFLOW_HOME}}/scripts/db.sh" log {{PLANSPACE}}/run.db lifecycle pipeline-state "running" --agent {{AGENT_NAME}}
    ```
 
 ## Reporting
 
 Always report to the orchestrator via mailbox:
 ```bash
-bash "{{WORKFLOW_HOME}}/scripts/mailbox.sh" send {{PLANSPACE}} {{ORCHESTRATOR_NAME}} "<message>"
+bash "{{WORKFLOW_HOME}}/scripts/db.sh" send {{PLANSPACE}}/run.db {{ORCHESTRATOR_NAME}} --from {{AGENT_NAME}} "<message>"
 ```
 
 Message types:

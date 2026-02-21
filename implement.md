@@ -81,7 +81,7 @@ Prompt template pattern:
 ## Parallel Dispatch Pattern
 
 All parallel agent dispatch uses Bash with fire-and-forget `&` plus
-mailbox coordination. **Never** use MCP background-job tools or Bash
+db.sh coordination. **Never** use MCP background-job tools or Bash
 `wait` for parallel agents — both block the orchestrator.
 
 **Key rule**: Always have exactly ONE `recv` running as a background
@@ -90,27 +90,30 @@ result and immediately start another `recv` if more messages are
 expected. This ensures you are always listening.
 
 ```bash
-MAILBOX="$WORKFLOW_HOME/scripts/mailbox.sh"
+DB="$WORKFLOW_HOME/scripts/db.sh"
 
-# 1. Register orchestrator mailbox
-bash "$MAILBOX" register <planspace> orchestrator
+# 0. Initialize coordination database (idempotent)
+bash "$DB" init <planspace>/run.db
+
+# 1. Register orchestrator
+bash "$DB" register <planspace>/run.db orchestrator
 
 # 2. Start recv FIRST — always be listening before dispatching
-bash "$MAILBOX" recv <planspace> orchestrator 600  # run_in_background: true
+bash "$DB" recv <planspace>/run.db orchestrator 600  # run_in_background: true
 
-# 3. Fire-and-forget: each agent sends mailbox message on completion
+# 3. Fire-and-forget: each agent sends message on completion
 (uv run agents --model <model> --file <prompt.md> \
   > <planspace>/artifacts/<output.md> 2>&1 && \
-  bash "$MAILBOX" send <planspace> orchestrator "done:<tag>") &
+  bash "$DB" send <planspace>/run.db orchestrator "done:<tag>") &
 
 # 4. When recv notifies you of completion:
 #    - Process the result
 #    - Start another recv if more messages expected:
-bash "$MAILBOX" recv <planspace> orchestrator 600  # run_in_background: true
+bash "$DB" recv <planspace>/run.db orchestrator 600  # run_in_background: true
 
 # 5. Clean up when ALL messages received (no more agents outstanding)
-bash "$MAILBOX" cleanup <planspace> orchestrator
-bash "$MAILBOX" unregister <planspace> orchestrator
+bash "$DB" cleanup <planspace>/run.db orchestrator
+bash "$DB" unregister <planspace>/run.db orchestrator
 ```
 
 The recv → process → recv loop continues until all agents have reported.
@@ -620,7 +623,7 @@ The strategic scan replaces v1 scan internals entirely:
 |------|---------|
 | `$WORKFLOW_HOME/scripts/section-loop.py` | Strategic section-loop orchestrator (integration proposals, implementation, cross-section communication, global coordination) |
 | `$WORKFLOW_HOME/scripts/task-agent-prompt.md` | Task agent prompt template |
-| `$WORKFLOW_HOME/scripts/mailbox.sh` | File-based mailbox system |
+| `$WORKFLOW_HOME/scripts/db.sh` | SQLite-backed coordination database |
 
 ### Launching task agents
 
@@ -650,36 +653,39 @@ agent is launched via `uv run agents` and is responsible for:
 The UI orchestrator does NOT directly launch or monitor section-loop
 scripts. It spawns task agents and receives their reports.
 
-### Communication model (3 layers, all mailbox)
+### Communication model (3 layers, all db.sh)
 
 ```
 UI Orchestrator (talks to user, high-level decisions)
-  ├─ recv on orchestrator mailbox (listens for task-agent reports)
+  ├─ recv on orchestrator queue (listens for task-agent reports)
   └─ Task Agent (one per task, via uv run agents)
        ├─ launches section-loop + monitor
-       ├─ recv on task-agent mailbox (section-loop messages + escalations)
-       ├─ send to orchestrator mailbox (reports progress + problems)
+       ├─ recv on task-agent queue (section-loop messages + escalations)
+       ├─ send to orchestrator queue (reports progress + problems)
        ├─ Task Monitor (GLM, section-level pattern matcher)
-       │    ├─ tail-reads summary-stream.log (NOT mailbox)
-       │    ├─ writes pipeline-state file (pause/resume)
-       │    └─ send to task-agent mailbox (escalations)
+       │    ├─ db.sh tail summary --since <cursor> (cursor-based event query)
+       │    ├─ db.sh log lifecycle pipeline-state "paused" (pause/resume)
+       │    └─ send to task-agent queue (escalations)
        └─ section-loop.py (background subprocess)
-            ├─ send to task-agent mailbox + append to summary-stream.log
-            ├─ reads pipeline-state file (pause check before each dispatch)
-            ├─ recv on section-loop mailbox (when paused by signals)
+            ├─ db.sh send (messages) + db.sh log summary (events)
+            ├─ db.sh query lifecycle --tag pipeline-state (pause check)
+            ├─ recv on section-loop queue (when paused by signals)
             └─ per agent dispatch:
-                 ├─ agent (uv run agents, sends narration via mailbox)
+                 ├─ agent (uv run agents, sends narration via db.sh)
                  └─ Agent Monitor (GLM, per-dispatch loop detector)
-                      ├─ reads agent's narration mailbox
-                      └─ writes to signal file (NOT mailbox)
+                      ├─ reads agent's narration queue via db.sh
+                      └─ db.sh log signal (NOT message send)
 ```
 
-All communication uses the file-based mailbox system. No team/SendMessage
-infrastructure — agents are standalone processes launched via
-`uv run agents`, not Claude teammates.
+All coordination goes through `db.sh` and a single `run.db` per pipeline
+run. No team/SendMessage infrastructure — agents are standalone processes
+launched via `uv run agents`, not Claude teammates. Every coordination
+operation (send, recv, log) is automatically recorded in the database.
+Messages are claimed, not consumed — the database file is the complete
+audit trail.
 
 **UI Orchestrator**: Launches task agents via `uv run agents --file`,
-runs recv on its own mailbox, receives reports, makes decisions,
+runs `db.sh recv` on its own queue, receives reports, makes decisions,
 communicates with user. Does NOT directly launch or monitor section-loop
 scripts.
 
@@ -689,62 +695,70 @@ investigate issues when the monitor escalates. Reads logs, diagnoses root
 causes, fixes what it can autonomously, and escalates to the orchestrator
 what it can't.
 
-**Task Monitor** (GLM): Section-level pattern matcher. Reads the summary
-stream log file (`<planspace>/artifacts/summary-stream.log`) by tail-reading
-new lines. Tracks counters (alignment attempts, coordination rounds),
-detects stuck states and cycles. Can pause the pipeline by writing
-`paused` to `<planspace>/pipeline-state`. Escalates to task agent with
-diagnosis. Does NOT read files, fix issues, or make judgment calls beyond
-pattern detection. Does NOT use mailbox recv for summary data — reads
-the log file instead, avoiding message consumption conflicts with the
-task agent.
+**Task Monitor** (GLM): Section-level pattern matcher. Queries summary
+events from the coordination database via
+`db.sh tail <planspace>/run.db summary --since <cursor>`, using cursor-based
+pagination (tracks last-seen event ID). Tracks counters (alignment
+attempts, coordination rounds), detects stuck states and cycles. Can pause
+the pipeline by logging a lifecycle event:
+`db.sh log <planspace>/run.db lifecycle pipeline-state "paused" --agent monitor`.
+Escalates to task agent with diagnosis. Does NOT read files, fix issues,
+or make judgment calls beyond pattern detection. Does NOT use `recv` for
+summary data — queries events instead, avoiding message consumption
+conflicts with the task agent.
 
 **Agent Monitor** (GLM): Per-dispatch loop detector. Launched by
 section-loop alongside each agent dispatch. Reads the agent's narration
-mailbox (the agent's own named mailbox), tracks `plan:` messages, detects
-repetition patterns indicating the agent has entered an infinite loop
-(typically from context compaction). Reports `LOOP_DETECTED` by writing
-to a signal file (`<planspace>/artifacts/<agent-name>-loop-signal.txt`),
-NOT via mailbox. One monitor per agent dispatch, exits when agent finishes.
+messages via `db.sh drain` on the agent's named queue, tracks `plan:`
+messages, detects repetition patterns indicating the agent has entered an
+infinite loop (typically from context compaction). Reports `LOOP_DETECTED`
+by logging a signal event:
+`db.sh log <planspace>/run.db signal <agent-name> "LOOP_DETECTED:..." --agent <monitor-name>`.
+One monitor per agent dispatch, exits when agent finishes.
 
 **Section-loop script**: Strategic orchestrator. Runs sections sequentially
 through the integration proposal + implementation flow, dispatches agents,
 manages cross-section communication (snapshots, impact analysis, consequence
 notes), and runs the global coordination phase after the initial pass.
-Sends lifecycle messages (summaries, done, complete, pause signals) to the
-task agent's mailbox AND writes them to the summary stream log. Checks
-`pipeline-state` file before each agent dispatch — if paused, waits until
-resumed. For each per-section Codex/GPT agent dispatch (setup, proposal,
-implementation), creates a narration mailbox and launches a per-agent GLM
-monitor alongside the agent. Two categories of dispatch are exempt from
-per-agent monitoring: (1) Opus alignment checks — alignment prompts do not
-include narration instructions, and a monitor would false-positive STALLED
-after 5 minutes of expected silence; (2) Coordinator fix agents — fix
-prompts use strategic GLM sub-agents internally for verification, and the
-task-level monitor detects cross-section stuck states at the coordination
-round level. Cleans up both agent and monitor mailboxes after each
-per-section dispatch.
+Sends messages to the task agent via `db.sh send` and logs summary events
+via `db.sh log summary` for each lifecycle transition. Queries pipeline
+state before each agent dispatch via
+`db.sh query <planspace>/run.db lifecycle --tag pipeline-state --limit 1`
+— if paused, waits until resumed. For each per-section Codex/GPT agent
+dispatch (setup, proposal, implementation), registers a narration queue
+and launches a per-agent GLM monitor alongside the agent. Two categories
+of dispatch are exempt from per-agent monitoring: (1) Opus alignment
+checks — alignment prompts do not include narration instructions, and a
+monitor would false-positive STALLED after 5 minutes of expected silence;
+(2) Coordinator fix agents — fix prompts use strategic GLM sub-agents
+internally for verification, and the task-level monitor detects
+cross-section stuck states at the coordination round level. Cleans up
+agent registrations via `db.sh cleanup` after each per-section dispatch.
 
-**Pipeline state file** (`<planspace>/pipeline-state`): Controls the
-pipeline. Values: `running` (default), `paused`. The task monitor writes
-this file to pause; the task agent writes it to resume after investigating.
+**Pipeline state** (lifecycle events in `run.db`): Controls the pipeline.
+The latest `lifecycle` event with `tag='pipeline-state'` determines current
+state (`running` or `paused`). The task monitor logs a `paused` event to
+pause; the task agent logs a `running` event to resume after investigating.
+State changes are append-only — the full history of pause/resume transitions
+is preserved in the database.
 
-**Summary stream log** (`<planspace>/artifacts/summary-stream.log`):
-Append-only log of all summary, status, done, complete, fail, and pause
-messages. Written by section-loop alongside mailbox sends. The task monitor
-tail-reads this file. The task agent reads the mailbox directly.
+**Summary events** (events table in `run.db`): All summary, status, done,
+complete, fail, and pause messages are recorded as `kind='summary'` events
+via `db.sh log`. The task monitor queries these events via cursor-based
+`db.sh tail summary --since <cursor>`. The task agent reads messages via
+`db.sh recv` on its own queue.
 
 **Agent narration**: Each dispatched agent (setup, integration proposal,
-strategic implementation) is instructed to send mail about what it's
-planning before each action. Messages go to the agent's own named mailbox
-(e.g., `intg-proposal-01`), which the per-agent monitor watches. The agent
-narrates instead of maintaining state files — agents are reliable narrators
-but unreliable at file management. If an agent detects it's repeating work,
-it sends `LOOP_DETECTED` to its own mailbox and stops.
+strategic implementation) is instructed to send messages about what it's
+planning before each action. Messages go to the agent's own named queue
+(e.g., `intg-proposal-01`) via `db.sh send`, which the per-agent monitor
+watches. The agent narrates instead of maintaining state files — agents are
+reliable narrators but unreliable at file management. If an agent detects
+it's repeating work, it sends `LOOP_DETECTED` to its own queue and stops.
 
 ### Mail protocols
 
-**Section-loop → Task Agent** (via mailbox + summary stream log):
+**Section-loop → Task Agent** (via db.sh send + db.sh log summary):
 
 | Message | Meaning |
 |---------|---------|
@@ -754,7 +768,7 @@ it sends `LOOP_DETECTED` to its own mailbox and stops.
 | `summary:impl:<num>:<text>` | Strategic implementation agent result summary |
 | `summary:impl-align:<num>:<text>` | Implementation alignment check result |
 | `status:coordination:round-<N>` | Global coordinator starting round N |
-| `status:paused` | Pipeline entered paused state (pipeline-state file) |
+| `status:paused` | Pipeline entered paused state (lifecycle event) |
 | `status:resumed` | Pipeline resumed from paused state |
 | `done:<num>:<count> files modified` | Section complete |
 | `fail:<num>:<error>` | Section failed (includes `fail:<num>:aborted`, `fail:<num>:coordination_exhausted:<summary>`) |
@@ -765,9 +779,10 @@ it sends `LOOP_DETECTED` to its own mailbox and stops.
 | `pause:dependency:<num>:<needed_section>` | Script paused — needs other section first |
 | `pause:loop_detected:<num>:<detail>` | Script paused — agent entered infinite loop |
 
-All messages above are sent to the task agent's mailbox AND appended to
-`<planspace>/artifacts/summary-stream.log` (dual-write). The task monitor
-reads the log file; the task agent reads the mailbox.
+All messages above are sent to the task agent's queue via `db.sh send`
+AND recorded as summary events via `db.sh log summary <tag> <body>`. Both
+writes go to `run.db`. The task monitor queries summary events via
+`db.sh tail`; the task agent reads messages via `db.sh recv`.
 
 **Task Agent → Section-loop** (control):
 
@@ -1025,10 +1040,12 @@ holistically, grouped by root cause, and fixed in coordinated batches.
 
 ### Cleanup
 
-section-loop.py cleans up its own mailbox on exit (normal completion,
-abort, or error). The `finally` block in `main()` ensures cleanup
-runs even on exceptions. The parent should also verify cleanup after
-the background task exits.
+section-loop.py cleans up its own agent registration on exit via
+`db.sh cleanup` (normal completion, abort, or error). The `finally` block
+in `main()` ensures cleanup runs even on exceptions. The parent should also
+verify cleanup after the background task exits. Messages and events remain
+in `run.db` as part of the audit trail — only agent registration status
+is updated to `cleaned`.
 
 ## Stage 4: Section Setup + Integration Proposal
 

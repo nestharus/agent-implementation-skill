@@ -1,5 +1,5 @@
 ---
-description: Event-driven workflow orchestrator. Dispatches steps via uv run agents, coordinates via mailbox.
+description: Event-driven workflow orchestrator. Dispatches steps via uv run agents, coordinates via db.
 model: claude-opus
 ---
 
@@ -34,9 +34,10 @@ The planspace contains:
 
 ## Startup
 
-1. Register yourself:
+1. Initialize the coordination database and register yourself:
    ```bash
-   bash "$WORKFLOW_HOME/scripts/mailbox.sh" register <planspace> orchestrator
+   bash "$WORKFLOW_HOME/scripts/db.sh" init <planspace>/run.db
+   bash "$WORKFLOW_HOME/scripts/db.sh" register <planspace>/run.db orchestrator
    ```
 2. Check for session recovery — if a `[run]` step exists, read `log.md`
    and `state.md` to decide whether to resume or re-dispatch
@@ -75,10 +76,10 @@ Write to `<planspace>/artifacts/step-N-prompt.md`. Include:
 - **Planspace path**: So the agent can read/write state and artifacts
 - **Codespace path**: So the agent knows where to find/modify source code
 - **Context**: Relevant content from `state.md`
-- **Mailbox instructions** (for parallel/async steps):
+- **Coordination instructions** (for parallel/async steps):
   ```
-  When done: bash $WORKFLOW_HOME/scripts/mailbox.sh send <planspace> orchestrator "done:<step>:<summary>"
-  On failure: bash $WORKFLOW_HOME/scripts/mailbox.sh send <planspace> orchestrator "fail:<step>:<error>"
+  When done: bash $WORKFLOW_HOME/scripts/db.sh send <planspace>/run.db orchestrator "done:<step>:<summary>"
+  On failure: bash $WORKFLOW_HOME/scripts/db.sh send <planspace>/run.db orchestrator "fail:<step>:<error>"
   ```
 - **Output contract**: What the agent should return
 
@@ -93,14 +94,14 @@ uv run agents --model <model> --file <planspace>/artifacts/step-N-prompt.md \
 For parallel steps (e.g., per-block implementation):
 ```bash
 # Start recv FIRST as a background task — always be listening
-bash "$WORKFLOW_HOME/scripts/mailbox.sh" recv <planspace> orchestrator 600
+bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator 600
 # ^^^ run_in_background: true
 
 # Then dispatch agents (fire-and-forget)
 (uv run agents --model <model> --file <planspace>/artifacts/step-N-block-A-prompt.md && \
-  bash "$WORKFLOW_HOME/scripts/mailbox.sh" send <planspace> orchestrator "done:block-A") &
+  bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-A") &
 (uv run agents --model <model> --file <planspace>/artifacts/step-N-block-B-prompt.md && \
-  bash "$WORKFLOW_HOME/scripts/mailbox.sh" send <planspace> orchestrator "done:block-B") &
+  bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-B") &
 
 # When recv completes, process result, then start another recv
 # Repeat until all agents have reported
@@ -138,20 +139,20 @@ When a step agent needs user input:
 3. User responds
 4. Send answer back:
    ```bash
-   bash "$WORKFLOW_HOME/scripts/mailbox.sh" send <planspace> <agent-name> "answer:<response>"
+   bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db <agent-name> --from orchestrator "answer:<response>"
    ```
 
 ## Abort
 
-1. List agents: `bash "$WORKFLOW_HOME/scripts/mailbox.sh" agents <planspace>`
-2. Send abort: `bash "$WORKFLOW_HOME/scripts/mailbox.sh" send <planspace> <name> "abort"`
-3. Cleanup: `bash "$WORKFLOW_HOME/scripts/mailbox.sh" cleanup <planspace>`
+1. List agents: `bash "$WORKFLOW_HOME/scripts/db.sh" agents <planspace>/run.db`
+2. Send abort: `bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db <name> --from orchestrator "abort"`
+3. Cleanup: `bash "$WORKFLOW_HOME/scripts/db.sh" cleanup <planspace>/run.db`
 
 ## Shutdown
 
-1. Clean up mailbox: `bash "$WORKFLOW_HOME/scripts/mailbox.sh" cleanup <planspace> orchestrator`
-2. Unregister: `bash "$WORKFLOW_HOME/scripts/mailbox.sh" unregister <planspace> orchestrator`
-3. Kill any remaining recv processes: `pkill -f "mailbox.sh recv.*<planspace>"`
+1. Clean up: `bash "$WORKFLOW_HOME/scripts/db.sh" cleanup <planspace>/run.db orchestrator`
+2. Unregister: `bash "$WORKFLOW_HOME/scripts/db.sh" unregister <planspace>/run.db orchestrator`
+3. Kill any remaining recv processes: `pkill -f "db.sh recv.*<planspace>"`
 4. Report summary of completed/failed/remaining steps
 
 ## Rules

@@ -1,6 +1,6 @@
 ---
 name: agent-implementation-skill
-description: Multi-model agent implementation workflow for software development. Orchestrates research, evaluation, design baseline, implementation, RCA, auditing, constraint discovery, model selection, and tiered Stage 3 codemap construction (Tier 1 structural scan, Tier 2 concurrent Opus region exploration with GLM file reads, Tier 3 synthesis) across external AI models (GPT, GLM, Claude). Use when implementing features through a structured multi-phase pipeline with worktrees, dynamic scheduling, and file-based agent coordination.
+description: Multi-model agent implementation workflow for software development. Orchestrates research, evaluation, design baseline, implementation, RCA, auditing, constraint discovery, model selection, and tiered Stage 3 codemap construction (Tier 1 structural scan, Tier 2 concurrent Opus region exploration with GLM file reads, Tier 3 synthesis) across external AI models (GPT, GLM, Claude). Use when implementing features through a structured multi-phase pipeline with worktrees, dynamic scheduling, and SQLite-backed agent coordination.
 ---
 
 # Development Workflow
@@ -30,7 +30,7 @@ $WORKFLOW_HOME/
   models.md             # model selection guide
   scripts/
     workflow.sh         # schedule driver ([wait]/[run]/[done]/[fail])
-    mailbox.sh          # file-based message passing
+    db.sh               # SQLite-backed coordination database
     scan.sh             # Stage 3 coordinator: runs Tier 1 scan, invokes Tier 2-3 codemap build, then downstream per-section exploration
     codemap_build.py    # workflow-owned Tier 2-3 builder: dispatches uv run --frozen agents for Opus region exploration + GLM file characterization, then synthesizes codemap.md
     section-loop.py     # strategic section-loop orchestrator: integration proposals, strategic implementation, cross-section communication, global coordination (Stages 4-5 of implement.md)
@@ -51,7 +51,7 @@ $WORKFLOW_HOME/
 ```
 
 Workspaces live on native filesystem for performance, separate from project:
-- **Planspace**: `~/.claude/workspaces/<task-slug>/` — schedule, state, log, artifacts, mailboxes
+- **Planspace**: `~/.claude/workspaces/<task-slug>/` — schedule, state, log, artifacts, coordination database
 - **Codespace**: project root or worktree — where source code lives
 
 Clean up planspace when workflow is fully complete (`rm -rf` the workspace dir).
@@ -135,13 +135,13 @@ uv run agents --model <model> --file <planspace>/artifacts/step-N-prompt.md \
 uv run agents --agent-file "$WORKFLOW_HOME/agents/exception-handler.md" \
   --file <planspace>/artifacts/exception-prompt.md
 
-# Parallel dispatch with mailbox coordination
+# Parallel dispatch with db.sh coordination
 (uv run agents --model gpt-5.3-codex-high --file <prompt-A.md> && \
-  bash "$WORKFLOW_HOME/scripts/mailbox.sh" send <planspace> orchestrator "done:block-A") &
+  bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-A") &
 (uv run agents --model gpt-5.3-codex-high --file <prompt-B.md> && \
-  bash "$WORKFLOW_HOME/scripts/mailbox.sh" send <planspace> orchestrator "done:block-B") &
-bash "$WORKFLOW_HOME/scripts/mailbox.sh" recv <planspace> orchestrator
-bash "$WORKFLOW_HOME/scripts/mailbox.sh" recv <planspace> orchestrator
+  bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-B") &
+bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator
+bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator
 
 # Tier 2 nested dispatch pattern (concurrent Opus regions, GLM file reads inside each region)
 uv run agents --model claude-opus --project <codespace> \
@@ -213,34 +213,42 @@ Each workflow gets a planspace at `~/.claude/workspaces/<task-slug>/`:
   - `artifacts/notes/` — cross-section consequence notes
   - `artifacts/coordination/` — global coordinator state and fix prompts
   - `artifacts/decisions/` — accumulated parent decisions per section (from pause/resume)
-  - `artifacts/summary-stream.log` — append-only log of all lifecycle messages (monitor reads this)
+- `run.db` — coordination database (messages, events, agent registry)
 - `constraints/` — discovered constraints (promote later)
 - `tradeoffs/` — discovered tradeoffs (promote later)
-- `mailboxes/<name>/` — per-agent message queues
-- `.registry/<name>` — agent registry entries
 
-### Mailbox System
+### Coordination System (db.sh)
 
-File-based message passing for agent coordination.
+SQLite-backed coordination for agent messaging. One `run.db` per pipeline
+run — messages are claimed (not consumed), history is preserved, and the
+database file is the complete audit trail.
 
 ```bash
+# Initialize the coordination database (idempotent)
+bash "$WORKFLOW_HOME/scripts/db.sh" init <planspace>/run.db
+
 # Send a message to an agent
-bash "$WORKFLOW_HOME/scripts/mailbox.sh" send <planspace> <target> "message text"
+bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db <target> [--from <agent>] "message text"
 
 # Block until a message arrives (agent sleeps, no busy-loop)
-bash "$WORKFLOW_HOME/scripts/mailbox.sh" recv <planspace> <name> [timeout_seconds]
+bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db <name> [timeout_seconds]
 
 # Check pending count (non-blocking)
-bash "$WORKFLOW_HOME/scripts/mailbox.sh" check <planspace> <name>
+bash "$WORKFLOW_HOME/scripts/db.sh" check <planspace>/run.db <name>
 
 # Read all pending messages
-bash "$WORKFLOW_HOME/scripts/mailbox.sh" drain <planspace> <name>
+bash "$WORKFLOW_HOME/scripts/db.sh" drain <planspace>/run.db <name>
 
 # Agent lifecycle
-bash "$WORKFLOW_HOME/scripts/mailbox.sh" register <planspace> <name> [pid]
-bash "$WORKFLOW_HOME/scripts/mailbox.sh" unregister <planspace> <name>
-bash "$WORKFLOW_HOME/scripts/mailbox.sh" agents <planspace>
-bash "$WORKFLOW_HOME/scripts/mailbox.sh" cleanup <planspace> [name]
+bash "$WORKFLOW_HOME/scripts/db.sh" register <planspace>/run.db <name> [pid]
+bash "$WORKFLOW_HOME/scripts/db.sh" unregister <planspace>/run.db <name>
+bash "$WORKFLOW_HOME/scripts/db.sh" agents <planspace>/run.db
+bash "$WORKFLOW_HOME/scripts/db.sh" cleanup <planspace>/run.db [name]
+
+# Event logging and querying
+bash "$WORKFLOW_HOME/scripts/db.sh" log <planspace>/run.db <kind> [tag] [body] [--agent <name>]
+bash "$WORKFLOW_HOME/scripts/db.sh" tail <planspace>/run.db [kind] [--since <id>] [--limit <n>]
+bash "$WORKFLOW_HOME/scripts/db.sh" query <planspace>/run.db <kind> [--tag <t>] [--agent <a>] [--since <id>] [--limit <n>]
 ```
 
 **Key patterns**:

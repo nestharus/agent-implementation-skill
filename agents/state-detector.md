@@ -15,6 +15,20 @@ Given a workspace, report exactly where the workflow stands.
 
 The user provides a planspace path at `~/.claude/workspaces/<task-slug>/`.
 
+<!-- ==========================================================================
+TODO [sqlite-migration]: Replace 5 remaining file-based operations with DB queries
+
+WHAT: 5 file-based operations remain after the db.sh mechanical swap:
+1. workflow.sh status → db.sh query <db> schedule (aggregate counts)
+2. schedule.md → db.sh query <db> schedule (list steps with status)
+3. state.md → db.sh fetch <db> state latest
+4. log.md → db.sh query <db> log --limit 10
+5. artifacts/ listing → db.sh list <db> (by kind/section)
+
+NOTE: schedule.md operations (#1-2) are Tier 2 — can defer until after
+Tier 1 (mailbox + events). workflow.sh may be kept as-is initially.
+========================================================================== -->
+
 ## Process
 
 1. Run `bash "$WORKFLOW_HOME/scripts/workflow.sh" status <planspace>` for counts
@@ -22,8 +36,8 @@ The user provides a planspace path at `~/.claude/workspaces/<task-slug>/`.
 3. Read `state.md` — current accumulated context and facts
 4. Read `log.md` — recent execution history (last 10 entries)
 5. Check `artifacts/` for any work-in-progress files
-6. Run `bash "$WORKFLOW_HOME/scripts/mailbox.sh" agents <planspace>` — registered agents and status
-7. For each agent, run `bash "$WORKFLOW_HOME/scripts/mailbox.sh" check <planspace> <name>` — pending count
+6. Run `bash "$WORKFLOW_HOME/scripts/db.sh" agents <planspace>/run.db` — registered agents and status
+7. For each agent, run `bash "$WORKFLOW_HOME/scripts/db.sh" check <planspace>/run.db <name>` — pending count
 
 ## Output
 

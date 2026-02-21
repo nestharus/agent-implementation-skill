@@ -21,6 +21,16 @@ Your prompt includes:
 - Failure context (error output, agent response)
 - Current state from state.md
 
+<!-- ==========================================================================
+TODO [sqlite-migration]: Replace state/log file operations with DB queries
+
+WHAT: State/log reads (log.md, state.md) become db.sh query/fetch.
+workflow.sh retry stays as-is.
+
+WHY: Full troubleshooting conversation now persists via db.sh:
+"what question was asked, what answer was given, what fix was applied."
+========================================================================== -->
+
 ## Process
 
 ### 1. Investigate
@@ -43,8 +53,8 @@ Your prompt includes:
 
 ### 4. Ask for Input (if blocked on information)
 ```bash
-bash "$WORKFLOW_HOME/scripts/mailbox.sh" send <planspace> orchestrator "ask:exception-handler:<question>"
-bash "$WORKFLOW_HOME/scripts/mailbox.sh" recv <planspace> exception-handler
+bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator --from exception-handler "ask:exception-handler:<question>"
+bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db exception-handler
 ```
 
 ### 5. Escalate (if needs human judgment)

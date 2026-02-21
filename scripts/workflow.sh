@@ -8,6 +8,26 @@
 #   workflow.sh next|done|fail|retry|skip|status <workspace-dir>
 #   workflow.sh parse <workspace-dir> "<step-line>"
 
+# =============================================================================
+# TODO [sqlite-migration]: Consider migrating schedule to events table (Tier 2)
+#
+# WHAT: This script mutates schedule.md in-place with sed (status markers).
+# It could migrate to events table (kind='schedule', tag=step_name) where
+# each status change is an INSERT, preserving the full schedule history.
+#
+# WHY: Currently, schedule.md shows only the current state of each step.
+# After a run, there's no record of retries, how long steps took, or
+# which steps were skipped and then later re-run. With DB events, every
+# next/done/fail/retry/skip becomes a timestamped event.
+#
+# DEFERRAL: This is Tier 2 — independent from the core mailbox→db.sh
+# migration. The schedule is a separate concern with its own consumers
+# (orchestrator.md, state-detector.md) and can migrate after Tier 1.
+# parse subcommand stays as-is (parses text format, not a storage concern).
+#
+# See: /tmp/pipeline-audit/exploration/event-streams-design-direction.md (D7)
+# =============================================================================
+
 set -euo pipefail
 
 cmd="${1:?Usage: workflow.sh <command> <workspace-dir>}"

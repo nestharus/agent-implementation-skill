@@ -52,11 +52,11 @@ Mail protocol (received FROM parent mailbox):
     abort                     — clean shutdown
     alignment_changed         — user input changed alignment, re-evaluate
 
-Pipeline state file (<planspace>/pipeline-state):
-    running   — normal execution (default if file missing)
+Pipeline state (lifecycle events in run.db, tag=pipeline-state):
+    running   — normal execution (default if no event)
     paused    — finish current agent, then wait
     Checked between each agent dispatch. Monitor or orchestrator writes
-    this file to control the pipeline.
+    lifecycle events via db.sh log to control the pipeline.
 
 Multi-tier monitoring:
     - Per-section agents (setup, proposal, implementation) get mail
@@ -81,7 +81,7 @@ Requires:
     - Each section file has ## Related Files with ### <filepath> entries
     - Global proposal and alignment documents
     - uv run agents available for dispatching models
-    - mailbox.sh available at $WORKFLOW_HOME/scripts/mailbox.sh
+    - db.sh available at $WORKFLOW_HOME/scripts/db.sh
 """
 import difflib
 import hashlib
@@ -91,7 +91,6 @@ import re
 import shutil
 import subprocess
 import sys
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -101,7 +100,7 @@ WORKFLOW_HOME = Path(os.environ.get(
     "WORKFLOW_HOME",
     Path(__file__).resolve().parent.parent,
 ))
-MAILBOX = WORKFLOW_HOME / "scripts" / "mailbox.sh"
+DB_SH = WORKFLOW_HOME / "scripts" / "db.sh"
 AGENT_NAME = "section-loop"
 # Maximum rounds the global coordinator will attempt before declaring done.
 MAX_COORDINATION_ROUNDS = 3
@@ -124,26 +123,60 @@ def log(msg: str) -> None:
     print(f"[section-loop] {msg}", flush=True)
 
 
+
+
+def _summary_tag(message: str) -> str:
+    """Extract a structured tag from a summary-worthy message.
+
+    Maps message prefixes to queryable tags for db.sh log events::
+
+      summary:proposal-align:03:PROBLEMS → proposal-align:03
+      status:coordination:round-2        → coordination:round-2
+      done:03:5 files modified           → done:03
+      fail:03:error                      → fail:03
+      complete                           → complete
+      pause:underspec:03:detail          → underspec:03
+    """
+    parts = message.split(":")
+    if message.startswith("summary:") and len(parts) >= 3:
+        return f"{parts[1]}:{parts[2]}"
+    if message.startswith("status:") and len(parts) >= 3:
+        return f"{parts[1]}:{parts[2]}"
+    if message.startswith(("done:", "fail:")) and len(parts) >= 2:
+        return f"{parts[0]}:{parts[1]}"
+    if message.startswith("pause:") and len(parts) >= 3:
+        return f"{parts[1]}:{parts[2]}"
+    if message == "complete":
+        return "complete"
+    return parts[0]
+
+
 def mailbox_send(planspace: Path, target: str, message: str) -> None:
     """Send a message to a target mailbox.
 
-    Also writes to the summary stream log for messages that the task-level
-    monitor should be able to see (summary, done, complete, status, fail,
-    pause). This avoids the monitor needing to consume the same mailbox
-    messages that the task agent also needs.
+    Summary-worthy messages (summary, done, complete, status, fail, pause
+    prefixes) are also recorded as summary events in the database so that
+    monitors can query them via ``db.sh tail``/``db.sh query``.
     """
     subprocess.run(  # noqa: S603
-        ["bash", str(MAILBOX), "send", str(planspace), target, message],  # noqa: S607
+        ["bash", str(DB_SH), "send", str(planspace / "run.db"),  # noqa: S607
+         target, "--from", AGENT_NAME, message],
         check=True,
         capture_output=True,
         text=True,
     )
     log(f"  mail → {target}: {message[:80]}")
-    # Auto-log messages that the monitor should see
+    # Record summary event for messages that monitors track
     for prefix in ("summary:", "done:", "complete", "status:", "fail:",
                    "pause:"):
         if message.startswith(prefix):
-            log_summary(planspace, message)
+            subprocess.run(  # noqa: S603
+                ["bash", str(DB_SH), "log", str(planspace / "run.db"),  # noqa: S607
+                 "summary", _summary_tag(message), message,
+                 "--agent", AGENT_NAME],
+                capture_output=True,
+                text=True,
+            )
             break
 
 
@@ -151,8 +184,8 @@ def mailbox_recv(planspace: Path, timeout: int = 0) -> str:
     """Block until a message arrives in our mailbox. Returns message text."""
     log(f"  mail ← waiting (timeout={timeout})...")
     result = subprocess.run(  # noqa: S603
-        ["bash", str(MAILBOX), "recv", str(planspace), AGENT_NAME,  # noqa: S607
-         str(timeout)],
+        ["bash", str(DB_SH), "recv", str(planspace / "run.db"),  # noqa: S607
+         AGENT_NAME, str(timeout)],
         capture_output=True,
         text=True,
     )
@@ -166,12 +199,13 @@ def mailbox_recv(planspace: Path, timeout: int = 0) -> str:
 def mailbox_drain(planspace: Path) -> list[str]:
     """Read all pending messages without blocking."""
     result = subprocess.run(  # noqa: S603
-        ["bash", str(MAILBOX), "drain", str(planspace), AGENT_NAME],  # noqa: S607
+        ["bash", str(DB_SH), "drain", str(planspace / "run.db"),  # noqa: S607
+         AGENT_NAME],
         capture_output=True,
         text=True,
     )
     msgs = []
-    # Split on line-delimited separator (matches mailbox.sh's "---" on its
+    # Split on line-delimited separator (matches db.sh's "---" on its
     # own line).  Using regex to avoid misparse when message body contains
     # the literal string "---".
     for chunk in re.split(r'\n---\n', result.stdout):
@@ -182,30 +216,51 @@ def mailbox_drain(planspace: Path) -> list[str]:
 
 
 def mailbox_register(planspace: Path) -> None:
-    """Register this agent's mailbox for receiving messages."""
+    """Register this agent for receiving messages."""
     subprocess.run(  # noqa: S603
-        ["bash", str(MAILBOX), "register", str(planspace), AGENT_NAME],  # noqa: S607
+        ["bash", str(DB_SH), "register", str(planspace / "run.db"),  # noqa: S607
+         AGENT_NAME],
         check=True, capture_output=True, text=True,
     )
 
 
 def mailbox_cleanup(planspace: Path) -> None:
-    """Clean up and unregister this agent's mailbox."""
+    """Clean up and unregister this agent."""
     subprocess.run(  # noqa: S603
-        ["bash", str(MAILBOX), "cleanup", str(planspace), AGENT_NAME],  # noqa: S607
+        ["bash", str(DB_SH), "cleanup", str(planspace / "run.db"),  # noqa: S607
+         AGENT_NAME],
         capture_output=True, text=True,
     )
     subprocess.run(  # noqa: S603
-        ["bash", str(MAILBOX), "unregister", str(planspace), AGENT_NAME],  # noqa: S607
+        ["bash", str(DB_SH), "unregister", str(planspace / "run.db"),  # noqa: S607
+         AGENT_NAME],
+        capture_output=True, text=True,
+    )
+
+
+def _log_artifact(planspace: Path, name: str) -> None:
+    """Log an artifact lifecycle event to the database."""
+    subprocess.run(  # noqa: S603
+        ["bash", str(DB_SH), "log", str(planspace / "run.db"),  # noqa: S607
+         "lifecycle", f"artifact:{name}", "created",
+         "--agent", AGENT_NAME],
         capture_output=True, text=True,
     )
 
 
 def check_pipeline_state(planspace: Path) -> str:
-    """Read the pipeline state file. Returns 'running' if missing."""
-    state_file = planspace / "pipeline-state"
-    if state_file.exists():
-        return state_file.read_text(encoding="utf-8").strip()
+    """Query the latest pipeline-state lifecycle event. Returns 'running' if none."""
+    result = subprocess.run(  # noqa: S603
+        ["bash", str(DB_SH), "query", str(planspace / "run.db"),  # noqa: S607
+         "lifecycle", "--tag", "pipeline-state", "--limit", "1"],
+        capture_output=True, text=True,
+    )
+    # query returns id|ts|kind|tag|body|agent — body is the state value
+    line = result.stdout.strip()
+    if line:
+        parts = line.split("|")
+        if len(parts) >= 5 and parts[4]:
+            return parts[4]
     return "running"
 
 
@@ -434,24 +489,31 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
 
     monitor_name = f"{agent_name}-monitor" if agent_name else None
     monitor_proc = None
-    loop_signal_file = None
+    dispatch_start_id = None
 
     if planspace and agent_name:
+        db_path = str(planspace / "run.db")
         # Register agent's mailbox (agents send narration here)
         subprocess.run(  # noqa: S603
-            ["bash", str(MAILBOX), "register", str(planspace), agent_name],  # noqa: S607
+            ["bash", str(DB_SH), "register",  # noqa: S607
+             db_path, agent_name],
             check=True, capture_output=True, text=True,
         )
-        # File-based loop signal: monitor writes here instead of sending
-        # to section-loop's mailbox (avoids draining and losing messages)
-        loop_signal_file = (planspace / "artifacts"
-                            / f"{agent_name}-loop-signal.txt")
-        if loop_signal_file.exists():
-            loop_signal_file.unlink()
+        # Record dispatch-start event and capture its ID for signal scoping
+        start_result = subprocess.run(  # noqa: S603
+            ["bash", str(DB_SH), "log", db_path,  # noqa: S607
+             "lifecycle", f"dispatch:{agent_name}", "start",
+             "--agent", AGENT_NAME],
+            capture_output=True, text=True,
+        )
+        # Output format: "logged:<id>:lifecycle:dispatch:<agent-name>"
+        start_out = start_result.stdout.strip()
+        if start_out.startswith("logged:"):
+            dispatch_start_id = start_out.split(":")[1]
         # Launch agent-monitor (GLM) in background
         assert monitor_name is not None  # narrowed by `if agent_name`  # noqa: S101
         monitor_prompt = _write_agent_monitor_prompt(
-            planspace, agent_name, monitor_name, loop_signal_file,
+            planspace, agent_name, monitor_name,
         )
         monitor_proc = subprocess.Popen(  # noqa: S603
             ["uv", "run", "--frozen", "agents", "--agent-file",  # noqa: S607
@@ -485,45 +547,61 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
         assert monitor_name is not None  # set when monitor_proc created  # noqa: S101
         # Send stop signal to monitor
         subprocess.run(  # noqa: S603
-            ["bash", str(MAILBOX), "send", str(planspace),  # noqa: S607
-             monitor_name, "agent-finished"],
+            ["bash", str(DB_SH), "send", str(planspace / "run.db"),  # noqa: S607
+             monitor_name, "--from", AGENT_NAME, "agent-finished"],
             capture_output=True, text=True,
         )
         try:
             monitor_proc.wait(timeout=30)
         except subprocess.TimeoutExpired:
             monitor_proc.terminate()
-        # Check file-based loop signal (no mailbox drain needed)
-        if loop_signal_file and loop_signal_file.exists():
-            loop_text = loop_signal_file.read_text(encoding="utf-8").strip()
-            if loop_text:
-                log(f"  LOOP DETECTED by monitor: {loop_text[:100]}")
-                output += "\nLOOP_DETECTED: " + loop_text
-            loop_signal_file.unlink(missing_ok=True)
+        # Query DB for signal events from this dispatch
+        if dispatch_start_id:
+            sig_result = subprocess.run(  # noqa: S603
+                ["bash", str(DB_SH), "query",  # noqa: S607
+                 str(planspace / "run.db"), "signal",
+                 "--tag", agent_name,
+                 "--since", dispatch_start_id],
+                capture_output=True, text=True,
+            )
+            for sig_line in sig_result.stdout.strip().splitlines():
+                # Output format: id|ts|kind|tag|body|agent
+                parts = sig_line.split("|")
+                if len(parts) >= 5:
+                    sig_body = parts[4]
+                    if sig_body:
+                        log(f"  SIGNAL from monitor: {sig_body[:100]}")
+                        output += "\nLOOP_DETECTED: " + sig_body
 
-    # Write output AFTER loop signal has been appended (so the saved
-    # file includes the LOOP_DETECTED line for forensic debugging)
+    # Write output AFTER signal check (so the saved file includes
+    # the LOOP_DETECTED line for forensic debugging)
     output_path.write_text(output, encoding="utf-8")
+    if planspace is not None:
+        _log_artifact(planspace, f"output:{output_path.stem}")
 
     if monitor_proc:
         assert monitor_name is not None  # set when monitor_proc created  # noqa: S101
         assert agent_name is not None  # noqa: S101  # monitor_proc only set when agent_name provided
-        # Clean up agent mailbox
+        # Clean up agent
         subprocess.run(  # noqa: S603
-            ["bash", str(MAILBOX), "cleanup", str(planspace), agent_name],  # noqa: S607
+            ["bash", str(DB_SH), "cleanup",  # noqa: S607
+             str(planspace / "run.db"), agent_name],
             capture_output=True, text=True,
         )
         subprocess.run(  # noqa: S603
-            ["bash", str(MAILBOX), "unregister", str(planspace), agent_name],  # noqa: S607
+            ["bash", str(DB_SH), "unregister",  # noqa: S607
+             str(planspace / "run.db"), agent_name],
             capture_output=True, text=True,
         )
-        # Clean up monitor mailbox
+        # Clean up monitor
         subprocess.run(  # noqa: S603
-            ["bash", str(MAILBOX), "cleanup", str(planspace), monitor_name],  # noqa: S607
+            ["bash", str(DB_SH), "cleanup",  # noqa: S607
+             str(planspace / "run.db"), monitor_name],
             capture_output=True, text=True,
         )
         subprocess.run(  # noqa: S603
-            ["bash", str(MAILBOX), "unregister", str(planspace), monitor_name],  # noqa: S607
+            ["bash", str(DB_SH), "unregister",  # noqa: S607
+             str(planspace / "run.db"), monitor_name],
             capture_output=True, text=True,
         )
 
@@ -532,27 +610,27 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
 
 def _write_agent_monitor_prompt(
     planspace: Path, agent_name: str, monitor_name: str,
-    loop_signal_file: Path,
 ) -> Path:
     """Write the prompt file for a per-agent GLM monitor."""
+    db_path = planspace / "run.db"
     prompt_path = planspace / "artifacts" / f"{monitor_name}-prompt.md"
     prompt_path.write_text(f"""# Agent Monitor: {agent_name}
 
 ## Your Job
 Watch mailbox `{agent_name}` for messages from a running agent.
 Detect if the agent is looping (repeating the same actions).
-Report loops by writing to a signal file.
+Report loops by logging signal events to the database.
 
 ## Setup
 ```bash
-bash "{MAILBOX}" register "{planspace}" {monitor_name}
+bash "{DB_SH}" register "{db_path}" {monitor_name}
 ```
 
 ## Paths
 - Planspace: `{planspace}`
+- Database: `{db_path}`
 - Agent mailbox to watch: `{agent_name}`
 - Your mailbox: `{monitor_name}`
-- Loop signal file: `{loop_signal_file}`
 
 ## Monitor Loop
 1. Drain all messages from `{agent_name}` mailbox
@@ -567,24 +645,25 @@ is substantially similar to a previous one (same file, same action),
 the agent is looping.
 
 **Agent self-reported loop:** If ANY drained message starts with
-`LOOP_DETECTED:`, the agent has self-detected a loop. Immediately write
-that payload to the signal file and exit — no further analysis needed.
+`LOOP_DETECTED:`, the agent has self-detected a loop. Immediately log
+that payload as a signal event and exit — no further analysis needed.
 
-When loop detected (either self-reported or by your analysis), write to
-the signal file:
+When loop detected (either self-reported or by your analysis), log a
+signal event:
 ```bash
-echo "LOOP_DETECTED:{agent_name}:<repeated action>" > "{loop_signal_file}"
+bash "{DB_SH}" log "{db_path}" signal {agent_name} "LOOP_DETECTED:{agent_name}:<repeated action>" --agent {monitor_name}
 ```
 
-Do NOT send loop signals via mailbox — only write to the file above.
+Do NOT send loop signals via mailbox — only log signal events as above.
 
 ## Exit Conditions
 - Receive `agent-finished` on your mailbox → exit normally
-- 5 minutes with no messages from agent → write stalled warning to signal file, exit:
+- 5 minutes with no messages from agent → log stalled warning, then exit:
   ```bash
-  echo "STALLED:{agent_name}:no messages for 5 minutes" > "{loop_signal_file}"
+  bash "{DB_SH}" log "{db_path}" signal {agent_name} "STALLED:{agent_name}:no messages for 5 minutes" --agent {monitor_name}
   ```
 """, encoding="utf-8")
+    _log_artifact(planspace, f"prompt:agent-monitor-{agent_name}")
     return prompt_path
 
 
@@ -732,6 +811,7 @@ def post_section_completion(
 
     log(f"Section {sec_num}: snapshotted {len(modified_files)} files "
         f"to {snapshot_dir}")
+    _log_artifact(planspace, f"snapshot:section-{sec_num}")
 
     # -----------------------------------------------------------------
     # (b) Semantic impact analysis via GLM
@@ -799,6 +879,7 @@ SECTION-NN: MATERIAL <brief reason>
 or
 SECTION-NN: NO_IMPACT
 """, encoding="utf-8")
+    _log_artifact(planspace, f"prompt:impact-{sec_num}")
 
     log(f"Section {sec_num}: running impact analysis")
     impact_result = dispatch_agent(
@@ -880,6 +961,7 @@ Full integration proposal: `{integration_proposal}`
 Check the snapshot at `{snapshot_dir}` and compare against the current
 file state to see exactly what changed.
 """, encoding="utf-8")
+        _log_artifact(planspace, f"note:from-{sec_num}-to-{target_num}")
         log(f"Section {sec_num}: left note for section {target_num} "
             f"at {note_path}")
 
@@ -972,26 +1054,6 @@ def extract_section_summary(section_path: Path) -> str:
     return "(no summary available)"
 
 
-def log_summary(planspace: Path, message: str) -> None:
-    """Append a summary message to the summary stream log.
-
-    The summary log is a plain text file that the task-level monitor can
-    tail-read for pattern detection, independent of mailbox recv. This
-    avoids the problem of mailbox message consumption conflicts between
-    the monitor and the task agent.
-
-    Messages are sanitized to collapse embedded newlines into spaces so
-    each log entry stays on a single line (the monitor parses line by line).
-    """
-    log_path = planspace / "artifacts" / "summary-stream.log"
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    timestamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-    # Collapse newlines/carriage returns so each entry is one line
-    sanitized = message.replace("\r", " ").replace("\n", " ")
-    with log_path.open("a", encoding="utf-8") as f:
-        f.write(f"{timestamp} {sanitized}\n")
-
-
 def read_decisions(planspace: Path, section_number: str) -> str:
     """Read accumulated decisions from parent for a section.
 
@@ -1013,6 +1075,7 @@ def persist_decision(planspace: Path, section_number: str,
     decision_file = decisions_dir / f"section-{section_number}.md"
     with decision_file.open("a", encoding="utf-8") as f:
         f.write(f"\n## Decision (from parent)\n{payload}\n")
+    _log_artifact(planspace, f"decision:section-{section_number}")
 
 
 def normalize_section_number(
@@ -1087,7 +1150,7 @@ def agent_mail_instructions(planspace: Path, agent_name: str,
     per-agent monitor watches. This keeps narration separate from the
     section-loop's control mailbox.
     """
-    mailbox_cmd = f'bash "{MAILBOX}" send "{planspace}" {agent_name}'
+    mailbox_cmd = f'bash "{DB_SH}" send "{planspace / "run.db"}" {agent_name} --from {agent_name}'
     return f"""
 ## Progress Reporting (CRITICAL — do this throughout)
 
@@ -1195,6 +1258,7 @@ Write to: `{alignment_excerpt}`
 {SIGNAL_INSTRUCTIONS}
 {agent_mail_instructions(planspace, a_name, m_name)}
 """, encoding="utf-8")
+    _log_artifact(planspace, f"prompt:setup-{section.number}")
     return prompt_path
 
 
@@ -1337,6 +1401,7 @@ Write your integration proposal to: `{integration_proposal}`
 {SIGNAL_INSTRUCTIONS}
 {agent_mail_instructions(planspace, a_name, m_name)}
 """, encoding="utf-8")
+    _log_artifact(planspace, f"prompt:proposal-{section.number}")
     return prompt_path
 
 
@@ -1410,6 +1475,7 @@ Each problem must be specific and actionable. "Needs more detail" is NOT
 a valid problem. "The proposal routes X through Y, but the alignment says
 X must go through Z because of constraint C" IS a valid problem.
 """, encoding="utf-8")
+    _log_artifact(planspace, f"prompt:proposal-align-{section.number}")
     return prompt_path
 
 
@@ -1534,6 +1600,7 @@ modified and indirectly affected.
 {SIGNAL_INSTRUCTIONS}
 {agent_mail_instructions(planspace, a_name, m_name)}
 """, encoding="utf-8")
+    _log_artifact(planspace, f"prompt:impl-{section.number}")
     return prompt_path
 
 
@@ -1626,6 +1693,7 @@ Each problem must be specific and actionable.
 """,
         encoding="utf-8",
     )
+    _log_artifact(planspace, f"prompt:impl-align-{section.number}")
     return prompt_path
 
 
@@ -2297,6 +2365,7 @@ or
 
 INDEPENDENT: <brief explanation of why these are separate issues>
 """, encoding="utf-8")
+    _log_artifact(planspace, f"prompt:coordinator-grouping-{group_id}")
     return prompt_path
 
 
@@ -2400,6 +2469,7 @@ After implementation, write a list of ALL files you modified to:
 One file path per line (relative to codespace root `{codespace}`).
 Include files modified by sub-agents.
 """, encoding="utf-8")
+    _log_artifact(planspace, f"prompt:coordinator-fix-{group_id}")
     return prompt_path
 
 
@@ -2493,6 +2563,7 @@ def run_global_coordination(
     # Save coordination state for debugging / inspection
     state_path = coord_dir / "problems.json"
     state_path.write_text(json.dumps(problems, indent=2), encoding="utf-8")
+    _log_artifact(planspace, "coordination:problems")
 
     # -----------------------------------------------------------------
     # Step 2: Group related problems
@@ -2567,6 +2638,7 @@ def run_global_coordination(
             "files": sorted({f for p in g for f in p.get("files", [])}),
         })
     groups_path.write_text(json.dumps(groups_data, indent=2), encoding="utf-8")
+    _log_artifact(planspace, "coordination:groups")
 
     # -----------------------------------------------------------------
     # Step 3: Size the work and dispatch
@@ -2815,9 +2887,13 @@ def main() -> None:
 
     sections_dir = args.planspace / "artifacts" / "sections"
 
-    # Register our mailbox
+    # Initialize coordination DB (idempotent) and register
+    subprocess.run(  # noqa: S603
+        ["bash", str(DB_SH), "init", str(args.planspace / "run.db")],  # noqa: S607
+        check=True, capture_output=True, text=True,
+    )
     mailbox_register(args.planspace)
-    log(f"Registered mailbox: {AGENT_NAME} (parent: {args.parent})")
+    log(f"Registered: {AGENT_NAME} (parent: {args.parent})")
 
     try:
         _run_loop(args.planspace, args.codespace, args.parent, sections_dir,
