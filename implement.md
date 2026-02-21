@@ -117,7 +117,7 @@ Only clean up the mailbox when no more messages are expected.
 ## Pipeline Overview
 
 1. **Section Decomposition** — Recursive decomposition into atomic section files
-2. **Docstring Infrastructure** — Ensure all source files have module docstrings
+2. **Demand-Driven Docstring Cache** — Ensure relevant source files have module docstrings
 3. **File Relevance Scan** — Quick mode dispatches an Opus agent to explore the codespace and build a codemap, then per-section Opus agents identify related files; deep mode dispatches GLM agents to reason about specific file relevance (preserving `## Related Files`)
 
 --- Per-section loop (strategic, agent-driven) ---
@@ -166,7 +166,7 @@ required by its stage contract.
 | Stage | Concurrency |
 |-------|-------------|
 | 1: Decomposition | **Parallel** — writes to planspace only |
-| 2: Docstrings | **Sequential** — one GLM per file, edits source |
+| 2: Docstrings | **Sequential** — one GLM per target file, edits source |
 | 3: Scan | **Shell script** — quick: Opus agent explores codespace and builds codemap, then per-section Opus agents identify related files using the codemap; deep: GLM agents reason about specific file relevance in context |
 | 4–5: Section Loop | **Sequential** — one section at a time, strategic agent-driven implementation with sub-agent dispatch; global coordination after initial pass |
 | 6: Verification | **Sequential** — lint, test, fix cycles |
@@ -259,7 +259,7 @@ Number terminal sections sequentially as they are produced.
 research findings, design baselines, resolutions, etc.). Codebase
 research happens in Stage 2 — Stage 1 never reads source code.
 
-Verbatim copies guarantee decomposition accuracy — no audit needed.
+Verbatim copies guarantee decomposition accuracy — no verification needed.
 
 ### Phase C: Section Summaries (GLM per section)
 
@@ -285,20 +285,35 @@ find <planspace>/artifacts/sections -name "section-*.md" \
   | python3 "$TOOLS/extract-summary-md" --stdin
 ```
 
-## Stage 2: Docstring Infrastructure (GLM)
+## Stage 2: Demand-Driven Docstring Cache (GLM)
 
-**Sequential** — one GLM agent per file, edits source to add/update
-module docstrings.
+**On-demand** — only processes files that will actually be used by
+later stages, not the entire repository.
 
 Module-level docstrings serve as file summaries. They are standard
 practice, live in source control, and are cheaply extractable. They
 enable Stage 3 to scan relevance without reading full files.
 
-### 2a: Discover Files
+### 2a: Determine Target Files
+
+Only generate docstrings for files that appear in at least one of:
+- **Codemap hotspots** — files highlighted by Stage 3 codemap exploration
+  (if codemap already exists from a previous run)
+- **Per-section related files** — files listed under `## Related Files`
+  in section specifications (if sections already have related files)
+- **Coordinator shared files** — files flagged by the global coordinator
+  as modified by multiple sections
+
+If none of these sources are available yet (first run, no codemap), fall
+back to discovering files from the repository root:
 
 ```bash
-find <codespace>/scripts/spec_manager -name "*.py" -not -name "__init__.py"
+cd <codespace> && git ls-files '*.py' | grep -v '__init__.py'
 ```
+
+Falls back to `find <codespace> -name "*.py" -not -name "__init__.py"` if
+not a git repository. Never hardcode subdirectory paths — discover from
+the repository root.
 
 ### 2b: Extract Existing Docstrings
 
@@ -327,6 +342,13 @@ If docstrings already exist from a previous run:
 1. `git diff --name-only <last-docstring-commit>` → changed files
 2. For each changed file: GLM re-reads and updates the docstring
 3. Unchanged files keep their existing docstrings
+
+### 2e: Caching
+
+Store per-file summaries keyed by content hash in
+`<planspace>/artifacts/docstring-cache.json`. On subsequent runs, skip
+files whose hash has not changed. This makes docstring generation
+proportional to work actually done.
 
 ## Stage 3: File Relevance Scan
 
@@ -1188,7 +1210,7 @@ conflicts after the initial pass.
 
 - **DO NOT edit source files yourself** — delegate ALL editing to agents
 - **DO NOT place markers in source code** — integration proposals, consequence notes, and snapshots are external artifacts
-- **DO NOT skip the docstring stage** — it's the scan infrastructure
+- **DO NOT skip the docstring stage** — it's the scan infrastructure (but only target relevant files, not the entire repo)
 - **DO NOT prescribe solutions in alignment docs** — alignment defines constraints and the problem, NOT the solution. GPT writes integration proposals.
 - **DO NOT check tiny details in alignment** — alignment checks shape and direction only. Code style, variable names, and edge cases are resolved during implementation.
 - **DO NOT solve underspecified problems in-place** — stop the section, trigger a research/evaluate cycle, decompose the sub-proposal into new sections

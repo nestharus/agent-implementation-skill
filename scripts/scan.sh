@@ -216,17 +216,19 @@ run_quick_scan() {
 deep_already_annotated() {
   local section_file="$1"
   local source_file="$2"
-  local block_content
-  block_content=$(awk -v target="$source_file" '
-    $0 == "### " target { in_block = 1; next }
-    in_block && ($0 ~ /^### / || $0 ~ /^## /) { exit }
-    in_block { print }
-  ' "$section_file")
+  local section_log_dir="$SCAN_LOG_DIR/$(basename "$section_file" .md)"
 
-  # If block has more than 3 non-empty lines, it already has deep analysis
-  local line_count
-  line_count=$(echo "$block_content" | grep -c '[^[:space:]]' 2>/dev/null || echo 0)
-  [ "$line_count" -gt 3 ]
+  # Check if a deep-scan response file exists for this (section, file) pair.
+  # The response file is the authoritative record that deep analysis ran —
+  # not a line-count heuristic on the section file content.
+  local path_token extension_token source_hash safe_name
+  path_token=$(echo "$source_file" | tr '/.' '__' | tr -cd '[:alnum:]_-' | cut -c1-80)
+  extension_token="${source_file##*.}"
+  [ "$extension_token" = "$source_file" ] && extension_token="noext"
+  source_hash=$(printf '%s' "$source_file" | (sha1sum 2>/dev/null || shasum -a 1 2>/dev/null || python3 -c "import hashlib,sys; print(hashlib.sha1(sys.stdin.buffer.read()).hexdigest())") | awk '{print $1}' | cut -c1-10)
+  safe_name="${path_token}.${extension_token}.${source_hash}"
+
+  [ -s "$section_log_dir/deep-${safe_name}-response.md" ]
 }
 
 deep_scan_related_files() {
@@ -321,7 +323,7 @@ run_deep_scan() {
       if [ "$extension_token" = "$source_file" ]; then
         extension_token="noext"
       fi
-      source_hash=$(printf '%s' "$source_file" | sha1sum | awk '{print $1}' | cut -c1-10)
+      source_hash=$(printf '%s' "$source_file" | (sha1sum 2>/dev/null || shasum -a 1 2>/dev/null || python3 -c "import hashlib,sys; print(hashlib.sha1(sys.stdin.buffer.read()).hexdigest())") | awk '{print $1}' | cut -c1-10)
       safe_name="${path_token}.${extension_token}.${source_hash}"
       local prompt_file="$section_log_dir/deep-${safe_name}-prompt.md"
       local response_file="$section_log_dir/deep-${safe_name}-response.md"
@@ -349,12 +351,15 @@ After your analysis, write a JSON feedback file to: \`$feedback_file\`
 Format:
 \`\`\`json
 {
+  "source_file": "$source_file",
   "relevant": true,
   "missing_files": ["path/to/file1.py", "path/to/file2.py"],
   "reason": "Brief explanation if not relevant, or why missing files matter"
 }
 \`\`\`
 
+- \`source_file\`: The relative path to the file being analyzed (copy the
+  value above exactly — this preserves traceability from feedback to file).
 - \`relevant\`: Is this file actually relevant to the section? Set false if
   the file was incorrectly included (e.g., shares a name but different concern).
 - \`missing_files\`: Files NOT in the section's list that SHOULD be. Only
@@ -418,16 +423,23 @@ except: print('true')
 " 2>/dev/null || echo "true")
 
       if [ "$relevant" = "false" ]; then
-        local reason
-        reason=$(python3 -c "
+        local reason src_path
+        eval "$(python3 -c "
 import json
-try: print(json.load(open('$fb_file')).get('reason',''))
-except: print('')
-" 2>/dev/null || echo "")
-        # Extract source file from feedback filename
-        local src_name="${fb_file##*/deep-}"
-        src_name="${src_name%%-feedback.json}"
-        irrelevant_files="${irrelevant_files}\n- ${src_name}: ${reason}"
+try:
+    d = json.load(open('$fb_file'))
+    print('reason=' + repr(d.get('reason','')))
+    print('src_path=' + repr(d.get('source_file','')))
+except:
+    print(\"reason=''\")
+    print(\"src_path=''\")
+" 2>/dev/null || echo "reason=''; src_path=''")"
+        # Use source_file from JSON for traceability (not parsed from filename)
+        if [ -z "$src_path" ]; then
+          src_path="${fb_file##*/deep-}"
+          src_path="${src_path%%-feedback.json}"
+        fi
+        irrelevant_files="${irrelevant_files}\n- ${src_path}: ${reason}"
         has_feedback=1
       fi
 

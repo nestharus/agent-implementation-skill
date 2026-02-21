@@ -250,6 +250,38 @@ def _log_artifact(planspace: Path, name: str) -> None:
     )
 
 
+def _record_traceability(
+    planspace: Path,
+    section: str,
+    artifact: str,
+    source: str,
+    detail: str = "",
+) -> None:
+    """Append a traceability entry to artifacts/traceability.json.
+
+    Records the provenance chain: section → excerpt → proposal →
+    microstrategy → files/changes. Each entry captures what artifact
+    was produced, from what source, and for which section.
+    """
+    trace_path = planspace / "artifacts" / "traceability.json"
+    entries: list[dict] = []
+    if trace_path.exists():
+        try:
+            entries = json.loads(trace_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, ValueError):
+            entries = []
+    entries.append({
+        "section": section,
+        "artifact": artifact,
+        "source": source,
+        "detail": detail,
+    })
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    trace_path.write_text(
+        json.dumps(entries, indent=2) + "\n", encoding="utf-8",
+    )
+
+
 def check_pipeline_state(planspace: Path) -> str:
     """Query the latest pipeline-state lifecycle event. Returns 'running' if none."""
     result = subprocess.run(  # noqa: S603
@@ -729,6 +761,8 @@ def read_agent_signal(signal_path: Path) -> tuple[str | None, str]:
 
     Agents write JSON signal files when they need to pause the pipeline.
     Returns (signal_type, detail) or (None, "") if no signal file exists.
+    The detail includes structured fields (needs, assumptions_refused,
+    suggested_escalation_target) when available for richer context.
     """
     if not signal_path.exists():
         return None, ""
@@ -736,6 +770,19 @@ def read_agent_signal(signal_path: Path) -> tuple[str | None, str]:
         data = json.loads(signal_path.read_text(encoding="utf-8"))
         state = data.get("state", "").lower()
         detail = data.get("detail", "")
+        # Enrich detail with structured fields when present
+        needs = data.get("needs", "")
+        refused = data.get("assumptions_refused", "")
+        target = data.get("suggested_escalation_target", "")
+        extras = []
+        if needs:
+            extras.append(f"Needs: {needs}")
+        if refused:
+            extras.append(f"Refused assumptions: {refused}")
+        if target:
+            extras.append(f"Escalation target: {target}")
+        if extras:
+            detail = f"{detail} [{'; '.join(extras)}]"
         if state in ("underspec", "underspecified"):
             return "underspec", detail
         if state in ("need_decision",):
@@ -824,45 +871,31 @@ def check_agent_signals(
 
     Priority:
     1. Read structured signal file (agents write JSON when they need input)
-    2. Quick pattern scan of output (catches explicit signal lines)
-    3. If ambiguous, dispatch GLM state-adjudicator (expensive, only when
-       needed)
+    2. Delegate to GLM state-adjudicator for output interpretation
+       (scripts dispatch, agents decide — no regex/prefix heuristics)
     """
-    # 1. Structured signal file (most reliable)
+    # 1. Structured signal file (most reliable — agents write JSON)
     if signal_path:
         sig, detail = read_agent_signal(signal_path)
         if sig:
             return sig, detail
 
-    # 2. Quick pattern scan (fast, handles well-formatted signals)
+    # 2. Log prefix matches for diagnostics (NOT used for decisions)
     for line in output.split("\n"):
         line = line.strip()
-        for prefix, signal_type in [
-            ("UNDERSPECIFIED:", "underspec"),
-            ("NEED_DECISION:", "need_decision"),
-            ("DEPENDENCY:", "dependency"),
-            ("LOOP_DETECTED:", "loop_detected"),
-        ]:
+        for prefix in ("UNDERSPECIFIED:", "NEED_DECISION:",
+                       "DEPENDENCY:", "LOOP_DETECTED:"):
             if line.startswith(prefix):
                 detail = line[len(prefix):].strip()
-                # Skip template placeholders like <what information...>
-                if detail.startswith("<") and detail.endswith(">"):
-                    continue
-                if detail:
-                    return signal_type, detail
+                if detail and not (detail.startswith("<")
+                                   and detail.endswith(">")):
+                    log(f"  signal hint in output: {prefix} {detail[:100]}")
 
-    # 3. Adjudicator for ambiguous output (only if we have dispatch context)
-    # Skip adjudication for clearly classified outputs
+    # 3. Adjudicator interprets output (agent decides, not script regex)
     if output_path and planspace and parent:
-        # Only adjudicate if output looks suspicious (mentions signal keywords
-        # but didn't match prefix patterns)
-        suspicious_keywords = ["underspecified", "need decision",
-                               "dependency", "blocked", "loop detected"]
-        output_lower = output.lower()
-        if any(kw in output_lower for kw in suspicious_keywords):
-            return adjudicate_agent_output(
-                output_path, planspace, parent, codespace,
-            )
+        return adjudicate_agent_output(
+            output_path, planspace, parent, codespace,
+        )
 
     return None, ""
 
@@ -1113,23 +1146,21 @@ SECTION-NN: NO_IMPACT
 
         note_path.write_text(f"""{heading}
 
-## What Changed
-{file_changes}
-
-## Why
-Section {sec_num} ({section_summary}) implemented changes to solve its
-designated problem. Impact reason: {reason}
-
-## Contracts/Interfaces Affected
+## Contract Deltas (read this first)
 {contracts}
-
-Full integration proposal: `{integration_proposal}`
 
 ## What Section {target_num} Must Accommodate
 {reason}
 
-Check the snapshot at `{snapshot_dir}` and compare against the current
-file state to see exactly what changed.
+## Why This Happened
+Section {sec_num} ({section_summary}) implemented changes to solve its
+designated problem. Impact reason: {reason}
+
+## Files Modified (for reference)
+{file_changes}
+
+Full integration proposal: `{integration_proposal}`
+Snapshot directory: `{snapshot_dir}`
 """, encoding="utf-8")
         _log_artifact(planspace, f"note:from-{sec_num}-to-{target_num}")
         log(f"Section {sec_num}: left note for section {target_num} "
@@ -1308,23 +1339,29 @@ def signal_instructions(signal_path: Path) -> str:
     return f"""
 ## Signals (if you encounter problems)
 
-If you cannot complete the task, write a JSON signal file AND output the
-signal line. The signal file is the primary channel — the output line is
-a backup.
+If you cannot complete the task, write a structured JSON signal file.
+This is the primary and mandatory channel for signaling blockers.
 
 **Signal file**: Write to `{signal_path}`
 Format:
 ```json
-{{"state": "<STATE>", "detail": "<brief explanation>"}}
+{{
+  "state": "<STATE>",
+  "detail": "<brief explanation of the blocker>",
+  "needs": "<what specific information or action is needed to unblock>",
+  "assumptions_refused": "<what assumptions you chose NOT to make and why>",
+  "suggested_escalation_target": "<who should handle this: parent, user, or specific section>"
+}}
 ```
 States: UNDERSPECIFIED, NEED_DECISION, DEPENDENCY
 
-**Output line** (backup): Also output EXACTLY ONE of these on its own line:
+**Backup output line**: Also output EXACTLY ONE of these on its own line:
 UNDERSPECIFIED: <what information is missing and why you can't proceed>
 NEED_DECISION: <what tradeoff or constraint question needs a human answer>
 DEPENDENCY: <which other section must be implemented first and why>
 
-Only use these if you truly cannot proceed. Otherwise complete the task.
+Only use these if you truly cannot proceed. Do NOT silently invent
+constraints or make assumptions — signal upward and let the parent decide.
 """
 
 
@@ -1436,12 +1473,25 @@ section's problem space.
 
 Write to: `{alignment_excerpt}`
 
+### Output 3: Problem Frame
+Write a brief problem frame for this section — a pre-exploration gate
+that captures understanding BEFORE any integration work begins:
+
+1. **Problem**: What problem is this section solving? (1-2 sentences)
+2. **Evidence**: What evidence from the proposal/alignment supports this
+   being the right problem to solve? (bullet points)
+3. **Constraints**: What constraints from the global alignment apply to
+   this section specifically? (bullet points)
+
+Write to: `{artifacts / "sections" / f"section-{section.number}-problem-frame.md"}`
+
 ### Important
-- These are EXCERPTS, not summaries. Use the original text.
+- Excerpts are copy/paste, not summaries. Use the original text.
 - Include enough surrounding context that each file stands alone.
 - If the global document covers this section across multiple places,
   include all relevant parts.
 - Preserve section headings and structure from the originals.
+- The problem frame IS a summary — keep it brief and focused.
 {signal_instructions(artifacts / "signals" / f"setup-{section.number}-signal.json")}
 {agent_mail_instructions(planspace, a_name, m_name)}
 """, encoding="utf-8")
@@ -1539,6 +1589,12 @@ incorporate them into your proposal: `{decisions_file}`
     if codemap_path.exists():
         codemap_ref = f"\n5. Codemap (project understanding): `{codemap_path}`"
 
+    tools_path = (artifacts / "sections"
+                  / f"section-{section.number}-tools-available.md")
+    tools_ref = ""
+    if tools_path.exists():
+        tools_ref = f"\n6. Available tools from earlier sections: `{tools_path}`"
+
     # Detect project mode for context
     mode_file = artifacts / "project-mode.txt"
     project_mode = "brownfield"
@@ -1567,7 +1623,7 @@ proposal should focus on:
 2. Section alignment excerpt: `{alignment_excerpt}`
 3. Section specification: `{section.path}`
 4. Related source files (read each one):
-{files_block}{codemap_ref}
+{files_block}{codemap_ref}{tools_ref}
 {existing_note}{problems_block}{notes_block}{decisions_block}{mode_block}
 ## Instructions
 
@@ -1764,6 +1820,13 @@ Read decisions: `{decisions_file}`
         micro_ref = (f"\n6. Microstrategy (tactical per-file breakdown): "
                      f"`{microstrategy_path}`")
 
+    tools_path = (artifacts / "sections"
+                  / f"section-{section.number}-tools-available.md")
+    impl_tools_ref = ""
+    if tools_path.exists():
+        impl_tools_ref = (f"\n8. Available tools from earlier sections: "
+                          f"`{tools_path}`")
+
     impl_heading = (
         f"# Task: Strategic Implementation"
         f" for Section {section.number}"
@@ -1779,7 +1842,7 @@ Read decisions: `{decisions_file}`
 3. Section alignment excerpt: `{alignment_excerpt}`
 4. Section specification: `{section.path}`
 5. Related source files:
-{files_block}{micro_ref}{codemap_ref}
+{files_block}{micro_ref}{codemap_ref}{impl_tools_ref}
 {problems_block}{decisions_block}
 ## Instructions
 
@@ -2072,6 +2135,35 @@ def run_section(
             f"other sections")
 
     # -----------------------------------------------------------------
+    # Step 0b: Surface available tools from tool registry
+    # -----------------------------------------------------------------
+    tools_available_path = (artifacts / "sections"
+                            / f"section-{section.number}-tools-available.md")
+    tool_registry_path = artifacts / "tool-registry.json"
+    if tool_registry_path.exists():
+        try:
+            registry = json.loads(
+                tool_registry_path.read_text(encoding="utf-8"),
+            )
+            tools = registry if isinstance(registry, list) else registry.get("tools", [])
+            if tools:
+                lines = ["# Available Tools\n",
+                         "Tools created by earlier sections:\n"]
+                for tool in tools:
+                    path = tool.get("path", "unknown")
+                    desc = tool.get("description", "")
+                    scope = tool.get("scope", "section-local")
+                    lines.append(f"- `{path}` ({scope}): {desc}")
+                tools_available_path.write_text(
+                    "\n".join(lines) + "\n", encoding="utf-8",
+                )
+                log(f"Section {section.number}: {len(tools)} tools "
+                    f"available from registry")
+        except (json.JSONDecodeError, ValueError):
+            log(f"Section {section.number}: WARNING — tool-registry.json "
+                f"is malformed, skipping")
+
+    # -----------------------------------------------------------------
     # Step 1: Section setup — extract excerpts from global documents
     # -----------------------------------------------------------------
     proposal_excerpt = (artifacts / "sections"
@@ -2134,6 +2226,18 @@ def run_section(
 
     if proposal_excerpt.exists() and alignment_excerpt.exists():
         log(f"Section {section.number}: setup — excerpts ready")
+        _record_traceability(
+            planspace, section.number,
+            f"section-{section.number}-proposal-excerpt.md",
+            str(section.global_proposal_path),
+            "excerpt extraction from global proposal",
+        )
+        _record_traceability(
+            planspace, section.number,
+            f"section-{section.number}-alignment-excerpt.md",
+            str(section.global_alignment_path),
+            "excerpt extraction from global alignment",
+        )
 
     # -----------------------------------------------------------------
     # Step 2: Integration proposal loop
@@ -2292,14 +2396,23 @@ def run_section(
                      f"PROBLEMS-attempt-{proposal_attempt}:{short}")
 
     # -----------------------------------------------------------------
-    # Step 2.5: Generate microstrategy (tactical per-file breakdown)
+    # Step 2.5: Generate microstrategy (conditional)
     # -----------------------------------------------------------------
-    # The microstrategy bridges the gap between the high-level integration
-    # proposal and the actual implementation. It captures per-file tactical
-    # decisions: what changes in each file, in what order, and why.
+    # The microstrategy is only generated when the section is complex
+    # enough to benefit from a tactical per-file breakdown. Simple
+    # sections (few files) don't need the extra agent call.
+    MICROSTRATEGY_FILE_THRESHOLD = 5
     microstrategy_path = (artifacts / "proposals"
                           / f"section-{section.number}-microstrategy.md")
-    if not microstrategy_path.exists():
+    needs_microstrategy = (
+        len(section.related_files) > MICROSTRATEGY_FILE_THRESHOLD
+        and not microstrategy_path.exists()
+    )
+    if not needs_microstrategy and not microstrategy_path.exists():
+        log(f"Section {section.number}: skipping microstrategy "
+            f"({len(section.related_files)} files <= "
+            f"{MICROSTRATEGY_FILE_THRESHOLD} threshold)")
+    if needs_microstrategy:
         log(f"Section {section.number}: generating microstrategy")
         micro_prompt_path = (artifacts
                              / f"microstrategy-{section.number}-prompt.md")
@@ -2353,10 +2466,17 @@ WHY — you're capturing WHAT and WHERE at the file level.
             "gpt-5.3-codex-high", micro_prompt_path, micro_output_path,
             planspace, parent, a_name, codespace=codespace,
             section_number=section.number,
+            agent_file="microstrategy-writer.md",
         )
         if micro_result == "ALIGNMENT_CHANGED_PENDING":
             return None
         log(f"Section {section.number}: microstrategy generated")
+        _record_traceability(
+            planspace, section.number,
+            f"section-{section.number}-microstrategy.md",
+            f"section-{section.number}-integration-proposal.md",
+            "tactical breakdown from integration proposal",
+        )
         mailbox_send(planspace, parent,
                      f"summary:microstrategy:{section.number}:generated")
 
@@ -2530,6 +2650,15 @@ WHY — you're capturing WHAT and WHERE at the file level.
     if len(reported) != len(actually_changed):
         log(f"Section {section.number}: {len(reported)} reported, "
             f"{len(actually_changed)} actually changed (detected via diff)")
+
+    # Record change provenance in traceability chain
+    for changed_file in actually_changed:
+        _record_traceability(
+            planspace, section.number,
+            changed_file,
+            f"section-{section.number}-integration-proposal.md",
+            "implementation change",
+        )
 
     # -----------------------------------------------------------------
     # Step 4: Post-completion — snapshots, impact analysis, notes

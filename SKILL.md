@@ -1,6 +1,6 @@
 ---
 name: agent-implementation-skill
-description: Multi-model agent implementation workflow for software development. Orchestrates research, evaluation, design baseline, implementation, RCA, auditing, constraint discovery, model selection, and agent-driven Stage 3 codemap exploration across external AI models (GPT, GLM, Claude). Use when implementing features through a structured multi-phase pipeline with worktrees, dynamic scheduling, and SQLite-backed agent coordination.
+description: Multi-model agent implementation workflow for software development. Orchestrates research, evaluation, design baseline, implementation, RCA, structured decomposition, constraint discovery, model selection, and agent-driven Stage 3 codemap exploration across external AI models (GPT, GLM, Claude). Use when implementing features through a structured multi-phase pipeline with worktrees, dynamic scheduling, and SQLite-backed agent coordination.
 ---
 
 # Development Workflow
@@ -44,6 +44,7 @@ $WORKFLOW_HOME/
     agent-monitor.md    # per-agent loop detector — watches narration (model: glm)
     state-detector.md   # workspace state reporter (model: claude-opus)
     exception-handler.md # RCA on failed steps (model: claude-opus)
+    microstrategy-writer.md # tactical per-file breakdown (model: gpt-5.3-codex-high)
   templates/
     implement-proposal.md   # 10-step implementation schedule
     research-cycle.md       # 7-step research schedule
@@ -138,7 +139,7 @@ issues requiring RCA.
     ↓
 [Section Files → Integration Proposals → Strategic Implementation → Code]  ← implement.md
     ↓
-[Tests → Debug → Audit → Lint → Commit]             ← implement.md + rca.md
+[Tests → Debug → Constraint Check → Lint → Commit]   ← implement.md + rca.md
 ```
 
 ## Workflow Orchestration

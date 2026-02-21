@@ -38,12 +38,26 @@ schedule="$workspace/schedule.md"
 if [ "$cmd" = "parse" ]; then
   raw="${3:?Missing step line to parse}"
   line="${raw#*:}"
-  step_status=$(echo "$line" | grep -oP '^\[\w+\]')
-  step_num=$(echo "$line" | grep -oP '\d+\.' | head -1 | tr -d '.')
-  step_name=$(echo "$line" | sed -E 's/^\[\w+\]\s+[0-9]+\.\s+//' | sed -E 's/\s*\|.*//')
-  step_model=$(echo "$line" | grep -oP '\|\s*\K.+(?=\s+--)' | xargs)
-  step_desc=$(echo "$line" | sed -E 's/.*--\s*//' | sed -E 's/\s*\(.*\)//')
-  step_ref=$(echo "$line" | grep -oP '\(\K[^)]+' || true)
+  # Use Python for portable parsing (no grep -oP / PCRE dependency)
+  eval "$(python3 -c "
+import re, sys
+line = sys.argv[1]
+m = re.match(r'\[(\w+)\]\s+(\d+)\.\s+(\S+)\s*\|\s*(.+?)\s*--\s*(.*?)(?:\s*\(([^)]*)\))?\s*$', line)
+if m:
+    print(f'step_status=[{m.group(1)}]')
+    print(f'step_num={m.group(2)}')
+    print(f'step_name={m.group(3)}')
+    print(f'step_model={m.group(4).strip()}')
+    print(f'step_desc={m.group(5).strip()}')
+    print(f'step_ref={m.group(6) or \"\"}')
+else:
+    print('step_status=')
+    print('step_num=')
+    print('step_name=')
+    print('step_model=')
+    print('step_desc=')
+    print('step_ref=')
+" "$line")"
   echo "status=$step_status"
   echo "num=$step_num"
   echo "name=$step_name"
