@@ -152,6 +152,78 @@ PROMPT
   echo "[CODEMAP] Wrote: $CODEMAP_PATH"
 }
 
+apply_related_files_update() {
+  local section_file="$1"
+  local signal_file="$2"
+
+  uv run python - "$section_file" "$signal_file" << 'APPLY_PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+section_path = Path(sys.argv[1])
+signal_path = Path(sys.argv[2])
+
+if not signal_path.exists():
+    raise SystemExit(0)
+
+try:
+    signal = json.loads(signal_path.read_text())
+except (json.JSONDecodeError, OSError):
+    raise SystemExit(0)
+
+if signal.get("status") != "stale":
+    raise SystemExit(0)
+
+section = section_path.read_text()
+removals = signal.get("removals", [])
+additions = signal.get("additions", [])
+
+if not removals and not additions:
+    raise SystemExit(0)
+
+# Process removals: remove ### <path> blocks from the section
+for rm_path in removals:
+    marker = f"### {rm_path}"
+    idx = section.find(marker)
+    if idx == -1:
+        continue
+    # Find the end of this block: next ### or next ## (non-###) or EOF
+    rest = section[idx + len(marker):]
+    match = re.search(r"\n(?=###\s|##\s[^#])", rest)
+    if match:
+        end_pos = idx + len(marker) + match.start()
+    else:
+        end_pos = len(section)
+    # Remove the block (including any leading blank line)
+    before = section[:idx].rstrip("\n")
+    after = section[end_pos:]
+    section = before + after
+
+# Process additions: append under ## Related Files
+for add_path in additions:
+    marker = f"### {add_path}"
+    if marker in section:
+        continue  # already present
+    rf_idx = section.find("## Related Files")
+    if rf_idx == -1:
+        continue
+    # Find end of Related Files section: next ## that isn't ###, or EOF
+    rf_rest = section[rf_idx + len("## Related Files"):]
+    rf_match = re.search(r"\n(?=## [^#])", rf_rest)
+    if rf_match:
+        insert_pos = rf_idx + len("## Related Files") + rf_match.start()
+    else:
+        insert_pos = len(section)
+    entry = f"\n\n### {add_path}\nAdded by validation — confirm relevance during deep scan."
+    section = section[:insert_pos] + entry + section[insert_pos:]
+
+section_path.write_text(section)
+print(f"applied: {len(removals)} removals, {len(additions)} additions")
+APPLY_PY
+}
+
 run_section_exploration() {
   local section_files
   section_files=$(list_section_files)
@@ -214,6 +286,32 @@ VALIDATE_PROMPT
       if uv run --frozen agents --model claude-opus --project "$CODESPACE" --file "$validate_prompt" \
         > "$validate_output" 2>&1; then
         echo "[EXPLORE] $section_name: validation complete"
+
+        # P4: Apply validation results if stale (at most once per run)
+        local list_updated_marker="$SCAN_LOG_DIR/$section_name/list_updated"
+        if [ ! -f "$list_updated_marker" ]; then
+          local signal_file="$ARTIFACTS_DIR/signals/${section_name}-related-files-update.json"
+          if [ -f "$signal_file" ]; then
+            local signal_status
+            signal_status=$(python3 -c "
+import json
+try:
+    print(json.load(open('$signal_file')).get('status',''))
+except: print('')
+" 2>/dev/null || true)
+            if [ "$signal_status" = "stale" ]; then
+              echo "[EXPLORE] $section_name: applying related-files updates"
+              if apply_related_files_update "$section_file" "$signal_file"; then
+                touch "$list_updated_marker"
+                echo "[EXPLORE] $section_name: list updated — will not re-validate this run"
+              else
+                echo "[EXPLORE] $section_name: auto-apply failed — keeping existing list"
+              fi
+            fi
+          fi
+        else
+          echo "[EXPLORE] $section_name: already updated this run — skipping re-validation"
+        fi
       else
         echo "[EXPLORE] $section_name: validation failed — keeping existing list"
       fi
@@ -434,9 +532,14 @@ Rank each file into a tier based on how central it is to this section's concern:
 - **tier-2**: Supporting files — needed for context but not primary targets
 - **tier-3**: Peripheral files — tangentially related, low priority
 
+Also decide which tiers should be deep-scanned NOW. Consider:
+- Always include tier-1
+- Include tier-2 if the section has complex integration concerns
+- Include tier-3 only if the section scope is unclear and peripheral context helps
+
 Write a JSON file to: \`$tier_file\`
 \`\`\`json
-{"tiers": {"tier-1": ["path/a.py"], "tier-2": ["path/b.py"], "tier-3": ["path/c.py"]}}
+{"tiers": {"tier-1": ["path/a.py"], "tier-2": ["path/b.py"], "tier-3": ["path/c.py"]}, "scan_now": ["tier-1", "tier-2"], "reason": "why these tiers need scanning"}
 \`\`\`
 TIER_PROMPT
 
@@ -448,24 +551,37 @@ TIER_PROMPT
       fi
     fi
 
-    # If tier file exists, only deep-scan tier-1 files by default
+    # Determine scan scope from agent-chosen tiers (or default to tier-1 + tier-2)
     local scan_files="$related_files"
     if [ -f "$tier_file" ]; then
-      local tier1_files
-      tier1_files=$(python3 -c "
+      local scoped_files
+      scoped_files=$(python3 -c "
 import json, sys
 try:
     d = json.load(open('$tier_file'))
-    for f in d.get('tiers', {}).get('tier-1', []):
-        print(f)
+    tiers = d.get('tiers', {})
+    scan_now = d.get('scan_now', ['tier-1', 'tier-2'])
+    seen = set()
+    for tier_name in scan_now:
+        for f in tiers.get(tier_name, []):
+            if f not in seen:
+                seen.add(f)
+                print(f)
 except: pass
 " 2>/dev/null || true)
-      if [ -n "$tier1_files" ]; then
-        scan_files="$tier1_files"
-        local total_count tier1_count
+      if [ -n "$scoped_files" ]; then
+        scan_files="$scoped_files"
+        local total_count scoped_count scan_tiers_label
         total_count=$(echo "$related_files" | grep -c '[^[:space:]]' || echo 0)
-        tier1_count=$(echo "$tier1_files" | grep -c '[^[:space:]]' || echo 0)
-        echo "[TIER] $section_name: scanning $tier1_count tier-1 files (of $total_count total)"
+        scoped_count=$(echo "$scoped_files" | grep -c '[^[:space:]]' || echo 0)
+        scan_tiers_label=$(python3 -c "
+import json
+try:
+    d = json.load(open('$tier_file'))
+    print('+'.join(d.get('scan_now', ['tier-1', 'tier-2'])))
+except: print('tier-1+tier-2')
+" 2>/dev/null || echo "tier-1+tier-2")
+        echo "[TIER] $section_name: scanning $scoped_count files ($scan_tiers_label) of $total_count total"
       fi
     fi
 
@@ -483,17 +599,7 @@ except: pass
         continue
       fi
 
-      # File-card cache: reuse analysis if file content unchanged
-      local file_cards_dir="$ARTIFACTS_DIR/file-cards"
-      mkdir -p "$file_cards_dir"
-      local content_hash
-      content_hash=$(sha256sum "$abs_source" 2>/dev/null | awk '{print $1}' || python3 -c "import hashlib; print(hashlib.sha256(open('$abs_source','rb').read()).hexdigest())")
-      local card_path="$file_cards_dir/${content_hash}.md"
-      if [ -f "$card_path" ]; then
-        echo "  $section_name: $source_file (cached)"
-        continue
-      fi
-
+      # Compute safe_name early (needed by both cache-hit and cache-miss paths)
       local safe_name
       local path_token extension_token source_hash
       path_token=$(echo "$source_file" | tr '/.' '__' | tr -cd '[:alnum:]_-' | cut -c1-80)
@@ -506,8 +612,36 @@ except: pass
       local prompt_file="$section_log_dir/deep-${safe_name}-prompt.md"
       local response_file="$section_log_dir/deep-${safe_name}-response.md"
       local stderr_file="$section_log_dir/deep-${safe_name}.stderr.log"
-
       local feedback_file="$section_log_dir/deep-${safe_name}-feedback.json"
+
+      # File-card cache: reuse analysis if file+section content unchanged
+      local file_cards_dir="$ARTIFACTS_DIR/file-cards"
+      mkdir -p "$file_cards_dir"
+      local content_hash
+      content_hash=$(cat "$section_file" "$abs_source" 2>/dev/null | sha256sum | awk '{print $1}' || python3 -c "
+import hashlib
+data  = open('$section_file','rb').read()
+data += open('$abs_source','rb').read()
+print(hashlib.sha256(data).hexdigest())
+")
+      local card_path="$file_cards_dir/${content_hash}.md"
+      if [ -f "$card_path" ]; then
+        echo "  $section_name: $source_file (cached)"
+        # Populate response_file from cache so downstream artifacts are not skipped
+        cp "$card_path" "$response_file" 2>/dev/null || true
+        # Copy cached feedback if available
+        local cached_feedback="$file_cards_dir/${content_hash}-feedback.json"
+        if [ -f "$cached_feedback" ]; then
+          cp "$cached_feedback" "$feedback_file" 2>/dev/null || true
+        fi
+        update_match "$section_file" "$source_file" "$response_file" || {
+          log_phase_failure "deep-update" "${section_name}:${source_file}" "failed to update section file (cached)"
+          phase_failed=1
+        }
+        echo "[DEEP] $section_name × $(basename "$source_file") (cached)"
+        continue
+      fi
+
       cat > "$prompt_file" << PROMPT
 # Task: Analyze File Relevance for Section
 
@@ -563,8 +697,12 @@ PROMPT
         continue
       fi
 
-      # Write file-card cache entry
+      # Write file-card cache entries (response + feedback)
       cp "$response_file" "$card_path" 2>/dev/null || true
+      if [ -f "$feedback_file" ]; then
+        local cached_feedback="$file_cards_dir/${content_hash}-feedback.json"
+        cp "$feedback_file" "$cached_feedback" 2>/dev/null || true
+      fi
 
       update_match "$section_file" "$source_file" "$response_file" || {
         log_phase_failure "deep-update" "${section_name}:${source_file}" "failed to update section file"

@@ -28,11 +28,18 @@ Format:
   "state": "<STATE>",
   "detail": "<brief explanation of the blocker>",
   "needs": "<what specific information or action is needed to unblock>",
+  "why_blocked": "<REQUIRED for UNDERSPECIFIED/DEPENDENCY: concrete reason progress is impossible without external input>",
   "assumptions_refused": "<what assumptions you chose NOT to make and why>",
   "suggested_escalation_target": "<who should handle this: parent, user, or specific section>"
 }}
 ```
 States: UNDERSPECIFIED, NEED_DECISION, DEPENDENCY
+
+**Required fields by state:**
+- ALL states: `state`, `detail`, `needs`
+- UNDERSPECIFIED: also requires `why_blocked` — explain what information is missing and why you cannot infer it
+- DEPENDENCY: also requires `why_blocked` — explain which section/artifact is needed and why work cannot proceed without it
+- NEED_DECISION: `why_blocked` is optional but recommended
 
 **Backup output line**: Also output EXACTLY ONE of these on its own line:
 UNDERSPECIFIED: <what information is missing and why you can't proceed>
@@ -152,15 +159,25 @@ section's problem space.
 
 Write to: `{alignment_excerpt}`
 
-### Output 3: Problem Frame
-Write a brief problem frame for this section — a pre-exploration gate
-that captures understanding BEFORE any integration work begins:
+### Output 3: Problem Frame (MANDATORY)
+Write a problem frame for this section — a pre-exploration gate
+that captures understanding BEFORE any integration work begins.
 
-1. **Problem**: What problem is this section solving? (1-2 sentences)
+**All fields are required.** The pipeline validates this artifact exists.
+
+1. **Problem Statement**: What problem is this section solving? (1-2 sentences,
+   must be specific and falsifiable — not "improve X" but "X currently does Y,
+   it needs to do Z because of constraint C")
 2. **Evidence**: What evidence from the proposal/alignment supports this
-   being the right problem to solve? (bullet points)
+   being the right problem to solve? (bullet points, each must cite a specific
+   passage or requirement from the global documents)
 3. **Constraints**: What constraints from the global alignment apply to
-   this section specifically? (bullet points)
+   this section specifically? (bullet points, each must reference the source
+   constraint)
+4. **Success Criteria**: How will we know this section is done correctly?
+   (bullet points — concrete, checkable conditions)
+5. **Out of Scope**: What does this section explicitly NOT cover? (bullet
+   points — prevents scope creep during implementation)
 
 Write to: `{artifacts / "sections" / f"section-{section.number}-problem-frame.md"}`
 
@@ -171,6 +188,7 @@ Write to: `{artifacts / "sections" / f"section-{section.number}-problem-frame.md
   include all relevant parts.
 - Preserve section headings and structure from the originals.
 - The problem frame IS a summary — keep it brief and focused.
+- The problem frame is MANDATORY — do not skip it.
 {signal_instructions(artifacts / "signals" / f"setup-{section.number}-signal.json")}
 {agent_mail_instructions(planspace, a_name, m_name)}
 """, encoding="utf-8")

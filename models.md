@@ -53,10 +53,10 @@ Simple lookup or classification?
 
 ### gpt-5.3-codex-high / high2 (Interchangeable)
 - Same capability, different quota pools
-- **Strengths**: Constraint-aware design, systematic checklist evaluation,
-  algorithm writing, IMPL notes, debug/RCA
+- **Strengths**: Constraint-aware design, systematic constraint evaluation
+  (not feature coverage), algorithm writing, IMPL notes, debug/RCA
 - **Prompt format**: `--file <prompt.md>` (reads from file)
-- **Use for**: Audits, algorithm refinement, IMPL notes, debug/RCA, planning
+- **Use for**: Constraint alignment reviews, algorithm refinement, IMPL notes, debug/RCA, planning
 
 ### gpt-5.3-codex-spark-xhigh (DEPRECATED)
 - **Status**: Replaced by codex-high2 for code writing. Unreliable on 500+ line files.

@@ -4,11 +4,13 @@ import json
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from .communication import (
     AGENT_NAME,
     DB_SH,
+    WORKFLOW_HOME,
     _log_artifact,
     log,
 )
@@ -271,18 +273,76 @@ this will be written directly as the consequence note:
     except (json.JSONDecodeError, KeyError, TypeError):
         pass
 
-    # Fallback: regex parsing for backwards compatibility
+    # Fallback: dispatch GLM to normalize raw output into JSON
     if not json_parsed:
-        log(f"Section {sec_num}: WARNING — impact analysis did not "
-            f"produce valid JSON, falling back to regex parsing")
-        for line in impact_result.split("\n"):
-            line = line.strip()
-            match = re.match(r'SECTION-(\d+):\s*MATERIAL\s*(.*)', line)
-            if match:
-                canonical = normalize_section_number(
-                    match.group(1), sec_num_map,
-                )
-                impacted_sections.append((canonical, match.group(2)))
+        log(f"Section {sec_num}: impact analysis did not produce valid "
+            f"JSON — dispatching GLM to normalize raw output")
+        artifacts = planspace / "artifacts"
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", dir=str(artifacts),
+            prefix=f"impact-normalize-{sec_num}-raw-", delete=False,
+        ) as raw_f:
+            raw_f.write(impact_result)
+            raw_path = Path(raw_f.name)
+        normalize_prompt_path = (
+            artifacts / f"impact-normalize-{sec_num}-prompt.md"
+        )
+        normalize_output_path = (
+            artifacts / f"impact-normalize-{sec_num}-output.md"
+        )
+        normalize_prompt_path.write_text(f"""# Task: Normalize Impact Analysis Output
+
+## Raw Output File
+`{raw_path}`
+
+Read the file above. It contains the raw output from a previous impact
+analysis that did not produce well-formed JSON.
+
+## Instructions
+
+Extract any MATERIAL impact entries from the raw text and return them
+as structured JSON. Look for mentions of section numbers paired with
+MATERIAL impact assessments, reasons, or notes.
+
+Reply with ONLY a JSON block:
+
+```json
+{{"impacts": [
+  {{"to": "<section_number>", "impact": "MATERIAL", "reason": "<reason>"}},
+  ...
+]}}
+```
+
+If no material impacts can be extracted, reply:
+```json
+{{"impacts": []}}
+```
+""", encoding="utf-8")
+        normalize_result = dispatch_agent(
+            "glm", normalize_prompt_path, normalize_output_path,
+            planspace, parent, codespace=codespace,
+            section_number=sec_num,
+        )
+        # Parse the normalizer's JSON output
+        try:
+            norm_json = None
+            norm_start = normalize_result.find("{")
+            norm_end = normalize_result.rfind("}")
+            if norm_start >= 0 and norm_end > norm_start:
+                candidate = normalize_result[norm_start:norm_end + 1]
+                if '"impacts"' in candidate:
+                    norm_json = candidate
+            if norm_json:
+                norm_data = json.loads(norm_json)
+                for entry in norm_data.get("impacts", []):
+                    if entry.get("impact") == "MATERIAL":
+                        target = normalize_section_number(
+                            str(entry["to"]), sec_num_map)
+                        reason = entry.get("reason", "")
+                        impacted_sections.append((target, reason))
+        except (json.JSONDecodeError, KeyError, TypeError):
+            log(f"Section {sec_num}: GLM normalizer also failed to "
+                f"produce valid JSON — no material impacts recorded")
 
     if not impacted_sections:
         log(f"Section {sec_num}: no material impacts on other sections")

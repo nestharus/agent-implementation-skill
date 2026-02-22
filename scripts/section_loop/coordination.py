@@ -606,6 +606,16 @@ def run_global_coordination(
     # Detect recurrence patterns for escalated handling
     recurrence = _detect_recurrence_patterns(planspace, problems)
 
+    # If recurrence detected, escalate model for affected groups
+    if recurrence:
+        escalation_file = coord_dir / "model-escalation.txt"
+        escalation_file.write_text(
+            "gpt-5.3-codex-xhigh", encoding="utf-8")
+        log(f"  coordinator: recurrence escalation — setting model to "
+            f"gpt-5.3-codex-xhigh for "
+            f"{recurrence['recurring_problem_count']} recurring problems "
+            f"across sections {recurrence['recurring_sections']}")
+
     # Save coordination state for debugging / inspection
     state_path = coord_dir / "problems.json"
     state_path.write_text(json.dumps(problems, indent=2), encoding="utf-8")
@@ -715,12 +725,81 @@ def run_global_coordination(
         if ctrl == "alignment_changed":
             return False
 
-        # Bridge agent: dispatch when coordination planner says so
+        # Bridge agent: dispatch when coordination planner says so,
+        # OR auto-detect when overlapping files or contract mismatches
+        # indicate cross-section friction.
         for gidx in batch:
             group = confirmed_groups[gidx]
             plan_group = coord_plan["groups"][gidx] if gidx < len(coord_plan["groups"]) else {}
             bridge_directive = plan_group.get("bridge", {})
-            if bridge_directive.get("needed", False):
+            bridge_needed = bridge_directive.get("needed", False)
+            bridge_reason = bridge_directive.get("reason", "planner-requested")
+
+            # --- Proactive bridge detection (P12) ---
+            if not bridge_needed:
+                # Check 1: two or more sections in the group modify
+                # overlapping files
+                group_section_nums = sorted(
+                    {p["section"] for p in group})
+                if len(group_section_nums) >= 2:
+                    section_file_sets: dict[str, set[str]] = {}
+                    for p in group:
+                        section_file_sets.setdefault(
+                            p["section"], set()
+                        ).update(p.get("files", []))
+                    nums = list(section_file_sets.keys())
+                    has_overlap = False
+                    for i in range(len(nums)):
+                        for j in range(i + 1, len(nums)):
+                            if section_file_sets[nums[i]] & section_file_sets[nums[j]]:
+                                has_overlap = True
+                                break
+                        if has_overlap:
+                            break
+                    if has_overlap:
+                        bridge_needed = True
+                        bridge_reason = (
+                            "auto-detected: overlapping file "
+                            "modifications across sections"
+                        )
+                        log(f"  coordinator: auto-triggering bridge for "
+                            f"group {gidx} — {bridge_reason}")
+
+                # Check 2: alignment outputs mention contract mismatch
+                # or interface conflict
+                if not bridge_needed:
+                    mismatch_phrases = [
+                        "contract mismatch", "interface conflict",
+                    ]
+                    for s_num in group_section_nums:
+                        align_output_path = (
+                            coord_dir
+                            / f"coord-align-{s_num}-output.md"
+                        )
+                        if not align_output_path.exists():
+                            # Also check the global alignment outputs
+                            align_output_path = (
+                                planspace / "artifacts"
+                                / f"global-align-{s_num}-output.md"
+                            )
+                        if align_output_path.exists():
+                            align_text = align_output_path.read_text(
+                                encoding="utf-8").lower()
+                            if any(
+                                phrase in align_text
+                                for phrase in mismatch_phrases
+                            ):
+                                bridge_needed = True
+                                bridge_reason = (
+                                    "auto-detected: contract mismatch "
+                                    "mention in alignment output"
+                                )
+                                log(f"  coordinator: auto-triggering "
+                                    f"bridge for group {gidx} — "
+                                    f"{bridge_reason}")
+                                break
+
+            if bridge_needed:
                 group_sections = sorted({p["section"] for p in group})
                 group_files = sorted({
                     f for p in group for f in p.get("files", [])})
@@ -730,6 +809,10 @@ def run_global_coordination(
                     coord_dir / f"bridge-{gidx}-output.md")
                 contract_path = (
                     coord_dir / f"contract-patch-{gidx}.md")
+                contract_delta_path = (
+                    planspace / "artifacts" / "contracts"
+                    / f"contract-delta-group-{gidx}.md"
+                )
                 sec_dir = planspace / "artifacts" / "sections"
                 sec_refs = "\n".join(
                     f"- Section {s}: `{sec_dir / f'section-{s}-proposal-excerpt.md'}`"
@@ -743,12 +826,15 @@ def run_global_coordination(
                 bridge_prompt.write_text(
                     f"# Bridge: Resolve Cross-Section Friction "
                     f"(Group {gidx})\n\n"
+                    f"## Trigger Reason\n{bridge_reason}\n\n"
                     f"## Sections in Conflict\n{sec_refs}\n\n"
                     f"## Integration Proposals\n{prop_refs}\n\n"
                     f"## Shared Files\n"
                     + "\n".join(f"- `{f}`" for f in group_files)
                     + f"\n\n## Output\n"
                     f"Write your contract patch to: `{contract_path}`\n"
+                    f"Write a contract delta summary to: "
+                    f"`{contract_delta_path}`\n"
                     f"Write per-section consequence notes to:\n"
                     + "\n".join(
                         f"- `{planspace / 'artifacts' / 'notes' / f'bridge-{gidx}-to-{s}.md'}`"
@@ -757,13 +843,58 @@ def run_global_coordination(
                     encoding="utf-8",
                 )
                 log(f"  coordinator: dispatching bridge agent for group "
-                    f"{gidx} ({group_sections})")
+                    f"{gidx} ({group_sections}) — reason: {bridge_reason}")
                 dispatch_agent(
                     "gpt-5.3-codex-xhigh", bridge_prompt,
                     bridge_output, planspace, parent,
                     codespace=codespace,
                     agent_file="bridge-agent.md",
                 )
+
+                # After bridge completes, write contract delta artifact
+                # and ensure downstream sections can reference it.
+                contracts_dir = planspace / "artifacts" / "contracts"
+                contracts_dir.mkdir(parents=True, exist_ok=True)
+                if not contract_delta_path.exists():
+                    # Bridge agent didn't write the delta — generate a
+                    # stub from the contract patch if available.
+                    delta_content = (
+                        f"# Contract Delta: Group {gidx}\n\n"
+                        f"## Trigger\n{bridge_reason}\n\n"
+                        f"## Sections Affected\n"
+                        + "\n".join(
+                            f"- Section {s}" for s in group_sections
+                        )
+                        + "\n\n## Contract Patch\n"
+                    )
+                    if contract_path.exists():
+                        delta_content += contract_path.read_text(
+                            encoding="utf-8")
+                    else:
+                        delta_content += (
+                            "(Bridge agent output available at: "
+                            f"`{bridge_output}`)\n"
+                        )
+                    contract_delta_path.write_text(
+                        delta_content, encoding="utf-8")
+
+                # Register the contract delta as an input artifact for
+                # downstream sections in this group
+                for s_num in group_sections:
+                    input_ref_dir = (
+                        planspace / "artifacts" / "inputs"
+                        / f"section-{s_num}"
+                    )
+                    input_ref_dir.mkdir(parents=True, exist_ok=True)
+                    ref_path = (
+                        input_ref_dir
+                        / f"contract-delta-group-{gidx}.ref"
+                    )
+                    ref_path.write_text(
+                        str(contract_delta_path), encoding="utf-8")
+
+                log(f"  coordinator: bridge complete for group {gidx}, "
+                    f"contract delta at {contract_delta_path}")
 
         if len(batch) == 1:
             gidx = batch[0]
@@ -917,6 +1048,41 @@ def run_global_coordination(
                 section_number=sec_num,
                 aligned=True,
             )
+
+            # Record resolution if this section had a recurring problem
+            if recurrence and sec_num in [
+                str(s) for s in recurrence.get("recurring_sections", [])
+            ]:
+                # Find what the previous problem was
+                prev_problem = next(
+                    (p for p in problems if p["section"] == sec_num),
+                    None,
+                )
+                if prev_problem:
+                    resolution_dir = coord_dir
+                    resolution_dir.mkdir(parents=True, exist_ok=True)
+                    resolution_path = (
+                        resolution_dir
+                        / f"resolution-{sec_num}.md"
+                    )
+                    resolution_path.write_text(
+                        f"# Resolution: Section {sec_num}\n\n"
+                        f"## Recurring Problem\n\n"
+                        f"{prev_problem.get('description', 'unknown')}\n\n"
+                        f"## Resolution\n\n"
+                        f"Resolved during coordination round via "
+                        f"coordinated fix with escalated model "
+                        f"(gpt-5.3-codex-xhigh). Section is now ALIGNED.\n\n"
+                        f"## Files Involved\n\n"
+                        + "\n".join(
+                            f"- `{f}`"
+                            for f in prev_problem.get("files", [])
+                        )
+                        + "\n",
+                        encoding="utf-8",
+                    )
+                    log(f"  coordinator: recorded resolution for "
+                        f"recurring section {sec_num}")
         else:
             log(f"  coordinator: section {sec_num} still has problems")
             # Fold signal info into problems string (SectionResult has

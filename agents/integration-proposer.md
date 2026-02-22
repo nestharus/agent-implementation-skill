@@ -79,3 +79,16 @@ Do not add changes not motivated by listed problems:
 - No "while we're here" improvements
 - No preemptive refactoring
 - No new dependencies not required by the problems
+
+### Candidate Constraints
+
+If your proposal introduces new invariants, interfaces, or requirements that
+are NOT found in the excerpt/problem frame, you MUST label them explicitly:
+
+```
+CANDIDATE_CONSTRAINT: <description of the new constraint>
+JUSTIFICATION: <why this constraint is necessary to solve the listed problems>
+```
+
+These are pushed upward for parent review — they are NOT automatically accepted.
+Adding constraints without labeling them is a rejection trigger.

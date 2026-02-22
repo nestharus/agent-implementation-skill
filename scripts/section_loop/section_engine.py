@@ -1,5 +1,7 @@
+import hashlib
 import json
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .alignment import (
@@ -23,6 +25,7 @@ from .cross_section import (
     read_incoming_notes,
 )
 from .dispatch import (
+    adjudicate_agent_output,
     check_agent_signals,
     dispatch_agent,
     read_agent_signal,
@@ -89,11 +92,12 @@ def _extract_todos_from_files(
 
 def _check_needs_microstrategy(
     proposal_path: Path, planspace: Path, section_number: str,
+    parent: str = "",
 ) -> bool:
     """Check if the integration proposal requests a microstrategy.
 
     Reads the structured signal from the proposal's JSON output.
-    Falls back to substring detection with adjudicator if no JSON found.
+    Falls back to adjudicator dispatch if no JSON found.
     """
     # Primary: structured JSON signal
     signal_path = (planspace / "artifacts" / "signals"
@@ -103,13 +107,19 @@ def _check_needs_microstrategy(
             data = json.loads(signal_path.read_text(encoding="utf-8"))
             return data.get("needs_microstrategy", False) is True
         except (json.JSONDecodeError, OSError):
-            pass  # Fall through to text fallback
+            pass  # Fall through to adjudicator
 
-    # Fallback: substring detection (legacy compatibility during transition)
+    # Fallback: adjudicator dispatch to classify proposal output
     if not proposal_path.exists():
         return False
-    text = proposal_path.read_text(encoding="utf-8").lower()
-    return "needs_microstrategy: true" in text or "needs_microstrategy:true" in text
+    signal_type, detail = adjudicate_agent_output(
+        proposal_path, planspace, parent,
+    )
+    # Map adjudicator states: COMPLETED/ALIGNED with detail mentioning
+    # microstrategy → true; otherwise false
+    if signal_type is None and detail:
+        return "microstrategy" in detail.lower()
+    return False
 
 
 def _append_open_problem(
@@ -145,6 +155,8 @@ def _update_blocker_rollup(planspace: Path) -> None:
 
     Scans for UNDERSPECIFIED/NEED_DECISION/DEPENDENCY signals across
     sections and writes a consolidated needs-input.md for the parent.
+    Blockers are grouped by category: missing_info, decision_required,
+    dependency.
     """
     signals_dir = planspace / "artifacts" / "signals"
     if not signals_dir.exists():
@@ -157,12 +169,21 @@ def _update_blocker_rollup(planspace: Path) -> None:
             state = data.get("state", "").lower()
             if state in ("underspecified", "underspec", "need_decision",
                          "dependency"):
+                # Map state to category
+                if state in ("underspecified", "underspec"):
+                    category = "missing_info"
+                elif state == "need_decision":
+                    category = "decision_required"
+                else:
+                    category = "dependency"
                 blockers.append({
                     "signal_file": sig_path.name,
                     "state": state,
+                    "category": category,
                     "section": data.get("section", "unknown"),
                     "detail": data.get("detail", ""),
                     "needs": data.get("needs", ""),
+                    "why_blocked": data.get("why_blocked", ""),
                 })
         except (json.JSONDecodeError, OSError):
             continue
@@ -174,15 +195,37 @@ def _update_blocker_rollup(planspace: Path) -> None:
     decisions_dir.mkdir(parents=True, exist_ok=True)
     rollup_path = decisions_dir / "needs-input.md"
 
+    # Group blockers by category
+    groups: dict[str, list[dict]] = {
+        "missing_info": [],
+        "decision_required": [],
+        "dependency": [],
+    }
+    for b in blockers:
+        groups[b["category"]].append(b)
+
+    category_titles = {
+        "missing_info": "Missing Information (UNDERSPECIFIED)",
+        "decision_required": "Decisions Required (NEED_DECISION)",
+        "dependency": "Dependencies (DEPENDENCY)",
+    }
+
     lines = ["# Blocker Rollup (auto-generated)\n",
              f"**{len(blockers)} sections need input:**\n"]
-    for b in blockers:
-        lines.append(f"## Section {b['section']} — {b['state']}")
-        lines.append(f"- **Detail**: {b['detail']}")
-        if b["needs"]:
-            lines.append(f"- **Needs**: {b['needs']}")
-        lines.append(f"- **Signal file**: `{b['signal_file']}`")
-        lines.append("")
+    for cat_key in ("missing_info", "decision_required", "dependency"):
+        cat_blockers = groups[cat_key]
+        if not cat_blockers:
+            continue
+        lines.append(f"# {category_titles[cat_key]}\n")
+        for b in cat_blockers:
+            lines.append(f"## Section {b['section']} — {b['state']}")
+            lines.append(f"- **Detail**: {b['detail']}")
+            if b["why_blocked"]:
+                lines.append(f"- **Why blocked**: {b['why_blocked']}")
+            if b["needs"]:
+                lines.append(f"- **Needs**: {b['needs']}")
+            lines.append(f"- **Signal file**: `{b['signal_file']}`")
+            lines.append("")
     rollup_path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -333,6 +376,165 @@ def _write_alignment_surface(
 
     lines.append("")  # trailing newline
     surface_path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _file_sha256(path: Path) -> str:
+    """Return hex SHA-256 of a file, or empty string if missing."""
+    if not path.exists():
+        return ""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _write_traceability_index(
+    planspace: Path, section: Section, codespace: Path,
+    modified_files: list[str],
+) -> None:
+    """Write a traceability index for a completed section.
+
+    Creates artifacts/trace/section-<n>.json containing hashes of all
+    authoritative artifacts, the list of modified files, and alignment
+    verdicts extracted from alignment output files.
+    """
+    artifacts = planspace / "artifacts"
+    trace_dir = artifacts / "trace"
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    sec = section.number
+
+    # Artifact paths
+    proposal_excerpt = (artifacts / "sections"
+                        / f"section-{sec}-proposal-excerpt.md")
+    alignment_excerpt = (artifacts / "sections"
+                         / f"section-{sec}-alignment-excerpt.md")
+    integration_proposal = (artifacts / "proposals"
+                            / f"section-{sec}-integration-proposal.md")
+    microstrategy = (artifacts / "proposals"
+                     / f"section-{sec}-microstrategy.md")
+
+    # Collect alignment verdicts from output files
+    alignment_verdicts: list[dict] = []
+    proposal_align_output = (artifacts
+                             / f"intg-align-{sec}-output.md")
+    if proposal_align_output.exists():
+        text = proposal_align_output.read_text(encoding="utf-8")
+        result = "ALIGNED" if "ALIGNED" in text and "PROBLEMS" not in text else "PROBLEMS"
+        alignment_verdicts.append({
+            "stage": "proposal",
+            "result": result,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+    impl_align_output = (artifacts
+                         / f"impl-align-{sec}-output.md")
+    if impl_align_output.exists():
+        text = impl_align_output.read_text(encoding="utf-8")
+        result = "ALIGNED" if "ALIGNED" in text and "PROBLEMS" not in text else "PROBLEMS"
+        alignment_verdicts.append({
+            "stage": "implementation",
+            "result": result,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+    index = {
+        "section": sec,
+        "excerpt_paths": {
+            "proposal": str(proposal_excerpt),
+            "alignment": str(alignment_excerpt),
+        },
+        "excerpt_hashes": {
+            "proposal": _file_sha256(proposal_excerpt),
+            "alignment": _file_sha256(alignment_excerpt),
+        },
+        "integration_proposal": {
+            "path": str(integration_proposal),
+            "hash": _file_sha256(integration_proposal),
+        },
+        "microstrategy": {
+            "path": str(microstrategy),
+            "hash": _file_sha256(microstrategy),
+        } if microstrategy.exists() else None,
+        "modified_files": modified_files,
+        "alignment_verdicts": alignment_verdicts,
+    }
+
+    trace_path = trace_dir / f"section-{sec}.json"
+    trace_path.write_text(
+        json.dumps(index, indent=2), encoding="utf-8",
+    )
+    log(f"Section {sec}: traceability index written to {trace_path}")
+
+
+def _verify_traceability(planspace: Path, section_number: str) -> list[str]:
+    """Verify traceability index for a section.
+
+    Checks:
+    - Required artifacts exist
+    - Hashes match current file contents
+    - Alignment verdicts exist for each boundary
+
+    Returns a list of violations (empty = pass).
+    """
+    trace_path = (planspace / "artifacts" / "trace"
+                  / f"section-{section_number}.json")
+    violations: list[str] = []
+
+    if not trace_path.exists():
+        violations.append(f"Traceability index missing: {trace_path}")
+        return violations
+
+    try:
+        index = json.loads(trace_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        violations.append(f"Traceability index unreadable: {exc}")
+        return violations
+
+    # Check required excerpt artifacts exist and hashes match
+    for key in ("proposal", "alignment"):
+        path_str = index.get("excerpt_paths", {}).get(key, "")
+        expected_hash = index.get("excerpt_hashes", {}).get(key, "")
+        if not path_str:
+            violations.append(f"Missing excerpt path for {key}")
+            continue
+        path = Path(path_str)
+        if not path.exists():
+            violations.append(f"Excerpt file missing: {path}")
+            continue
+        actual_hash = _file_sha256(path)
+        if actual_hash != expected_hash:
+            violations.append(
+                f"Hash mismatch for {key} excerpt: "
+                f"expected {expected_hash[:12]}..., "
+                f"got {actual_hash[:12]}..."
+            )
+
+    # Check integration proposal exists and hash matches
+    ip_info = index.get("integration_proposal", {})
+    if ip_info:
+        ip_path = Path(ip_info.get("path", ""))
+        if not ip_path.exists():
+            violations.append(
+                f"Integration proposal missing: {ip_path}")
+        elif _file_sha256(ip_path) != ip_info.get("hash", ""):
+            violations.append(
+                "Hash mismatch for integration proposal")
+
+    # Check microstrategy if recorded
+    ms_info = index.get("microstrategy")
+    if ms_info is not None:
+        ms_path = Path(ms_info.get("path", ""))
+        if not ms_path.exists():
+            violations.append(f"Microstrategy missing: {ms_path}")
+        elif _file_sha256(ms_path) != ms_info.get("hash", ""):
+            violations.append("Hash mismatch for microstrategy")
+
+    # Check alignment verdicts exist for each boundary
+    verdicts = index.get("alignment_verdicts", [])
+    verdict_stages = {v.get("stage") for v in verdicts}
+    for required_stage in ("proposal", "implementation"):
+        if required_stage not in verdict_stages:
+            violations.append(
+                f"Missing alignment verdict for {required_stage} boundary"
+            )
+
+    return violations
 
 
 def run_section(
@@ -510,6 +712,17 @@ def run_section(
             return None
         break  # Excerpts exist, proceed
 
+    # -----------------------------------------------------------------
+    # Step 1a: Problem frame quality gate (P3)
+    # -----------------------------------------------------------------
+    problem_frame_path = (artifacts / "sections"
+                          / f"section-{section.number}-problem-frame.md")
+    if not problem_frame_path.exists():
+        log(f"Section {section.number}: WARNING — problem frame not created "
+            f"by setup agent (expected at {problem_frame_path})")
+    else:
+        log(f"Section {section.number}: problem frame present")
+
     if proposal_excerpt.exists() and alignment_excerpt.exists():
         log(f"Section {section.number}: setup — excerpts ready")
         _record_traceability(
@@ -555,6 +768,17 @@ def run_section(
     proposal_problems: str | None = None
     proposal_attempt = 0
 
+    # Cycle budget: read per-section budget or use defaults
+    cycle_budget_path = (artifacts / "signals"
+                         / f"section-{section.number}-cycle-budget.json")
+    cycle_budget = {"proposal_max": 5, "implementation_max": 5}
+    if cycle_budget_path.exists():
+        try:
+            cycle_budget.update(
+                json.loads(cycle_budget_path.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, OSError):
+            pass  # Use defaults
+
     while True:
         # Check for pending messages between iterations
         if handle_pending_messages(planspace, [], set()):
@@ -569,6 +793,42 @@ def run_section(
             return None
 
         proposal_attempt += 1
+
+        # Cycle budget check for proposal loop
+        if proposal_attempt > cycle_budget["proposal_max"]:
+            log(f"Section {section.number}: proposal cycle budget exhausted "
+                f"({cycle_budget['proposal_max']} attempts)")
+            budget_signal = {
+                "section": section.number,
+                "loop": "proposal",
+                "attempts": proposal_attempt - 1,
+                "budget": cycle_budget["proposal_max"],
+                "escalate": True,
+            }
+            budget_signal_path = (artifacts / "signals"
+                                  / f"section-{section.number}"
+                                  f"-proposal-budget-exhausted.json")
+            budget_signal_path.parent.mkdir(parents=True, exist_ok=True)
+            budget_signal_path.write_text(
+                json.dumps(budget_signal, indent=2), encoding="utf-8")
+            mailbox_send(planspace, parent,
+                         f"budget-exhausted:{section.number}:proposal:"
+                         f"{proposal_attempt - 1}")
+            response = pause_for_parent(
+                planspace, parent,
+                f"pause:budget_exhausted:{section.number}:"
+                f"proposal loop exceeded {cycle_budget['proposal_max']} "
+                f"attempts",
+            )
+            if not response.startswith("resume"):
+                return None
+            # Parent may have raised the budget — re-read
+            if cycle_budget_path.exists():
+                try:
+                    cycle_budget.update(json.loads(
+                        cycle_budget_path.read_text(encoding="utf-8")))
+                except (json.JSONDecodeError, OSError):
+                    pass
         tag = "revise " if proposal_problems else ""
         log(f"Section {section.number}: {tag}integration proposal "
             f"(attempt {proposal_attempt})")
@@ -762,7 +1022,7 @@ def run_section(
                           / f"section-{section.number}-microstrategy.md")
     needs_microstrategy = (
         _check_needs_microstrategy(
-            integration_proposal, planspace, section.number)
+            integration_proposal, planspace, section.number, parent)
         and not microstrategy_path.exists()
     )
     if not needs_microstrategy and not microstrategy_path.exists():
@@ -869,6 +1129,43 @@ WHY — you're capturing WHAT and WHERE at the file level.
             return None
 
         impl_attempt += 1
+
+        # Cycle budget check for implementation loop
+        if impl_attempt > cycle_budget["implementation_max"]:
+            log(f"Section {section.number}: implementation cycle budget "
+                f"exhausted ({cycle_budget['implementation_max']} attempts)")
+            budget_signal = {
+                "section": section.number,
+                "loop": "implementation",
+                "attempts": impl_attempt - 1,
+                "budget": cycle_budget["implementation_max"],
+                "escalate": True,
+            }
+            budget_signal_path = (artifacts / "signals"
+                                  / f"section-{section.number}"
+                                  f"-impl-budget-exhausted.json")
+            budget_signal_path.parent.mkdir(parents=True, exist_ok=True)
+            budget_signal_path.write_text(
+                json.dumps(budget_signal, indent=2), encoding="utf-8")
+            mailbox_send(planspace, parent,
+                         f"budget-exhausted:{section.number}:implementation:"
+                         f"{impl_attempt - 1}")
+            response = pause_for_parent(
+                planspace, parent,
+                f"pause:budget_exhausted:{section.number}:"
+                f"implementation loop exceeded "
+                f"{cycle_budget['implementation_max']} attempts",
+            )
+            if not response.startswith("resume"):
+                return None
+            # Parent may have raised the budget — re-read
+            if cycle_budget_path.exists():
+                try:
+                    cycle_budget.update(json.loads(
+                        cycle_budget_path.read_text(encoding="utf-8")))
+                except (json.JSONDecodeError, OSError):
+                    pass
+
         tag = "fix " if impl_problems else ""
         log(f"Section {section.number}: {tag}strategic implementation "
             f"(attempt {impl_attempt})")
@@ -1023,6 +1320,9 @@ WHY — you're capturing WHAT and WHERE at the file level.
             f"section-{section.number}-integration-proposal.md",
             "implementation change",
         )
+
+    # Write traceability index for this section (P2)
+    _write_traceability_index(planspace, section, codespace, actually_changed)
 
     # -----------------------------------------------------------------
     # Step 3b: Validate tool registry after implementation

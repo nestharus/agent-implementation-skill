@@ -178,7 +178,10 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
         log("Greenfield mode: sections without related files will use "
             "research-first template")
         # In greenfield mode, sections without files go directly to research
-        # rather than being treated as anomalies
+        # rather than being treated as anomalies.
+        # Additionally, greenfield sections require a seed-code decision
+        # before dispatching to the implementation strategist (see guard
+        # inside the per-section loop below).
 
     log(f"Loaded {len(all_sections)} sections")
 
@@ -363,6 +366,71 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                     continue
                 log(f"Section {sec_num}: re-explorer found "
                     f"{len(section.related_files)} files — continuing")
+
+            # ---------------------------------------------------------
+            # Greenfield guard: require a seed-code decision before
+            # dispatching the implementation strategist for greenfield
+            # sections that have no related files and no mode override.
+            # ---------------------------------------------------------
+            if project_mode == "greenfield" and not section.related_files:
+                mode_override_path = (
+                    planspace / "artifacts" / "sections"
+                    / f"section-{section.number}-mode.txt"
+                )
+                mode_override = ""
+                if mode_override_path.exists():
+                    mode_override = mode_override_path.read_text(
+                        encoding="utf-8").strip().lower()
+
+                seed_decision_path = (
+                    planspace / "artifacts" / "decisions"
+                    / f"section-{section.number}-seed-code.md"
+                )
+                has_mode_override = mode_override in ("brownfield", "hybrid")
+                has_seed_decision = seed_decision_path.exists()
+
+                if not has_mode_override and not has_seed_decision:
+                    # Block: greenfield section needs seed code decision
+                    log(f"Section {sec_num}: BLOCKED — greenfield section "
+                        f"with no related files needs seed code decision "
+                        f"before implementation")
+                    signal_dir = planspace / "artifacts" / "signals"
+                    signal_dir.mkdir(parents=True, exist_ok=True)
+                    blocked_signal = {
+                        "section": sec_num,
+                        "blocked": True,
+                        "reason": (
+                            "greenfield section needs seed code decision "
+                            "before implementation"
+                        ),
+                    }
+                    (signal_dir
+                     / f"section-{sec_num}-greenfield-blocked.json"
+                     ).write_text(
+                        json.dumps(blocked_signal, indent=2),
+                        encoding="utf-8")
+
+                    section_results[sec_num] = SectionResult(
+                        section_number=sec_num, aligned=False,
+                        problems=(
+                            "GREENFIELD_BLOCKED: section needs seed code "
+                            "decision before implementation can proceed."
+                        ),
+                    )
+                    completed.add(sec_num)
+                    mailbox_send(
+                        planspace, parent,
+                        f"pause:greenfield_blocked:{sec_num}:needs seed "
+                        f"code decision")
+                    subprocess.run(  # noqa: S603
+                        ["bash", str(DB_SH), "log",  # noqa: S607
+                         str(planspace / "run.db"),
+                         "lifecycle", f"end:section:{sec_num}",
+                         "greenfield_blocked",
+                         "--agent", AGENT_NAME],
+                        capture_output=True, text=True,
+                    )
+                    continue
 
             # Run the section
             modified_files = run_section(
