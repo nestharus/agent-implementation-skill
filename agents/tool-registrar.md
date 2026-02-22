@@ -53,6 +53,11 @@ The registry is a JSON file at `<planspace>/artifacts/tool-registry.json`:
 | `usage_examples` | no | Short command-line or import examples |
 | `tests` | no | Paths to test files that exercise this tool |
 | `registered_at` | yes | Round when tool was registered |
+| `inputs` | no | What the tool takes as input (types, formats) |
+| `outputs` | no | What the tool produces (types, formats) |
+| `constraints` | no | Limitations or requirements for using this tool |
+| `consumed_by` | no | Which stages or sections use this tool |
+| `adjacent_tools` | no | Tools that compose with this one (composition edges) |
 
 ## Registration Protocol
 
@@ -90,3 +95,26 @@ line per tool, grouped by scope.
 - **section-local**: Only used within the section that created it
 - **cross-section**: Used by multiple sections or is a project-wide utility
 - **test-only**: Test helpers, fixtures, mocks
+
+## Capability Graph
+
+The tool registry is also a **capability graph**. The `adjacent_tools`
+field creates composition edges between tools. When analyzing tool
+coverage, consider:
+
+- **Composition chains**: Can tool A's output feed into tool B's input?
+- **Tool islands**: Groups of tools with no composition edges to other groups
+- **Missing bridges**: Adjacent tools that should exist but don't
+
+When you detect tool islands (disconnected tool groups), flag them as
+a "tool friction" signal:
+```json
+{
+  "friction": true,
+  "islands": [["tool-a", "tool-b"], ["tool-c"]],
+  "missing_bridge": "tool-a output → tool-c input"
+}
+```
+
+Write friction signals to:
+`<planspace>/artifacts/signals/section-<N>-tool-friction.json`

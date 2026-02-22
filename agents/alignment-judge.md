@@ -66,6 +66,23 @@ constraint C" IS valid.
 **UNDERSPECIFIED:** followed by what information is missing and why
 alignment cannot be checked.
 
+## Structured Verdict (Required)
+
+In addition to your narrative verdict above, include a JSON block at the
+end of your response:
+
+```json
+{"frame_ok": true, "aligned": true, "problems": []}
+```
+
+Fields:
+- `frame_ok`: false if the prompt/work uses invalid feature-audit framing
+- `aligned`: true if ALIGNED, false if PROBLEMS or UNDERSPECIFIED
+- `problems`: array of problem strings (empty if aligned)
+
+The script reads this JSON to make routing decisions. Your narrative
+verdict is for human review; the JSON is for mechanical dispatch.
+
 ## Proposal Evaluation Rules
 
 ### Alternative Approaches

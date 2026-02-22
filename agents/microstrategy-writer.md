@@ -60,6 +60,22 @@ explicitly address each relevant TODO:
 Do NOT silently ignore TODOs. Each one is a local microstrategy that
 either aligns or conflicts with the section's integration plan.
 
+### Stable TODO IDs
+
+When writing or updating TODO blocks, use stable IDs in the format:
+`TODO[SECNN-COMPONENT-NN]` where:
+- `SECNN` = section number (e.g., SEC03)
+- `COMPONENT` = short component name (e.g., API, DB, AUTH)
+- `NN` = sequential number within that section+component
+
+Example: `TODO[SEC03-API-02]: Validate event schema before dispatch`
+
+These IDs are consumed by the trace-map artifact for localized alignment
+checking. Without stable IDs, alignment must re-read entire files.
+
+When superseding a TODO, keep the original ID and add `SUPERSEDED:`:
+`TODO[SEC03-API-02]: SUPERSEDED — replaced by event bus approach (see proposal)`
+
 ## Output
 
 Write the microstrategy as markdown. Keep it tactical and concrete.

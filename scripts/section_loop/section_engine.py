@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -582,6 +583,93 @@ def run_section(
             f"other sections")
 
     # -----------------------------------------------------------------
+    # Step 0c: Impact triage — skip expensive steps if notes are trivial
+    # -----------------------------------------------------------------
+    if incoming_notes and section.solve_count >= 1:
+        triage_dir = artifacts / "triage"
+        triage_dir.mkdir(parents=True, exist_ok=True)
+        triage_prompt_path = triage_dir / f"triage-{section.number}-prompt.md"
+        triage_output_path = triage_dir / f"triage-{section.number}-output.md"
+        triage_signal_path = (artifacts / "signals"
+                              / f"triage-{section.number}.json")
+
+        # Build triage context
+        existing_proposal = (artifacts / "proposals"
+                             / f"section-{section.number}-integration-proposal.md")
+        proposal_ref = ""
+        if existing_proposal.exists():
+            proposal_ref = f"3. Existing proposal: `{existing_proposal}`"
+
+        last_align = artifacts / f"intg-align-{section.number}-output.md"
+        align_ref = ""
+        if last_align.exists():
+            align_ref = f"4. Last alignment verdict: `{last_align}`"
+
+        triage_prompt_path.write_text(f"""# Task: Impact Triage for Section {section.number}
+
+## Context
+This section has already been solved once (attempt {section.solve_count}).
+New notes/changes arrived from other sections. Determine if they require
+re-planning or re-implementation, or if they can be acknowledged without
+expensive rework.
+
+## Files to Read
+1. Section specification: `{section.path}`
+2. Incoming notes (below)
+{proposal_ref}
+{align_ref}
+
+## Incoming Notes
+{incoming_notes[:3000]}
+
+## Instructions
+Classify the impact of these notes on this section:
+- `needs_replan`: true if the notes change the problem or strategy
+- `needs_code_change`: true if the notes require implementation changes
+- Both false if the notes are informational or already handled
+
+Write a JSON signal to: `{triage_signal_path}`
+```json
+{{"needs_replan": false, "needs_code_change": false, "reasons": ["notes are informational"]}}
+```
+""", encoding="utf-8")
+        _log_artifact(planspace, f"prompt:triage-{section.number}")
+
+        dispatch_agent(
+            "glm", triage_prompt_path, triage_output_path,
+            planspace, parent, codespace=codespace,
+            section_number=section.number,
+        )
+
+        # Read triage signal
+        if triage_signal_path.exists():
+            try:
+                triage = json.loads(
+                    triage_signal_path.read_text(encoding="utf-8"))
+                needs_replan = triage.get("needs_replan", True)
+                needs_code = triage.get("needs_code_change", True)
+                if not needs_replan and not needs_code:
+                    log(f"Section {section.number}: triage says no rework "
+                        f"needed — skipping to alignment check")
+                    # Jump straight to alignment verification
+                    from .alignment import _run_alignment_check_with_retries
+                    verify_result = _run_alignment_check_with_retries(
+                        section, planspace, codespace, parent,
+                        section.number,
+                        output_prefix="triage-align",
+                    )
+                    if verify_result == "ALIGNMENT_CHANGED_PENDING":
+                        return None
+                    if verify_result and "ALIGNED" in verify_result:
+                        log(f"Section {section.number}: triage + alignment "
+                            f"confirms no rework needed")
+                        reported = collect_modified_files(
+                            planspace, section, codespace)
+                        return reported if reported else []
+            except (json.JSONDecodeError, OSError):
+                pass  # Fall through to full processing
+
+    # -----------------------------------------------------------------
     # Step 0b: Surface section-relevant tools from tool registry
     # -----------------------------------------------------------------
     tools_available_path = (artifacts / "sections"
@@ -722,6 +810,27 @@ def run_section(
             f"by setup agent (expected at {problem_frame_path})")
     else:
         log(f"Section {section.number}: problem frame present")
+        # P4: Problem frame hash stability — detect meaningful drift
+        pf_hash_path = (artifacts / "signals"
+                        / f"section-{section.number}-problem-frame-hash.txt")
+        pf_hash_path.parent.mkdir(parents=True, exist_ok=True)
+        current_pf_hash = hashlib.sha256(
+            problem_frame_path.read_bytes()).hexdigest()
+        if pf_hash_path.exists():
+            prev_pf_hash = pf_hash_path.read_text(encoding="utf-8").strip()
+            if prev_pf_hash != current_pf_hash:
+                log(f"Section {section.number}: problem frame changed — "
+                    f"forcing integration proposal re-run")
+                # Invalidate existing integration proposal to force re-run
+                existing_proposal = (
+                    artifacts / "proposals"
+                    / f"section-{section.number}-integration-proposal.md"
+                )
+                if existing_proposal.exists():
+                    existing_proposal.unlink()
+                    log(f"Section {section.number}: invalidated existing "
+                        f"integration proposal due to problem frame change")
+        pf_hash_path.write_text(current_pf_hash, encoding="utf-8")
 
     if proposal_excerpt.exists() and alignment_excerpt.exists():
         log(f"Section {section.number}: setup — excerpts ready")
@@ -1324,6 +1433,44 @@ WHY — you're capturing WHAT and WHERE at the file level.
     # Write traceability index for this section (P2)
     _write_traceability_index(planspace, section, codespace, actually_changed)
 
+    # Write trace-map artifact (P3: stable TODO ID → problem chain)
+    trace_map_dir = artifacts / "trace-map"
+    trace_map_dir.mkdir(parents=True, exist_ok=True)
+    trace_map_path = trace_map_dir / f"section-{section.number}.json"
+    trace_map = {
+        "section": section.number,
+        "problems": [],
+        "strategies": [],
+        "todo_ids": [],
+        "files": list(actually_changed),
+    }
+    # Extract problems from problem frame
+    pf_path = (artifacts / "sections"
+               / f"section-{section.number}-problem-frame.md")
+    if pf_path.exists():
+        pf_text = pf_path.read_text(encoding="utf-8")
+        for line in pf_text.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("- ") or stripped.startswith("* "):
+                trace_map["problems"].append(stripped[2:])
+    # Extract TODO IDs from related files
+    for rel_path in section.related_files:
+        full = codespace / rel_path
+        if not full.exists():
+            continue
+        try:
+            content = full.read_text(encoding="utf-8")
+            for match in re.finditer(r'TODO\[([^\]]+)\]', content):
+                trace_map["todo_ids"].append({
+                    "id": match.group(1),
+                    "file": rel_path,
+                })
+        except (OSError, UnicodeDecodeError):
+            continue
+    trace_map_path.write_text(
+        json.dumps(trace_map, indent=2), encoding="utf-8")
+    log(f"Section {section.number}: trace-map written to {trace_map_path}")
+
     # -----------------------------------------------------------------
     # Step 3b: Validate tool registry after implementation
     # -----------------------------------------------------------------
@@ -1381,6 +1528,57 @@ WHY — you're capturing WHAT and WHERE at the file level.
                 )
         except (json.JSONDecodeError, ValueError):
             pass  # Malformed registry — already warned in Step 0b
+
+    # -----------------------------------------------------------------
+    # Step 3c: Detect tooling friction and dispatch bridge-tools agent
+    # -----------------------------------------------------------------
+    tool_friction_detected = False
+    # Check for tooling friction signals
+    friction_signal_path = (artifacts / "signals"
+                            / f"section-{section.number}-tool-friction.json")
+    if friction_signal_path.exists():
+        try:
+            friction = json.loads(
+                friction_signal_path.read_text(encoding="utf-8"))
+            tool_friction_detected = friction.get("friction", False)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    if tool_friction_detected and tool_registry_path.exists():
+        log(f"Section {section.number}: tooling friction detected — "
+            f"dispatching bridge-tools agent")
+        bridge_tools_prompt = (
+            artifacts / f"bridge-tools-{section.number}-prompt.md")
+        bridge_tools_output = (
+            artifacts / f"bridge-tools-{section.number}-output.md")
+        bridge_tools_prompt.write_text(f"""# Task: Bridge Tool Islands for Section {section.number}
+
+## Context
+Section {section.number} has signaled tooling friction — tools don't compose
+cleanly or a needed tool doesn't exist.
+
+## Files to Read
+1. Tool registry: `{tool_registry_path}`
+2. Section specification: `{section.path}`
+3. Integration proposal: `{artifacts / "proposals" / f"section-{section.number}-integration-proposal.md"}`
+
+## Instructions
+Analyze the tool registry and section needs. Either:
+(a) Propose a new tool that bridges the gap
+(b) Propose a composition pattern connecting existing tools
+
+Write your proposal to: `{artifacts / "proposals" / f"section-{section.number}-tool-bridge.md"}`
+Update the tool registry if new tools are proposed.
+""", encoding="utf-8")
+        dispatch_agent(
+            "gpt-5.3-codex-high", bridge_tools_prompt,
+            bridge_tools_output,
+            planspace, parent,
+            f"bridge-tools-{section.number}",
+            codespace=codespace,
+            agent_file="bridge-tools.md",
+            section_number=section.number,
+        )
 
     # -----------------------------------------------------------------
     # Step 4: Post-completion — snapshots, impact analysis, notes

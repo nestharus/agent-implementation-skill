@@ -622,6 +622,110 @@ def run_global_coordination(
     _log_artifact(planspace, "coordination:problems")
 
     # -----------------------------------------------------------------
+    # Step 1b: Aggregate scope deltas for coordinator adjudication
+    # -----------------------------------------------------------------
+    scope_deltas_dir = planspace / "artifacts" / "scope-deltas"
+    if scope_deltas_dir.exists():
+        delta_files = sorted(scope_deltas_dir.glob("section-*-scope-delta.json"))
+        if delta_files:
+            pending_deltas = []
+            for df in delta_files:
+                try:
+                    delta = json.loads(df.read_text(encoding="utf-8"))
+                    # Skip already-adjudicated deltas
+                    if delta.get("adjudicated"):
+                        continue
+                    pending_deltas.append(delta)
+                except (json.JSONDecodeError, OSError):
+                    continue
+
+            if pending_deltas:
+                log(f"  coordinator: {len(pending_deltas)} pending scope "
+                    f"deltas — dispatching adjudicator")
+
+                adjudication_prompt = coord_dir / "scope-delta-prompt.md"
+                adjudication_output = coord_dir / "scope-delta-output.md"
+                deltas_json = json.dumps(pending_deltas, indent=2)
+
+                adjudication_prompt.write_text(f"""# Task: Adjudicate Scope Deltas
+
+## Pending Scope Deltas
+
+```json
+{deltas_json}
+```
+
+## Instructions
+
+Each scope delta represents a section discovering work outside its
+designated scope. For each delta, decide:
+
+1. **accept**: Create new section(s) to handle the out-of-scope work
+2. **reject**: The work is not needed or can be deferred
+3. **absorb**: Expand an existing section's scope to include it
+
+Reply with a JSON block:
+
+```json
+{{"decisions": [
+  {{"section": "03", "action": "accept", "reason": "New section needed for auth module", "new_section_scope": "Authentication middleware setup"}},
+  {{"section": "05", "action": "reject", "reason": "Optimization can be deferred to next round"}}
+]}}
+```
+""", encoding="utf-8")
+                _log_artifact(planspace, "prompt:scope-delta-adjudication")
+
+                adjudication_result = dispatch_agent(
+                    "claude-opus", adjudication_prompt,
+                    adjudication_output,
+                    planspace, parent,
+                    agent_file="coordination-planner.md",
+                )
+                if adjudication_result == "ALIGNMENT_CHANGED_PENDING":
+                    return False
+
+                # Parse adjudication decisions and mark deltas as handled
+                try:
+                    adj_json = None
+                    for line in adjudication_result.split("\n"):
+                        stripped = line.strip()
+                        if stripped.startswith("{") and "decisions" in stripped:
+                            adj_json = stripped
+                            break
+                    if adj_json is None:
+                        start = adjudication_result.find("{")
+                        end = adjudication_result.rfind("}")
+                        if start >= 0 and end > start:
+                            candidate = adjudication_result[start:end + 1]
+                            if "decisions" in candidate:
+                                adj_json = candidate
+                    if adj_json:
+                        adj_data = json.loads(adj_json)
+                        for decision in adj_data.get("decisions", []):
+                            sec = decision.get("section", "")
+                            action = decision.get("action", "")
+                            # Mark delta as adjudicated
+                            delta_path = (scope_deltas_dir
+                                          / f"section-{sec}-scope-delta.json")
+                            if delta_path.exists():
+                                delta = json.loads(
+                                    delta_path.read_text(encoding="utf-8"))
+                                delta["adjudicated"] = True
+                                delta["adjudication"] = {
+                                    "action": action,
+                                    "reason": decision.get("reason", ""),
+                                }
+                                delta_path.write_text(
+                                    json.dumps(delta, indent=2),
+                                    encoding="utf-8",
+                                )
+                            log(f"  coordinator: scope delta for section "
+                                f"{sec} → {action}")
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    log("  coordinator: could not parse scope delta "
+                        "adjudication — deltas remain pending")
+
+    # -----------------------------------------------------------------
     # Step 2: Dispatch coordination-planner agent to group problems
     # -----------------------------------------------------------------
     ctrl = poll_control_messages(planspace, parent)
@@ -725,9 +829,9 @@ def run_global_coordination(
         if ctrl == "alignment_changed":
             return False
 
-        # Bridge agent: dispatch when coordination planner says so,
-        # OR auto-detect when overlapping files or contract mismatches
-        # indicate cross-section friction.
+        # Bridge agent: dispatch when coordination planner says so.
+        # Overlap stats are computed and logged for the planner's next
+        # round, but the script does NOT auto-trigger bridges.
         for gidx in batch:
             group = confirmed_groups[gidx]
             plan_group = coord_plan["groups"][gidx] if gidx < len(coord_plan["groups"]) else {}
@@ -735,10 +839,11 @@ def run_global_coordination(
             bridge_needed = bridge_directive.get("needed", False)
             bridge_reason = bridge_directive.get("reason", "planner-requested")
 
-            # --- Proactive bridge detection (P12) ---
+            # --- Bridge candidate detection (agent-decided) ---
+            # Compute mechanical overlap stats, then let the coordination
+            # planner decide (via bridge directive in the plan).
+            # Script does NOT decide relatedness — only computes stats.
             if not bridge_needed:
-                # Check 1: two or more sections in the group modify
-                # overlapping files
                 group_section_nums = sorted(
                     {p["section"] for p in group})
                 if len(group_section_nums) >= 2:
@@ -747,57 +852,40 @@ def run_global_coordination(
                         section_file_sets.setdefault(
                             p["section"], set()
                         ).update(p.get("files", []))
+                    # Compute overlap stats for logging (not for decision)
                     nums = list(section_file_sets.keys())
-                    has_overlap = False
+                    overlap_count = 0
                     for i in range(len(nums)):
                         for j in range(i + 1, len(nums)):
-                            if section_file_sets[nums[i]] & section_file_sets[nums[j]]:
-                                has_overlap = True
-                                break
-                        if has_overlap:
-                            break
-                    if has_overlap:
-                        bridge_needed = True
-                        bridge_reason = (
-                            "auto-detected: overlapping file "
-                            "modifications across sections"
-                        )
-                        log(f"  coordinator: auto-triggering bridge for "
-                            f"group {gidx} — {bridge_reason}")
-
-                # Check 2: alignment outputs mention contract mismatch
-                # or interface conflict
-                if not bridge_needed:
-                    mismatch_phrases = [
-                        "contract mismatch", "interface conflict",
-                    ]
-                    for s_num in group_section_nums:
-                        align_output_path = (
-                            coord_dir
-                            / f"coord-align-{s_num}-output.md"
-                        )
-                        if not align_output_path.exists():
-                            # Also check the global alignment outputs
-                            align_output_path = (
-                                planspace / "artifacts"
-                                / f"global-align-{s_num}-output.md"
+                            overlap_count += len(
+                                section_file_sets[nums[i]]
+                                & section_file_sets[nums[j]]
                             )
-                        if align_output_path.exists():
-                            align_text = align_output_path.read_text(
-                                encoding="utf-8").lower()
-                            if any(
-                                phrase in align_text
-                                for phrase in mismatch_phrases
-                            ):
-                                bridge_needed = True
-                                bridge_reason = (
-                                    "auto-detected: contract mismatch "
-                                    "mention in alignment output"
-                                )
-                                log(f"  coordinator: auto-triggering "
-                                    f"bridge for group {gidx} — "
-                                    f"{bridge_reason}")
-                                break
+                    if overlap_count > 0:
+                        log(f"  coordinator: group {gidx} has "
+                            f"{overlap_count} overlapping files across "
+                            f"sections — bridge decision deferred to "
+                            f"coordination planner")
+                        # Write overlap stats for planner's next round
+                        overlap_signal = {
+                            "group": gidx,
+                            "sections": group_section_nums,
+                            "overlap_count": overlap_count,
+                            "overlapping_files": sorted(
+                                f for s in section_file_sets.values()
+                                for f in s
+                                if sum(1 for sv in section_file_sets.values()
+                                       if f in sv) > 1
+                            ),
+                        }
+                        overlap_path = (
+                            coord_dir
+                            / f"overlap-stats-group-{gidx}.json"
+                        )
+                        overlap_path.write_text(
+                            json.dumps(overlap_signal, indent=2),
+                            encoding="utf-8",
+                        )
 
             if bridge_needed:
                 group_sections = sorted({p["section"] for p in group})

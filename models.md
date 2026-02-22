@@ -133,6 +133,39 @@ This makes model decisions auditable. QA monitor can detect:
 - Stuck-at-low (3+ failures without escalation)
 - Model mismatch (reasoning model used for mechanical task)
 
+## Model Justification Protocol
+
+Every strategic agent dispatch should produce a brief justification
+alongside its primary output. This is not overhead — it's traceability
+for model selection decisions.
+
+### Required Fields in Agent Output
+
+Strategic agents (Opus, codex-xhigh) should include at the end of
+their response:
+
+```
+## Model Justification
+- **Why this model**: <1-2 lines explaining why this model tier is appropriate>
+- **Escalation trigger**: <what would force escalation to a higher tier>
+```
+
+### Escalation Policy
+
+- **Default**: Start with the model specified in the model policy
+- **Escalate on recurrence**: If a section signals recurrence (2+ attempts),
+  escalate the next dispatch to a higher tier
+- **Never pre-escalate**: Don't use codex-xhigh on first attempt "just in case"
+- **Justify downgrades**: If using a cheaper model than policy suggests,
+  explain why (e.g., "classification task, GLM sufficient")
+
+### QA Monitor Integration
+
+The QA monitor can detect:
+- Premature escalation (xhigh on first attempt without justification)
+- Stuck-at-low (3+ failures without escalation)
+- Missing justification (strategic agent output without model justification block)
+
 ## Anti-Patterns
 
 - **DO NOT use Opus for mechanical auditing** — Codex is better

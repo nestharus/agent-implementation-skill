@@ -95,13 +95,9 @@ def post_section_completion(
     _log_artifact(planspace, f"snapshot:section-{sec_num}")
 
     # -----------------------------------------------------------------
-    # (b) Semantic impact analysis via GLM
+    # (a2) Write contract summary for this section
     # -----------------------------------------------------------------
-    other_sections = [s for s in all_sections if s.number != sec_num
-                      and s.related_files]
-    if not other_sections:
-        log(f"Section {sec_num}: no other sections to check for impact")
-        return
+    section_summary = extract_section_summary(section.path)
 
     # Build file-change description
     change_lines = []
@@ -109,24 +105,6 @@ def post_section_completion(
         change_lines.append(f"- `{rel_path}`")
     changes_text = "\n".join(change_lines) if change_lines else "(none)"
 
-    # Build other-sections description
-    other_section_lines = []
-    for other in other_sections:
-        files_str = ", ".join(f"`{f}`" for f in other.related_files[:10])
-        if len(other.related_files) > 10:
-            files_str += f" (+{len(other.related_files) - 10} more)"
-        summary = extract_section_summary(other.path)
-        other_section_lines.append(
-            f"- SECTION-{other.number}: {summary}\n"
-            f"  Related files: {files_str}"
-        )
-    other_text = "\n".join(other_section_lines)
-
-    section_summary = extract_section_summary(section.path)
-
-    # -----------------------------------------------------------------
-    # (a2) Write contract summary for this section
-    # -----------------------------------------------------------------
     contracts_dir = artifacts / "contracts"
     contracts_dir.mkdir(parents=True, exist_ok=True)
     contract_summary_path = contracts_dir / f"section-{sec_num}-contract-summary.md"
@@ -153,6 +131,71 @@ def post_section_completion(
     _log_artifact(planspace, f"contract:section-{sec_num}")
     log(f"Section {sec_num}: wrote contract summary to {contract_summary_path}")
 
+    # -----------------------------------------------------------------
+    # (b) Two-stage impact analysis: candidate generation + semantic check
+    # -----------------------------------------------------------------
+    other_sections = [s for s in all_sections if s.number != sec_num
+                      and s.related_files]
+    if not other_sections:
+        log(f"Section {sec_num}: no other sections to check for impact")
+        return
+
+    # Stage A: Mechanical candidate generation (no agent call needed)
+    # Find sections with overlapping files, recent note mentions, or
+    # shared snapshot files
+    notes_dir_path = artifacts / "notes"
+    modified_set = set(modified_files)
+    candidate_sections: list[Section] = []
+    for other in other_sections:
+        other_files = set(other.related_files)
+        # Check 1: File overlap
+        if modified_set & other_files:
+            candidate_sections.append(other)
+            continue
+        # Check 2: Existing notes mentioning this section pair
+        note_path = notes_dir_path / f"from-{sec_num}-to-{other.number}.md"
+        if note_path.exists():
+            candidate_sections.append(other)
+            continue
+        # Check 3: Snapshot overlap (source section touched files
+        # that the other section previously snapshotted)
+        other_snapshot = artifacts / "snapshots" / f"section-{other.number}"
+        if other_snapshot.exists():
+            for mod_file in modified_files:
+                if (other_snapshot / mod_file).exists():
+                    candidate_sections.append(other)
+                    break
+
+    if not candidate_sections:
+        log(f"Section {sec_num}: no candidate sections for impact analysis")
+        return
+
+    log(f"Section {sec_num}: {len(candidate_sections)} candidate sections "
+        f"(of {len(other_sections)} total) for impact analysis")
+
+    # Stage B: Semantic impact analysis on candidates only (Opus)
+    candidate_lines = []
+    for other in candidate_sections:
+        files_str = ", ".join(f"`{f}`" for f in other.related_files[:10])
+        if len(other.related_files) > 10:
+            files_str += f" (+{len(other.related_files) - 10} more)"
+        summary = extract_section_summary(other.path)
+        candidate_lines.append(
+            f"- SECTION-{other.number}: {summary}\n"
+            f"  Related files: {files_str}"
+        )
+    candidate_text = "\n".join(candidate_lines)
+
+    # Also note which sections were NOT evaluated
+    skipped_nums = sorted(
+        s.number for s in other_sections if s not in candidate_sections)
+    skipped_note = ""
+    if skipped_nums:
+        skipped_note = (
+            f"\n\n**Not evaluated** (no file overlap or prior notes): "
+            f"sections {', '.join(skipped_nums)}"
+        )
+
     impact_prompt_path = artifacts / f"impact-{sec_num}-prompt.md"
     impact_output_path = artifacts / f"impact-{sec_num}-output.md"
     heading = f"# Task: Semantic Impact Analysis for Section {sec_num}"
@@ -164,46 +207,34 @@ def post_section_completion(
 ## Files Modified by Section {sec_num}
 {changes_text}
 
-## Other Sections and Their Files
-{other_text}
+## Candidate Sections (pre-filtered by file overlap)
+{candidate_text}
+{skipped_note}
 
 ## Instructions
 
-For each other section listed above, determine if the changes made by
-section {sec_num} have a MATERIAL impact on that section's problem, or
-if it is just a coincidental file overlap that does not affect the other
-section's work.
+These sections were pre-selected because they share files with section
+{sec_num}'s modifications, have existing cross-section notes, or have
+overlapping snapshots. For each candidate, determine MATERIAL vs NO_IMPACT.
 
 A change is MATERIAL if:
 - It modifies an interface, contract, or API that the other section depends on
-- It changes control flow or data structures the other section needs to work with
-- It introduces constraints or assumptions the other section must accommodate
+- It changes control flow or data structures the other section needs
+- It introduces constraints the other section must accommodate
 
-A change is NO_IMPACT if:
-- The files overlap but the changes are in unrelated parts
-- The other section only reads data that was not affected
-- The change is purely cosmetic or stylistic
-
-Reply with a JSON block containing your analysis:
+Reply with a JSON block:
 
 ```json
 {{"impacts": [
-  {{"to": "04", "impact": "MATERIAL", "reason": "Modified event model interface that section 04 depends on"}},
+  {{"to": "04", "impact": "MATERIAL", "reason": "Modified event model interface", "contract_risk": false}},
   {{"to": "07", "impact": "NO_IMPACT"}}
 ]}}
 ```
 
-Every other section must appear in the impacts array with either
-MATERIAL or NO_IMPACT. The `to` field is the section number.
-For MATERIAL impacts, include a `reason` field.
+Each candidate section must appear. Include `contract_risk: true` if the
+impact involves a shared interface or contract change.
 
-**Also include a brief `note_markdown` for each MATERIAL impact** —
-this will be written directly as the consequence note:
-```json
-{{"impacts": [
-  {{"to": "04", "impact": "MATERIAL", "reason": "...", "note_markdown": "Section {sec_num} changed the event model interface. Section 04 must accommodate the new field `event_type` in `config.py`."}}
-]}}
-```
+**Also include a brief `note_markdown` for each MATERIAL impact.**
 """, encoding="utf-8")
     _log_artifact(planspace, f"prompt:impact-{sec_num}")
 
@@ -228,7 +259,7 @@ this will be written directly as the consequence note:
     # Normalize section numbers to canonical form (handles "4" vs "04")
     sec_num_map = build_section_number_map(all_sections)
 
-    impacted_sections: list[tuple[str, str]] = []
+    impacted_sections: list[tuple[str, str, bool]] = []
     # Primary: parse structured JSON from agent output
     json_parsed = False
     try:
@@ -268,7 +299,8 @@ this will be written directly as the consequence note:
                     target = normalize_section_number(
                         str(entry["to"]), sec_num_map)
                     reason = entry.get("reason", "")
-                    impacted_sections.append((target, reason))
+                    contract_risk = bool(entry.get("contract_risk", False))
+                    impacted_sections.append((target, reason, contract_risk))
             json_parsed = True
     except (json.JSONDecodeError, KeyError, TypeError):
         pass
@@ -339,7 +371,10 @@ If no material impacts can be extracted, reply:
                         target = normalize_section_number(
                             str(entry["to"]), sec_num_map)
                         reason = entry.get("reason", "")
-                        impacted_sections.append((target, reason))
+                        contract_risk = bool(
+                            entry.get("contract_risk", False))
+                        impacted_sections.append(
+                            (target, reason, contract_risk))
         except (json.JSONDecodeError, KeyError, TypeError):
             log(f"Section {sec_num}: GLM normalizer also failed to "
                 f"produce valid JSON — no material impacts recorded")
@@ -364,7 +399,7 @@ If no material impacts can be extracted, reply:
     # Extract contract/interface sections from proposal for inline notes
     contracts_summary = _extract_contracts_summary(contracts_context)
 
-    for target_num, reason in impacted_sections:
+    for target_num, reason, contract_risk in impacted_sections:
         note_path = notes_dir / f"from-{sec_num}-to-{target_num}.md"
 
         # Build the list of modified files with brief context
@@ -422,6 +457,38 @@ Snapshot directory: `{snapshot_dir}`
         log(f"Section {sec_num}: left note for section {target_num} "
             f"at {note_path}")
 
+    # P8: Generate contract artifact for contract-risk impacts
+    contract_risk_targets = [
+        (t, r) for t, r, cr in impacted_sections if cr
+    ]
+    if contract_risk_targets:
+        contracts_dir = artifacts / "contracts"
+        contracts_dir.mkdir(parents=True, exist_ok=True)
+        # Build lookup for target section files
+        target_files_map: dict[str, set[str]] = {}
+        for s in all_sections:
+            target_files_map[s.number] = set(s.related_files)
+        for target_num, reason in contract_risk_targets:
+            shared = sorted(
+                modified_set & target_files_map.get(target_num, set()))
+            contract_path = (
+                contracts_dir / f"contract-{sec_num}-{target_num}.md")
+            if not contract_path.exists():
+                shared_text = (
+                    "\n".join(f"- `{f}`" for f in shared)
+                    if shared else "- (indirect coupling)"
+                )
+                contract_path.write_text(
+                    f"# Contract: Section {sec_num} ↔ Section {target_num}\n\n"
+                    f"## Risk\n{reason}\n\n"
+                    f"## Shared Surface\n{shared_text}\n\n"
+                    f"## Invariants\n"
+                    f"(To be filled by bridge agent or next alignment check)\n",
+                    encoding="utf-8",
+                )
+                log(f"Section {sec_num}: contract artifact written for "
+                    f"section {target_num}")
+
 
 def read_incoming_notes(
     section: Section,
@@ -430,12 +497,8 @@ def read_incoming_notes(
 ) -> str:
     """Read incoming consequence notes from other sections.
 
-    Globs for artifacts/notes/from-*-to-{section.number}.md, reads each
-    note, and computes text diffs for shared files that have changed
-    since the authoring section last saw them.
-
-    Returns a combined context string suitable for inclusion in prompts.
-    Empty string if no notes exist.
+    Filters out acknowledged notes and bounds diff sizes to prevent
+    context bloat. Returns combined context string for prompts.
     """
     artifacts = planspace / "artifacts"
     notes_dir = artifacts / "notes"
@@ -450,11 +513,33 @@ def read_incoming_notes(
     if not note_files:
         return ""
 
-    log(f"Section {sec_num}: found {len(note_files)} incoming notes")
+    # P13: Load acknowledged note IDs for filtering
+    ack_path = (artifacts / "signals" / f"note-ack-{sec_num}.json")
+    acked_ids: set[str] = set()
+    if ack_path.exists():
+        try:
+            ack_data = json.loads(ack_path.read_text(encoding="utf-8"))
+            for entry in ack_data.get("acknowledged", []):
+                nid = entry.get("note_id", "")
+                if nid:
+                    acked_ids.add(nid)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    log(f"Section {sec_num}: found {len(note_files)} incoming notes"
+        + (f" ({len(acked_ids)} acknowledged)" if acked_ids else ""))
 
     parts: list[str] = []
     for note_path in note_files:
         note_text = note_path.read_text(encoding="utf-8")
+
+        # P13: Skip acknowledged notes
+        # Extract note ID from note content
+        note_id_match = re.search(
+            r'\*\*Note ID\*\*:\s*`([^`]+)`', note_text)
+        if note_id_match and note_id_match.group(1) in acked_ids:
+            continue
+
         parts.append(note_text)
 
         # Extract the source section number from the filename
@@ -470,6 +555,7 @@ def read_incoming_notes(
             continue
 
         diff_parts: list[str] = []
+        max_diff_lines = 100  # P13: bound diff size
         for rel_path in section.related_files:
             snapshot_file = source_snapshot_dir / rel_path
             current_file = codespace / rel_path
@@ -477,6 +563,13 @@ def read_incoming_notes(
                 continue
             diff_text = compute_text_diff(snapshot_file, current_file)
             if diff_text:
+                # P13: Truncate large diffs
+                diff_lines = diff_text.split("\n")
+                if len(diff_lines) > max_diff_lines:
+                    diff_text = "\n".join(diff_lines[:max_diff_lines])
+                    diff_text += (
+                        f"\n... (truncated — {len(diff_lines) - max_diff_lines}"
+                        f" more lines)")
                 diff_parts.append(
                     f"### Diff: `{rel_path}` "
                     f"(section {source_num}'s snapshot vs current)\n"

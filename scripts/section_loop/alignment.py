@@ -73,26 +73,45 @@ def _extract_problems(result: str) -> str | None:
     return result.strip()
 
 
-def _check_alignment_frame(result: str) -> str | None:
-    """Detect if alignment output uses invalid feature-audit framing.
+def _parse_alignment_json_frame(result: str) -> bool | None:
+    """Parse structured frame verdict from alignment judge output.
 
-    Returns a warning string if feature-counting language detected,
-    None if the output uses proper alignment framing.
+    Looks for a JSON block containing frame_ok. Returns:
+    - True if frame_ok is true
+    - False if frame_ok is false (invalid frame detected)
+    - None if no JSON verdict found (fall through to text parsing)
     """
-    # Simple heuristic: count checklist-like patterns
-    checklist_patterns = 0
+    import json as _json
+    # Search for JSON block in result
     for line in result.split("\n"):
         stripped = line.strip()
-        # Detect "Feature X: implemented/done/complete/missing" patterns
-        if any(stripped.lower().endswith(suffix)
-               for suffix in (": implemented", ": done", ": complete",
-                               ": missing", ": not implemented",
-                               ": partially implemented")):
-            checklist_patterns += 1
-    if checklist_patterns >= 3:
-        return (f"Alignment output contains {checklist_patterns} "
-                f"feature-checklist lines — this is audit framing, "
-                f"not alignment. Requesting re-check.")
+        if stripped.startswith("{") and "frame_ok" in stripped:
+            try:
+                data = _json.loads(stripped)
+                return data.get("frame_ok", True)
+            except _json.JSONDecodeError:
+                continue
+    # Also check for code-fenced JSON
+    in_fence = False
+    fence_lines: list[str] = []
+    for line in result.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("```") and not in_fence:
+            in_fence = True
+            fence_lines = []
+            continue
+        if stripped.startswith("```") and in_fence:
+            candidate = "\n".join(fence_lines)
+            if "frame_ok" in candidate:
+                try:
+                    data = _json.loads(candidate)
+                    return data.get("frame_ok", True)
+                except _json.JSONDecodeError:
+                    pass
+            in_fence = False
+            continue
+        if in_fence:
+            fence_lines.append(line)
     return None
 
 
@@ -112,7 +131,6 @@ def _run_alignment_check_with_retries(
 
     artifacts = planspace / "artifacts"
     for attempt in range(1, max_retries + 2):  # 1 initial + max_retries
-        # Poll for control messages before each dispatch attempt
         ctrl = poll_control_messages(planspace, parent,
                                      current_section=sec_num)
         if ctrl == "alignment_changed":
@@ -128,13 +146,13 @@ def _run_alignment_check_with_retries(
             agent_file="alignment-judge.md",
         )
         if result == "ALIGNMENT_CHANGED_PENDING":
-            return result  # Caller must handle
+            return result
         if not result.startswith("TIMEOUT:"):
-            # Gate: reject feature-audit framing
-            frame_warning = _check_alignment_frame(result)
-            if frame_warning:
-                log(f"  alignment frame check: {frame_warning}")
-                # Don't count as a retry — it's a framing issue
+            # Check for structured JSON verdict from alignment judge
+            frame_ok = _parse_alignment_json_frame(result)
+            if frame_ok is False:
+                log(f"  alignment judge reported invalid frame for "
+                    f"section {sec_num} — retrying")
                 continue
             return result
         log(f"  alignment check for section {sec_num} timed out "

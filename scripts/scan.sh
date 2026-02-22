@@ -104,11 +104,35 @@ Write a codemap that captures your understanding of the codebase. Include:
 - How different parts relate to each other
 - Anything surprising, unusual, or important for someone working with this code
 
-The format should fit what you discovered. Don't force the codebase into a template — let the structure of the codemap reflect the structure of the project. If it has 3 major subsystems, describe 3 subsystems. If it has 20 small utilities, describe the pattern. If it's a single-file script, say so.
+The format should fit what you discovered. Don't force the codebase into a template — let the structure of the codemap reflect the structure of the project.
 
-## Output
+## Structured Routing Section (Required)
 
-Write your codemap as markdown. Focus on understanding, not cataloging.
+At the END of your codemap, include a structured routing section:
+
+```
+## Routing Table
+
+### Subsystems
+- <subsystem-name>: <glob-pattern-or-directory> — <one-line-purpose>
+
+### Entry Points
+- <entry-point-file>: <what-it-does>
+
+### Key Interfaces
+- <file-or-module>: <interface-description>
+
+### Unknowns
+- <area>: <what-is-unclear-and-why>
+
+### Confidence
+- overall: high|medium|low
+- reason: <why-this-confidence-level>
+```
+
+This routing table is consumed by downstream agents for file selection.
+Be honest about unknowns — it's better to say "I'm not sure about X"
+than to guess wrong.
 
 ## Resolution Rubric
 
@@ -128,14 +152,14 @@ After writing the codemap, determine whether this is a **greenfield** or
   no substantive source code yet)
 - **brownfield**: Existing source code that new work must integrate with
 
-Write your classification to: \`$ARTIFACTS_DIR/project-mode.txt\`
-The file should contain EXACTLY one word: \`greenfield\` or \`brownfield\`.
+Write your classification to: `$ARTIFACTS_DIR/project-mode.txt`
+The file should contain EXACTLY one word: `greenfield` or `brownfield`.
 
 **Also write a structured JSON signal** to
-\`$ARTIFACTS_DIR/signals/project-mode.json\`:
-\`\`\`json
+`$ARTIFACTS_DIR/signals/project-mode.json`:
+```json
 {"mode": "greenfield|brownfield", "confidence": "high|medium|low", "reason": "..."}
-\`\`\`
+```
 PROMPT
 
   if ! uv run --frozen agents --model claude-opus --project "$CODESPACE" --file "$prompt_file" \
@@ -150,6 +174,37 @@ PROMPT
   fi
 
   echo "[CODEMAP] Wrote: $CODEMAP_PATH"
+
+  # P5: Lightweight codemap verifier — sample files to validate routing
+  local verifier_prompt="$SCAN_LOG_DIR/codemap-verify-prompt.md"
+  local verifier_output="$SCAN_LOG_DIR/codemap-verify-output.md"
+  cat > "$verifier_prompt" << VERIFY_PROMPT
+# Task: Verify Codemap Routing Claims
+
+## Files to Read
+1. Codemap: \`$CODEMAP_PATH\`
+
+## Instructions
+Sample 3-5 files mentioned in the codemap's Routing Table. For each:
+1. Read the file
+2. Verify the codemap's description matches reality
+3. Note any discrepancies
+
+Write a brief verification report. If any routing claims are wrong,
+write corrections to \`$ARTIFACTS_DIR/signals/codemap-corrections.json\`:
+\`\`\`json
+{"corrections": [{"file": "path", "claimed": "...", "actual": "..."}], "verified": true}
+\`\`\`
+
+If everything checks out, write: \`{"corrections": [], "verified": true}\`
+VERIFY_PROMPT
+
+  if uv run --frozen agents --model glm --project "$CODESPACE" --file "$verifier_prompt" \
+    > "$verifier_output" 2>&1; then
+    echo "[CODEMAP] Verification complete (see $verifier_output)"
+  else
+    echo "[CODEMAP] Verification failed — codemap used as-is"
+  fi
 }
 
 apply_related_files_update() {
@@ -537,6 +592,11 @@ Also decide which tiers should be deep-scanned NOW. Consider:
 - Include tier-2 if the section has complex integration concerns
 - Include tier-3 only if the section scope is unclear and peripheral context helps
 
+You own the scan budget. The script will scan exactly the tiers you
+specify in \`scan_now\` — no more, no less. There are no script-level
+caps or overrides. If you think all tiers need scanning, include all
+of them.
+
 Write a JSON file to: \`$tier_file\`
 \`\`\`json
 {"tiers": {"tier-1": ["path/a.py"], "tier-2": ["path/b.py"], "tier-3": ["path/c.py"]}, "scan_now": ["tier-1", "tier-2"], "reason": "why these tiers need scanning"}
@@ -828,6 +888,99 @@ except: pass
   else
     echo "## No feedback" >> "$feedback_report"
     echo "All files confirmed relevant. No missing files detected." >> "$feedback_report"
+  fi
+
+  # P10: Feedback loop — apply missing files from deep scan
+  if [ "$has_feedback" -ne 0 ]; then
+    echo "--- Deep Scan: applying feedback (missing files) ---"
+    while IFS= read -r section_file; do
+      local sec_name
+      sec_name=$(basename "$section_file" .md)
+      local sec_log_dir="$SCAN_LOG_DIR/$sec_name"
+
+      # Collect all missing_files from this section's feedback
+      local all_missing=""
+      for fb_file in "$sec_log_dir"/deep-*-feedback.json; do
+        [ -f "$fb_file" ] || continue
+        local new_missing
+        new_missing=$(python3 -c "
+import json
+try:
+    d = json.load(open('$fb_file'))
+    for f in d.get('missing_files', []):
+        if f.strip(): print(f.strip())
+except: pass
+" 2>/dev/null || true)
+        if [ -n "$new_missing" ]; then
+          all_missing="${all_missing}${new_missing}"$'\n'
+        fi
+      done
+
+      if [ -z "$all_missing" ]; then
+        continue
+      fi
+
+      # Check if files are already in the section's Related Files
+      local truly_missing=""
+      while IFS= read -r mf; do
+        [ -z "$mf" ] && continue
+        if ! grep -qF "### $mf" "$section_file" 2>/dev/null; then
+          truly_missing="${truly_missing}${mf}"$'\n'
+        fi
+      done <<< "$all_missing"
+
+      if [ -z "$truly_missing" ]; then
+        continue
+      fi
+
+      echo "[FEEDBACK] $sec_name: adding $(echo "$truly_missing" | grep -c '[^[:space:]]') missing files"
+
+      # Dispatch agent to produce add/remove patch
+      local updater_prompt="$sec_log_dir/related-files-updater-prompt.md"
+      local updater_output="$sec_log_dir/related-files-updater-output.md"
+      local updater_signal="$ARTIFACTS_DIR/signals/${sec_name}-related-files-update.json"
+
+      cat > "$updater_prompt" << UPDATER_PROMPT
+# Task: Update Related Files for $sec_name
+
+## Files to Read
+1. Section: \`$section_file\`
+2. Codemap: \`$CODEMAP_PATH\`
+
+## Missing Files Discovered by Deep Scan
+$(echo "$truly_missing" | sed 's/^/- /')
+
+## Instructions
+For each missing file above, verify it exists and is relevant to the
+section's problem. Then write an update signal:
+
+Write to: \`$updater_signal\`
+\`\`\`json
+{"status": "stale", "additions": ["path/to/add.py"], "removals": [], "reason": "deep scan discovered missing dependencies"}
+\`\`\`
+
+Only include files that are genuinely relevant. Don't add files just
+because they were mentioned — verify relevance to the section's problem.
+UPDATER_PROMPT
+
+      if uv run --frozen agents --model glm --project "$CODESPACE" --file "$updater_prompt" \
+        > "$updater_output" 2>&1; then
+        # Apply the update if signal was written
+        if [ -f "$updater_signal" ]; then
+          local update_status
+          update_status=$(python3 -c "
+import json
+try: print(json.load(open('$updater_signal')).get('status',''))
+except: print('')
+" 2>/dev/null || true)
+          if [ "$update_status" = "stale" ]; then
+            if apply_related_files_update "$section_file" "$updater_signal"; then
+              echo "[FEEDBACK] $sec_name: related files updated from deep scan feedback"
+            fi
+          fi
+        fi
+      fi
+    done <<< "$section_files"
   fi
 
   if [ "$phase_failed" -ne 0 ]; then
