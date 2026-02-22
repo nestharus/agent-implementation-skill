@@ -890,6 +890,73 @@ except: pass
     echo "All files confirmed relevant. No missing files detected." >> "$feedback_report"
   fi
 
+  # P6: Route out-of-scope findings into scope-delta artifacts.
+  # The coordinator already knows how to adjudicate scope deltas
+  # (coordination.py Step 1b) — this connects scan discoveries to that pipeline.
+  echo "--- Deep Scan: routing out-of-scope findings ---"
+  local scope_deltas_dir="$ARTIFACTS_DIR/scope-deltas"
+  mkdir -p "$scope_deltas_dir"
+
+  while IFS= read -r section_file; do
+    local sec_name
+    sec_name=$(basename "$section_file" .md)
+    local sec_log_dir="$SCAN_LOG_DIR/$sec_name"
+    local sec_num
+    sec_num=$(python3 -c "import re,sys; m=re.search(r'\d+',sys.argv[1]); print(m.group(0) if m else '')" "$sec_name")
+
+    local all_oos=""
+    for fb_file in "$sec_log_dir"/deep-*-feedback.json; do
+      [ -f "$fb_file" ] || continue
+      local new_oos
+      new_oos=$(python3 -c "
+import json
+try:
+    d = json.load(open('$fb_file'))
+    for item in d.get('out_of_scope', []):
+        if isinstance(item, str) and item.strip(): print(item.strip())
+except: pass
+" 2>/dev/null || true)
+      if [ -n "$new_oos" ]; then
+        all_oos="${all_oos}${new_oos}"$'\n'
+      fi
+    done
+
+    if [ -z "$all_oos" ]; then
+      continue
+    fi
+
+    # Write scope-delta JSON (skip if already adjudicated)
+    local delta_path="$scope_deltas_dir/section-${sec_num}-scope-delta.json"
+    if [ -f "$delta_path" ]; then
+      local already_adjudicated
+      already_adjudicated=$(python3 -c "
+import json
+try:
+    d = json.load(open('$delta_path'))
+    print('yes' if d.get('adjudicated') else 'no')
+except: print('no')
+" 2>/dev/null || echo "no")
+      if [ "$already_adjudicated" = "yes" ]; then
+        echo "[SCOPE] section-$sec_num: scope delta already adjudicated — skipping"
+        continue
+      fi
+    fi
+
+    python3 -c "
+import json, sys
+items = [l.strip() for l in sys.stdin if l.strip()]
+delta = {
+    'section': '$sec_num',
+    'origin': 'scan-deep',
+    'items': items,
+    'adjudicated': False
+}
+with open('$delta_path', 'w') as f:
+    json.dump(delta, f, indent=2)
+print(f'[SCOPE] section-$sec_num: {len(items)} out-of-scope items routed to scope-deltas')
+" <<< "$all_oos"
+  done <<< "$section_files"
+
   # P10: Feedback loop — apply missing files from deep scan
   if [ "$has_feedback" -ne 0 ]; then
     echo "--- Deep Scan: applying feedback (missing files) ---"

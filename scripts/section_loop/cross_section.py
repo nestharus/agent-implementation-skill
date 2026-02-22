@@ -513,31 +513,34 @@ def read_incoming_notes(
     if not note_files:
         return ""
 
-    # P13: Load acknowledged note IDs for filtering
+    # P13: Load acknowledged note IDs for filtering.
+    # Only filter notes that were accepted (resolved) or deferred.
+    # Rejected notes remain visible so the section sees the disagreement.
     ack_path = (artifacts / "signals" / f"note-ack-{sec_num}.json")
-    acked_ids: set[str] = set()
+    resolved_ids: set[str] = set()
     if ack_path.exists():
         try:
             ack_data = json.loads(ack_path.read_text(encoding="utf-8"))
             for entry in ack_data.get("acknowledged", []):
                 nid = entry.get("note_id", "")
-                if nid:
-                    acked_ids.add(nid)
+                action = entry.get("action", "accepted")
+                if nid and action in ("accepted", "deferred"):
+                    resolved_ids.add(nid)
         except (json.JSONDecodeError, OSError):
             pass
 
     log(f"Section {sec_num}: found {len(note_files)} incoming notes"
-        + (f" ({len(acked_ids)} acknowledged)" if acked_ids else ""))
+        + (f" ({len(resolved_ids)} resolved)" if resolved_ids else ""))
 
     parts: list[str] = []
     for note_path in note_files:
         note_text = note_path.read_text(encoding="utf-8")
 
-        # P13: Skip acknowledged notes
-        # Extract note ID from note content
+        # P13: Skip resolved notes (accepted or deferred).
+        # Rejected notes are NOT filtered — the section must see them.
         note_id_match = re.search(
             r'\*\*Note ID\*\*:\s*`([^`]+)`', note_text)
-        if note_id_match and note_id_match.group(1) in acked_ids:
+        if note_id_match and note_id_match.group(1) in resolved_ids:
             continue
 
         parts.append(note_text)

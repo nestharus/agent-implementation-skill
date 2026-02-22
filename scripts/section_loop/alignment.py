@@ -46,52 +46,33 @@ def collect_modified_files(
     return list(modified)
 
 
-def _extract_problems(result: str) -> str | None:
-    """Extract problem list from an alignment check result.
+def _parse_alignment_verdict(result: str) -> dict | None:
+    """Parse structured verdict from alignment judge output.
 
-    Returns the problems text if PROBLEMS: found, None if ALIGNED.
-    Uses first non-empty line for exact-match classification to avoid
-    misclassifying outputs containing substrings like "MISALIGNED".
-    """
-    # Find the first non-empty line for exact classification
-    first_line = ""
-    for line in result.split("\n"):
-        stripped = line.strip()
-        if stripped:
-            first_line = stripped
-            break
-
-    # Exact match ALIGNED on first line (not a substring of MISALIGNED etc.)
-    if first_line == "ALIGNED" and "PROBLEMS:" not in result \
-            and "UNDERSPECIFIED" not in result:
-        return None
-    # Extract everything after PROBLEMS:
-    idx = result.find("PROBLEMS:")
-    if idx != -1:
-        return result[idx + len("PROBLEMS:"):].strip()
-    # Fallback: return the whole result as problems if not ALIGNED
-    return result.strip()
-
-
-def _parse_alignment_json_frame(result: str) -> bool | None:
-    """Parse structured frame verdict from alignment judge output.
-
-    Looks for a JSON block containing frame_ok. Returns:
-    - True if frame_ok is true
-    - False if frame_ok is false (invalid frame detected)
-    - None if no JSON verdict found (fall through to text parsing)
+    Looks for a JSON block containing ``frame_ok``.  Returns the full
+    dict (which may also contain ``aligned`` and ``problems``), or
+    ``None`` if no JSON verdict is found.
     """
     import json as _json
-    # Search for JSON block in result
+
+    def _try_parse(text: str) -> dict | None:
+        try:
+            data = _json.loads(text)
+            if isinstance(data, dict) and "frame_ok" in data:
+                return data
+        except _json.JSONDecodeError:
+            pass
+        return None
+
+    # Single-line JSON
     for line in result.split("\n"):
         stripped = line.strip()
         if stripped.startswith("{") and "frame_ok" in stripped:
-            try:
-                data = _json.loads(stripped)
-                return data.get("frame_ok", True)
-            except _json.JSONDecodeError:
-                continue
-    # Also check for code-fenced JSON
+            parsed = _try_parse(stripped)
+            if parsed:
+                return parsed
+
+    # Code-fenced JSON
     in_fence = False
     fence_lines: list[str] = []
     for line in result.split("\n"):
@@ -103,16 +84,50 @@ def _parse_alignment_json_frame(result: str) -> bool | None:
         if stripped.startswith("```") and in_fence:
             candidate = "\n".join(fence_lines)
             if "frame_ok" in candidate:
-                try:
-                    data = _json.loads(candidate)
-                    return data.get("frame_ok", True)
-                except _json.JSONDecodeError:
-                    pass
+                parsed = _try_parse(candidate)
+                if parsed:
+                    return parsed
             in_fence = False
             continue
         if in_fence:
             fence_lines.append(line)
     return None
+
+
+def _extract_problems(result: str) -> str | None:
+    """Extract problem list from an alignment check result.
+
+    Returns the problems text if misaligned, ``None`` if aligned.
+    Prefers the structured JSON verdict (``aligned``, ``problems``)
+    when available; falls back to text-marker parsing.
+    """
+    # Primary: structured JSON verdict from alignment judge
+    verdict = _parse_alignment_verdict(result)
+    if verdict is not None:
+        if verdict.get("aligned", False):
+            return None
+        problems = verdict.get("problems")
+        if isinstance(problems, list):
+            return "\n".join(str(p) for p in problems)
+        if isinstance(problems, str) and problems.strip():
+            return problems.strip()
+        return "Alignment judge reported misaligned (no details in verdict)"
+
+    # Fallback: text-marker parsing
+    first_line = ""
+    for line in result.split("\n"):
+        stripped = line.strip()
+        if stripped:
+            first_line = stripped
+            break
+
+    if first_line == "ALIGNED" and "PROBLEMS:" not in result \
+            and "UNDERSPECIFIED" not in result:
+        return None
+    idx = result.find("PROBLEMS:")
+    if idx != -1:
+        return result[idx + len("PROBLEMS:"):].strip()
+    return result.strip()
 
 
 def _run_alignment_check_with_retries(
@@ -149,8 +164,8 @@ def _run_alignment_check_with_retries(
             return result
         if not result.startswith("TIMEOUT:"):
             # Check for structured JSON verdict from alignment judge
-            frame_ok = _parse_alignment_json_frame(result)
-            if frame_ok is False:
+            verdict = _parse_alignment_verdict(result)
+            if verdict is not None and verdict.get("frame_ok") is False:
                 log(f"  alignment judge reported invalid frame for "
                     f"section {sec_num} — retrying")
                 continue

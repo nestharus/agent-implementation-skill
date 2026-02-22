@@ -69,10 +69,10 @@ def _collect_outstanding_problems(
                 "files": files,
             })
 
-    # Scan for unaddressed consequence notes using note IDs and
-    # acknowledgment state (not section number ordering heuristics).
-    # Each note has an ID (hash of filename). Target sections acknowledge
-    # notes via signals/note-ack-<target>.json.
+    # Scan for unaddressed consequence notes.  Parse the canonical note
+    # ID from the note content (do NOT recompute the hash — the original
+    # was derived from a draft subset that differs from the full content).
+    # Target sections acknowledge notes via signals/note-ack-<target>.json.
     notes_dir = planspace / "artifacts" / "notes"
     if notes_dir.exists():
         for note_path in sorted(notes_dir.glob("from-*-to-*.md")):
@@ -87,12 +87,13 @@ def _collect_outstanding_problems(
             if not target_result or not target_result.aligned:
                 continue  # target isn't aligned yet — will see note
 
-            # Compute note ID (stable hash of filename + content hash)
+            # Parse note ID from the note content (canonical)
             note_content = note_path.read_text(encoding="utf-8")
-            note_id = hashlib.sha256(
-                f"{note_path.name}:{hashlib.sha256(note_content.encode()).hexdigest()}"
-                .encode()
-            ).hexdigest()[:12]
+            note_id_match = re.search(
+                r'\*\*Note ID\*\*:\s*`([^`]+)`', note_content)
+            if not note_id_match:
+                continue  # malformed note — skip
+            note_id = note_id_match.group(1)
 
             # Check acknowledgment via structured signal
             ack_path = (planspace / "artifacts" / "signals"
@@ -100,10 +101,53 @@ def _collect_outstanding_problems(
             ack_signal = read_agent_signal(ack_path)
             if ack_signal:
                 acks = ack_signal.get("acknowledged", [])
-                if any(a.get("note_id") == note_id for a in acks):
-                    continue  # note was acknowledged
+                matching_ack = next(
+                    (a for a in acks if a.get("note_id") == note_id),
+                    None,
+                )
+                if matching_ack:
+                    action = matching_ack.get("action", "accepted")
+                    if action == "accepted":
+                        continue  # resolved
 
-            # Note is unaddressed — add as problem
+                    section = sections_by_num.get(target_num)
+                    files = list(section.related_files) if section else []
+                    if action == "rejected":
+                        # Genuine disagreement — escalate to coordinator
+                        problems.append({
+                            "section": target_num,
+                            "type": "consequence_conflict",
+                            "note_id": note_id,
+                            "description": (
+                                f"Section {target_num} REJECTED note "
+                                f"{note_id} from section {source_num}. "
+                                f"Reason: "
+                                f"{matching_ack.get('reason', '(none)')}. "
+                                f"This conflict needs coordinator "
+                                f"resolution."
+                            ),
+                            "files": files,
+                        })
+                        continue
+                    if action == "deferred":
+                        # Pending — track but don't force full requeue
+                        problems.append({
+                            "section": target_num,
+                            "type": "pending_negotiation",
+                            "note_id": note_id,
+                            "description": (
+                                f"Section {target_num} deferred note "
+                                f"{note_id} from section {source_num}. "
+                                f"Reason: "
+                                f"{matching_ack.get('reason', '(none)')}. "
+                                f"Will re-evaluate when blocking "
+                                f"conditions resolve."
+                            ),
+                            "files": files,
+                        })
+                        continue
+
+            # No ack at all — note is unaddressed
             section = sections_by_num.get(target_num)
             files = list(section.related_files) if section else []
             problems.append({
