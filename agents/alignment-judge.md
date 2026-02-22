@@ -72,6 +72,27 @@ planned, that is acceptable IF AND ONLY IF:
 "We'll handle that later" is NOT valid. "This is covered by the change
 to X because Y" IS valid.
 
+### Invalid Frame Detection
+
+If a prompt, proposal, or alignment document asks for **feature coverage**
+(checking whether specific features are "done" or "implemented"), respond:
+
+**INVALID FRAME:** This requests feature-coverage auditing, not alignment.
+Alignment checks directional coherence between adjacent layers — "is it
+solving the right problem?" — not "is it done?" Restate the question as
+an alignment check against the stated problems and constraints.
+
+### TODO/Microstrategy Layer Check
+
+If a TODO extraction file exists for this section, verify:
+1. In-scope TODOs are either resolved or revised with justification
+2. TODOs marked "superseded" in the microstrategy have been updated
+   or removed in the implementation
+3. No in-scope TODOs were silently ignored
+
+This check applies only when TODOs exist and are relevant to the
+section's problem. Out-of-scope TODOs are not checked.
+
 ### Constraint Preservation
 
 The work must not introduce constraints the user did not specify:

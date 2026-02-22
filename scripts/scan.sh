@@ -109,6 +109,18 @@ The format should fit what you discovered. Don't force the codebase into a templ
 ## Output
 
 Write your codemap as markdown. Focus on understanding, not cataloging.
+
+## Project Mode Classification
+
+After writing the codemap, determine whether this is a **greenfield** or
+**brownfield** project:
+- **greenfield**: Empty or near-empty project (only config/scaffold files,
+  no substantive source code yet)
+- **brownfield**: Existing source code that new work must integrate with
+
+Write your classification to: \`$ARTIFACTS_DIR/project-mode.txt\`
+
+The file should contain EXACTLY one word: \`greenfield\` or \`brownfield\`.
 PROMPT
 
   if ! uv run --frozen agents --model claude-opus --project "$CODESPACE" --file "$prompt_file" \
@@ -295,6 +307,24 @@ run_deep_scan() {
     local section_log_dir="$SCAN_LOG_DIR/$section_name"
     mkdir -p "$section_log_dir"
 
+    # Skip deep scan for greenfield sections (no existing code to analyze)
+    local sec_num
+    sec_num=$(echo "$section_name" | grep -oP '\d+' | head -1)
+    local sec_mode_file="$ARTIFACTS_DIR/sections/section-${sec_num}-mode.txt"
+    if [ -f "$sec_mode_file" ] && [ "$(cat "$sec_mode_file")" = "greenfield" ]; then
+      echo "  $section_name: skipped (greenfield section)"
+      # Create research artifact placeholder for greenfield sections
+      local research_dir="$ARTIFACTS_DIR/research"
+      mkdir -p "$research_dir"
+      if [ ! -f "$research_dir/section-${sec_num}.md" ]; then
+        echo "# Research: Section ${sec_num} (Greenfield)" > "$research_dir/section-${sec_num}.md"
+        echo "" >> "$research_dir/section-${sec_num}.md"
+        echo "This section was classified as greenfield. No existing code to analyze." >> "$research_dir/section-${sec_num}.md"
+        echo "Research questions and design decisions should be captured here." >> "$research_dir/section-${sec_num}.md"
+      fi
+      continue
+    fi
+
     local related_files
     related_files=$(deep_scan_related_files "$section_file" || true)
 
@@ -313,6 +343,17 @@ run_deep_scan() {
       if [ ! -f "$abs_source" ]; then
         log_phase_failure "deep-scan" "${section_name}:${source_file}" "source file missing in codespace"
         phase_failed=1
+        continue
+      fi
+
+      # File-card cache: reuse analysis if file content unchanged
+      local file_cards_dir="$ARTIFACTS_DIR/file-cards"
+      mkdir -p "$file_cards_dir"
+      local content_hash
+      content_hash=$(sha256sum "$abs_source" 2>/dev/null | awk '{print $1}' || python3 -c "import hashlib; print(hashlib.sha256(open('$abs_source','rb').read()).hexdigest())")
+      local card_path="$file_cards_dir/${content_hash}.md"
+      if [ -f "$card_path" ]; then
+        echo "  $section_name: $source_file (cached)"
         continue
       fi
 
@@ -366,6 +407,9 @@ Format:
   include files you discovered while reading this file (imports, callers,
   shared config, etc.) that the section will need. Use paths relative to
   the codespace root.
+- \`out_of_scope\`: (optional) List of problems or concerns discovered that
+  are OUTSIDE this section's scope. Each entry should describe what the
+  problem is and which section or higher level should handle it.
 - \`reason\`: Brief explanation.
 PROMPT
 
@@ -381,6 +425,9 @@ PROMPT
         phase_failed=1
         continue
       fi
+
+      # Write file-card cache entry
+      cp "$response_file" "$card_path" 2>/dev/null || true
 
       update_match "$section_file" "$source_file" "$response_file" || {
         log_phase_failure "deep-update" "${section_name}:${source_file}" "failed to update section file"
@@ -409,6 +456,7 @@ PROMPT
 
     local irrelevant_files=""
     local missing_files=""
+    local out_of_scope_items=""
 
     for fb_file in "$sec_log_dir"/deep-*-feedback.json; do
       [ -f "$fb_file" ] || continue
@@ -459,9 +507,27 @@ except: pass
         done <<< "$new_missing"
         has_feedback=1
       fi
+
+      # Collect out-of-scope findings
+      local new_oos
+      new_oos=$(python3 -c "
+import json
+try:
+    d = json.load(open('$fb_file'))
+    for item in d.get('out_of_scope', []):
+        if isinstance(item, str) and item.strip(): print(item.strip())
+except: pass
+" 2>/dev/null || true)
+
+      if [ -n "$new_oos" ]; then
+        while IFS= read -r oos; do
+          out_of_scope_items="${out_of_scope_items}\n- ${oos}"
+        done <<< "$new_oos"
+        has_feedback=1
+      fi
     done
 
-    if [ -n "$irrelevant_files" ] || [ -n "$missing_files" ]; then
+    if [ -n "$irrelevant_files" ] || [ -n "$missing_files" ] || [ -n "$out_of_scope_items" ]; then
       echo "## $sec_name" >> "$feedback_report"
       echo "" >> "$feedback_report"
       if [ -n "$irrelevant_files" ]; then
@@ -472,6 +538,11 @@ except: pass
       if [ -n "$missing_files" ]; then
         echo "### Missing files (consider adding)" >> "$feedback_report"
         echo -e "$missing_files" >> "$feedback_report"
+        echo "" >> "$feedback_report"
+      fi
+      if [ -n "$out_of_scope_items" ]; then
+        echo "### Open problems (out of scope for this section)" >> "$feedback_report"
+        echo -e "$out_of_scope_items" >> "$feedback_report"
         echo "" >> "$feedback_report"
       fi
     fi

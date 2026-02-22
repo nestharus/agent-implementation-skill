@@ -52,6 +52,18 @@ yourself directly.
 4. Update docstrings and comments to reflect changes
 5. Ensure imports and references are consistent across modified files
 
+## TODO Handling
+
+If a TODO extraction file or microstrategy references in-code TODOs:
+- **In-scope TODOs**: implement the solution or update the TODO with
+  a rationale for the new approach
+- **Superseded TODOs**: remove or rewrite the TODO to reflect the
+  implemented strategy
+- **Out-of-scope TODOs**: leave untouched
+
+Do NOT leave in-scope TODOs unaddressed — each one represents a local
+strategy decision that must be resolved or explicitly revised.
+
 ## Proposal Fidelity
 
 Your implementation must match the approved integration proposal:

@@ -19,8 +19,12 @@ follow without re-deriving the strategy.
 
 1. Read the integration proposal to understand the overall strategy
 2. Read the alignment excerpt to know the constraints
-3. For each related file, verify your assumptions with targeted reads
-4. Use GLM sub-agents for quick file reads when checking many files:
+3. Read the TODO extraction file (if provided) to understand in-code
+   microstrategies — these are local approaches already embedded in
+   the codebase that your microstrategy must align with or explicitly
+   supersede
+4. For each related file, verify your assumptions with targeted reads
+5. Use GLM sub-agents for quick file reads when checking many files:
    ```bash
    uv run --frozen agents --model glm --project "<codespace>" "<instructions>"
    ```
@@ -41,6 +45,20 @@ problem card to `<planspace>/artifacts/problems/` with:
 - Evidence: specific files/lines
 - Affected sections
 - Contract impact
+
+### TODO Alignment
+
+If a TODO extraction file was provided, your microstrategy must
+explicitly address each relevant TODO:
+- **Implement**: the TODO aligns with the section's strategy → capture
+  the tactic for resolving it
+- **Supersede**: the TODO's approach conflicts with the integration
+  strategy → explain why and what replaces it
+- **Out of scope**: the TODO belongs to a different concern → note it
+  as out of scope with brief justification
+
+Do NOT silently ignore TODOs. Each one is a local microstrategy that
+either aligns or conflicts with the section's integration plan.
 
 ## Output
 

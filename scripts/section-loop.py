@@ -829,7 +829,7 @@ Classify the output into exactly one state. Reply with a JSON block:
 ```
 
 States: ALIGNED, PROBLEMS, UNDERSPECIFIED, NEED_DECISION, DEPENDENCY,
-LOOP_DETECTED, COMPLETED, UNKNOWN.
+LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
 """, encoding="utf-8")
 
     result = dispatch_agent(
@@ -855,6 +855,10 @@ LOOP_DETECTED, COMPLETED, UNKNOWN.
                 return "dependency", detail
             if state == "loop_detected":
                 return "loop_detected", detail
+            if state == "needs_parent":
+                return "needs_parent", detail
+            if state in ("out_of_scope", "out-of-scope"):
+                return "out_of_scope", detail
     except (json.JSONDecodeError, KeyError):
         pass
     return None, ""
@@ -1406,6 +1410,160 @@ problems. Do NOT skip it.
 """
 
 
+def _extract_todos_from_files(
+    codespace: Path, related_files: list[str],
+) -> str:
+    """Extract TODO/FIXME/HACK blocks from related files.
+
+    Returns a markdown document with each TODO and its surrounding
+    context (±3 lines), grouped by file. Empty string if no TODOs found.
+    """
+    parts: list[str] = []
+    for rel_path in related_files:
+        full_path = codespace / rel_path
+        if not full_path.exists():
+            continue
+        try:
+            lines = full_path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        file_todos: list[str] = []
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if any(marker in stripped.upper()
+                   for marker in ("TODO", "FIXME", "HACK", "XXX")):
+                start = max(0, i - 3)
+                end = min(len(lines), i + 4)
+                context = "\n".join(
+                    f"  {j + 1}: {lines[j]}" for j in range(start, end)
+                )
+                file_todos.append(
+                    f"**Line {i + 1}**: `{stripped}`\n\n"
+                    f"```\n{context}\n```\n"
+                )
+        if file_todos:
+            parts.append(f"### {rel_path}\n\n" + "\n".join(file_todos))
+
+    if not parts:
+        return ""
+    return "# TODO Blocks (In-Code Microstrategies)\n\n" + "\n".join(parts)
+
+
+def _check_needs_microstrategy(proposal_path: Path) -> bool:
+    """Check if the integration proposal requests a microstrategy.
+
+    The integration proposer includes ``needs_microstrategy: true``
+    in its output when the section is complex enough to benefit from
+    a tactical per-file breakdown. The script reads this mechanically.
+    """
+    if not proposal_path.exists():
+        return False
+    text = proposal_path.read_text(encoding="utf-8").lower()
+    return "needs_microstrategy: true" in text or "needs_microstrategy:true" in text
+
+
+def _append_open_problem(
+    planspace: Path, section_number: str,
+    problem: str, source: str,
+) -> None:
+    """Append an open problem to the section's spec file.
+
+    Open problems are first-class artifacts — any agent (scan, proposal,
+    implementation) can surface them. They represent issues that could not
+    be resolved at the current level and need upward routing.
+    """
+    sec_file = (planspace / "artifacts" / "sections"
+                / f"section-{section_number}.md")
+    if not sec_file.exists():
+        return
+    content = sec_file.read_text(encoding="utf-8")
+    entry = f"- **[{source}]** {problem}\n"
+    if "## Open Problems" in content:
+        # Append to existing section
+        content = content.replace(
+            "## Open Problems\n",
+            f"## Open Problems\n{entry}",
+        )
+    else:
+        # Add new section at the end
+        content = content.rstrip() + f"\n\n## Open Problems\n{entry}"
+    sec_file.write_text(content, encoding="utf-8")
+
+
+def _reexplore_section(
+    section: Section, planspace: Path, codespace: Path, parent: str,
+) -> str | None:
+    """Dispatch an Opus re-explorer when a section has no related files.
+
+    The agent reads the codemap + section text and either proposes
+    candidate files or declares greenfield. If files are found, the
+    agent appends ``## Related Files`` to the section file directly.
+
+    Returns the raw agent output, or "ALIGNMENT_CHANGED_PENDING" if
+    alignment changed during dispatch.
+    """
+    artifacts = planspace / "artifacts"
+    codemap_path = artifacts / "codemap.md"
+    prompt_path = artifacts / f"reexplore-{section.number}-prompt.md"
+    output_path = artifacts / f"reexplore-{section.number}-output.md"
+    summary = extract_section_summary(section.path)
+
+    codemap_ref = ""
+    if codemap_path.exists():
+        codemap_ref = f"3. Codemap: `{codemap_path}`"
+
+    prompt_path.write_text(f"""# Task: Re-Explore Section {section.number}
+
+## Summary
+{summary}
+
+## Files to Read
+1. Section specification: `{section.path}`
+2. Codespace root: `{codespace}`
+{codemap_ref}
+
+## Context
+This section has NO related files after the initial codemap exploration.
+Your job is to determine why and classify the situation.
+
+## Instructions
+1. Read the section specification to understand the problem
+2. Read the codemap (if it exists) for project structure context
+3. Explore the codespace strategically — search for files that relate
+   to this section's problem space
+4. Use GLM sub-agents for quick file reads:
+   ```bash
+   uv run --frozen agents --model glm --project "{codespace}" "<instructions>"
+   ```
+
+## Output
+
+If you find related files, append them to the section file at
+`{section.path}` using the standard format:
+
+```
+## Related Files
+
+### <relative-path>
+Brief reason why this file matters.
+```
+
+Then write a brief classification to `{output_path}`:
+- `section_mode: brownfield | greenfield | hybrid`
+- Justification (1-2 sentences)
+- Any open problems or research questions
+""", encoding="utf-8")
+    _log_artifact(planspace, f"prompt:reexplore-{section.number}")
+
+    result = dispatch_agent(
+        "claude-opus", prompt_path, output_path,
+        planspace, parent, f"reexplore-{section.number}",
+        codespace=codespace, section_number=section.number,
+        agent_file="section-re-explorer.md",
+    )
+    return result
+
+
 def write_section_setup_prompt(
     section: Section, planspace: Path, codespace: Path,
     global_proposal: Path, global_alignment: Path,
@@ -1595,22 +1753,39 @@ incorporate them into your proposal: `{decisions_file}`
     if tools_path.exists():
         tools_ref = f"\n6. Available tools from earlier sections: `{tools_path}`"
 
-    # Detect project mode for context
-    mode_file = artifacts / "project-mode.txt"
+    # Detect section-level mode (takes priority over project-level)
+    section_mode_file = (artifacts / "sections"
+                         / f"section-{section.number}-mode.txt")
+    project_mode_file = artifacts / "project-mode.txt"
+    section_mode = None
+    if section_mode_file.exists():
+        section_mode = section_mode_file.read_text(encoding="utf-8").strip()
     project_mode = "brownfield"
-    if mode_file.exists():
-        project_mode = mode_file.read_text(encoding="utf-8").strip()
+    if project_mode_file.exists():
+        project_mode = project_mode_file.read_text(
+            encoding="utf-8").strip()
+    effective_mode = section_mode or project_mode
     mode_block = ""
-    if project_mode == "greenfield":
+    if effective_mode == "greenfield":
         mode_block = """
-## Project Mode: GREENFIELD
+## Section Mode: GREENFIELD
 
-This is a new project with no existing source code. Your integration
-proposal should focus on:
-- What files and modules to CREATE (not modify)
-- What project structure to establish
-- What interfaces to define between components
-- There is no existing code to integrate with — you are designing fresh
+This section has no existing code to modify. Your integration proposal
+should focus on:
+- What NEW files and modules to create
+- Where in the project structure they belong
+- How they connect to existing architecture (imports, interfaces)
+- What scaffolding is needed before implementation
+"""
+    elif effective_mode == "hybrid":
+        mode_block = """
+## Section Mode: HYBRID
+
+This section has some existing code but also needs new files. Your
+integration proposal should cover both:
+- How to modify existing files (brownfield integration)
+- What new files to create and where they fit
+- How new and existing code connect
 """
 
     prompt_path.write_text(f"""# Task: Integration Proposal for Section {section.number}
@@ -1674,6 +1849,22 @@ This is STRATEGIC — not line-by-line changes. Think about the shape of
 the solution, not the exact code.
 
 Write your integration proposal to: `{integration_proposal}`
+
+### Microstrategy Decision
+
+At the end of your proposal, include this line:
+```
+needs_microstrategy: true
+```
+or
+```
+needs_microstrategy: false
+```
+
+Set it to `true` if the section is complex enough that an implementation
+agent would benefit from a tactical per-file breakdown (many files, complex
+interactions, ordering dependencies). Set `false` for simple sections where
+the integration proposal is sufficient guidance.
 {signal_instructions(artifacts / "signals" / f"proposal-{section.number}-signal.json")}
 {agent_mail_instructions(planspace, a_name, m_name)}
 """, encoding="utf-8")
@@ -2135,7 +2326,7 @@ def run_section(
             f"other sections")
 
     # -----------------------------------------------------------------
-    # Step 0b: Surface available tools from tool registry
+    # Step 0b: Surface section-relevant tools from tool registry
     # -----------------------------------------------------------------
     tools_available_path = (artifacts / "sections"
                             / f"section-{section.number}-tools-available.md")
@@ -2145,20 +2336,32 @@ def run_section(
             registry = json.loads(
                 tool_registry_path.read_text(encoding="utf-8"),
             )
-            tools = registry if isinstance(registry, list) else registry.get("tools", [])
-            if tools:
+            all_tools = (registry if isinstance(registry, list)
+                         else registry.get("tools", []))
+            # Filter to section-relevant: cross-section tools + tools
+            # created by this section (section-local from other sections
+            # are not surfaced)
+            sec_key = f"section-{section.number}"
+            relevant_tools = [
+                t for t in all_tools
+                if t.get("scope") == "cross-section"
+                or t.get("created_by") == sec_key
+            ]
+            if relevant_tools:
                 lines = ["# Available Tools\n",
-                         "Tools created by earlier sections:\n"]
-                for tool in tools:
+                         "Cross-section and section-local tools:\n"]
+                for tool in relevant_tools:
                     path = tool.get("path", "unknown")
                     desc = tool.get("description", "")
                     scope = tool.get("scope", "section-local")
-                    lines.append(f"- `{path}` ({scope}): {desc}")
+                    creator = tool.get("created_by", "unknown")
+                    lines.append(
+                        f"- `{path}` ({scope}, from {creator}): {desc}")
                 tools_available_path.write_text(
                     "\n".join(lines) + "\n", encoding="utf-8",
                 )
-                log(f"Section {section.number}: {len(tools)} tools "
-                    f"available from registry")
+                log(f"Section {section.number}: {len(relevant_tools)} "
+                    f"relevant tools (of {len(all_tools)} total)")
         except (json.JSONDecodeError, ValueError):
             log(f"Section {section.number}: WARNING — tool-registry.json "
                 f"is malformed, skipping")
@@ -2184,7 +2387,8 @@ def run_section(
         output = dispatch_agent("claude-opus", setup_prompt, setup_output,
                                 planspace, parent, setup_agent,
                                 codespace=codespace,
-                                section_number=section.number)
+                                section_number=section.number,
+                                agent_file="setup-excerpter.md")
         if output == "ALIGNMENT_CHANGED_PENDING":
             return None
         mailbox_send(planspace, parent,
@@ -2200,6 +2404,13 @@ def run_section(
             planspace=planspace, parent=parent, codespace=codespace,
         )
         if signal:
+            # Surface needs-parent / out-of-scope as open problems
+            if signal in ("needs_parent", "out_of_scope"):
+                _append_open_problem(
+                    planspace, section.number, detail, signal)
+                mailbox_send(planspace, parent,
+                             f"open-problem:{section.number}:"
+                             f"{signal}:{detail[:200]}")
             response = pause_for_parent(
                 planspace, parent,
                 f"pause:{signal}:{section.number}:{detail}",
@@ -2240,6 +2451,27 @@ def run_section(
         )
 
     # -----------------------------------------------------------------
+    # Step 1.5: Extract TODO blocks from related files (conditional)
+    # -----------------------------------------------------------------
+    todos_path = (artifacts / "todos"
+                  / f"section-{section.number}-todos.md")
+    if not todos_path.exists() and section.related_files:
+        todos_path.parent.mkdir(parents=True, exist_ok=True)
+        todo_entries = _extract_todos_from_files(codespace, section.related_files)
+        if todo_entries:
+            todos_path.write_text(todo_entries, encoding="utf-8")
+            log(f"Section {section.number}: extracted TODOs from "
+                f"related files")
+            _record_traceability(
+                planspace, section.number,
+                f"section-{section.number}-todos.md",
+                "related files TODO extraction",
+                "in-code microstrategies for alignment",
+            )
+        else:
+            log(f"Section {section.number}: no TODOs found in related files")
+
+    # -----------------------------------------------------------------
     # Step 2: Integration proposal loop
     # -----------------------------------------------------------------
     integration_proposal = (artifacts / "proposals"
@@ -2266,6 +2498,20 @@ def run_section(
             f"(attempt {proposal_attempt})")
 
         # 2a: GPT writes integration proposal
+        # Adaptive model escalation: escalate on repeated misalignment
+        # or heavy cross-section coupling
+        proposal_model = "gpt-5.3-codex-high"
+        notes_count = 0
+        notes_dir = planspace / "artifacts" / "notes"
+        if notes_dir.exists():
+            notes_count = len(list(
+                notes_dir.glob(f"from-*-to-{section.number}.md")))
+        if proposal_attempt >= 3 or notes_count >= 3:
+            proposal_model = "gpt-5.3-codex-xhigh"
+            log(f"Section {section.number}: escalating to "
+                f"{proposal_model} (attempt={proposal_attempt}, "
+                f"notes={notes_count})")
+
         intg_prompt = write_integration_proposal_prompt(
             section, planspace, codespace, proposal_problems,
             incoming_notes=incoming_notes,
@@ -2273,7 +2519,7 @@ def run_section(
         intg_output = artifacts / f"intg-proposal-{section.number}-output.md"
         intg_agent = f"intg-proposal-{section.number}"
         intg_result = dispatch_agent(
-            "gpt-5.3-codex-high", intg_prompt, intg_output,
+            proposal_model, intg_prompt, intg_output,
             planspace, parent, intg_agent, codespace=codespace,
             section_number=section.number,
             agent_file="integration-proposer.md",
@@ -2302,6 +2548,13 @@ def run_section(
             planspace=planspace, parent=parent, codespace=codespace,
         )
         if signal:
+            # Surface needs-parent / out-of-scope as open problems
+            if signal in ("needs_parent", "out_of_scope"):
+                _append_open_problem(
+                    planspace, section.number, detail, signal)
+                mailbox_send(planspace, parent,
+                             f"open-problem:{section.number}:"
+                             f"{signal}:{detail[:200]}")
             response = pause_for_parent(
                 planspace, parent,
                 f"pause:{signal}:{section.number}:{detail}",
@@ -2396,22 +2649,20 @@ def run_section(
                      f"PROBLEMS-attempt-{proposal_attempt}:{short}")
 
     # -----------------------------------------------------------------
-    # Step 2.5: Generate microstrategy (conditional)
+    # Step 2.5: Generate microstrategy (agent-driven decision)
     # -----------------------------------------------------------------
-    # The microstrategy is only generated when the section is complex
-    # enough to benefit from a tactical per-file breakdown. Simple
-    # sections (few files) don't need the extra agent call.
-    MICROSTRATEGY_FILE_THRESHOLD = 5
+    # The integration proposer decides whether a microstrategy is needed
+    # by including "needs_microstrategy: true" in its output. The script
+    # checks mechanically — no hardcoded file-count thresholds.
     microstrategy_path = (artifacts / "proposals"
                           / f"section-{section.number}-microstrategy.md")
     needs_microstrategy = (
-        len(section.related_files) > MICROSTRATEGY_FILE_THRESHOLD
+        _check_needs_microstrategy(integration_proposal)
         and not microstrategy_path.exists()
     )
     if not needs_microstrategy and not microstrategy_path.exists():
-        log(f"Section {section.number}: skipping microstrategy "
-            f"({len(section.related_files)} files <= "
-            f"{MICROSTRATEGY_FILE_THRESHOLD} threshold)")
+        log(f"Section {section.number}: integration proposer did not "
+            f"request microstrategy — skipping")
     if needs_microstrategy:
         log(f"Section {section.number}: generating microstrategy")
         micro_prompt_path = (artifacts
@@ -2429,11 +2680,17 @@ def run_section(
             f"- `{codespace / rp}`"
             for rp in section.related_files
         )
+        todos_ref = ""
+        section_todos = (artifacts / "todos"
+                         / f"section-{section.number}-todos.md")
+        if section_todos.exists():
+            todos_ref = f"\nRead the TODO extraction: `{section_todos}`"
+
         micro_prompt_path.write_text(f"""# Task: Microstrategy for Section {section.number}
 
 ## Context
 Read the integration proposal: `{integration_proposal}`
-Read the alignment excerpt: `{artifacts / "sections" / f"section-{section.number}-alignment-excerpt.md"}`
+Read the alignment excerpt: `{artifacts / "sections" / f"section-{section.number}-alignment-excerpt.md"}`{todos_ref}
 
 ## Related Files
 {file_list}
@@ -2659,6 +2916,53 @@ WHY — you're capturing WHAT and WHERE at the file level.
             f"section-{section.number}-integration-proposal.md",
             "implementation change",
         )
+
+    # -----------------------------------------------------------------
+    # Step 3b: Validate tool registry after implementation
+    # -----------------------------------------------------------------
+    if tool_registry_path.exists():
+        try:
+            post_registry = json.loads(
+                tool_registry_path.read_text(encoding="utf-8"),
+            )
+            post_tools = (post_registry if isinstance(post_registry, list)
+                          else post_registry.get("tools", []))
+            # Check if implementation added new tools
+            pre_count = len(relevant_tools) if "relevant_tools" in dir() else 0
+            if len(post_tools) > pre_count:
+                log(f"Section {section.number}: new tools registered — "
+                    f"dispatching tool-registrar for validation")
+                registrar_prompt = (
+                    artifacts / f"tool-registrar-{section.number}-prompt.md"
+                )
+                registrar_prompt.write_text(
+                    f"# Validate Tool Registry\n\n"
+                    f"Section {section.number} just completed implementation.\n"
+                    f"Validate the tool registry at: `{tool_registry_path}`\n\n"
+                    f"For each tool entry:\n"
+                    f"1. Read the tool file and verify it exists and is "
+                    f"legitimate\n"
+                    f"2. Verify scope classification is correct\n"
+                    f"3. Remove entries for files that don't exist or "
+                    f"aren't tools\n"
+                    f"4. If any cross-section tools were added, verify "
+                    f"they are genuinely reusable\n\n"
+                    f"Write the validated registry back to the same path.\n",
+                    encoding="utf-8",
+                )
+                registrar_output = (
+                    artifacts / f"tool-registrar-{section.number}-output.md"
+                )
+                dispatch_agent(
+                    "glm", registrar_prompt, registrar_output,
+                    planspace, parent,
+                    f"tool-registrar-{section.number}",
+                    codespace=codespace,
+                    agent_file="tool-registrar",
+                    section_number=section.number,
+                )
+        except (json.JSONDecodeError, ValueError):
+            pass  # Malformed registry — already warned in Step 0b
 
     # -----------------------------------------------------------------
     # Step 4: Post-completion — snapshots, impact analysis, notes
@@ -2952,6 +3256,30 @@ def write_coordinator_fix_prompt(
             f"- Codemap: `{codemap_path}`\n"
         )
 
+    # Include cross-section tools if any exist
+    tools_block = ""
+    tool_registry_path = planspace / "artifacts" / "tool-registry.json"
+    if tool_registry_path.exists():
+        try:
+            reg = json.loads(
+                tool_registry_path.read_text(encoding="utf-8"),
+            )
+            cross_tools = [
+                t for t in (reg if isinstance(reg, list)
+                            else reg.get("tools", []))
+                if t.get("scope") == "cross-section"
+            ]
+            if cross_tools:
+                tool_lines = "\n".join(
+                    f"- `{t.get('path', '?')}`: {t.get('description', '')}"
+                    for t in cross_tools
+                )
+                tools_block = (
+                    f"\n## Available Cross-Section Tools\n{tool_lines}\n"
+                )
+        except (json.JSONDecodeError, ValueError):
+            pass
+
     prompt_path.write_text(f"""# Task: Coordinated Fix for Problem Group {group_id}
 
 ## Problems to Fix
@@ -2964,7 +3292,7 @@ def write_coordinator_fix_prompt(
 ## Section Context
 {section_specs}
 {alignment_specs}
-{codemap_block}
+{codemap_block}{tools_block}
 ## Instructions
 
 Fix ALL the problems listed above in a COORDINATED way. These problems
@@ -3022,10 +3350,17 @@ def _dispatch_fix_group(
     fix_output = artifacts / f"fix-{group_id}-output.md"
     modified_report = artifacts / f"fix-{group_id}-modified.txt"
 
+    # Check for model escalation (triggered by coordination churn)
+    fix_model = "gpt-5.3-codex-high"
+    escalation_file = artifacts / "model-escalation.txt"
+    if escalation_file.exists():
+        fix_model = escalation_file.read_text(encoding="utf-8").strip()
+        log(f"  coordinator: using escalated model {fix_model}")
+
     log(f"  coordinator: dispatching fix for group {group_id} "
         f"({len(group)} problems)")
     result = dispatch_agent(
-        "gpt-5.3-codex-high", fix_prompt, fix_output,
+        fix_model, fix_prompt, fix_output,
         planspace, parent, codespace=codespace,
     )
     if result == "ALIGNMENT_CHANGED_PENDING":
@@ -3201,6 +3536,56 @@ def run_global_coordination(
         ctrl = poll_control_messages(planspace, parent)
         if ctrl == "alignment_changed":
             return False
+
+        # Bridge agent: dispatch for groups with multi-section friction
+        # (multiple sections contending over shared files)
+        for gidx in batch:
+            group = confirmed_groups[gidx]
+            group_sections = sorted({p["section"] for p in group})
+            group_files = sorted({
+                f for p in group for f in p.get("files", [])})
+            if len(group_sections) >= 2 and len(group_files) >= 1:
+                bridge_prompt = (
+                    coord_dir / f"bridge-{gidx}-prompt.md")
+                bridge_output = (
+                    coord_dir / f"bridge-{gidx}-output.md")
+                contract_path = (
+                    coord_dir / f"contract-patch-{gidx}.md")
+                sec_dir = planspace / "artifacts" / "sections"
+                sec_refs = "\n".join(
+                    f"- Section {s}: `{sec_dir / f'section-{s}-proposal-excerpt.md'}`"
+                    for s in group_sections
+                )
+                proposals_dir = planspace / "artifacts" / "proposals"
+                prop_refs = "\n".join(
+                    f"- `{proposals_dir / f'section-{s}-integration-proposal.md'}`"
+                    for s in group_sections
+                )
+                bridge_prompt.write_text(
+                    f"# Bridge: Resolve Cross-Section Friction "
+                    f"(Group {gidx})\n\n"
+                    f"## Sections in Conflict\n{sec_refs}\n\n"
+                    f"## Integration Proposals\n{prop_refs}\n\n"
+                    f"## Shared Files\n"
+                    + "\n".join(f"- `{f}`" for f in group_files)
+                    + f"\n\n## Output\n"
+                    f"Write your contract patch to: `{contract_path}`\n"
+                    f"Write per-section consequence notes to:\n"
+                    + "\n".join(
+                        f"- `{planspace / 'artifacts' / 'notes' / f'bridge-{gidx}-to-{s}.md'}`"
+                        for s in group_sections
+                    ) + "\n",
+                    encoding="utf-8",
+                )
+                log(f"  coordinator: dispatching bridge agent for group "
+                    f"{gidx} ({group_sections})")
+                dispatch_agent(
+                    "gpt-5.3-codex-xhigh", bridge_prompt,
+                    bridge_output, planspace, parent,
+                    codespace=codespace,
+                    agent_file="bridge-agent.md",
+                )
+
         if len(batch) == 1:
             gidx = batch[0]
             _, modified = _dispatch_fix_group(
@@ -3263,10 +3648,48 @@ def run_global_coordination(
     log(f"  coordinator: re-checking alignment for sections "
         f"{sorted(affected_sections)}")
 
+    # Incremental alignment: track per-section input hashes to skip
+    # unchanged sections
+    inputs_hash_dir = coord_dir / "inputs-hashes"
+    inputs_hash_dir.mkdir(parents=True, exist_ok=True)
+
     for sec_num in sorted(affected_sections):
         section = sections_by_num.get(sec_num)
         if not section:
             continue
+
+        # Compute inputs hash for this section
+        sec_artifacts = planspace / "artifacts"
+        hash_sources = [
+            sec_artifacts / "sections"
+            / f"section-{sec_num}-alignment-excerpt.md",
+            sec_artifacts / "proposals"
+            / f"section-{sec_num}-integration-proposal.md",
+        ]
+        hasher = hashlib.sha256()
+        for hp in hash_sources:
+            if hp.exists():
+                hasher.update(hp.read_bytes())
+        # Include incoming notes hash
+        notes_dir = planspace / "artifacts" / "notes"
+        if notes_dir.exists():
+            for note_path in sorted(notes_dir.glob(f"from-*-to-{sec_num}.md")):
+                hasher.update(note_path.read_bytes())
+        # Include modified files hash (coordinator may have changed files)
+        for mod_f in sorted(all_modified):
+            mod_path = codespace / mod_f
+            if mod_path.exists():
+                hasher.update(mod_path.read_bytes())
+        current_hash = hasher.hexdigest()
+
+        prev_hash_file = inputs_hash_dir / f"section-{sec_num}.hash"
+        if prev_hash_file.exists():
+            prev_hash = prev_hash_file.read_text(encoding="utf-8").strip()
+            if prev_hash == current_hash:
+                log(f"  coordinator: section {sec_num} inputs unchanged "
+                    f"— skipping alignment recheck")
+                continue
+        prev_hash_file.write_text(current_hash, encoding="utf-8")
 
         # Poll for control messages before each re-check
         ctrl = poll_control_messages(planspace, parent, sec_num)
@@ -3393,41 +3816,19 @@ def main() -> None:
         log("Mailbox cleaned up")
 
 
-def detect_project_mode(codespace: Path) -> str:
-    """Detect whether the codespace is greenfield or brownfield.
-
-    Greenfield: empty or near-empty codespace (only config files like
-    pyproject.toml, README, etc.). No substantive source code yet.
-    Brownfield: existing source code that the implementation must integrate
-    with.
-
-    Returns "greenfield" or "brownfield".
-    """
-    source_extensions = {
-        ".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".java",
-        ".rb", ".c", ".cpp", ".h", ".cs", ".swift", ".kt",
-    }
-    source_count = 0
-    for item in codespace.rglob("*"):
-        if item.is_file() and item.suffix in source_extensions:
-            # Ignore common non-substantive files
-            if item.name in ("__init__.py", "conftest.py"):
-                continue
-            source_count += 1
-            if source_count >= 3:
-                return "brownfield"
-    return "greenfield"
-
-
 def _run_loop(planspace: Path, codespace: Path, parent: str,
               sections_dir: Path, global_proposal: Path,
               global_alignment: Path) -> None:
-    # Detect project mode (greenfield vs brownfield)
-    project_mode = detect_project_mode(codespace)
+    # Project mode (greenfield vs brownfield) is determined by the
+    # codemap agent during Stage 3 scan.sh. The mode file is written
+    # to artifacts/project-mode.txt by the codemap agent — not by
+    # hardcoded script logic. If it doesn't exist yet, default to
+    # brownfield (the safe assumption).
     mode_file = planspace / "artifacts" / "project-mode.txt"
-    mode_file.parent.mkdir(parents=True, exist_ok=True)
-    mode_file.write_text(project_mode, encoding="utf-8")
-    log(f"Project mode: {project_mode}")
+    project_mode = "brownfield"
+    if mode_file.exists():
+        project_mode = mode_file.read_text(encoding="utf-8").strip()
+    log(f"Project mode: {project_mode} (from {'codemap agent' if mode_file.exists() else 'default'})")
 
     # Load sections and build cross-reference map
     all_sections = load_sections(sections_dir)
@@ -3495,22 +3896,69 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             )
 
             if not section.related_files:
-                log(f"Section {sec_num}: no related files, skipping")
-                completed.add(sec_num)
-                section_results[sec_num] = SectionResult(
-                    section_number=sec_num, aligned=True,
+                # Agent-driven re-exploration: dispatch an Opus agent to
+                # investigate why the section has no files and determine
+                # whether it's greenfield, brownfield-missed, or hybrid.
+                log(f"Section {sec_num}: no related files — dispatching "
+                    f"re-explorer agent")
+                reexplore_result = _reexplore_section(
+                    section, planspace, codespace, parent,
                 )
-                mailbox_send(planspace, parent,
-                             f"done:{sec_num}:0 files modified")
-                subprocess.run(  # noqa: S603
-                    ["bash", str(DB_SH), "log",  # noqa: S607
-                     str(planspace / "run.db"),
-                     "lifecycle", f"end:section:{sec_num}",
-                     "done (no related files)",
-                     "--agent", AGENT_NAME],
-                    capture_output=True, text=True,
-                )
-                continue
+                if reexplore_result == "ALIGNMENT_CHANGED_PENDING":
+                    if _check_and_clear_alignment_changed(planspace):
+                        for done_num in list(completed):
+                            completed.discard(done_num)
+                            if done_num not in queue:
+                                queue.append(done_num)
+                        if sec_num not in queue:
+                            queue.insert(0, sec_num)
+                    continue
+                # Extract and persist section_mode from re-explorer output
+                reexplore_output_path = (
+                    planspace / "artifacts"
+                    / f"reexplore-{section.number}-output.md")
+                section_mode = "brownfield"  # default
+                if reexplore_output_path.exists():
+                    reexplore_text = reexplore_output_path.read_text(
+                        encoding="utf-8").lower()
+                    if "section_mode: greenfield" in reexplore_text:
+                        section_mode = "greenfield"
+                    elif "section_mode: hybrid" in reexplore_text:
+                        section_mode = "hybrid"
+                mode_path = (planspace / "artifacts" / "sections"
+                             / f"section-{section.number}-mode.txt")
+                mode_path.parent.mkdir(parents=True, exist_ok=True)
+                mode_path.write_text(section_mode, encoding="utf-8")
+                log(f"Section {sec_num}: mode = {section_mode}")
+
+                # Re-parse related files (agent may have appended them)
+                section.related_files = parse_related_files(section.path)
+                if not section.related_files:
+                    # Still no files — agent declared greenfield or
+                    # couldn't find matches. Mark as needing research,
+                    # not silently "aligned".
+                    log(f"Section {sec_num}: re-explorer found no files "
+                        f"(greenfield / needs research)")
+                    completed.add(sec_num)
+                    section_results[sec_num] = SectionResult(
+                        section_number=sec_num, aligned=True,
+                        problems="greenfield — no existing code to "
+                                 "integrate with",
+                    )
+                    mailbox_send(planspace, parent,
+                                 f"done:{sec_num}:0 files modified "
+                                 f"(greenfield)")
+                    subprocess.run(  # noqa: S603
+                        ["bash", str(DB_SH), "log",  # noqa: S607
+                         str(planspace / "run.db"),
+                         "lifecycle", f"end:section:{sec_num}",
+                         "done (greenfield — re-explored)",
+                         "--agent", AGENT_NAME],
+                        capture_output=True, text=True,
+                    )
+                    continue
+                log(f"Section {sec_num}: re-explorer found "
+                    f"{len(section.related_files)} files — continuing")
 
             # Run the section
             modified_files = run_section(
@@ -3741,7 +4189,22 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             # Adaptive termination: stop if not making progress
             if cur_unresolved >= prev_unresolved:
                 stall_count += 1
-                if round_num >= MIN_COORDINATION_ROUNDS and stall_count >= 2:
+                if stall_count == 2:
+                    # Escalation on churn: flag for stronger model on
+                    # next round's coordination fixes
+                    log(f"Coordination churning ({stall_count} rounds "
+                        f"without improvement) — escalating model")
+                    escalation_file = (
+                        planspace / "artifacts" / "coordination"
+                        / "model-escalation.txt"
+                    )
+                    escalation_file.write_text(
+                        "gpt-5.3-codex-xhigh", encoding="utf-8")
+                    mailbox_send(planspace, parent,
+                                 f"escalation:coordination:"
+                                 f"round-{round_num}:stall_count="
+                                 f"{stall_count}")
+                if round_num >= MIN_COORDINATION_ROUNDS and stall_count >= 3:
                     log(f"Coordination stalled ({stall_count} rounds "
                         f"without improvement) — stopping")
                     break

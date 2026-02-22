@@ -16,7 +16,7 @@ UNDERSTANDING intent or FORMULATING questions?
 DESIGNING something new under constraints (primary synthesis)?
   → gpt-5.3-codex-xhigh
 
-AUDITING for completeness or divergence?
+ALIGNMENT CHECKING for coherence or divergence?
   → gpt-5.3-codex-high / high2
 
 WRITING detailed algorithms or IMPL notes from direction?

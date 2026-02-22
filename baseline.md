@@ -1,7 +1,7 @@
-# Create Design Baseline: Atomize Proposal into Audit References
+# Create Design Baseline: Atomize Proposal into Alignment References
 
 Transform an approved proposal into a structured `design/` folder containing
-atomized documents that serve as audit references throughout implementation.
+atomized documents that serve as alignment references throughout implementation.
 
 **Key insight**: A proposal is too large to audit against directly. By
 decomposing it into atomic constraints and tradeoffs, every piece
@@ -66,10 +66,10 @@ consumers). Plus `INDEX.md` and `DEPENDENCIES.md`.
 
 Directory layout, what goes where, reading order, authoritative sources.
 
-## Step 8: Audit Completeness
+## Step 8: Verify Completeness
 
-Codex-high2 audits that every proposal section is represented in at least
-one design document. Fix gaps. Re-audit until clean.
+Codex-high2 checks that every proposal section is represented in at least
+one design document. Fix gaps. Re-check until clean.
 
 ```bash
 uv run agents --model gpt-5.3-codex-high2 --file "<audit-prompt-path>"
@@ -80,5 +80,5 @@ uv run agents --model gpt-5.3-codex-high2 --file "<audit-prompt-path>"
 - **DO NOT copy the proposal** — decompose it into atomic principles
 - **DO NOT include implementation details in constraints** — constraints survive refactors
 - **DO NOT create one giant document** — the point is atomization
-- **DO NOT skip the audit** — proposals have interconnections easy to lose
+- **DO NOT skip the verification** — proposals have interconnections easy to lose
 - **DO NOT treat this as one-time** — baseline evolves with the project

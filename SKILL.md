@@ -45,6 +45,9 @@ $WORKFLOW_HOME/
     state-detector.md   # workspace state reporter (model: claude-opus)
     exception-handler.md # RCA on failed steps (model: claude-opus)
     microstrategy-writer.md # tactical per-file breakdown (model: gpt-5.3-codex-high)
+    section-re-explorer.md  # re-explores sections with no related files (model: claude-opus)
+    setup-excerpter.md      # extracts section excerpts from globals (model: claude-opus)
+    bridge-agent.md         # resolves cross-section interface friction (model: gpt-5.3-codex-xhigh)
   templates/
     implement-proposal.md   # 10-step implementation schedule
     research-cycle.md       # 7-step research schedule
@@ -110,6 +113,15 @@ failures.
    valid only if they solve the original problems. An optimization or
    complexity argument is an excuse. Do not introduce constraints the user
    did not specify.
+
+### Terminology Contract
+
+- **"Audit"** only ever means alignment against stated problems and
+  constraints — never feature coverage against a checklist.
+- **"Alignment"** is directional coherence between adjacent layers:
+  does the work solve the problem it claims to solve?
+- **"Feature coverage"** is explicitly banned as a verification method.
+  Plans describe problems and strategies, not enumerable features.
 
 ## The Full Lifecycle
 
