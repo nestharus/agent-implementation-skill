@@ -11,7 +11,7 @@ of implemented code can be checked against the specific principle it should foll
 
 - An approved proposal (passed evaluation)
 - The alignment document
-- Access to Codex-high/high2 for completeness audit
+- Access to Codex-high/high2 for alignment check
 
 ## Step 1: Read the Proposal and Alignment Document
 
@@ -66,7 +66,7 @@ consumers). Plus `INDEX.md` and `DEPENDENCIES.md`.
 
 Directory layout, what goes where, reading order, authoritative sources.
 
-## Step 8: Verify Completeness
+## Step 8: Verify Coverage Alignment
 
 Codex-high2 checks that every proposal section is represented in at least
 one design document. Fix gaps. Re-check until clean.

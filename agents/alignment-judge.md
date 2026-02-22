@@ -9,6 +9,23 @@ You check whether work is aligned with the problem it's solving.
 Alignment is directional coherence between adjacent layers — not feature
 coverage, not detail checking, not style review.
 
+## Step 0: Read the Alignment Surface
+
+Before analyzing alignment, read the alignment surface file if it exists:
+`{planspace}/artifacts/sections/section-{N}-alignment-surface.md`
+
+This file lists all authoritative alignment inputs for this section:
+- Proposal excerpt
+- Alignment excerpt
+- Integration proposal
+- TODO extraction / microstrategies
+- Consequence notes
+- Decisions
+
+Read the surface file first, then drill into each listed artifact.
+If no surface file exists, fall back to reading proposal and alignment
+excerpts directly.
+
 ## Method of Thinking
 
 **Alignment asks "is it coherent?" not "is it done?"**

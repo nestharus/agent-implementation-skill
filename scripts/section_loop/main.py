@@ -143,6 +143,13 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
 
     sections_by_num = {s.number: s for s in all_sections}
 
+    # Route sections based on project mode
+    if project_mode == "greenfield":
+        log("Greenfield mode: sections without related files will use "
+            "research-first template")
+        # In greenfield mode, sections without files go directly to research
+        # rather than being treated as anomalies
+
     log(f"Loaded {len(all_sections)} sections")
 
     # Outer loop: alignment_changed during Phase 2 restarts from Phase 1.
@@ -217,50 +224,61 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             )
 
             if not section.related_files:
-                # Agent-driven re-exploration: dispatch an Opus agent to
-                # investigate why the section has no files and determine
-                # whether it's greenfield, brownfield-missed, or hybrid.
-                log(f"Section {sec_num}: no related files — dispatching "
-                    f"re-explorer agent")
-                reexplore_result = _reexplore_section(
-                    section, planspace, codespace, parent,
-                )
-                if reexplore_result == "ALIGNMENT_CHANGED_PENDING":
-                    if _check_and_clear_alignment_changed(planspace):
-                        for done_num in list(completed):
-                            completed.discard(done_num)
-                            if done_num not in queue:
-                                queue.append(done_num)
-                        if sec_num not in queue:
-                            queue.insert(0, sec_num)
-                    continue
-                # Read section mode from structured JSON signal (not
-                # substring matching). The re-explorer agent writes
-                # signals/section-mode.json per the signal protocol.
-                signal_dir = (planspace / "artifacts" / "signals")
-                signal_dir.mkdir(parents=True, exist_ok=True)
-                mode_signal_path = (
-                    signal_dir
-                    / f"section-{section.number}-mode.json")
-                mode_signal = read_agent_signal(
-                    mode_signal_path,
-                    expected_fields=["mode"])
-                if mode_signal:
-                    section_mode = mode_signal["mode"]
+                if project_mode == "greenfield":
+                    # In greenfield mode, missing files is expected — skip
+                    # the re-explorer overhead and go directly to research.
+                    log(f"Section {sec_num}: no related files in greenfield "
+                        f"mode — skipping re-explorer, marking NEEDS_RESEARCH")
+                    section_mode = "greenfield"
+                    mode_path = (planspace / "artifacts" / "sections"
+                                 / f"section-{section.number}-mode.txt")
+                    mode_path.parent.mkdir(parents=True, exist_ok=True)
+                    mode_path.write_text(section_mode, encoding="utf-8")
                 else:
-                    # Fallback: agent didn't write structured signal.
-                    # Default to brownfield (safe assumption).
-                    section_mode = "brownfield"
-                    log(f"Section {sec_num}: no structured mode signal "
-                        f"found — defaulting to brownfield")
-                mode_path = (planspace / "artifacts" / "sections"
-                             / f"section-{section.number}-mode.txt")
-                mode_path.parent.mkdir(parents=True, exist_ok=True)
-                mode_path.write_text(section_mode, encoding="utf-8")
-                log(f"Section {sec_num}: mode = {section_mode}")
+                    # Agent-driven re-exploration: dispatch an Opus agent to
+                    # investigate why the section has no files and determine
+                    # whether it's greenfield, brownfield-missed, or hybrid.
+                    log(f"Section {sec_num}: no related files — dispatching "
+                        f"re-explorer agent")
+                    reexplore_result = _reexplore_section(
+                        section, planspace, codespace, parent,
+                    )
+                    if reexplore_result == "ALIGNMENT_CHANGED_PENDING":
+                        if _check_and_clear_alignment_changed(planspace):
+                            for done_num in list(completed):
+                                completed.discard(done_num)
+                                if done_num not in queue:
+                                    queue.append(done_num)
+                            if sec_num not in queue:
+                                queue.insert(0, sec_num)
+                        continue
+                    # Read section mode from structured JSON signal (not
+                    # substring matching). The re-explorer agent writes
+                    # signals/section-mode.json per the signal protocol.
+                    signal_dir = (planspace / "artifacts" / "signals")
+                    signal_dir.mkdir(parents=True, exist_ok=True)
+                    mode_signal_path = (
+                        signal_dir
+                        / f"section-{section.number}-mode.json")
+                    mode_signal = read_agent_signal(
+                        mode_signal_path,
+                        expected_fields=["mode"])
+                    if mode_signal:
+                        section_mode = mode_signal["mode"]
+                    else:
+                        # Fallback: agent didn't write structured signal.
+                        # Default to brownfield (safe assumption).
+                        section_mode = "brownfield"
+                        log(f"Section {sec_num}: no structured mode signal "
+                            f"found — defaulting to brownfield")
+                    mode_path = (planspace / "artifacts" / "sections"
+                                 / f"section-{section.number}-mode.txt")
+                    mode_path.parent.mkdir(parents=True, exist_ok=True)
+                    mode_path.write_text(section_mode, encoding="utf-8")
+                    log(f"Section {sec_num}: mode = {section_mode}")
 
-                # Re-parse related files (agent may have appended them)
-                section.related_files = parse_related_files(section.path)
+                    # Re-parse related files (agent may have appended them)
+                    section.related_files = parse_related_files(section.path)
                 if not section.related_files:
                     # Still no files — agent declared greenfield or
                     # couldn't find matches. Greenfield is NOT aligned:

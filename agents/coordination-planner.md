@@ -61,3 +61,31 @@ Keep problems separate when:
 - `sequential`: Problems must be fixed in order (dependencies)
 - `parallel`: Problems can be fixed concurrently (disjoint concerns)
 - If parallel groups share files, note which groups must NOT run concurrently
+
+## Recurrence Awareness
+
+Before grouping problems, check for recurrence signals:
+`{planspace}/artifacts/signals/section-*-recurrence.json`
+
+Sections with recurrence signals (attempt >= 2) are higher priority —
+they indicate the per-section loop failed to converge. Group these
+sections' problems together when possible and flag them for escalated
+model usage.
+
+## Output Format Extension
+
+In your JSON output, include:
+
+```json
+{
+  "groups": [...],
+  "execution_order": "...",
+  "escalate_to_coordinator": true,
+  "root_cause_theme": "brief description of the systemic root cause",
+  "notes": "..."
+}
+```
+
+Set `escalate_to_coordinator` to true when you detect systemic issues
+(multiple sections failing for related reasons). The `root_cause_theme`
+helps the parent orchestrator understand the pattern.

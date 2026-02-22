@@ -154,24 +154,29 @@ run_section_exploration() {
     # pass instead of skipping entirely. This avoids "stale truth" where
     # early file lists become wrong as the project evolves.
     if grep -q "^## Related Files" "$section_file" 2>/dev/null; then
-      # Check if codemap changed since last exploration (signal-based)
+      # Check if codemap OR section file changed since last exploration
       local codemap_hash_file="$SCAN_LOG_DIR/$section_name/codemap-hash.txt"
-      local current_codemap_hash=""
+      local combined_hash=""
+      local codemap_content=""
+      local section_content=""
       if [ -f "$CODEMAP_PATH" ]; then
-        current_codemap_hash=$(sha256sum "$CODEMAP_PATH" 2>/dev/null | awk '{print $1}')
+        codemap_content=$(sha256sum "$CODEMAP_PATH" 2>/dev/null | awk '{print $1}')
       fi
-      local prev_codemap_hash=""
+      section_content=$(sha256sum "$section_file" 2>/dev/null | awk '{print $1}')
+      combined_hash=$(echo "${codemap_content}:${section_content}" | sha256sum | awk '{print $1}')
+
+      local prev_hash=""
       if [ -f "$codemap_hash_file" ]; then
-        prev_codemap_hash=$(cat "$codemap_hash_file")
+        prev_hash=$(cat "$codemap_hash_file")
       fi
 
-      if [ "$current_codemap_hash" = "$prev_codemap_hash" ] && [ -n "$prev_codemap_hash" ]; then
-        echo "[EXPLORE] $section_name: Related Files exist, codemap unchanged — skipping"
+      if [ "$combined_hash" = "$prev_hash" ] && [ -n "$prev_hash" ]; then
+        echo "[EXPLORE] $section_name: Related Files exist, codemap+section unchanged — skipping"
         continue
       fi
 
-      # Codemap changed (or first validation run) — dispatch validation
-      echo "[EXPLORE] $section_name: validating Related Files against updated codemap"
+      # Codemap or section changed (or first validation run) — dispatch validation
+      echo "[EXPLORE] $section_name: validating Related Files against updated codemap/section"
       mkdir -p "$SCAN_LOG_DIR/$section_name"
 
       local validate_prompt="$SCAN_LOG_DIR/$section_name/validate-prompt.md"
@@ -203,8 +208,8 @@ VALIDATE_PROMPT
         echo "[EXPLORE] $section_name: validation failed — keeping existing list"
       fi
 
-      # Save codemap hash for next run
-      echo "$current_codemap_hash" > "$codemap_hash_file"
+      # Save combined hash for next run
+      echo "$combined_hash" > "$codemap_hash_file"
       continue
     fi
 

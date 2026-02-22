@@ -78,6 +78,31 @@ def _section_inputs_hash(
     if tools_path.exists():
         hasher.update(tools_path.read_bytes())
 
+    # Section spec file
+    spec_path = artifacts / "sections" / f"section-{sec_num}.md"
+    if spec_path.exists():
+        hasher.update(spec_path.read_bytes())
+
+    # Decisions file
+    decisions_path = artifacts / "decisions" / f"section-{sec_num}.md"
+    if decisions_path.exists():
+        hasher.update(decisions_path.read_bytes())
+
+    # Integration proposal
+    integration_path = (artifacts / "proposals"
+                        / f"section-{sec_num}-integration-proposal.md")
+    if integration_path.exists():
+        hasher.update(integration_path.read_bytes())
+
+    # Microstrategy files (sorted for stability)
+    for ms_path in sorted(artifacts.glob(f"microstrategy-{sec_num}*.md")):
+        hasher.update(ms_path.read_bytes())
+
+    # TODO extraction
+    todos_path = artifacts / "todos" / f"section-{sec_num}-todos.md"
+    if todos_path.exists():
+        hasher.update(todos_path.read_bytes())
+
     return hasher.hexdigest()
 
 
@@ -220,9 +245,6 @@ def handle_pending_messages(planspace: Path, queue: list[str],
             log("Alignment changed — invalidating excerpts and setting flag")
             _invalidate_excerpts(planspace)
             _set_alignment_changed_flag(planspace)
-            # Requeue completed sections (works when real structures passed)
-            for sec_num in list(completed):
-                completed.discard(sec_num)
-                if sec_num not in queue:
-                    queue.append(sec_num)
+            # Targeted requeue handled by _check_and_clear_alignment_changed
+            # in main loop (uses _section_inputs_hash for selective requeue)
     return False

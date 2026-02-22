@@ -209,6 +209,73 @@ the JSON, not unstructured text.
     return result
 
 
+def _write_alignment_surface(
+    planspace: Path, section: Section,
+) -> None:
+    """Write a single file listing all authoritative alignment inputs.
+
+    This gives the alignment judge a single file to read first, so it
+    knows exactly which artifacts exist for this section and where to
+    find them.
+    """
+    artifacts = planspace / "artifacts"
+    sec = section.number
+    sections_dir = artifacts / "sections"
+    sections_dir.mkdir(parents=True, exist_ok=True)
+    surface_path = sections_dir / f"section-{sec}-alignment-surface.md"
+
+    lines = [f"# Alignment Surface: Section {sec}\n"]
+    lines.append("Authoritative inputs for alignment judgement:\n")
+
+    # Proposal excerpt
+    proposal_excerpt = sections_dir / f"section-{sec}-proposal-excerpt.md"
+    if proposal_excerpt.exists():
+        lines.append(f"- **Proposal excerpt**: `{proposal_excerpt}`")
+
+    # Alignment excerpt
+    alignment_excerpt = sections_dir / f"section-{sec}-alignment-excerpt.md"
+    if alignment_excerpt.exists():
+        lines.append(f"- **Alignment excerpt**: `{alignment_excerpt}`")
+
+    # Integration proposal
+    integration_proposal = (
+        artifacts / "proposals"
+        / f"section-{sec}-integration-proposal.md"
+    )
+    if integration_proposal.exists():
+        lines.append(
+            f"- **Integration proposal**: `{integration_proposal}`")
+
+    # TODO extraction
+    todos_path = artifacts / "todos" / f"section-{sec}-todos.md"
+    if todos_path.exists():
+        lines.append(f"- **TODO extraction**: `{todos_path}`")
+
+    # Microstrategy
+    microstrategy_path = (
+        artifacts / "proposals" / f"section-{sec}-microstrategy.md"
+    )
+    if microstrategy_path.exists():
+        lines.append(f"- **Microstrategy**: `{microstrategy_path}`")
+
+    # Incoming consequence notes
+    notes_dir = artifacts / "notes"
+    if notes_dir.exists():
+        incoming = sorted(notes_dir.glob(f"from-*-to-{sec}.md"))
+        for note in incoming:
+            lines.append(f"- **Incoming note**: `{note}`")
+
+    # Decisions
+    decisions_dir = artifacts / "decisions"
+    if decisions_dir.exists():
+        decisions = sorted(decisions_dir.glob(f"section-{sec}-*.md"))
+        for dec in decisions:
+            lines.append(f"- **Decision**: `{dec}`")
+
+    lines.append("")  # trailing newline
+    surface_path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def run_section(
     planspace: Path, codespace: Path, section: Section, parent: str,
     all_sections: list[Section] | None = None,
@@ -227,6 +294,24 @@ def run_section(
     artifacts = planspace / "artifacts"
 
     # -----------------------------------------------------------------
+    # Recurrence signal: notify coordinator when a section loops
+    # -----------------------------------------------------------------
+    if section.solve_count >= 2:
+        recurrence_signal = {
+            "section": section.number,
+            "attempt": section.solve_count,
+            "recurring": True,
+            "escalate_to_coordinator": True,
+        }
+        recurrence_path = (planspace / "artifacts" / "signals"
+                           / f"section-{section.number}-recurrence.json")
+        recurrence_path.parent.mkdir(parents=True, exist_ok=True)
+        recurrence_path.write_text(
+            json.dumps(recurrence_signal, indent=2), encoding="utf-8")
+        log(f"Section {section.number}: recurrence signal written "
+            f"(attempt {section.solve_count})")
+
+    # -----------------------------------------------------------------
     # Step 0: Read incoming notes from other sections
     # -----------------------------------------------------------------
     incoming_notes = read_incoming_notes(section, planspace, codespace)
@@ -240,6 +325,7 @@ def run_section(
     tools_available_path = (artifacts / "sections"
                             / f"section-{section.number}-tools-available.md")
     tool_registry_path = artifacts / "tool-registry.json"
+    pre_tool_total = 0  # Total tool count before implementation
     if tool_registry_path.exists():
         try:
             registry = json.loads(
@@ -247,6 +333,7 @@ def run_section(
             )
             all_tools = (registry if isinstance(registry, list)
                          else registry.get("tools", []))
+            pre_tool_total = len(all_tools)
             # Filter to section-relevant: cross-section tools + tools
             # created by this section (section-local from other sections
             # are not surfaced)
@@ -324,6 +411,19 @@ def run_section(
                 mailbox_send(planspace, parent,
                              f"open-problem:{section.number}:"
                              f"{signal}:{detail[:200]}")
+            if signal == "out_of_scope":
+                scope_delta_dir = planspace / "artifacts" / "scope-deltas"
+                scope_delta_dir.mkdir(parents=True, exist_ok=True)
+                scope_delta = {
+                    "section": section.number,
+                    "signal": "out_of_scope",
+                    "detail": detail,
+                    "requires_root_reframing": True,
+                }
+                (scope_delta_dir
+                 / f"section-{section.number}-scope-delta.json"
+                 ).write_text(
+                    json.dumps(scope_delta, indent=2), encoding="utf-8")
             response = pause_for_parent(
                 planspace, parent,
                 f"pause:{signal}:{section.number}:{detail}",
@@ -362,6 +462,7 @@ def run_section(
             str(section.global_alignment_path),
             "excerpt extraction from global alignment",
         )
+        _write_alignment_surface(planspace, section)
 
     # -----------------------------------------------------------------
     # Step 1.5: Extract TODO blocks from related files (conditional)
@@ -478,6 +579,19 @@ def run_section(
                 mailbox_send(planspace, parent,
                              f"open-problem:{section.number}:"
                              f"{signal}:{detail[:200]}")
+            if signal == "out_of_scope":
+                scope_delta_dir = planspace / "artifacts" / "scope-deltas"
+                scope_delta_dir.mkdir(parents=True, exist_ok=True)
+                scope_delta = {
+                    "section": section.number,
+                    "signal": "out_of_scope",
+                    "detail": detail,
+                    "requires_root_reframing": True,
+                }
+                (scope_delta_dir
+                 / f"section-{section.number}-scope-delta.json"
+                 ).write_text(
+                    json.dumps(scope_delta, indent=2), encoding="utf-8")
             response = pause_for_parent(
                 planspace, parent,
                 f"pause:{signal}:{section.number}:{detail}",
@@ -560,6 +674,7 @@ def run_section(
             log(f"Section {section.number}: integration proposal ALIGNED")
             mailbox_send(planspace, parent,
                          f"summary:proposal-align:{section.number}:ALIGNED")
+            _write_alignment_surface(planspace, section)
             break
 
         # Problems found — feed back into next proposal attempt
@@ -851,8 +966,7 @@ WHY — you're capturing WHAT and WHERE at the file level.
             post_tools = (post_registry if isinstance(post_registry, list)
                           else post_registry.get("tools", []))
             # Check if implementation added new tools
-            pre_count = len(relevant_tools) if "relevant_tools" in dir() else 0
-            if len(post_tools) > pre_count:
+            if len(post_tools) > pre_tool_total:
                 log(f"Section {section.number}: new tools registered — "
                     f"dispatching tool-registrar for validation")
                 registrar_prompt = (
@@ -893,7 +1007,7 @@ WHY — you're capturing WHAT and WHERE at the file level.
                     planspace, parent,
                     f"tool-registrar-{section.number}",
                     codespace=codespace,
-                    agent_file="tool-registrar",
+                    agent_file="tool-registrar.md",
                     section_number=section.number,
                 )
         except (json.JSONDecodeError, ValueError):

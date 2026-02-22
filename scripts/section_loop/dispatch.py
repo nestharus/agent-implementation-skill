@@ -455,3 +455,57 @@ def check_agent_signals(
         )
 
     return None, ""
+
+
+def create_signal_template(section: str, state: str, detail: str = "",
+                           **extra: Any) -> dict[str, Any]:
+    """Create a standardized signal dict for agent output.
+
+    Agents should include this JSON in their output for reliable
+    state classification. Scripts read JSON — agents decide semantics.
+    """
+    signal: dict[str, Any] = {
+        "state": state,
+        "section": section,
+        "detail": detail,
+    }
+    signal.update(extra)
+    return signal
+
+
+def read_model_policy(planspace: Path) -> dict[str, Any]:
+    """Read model policy from artifacts/model-policy.json.
+
+    Returns policy dict with defaults and escalation triggers.
+    Falls back to built-in defaults if no policy file exists.
+    """
+    policy_path = planspace / "artifacts" / "model-policy.json"
+    defaults: dict[str, Any] = {
+        "setup": "claude-opus",
+        "proposal": "gpt-5.3-codex-high",
+        "alignment": "claude-opus",
+        "implementation": "gpt-5.3-codex-high",
+        "coordination_plan": "claude-opus",
+        "coordination_fix": "gpt-5.3-codex-high",
+        "exploration": "glm",
+        "escalation_model": "gpt-5.3-codex-xhigh",
+        "escalation_triggers": {
+            "stall_count": 2,
+            "max_attempts_before_escalation": 3,
+        },
+    }
+    if not policy_path.exists():
+        return defaults
+    try:
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+        # Merge with defaults (policy overrides)
+        merged = {**defaults, **policy}
+        if "escalation_triggers" in policy:
+            merged["escalation_triggers"] = {
+                **defaults["escalation_triggers"],
+                **policy["escalation_triggers"],
+            }
+        return merged
+    except (json.JSONDecodeError, OSError):
+        log("  WARNING: model-policy.json exists but is invalid, using defaults")
+        return defaults

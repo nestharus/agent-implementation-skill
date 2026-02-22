@@ -122,6 +122,35 @@ def post_section_completion(
 
     section_summary = extract_section_summary(section.path)
 
+    # -----------------------------------------------------------------
+    # (a2) Write contract summary for this section
+    # -----------------------------------------------------------------
+    contracts_dir = artifacts / "contracts"
+    contracts_dir.mkdir(parents=True, exist_ok=True)
+    contract_summary_path = contracts_dir / f"section-{sec_num}-contract-summary.md"
+
+    # Read integration proposal for contract context
+    integration_proposal = (artifacts / "proposals"
+                            / f"section-{sec_num}-integration-proposal.md")
+    contracts_context = ""
+    if integration_proposal.exists():
+        contracts_context = integration_proposal.read_text(encoding="utf-8")
+
+    contracts_summary = _extract_contracts_summary(contracts_context)
+    contract_summary_path.write_text(f"""# Contract Summary: Section {sec_num}
+
+## Section Summary
+{section_summary}
+
+## Contracts and Interfaces
+{contracts_summary if contracts_summary else "(No explicit contracts found in integration proposal.)"}
+
+## Modified Files
+{changes_text}
+""", encoding="utf-8")
+    _log_artifact(planspace, f"contract:section-{sec_num}")
+    log(f"Section {sec_num}: wrote contract summary to {contract_summary_path}")
+
     impact_prompt_path = artifacts / f"impact-{sec_num}-prompt.md"
     impact_output_path = artifacts / f"impact-{sec_num}-output.md"
     heading = f"# Task: Semantic Impact Analysis for Section {sec_num}"

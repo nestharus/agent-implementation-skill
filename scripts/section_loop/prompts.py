@@ -4,6 +4,7 @@ from .alignment import collect_modified_files
 from .communication import (
     DB_SH,
     _log_artifact,
+    log,
 )
 from .cross_section import extract_section_summary
 from .types import Section
@@ -682,12 +683,19 @@ def write_impl_alignment_prompt(
                       f"`{microstrategy_path}`")
 
     # TODO extraction reference (in-code microstrategies)
-    todo_path = (artifacts
-                 / f"section-{section.number}-todo-extractions.md")
+    todo_path = (artifacts / "todos"
+                 / f"section-{section.number}-todos.md")
     todo_line = ""
     if todo_path.exists():
         todo_line = (f"\n8. TODO extractions (in-code microstrategies): "
                      f"`{todo_path}`")
+    else:
+        # Defensive: warn if the todos directory has files but this one is
+        # missing — indicates a naming or numbering mismatch.
+        todos_dir = artifacts / "todos"
+        if todos_dir.is_dir() and any(todos_dir.iterdir()):
+            log(f"Section {section.number}: TODO file not found at "
+                f"{todo_path} but todos/ directory is non-empty")
 
     # TODO resolution signal (structured output from implementor)
     todo_resolution_path = (artifacts / "signals"
