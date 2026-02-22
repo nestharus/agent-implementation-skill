@@ -308,6 +308,46 @@ def _invalidate_excerpts(planspace: Path) -> None:
             f.unlink(missing_ok=True)
 
 
+def _section_inputs_hash(
+    sec_num: str, planspace: Path, codespace: Path,
+    sections_by_num: dict[str, Any],
+) -> str:
+    """Compute a hash of a section's alignment-relevant inputs.
+
+    Includes: proposal excerpt, alignment excerpt, related files list,
+    consequence notes targeting this section, and tool registry digest.
+    Used for targeted requeue (only requeue sections whose inputs
+    actually changed) and incremental Phase 2 alignment checks.
+    """
+    hasher = hashlib.sha256()
+    artifacts = planspace / "artifacts"
+
+    # Excerpt files
+    for suffix in ("proposal-excerpt.md", "alignment-excerpt.md"):
+        p = artifacts / "sections" / f"section-{sec_num}-{suffix}"
+        if p.exists():
+            hasher.update(p.read_bytes())
+
+    # Related files list (sorted for stability)
+    section = sections_by_num.get(sec_num)
+    if section and section.related_files:
+        hasher.update(
+            "\n".join(sorted(section.related_files)).encode("utf-8"))
+
+    # Consequence notes targeting this section
+    notes_dir = artifacts / "notes"
+    if notes_dir.exists():
+        for note in sorted(notes_dir.glob(f"from-*-to-{sec_num}.md")):
+            hasher.update(note.read_bytes())
+
+    # Tool registry digest (if exists)
+    tools_path = artifacts / "tool-registry.json"
+    if tools_path.exists():
+        hasher.update(tools_path.read_bytes())
+
+    return hasher.hexdigest()
+
+
 def _set_alignment_changed_flag(planspace: Path) -> None:
     """Write flag file so the main loop knows to requeue sections."""
     flag = planspace / "artifacts" / "alignment-changed-pending"
@@ -864,6 +904,54 @@ LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
     return None, ""
 
 
+def read_agent_signal(
+    signal_path: Path, expected_fields: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """Read a structured JSON signal artifact written by an agent.
+
+    Returns the parsed dict if the file exists and is valid JSON.
+    Returns None if the file doesn't exist or is malformed.
+    If expected_fields is provided, returns None when any are missing.
+
+    Scripts read JSON only — if missing/invalid, the caller should
+    dispatch the appropriate agent to regenerate.
+    """
+    if not signal_path.exists():
+        return None
+    try:
+        data = json.loads(signal_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    if expected_fields:
+        for f in expected_fields:
+            if f not in data:
+                return None
+    return data
+
+
+def write_model_choice_signal(
+    planspace: Path, section: str, step: str,
+    model: str, reason: str,
+    escalated_from: str | None = None,
+) -> None:
+    """Write a structured model-choice signal for auditability."""
+    signals_dir = planspace / "artifacts" / "signals"
+    signals_dir.mkdir(parents=True, exist_ok=True)
+    signal = {
+        "section": section,
+        "step": step,
+        "model": model,
+        "reason": reason,
+        "escalated_from": escalated_from,
+    }
+    signal_path = signals_dir / f"model-choice-{section}-{step}.json"
+    signal_path.write_text(
+        json.dumps(signal, indent=2) + "\n", encoding="utf-8",
+    )
+
+
 def check_agent_signals(
     output: str, signal_path: Path | None = None,
     output_path: Path | None = None,
@@ -1148,13 +1236,31 @@ SECTION-NN: NO_IMPACT
                  "from integration proposal.)"
         )
 
+        # Compute a stable note ID for the acknowledgment lifecycle
+        note_content_draft = (
+            f"{heading}\n{contracts}\n{reason}\n{file_changes}")
+        note_id = hashlib.sha256(
+            f"{note_path.name}:{hashlib.sha256(note_content_draft.encode()).hexdigest()}"
+            .encode()
+        ).hexdigest()[:12]
+
         note_path.write_text(f"""{heading}
+
+**Note ID**: `{note_id}`
 
 ## Contract Deltas (read this first)
 {contracts}
 
 ## What Section {target_num} Must Accommodate
 {reason}
+
+## Acknowledgment Required
+
+When you process this note, write an acknowledgment to
+`{planspace}/artifacts/signals/note-ack-{target_num}.json`:
+```json
+{{"acknowledged": [{{"note_id": "{note_id}", "action": "accepted|rejected|deferred", "reason": "..."}}]}}
+```
 
 ## Why This Happened
 Section {sec_num} ({section_summary}) implemented changes to solve its
@@ -1552,6 +1658,14 @@ Then write a brief classification to `{output_path}`:
 - `section_mode: brownfield | greenfield | hybrid`
 - Justification (1-2 sentences)
 - Any open problems or research questions
+
+**Also write a structured JSON signal** to
+`{planspace}/artifacts/signals/section-{section.number}-mode.json`:
+```json
+{{"mode": "brownfield|greenfield|hybrid", "confidence": "high|medium|low", "reason": "..."}}
+```
+This is how the pipeline reads your classification — the script reads
+the JSON, not unstructured text.
 """, encoding="utf-8")
     _log_artifact(planspace, f"prompt:reexplore-{section.number}")
 
@@ -1890,6 +2004,13 @@ def write_integration_alignment_prompt(
                             / f"section-{section.number}-integration-proposal.md")
     summary = extract_section_summary(section.path)
     sec = section.number
+
+    # Codemap reference so alignment judge sees project skeleton
+    codemap_path = artifacts / "codemap.md"
+    codemap_line = ""
+    if codemap_path.exists():
+        codemap_line = f"\n5. Project codemap (for context): `{codemap_path}`"
+
     heading = (
         f"# Task: Integration Proposal Alignment Check"
         f" — Section {sec}"
@@ -1904,7 +2025,7 @@ def write_integration_alignment_prompt(
 1. Section alignment excerpt: `{alignment_excerpt}`
 2. Section proposal excerpt: `{proposal_excerpt}`
 3. Section specification: `{section.path}`
-4. Integration proposal to review: `{integration_proposal}`
+4. Integration proposal to review: `{integration_proposal}`{codemap_line}
 
 ## Instructions
 
@@ -2079,6 +2200,20 @@ yourself directly.
 4. Update docstrings and comments to reflect changes
 5. Ensure imports and references are consistent across modified files
 
+### TODO Handling
+
+If the section has in-code TODO blocks (microstrategies), you must either:
+- **Implement** the TODO as specified
+- **Rewrite/remove** the TODO with justification (if the approach changed)
+- **Defer** with a clear reason pointing to which section/phase handles it
+
+After handling TODOs, write a resolution summary to:
+`{artifacts}/signals/section-{section.number}-todo-resolution.json`
+
+```json
+{{"todos": [{{"location": "file:line", "action": "implemented|rewritten|deferred", "reason": "..."}}]}}
+```
+
 ### Report Modified Files
 
 After implementation, write a list of ALL files you modified to:
@@ -2126,6 +2261,38 @@ def write_impl_alignment_prompt(
     files_block = "\n".join(file_list) if file_list else "   (none)"
     sec = section.number
 
+    # Codemap reference so alignment judge sees project skeleton
+    codemap_path = artifacts / "codemap.md"
+    codemap_line = ""
+    if codemap_path.exists():
+        codemap_line = f"\n6. Project codemap (for context): `{codemap_path}`"
+
+    # Microstrategy reference (hierarchical alignment boundary)
+    microstrategy_path = (artifacts / "proposals"
+                          / f"section-{section.number}-microstrategy.md")
+    micro_line = ""
+    if microstrategy_path.exists():
+        micro_line = (f"\n7. Microstrategy (tactical per-file plan): "
+                      f"`{microstrategy_path}`")
+
+    # TODO extraction reference (in-code microstrategies)
+    todo_path = (artifacts
+                 / f"section-{section.number}-todo-extractions.md")
+    todo_line = ""
+    if todo_path.exists():
+        todo_line = (f"\n8. TODO extractions (in-code microstrategies): "
+                     f"`{todo_path}`")
+
+    # TODO resolution signal (structured output from implementor)
+    todo_resolution_path = (artifacts / "signals"
+                            / f"section-{section.number}"
+                            f"-todo-resolution.json")
+    todo_resolution_line = ""
+    if todo_resolution_path.exists():
+        todo_resolution_line = (
+            f"\n9. TODO resolution summary: "
+            f"`{todo_resolution_path}`")
+
     prompt_path.write_text(f"""# Task: Implementation Alignment Check — Section {sec}
 
 ## Summary
@@ -2137,7 +2304,7 @@ def write_impl_alignment_prompt(
 3. Integration proposal: `{integration_proposal}`
 4. Section specification: `{section.path}`
 5. Implemented files (read each one):
-{files_block}
+{files_block}{codemap_line}{micro_line}{todo_line}{todo_resolution_line}
 
 ## Worktree root
 `{codespace}`
@@ -2146,13 +2313,16 @@ def write_impl_alignment_prompt(
 
 Read the alignment excerpt and proposal excerpt first — these define the
 PROBLEM and CONSTRAINTS. Then read the integration proposal to understand
-WHAT was planned. Finally read the implemented files.
+WHAT was planned. If a microstrategy exists, it provides the tactical
+per-file breakdown. Finally read the implemented files.
 
 Check SHAPE AND DIRECTION:
 - Is the implementation still solving the RIGHT PROBLEM?
 - Does the code match the intent of the integration proposal?
 - Has anything drifted from the original problem definition?
 - Are the changes internally consistent across files?
+- If TODO extractions exist, were they resolved appropriately?
+  (implemented, rewritten with justification, or explicitly deferred)
 
 **Go beyond the file list.** The section spec may require creating new
 files or producing artifacts at specific paths. Check the worktree for
@@ -2355,8 +2525,12 @@ def run_section(
                     desc = tool.get("description", "")
                     scope = tool.get("scope", "section-local")
                     creator = tool.get("created_by", "unknown")
+                    status = tool.get("status", "experimental")
+                    tool_id = tool.get("id", "")
+                    id_tag = f" id={tool_id}" if tool_id else ""
                     lines.append(
-                        f"- `{path}` ({scope}, from {creator}): {desc}")
+                        f"- `{path}` [{status}] ({scope}, "
+                        f"from {creator}{id_tag}): {desc}")
                 tools_available_path.write_text(
                     "\n".join(lines) + "\n", encoding="utf-8",
                 )
@@ -2506,11 +2680,21 @@ def run_section(
         if notes_dir.exists():
             notes_count = len(list(
                 notes_dir.glob(f"from-*-to-{section.number}.md")))
+        escalated_from = None
         if proposal_attempt >= 3 or notes_count >= 3:
+            escalated_from = proposal_model
             proposal_model = "gpt-5.3-codex-xhigh"
             log(f"Section {section.number}: escalating to "
                 f"{proposal_model} (attempt={proposal_attempt}, "
                 f"notes={notes_count})")
+
+        reason = (f"attempt={proposal_attempt}, notes={notes_count}"
+                  if escalated_from
+                  else "first attempt, default model")
+        write_model_choice_signal(
+            planspace, section.number, "integration-proposal",
+            proposal_model, reason, escalated_from,
+        )
 
         intg_prompt = write_integration_proposal_prompt(
             section, planspace, codespace, proposal_problems,
@@ -2943,10 +3127,22 @@ WHY — you're capturing WHAT and WHERE at the file level.
                     f"1. Read the tool file and verify it exists and is "
                     f"legitimate\n"
                     f"2. Verify scope classification is correct\n"
-                    f"3. Remove entries for files that don't exist or "
+                    f"3. Ensure required fields exist: `id`, `path`, "
+                    f"`created_by`, `scope`, `status`, `description`, "
+                    f"`registered_at`\n"
+                    f"4. If `id` is missing, assign a short kebab-case "
+                    f"identifier\n"
+                    f"5. If `status` is missing, set to `experimental`\n"
+                    f"6. Promote tools to `stable` if they have passing "
+                    f"tests or are used by multiple sections\n"
+                    f"7. Remove entries for files that don't exist or "
                     f"aren't tools\n"
-                    f"4. If any cross-section tools were added, verify "
+                    f"8. If any cross-section tools were added, verify "
                     f"they are genuinely reusable\n\n"
+                    f"After validation, write a tool digest to: "
+                    f"`{artifacts / 'tool-digest.md'}`\n"
+                    f"Format: one line per tool grouped by scope "
+                    f"(cross-section, section-local, test-only).\n\n"
                     f"Write the validated registry back to the same path.\n",
                     encoding="utf-8",
                 )
@@ -3020,9 +3216,10 @@ def _collect_outstanding_problems(
                 "files": files,
             })
 
-    # Scan for unaddressed consequence notes:
-    # Notes targeting aligned sections whose content hasn't been
-    # incorporated (the aligned section completed before the note arrived).
+    # Scan for unaddressed consequence notes using note IDs and
+    # acknowledgment state (not section number ordering heuristics).
+    # Each note has an ID (hash of filename). Target sections acknowledge
+    # notes via signals/note-ack-<target>.json.
     notes_dir = planspace / "artifacts" / "notes"
     if notes_dir.exists():
         for note_path in sorted(notes_dir.glob("from-*-to-*.md")):
@@ -3034,24 +3231,40 @@ def _collect_outstanding_problems(
             target_num = name_match.group(2)
             source_num = name_match.group(1)
             target_result = section_results.get(target_num)
-            # If the target is aligned (completed before or after the
-            # note) but the source completed AFTER the target, the note
-            # may be unaddressed.
-            if (target_result and target_result.aligned
-                    and int(source_num) > int(target_num)):
-                section = sections_by_num.get(target_num)
-                files = list(section.related_files) if section else []
-                note_text = note_path.read_text(encoding="utf-8")
-                problems.append({
-                    "section": target_num,
-                    "type": "unaddressed_note",
-                    "description": (
-                        f"Consequence note from section {source_num} "
-                        f"arrived after section {target_num} was aligned. "
-                        f"Note content:\n{note_text[:500]}"
-                    ),
-                    "files": files,
-                })
+            if not target_result or not target_result.aligned:
+                continue  # target isn't aligned yet — will see note
+
+            # Compute note ID (stable hash of filename + content hash)
+            note_content = note_path.read_text(encoding="utf-8")
+            note_id = hashlib.sha256(
+                f"{note_path.name}:{hashlib.sha256(note_content.encode()).hexdigest()}"
+                .encode()
+            ).hexdigest()[:12]
+
+            # Check acknowledgment via structured signal
+            ack_path = (planspace / "artifacts" / "signals"
+                        / f"note-ack-{target_num}.json")
+            ack_signal = read_agent_signal(ack_path)
+            if ack_signal:
+                acks = ack_signal.get("acknowledged", [])
+                if any(a.get("note_id") == note_id for a in acks):
+                    continue  # note was acknowledged
+
+            # Note is unaddressed — add as problem
+            section = sections_by_num.get(target_num)
+            files = list(section.related_files) if section else []
+            problems.append({
+                "section": target_num,
+                "type": "unaddressed_note",
+                "note_id": note_id,
+                "description": (
+                    f"Consequence note {note_id} from section "
+                    f"{source_num} has not been acknowledged by "
+                    f"section {target_num}. "
+                    f"Note content:\n{note_content[:500]}"
+                ),
+                "files": files,
+            })
     return problems
 
 
@@ -3145,6 +3358,16 @@ def write_coordination_plan_prompt(
     # Write problems as JSON for the agent
     problems_json = json.dumps(problems, indent=2)
 
+    # Include codemap reference so the planner sees project skeleton
+    codemap_path = planspace / "artifacts" / "codemap.md"
+    codemap_ref = ""
+    if codemap_path.exists():
+        codemap_ref = (
+            f"\n## Project Skeleton\n\n"
+            f"Read the codemap for project structure context: "
+            f"`{codemap_path}`\n"
+        )
+
     prompt_path.write_text(f"""# Task: Plan Coordination Strategy
 
 ## Outstanding Problems
@@ -3152,13 +3375,14 @@ def write_coordination_plan_prompt(
 ```json
 {problems_json}
 ```
-
+{codemap_ref}
 ## Instructions
 
-You are the coordination planner. Read the problems above and produce
-a JSON coordination plan. Think strategically about problem relationships —
-don't just match files. Understand whether problems share root causes,
-whether fixing one affects another, and what order minimizes rework.
+You are the coordination planner. Read the problems above (and the
+codemap if provided) and produce a JSON coordination plan. Think
+strategically about problem relationships — don't just match files.
+Understand whether problems share root causes, whether fixing one
+affects another, and what order minimizes rework.
 
 Reply with a JSON block:
 
@@ -3256,10 +3480,16 @@ def write_coordinator_fix_prompt(
             f"- Codemap: `{codemap_path}`\n"
         )
 
-    # Include cross-section tools if any exist
+    # Include cross-section tools — prefer digest if available
     tools_block = ""
+    tool_digest_path = planspace / "artifacts" / "tool-digest.md"
     tool_registry_path = planspace / "artifacts" / "tool-registry.json"
-    if tool_registry_path.exists():
+    if tool_digest_path.exists():
+        tools_block = (
+            f"\n## Available Tools\n"
+            f"See tool digest: `{tool_digest_path}`\n"
+        )
+    elif tool_registry_path.exists():
         try:
             reg = json.loads(
                 tool_registry_path.read_text(encoding="utf-8"),
@@ -3271,7 +3501,9 @@ def write_coordinator_fix_prompt(
             ]
             if cross_tools:
                 tool_lines = "\n".join(
-                    f"- `{t.get('path', '?')}`: {t.get('description', '')}"
+                    f"- `{t.get('path', '?')}` "
+                    f"[{t.get('status', 'experimental')}]: "
+                    f"{t.get('description', '')}"
                     for t in cross_tools
                 )
                 tools_block = (
@@ -3352,10 +3584,20 @@ def _dispatch_fix_group(
 
     # Check for model escalation (triggered by coordination churn)
     fix_model = "gpt-5.3-codex-high"
+    coord_escalated_from = None
     escalation_file = artifacts / "model-escalation.txt"
     if escalation_file.exists():
+        coord_escalated_from = fix_model
         fix_model = escalation_file.read_text(encoding="utf-8").strip()
         log(f"  coordinator: using escalated model {fix_model}")
+
+    write_model_choice_signal(
+        planspace, f"coord-{group_id}", "coordination-fix",
+        fix_model,
+        "escalated due to coordination churn" if coord_escalated_from
+        else "default model",
+        coord_escalated_from,
+    )
 
     log(f"  coordinator: dispatching fix for group {group_id} "
         f"({len(group)} problems)")
@@ -3866,15 +4108,33 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             # skip directly to the _check_and_clear below instead of
             # wasting an Opus setup call.
             if alignment_changed_pending(planspace):  # noqa: SIM102
-                # Clear the flag and requeue all completed sections so
-                # they re-run setup with fresh excerpts.
+                # Clear the flag and requeue only sections whose inputs
+                # actually changed (targeted, not brute-force requeue).
                 if _check_and_clear_alignment_changed(planspace):
-                    log("Alignment changed (pre-section) — "
-                        "requeuing all completed sections")
+                    hash_dir = (planspace / "artifacts"
+                                / "section-inputs-hashes")
+                    hash_dir.mkdir(parents=True, exist_ok=True)
+                    requeued = []
                     for done_num in list(completed):
-                        completed.discard(done_num)
-                        if done_num not in queue:
-                            queue.append(done_num)
+                        cur = _section_inputs_hash(
+                            done_num, planspace, codespace,
+                            sections_by_num)
+                        prev_file = hash_dir / f"{done_num}.hash"
+                        prev = (prev_file.read_text(encoding="utf-8")
+                                .strip() if prev_file.exists() else "")
+                        if cur != prev:
+                            completed.discard(done_num)
+                            if done_num not in queue:
+                                queue.append(done_num)
+                            requeued.append(done_num)
+                            prev_file.write_text(
+                                cur, encoding="utf-8")
+                    if requeued:
+                        log("Alignment changed — requeuing sections "
+                            f"with changed inputs: {requeued}")
+                    else:
+                        log("Alignment changed but no section inputs "
+                            "differ — skipping requeue")
                     continue
 
             sec_num = queue.pop(0)
@@ -3913,18 +4173,25 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                         if sec_num not in queue:
                             queue.insert(0, sec_num)
                     continue
-                # Extract and persist section_mode from re-explorer output
-                reexplore_output_path = (
-                    planspace / "artifacts"
-                    / f"reexplore-{section.number}-output.md")
-                section_mode = "brownfield"  # default
-                if reexplore_output_path.exists():
-                    reexplore_text = reexplore_output_path.read_text(
-                        encoding="utf-8").lower()
-                    if "section_mode: greenfield" in reexplore_text:
-                        section_mode = "greenfield"
-                    elif "section_mode: hybrid" in reexplore_text:
-                        section_mode = "hybrid"
+                # Read section mode from structured JSON signal (not
+                # substring matching). The re-explorer agent writes
+                # signals/section-mode.json per the signal protocol.
+                signal_dir = (planspace / "artifacts" / "signals")
+                signal_dir.mkdir(parents=True, exist_ok=True)
+                mode_signal_path = (
+                    signal_dir
+                    / f"section-{section.number}-mode.json")
+                mode_signal = read_agent_signal(
+                    mode_signal_path,
+                    expected_fields=["mode"])
+                if mode_signal:
+                    section_mode = mode_signal["mode"]
+                else:
+                    # Fallback: agent didn't write structured signal.
+                    # Default to brownfield (safe assumption).
+                    section_mode = "brownfield"
+                    log(f"Section {sec_num}: no structured mode signal "
+                        f"found — defaulting to brownfield")
                 mode_path = (planspace / "artifacts" / "sections"
                              / f"section-{section.number}-mode.txt")
                 mode_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3935,24 +4202,52 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 section.related_files = parse_related_files(section.path)
                 if not section.related_files:
                     # Still no files — agent declared greenfield or
-                    # couldn't find matches. Mark as needing research,
-                    # not silently "aligned".
+                    # couldn't find matches. Greenfield is NOT aligned:
+                    # it implies research obligations, not completion.
+                    # Emit NEEDS_RESEARCH signal and mark as non-aligned
+                    # so the coordinator treats it as a top-priority
+                    # open problem.
                     log(f"Section {sec_num}: re-explorer found no files "
-                        f"(greenfield / needs research)")
+                        f"(greenfield — NEEDS_RESEARCH)")
                     completed.add(sec_num)
+
+                    # Emit structured needs-research signal
+                    signal_dir = planspace / "artifacts" / "signals"
+                    signal_dir.mkdir(parents=True, exist_ok=True)
+                    research_signal = {
+                        "section": sec_num,
+                        "status": "needs_research",
+                        "mode": section_mode,
+                        "problem": (
+                            f"Section {sec_num} has no existing code "
+                            f"to integrate with. Research is needed "
+                            f"to determine the implementation approach."
+                        ),
+                    }
+                    (signal_dir
+                     / f"section-{sec_num}-needs-research.json"
+                     ).write_text(
+                        json.dumps(research_signal, indent=2),
+                        encoding="utf-8")
+
                     section_results[sec_num] = SectionResult(
-                        section_number=sec_num, aligned=True,
-                        problems="greenfield — no existing code to "
-                                 "integrate with",
+                        section_number=sec_num, aligned=False,
+                        problems=(
+                            "NEEDS_RESEARCH: greenfield section with "
+                            "no existing code. Research required to "
+                            "determine implementation approach."
+                        ),
                     )
-                    mailbox_send(planspace, parent,
-                                 f"done:{sec_num}:0 files modified "
-                                 f"(greenfield)")
+                    mailbox_send(
+                        planspace, parent,
+                        f"pause:underspec:{sec_num}:greenfield section "
+                        f"needs research — no existing code to "
+                        f"integrate with")
                     subprocess.run(  # noqa: S603
                         ["bash", str(DB_SH), "log",  # noqa: S607
                          str(planspace / "run.db"),
                          "lifecycle", f"end:section:{sec_num}",
-                         "done (greenfield — re-explored)",
+                         "needs_research (greenfield)",
                          "--agent", AGENT_NAME],
                         capture_output=True, text=True,
                     )
@@ -4006,6 +4301,14 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 modified_files=modified_files,
             )
 
+            # Save input hash for incremental Phase 2 checks
+            p2hd = planspace / "artifacts" / "phase2-inputs-hashes"
+            p2hd.mkdir(parents=True, exist_ok=True)
+            (p2hd / f"{sec_num}.hash").write_text(
+                _section_inputs_hash(
+                    sec_num, planspace, codespace, sections_by_num),
+                encoding="utf-8")
+
             log(f"Section {sec_num}: done")
             subprocess.run(  # noqa: S603
                 ["bash", str(DB_SH), "log",  # noqa: S607
@@ -4028,10 +4331,31 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
         log("=== Phase 2: global coordination ===")
         log("Re-checking alignment across all sections...")
 
+        # Compute input hashes to skip unchanged sections (targeted,
+        # not brute-force recheck).
+        phase2_hash_dir = (planspace / "artifacts"
+                           / "phase2-inputs-hashes")
+        phase2_hash_dir.mkdir(parents=True, exist_ok=True)
+
         restart_phase1 = False
         for sec_num, section in sections_by_num.items():
             if not section.related_files:
                 continue
+
+            # Skip sections whose inputs haven't changed since last
+            # ALIGNED result (incremental convergence).
+            cur_hash = _section_inputs_hash(
+                sec_num, planspace, codespace, sections_by_num)
+            prev_hash_file = phase2_hash_dir / f"{sec_num}.hash"
+            prev_hash = (prev_hash_file.read_text(encoding="utf-8")
+                         .strip() if prev_hash_file.exists() else "")
+            prev_result = section_results.get(sec_num)
+            if (prev_hash == cur_hash and prev_result
+                    and prev_result.aligned):
+                log(f"Section {sec_num}: inputs unchanged since "
+                    f"ALIGNED — skipping Phase 2 recheck")
+                continue
+            prev_hash_file.write_text(cur_hash, encoding="utf-8")
 
             # Poll for control messages before each dispatch
             ctrl = poll_control_messages(planspace, parent, sec_num)

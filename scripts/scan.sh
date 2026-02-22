@@ -119,8 +119,13 @@ After writing the codemap, determine whether this is a **greenfield** or
 - **brownfield**: Existing source code that new work must integrate with
 
 Write your classification to: \`$ARTIFACTS_DIR/project-mode.txt\`
-
 The file should contain EXACTLY one word: \`greenfield\` or \`brownfield\`.
+
+**Also write a structured JSON signal** to
+\`$ARTIFACTS_DIR/signals/project-mode.json\`:
+\`\`\`json
+{"mode": "greenfield|brownfield", "confidence": "high|medium|low", "reason": "..."}
+\`\`\`
 PROMPT
 
   if ! uv run --frozen agents --model claude-opus --project "$CODESPACE" --file "$prompt_file" \
@@ -145,9 +150,61 @@ run_section_exploration() {
     local section_name
     section_name=$(basename "$section_file" .md)
 
-    # Skip if section already has related files
+    # If section already has Related Files, run a lightweight validation
+    # pass instead of skipping entirely. This avoids "stale truth" where
+    # early file lists become wrong as the project evolves.
     if grep -q "^## Related Files" "$section_file" 2>/dev/null; then
-      echo "[EXPLORE] $section_name already has Related Files — skipping"
+      # Check if codemap changed since last exploration (signal-based)
+      local codemap_hash_file="$SCAN_LOG_DIR/$section_name/codemap-hash.txt"
+      local current_codemap_hash=""
+      if [ -f "$CODEMAP_PATH" ]; then
+        current_codemap_hash=$(sha256sum "$CODEMAP_PATH" 2>/dev/null | awk '{print $1}')
+      fi
+      local prev_codemap_hash=""
+      if [ -f "$codemap_hash_file" ]; then
+        prev_codemap_hash=$(cat "$codemap_hash_file")
+      fi
+
+      if [ "$current_codemap_hash" = "$prev_codemap_hash" ] && [ -n "$prev_codemap_hash" ]; then
+        echo "[EXPLORE] $section_name: Related Files exist, codemap unchanged — skipping"
+        continue
+      fi
+
+      # Codemap changed (or first validation run) — dispatch validation
+      echo "[EXPLORE] $section_name: validating Related Files against updated codemap"
+      mkdir -p "$SCAN_LOG_DIR/$section_name"
+
+      local validate_prompt="$SCAN_LOG_DIR/$section_name/validate-prompt.md"
+      local validate_output="$SCAN_LOG_DIR/$section_name/validate-output.md"
+      cat > "$validate_prompt" << VALIDATE_PROMPT
+# Task: Validate Related Files List
+
+## Files to Read
+1. Section specification: \`$section_file\`
+2. Codemap: \`$CODEMAP_PATH\`
+
+## Instructions
+This section already has a \`## Related Files\` list. Check whether it is
+still accurate given the current codemap and section problem statement.
+
+Propose a structured signal at \`$ARTIFACTS_DIR/signals/${section_name}-related-files-update.json\`:
+\`\`\`json
+{"status": "current|stale", "additions": ["path/to/add.py"], "removals": ["path/to/remove.py"], "reason": "..."}
+\`\`\`
+
+If the list is current, write \`{"status": "current"}\`.
+If changes are needed, include additions and/or removals with reasons.
+VALIDATE_PROMPT
+
+      if uv run --frozen agents --model claude-opus --project "$CODESPACE" --file "$validate_prompt" \
+        > "$validate_output" 2>&1; then
+        echo "[EXPLORE] $section_name: validation complete"
+      else
+        echo "[EXPLORE] $section_name: validation failed — keeping existing list"
+      fi
+
+      # Save codemap hash for next run
+      echo "$current_codemap_hash" > "$codemap_hash_file"
       continue
     fi
 

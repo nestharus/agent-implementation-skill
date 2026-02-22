@@ -24,22 +24,66 @@ The registry is a JSON file at `<planspace>/artifacts/tool-registry.json`:
 {
   "tools": [
     {
+      "id": "validate-event-schema",
       "path": "scripts/validate.py",
       "created_by": "section-03",
       "scope": "cross-section",
+      "status": "experimental",
       "description": "Validates event schema against JSON Schema spec",
+      "dependencies": ["jsonschema"],
+      "usage_examples": ["python scripts/validate.py event.json"],
+      "tests": ["tests/test_validate.py"],
       "registered_at": "round-1"
     }
   ]
 }
 ```
 
+### Schema Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | yes | Short kebab-case identifier (unique within registry) |
+| `path` | yes | Relative path from codespace root |
+| `created_by` | yes | Section that created the tool (`section-NN`) |
+| `scope` | yes | `section-local`, `cross-section`, or `test-only` |
+| `status` | yes | `experimental` (first registered) or `stable` (validated + reused) |
+| `description` | yes | One-line description of what the tool does |
+| `dependencies` | no | External packages or other tools this tool requires |
+| `usage_examples` | no | Short command-line or import examples |
+| `tests` | no | Paths to test files that exercise this tool |
+| `registered_at` | yes | Round when tool was registered |
+
 ## Registration Protocol
 
 When asked to register a tool:
 1. Read the tool file to understand what it does
-2. Append an entry to the registry JSON
-3. If scope is `cross-section`, note it for the coordinator
+2. Assign a unique `id` (short, kebab-case, descriptive)
+3. Set `status` to `experimental` for new tools
+4. Append an entry to the registry JSON with all required fields
+5. If scope is `cross-section`, note it for the coordinator
+
+### Promoting to Stable
+
+When a tool has been used by a section other than its creator, or has
+passing tests, promote its `status` from `experimental` to `stable`.
+
+## Tool Digest
+
+After every registry change, write `<planspace>/artifacts/tool-digest.md`:
+
+```markdown
+# Tool Digest
+
+## Cross-Section Tools
+- `scripts/validate.py` [stable] — Validates event schema (from section-03)
+
+## Section-Local Tools
+- `scripts/helpers/parse.py` [experimental] — Parses config (from section-01)
+```
+
+This digest is included in downstream agent prompts. Keep it short — one
+line per tool, grouped by scope.
 
 ## Scope Classification
 

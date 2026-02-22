@@ -151,8 +151,16 @@ Check that agents are used according to their designated roles:
   should exist. Check for its presence in the section's output area.
   _(File read — check file existence.)_
 
+- **B7: Feature coverage language detected (INVALID FRAME)**: Scan agent outputs
+  and event bodies for feature-coverage language: "all features implemented",
+  "feature checklist", "coverage percentage", "feature count", "missing features",
+  "feature complete". Any match indicates an agent is working under the wrong
+  verification frame (audit-as-checklist instead of alignment-as-coherence).
+  _(Hybrid: event bodies + file reads.)_
+
 **Escalation**: Compliance violations are WARN level unless they indicate a
-fundamentally broken workflow (e.g., Opus producing code), which is PAUSE level.
+fundamentally broken workflow (e.g., Opus producing code, INVALID FRAME), which
+is PAUSE level.
 
 ### C. Strategic Behavior
 
@@ -192,6 +200,16 @@ Detect inefficient or misguided agent behavior patterns:
 - **C6: Proportional response**: A single-problem fix that produces >200 lines of
   output is disproportionate. Flag it as a potential scope creep.
   _(File read — check output file sizes.)_
+
+- **C7: Premature model escalation**: Read `signals/model-choice-*.json` files.
+  Flag if `escalated_from` is set on a first attempt (attempt=1). Models should
+  start at the default and only escalate after demonstrated failure.
+  _(File read — read model-choice signal files.)_
+
+- **C8: Stuck-at-low model**: If a section has 3+ alignment failures (read from
+  summary stream) but no model-choice signal shows escalation, the pipeline is
+  repeatedly failing without adapting. Flag as WARN.
+  _(Cross-reference summary stream alignment counts with model-choice signals.)_
 
 **Escalation**: Strategic issues are LOG level for counts below 2x threshold,
 WARN level for counts above 2x threshold.

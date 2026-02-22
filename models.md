@@ -94,6 +94,45 @@ Opus           → Evaluate, refine if needed
 (repeat)
 ```
 
+## Controllability Constraints
+
+Model selection is not just about capability — it's about controllability.
+Higher-reasoning models can degrade instruction-following when reasoning
+chains get long. Match models to tasks where their reasoning style helps
+rather than hurts.
+
+| Model | Controllability Profile |
+|-------|------------------------|
+| Opus | High reasoning + high controllability. Best for directing and judging. |
+| codex-xhigh | Highest reasoning, moderate controllability. Needs clear problem framing. |
+| codex-high | Good reasoning, high controllability. Best for structured checklist work. |
+| GLM | Low reasoning, highest controllability. Follows instructions precisely. |
+| Haiku | Minimal reasoning, highest controllability. Classification only. |
+
+**Escalation rule**: Only escalate when a lower model has demonstrably
+failed on the same task (e.g., 2+ alignment failures at codex-high before
+escalating to codex-xhigh). Don't pre-escalate — it wastes reasoning
+budget and can reduce instruction adherence.
+
+## Model-Choice Signal
+
+When section-loop selects a model for a dispatch, it writes:
+```json
+// signals/model-choice-{section}-{step}.json
+{
+  "section": "03",
+  "step": "integration-proposal",
+  "model": "gpt-5.3-codex-high",
+  "reason": "first attempt, default model",
+  "escalated_from": null
+}
+```
+
+This makes model decisions auditable. QA monitor can detect:
+- Premature escalation (xhigh on first attempt)
+- Stuck-at-low (3+ failures without escalation)
+- Model mismatch (reasoning model used for mechanical task)
+
 ## Anti-Patterns
 
 - **DO NOT use Opus for mechanical auditing** — Codex is better
@@ -101,3 +140,5 @@ Opus           → Evaluate, refine if needed
 - **DO NOT use codex-high for primary synthesis** — it audits, codex-xhigh synthesizes
 - **DO NOT synthesize proposals yourself** — use codex-xhigh
 - **DO NOT send inline instructions to Codex** — use `--file` with prompt file
+- **DO NOT pre-escalate models** — start with the default and escalate on failure
+- **DO NOT use reasoning models for extraction** — GLM follows instructions more reliably for reads/scans

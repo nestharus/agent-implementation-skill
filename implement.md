@@ -1,5 +1,14 @@
 # Implement Proposal: Multi-Model Execution Pipeline
 
+### Terminology Contract
+
+"Verification" in this pipeline means **alignment checking** — confirming
+that each layer's output solves the problem its input layer describes. It
+NEVER means feature-coverage auditing against a checklist. Alignment checks
+shape and direction (is this solving the right problem?), not completeness
+(did it do everything?). Plans describe problems and strategies, not
+enumerable features.
+
 Stage 3 dispatches agents to explore and understand the codebase.
 Agents reason about what they find — the script only coordinates dispatch,
 checks outputs, and logs failures.
@@ -304,16 +313,18 @@ Only generate docstrings for files that appear in at least one of:
 - **Coordinator shared files** — files flagged by the global coordinator
   as modified by multiple sections
 
-If none of these sources are available yet (first run, no codemap), fall
-back to discovering files from the repository root:
+If none of these sources are available yet (first run, no codemap), use
+adaptive discovery instead of hardcoded language-specific enumeration:
 
-```bash
-cd <codespace> && git ls-files '*.py' | grep -v '__init__.py'
-```
+1. Read repo root docs (`README`, `docs/`, package manifests like
+   `pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod`, etc.)
+2. Sample only **top-level** directories + a small number of
+   representative files per directory (not an exhaustive listing)
+3. Let the codemap agent nominate hotspot files without docstrings
 
-Falls back to `find <codespace> -name "*.py" -not -name "__init__.py"` if
-not a git repository. Never hardcode subdirectory paths — discover from
-the repository root.
+This keeps first-run cost bounded and avoids assuming a specific language.
+If a language-specific extractor is needed, let the tool-registrar agent
+create one on demand (see `tools/README.md` for the interface spec).
 
 ### 2b: Extract Existing Docstrings
 

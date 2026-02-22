@@ -1,5 +1,14 @@
 # Audit: Structured Task Decomposition + Delegation
 
+### Terminology Contract
+
+"Audit" in this pipeline means **alignment against stated problems and
+constraints** — checking directional coherence between what the work claims
+to solve and what it actually solves. It NEVER means feature-coverage
+checking against a checklist. Plans describe problems and strategies, not
+enumerable features. If you find yourself counting features, you are in the
+wrong frame.
+
 Use for most large tasks needing structured execution — not just code review.
 
 ## Core Algorithm

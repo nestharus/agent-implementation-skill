@@ -1,5 +1,13 @@
 # Evaluate Proposal: Alignment Review
 
+### Terminology Contract
+
+"Evaluation" means **alignment review** — checking whether a proposal's
+mechanisms faithfully operationalize the stated intent and constraints. It
+NEVER means feature-coverage auditing. Proposals describe strategies, not
+feature lists. Evaluation checks coherence between layers (problem →
+proposal → mechanisms), not completeness against a checklist.
+
 Review a proposal against the project's alignment document, design constraints,
 and implementation feasibility. This is the critical gate between research and
 implementation — catching misalignment here prevents wasted implementation work.
