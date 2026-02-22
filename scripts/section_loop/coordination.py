@@ -121,6 +121,68 @@ def _collect_outstanding_problems(
     return problems
 
 
+def _detect_recurrence_patterns(
+    planspace: Path,
+    problems: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Detect recurring problem signatures across coordination rounds.
+
+    Reads recurrence signals and previous coordination state to identify
+    systemic patterns. Returns a recurrence report dict, or None if no
+    patterns found.
+    """
+    signals_dir = planspace / "artifacts" / "signals"
+    if not signals_dir.exists():
+        return None
+
+    recurring_sections: list[dict[str, Any]] = []
+    for sig_path in sorted(signals_dir.glob("section-*-recurrence.json")):
+        try:
+            data = json.loads(sig_path.read_text(encoding="utf-8"))
+            if data.get("recurring"):
+                recurring_sections.append(data)
+        except (json.JSONDecodeError, OSError):
+            continue
+
+    if not recurring_sections:
+        return None
+
+    # Cross-reference with current problems
+    recurring_section_nums = {
+        str(r["section"]) for r in recurring_sections
+    }
+    recurring_problems = [
+        p for p in problems if p["section"] in recurring_section_nums
+    ]
+
+    if not recurring_problems:
+        return None
+
+    report = {
+        "recurring_sections": [r["section"] for r in recurring_sections],
+        "recurring_problem_count": len(recurring_problems),
+        "max_attempt": max(r.get("attempt", 0) for r in recurring_sections),
+        "problem_indices": [
+            i for i, p in enumerate(problems)
+            if p["section"] in recurring_section_nums
+        ],
+    }
+
+    # Persist recurrence report
+    coord_dir = planspace / "artifacts" / "coordination"
+    coord_dir.mkdir(parents=True, exist_ok=True)
+    recurrence_path = coord_dir / "recurrence.json"
+    recurrence_path.write_text(
+        json.dumps(report, indent=2), encoding="utf-8")
+    _log_artifact(planspace, "coordination:recurrence")
+
+    log(f"  coordinator: recurrence detected — "
+        f"{len(recurring_sections)} sections with "
+        f"{len(recurring_problems)} recurring problems")
+
+    return report
+
+
 def _parse_coordination_plan(
     agent_output: str, problems: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
@@ -192,6 +254,11 @@ def _parse_coordination_plan(
         log(f"  coordinator: coordination plan missing indices: {missing}")
         return None
 
+    # Extract bridge directives if present (planner decides, not script)
+    for g in plan["groups"]:
+        if "bridge" not in g:
+            g["bridge"] = {"needed": False}
+
     return plan
 
 
@@ -221,6 +288,18 @@ def write_coordination_plan_prompt(
             f"`{codemap_path}`\n"
         )
 
+    # Include recurrence data if available
+    recurrence_ref = ""
+    recurrence_path = planspace / "artifacts" / "coordination" / "recurrence.json"
+    if recurrence_path.exists():
+        recurrence_ref = (
+            f"\n## Recurrence Data\n\n"
+            f"Some sections have recurring problems (failed to converge in "
+            f"per-section loop). Read: `{recurrence_path}`\n\n"
+            f"Recurring sections should be grouped together when possible "
+            f"and flagged for escalated model usage.\n"
+        )
+
     prompt_path.write_text(f"""# Task: Plan Coordination Strategy
 
 ## Outstanding Problems
@@ -229,6 +308,7 @@ def write_coordination_plan_prompt(
 {problems_json}
 ```
 {codemap_ref}
+{recurrence_ref}
 ## Instructions
 
 You are the coordination planner. Read the problems above (and the
@@ -523,6 +603,9 @@ def run_global_coordination(
     log(f"  coordinator: {len(problems)} outstanding problems across "
         f"{len({p['section'] for p in problems})} sections")
 
+    # Detect recurrence patterns for escalated handling
+    recurrence = _detect_recurrence_patterns(planspace, problems)
+
     # Save coordination state for debugging / inspection
     state_path = coord_dir / "problems.json"
     state_path.write_text(json.dumps(problems, indent=2), encoding="utf-8")
@@ -632,14 +715,15 @@ def run_global_coordination(
         if ctrl == "alignment_changed":
             return False
 
-        # Bridge agent: dispatch for groups with multi-section friction
-        # (multiple sections contending over shared files)
+        # Bridge agent: dispatch when coordination planner says so
         for gidx in batch:
             group = confirmed_groups[gidx]
-            group_sections = sorted({p["section"] for p in group})
-            group_files = sorted({
-                f for p in group for f in p.get("files", [])})
-            if len(group_sections) >= 2 and len(group_files) >= 1:
+            plan_group = coord_plan["groups"][gidx] if gidx < len(coord_plan["groups"]) else {}
+            bridge_directive = plan_group.get("bridge", {})
+            if bridge_directive.get("needed", False):
+                group_sections = sorted({p["section"] for p in group})
+                group_files = sorted({
+                    f for p in group for f in p.get("files", [])})
                 bridge_prompt = (
                     coord_dir / f"bridge-{gidx}-prompt.md")
                 bridge_output = (

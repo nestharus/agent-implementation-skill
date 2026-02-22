@@ -26,6 +26,7 @@ from .dispatch import (
     check_agent_signals,
     dispatch_agent,
     read_agent_signal,
+    read_model_policy,
     summarize_output,
     write_model_choice_signal,
 )
@@ -86,13 +87,25 @@ def _extract_todos_from_files(
     return "# TODO Blocks (In-Code Microstrategies)\n\n" + "\n".join(parts)
 
 
-def _check_needs_microstrategy(proposal_path: Path) -> bool:
+def _check_needs_microstrategy(
+    proposal_path: Path, planspace: Path, section_number: str,
+) -> bool:
     """Check if the integration proposal requests a microstrategy.
 
-    The integration proposer includes ``needs_microstrategy: true``
-    in its output when the section is complex enough to benefit from
-    a tactical per-file breakdown. The script reads this mechanically.
+    Reads the structured signal from the proposal's JSON output.
+    Falls back to substring detection with adjudicator if no JSON found.
     """
+    # Primary: structured JSON signal
+    signal_path = (planspace / "artifacts" / "signals"
+                   / f"proposal-{section_number}-microstrategy.json")
+    if signal_path.exists():
+        try:
+            data = json.loads(signal_path.read_text(encoding="utf-8"))
+            return data.get("needs_microstrategy", False) is True
+        except (json.JSONDecodeError, OSError):
+            pass  # Fall through to text fallback
+
+    # Fallback: substring detection (legacy compatibility during transition)
     if not proposal_path.exists():
         return False
     text = proposal_path.read_text(encoding="utf-8").lower()
@@ -125,6 +138,52 @@ def _append_open_problem(
         # Add new section at the end
         content = content.rstrip() + f"\n\n## Open Problems\n{entry}"
     sec_file.write_text(content, encoding="utf-8")
+
+
+def _update_blocker_rollup(planspace: Path) -> None:
+    """Auto-generate a decision-surface rollup from blocker signals.
+
+    Scans for UNDERSPECIFIED/NEED_DECISION/DEPENDENCY signals across
+    sections and writes a consolidated needs-input.md for the parent.
+    """
+    signals_dir = planspace / "artifacts" / "signals"
+    if not signals_dir.exists():
+        return
+
+    blockers: list[dict] = []
+    for sig_path in sorted(signals_dir.glob("*-signal.json")):
+        try:
+            data = json.loads(sig_path.read_text(encoding="utf-8"))
+            state = data.get("state", "").lower()
+            if state in ("underspecified", "underspec", "need_decision",
+                         "dependency"):
+                blockers.append({
+                    "signal_file": sig_path.name,
+                    "state": state,
+                    "section": data.get("section", "unknown"),
+                    "detail": data.get("detail", ""),
+                    "needs": data.get("needs", ""),
+                })
+        except (json.JSONDecodeError, OSError):
+            continue
+
+    if not blockers:
+        return
+
+    decisions_dir = planspace / "artifacts" / "decisions"
+    decisions_dir.mkdir(parents=True, exist_ok=True)
+    rollup_path = decisions_dir / "needs-input.md"
+
+    lines = ["# Blocker Rollup (auto-generated)\n",
+             f"**{len(blockers)} sections need input:**\n"]
+    for b in blockers:
+        lines.append(f"## Section {b['section']} — {b['state']}")
+        lines.append(f"- **Detail**: {b['detail']}")
+        if b["needs"]:
+            lines.append(f"- **Needs**: {b['needs']}")
+        lines.append(f"- **Signal file**: `{b['signal_file']}`")
+        lines.append("")
+    rollup_path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def _reexplore_section(
@@ -292,6 +351,7 @@ def run_section(
     parent to handle underspec/decision/dependency and send resume).
     """
     artifacts = planspace / "artifacts"
+    policy = read_model_policy(planspace)
 
     # -----------------------------------------------------------------
     # Recurrence signal: notify coordinator when a section loops
@@ -341,6 +401,7 @@ def run_section(
             relevant_tools = [
                 t for t in all_tools
                 if t.get("scope") == "cross-section"
+                or t.get("reusability") in ("cross-section", "suggested")
                 or t.get("created_by") == sec_key
             ]
             if relevant_tools:
@@ -424,6 +485,7 @@ def run_section(
                  / f"section-{section.number}-scope-delta.json"
                  ).write_text(
                     json.dumps(scope_delta, indent=2), encoding="utf-8")
+            _update_blocker_rollup(planspace)
             response = pause_for_parent(
                 planspace, parent,
                 f"pause:{signal}:{section.number}:{detail}",
@@ -514,16 +576,19 @@ def run_section(
         # 2a: GPT writes integration proposal
         # Adaptive model escalation: escalate on repeated misalignment
         # or heavy cross-section coupling
-        proposal_model = "gpt-5.3-codex-high"
+        proposal_model = policy["proposal"]
         notes_count = 0
         notes_dir = planspace / "artifacts" / "notes"
         if notes_dir.exists():
             notes_count = len(list(
                 notes_dir.glob(f"from-*-to-{section.number}.md")))
         escalated_from = None
-        if proposal_attempt >= 3 or notes_count >= 3:
+        triggers = policy.get("escalation_triggers", {})
+        max_attempts = triggers.get("max_attempts_before_escalation", 3)
+        stall_threshold = triggers.get("stall_count", 2)
+        if proposal_attempt >= max_attempts or notes_count >= stall_threshold:
             escalated_from = proposal_model
-            proposal_model = "gpt-5.3-codex-xhigh"
+            proposal_model = policy["escalation_model"]
             log(f"Section {section.number}: escalating to "
                 f"{proposal_model} (attempt={proposal_attempt}, "
                 f"notes={notes_count})")
@@ -592,6 +657,7 @@ def run_section(
                  / f"section-{section.number}-scope-delta.json"
                  ).write_text(
                     json.dumps(scope_delta, indent=2), encoding="utf-8")
+            _update_blocker_rollup(planspace)
             response = pause_for_parent(
                 planspace, parent,
                 f"pause:{signal}:{section.number}:{detail}",
@@ -695,7 +761,8 @@ def run_section(
     microstrategy_path = (artifacts / "proposals"
                           / f"section-{section.number}-microstrategy.md")
     needs_microstrategy = (
-        _check_needs_microstrategy(integration_proposal)
+        _check_needs_microstrategy(
+            integration_proposal, planspace, section.number)
         and not microstrategy_path.exists()
     )
     if not needs_microstrategy and not microstrategy_path.exists():
@@ -758,7 +825,8 @@ WHY — you're capturing WHAT and WHERE at the file level.
         if ctrl == "alignment_changed":
             return None
         micro_result = dispatch_agent(
-            "gpt-5.3-codex-high", micro_prompt_path, micro_output_path,
+            policy.get("implementation", "gpt-5.3-codex-high"),
+            micro_prompt_path, micro_output_path,
             planspace, parent, a_name, codespace=codespace,
             section_number=section.number,
             agent_file="microstrategy-writer.md",
@@ -812,7 +880,8 @@ WHY — you're capturing WHAT and WHERE at the file level.
         impl_output = artifacts / f"impl-{section.number}-output.md"
         impl_agent = f"impl-{section.number}"
         impl_result = dispatch_agent(
-            "gpt-5.3-codex-high", impl_prompt, impl_output,
+            policy.get("implementation", "gpt-5.3-codex-high"),
+            impl_prompt, impl_output,
             planspace, parent, impl_agent, codespace=codespace,
             section_number=section.number,
             agent_file="implementation-strategist.md",

@@ -103,6 +103,11 @@ def _section_inputs_hash(
     if todos_path.exists():
         hasher.update(todos_path.read_bytes())
 
+    # Codemap digest (influences proposal generation)
+    codemap_path = artifacts / "codemap.md"
+    if codemap_path.exists():
+        hasher.update(codemap_path.read_bytes())
+
     return hasher.hexdigest()
 
 

@@ -182,10 +182,26 @@ A change is NO_IMPACT if:
 - The other section only reads data that was not affected
 - The change is purely cosmetic or stylistic
 
-Reply with one line per section, using EXACTLY this format:
-SECTION-NN: MATERIAL <brief reason>
-or
-SECTION-NN: NO_IMPACT
+Reply with a JSON block containing your analysis:
+
+```json
+{{"impacts": [
+  {{"to": "04", "impact": "MATERIAL", "reason": "Modified event model interface that section 04 depends on"}},
+  {{"to": "07", "impact": "NO_IMPACT"}}
+]}}
+```
+
+Every other section must appear in the impacts array with either
+MATERIAL or NO_IMPACT. The `to` field is the section number.
+For MATERIAL impacts, include a `reason` field.
+
+**Also include a brief `note_markdown` for each MATERIAL impact** —
+this will be written directly as the consequence note:
+```json
+{{"impacts": [
+  {{"to": "04", "impact": "MATERIAL", "reason": "...", "note_markdown": "Section {sec_num} changed the event model interface. Section 04 must accommodate the new field `event_type` in `config.py`."}}
+]}}
+```
 """, encoding="utf-8")
     _log_artifact(planspace, f"prompt:impact-{sec_num}")
 
@@ -211,14 +227,62 @@ SECTION-NN: NO_IMPACT
     sec_num_map = build_section_number_map(all_sections)
 
     impacted_sections: list[tuple[str, str]] = []
-    for line in impact_result.split("\n"):
-        line = line.strip()
-        match = re.match(r'SECTION-(\d+):\s*MATERIAL\s*(.*)', line)
-        if match:
-            canonical = normalize_section_number(
-                match.group(1), sec_num_map,
-            )
-            impacted_sections.append((canonical, match.group(2)))
+    # Primary: parse structured JSON from agent output
+    json_parsed = False
+    try:
+        # Find JSON block in output (may be in code fence)
+        json_text = None
+        in_fence = False
+        fence_lines: list[str] = []
+        for line in impact_result.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("```") and not in_fence:
+                in_fence = True
+                fence_lines = []
+                continue
+            if stripped.startswith("```") and in_fence:
+                in_fence = False
+                candidate = "\n".join(fence_lines)
+                if '"impacts"' in candidate:
+                    json_text = candidate
+                    break
+                continue
+            if in_fence:
+                fence_lines.append(line)
+
+        if json_text is None:
+            # Try raw JSON (no code fence)
+            start = impact_result.find("{")
+            end = impact_result.rfind("}")
+            if start >= 0 and end > start:
+                candidate = impact_result[start:end + 1]
+                if '"impacts"' in candidate:
+                    json_text = candidate
+
+        if json_text:
+            data = json.loads(json_text)
+            for entry in data.get("impacts", []):
+                if entry.get("impact") == "MATERIAL":
+                    target = normalize_section_number(
+                        str(entry["to"]), sec_num_map)
+                    reason = entry.get("reason", "")
+                    impacted_sections.append((target, reason))
+            json_parsed = True
+    except (json.JSONDecodeError, KeyError, TypeError):
+        pass
+
+    # Fallback: regex parsing for backwards compatibility
+    if not json_parsed:
+        log(f"Section {sec_num}: WARNING — impact analysis did not "
+            f"produce valid JSON, falling back to regex parsing")
+        for line in impact_result.split("\n"):
+            line = line.strip()
+            match = re.match(r'SECTION-(\d+):\s*MATERIAL\s*(.*)', line)
+            if match:
+                canonical = normalize_section_number(
+                    match.group(1), sec_num_map,
+                )
+                impacted_sections.append((canonical, match.group(2)))
 
     if not impacted_sections:
         log(f"Section {sec_num}: no material impacts on other sections")

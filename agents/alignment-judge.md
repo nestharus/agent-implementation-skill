@@ -116,3 +116,17 @@ The work must not introduce constraints the user did not specify:
 - No new dependencies not in the alignment
 - No architectural changes not motivated by a listed problem
 - No scope expansion ("while we're here, let's also...")
+
+### Anti-Pattern: Feature Checklists
+
+Do NOT produce feature checklists. Alignment is about mismatch
+statements between layers, not enumeration of features.
+
+**Wrong**: "Feature A: implemented. Feature B: implemented. Feature C: missing."
+**Right**: "The proposal requires event routing through the bus (alignment L12),
+but the implementation bypasses the bus and calls handlers directly — this
+changes the contract and breaks the decoupling guarantee."
+
+If you catch yourself counting features or producing a checklist, stop
+and reframe as alignment between the problem statement and the solution
+direction.

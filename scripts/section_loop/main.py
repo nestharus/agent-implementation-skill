@@ -127,11 +127,41 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
     # to artifacts/project-mode.txt by the codemap agent — not by
     # hardcoded script logic. If it doesn't exist yet, default to
     # brownfield (the safe assumption).
-    mode_file = planspace / "artifacts" / "project-mode.txt"
+    # Read project mode from structured JSON (preferred) or text fallback
+    mode_json_path = planspace / "artifacts" / "signals" / "project-mode.json"
+    mode_txt_path = planspace / "artifacts" / "project-mode.txt"
     project_mode = "brownfield"
-    if mode_file.exists():
-        project_mode = mode_file.read_text(encoding="utf-8").strip()
-    log(f"Project mode: {project_mode} (from {'codemap agent' if mode_file.exists() else 'default'})")
+    mode_constraints: list[str] = []
+    if mode_json_path.exists():
+        try:
+            mode_data = json.loads(
+                mode_json_path.read_text(encoding="utf-8"))
+            project_mode = mode_data.get("mode", "brownfield")
+            mode_constraints = mode_data.get("constraints", [])
+        except (json.JSONDecodeError, OSError):
+            pass
+    elif mode_txt_path.exists():
+        project_mode = mode_txt_path.read_text(encoding="utf-8").strip()
+    log(f"Project mode: {project_mode} "
+        f"(from {'JSON signal' if mode_json_path.exists() else 'text' if mode_txt_path.exists() else 'default'})")
+
+    # Write formalized mode contract
+    mode_contract_path = planspace / "artifacts" / "mode-contract.json"
+    mode_contract = {
+        "mode": project_mode,
+        "constraints": mode_constraints or (
+            ["no code exists, research only"]
+            if project_mode == "greenfield"
+            else ["integrate with existing code"]
+        ),
+        "expected_outputs": (
+            ["research memo", "prototype plan", "new sections"]
+            if project_mode == "greenfield"
+            else ["integration proposals", "code changes", "alignment checks"]
+        ),
+    }
+    mode_contract_path.write_text(
+        json.dumps(mode_contract, indent=2) + "\n", encoding="utf-8")
 
     # Load sections and build cross-reference map
     all_sections = load_sections(sections_dir)

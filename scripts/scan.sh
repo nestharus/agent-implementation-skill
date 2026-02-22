@@ -110,6 +110,16 @@ The format should fit what you discovered. Don't force the codebase into a templ
 
 Write your codemap as markdown. Focus on understanding, not cataloging.
 
+## Resolution Rubric
+
+Keep the codemap COARSE by default. Only include detailed internals
+(function signatures, class hierarchies) for files that appear in 2+
+section specifications. For everything else, describe purpose and
+relationships, not implementation details.
+
+The codemap is a ROUTING MAP — it helps agents find the right files,
+not understand every line.
+
 ## Project Mode Classification
 
 After writing the codemap, determine whether this is a **greenfield** or
@@ -338,11 +348,15 @@ idx = section.find(marker)
 if idx == -1:
     raise SystemExit(0)
 
+# Extract first 3 non-empty lines as summary (routing context only)
+summary_lines = [l.strip() for l in details.split("\n") if l.strip()][:3]
+summary = "\n".join(f"> {l}" for l in summary_lines)
+
 rest = section[idx + len(marker):]
 match = re.search(r"\n(?=###\s|##\s[^#])", rest)
 insert_pos = idx + len(marker) + (match.start() if match else len(rest))
 
-new_section = section[:insert_pos].rstrip() + "\n" + details + "\n" + section[insert_pos:]
+new_section = section[:insert_pos].rstrip() + "\n" + summary + "\n" + section[insert_pos:]
 section_path.write_text(new_section)
 PY
 }
@@ -371,7 +385,7 @@ run_deep_scan() {
 
     # Skip deep scan for greenfield sections (no existing code to analyze)
     local sec_num
-    sec_num=$(echo "$section_name" | grep -oP '\d+' | head -1)
+    sec_num=$(python3 -c "import re,sys; m=re.search(r'\d+',sys.argv[1]); print(m.group(0) if m else '')" "$section_name")
     local sec_mode_file="$ARTIFACTS_DIR/sections/section-${sec_num}-mode.txt"
     if [ -f "$sec_mode_file" ] && [ "$(cat "$sec_mode_file")" = "greenfield" ]; then
       echo "  $section_name: skipped (greenfield section)"
@@ -392,6 +406,67 @@ run_deep_scan() {
 
     if [ -z "$related_files" ]; then
       continue
+    fi
+
+    # Tier ranking: GLM ranks files by relevance to reduce scan scope
+    local tier_file="$ARTIFACTS_DIR/sections/${section_name}-file-tiers.json"
+    if [ ! -f "$tier_file" ]; then
+      local tier_prompt="$section_log_dir/tier-prompt.md"
+      local tier_output="$section_log_dir/tier-output.md"
+      local file_list_text=""
+      while IFS= read -r rf; do
+        [ -z "$rf" ] && continue
+        file_list_text="${file_list_text}\n- ${rf}"
+      done <<< "$related_files"
+
+      cat > "$tier_prompt" << TIER_PROMPT
+# Task: Rank File Relevance for Section
+
+## Section
+Read: \`$section_file\`
+
+## Related Files
+$(echo -e "$file_list_text")
+
+## Instructions
+Rank each file into a tier based on how central it is to this section's concern:
+- **tier-1**: Core files — directly implement or define the section's concern
+- **tier-2**: Supporting files — needed for context but not primary targets
+- **tier-3**: Peripheral files — tangentially related, low priority
+
+Write a JSON file to: \`$tier_file\`
+\`\`\`json
+{"tiers": {"tier-1": ["path/a.py"], "tier-2": ["path/b.py"], "tier-3": ["path/c.py"]}}
+\`\`\`
+TIER_PROMPT
+
+      if uv run --frozen agents --model glm --project "$CODESPACE" --file "$tier_prompt" \
+        > "$tier_output" 2>&1; then
+        echo "[TIER] $section_name: file tiers ranked"
+      else
+        echo "[TIER] $section_name: tier ranking failed — scanning all files"
+      fi
+    fi
+
+    # If tier file exists, only deep-scan tier-1 files by default
+    local scan_files="$related_files"
+    if [ -f "$tier_file" ]; then
+      local tier1_files
+      tier1_files=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$tier_file'))
+    for f in d.get('tiers', {}).get('tier-1', []):
+        print(f)
+except: pass
+" 2>/dev/null || true)
+      if [ -n "$tier1_files" ]; then
+        scan_files="$tier1_files"
+        local total_count tier1_count
+        total_count=$(echo "$related_files" | grep -c '[^[:space:]]' || echo 0)
+        tier1_count=$(echo "$tier1_files" | grep -c '[^[:space:]]' || echo 0)
+        echo "[TIER] $section_name: scanning $tier1_count tier-1 files (of $total_count total)"
+      fi
     fi
 
     while IFS= read -r source_file; do
@@ -499,7 +574,7 @@ PROMPT
 
       echo "[DEEP] $section_name × $(basename "$source_file")"
 
-    done <<< "$related_files"
+    done <<< "$scan_files"
   done <<< "$section_files"
 
   # Post-scan: collect feedback and produce report

@@ -73,6 +73,29 @@ def _extract_problems(result: str) -> str | None:
     return result.strip()
 
 
+def _check_alignment_frame(result: str) -> str | None:
+    """Detect if alignment output uses invalid feature-audit framing.
+
+    Returns a warning string if feature-counting language detected,
+    None if the output uses proper alignment framing.
+    """
+    # Simple heuristic: count checklist-like patterns
+    checklist_patterns = 0
+    for line in result.split("\n"):
+        stripped = line.strip()
+        # Detect "Feature X: implemented/done/complete/missing" patterns
+        if any(stripped.lower().endswith(suffix)
+               for suffix in (": implemented", ": done", ": complete",
+                               ": missing", ": not implemented",
+                               ": partially implemented")):
+            checklist_patterns += 1
+    if checklist_patterns >= 3:
+        return (f"Alignment output contains {checklist_patterns} "
+                f"feature-checklist lines — this is audit framing, "
+                f"not alignment. Requesting re-check.")
+    return None
+
+
 def _run_alignment_check_with_retries(
     section: Section, planspace: Path, codespace: Path, parent: str,
     sec_num: str,
@@ -107,6 +130,12 @@ def _run_alignment_check_with_retries(
         if result == "ALIGNMENT_CHANGED_PENDING":
             return result  # Caller must handle
         if not result.startswith("TIMEOUT:"):
+            # Gate: reject feature-audit framing
+            frame_warning = _check_alignment_frame(result)
+            if frame_warning:
+                log(f"  alignment frame check: {frame_warning}")
+                # Don't count as a retry — it's a framing issue
+                continue
             return result
         log(f"  alignment check for section {sec_num} timed out "
             f"(attempt {attempt}/{max_retries + 1})")

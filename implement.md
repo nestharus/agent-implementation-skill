@@ -423,8 +423,10 @@ discovered. The agent decides what's important, not a template.
 
 1. Run after quick exploration. Process only confirmed matches already
    listed under `## Related Files`.
-2. For each `(section, file)` pair, skip entries that already have deep
-   analysis content (resume-safe).
+2. For each section, rank related files into tiers (tier-1 core, tier-2
+   supporting, tier-3 peripheral) via a single GLM pass. Deep scan only
+   tier-1 files by default. Full analysis stored in `file-cards/`; section
+   file gets summary only.
 3. Dispatch a GLM agent with the full section content + full file content.
    The agent reasons about what specific parts of the file matter for this
    section — functions, classes, configurations, risks, dependencies.

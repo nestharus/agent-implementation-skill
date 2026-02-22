@@ -386,6 +386,13 @@ Set it to `true` if the section is complex enough that an implementation
 agent would benefit from a tactical per-file breakdown (many files, complex
 interactions, ordering dependencies). Set `false` for simple sections where
 the integration proposal is sufficient guidance.
+
+**Also write a structured JSON signal** to
+`{artifacts}/signals/proposal-{section.number}-microstrategy.json`:
+```json
+{{"needs_microstrategy": true, "reason": "brief justification"}}
+```
+This is the primary channel the script reads — the inline text is a fallback.
 {signal_instructions(artifacts / "signals" / f"proposal-{section.number}-signal.json")}
 {agent_mail_instructions(planspace, a_name, m_name)}
 """, encoding="utf-8")
