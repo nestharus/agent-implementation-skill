@@ -437,18 +437,7 @@ def check_agent_signals(
         if sig:
             return sig, detail
 
-    # 2. Log prefix matches for diagnostics (NOT used for decisions)
-    for line in output.split("\n"):
-        line = line.strip()
-        for prefix in ("UNDERSPECIFIED:", "NEED_DECISION:",
-                       "DEPENDENCY:", "LOOP_DETECTED:"):
-            if line.startswith(prefix):
-                detail = line[len(prefix):].strip()
-                if detail and not (detail.startswith("<")
-                                   and detail.endswith(">")):
-                    log(f"  signal hint in output: {prefix} {detail[:100]}")
-
-    # 3. Adjudicator interprets output (agent decides, not script regex)
+    # 2. Adjudicator interprets output (agent decides, not script)
     if output_path and planspace and parent:
         return adjudicate_agent_output(
             output_path, planspace, parent, codespace,

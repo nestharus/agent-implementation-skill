@@ -94,9 +94,6 @@ def post_section_completion(
         f"to {snapshot_dir}")
     _log_artifact(planspace, f"snapshot:section-{sec_num}")
 
-    # -----------------------------------------------------------------
-    # (a2) Write contract summary for this section
-    # -----------------------------------------------------------------
     section_summary = extract_section_summary(section.path)
 
     # Build file-change description
@@ -104,32 +101,6 @@ def post_section_completion(
     for rel_path in modified_files:
         change_lines.append(f"- `{rel_path}`")
     changes_text = "\n".join(change_lines) if change_lines else "(none)"
-
-    contracts_dir = artifacts / "contracts"
-    contracts_dir.mkdir(parents=True, exist_ok=True)
-    contract_summary_path = contracts_dir / f"section-{sec_num}-contract-summary.md"
-
-    # Read integration proposal for contract context
-    integration_proposal = (artifacts / "proposals"
-                            / f"section-{sec_num}-integration-proposal.md")
-    contracts_context = ""
-    if integration_proposal.exists():
-        contracts_context = integration_proposal.read_text(encoding="utf-8")
-
-    contracts_summary = _extract_contracts_summary(contracts_context)
-    contract_summary_path.write_text(f"""# Contract Summary: Section {sec_num}
-
-## Section Summary
-{section_summary}
-
-## Contracts and Interfaces
-{contracts_summary if contracts_summary else "(No explicit contracts found in integration proposal.)"}
-
-## Modified Files
-{changes_text}
-""", encoding="utf-8")
-    _log_artifact(planspace, f"contract:section-{sec_num}")
-    log(f"Section {sec_num}: wrote contract summary to {contract_summary_path}")
 
     # -----------------------------------------------------------------
     # (b) Two-stage impact analysis: candidate generation + semantic check
@@ -226,7 +197,7 @@ Reply with a JSON block:
 
 ```json
 {{"impacts": [
-  {{"to": "04", "impact": "MATERIAL", "reason": "Modified event model interface", "contract_risk": false}},
+  {{"to": "04", "impact": "MATERIAL", "reason": "Modified event model interface", "contract_risk": false, "note_markdown": "## Contract Delta\\nThe event model now uses X instead of Y. Section 04 must update its event handler to accept the new schema."}},
   {{"to": "07", "impact": "NO_IMPACT"}}
 ]}}
 ```
@@ -234,7 +205,9 @@ Reply with a JSON block:
 Each candidate section must appear. Include `contract_risk: true` if the
 impact involves a shared interface or contract change.
 
-**Also include a brief `note_markdown` for each MATERIAL impact.**
+For each MATERIAL impact, `note_markdown` is REQUIRED — a brief markdown
+description of what changed and what the target section must accommodate.
+This is the primary content of the consequence note the target receives.
 """, encoding="utf-8")
     _log_artifact(planspace, f"prompt:impact-{sec_num}")
 
@@ -259,7 +232,7 @@ impact involves a shared interface or contract change.
     # Normalize section numbers to canonical form (handles "4" vs "04")
     sec_num_map = build_section_number_map(all_sections)
 
-    impacted_sections: list[tuple[str, str, bool]] = []
+    impacted_sections: list[tuple[str, str, bool, str]] = []
     # Primary: parse structured JSON from agent output
     json_parsed = False
     try:
@@ -300,7 +273,9 @@ impact involves a shared interface or contract change.
                         str(entry["to"]), sec_num_map)
                     reason = entry.get("reason", "")
                     contract_risk = bool(entry.get("contract_risk", False))
-                    impacted_sections.append((target, reason, contract_risk))
+                    note_md = entry.get("note_markdown", "")
+                    impacted_sections.append(
+                        (target, reason, contract_risk, note_md))
             json_parsed = True
     except (json.JSONDecodeError, KeyError, TypeError):
         pass
@@ -340,7 +315,7 @@ Reply with ONLY a JSON block:
 
 ```json
 {{"impacts": [
-  {{"to": "<section_number>", "impact": "MATERIAL", "reason": "<reason>"}},
+  {{"to": "<section_number>", "impact": "MATERIAL", "reason": "<reason>", "note_markdown": "<brief description of what changed and what the target must accommodate>"}},
   ...
 ]}}
 ```
@@ -373,8 +348,9 @@ If no material impacts can be extracted, reply:
                         reason = entry.get("reason", "")
                         contract_risk = bool(
                             entry.get("contract_risk", False))
+                        note_md = entry.get("note_markdown", "")
                         impacted_sections.append(
-                            (target, reason, contract_risk))
+                            (target, reason, contract_risk, note_md))
         except (json.JSONDecodeError, KeyError, TypeError):
             log(f"Section {sec_num}: GLM normalizer also failed to "
                 f"produce valid JSON — no material impacts recorded")
@@ -389,17 +365,30 @@ If no material impacts can be extracted, reply:
     notes_dir = artifacts / "notes"
     notes_dir.mkdir(parents=True, exist_ok=True)
 
-    # Read the section's integration proposal for contract/interface context
     integration_proposal = (artifacts / "proposals"
                             / f"section-{sec_num}-integration-proposal.md")
-    contracts_context = ""
-    if integration_proposal.exists():
-        contracts_context = integration_proposal.read_text(encoding="utf-8")
 
-    # Extract contract/interface sections from proposal for inline notes
-    contracts_summary = _extract_contracts_summary(contracts_context)
+    # Compute a mechanical fingerprint from modified file contents.
+    # This stabilizes note IDs against LLM wording variance — IDs only
+    # change when the actual file content changes, not when the agent
+    # rephrases its reasoning.
+    file_fingerprint_parts = []
+    for rel_path in sorted(modified_files):
+        src = codespace / rel_path
+        if src.exists():
+            try:
+                file_hash = hashlib.sha256(
+                    src.read_bytes()).hexdigest()
+            except OSError:
+                file_hash = "unreadable"
+        else:
+            file_hash = "missing"
+        file_fingerprint_parts.append(f"{rel_path}:{file_hash}")
+    files_fingerprint = hashlib.sha256(
+        "\n".join(file_fingerprint_parts).encode()
+    ).hexdigest()
 
-    for target_num, reason, contract_risk in impacted_sections:
+    for target_num, reason, contract_risk, note_md in impacted_sections:
         note_path = notes_dir / f"from-{sec_num}-to-{target_num}.md"
 
         # Build the list of modified files with brief context
@@ -410,27 +399,26 @@ If no material impacts can be extracted, reply:
             f"# Consequence Note: Section {sec_num}"
             f" -> Section {target_num}"
         )
-        contracts = (
-            contracts_summary
-            if contracts_summary
-            else "(No explicit contracts extracted "
-                 "from integration proposal.)"
+
+        # Use agent-provided note_markdown as primary contract delta
+        # content. Falls back to reason if agent didn't provide it.
+        delta_content = (
+            note_md if note_md
+            else f"Impact reason: {reason}"
         )
 
-        # Compute a stable note ID for the acknowledgment lifecycle
-        note_content_draft = (
-            f"{heading}\n{contracts}\n{reason}\n{file_changes}")
+        # Stable note ID from mechanical state (file fingerprint + target)
+        # so repeated edits to the same files produce consistent IDs.
         note_id = hashlib.sha256(
-            f"{note_path.name}:{hashlib.sha256(note_content_draft.encode()).hexdigest()}"
-            .encode()
+            f"{note_path.name}:{files_fingerprint}".encode()
         ).hexdigest()[:12]
 
         note_path.write_text(f"""{heading}
 
 **Note ID**: `{note_id}`
 
-## Contract Deltas (read this first)
-{contracts}
+## What Changed (read this first)
+{delta_content}
 
 ## What Section {target_num} Must Accommodate
 {reason}
@@ -445,7 +433,7 @@ When you process this note, write an acknowledgment to
 
 ## Why This Happened
 Section {sec_num} ({section_summary}) implemented changes to solve its
-designated problem. Impact reason: {reason}
+designated problem.
 
 ## Files Modified (for reference)
 {file_changes}
@@ -459,7 +447,7 @@ Snapshot directory: `{snapshot_dir}`
 
     # P8: Generate contract artifact for contract-risk impacts
     contract_risk_targets = [
-        (t, r) for t, r, cr in impacted_sections if cr
+        (t, r) for t, r, cr, _nm in impacted_sections if cr
     ]
     if contract_risk_targets:
         contracts_dir = artifacts / "contracts"
@@ -647,29 +635,3 @@ def build_section_number_map(sections: list[Section]) -> dict[int, str]:
     return {int(s.number): s.number for s in sections}
 
 
-def _extract_contracts_summary(proposal_text: str) -> str:
-    """Extract contract/interface mentions from an integration proposal.
-
-    Scans for headings containing 'contract', 'interface', 'api', or
-    'integration point' and returns their content. Returns empty string
-    if no relevant sections found.
-    """
-    if not proposal_text:
-        return ""
-    lines = proposal_text.split("\n")
-    parts: list[str] = []
-    capturing = False
-    for line in lines:
-        stripped = line.strip().lower()
-        if stripped.startswith("#") and any(
-            kw in stripped for kw in
-            ["contract", "interface", "api", "integration point",
-             "change strategy", "risks"]
-        ):
-            capturing = True
-            parts.append(line)
-        elif capturing and line.strip().startswith("#"):
-            capturing = False
-        elif capturing:
-            parts.append(line)
-    return "\n".join(parts).strip()

@@ -11,10 +11,8 @@ coverage, not detail checking, not style review.
 
 ## Step 0: Read the Alignment Surface
 
-Before analyzing alignment, read the alignment surface file if it exists:
-`{planspace}/artifacts/sections/section-{N}-alignment-surface.md`
-
-This file lists all authoritative alignment inputs for this section:
+If an alignment surface file is provided in the prompt's "Files to Read"
+list, read it first. It lists all authoritative alignment inputs:
 - Proposal excerpt
 - Alignment excerpt
 - Integration proposal
@@ -23,8 +21,8 @@ This file lists all authoritative alignment inputs for this section:
 - Decisions
 
 Read the surface file first, then drill into each listed artifact.
-If no surface file exists, fall back to reading proposal and alignment
-excerpts directly.
+If no surface file is provided, read the proposal and alignment
+excerpts directly from the prompt's file list.
 
 ## Method of Thinking
 

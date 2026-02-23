@@ -700,12 +700,33 @@ TIER_PROMPT
         > "$tier_output" 2>&1; then
         echo "[TIER] $section_name: file tiers ranked"
       else
-        echo "[TIER] $section_name: tier ranking failed — scanning all files"
+        echo "[TIER] $section_name: tier ranking failed with GLM — escalating to Opus"
+        # Strategic escalation: retry with higher-reliability model
+        if uv run --frozen agents --model claude-opus --project "$CODESPACE" --file "$tier_prompt" \
+          > "$tier_output" 2>&1; then
+          echo "[TIER] $section_name: file tiers ranked (via Opus escalation)"
+        else
+          echo "[TIER] $section_name: tier ranking failed after escalation — fail-closed"
+          # Write structured failure artifact for parent/human escalation
+          local tier_fail_dir="$ARTIFACTS_DIR/signals"
+          mkdir -p "$tier_fail_dir"
+          local related_count
+          related_count=$(echo "$related_files" | grep -c '[^[:space:]]' || echo 0)
+          python3 -c "
+import json
+json.dump({
+    'section': '$section_name',
+    'related_files_count': $related_count,
+    'error_output': '$tier_output',
+    'suggested_action': 'manual_review_or_parent_escalation'
+}, open('$tier_fail_dir/${section_name}-tier-ranking-failed.json', 'w'), indent=2)
+" 2>/dev/null || true
+        fi
       fi
     fi
 
-    # Determine scan scope from agent-chosen tiers (or default to tier-1 + tier-2)
-    local scan_files="$related_files"
+    # Determine scan scope from agent-chosen tiers; fail-closed if no tier file
+    local scan_files=""
     if [ -f "$tier_file" ]; then
       local scoped_files
       scoped_files=$(python3 -c "
@@ -736,6 +757,14 @@ except: print('tier-1+tier-2')
 " 2>/dev/null || echo "tier-1+tier-2")
         echo "[TIER] $section_name: scanning $scoped_count files ($scan_tiers_label) of $total_count total"
       fi
+    fi
+
+    # Fail-closed: if no tier file was produced, skip deep scan for this
+    # section rather than brute-force scanning all files. The failure
+    # artifact (if written) signals the parent/human to investigate.
+    if [ -z "$scan_files" ]; then
+      echo "[DEEP] $section_name: no tier ranking available — skipping deep scan (fail-closed)"
+      continue
     fi
 
     while IFS= read -r source_file; do

@@ -341,6 +341,10 @@ integration proposal should cover both:
 {existing_note}{problems_block}{notes_block}{decisions_block}{mode_block}
 ## Instructions
 
+A section is a **problem region / concern**, not a file bundle. Related
+files are a starting hypothesis. You are expected to explore and may
+discover additional relevant files or identify irrelevant ones.
+
 You are writing an INTEGRATION PROPOSAL — a strategic document describing
 HOW to wire the existing proposal into the codebase. The proposal excerpt
 already says WHAT to build. Your job is to figure out how it maps onto the
@@ -437,11 +441,19 @@ def write_integration_alignment_prompt(
     summary = extract_section_summary(section.path)
     sec = section.number
 
+    # Alignment surface reference (provides a manifest of all inputs)
+    alignment_surface = (artifacts / "sections"
+                         / f"section-{sec}-alignment-surface.md")
+    surface_line = ""
+    if alignment_surface.exists():
+        surface_line = (f"\n5. Alignment surface (read first): "
+                        f"`{alignment_surface}`")
+
     # Codemap reference so alignment judge sees project skeleton
     codemap_path = artifacts / "codemap.md"
     codemap_line = ""
     if codemap_path.exists():
-        codemap_line = f"\n5. Project codemap (for context): `{codemap_path}`"
+        codemap_line = f"\n6. Project codemap (for context): `{codemap_path}`"
 
     heading = (
         f"# Task: Integration Proposal Alignment Check"
@@ -457,7 +469,7 @@ def write_integration_alignment_prompt(
 1. Section alignment excerpt: `{alignment_excerpt}`
 2. Section proposal excerpt: `{proposal_excerpt}`
 3. Section specification: `{section.path}`
-4. Integration proposal to review: `{integration_proposal}`{codemap_line}
+4. Integration proposal to review: `{integration_proposal}`{surface_line}{codemap_line}
 
 ## Instructions
 
@@ -590,6 +602,10 @@ Read decisions: `{decisions_file}`
 {problems_block}{decisions_block}
 ## Instructions
 
+A section is a **problem region / concern**, not a file bundle. Related
+files are a starting hypothesis. You may discover additional relevant files
+or determine that some listed files are not actually needed.
+
 You are implementing the changes described in the integration proposal.
 The proposal has been alignment-checked and approved. Your job is to
 execute it strategically.
@@ -693,18 +709,26 @@ def write_impl_alignment_prompt(
     files_block = "\n".join(file_list) if file_list else "   (none)"
     sec = section.number
 
+    # Alignment surface reference (provides a manifest of all inputs)
+    alignment_surface = (artifacts / "sections"
+                         / f"section-{sec}-alignment-surface.md")
+    surface_line = ""
+    if alignment_surface.exists():
+        surface_line = (f"\n6. Alignment surface (read first): "
+                        f"`{alignment_surface}`")
+
     # Codemap reference so alignment judge sees project skeleton
     codemap_path = artifacts / "codemap.md"
     codemap_line = ""
     if codemap_path.exists():
-        codemap_line = f"\n6. Project codemap (for context): `{codemap_path}`"
+        codemap_line = f"\n7. Project codemap (for context): `{codemap_path}`"
 
     # Microstrategy reference (hierarchical alignment boundary)
     microstrategy_path = (artifacts / "proposals"
                           / f"section-{section.number}-microstrategy.md")
     micro_line = ""
     if microstrategy_path.exists():
-        micro_line = (f"\n7. Microstrategy (tactical per-file plan): "
+        micro_line = (f"\n8. Microstrategy (tactical per-file plan): "
                       f"`{microstrategy_path}`")
 
     # TODO extraction reference (in-code microstrategies)
@@ -712,7 +736,7 @@ def write_impl_alignment_prompt(
                  / f"section-{section.number}-todos.md")
     todo_line = ""
     if todo_path.exists():
-        todo_line = (f"\n8. TODO extractions (in-code microstrategies): "
+        todo_line = (f"\n9. TODO extractions (in-code microstrategies): "
                      f"`{todo_path}`")
     else:
         # Defensive: warn if the todos directory has files but this one is
@@ -729,7 +753,7 @@ def write_impl_alignment_prompt(
     todo_resolution_line = ""
     if todo_resolution_path.exists():
         todo_resolution_line = (
-            f"\n9. TODO resolution summary: "
+            f"\n10. TODO resolution summary: "
             f"`{todo_resolution_path}`")
 
     prompt_path.write_text(f"""# Task: Implementation Alignment Check — Section {sec}
@@ -743,7 +767,7 @@ def write_impl_alignment_prompt(
 3. Integration proposal: `{integration_proposal}`
 4. Section specification: `{section.path}`
 5. Implemented files (read each one):
-{files_block}{codemap_line}{micro_line}{todo_line}{todo_resolution_line}
+{files_block}{surface_line}{codemap_line}{micro_line}{todo_line}{todo_resolution_line}
 
 ## Worktree root
 `{codespace}`
