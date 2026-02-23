@@ -35,3 +35,20 @@ Output format:
 ```
 
 Batch/stdin mode separates entries with `---`.
+
+## Tool Contract
+
+Tools are agent-created capabilities that emerge from bottom-layer work.
+When requesting or building a new tool:
+
+- **Structured output**: Tool output must be machine-parseable (JSON, line
+  protocol, or structured text). Scripts consume tool outputs mechanically —
+  no prose interpretation.
+- **Prefer existing tools**: Before requesting a new extractor, check if an
+  existing tool covers the use case. Unnecessary duplication increases
+  maintenance burden.
+- **Interface stability**: Once a tool interface is published (arguments,
+  output format), changes must be backwards-compatible or all callers must
+  be updated simultaneously.
+- **Fail-closed**: If a tool cannot produce valid output, it must exit
+  non-zero with a diagnostic. Silent fallbacks are forbidden.

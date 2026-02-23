@@ -298,6 +298,41 @@ def _parse_coordination_plan(
         log(f"  coordinator: coordination plan missing indices: {missing}")
         return None
 
+    # Validate batches if present: each batch is a list of valid group
+    # indices, every group index must appear exactly once across all batches.
+    if "batches" in plan:
+        batches = plan["batches"]
+        if not isinstance(batches, list):
+            log("  coordinator: 'batches' is not an array — ignoring")
+            del plan["batches"]
+        else:
+            n_groups = len(plan["groups"])
+            seen_gidx: set[int] = set()
+            batches_valid = True
+            for batch in batches:
+                if not isinstance(batch, list):
+                    batches_valid = False
+                    break
+                for gidx in batch:
+                    if not isinstance(gidx, int) or gidx < 0 or gidx >= n_groups:
+                        log(f"  coordinator: invalid group index {gidx} in batches")
+                        batches_valid = False
+                        break
+                    if gidx in seen_gidx:
+                        log(f"  coordinator: duplicate group index {gidx} in batches")
+                        batches_valid = False
+                        break
+                    seen_gidx.add(gidx)
+                if not batches_valid:
+                    break
+            if batches_valid and len(seen_gidx) != n_groups:
+                log(f"  coordinator: batches missing group indices: "
+                    f"{set(range(n_groups)) - seen_gidx}")
+                batches_valid = False
+            if not batches_valid:
+                log("  coordinator: invalid batches — will use file-safety batching")
+                del plan["batches"]
+
     # Extract bridge directives if present (planner decides, not script)
     for g in plan["groups"]:
         if "bridge" not in g:
@@ -377,7 +412,7 @@ Reply with a JSON block:
       "strategy": "parallel"
     }}
   ],
-  "execution_order": "Groups can run in parallel if files don't overlap.",
+  "batches": [[0, 2], [1]],
   "notes": "Optional observations about cross-group dependencies."
 }}
 ```
@@ -390,8 +425,11 @@ Strategy values:
 - `sequential`: problems within this group must be fixed in order
 - `parallel`: problems within this group can be fixed concurrently
 
-The `execution_order` field describes how GROUPS relate to each other —
-which groups can run in parallel and which must wait.
+The `batches` array defines execution ordering of GROUPS. Each batch is a
+list of group indices to run concurrently (subject to file-safety checks).
+Batches execute sequentially — batch 0 completes before batch 1 starts.
+Example: `[[0, 2], [1]]` means run groups 0 and 2 in parallel first,
+then run group 1.
 """, encoding="utf-8")
     _log_artifact(planspace, "prompt:coordination-plan")
     return prompt_path
@@ -834,7 +872,6 @@ Reply with a JSON block:
                 {"problems": [i], "reason": "fallback", "strategy": "parallel"}
                 for i in range(len(problems))
             ],
-            "execution_order": "all sequential (fallback)",
         }
 
     # Build confirmed groups from the plan
@@ -873,34 +910,63 @@ Reply with a JSON block:
     # -----------------------------------------------------------------
     # Step 3: Execute the coordination plan
     # -----------------------------------------------------------------
-    # Identify which groups can run in parallel (disjoint file sets)
-    # and which must be sequential (overlapping files). The agent's
-    # execution_order notes inform us, but we enforce file safety.
     group_file_sets = [
         set(f for p in g for f in p.get("files", []))
         for g in confirmed_groups
     ]
 
-    # Build safe parallel batches: groups with disjoint files
-    batches: list[list[int]] = []
-    for gidx, files in enumerate(group_file_sets):
-        if not files:
-            # Unknown scope — isolate
-            batches.append([gidx])
-            continue
-        placed = False
-        for batch in batches:
-            batch_files = set()
-            for bidx in batch:
-                batch_files |= group_file_sets[bidx]
-            if not batch_files:
+    # Use agent-specified batches if present (structured ordering from
+    # the coordination planner). Within each agent batch, apply file-
+    # safety sub-batching to prevent concurrent modification of shared
+    # files. If no agent batches, fall back to file-safety-only batching.
+    if "batches" in coord_plan:
+        # Agent-specified outer ordering; file-safety inner constraint
+        agent_batches = coord_plan["batches"]
+        batches: list[list[int]] = []
+        for agent_batch in agent_batches:
+            # Sub-batch by file safety within the agent's batch
+            for gidx in agent_batch:
+                files = group_file_sets[gidx]
+                if not files:
+                    batches.append([gidx])
+                    continue
+                placed = False
+                for batch in batches:
+                    # Only merge into batches from THIS agent batch
+                    if any(bi not in agent_batch for bi in batch):
+                        continue
+                    batch_files = set()
+                    for bidx in batch:
+                        batch_files |= group_file_sets[bidx]
+                    if not batch_files or not (files & batch_files):
+                        batch.append(gidx)
+                        placed = True
+                        break
+                if not placed:
+                    batches.append([gidx])
+        log(f"  coordinator: using agent-specified batch ordering "
+            f"({len(agent_batches)} agent batches → "
+            f"{len(batches)} execution batches with file-safety)")
+    else:
+        # No agent batches — pure file-safety batching
+        batches = []
+        for gidx, files in enumerate(group_file_sets):
+            if not files:
+                batches.append([gidx])
                 continue
-            if not (files & batch_files):
-                batch.append(gidx)
-                placed = True
-                break
-        if not placed:
-            batches.append([gidx])
+            placed = False
+            for batch in batches:
+                batch_files = set()
+                for bidx in batch:
+                    batch_files |= group_file_sets[bidx]
+                if not batch_files:
+                    continue
+                if not (files & batch_files):
+                    batch.append(gidx)
+                    placed = True
+                    break
+            if not placed:
+                batches.append([gidx])
 
     log(f"  coordinator: {len(batches)} execution batches")
 

@@ -40,8 +40,8 @@ A JSON coordination plan:
       "strategy": "parallel"
     }
   ],
-  "execution_order": "Groups 0 and 1 can run in parallel if files don't overlap. Group 0 should complete before group 1 if they share config.py.",
-  "notes": "Section 3's problem may resolve once section 1's event model is fixed — consider re-checking before dispatching fix."
+  "batches": [[0, 2], [1]],
+  "notes": "Run groups 0 and 2 concurrently, then group 1 after group 0 completes (depends on config.py changes)."
 }
 ```
 
@@ -77,7 +77,7 @@ In your JSON output, include:
 ```json
 {
   "groups": [...],
-  "execution_order": "...",
+  "batches": [[0, 2], [1]],
   "escalate_to_coordinator": true,
   "root_cause_theme": "brief description of the systemic root cause",
   "notes": "..."

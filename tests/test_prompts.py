@@ -9,7 +9,9 @@ from pathlib import Path
 from section_loop.prompts import (
     agent_mail_instructions,
     signal_instructions,
+    write_integration_proposal_prompt,
     write_section_setup_prompt,
+    write_strategic_impl_prompt,
 )
 from section_loop.types import Section
 
@@ -114,3 +116,42 @@ class TestWriteSectionSetupPrompt:
         content = prompt_path.read_text()
         assert "Parent Decisions" in content
         assert str(decisions) in content
+
+
+class TestSectionsAreConcernsInvariant:
+    """P3 regression: integration + strategic impl prompts must assert
+    that sections are problem regions / concerns, not file bundles."""
+
+    def _make_section(self, planspace: Path) -> Section:
+        sec = Section(
+            number="01",
+            path=planspace / "artifacts" / "sections" / "section-01.md",
+        )
+        sec.path.write_text("# Section 01\n\nAuth concern.\n")
+        return sec
+
+    def test_integration_proposal_has_concern_invariant(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        section = self._make_section(planspace)
+        prompt_path = write_integration_proposal_prompt(
+            section, planspace, codespace,
+        )
+        content = prompt_path.read_text()
+        assert "concern" in content.lower()
+        assert "not a file bundle" in content.lower()
+
+    def test_strategic_impl_has_concern_invariant(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        section = self._make_section(planspace)
+        # Strategic impl needs a proposal excerpt to exist
+        excerpt = (planspace / "artifacts" / "sections"
+                   / "section-01-proposal-excerpt.md")
+        excerpt.write_text("# Excerpt\nProposal summary.\n")
+        prompt_path = write_strategic_impl_prompt(
+            section, planspace, codespace,
+        )
+        content = prompt_path.read_text()
+        assert "concern" in content.lower()
+        assert "not a file bundle" in content.lower()

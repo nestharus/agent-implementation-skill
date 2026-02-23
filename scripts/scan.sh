@@ -33,6 +33,29 @@ CODEMAP_PATH="$ARTIFACTS_DIR/codemap.md"
 SCAN_LOG_DIR="$ARTIFACTS_DIR/scan-logs"
 mkdir -p "$SCAN_LOG_DIR"
 
+validate_tier_file() {
+  # Mechanically validate tier file structure: must be valid JSON with
+  # required fields. Returns 0 if valid, 1 if invalid.
+  # This is NOT meaning interpretation — it checks schema structure.
+  local tier_file="$1"
+  python3 -c "
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    tiers = d.get('tiers')
+    if not isinstance(tiers, dict):
+        raise SystemExit(1)
+    scan_now = d.get('scan_now')
+    if not isinstance(scan_now, list) or not scan_now:
+        raise SystemExit(1)
+    for t in scan_now:
+        if t not in tiers:
+            raise SystemExit(1)
+except (json.JSONDecodeError, OSError):
+    raise SystemExit(1)
+" "$tier_file" 2>/dev/null
+}
+
 validate_preflight() {
   if [ ! -d "$CODESPACE" ] || [ ! -r "$CODESPACE" ]; then
     echo "[ERROR] Missing or inaccessible codespace: $CODESPACE" >&2
@@ -576,29 +599,44 @@ update_match() {
   local section_file="$1"
   local source_file="$2"
   local details_file="$3"
+  local feedback_file="${details_file%-response.md}-feedback.json"
 
-  uv run python - "$section_file" "$source_file" "$details_file" << 'PY'
+  uv run python - "$section_file" "$source_file" "$feedback_file" << 'PY'
+import json
 import re
 import sys
 from pathlib import Path
 
 section_path = Path(sys.argv[1])
 source_file = sys.argv[2]
-details_path = Path(sys.argv[3])
+feedback_path = Path(sys.argv[3])
 
-section = section_path.read_text()
-details = details_path.read_text().strip()
-if not details:
+# Fail-closed: no feedback file → no annotation (don't guess from prose)
+if not feedback_path.exists():
     raise SystemExit(0)
 
+try:
+    feedback = json.loads(feedback_path.read_text())
+except (json.JSONDecodeError, OSError):
+    raise SystemExit(0)
+
+# Require structured summary_lines — never derive from prose
+lines = feedback.get("summary_lines")
+if not isinstance(lines, list) or not lines:
+    raise SystemExit(0)
+
+# Filter to strings only, cap at 3
+lines = [str(l) for l in lines if isinstance(l, str) and l.strip()][:3]
+if not lines:
+    raise SystemExit(0)
+
+section = section_path.read_text()
 marker = f"### {source_file}"
 idx = section.find(marker)
 if idx == -1:
     raise SystemExit(0)
 
-# Extract first 3 non-empty lines as summary (routing context only)
-summary_lines = [l.strip() for l in details.split("\n") if l.strip()][:3]
-summary = "\n".join(f"> {l}" for l in summary_lines)
+summary = "\n".join(f"> {l}" for l in lines)
 
 rest = section[idx + len(marker):]
 match = re.search(r"\n(?=###\s|##\s[^#])", rest)
@@ -658,6 +696,10 @@ run_deep_scan() {
 
     # Tier ranking: GLM ranks files by relevance to reduce scan scope
     local tier_file="$ARTIFACTS_DIR/sections/${section_name}-file-tiers.json"
+    if [ -f "$tier_file" ] && ! validate_tier_file "$tier_file"; then
+      echo "[TIER] $section_name: existing tier file invalid (missing scan_now or bad schema) — regenerating"
+      rm -f "$tier_file"
+    fi
     if [ ! -f "$tier_file" ]; then
       local tier_prompt="$section_log_dir/tier-prompt.md"
       local tier_output="$section_log_dir/tier-output.md"
@@ -725,6 +767,26 @@ json.dump({
 " 2>/dev/null || true
         fi
       fi
+
+      # Post-generation validation: if the agent wrote a tier file but it's
+      # structurally invalid (missing scan_now, bad schema), fail-closed.
+      # No script default — scan_now is an agent-owned decision.
+      if [ -f "$tier_file" ] && ! validate_tier_file "$tier_file"; then
+        echo "[TIER] $section_name: generated tier file invalid — fail-closed"
+        local tier_fail_dir="$ARTIFACTS_DIR/signals"
+        mkdir -p "$tier_fail_dir"
+        python3 -c "
+import json
+json.dump({
+    'section': '$section_name',
+    'error': 'invalid_tier_file_schema',
+    'detail': 'Tier file missing scan_now or has invalid structure',
+    'tier_file_path': '$tier_file',
+    'suggested_action': 'manual_review_or_parent_escalation'
+}, open('$tier_fail_dir/${section_name}-tier-ranking-invalid.json', 'w'), indent=2)
+" 2>/dev/null || true
+        rm -f "$tier_file"
+      fi
     fi
 
     # Determine scan scope from agent-chosen tiers; fail-closed if no tier file
@@ -733,17 +795,15 @@ json.dump({
       local scoped_files
       scoped_files=$(python3 -c "
 import json, sys
-try:
-    d = json.load(open('$tier_file'))
-    tiers = d.get('tiers', {})
-    scan_now = d.get('scan_now', ['tier-1', 'tier-2'])
-    seen = set()
-    for tier_name in scan_now:
-        for f in tiers.get(tier_name, []):
-            if f not in seen:
-                seen.add(f)
-                print(f)
-except: pass
+d = json.load(open('$tier_file'))
+tiers = d['tiers']
+scan_now = d['scan_now']
+seen = set()
+for tier_name in scan_now:
+    for f in tiers.get(tier_name, []):
+        if f not in seen:
+            seen.add(f)
+            print(f)
 " 2>/dev/null || true)
       if [ -n "$scoped_files" ]; then
         scan_files="$scoped_files"
@@ -752,11 +812,9 @@ except: pass
         scoped_count=$(echo "$scoped_files" | grep -c '[^[:space:]]' || echo 0)
         scan_tiers_label=$(python3 -c "
 import json
-try:
-    d = json.load(open('$tier_file'))
-    print('+'.join(d.get('scan_now', ['tier-1', 'tier-2'])))
-except: print('tier-1+tier-2')
-" 2>/dev/null || echo "tier-1+tier-2")
+d = json.load(open('$tier_file'))
+print('+'.join(d['scan_now']))
+" 2>/dev/null || echo "unknown")
         echo "[TIER] $section_name: scanning $scoped_count files ($scan_tiers_label) of $total_count total"
       fi
     fi
@@ -850,6 +908,7 @@ Format:
   "source_file": "$source_file",
   "relevant": true,
   "missing_files": ["path/to/file1.py", "path/to/file2.py"],
+  "summary_lines": ["Key finding one.", "Key finding two."],
   "reason": "Brief explanation if not relevant, or why missing files matter"
 }
 \`\`\`
@@ -865,6 +924,10 @@ Format:
 - \`out_of_scope\`: (optional) List of problems or concerns discovered that
   are OUTSIDE this section's scope. Each entry should describe what the
   problem is and which section or higher level should handle it.
+- \`summary_lines\`: A list of 1-3 short strings summarizing the key findings
+  for this file. Each string should be a single sentence. These are embedded
+  directly into the section file as routing context — do NOT include markdown
+  formatting or filler phrases.
 - \`reason\`: Brief explanation.
 PROMPT
 

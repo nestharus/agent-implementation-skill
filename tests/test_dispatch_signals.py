@@ -194,6 +194,34 @@ class TestCheckAgentSignals:
         assert sig is None
         assert detail == ""
 
+    def test_out_of_scope_routes_through(self, tmp_path: Path) -> None:
+        """P6 regression: OUT_OF_SCOPE signal file → check_agent_signals
+        returns out_of_scope with detail preserved."""
+        sig_path = tmp_path / "signal.json"
+        sig_path.write_text(json.dumps({
+            "state": "out_of_scope",
+            "detail": "belongs to infrastructure team",
+        }))
+        sig, detail = check_agent_signals(
+            "some output", signal_path=sig_path,
+        )
+        assert sig == "out_of_scope"
+        assert "infrastructure" in detail
+
+    def test_needs_parent_routes_through(self, tmp_path: Path) -> None:
+        """P6 regression: NEEDS_PARENT signal file → check_agent_signals
+        returns needs_parent with detail preserved."""
+        sig_path = tmp_path / "signal.json"
+        sig_path.write_text(json.dumps({
+            "state": "needs_parent",
+            "detail": "architecture decision required at project level",
+        }))
+        sig, detail = check_agent_signals(
+            "some output", signal_path=sig_path,
+        )
+        assert sig == "needs_parent"
+        assert "architecture" in detail
+
 
 class TestSummarizeOutput:
     def test_extracts_summary_line(self) -> None:

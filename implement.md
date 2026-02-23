@@ -13,6 +13,11 @@ Stage 3 dispatches agents to explore and understand the codebase.
 Agents reason about what they find — the script only coordinates dispatch,
 checks outputs, and logs failures.
 
+**Terminology enforcement**: `scripts/lint-audit-language.sh` prevents
+drift away from alignment terminology. If "feature coverage audit" phrasing
+appears, the lint rejects it. The alignment-judge agent also rejects invalid
+frames (`frame_ok=false`) — see `agents/alignment-judge.md`.
+
 ## Workflow Orchestration
 
 This skill is designed to be executed via the workflow orchestration system.
@@ -434,6 +439,15 @@ discovered. The agent decides what's important, not a template.
 4. No fixed output format — the agent writes what it discovers naturally.
 5. Skip missing/invalid file paths with diagnostics. On per-pair failures,
    record diagnostics and continue remaining pairs.
+
+### Deep scan feedback authority
+
+Deep scan feedback is authoritative **only via structured JSON fields** in
+the feedback file (`relevant`, `missing_files`, `out_of_scope`,
+`summary_lines`). The agent's prose response is archived in file-cards for
+context but is never parsed or interpreted by the script. Section file
+annotations come exclusively from the `summary_lines` field — if absent,
+no annotation is written (fail-closed).
 
 ### Both mode control flow
 

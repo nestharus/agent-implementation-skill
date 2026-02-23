@@ -226,3 +226,13 @@ class TestExtractProblems:
         problems = _extract_problems("No JSON output here")
         assert problems is not None
         assert "MISSING_JSON_VERDICT" in problems
+
+    def test_frame_ok_false_returns_problem(self) -> None:
+        """P1 regression: frame_ok=false must surface as a problem."""
+        result = (
+            '{"frame_ok": false, "aligned": false, '
+            '"problems": ["Invalid frame: treated as feature coverage audit"]}'
+        )
+        problems = _extract_problems(result)
+        assert problems is not None
+        assert "feature coverage" in problems.lower() or isinstance(problems, list)
