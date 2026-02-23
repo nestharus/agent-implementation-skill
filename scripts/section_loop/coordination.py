@@ -61,6 +61,26 @@ def _collect_outstanding_problems(
         section = sections_by_num.get(sec_num)
         files = list(section.related_files) if section else []
 
+        # Check for structured blocker signal — routes as "needs_parent"
+        # instead of "misaligned", excluded from code-fix dispatch.
+        blocker_path = (planspace / "artifacts" / "signals"
+                        / f"section-{sec_num}-blocker.json")
+        if blocker_path.exists():
+            try:
+                blocker = json.loads(
+                    blocker_path.read_text(encoding="utf-8"))
+                if blocker.get("state") == "needs_parent":
+                    problems.append({
+                        "section": sec_num,
+                        "type": "needs_parent",
+                        "description": blocker.get("detail", ""),
+                        "needs": blocker.get("needs", ""),
+                        "files": files,
+                    })
+                    continue
+            except (json.JSONDecodeError, OSError):
+                pass  # Fall through to standard misaligned handling
+
         if result.problems:
             problems.append({
                 "section": sec_num,
@@ -354,8 +374,9 @@ def write_coordination_plan_prompt(
     artifacts.mkdir(parents=True, exist_ok=True)
     prompt_path = artifacts / "coordination-plan-prompt.md"
 
-    # Write problems as JSON for the agent
-    problems_json = json.dumps(problems, indent=2)
+    # Write problems to artifact file (avoid inline embedding)
+    problems_path = artifacts / "problems.json"
+    problems_path.write_text(json.dumps(problems, indent=2), encoding="utf-8")
 
     # Include codemap reference so the planner sees project skeleton
     codemap_path = planspace / "artifacts" / "codemap.md"
@@ -383,9 +404,7 @@ def write_coordination_plan_prompt(
 
 ## Outstanding Problems
 
-```json
-{problems_json}
-```
+Read the problems list from: `{problems_path}`
 {codemap_ref}
 {recurrence_ref}
 ## Instructions
@@ -727,15 +746,17 @@ def run_global_coordination(
 
                 adjudication_prompt = coord_dir / "scope-delta-prompt.md"
                 adjudication_output = coord_dir / "scope-delta-output.md"
-                deltas_json = json.dumps(pending_deltas, indent=2)
+
+                # Write deltas to artifact file (avoid inline embedding)
+                pending_deltas_path = coord_dir / "scope-deltas-pending.json"
+                pending_deltas_path.write_text(
+                    json.dumps(pending_deltas, indent=2), encoding="utf-8")
 
                 adjudication_prompt.write_text(f"""# Task: Adjudicate Scope Deltas
 
 ## Pending Scope Deltas
 
-```json
-{deltas_json}
-```
+Read the pending scope deltas from: `{pending_deltas_path}`
 
 ## Instructions
 

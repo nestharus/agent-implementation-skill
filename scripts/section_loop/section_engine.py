@@ -917,36 +917,125 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         break  # Excerpts exist, proceed
 
     # -----------------------------------------------------------------
-    # Step 1a: Problem frame quality gate (P3)
+    # Step 1a: Problem frame quality gate (enforced)
     # -----------------------------------------------------------------
     problem_frame_path = (artifacts / "sections"
                           / f"section-{section.number}-problem-frame.md")
     if not problem_frame_path.exists():
-        log(f"Section {section.number}: WARNING — problem frame not created "
-            f"by setup agent (expected at {problem_frame_path})")
-    else:
-        log(f"Section {section.number}: problem frame present")
-        # P4: Problem frame hash stability — detect meaningful drift
-        pf_hash_path = (artifacts / "signals"
-                        / f"section-{section.number}-problem-frame-hash.txt")
-        pf_hash_path.parent.mkdir(parents=True, exist_ok=True)
-        current_pf_hash = hashlib.sha256(
-            problem_frame_path.read_bytes()).hexdigest()
-        if pf_hash_path.exists():
-            prev_pf_hash = pf_hash_path.read_text(encoding="utf-8").strip()
-            if prev_pf_hash != current_pf_hash:
-                log(f"Section {section.number}: problem frame changed — "
-                    f"forcing integration proposal re-run")
-                # Invalidate existing integration proposal to force re-run
-                existing_proposal = (
-                    artifacts / "proposals"
-                    / f"section-{section.number}-integration-proposal.md"
-                )
-                if existing_proposal.exists():
-                    existing_proposal.unlink()
-                    log(f"Section {section.number}: invalidated existing "
-                        f"integration proposal due to problem frame change")
-        pf_hash_path.write_text(current_pf_hash, encoding="utf-8")
+        # Retry setup once — the agent may have failed to create it
+        log(f"Section {section.number}: problem frame missing — retrying "
+            f"setup once")
+        retry_prompt = write_section_setup_prompt(
+            section, planspace, codespace,
+            section.global_proposal_path,
+            section.global_alignment_path,
+        )
+        retry_output = artifacts / f"setup-{section.number}-retry-output.md"
+        retry_result = dispatch_agent(
+            "claude-opus", retry_prompt, retry_output,
+            planspace, parent, f"setup-{section.number}-retry",
+            codespace=codespace,
+            section_number=section.number,
+            agent_file="setup-excerpter.md",
+        )
+        if retry_result == "ALIGNMENT_CHANGED_PENDING":
+            return None
+
+    if not problem_frame_path.exists():
+        # Still missing after retry — emit needs_parent signal and pause
+        log(f"Section {section.number}: problem frame still missing after "
+            f"retry — emitting needs_parent signal")
+        signal_dir = artifacts / "signals"
+        signal_dir.mkdir(parents=True, exist_ok=True)
+        pf_signal = {
+            "state": "needs_parent",
+            "detail": (
+                f"Setup agent failed to create problem frame for section "
+                f"{section.number} after 2 attempts. The pipeline requires "
+                f"a problem frame before integration work can begin."
+            ),
+            "needs": (
+                "Parent must either provide a problem frame or resolve "
+                "why the setup agent cannot produce one."
+            ),
+            "why_blocked": (
+                "Problem frame is a mandatory gate — without it, the "
+                "pipeline cannot validate that the section is solving the "
+                "right problem."
+            ),
+        }
+        (signal_dir / f"setup-{section.number}-signal.json").write_text(
+            json.dumps(pf_signal, indent=2), encoding="utf-8")
+        _update_blocker_rollup(planspace)
+        mailbox_send(planspace, parent,
+                     f"pause:needs_parent:{section.number}:problem frame "
+                     f"missing after retry")
+        return None
+
+    # Validate problem frame structure (required headings only, no semantics)
+    pf_content = problem_frame_path.read_text(encoding="utf-8")
+    required_headings = [
+        "Problem Statement",
+        "Evidence",
+        "Constraints",
+        "Success Criteria",
+        "Out of Scope",
+    ]
+    missing_headings = [
+        h for h in required_headings
+        if h.lower() not in pf_content.lower()
+    ]
+    if missing_headings:
+        log(f"Section {section.number}: problem frame missing required "
+            f"headings: {missing_headings}")
+        signal_dir = artifacts / "signals"
+        signal_dir.mkdir(parents=True, exist_ok=True)
+        pf_signal = {
+            "state": "needs_parent",
+            "detail": (
+                f"Problem frame for section {section.number} is missing "
+                f"required headings: {missing_headings}"
+            ),
+            "needs": (
+                "Parent must ensure the setup agent produces a complete "
+                "problem frame with all required sections."
+            ),
+            "why_blocked": (
+                "Incomplete problem frame cannot validate problem "
+                "understanding — missing: "
+                + ", ".join(missing_headings)
+            ),
+        }
+        (signal_dir / f"setup-{section.number}-signal.json").write_text(
+            json.dumps(pf_signal, indent=2), encoding="utf-8")
+        _update_blocker_rollup(planspace)
+        mailbox_send(planspace, parent,
+                     f"pause:needs_parent:{section.number}:problem frame "
+                     f"incomplete — missing {missing_headings}")
+        return None
+
+    log(f"Section {section.number}: problem frame present and validated")
+    # P4: Problem frame hash stability — detect meaningful drift
+    pf_hash_path = (artifacts / "signals"
+                    / f"section-{section.number}-problem-frame-hash.txt")
+    pf_hash_path.parent.mkdir(parents=True, exist_ok=True)
+    current_pf_hash = hashlib.sha256(
+        problem_frame_path.read_bytes()).hexdigest()
+    if pf_hash_path.exists():
+        prev_pf_hash = pf_hash_path.read_text(encoding="utf-8").strip()
+        if prev_pf_hash != current_pf_hash:
+            log(f"Section {section.number}: problem frame changed — "
+                f"forcing integration proposal re-run")
+            # Invalidate existing integration proposal to force re-run
+            existing_proposal = (
+                artifacts / "proposals"
+                / f"section-{section.number}-integration-proposal.md"
+            )
+            if existing_proposal.exists():
+                existing_proposal.unlink()
+                log(f"Section {section.number}: invalidated existing "
+                    f"integration proposal due to problem frame change")
+    pf_hash_path.write_text(current_pf_hash, encoding="utf-8")
 
     if proposal_excerpt.exists() and alignment_excerpt.exists():
         log(f"Section {section.number}: setup — excerpts ready")

@@ -155,3 +155,66 @@ class TestSectionsAreConcernsInvariant:
         content = prompt_path.read_text()
         assert "concern" in content.lower()
         assert "not a file bundle" in content.lower()
+
+
+class TestTodoExtractionInPrompt:
+    """P3/R19: integration proposal prompt includes TODO path when present."""
+
+    def _make_section(self, planspace: Path) -> Section:
+        sec = Section(
+            number="01",
+            path=planspace / "artifacts" / "sections" / "section-01.md",
+            related_files=["src/main.py"],
+        )
+        sec.path.write_text("# Section 01\n\nAuth concern.\n")
+        return sec
+
+    def test_includes_todo_path_when_file_exists(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        section = self._make_section(planspace)
+        # Create the TODO extraction file
+        todos_path = (planspace / "artifacts" / "todos"
+                      / "section-01-todos.md")
+        todos_path.parent.mkdir(parents=True, exist_ok=True)
+        todos_path.write_text("# TODOs\n\n- Fix auth module\n")
+
+        prompt_path = write_integration_proposal_prompt(
+            section, planspace, codespace,
+        )
+        content = prompt_path.read_text()
+
+        assert str(todos_path) in content
+        assert "TODO extraction" in content
+
+    def test_excludes_todo_ref_when_no_file(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        section = self._make_section(planspace)
+        # Do NOT create a TODO extraction file
+
+        prompt_path = write_integration_proposal_prompt(
+            section, planspace, codespace,
+        )
+        content = prompt_path.read_text()
+
+        # Should not contain the TODO extraction reference line
+        assert "TODO extraction (in-code microstrategies)" not in content
+
+    def test_microstrategy_reconciliation_instruction(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        """Prompt should tell agent to reconcile with TODOs."""
+        section = self._make_section(planspace)
+        todos_path = (planspace / "artifacts" / "todos"
+                      / "section-01-todos.md")
+        todos_path.parent.mkdir(parents=True, exist_ok=True)
+        todos_path.write_text("# TODOs\n\n- Refactor handler\n")
+
+        prompt_path = write_integration_proposal_prompt(
+            section, planspace, codespace,
+        )
+        content = prompt_path.read_text()
+
+        assert "canonical in-scope microstrategy surface" in content
+        assert "reconcile" in content.lower()

@@ -323,31 +323,41 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                         f"(greenfield — NEEDS_RESEARCH)")
                     completed.add(sec_num)
 
-                    # Emit structured needs-research signal
+                    # Emit standard structured blocker signal (5-state
+                    # protocol) so coordination can route mechanically.
                     signal_dir = planspace / "artifacts" / "signals"
                     signal_dir.mkdir(parents=True, exist_ok=True)
-                    research_signal = {
+                    blocker_signal = {
+                        "state": "needs_parent",
                         "section": sec_num,
-                        "status": "needs_research",
-                        "mode": section_mode,
-                        "problem": (
-                            f"Section {sec_num} has no existing code "
-                            f"to integrate with. Research is needed "
-                            f"to determine the implementation approach."
+                        "detail": (
+                            f"Greenfield/no related files: section "
+                            f"{sec_num} has no existing code to integrate "
+                            f"with. Requires research/seed decision and "
+                            f"possibly new sections."
+                        ),
+                        "needs": (
+                            "Parent must decide: (a) provide seed code "
+                            "and related files, (b) reframe as research "
+                            "section, or (c) add new sections."
+                        ),
+                        "why_blocked": (
+                            "No existing code to integrate with — cannot "
+                            "produce integration proposal or implementation "
+                            "without research or seed decision."
                         ),
                     }
                     (signal_dir
-                     / f"section-{sec_num}-needs-research.json"
+                     / f"section-{sec_num}-blocker.json"
                      ).write_text(
-                        json.dumps(research_signal, indent=2),
+                        json.dumps(blocker_signal, indent=2),
                         encoding="utf-8")
 
                     section_results[sec_num] = SectionResult(
                         section_number=sec_num, aligned=False,
                         problems=(
-                            "NEEDS_RESEARCH: greenfield section with "
-                            "no existing code. Research required to "
-                            "determine implementation approach."
+                            f"needs_parent:greenfield — section "
+                            f"{sec_num} requires research/seed decision"
                         ),
                     )
                     mailbox_send(
@@ -366,71 +376,6 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                     continue
                 log(f"Section {sec_num}: re-explorer found "
                     f"{len(section.related_files)} files — continuing")
-
-            # ---------------------------------------------------------
-            # Greenfield guard: require a seed-code decision before
-            # dispatching the implementation strategist for greenfield
-            # sections that have no related files and no mode override.
-            # ---------------------------------------------------------
-            if project_mode == "greenfield" and not section.related_files:
-                mode_override_path = (
-                    planspace / "artifacts" / "sections"
-                    / f"section-{section.number}-mode.txt"
-                )
-                mode_override = ""
-                if mode_override_path.exists():
-                    mode_override = mode_override_path.read_text(
-                        encoding="utf-8").strip().lower()
-
-                seed_decision_path = (
-                    planspace / "artifacts" / "decisions"
-                    / f"section-{section.number}-seed-code.md"
-                )
-                has_mode_override = mode_override in ("brownfield", "hybrid")
-                has_seed_decision = seed_decision_path.exists()
-
-                if not has_mode_override and not has_seed_decision:
-                    # Block: greenfield section needs seed code decision
-                    log(f"Section {sec_num}: BLOCKED — greenfield section "
-                        f"with no related files needs seed code decision "
-                        f"before implementation")
-                    signal_dir = planspace / "artifacts" / "signals"
-                    signal_dir.mkdir(parents=True, exist_ok=True)
-                    blocked_signal = {
-                        "section": sec_num,
-                        "blocked": True,
-                        "reason": (
-                            "greenfield section needs seed code decision "
-                            "before implementation"
-                        ),
-                    }
-                    (signal_dir
-                     / f"section-{sec_num}-greenfield-blocked.json"
-                     ).write_text(
-                        json.dumps(blocked_signal, indent=2),
-                        encoding="utf-8")
-
-                    section_results[sec_num] = SectionResult(
-                        section_number=sec_num, aligned=False,
-                        problems=(
-                            "GREENFIELD_BLOCKED: section needs seed code "
-                            "decision before implementation can proceed."
-                        ),
-                    )
-                    completed.add(sec_num)
-                    mailbox_send(
-                        planspace, parent,
-                        f"pause:greenfield_blocked:{sec_num}:needs seed "
-                        f"code decision")
-                    subprocess.run(  # noqa: S603
-                        ["bash", str(DB_SH), "log",  # noqa: S607
-                         str(planspace / "run.db"),
-                         "lifecycle", f"end:section:{sec_num}",
-                         "greenfield_blocked",
-                         "--agent", AGENT_NAME],
-                        capture_output=True, text=True,
-                    )
-                    continue
 
             # Run the section
             modified_files = run_section(

@@ -296,6 +296,13 @@ incorporate them into your proposal: `{decisions_file}`
     if tools_path.exists():
         tools_ref = f"\n6. Available tools from earlier sections: `{tools_path}`"
 
+    todos_path = (artifacts / "todos"
+                  / f"section-{section.number}-todos.md")
+    todos_ref = ""
+    if todos_path.exists():
+        todos_ref = (f"\n7. TODO extraction (in-code microstrategies): "
+                     f"`{todos_path}`")
+
     # Detect section-level mode (takes priority over project-level)
     section_mode_file = (artifacts / "sections"
                          / f"section-{section.number}-mode.txt")
@@ -341,13 +348,17 @@ integration proposal should cover both:
 2. Section alignment excerpt: `{alignment_excerpt}`
 3. Section specification: `{section.path}`
 4. Related source files (read each one):
-{files_block}{codemap_ref}{tools_ref}
+{files_block}{codemap_ref}{tools_ref}{todos_ref}
 {existing_note}{problems_block}{notes_block}{decisions_block}{mode_block}
 ## Instructions
 
 A section is a **problem region / concern**, not a file bundle. Related
 files are a starting hypothesis. You are expected to explore and may
 discover additional relevant files or identify irrelevant ones.
+
+Treat TODO extraction (if listed in "Files to Read" above) as the
+canonical in-scope microstrategy surface. If your proposal conflicts with
+TODOs, reconcile explicitly (update plan or propose TODO updates).
 
 You are writing an INTEGRATION PROPOSAL — a strategic document describing
 HOW to wire the existing proposal into the codebase. The proposal excerpt

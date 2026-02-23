@@ -71,7 +71,11 @@ def section_01(planspace: Path) -> None:
 
 @pytest.fixture()
 def mock_dispatch(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    """Mock dispatch_agent at the canonical location.
+    """Mock dispatch_agent at the canonical location AND all import sites.
+
+    Python caches ``from X import Y`` at import time, so patching only
+    the definition module doesn't affect modules that already imported
+    the name.  We patch everywhere dispatch_agent is used.
 
     Returns the mock so tests can configure return values per-call::
 
@@ -79,4 +83,8 @@ def mock_dispatch(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     """
     mock = MagicMock(return_value="")
     monkeypatch.setattr("section_loop.dispatch.dispatch_agent", mock)
+    monkeypatch.setattr("section_loop.section_engine.dispatch_agent", mock)
+    monkeypatch.setattr("section_loop.coordination.dispatch_agent", mock)
+    monkeypatch.setattr("section_loop.alignment.dispatch_agent", mock)
+    monkeypatch.setattr("section_loop.main.dispatch_agent", mock)
     return mock
