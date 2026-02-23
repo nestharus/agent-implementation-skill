@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -8,6 +8,7 @@ R20/P3: Pipeline agent files contain no runtime placeholders.
 R21/P4: Greenfield pause label uses needs_parent (not underspec).
 R21/P5: Targeted requeue only requeues changed sections.
 R21/P6C: Operational agent files have no angle-bracket placeholders.
+R24/P9: SKILL.md Paths manifest — every referenced path must exist on disk.
 """
 
 import json
@@ -525,4 +526,86 @@ class TestLintDocDrift:
         )
         assert result.returncode == 0, (
             f"lint-doc-drift.sh failed:\n{result.stdout}\n{result.stderr}"
+        )
+
+
+# Paths declared in SKILL.md's Paths block.  Parsed from the fenced code
+# block listing under "## Paths".  Every path listed here MUST exist on
+# disk relative to PROJECT_ROOT.  This prevents the "files exist on disk
+# but missing from distribution" failure mode that recurred in Rounds 11
+# and 24.
+SKILL_MD_MANIFEST = [
+    # Root-level docs
+    "SKILL.md",
+    "implement.md",
+    "research.md",
+    "rca.md",
+    "evaluate.md",
+    "baseline.md",
+    "audit.md",
+    "constraints.md",
+    "models.md",
+    # Scripts
+    "scripts/workflow.sh",
+    "scripts/db.sh",
+    "scripts/scan.sh",
+    "scripts/section-loop.py",
+    # Tools
+    "tools/extract-docstring-py",
+    "tools/extract-summary-md",
+    "tools/README.md",
+    # Agents
+    "agents/orchestrator.md",
+    "agents/monitor.md",
+    "agents/qa-monitor.md",
+    "agents/agent-monitor.md",
+    "agents/state-detector.md",
+    "agents/exception-handler.md",
+    "agents/microstrategy-writer.md",
+    "agents/section-re-explorer.md",
+    "agents/setup-excerpter.md",
+    "agents/bridge-agent.md",
+    # Templates
+    "templates/implement-proposal.md",
+    "templates/research-cycle.md",
+    "templates/rca-cycle.md",
+]
+
+# Additionally, implement.md references tools/README.md as the tool
+# interface spec.  Already covered above but kept explicit.
+IMPLEMENT_MD_TOOL_REFS = [
+    "tools/README.md",
+]
+
+
+class TestSkillManifest:
+    """R24/P9: Every path declared in SKILL.md's Paths block must exist.
+
+    This is a mechanical manifest guard that prevents distribution
+    integrity drift (Round 11 / Round 24 failure mode: files exist on
+    disk but are omitted from codebase.zip or deleted without updating
+    references).
+    """
+
+    def test_all_skill_paths_exist(self) -> None:
+        missing = []
+        for rel_path in SKILL_MD_MANIFEST:
+            full = PROJECT_ROOT / rel_path
+            if not full.exists():
+                missing.append(rel_path)
+        assert missing == [], (
+            f"SKILL.md references paths that do not exist on disk:\n"
+            + "\n".join(f"  - {p}" for p in missing)
+        )
+
+    def test_implement_md_tool_refs_exist(self) -> None:
+        """implement.md references tools/README.md — it must exist."""
+        missing = []
+        for rel_path in IMPLEMENT_MD_TOOL_REFS:
+            full = PROJECT_ROOT / rel_path
+            if not full.exists():
+                missing.append(rel_path)
+        assert missing == [], (
+            f"implement.md references paths that do not exist:\n"
+            + "\n".join(f"  - {p}" for p in missing)
         )
