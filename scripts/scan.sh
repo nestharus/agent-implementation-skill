@@ -250,10 +250,11 @@ than to guess wrong.
 
 ## Resolution Rubric
 
-Keep the codemap COARSE by default. Only include detailed internals
-(function signatures, class hierarchies) for files that appear in 2+
-section specifications. For everything else, describe purpose and
-relationships, not implementation details.
+Keep the codemap COARSE by default. Only go deeper (function signatures,
+class hierarchies) on: (a) main entrypoints, (b) central libraries
+referenced across directories, or (c) interfaces called by multiple
+subsystems. For everything else, describe purpose and relationships,
+not implementation details.
 
 The codemap is a ROUTING MAP — it helps agents find the right files,
 not understand every line.

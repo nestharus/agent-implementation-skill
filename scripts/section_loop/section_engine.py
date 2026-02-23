@@ -1695,6 +1695,8 @@ WHY — you're capturing WHAT and WHERE at the file level.
     # -----------------------------------------------------------------
     # Step 3b: Validate tool registry after implementation
     # -----------------------------------------------------------------
+    friction_signal_path = (artifacts / "signals"
+                            / f"section-{section.number}-tool-friction.json")
     if tool_registry_path.exists():
         try:
             post_registry = json.loads(
@@ -1733,7 +1735,16 @@ WHY — you're capturing WHAT and WHERE at the file level.
                     f"`{artifacts / 'tool-digest.md'}`\n"
                     f"Format: one line per tool grouped by scope "
                     f"(cross-section, section-local, test-only).\n\n"
-                    f"Write the validated registry back to the same path.\n",
+                    f"Write the validated registry back to the same path.\n\n"
+                    f"## Tool Friction Detection\n\n"
+                    f"After validation, analyze the capability graph for "
+                    f"disconnected tool islands or missing bridges. If you "
+                    f"detect friction, write a friction signal to:\n"
+                    f"`{friction_signal_path}`\n\n"
+                    f"Format: `{{\"friction\": true, \"islands\": [[...]], "
+                    f"\"missing_bridge\": \"...\"}}`\n"
+                    f"If no friction detected, do NOT write a friction "
+                    f"signal file.\n",
                     encoding="utf-8",
                 )
                 registrar_output = (
@@ -1754,9 +1765,6 @@ WHY — you're capturing WHAT and WHERE at the file level.
     # Step 3c: Detect tooling friction and dispatch bridge-tools agent
     # -----------------------------------------------------------------
     tool_friction_detected = False
-    # Check for tooling friction signals
-    friction_signal_path = (artifacts / "signals"
-                            / f"section-{section.number}-tool-friction.json")
     if friction_signal_path.exists():
         try:
             friction = json.loads(

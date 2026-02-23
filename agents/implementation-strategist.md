@@ -78,8 +78,9 @@ Your implementation must match the approved integration proposal:
 
 If your implementation creates new scripts, utilities, or tools (not
 regular source files — things that are standalone executables or reusable
-utilities), report them by writing to the tool registry JSON file at
-`<planspace>/artifacts/tool-registry.json`. Append entries in this format:
+utilities), report them by writing to the tool registry JSON file at the
+path provided in your dispatch prompt (listed under "Tooling" or
+"Files to Read"). Append entries in this format:
 
 ```json
 {
@@ -89,6 +90,9 @@ utilities), report them by writing to the tool registry JSON file at
   "description": "Brief description of what the tool does"
 }
 ```
+
+If the prompt does not provide a tool registry path, do not guess — emit
+a structured signal requesting it.
 
 Only register actual tools (scripts, CLIs, build helpers). Do NOT register
 regular source files, test files, or config files.

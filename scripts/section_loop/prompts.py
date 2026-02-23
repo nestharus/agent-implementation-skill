@@ -605,6 +605,18 @@ Read decisions: `{decisions_file}`
         impl_tools_ref = (f"\n9. Available tools from earlier sections: "
                           f"`{tools_path}`")
 
+    # Tool registry path for implementor to register new tools
+    tool_registry_path = artifacts / "tool-registry.json"
+    tooling_block = f"""
+## Tooling
+
+If you create any new tool/script intended for reuse, you MUST append an
+entry to the tool registry at: `{tool_registry_path}`
+using the documented schema (id/path/created_by/scope/status/description/
+registered_at). If you are unsure a script qualifies as a tool, register it
+as `experimental` and note the uncertainty in the description.
+"""
+
     impl_heading = (
         f"# Task: Strategic Implementation"
         f" for Section {section.number}"
@@ -621,7 +633,7 @@ Read decisions: `{decisions_file}`
 4. Section specification: `{section.path}`
 5. Related source files:
 {files_block}{micro_ref}{codemap_ref}{todos_ref}{impl_tools_ref}
-{problems_block}{decisions_block}
+{problems_block}{decisions_block}{tooling_block}
 ## Instructions
 
 A section is a **problem region / concern**, not a file bundle. Related

@@ -40,7 +40,10 @@ For each file that needs changes:
 ### Problem Cards
 
 If you discover cross-section issues while analyzing files, write a
-problem card to `<planspace>/artifacts/problems/` with:
+problem card to the problems directory provided in the dispatch prompt.
+Use the file paths given in your prompt — do not guess artifact locations.
+
+Each problem card should include:
 - Symptom: what's wrong
 - Evidence: specific files/lines
 - Affected sections

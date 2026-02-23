@@ -1,9 +1,10 @@
-"""Regression guard tests (P2, P4, P8, P9).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3).
 
 P2: No brute-force scan patterns in scan.sh.
 P4: Codemap fingerprint mismatch triggers verifier.
 P8: Bridge dispatch only fires on agent directive.
 P9: Agent frontmatter models are in the documented policy set.
+R20/P3: Pipeline agent files contain no runtime placeholders.
 """
 
 import json
@@ -164,4 +165,60 @@ class TestModelChoiceLint:
             assert len(models_found) == 1, (
                 f"{agent_file.name}: expected exactly 1 model declaration, "
                 f"found {len(models_found)}"
+            )
+
+
+# Agent files dispatched via agent_file= in scripts/section_loop/*
+PIPELINE_AGENT_FILES = {
+    "alignment-judge.md",
+    "bridge-agent.md",
+    "bridge-tools.md",
+    "coordination-planner.md",
+    "implementation-strategist.md",
+    "integration-proposer.md",
+    "microstrategy-writer.md",
+    "section-re-explorer.md",
+    "setup-excerpter.md",
+    "tool-registrar.md",
+}
+
+# Runtime placeholders that must NOT appear in pipeline agent files.
+# Agent files define METHOD; dynamic prompts provide runtime context.
+BANNED_PLACEHOLDERS = [
+    "<planspace>",
+    "$PLANSPACE",
+    "$section_file",
+    "$CODEMAP_PATH",
+    "$ARTIFACTS_DIR",
+]
+
+
+class TestAgentFileNoRuntimePlaceholders:
+    """R20/P3: Pipeline agent files must not contain runtime placeholders.
+
+    Agent definition files encode the 'method of thinking' for a role.
+    Runtime paths, artifact destinations, and environment variables belong
+    in the dynamic dispatch prompts, not in agent files. This guard
+    prevents drift back toward embedding runtime context in method files.
+    """
+
+    def test_no_planspace_placeholders(self) -> None:
+        for name in sorted(PIPELINE_AGENT_FILES):
+            path = AGENTS_DIR / name
+            assert path.exists(), f"Pipeline agent file missing: {name}"
+            content = path.read_text()
+            for placeholder in BANNED_PLACEHOLDERS:
+                assert placeholder not in content, (
+                    f"{name}: contains banned runtime placeholder "
+                    f"'{placeholder}'. Agent files must not contain "
+                    f"runtime paths — move to dynamic prompt."
+                )
+
+    def test_pipeline_agent_files_exist(self) -> None:
+        """All agent files referenced via agent_file= must exist."""
+        for name in sorted(PIPELINE_AGENT_FILES):
+            path = AGENTS_DIR / name
+            assert path.exists(), (
+                f"Pipeline agent file {name} referenced in section_loop "
+                f"but not found in {AGENTS_DIR}"
             )

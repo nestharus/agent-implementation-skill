@@ -18,7 +18,8 @@ it to you for registration.
 
 ## Tool Registry
 
-The registry is a JSON file at `<planspace>/artifacts/tool-registry.json`:
+The registry is a JSON file. The dispatch prompt provides the exact path.
+Read it from the path given in your prompt's "Files to Read" section.
 
 ```json
 {
@@ -75,20 +76,13 @@ passing tests, promote its `status` from `experimental` to `stable`.
 
 ## Tool Digest
 
-After every registry change, write `<planspace>/artifacts/tool-digest.md`:
+After every registry change, write a tool digest to the path specified in
+your dispatch prompt. If the prompt does not specify a digest output path,
+do not write one.
 
-```markdown
-# Tool Digest
-
-## Cross-Section Tools
-- `scripts/validate.py` [stable] — Validates event schema (from section-03)
-
-## Section-Local Tools
-- `scripts/helpers/parse.py` [experimental] — Parses config (from section-01)
-```
-
-This digest is included in downstream agent prompts. Keep it short — one
-line per tool, grouped by scope.
+Format: one line per tool grouped by scope (cross-section, section-local,
+test-only). Keep it short — this digest is included in downstream agent
+prompts.
 
 ## Scope Classification
 
@@ -116,5 +110,7 @@ a "tool friction" signal:
 }
 ```
 
-Write friction signals to:
-`<planspace>/artifacts/signals/section-<N>-tool-friction.json`
+Write friction signals to the path provided in the dispatch prompt. If the
+prompt provides a "Tool friction signal path", write to that exact path.
+If no friction signal path is provided, do not guess — emit a structured
+signal requesting the path instead.
