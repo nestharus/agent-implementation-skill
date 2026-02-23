@@ -45,7 +45,8 @@ validate_preflight() {
   fi
 
   local section_count
-  section_count=$(find "$SECTIONS_DIR" -name "section-*.md" | wc -l | tr -d ' ')
+  section_count=$(find "$SECTIONS_DIR" -maxdepth 1 -type f -name "section-*.md" \
+    | grep -E '/section-[0-9]+\.md$' | wc -l | tr -d ' ')
   if [ "$section_count" -eq 0 ]; then
     echo "[ERROR] No section files found in: $SECTIONS_DIR" >&2
     return 1
@@ -53,7 +54,8 @@ validate_preflight() {
 }
 
 list_section_files() {
-  find "$SECTIONS_DIR" -name "section-*.md" | sort
+  find "$SECTIONS_DIR" -maxdepth 1 -type f -name "section-*.md" \
+    | grep -E '/section-[0-9]+\.md$' | sort
 }
 
 log_phase_failure() {

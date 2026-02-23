@@ -449,6 +449,8 @@ def _write_traceability_index(
                             / f"section-{sec}-integration-proposal.md")
     microstrategy = (artifacts / "proposals"
                      / f"section-{sec}-microstrategy.md")
+    todos_extraction = (artifacts / "todos"
+                        / f"section-{sec}-todos.md")
 
     # Collect alignment verdicts from output files using structured JSON
     alignment_verdicts: list[dict] = []
@@ -495,6 +497,10 @@ def _write_traceability_index(
             "path": str(microstrategy),
             "hash": _file_sha256(microstrategy),
         } if microstrategy.exists() else None,
+        "todos_extraction": {
+            "path": str(todos_extraction),
+            "hash": _file_sha256(todos_extraction),
+        } if todos_extraction.exists() else None,
         "modified_files": modified_files,
         "alignment_verdicts": alignment_verdicts,
     }
@@ -964,6 +970,12 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             todos_path.write_text(todo_entries, encoding="utf-8")
             log(f"Section {section.number}: extracted TODOs from "
                 f"related files")
+            _record_traceability(
+                planspace, section.number,
+                f"section-{section.number}-todos.md",
+                "related files TODO extraction",
+                "in-code microstrategies for alignment",
+            )
         elif todos_path.exists():
             todos_path.unlink()
             log(f"Section {section.number}: removed stale TODO extraction "

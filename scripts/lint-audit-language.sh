@@ -19,6 +19,8 @@ done < <(grep -rn -i \
   -e "feature coverage audit" \
   -e "coverage audit" \
   --include="*.md" --include="*.py" \
+  --exclude="alignment-judge.md" \
+  --exclude="qa-monitor.md" \
   "$REPO_ROOT/agents" "$REPO_ROOT/scripts" "$REPO_ROOT/models.md" \
   "$REPO_ROOT/implement.md" "$REPO_ROOT/SKILL.md" 2>/dev/null || true)
 

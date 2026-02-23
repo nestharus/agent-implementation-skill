@@ -166,6 +166,32 @@ The QA monitor can detect:
 - Stuck-at-low (3+ failures without escalation)
 - Missing justification (strategic agent output without model justification block)
 
+## Terminology
+
+"Audit" in this repo means **constraint alignment audit** — checking
+directional coherence between adjacent layers ("is it solving the right
+problem?"). It does NOT mean feature coverage audit ("are all features
+done?"). Feature-coverage framing is an invalid frame that the
+alignment-judge agent explicitly rejects.
+
+## Agent Definitions and Model Selection
+
+Agent definition files (`agents/*.md`) encode a reusable **reasoning
+method** — how to think about a class of problems. They do not contain
+runtime paths or specific task context. Model selection determines the
+**controllability and capability** applied to that method.
+
+The combination of agent definition + model determines strategic behavior:
+- A high-reasoning model (Opus, codex-xhigh) with a methodological agent
+  file produces strategic analysis that adapts to novel situations.
+- A high-controllability model (GLM) with a methodological agent file
+  produces precise, instruction-following execution of that method.
+- A reasoning model WITHOUT an agent file relies on the dynamic dispatch
+  prompt alone — appropriate for one-shot tasks with clear context.
+
+Match the model to the method's demands: complex judgment needs reasoning;
+mechanical classification needs controllability.
+
 ## Anti-Patterns
 
 - **DO NOT use Opus for mechanical auditing** — Codex is better

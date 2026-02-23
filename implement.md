@@ -288,9 +288,10 @@ The summary captures the core point — what a downstream agent needs
 to decide if a file might relate to this section. Keywords aid
 quick matching.
 
-Extract summaries in batch:
+Extract summaries in batch (exclude excerpt/surface artifacts):
 ```bash
-find <planspace>/artifacts/sections -name "section-*.md" \
+find <planspace>/artifacts/sections -maxdepth 1 -type f -name "section-*.md" \
+  | grep -E '/section-[0-9]+\.md$' \
   | python3 "$TOOLS/extract-summary-md" --stdin
 ```
 
