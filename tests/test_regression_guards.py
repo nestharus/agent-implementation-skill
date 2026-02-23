@@ -231,6 +231,9 @@ class TestAgentFileNoRuntimePlaceholders:
 OPERATIONAL_AGENT_FILES = {
     "monitor.md",
     "qa-monitor.md",
+    "orchestrator.md",
+    "state-detector.md",
+    "exception-handler.md",
 }
 
 # Angle-bracket placeholders are banned in ALL agent files (pipeline +
@@ -367,3 +370,26 @@ class TestTargetedRequeue:
         content = main_path.read_text()
         assert "section-inputs-hashes" in content, \
             "main.py must write baseline hashes to section-inputs-hashes/"
+
+
+LINT_SH = PROJECT_ROOT / "scripts" / "lint-audit-language.sh"
+
+
+class TestLintAuditLanguage:
+    """R22/P1: lint-audit-language.sh must pass on the current codebase.
+
+    The lint catches banned terminology like "feature coverage audit" in
+    agent files, scripts, and design docs. This guard ensures the codebase
+    itself doesn't contain phrases the lint prohibits.
+    """
+
+    def test_lint_audit_language_passes(self) -> None:
+        import subprocess
+        result = subprocess.run(
+            ["bash", str(LINT_SH)],
+            capture_output=True, text=True,
+            cwd=str(PROJECT_ROOT),
+        )
+        assert result.returncode == 0, (
+            f"lint-audit-language.sh failed:\n{result.stdout}\n{result.stderr}"
+        )

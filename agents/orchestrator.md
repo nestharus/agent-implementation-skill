@@ -20,7 +20,15 @@ Scripts, agents, and templates are referenced relative to this.
 
 ## Input
 
-The workspace has two directories passed in by the user:
+Your prompt includes:
+- Planspace path
+- Codespace path
+
+Set `PLANSPACE` from the planspace path provided in your prompt. Set
+`CODESPACE` from the codespace path. Use `$PLANSPACE` and `$CODESPACE` in
+all commands below. Do not invent or assume paths.
+
+The workspace has two directories:
 - **planspace**: `~/.claude/workspaces/<task-slug>/` — schedule, state, log, artifacts, run.db
 - **codespace**: project root or worktree — where source code lives
 
@@ -36,8 +44,8 @@ The planspace contains:
 
 1. Initialize the coordination database and register yourself:
    ```bash
-   bash "$WORKFLOW_HOME/scripts/db.sh" init <planspace>/run.db
-   bash "$WORKFLOW_HOME/scripts/db.sh" register <planspace>/run.db orchestrator
+   bash "$WORKFLOW_HOME/scripts/db.sh" init $PLANSPACE/run.db
+   bash "$WORKFLOW_HOME/scripts/db.sh" register $PLANSPACE/run.db orchestrator
    ```
 2. Check for session recovery — if a `[run]` step exists, read `log.md`
    and `state.md` to decide whether to resume or re-dispatch
@@ -50,20 +58,20 @@ Each step in schedule.md has the format:
 ```
 Parse with:
 ```bash
-bash "$WORKFLOW_HOME/scripts/workflow.sh" parse <planspace> "<step-line>"
+bash "$WORKFLOW_HOME/scripts/workflow.sh" parse $PLANSPACE "<step-line>"
 ```
 
 ## Main Loop
 
 ### 1. Get Next Step
 ```bash
-bash "$WORKFLOW_HOME/scripts/workflow.sh" next <planspace>
+bash "$WORKFLOW_HOME/scripts/workflow.sh" next $PLANSPACE
 ```
 If output is `COMPLETE`, report summary and shut down.
 
 ### 2. Parse the Step
 ```bash
-bash "$WORKFLOW_HOME/scripts/workflow.sh" parse <planspace> "<step-line>"
+bash "$WORKFLOW_HOME/scripts/workflow.sh" parse $PLANSPACE "<step-line>"
 ```
 Returns: `status`, `num`, `name`, `model`, `desc`, `ref`.
 
@@ -71,15 +79,15 @@ Returns: `status`, `num`, `name`, `model`, `desc`, `ref`.
 Read the referenced skill section (e.g., Stage 1 of `$WORKFLOW_HOME/implement.md`)
 and combine with workspace context into a self-contained prompt file.
 
-Write to `<planspace>/artifacts/step-N-prompt.md`. Include:
+Write to `$PLANSPACE/artifacts/step-N-prompt.md`. Include:
 - **Instructions**: The full skill section text for this step
 - **Planspace path**: So the agent can read/write state and artifacts
 - **Codespace path**: So the agent knows where to find/modify source code
 - **Context**: Relevant content from `state.md`
 - **Coordination instructions** (for parallel/async steps):
   ```
-  When done: bash $WORKFLOW_HOME/scripts/db.sh send <planspace>/run.db orchestrator "done:<step>:<summary>"
-  On failure: bash $WORKFLOW_HOME/scripts/db.sh send <planspace>/run.db orchestrator "fail:<step>:<error>"
+  When done: bash $WORKFLOW_HOME/scripts/db.sh send $PLANSPACE/run.db orchestrator "done:<step>:<summary>"
+  On failure: bash $WORKFLOW_HOME/scripts/db.sh send $PLANSPACE/run.db orchestrator "fail:<step>:<error>"
   ```
 - **Output contract**: What the agent should return
 
@@ -87,29 +95,29 @@ Write to `<planspace>/artifacts/step-N-prompt.md`. Include:
 
 For sequential steps:
 ```bash
-uv run agents --model <model> --file <planspace>/artifacts/step-N-prompt.md \
-  > <planspace>/artifacts/step-N-output.md 2>&1
+uv run agents --model <model> --file $PLANSPACE/artifacts/step-N-prompt.md \
+  > $PLANSPACE/artifacts/step-N-output.md 2>&1
 ```
 
 For parallel steps (e.g., per-block implementation):
 ```bash
 # Start recv FIRST as a background task — always be listening
-bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator 600
+bash "$WORKFLOW_HOME/scripts/db.sh" recv $PLANSPACE/run.db orchestrator 600
 # ^^^ run_in_background: true
 
 # Then dispatch agents (fire-and-forget)
-(uv run agents --model <model> --file <planspace>/artifacts/step-N-block-A-prompt.md && \
-  bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-A") &
-(uv run agents --model <model> --file <planspace>/artifacts/step-N-block-B-prompt.md && \
-  bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-B") &
+(uv run agents --model <model> --file $PLANSPACE/artifacts/step-N-block-A-prompt.md && \
+  bash "$WORKFLOW_HOME/scripts/db.sh" send $PLANSPACE/run.db orchestrator "done:block-A") &
+(uv run agents --model <model> --file $PLANSPACE/artifacts/step-N-block-B-prompt.md && \
+  bash "$WORKFLOW_HOME/scripts/db.sh" send $PLANSPACE/run.db orchestrator "done:block-B") &
 
 # When recv completes, process result, then start another recv
 # Repeat until all agents have reported
 ```
 
 ### 5. Handle Result
-- **Success**: `bash "$WORKFLOW_HOME/scripts/workflow.sh" done <planspace>`
-- **Failure**: `bash "$WORKFLOW_HOME/scripts/workflow.sh" fail <planspace>`, then dispatch exception handler
+- **Success**: `bash "$WORKFLOW_HOME/scripts/workflow.sh" done $PLANSPACE`
+- **Failure**: `bash "$WORKFLOW_HOME/scripts/workflow.sh" fail $PLANSPACE`, then dispatch exception handler
 
 ### 6. Log and Update
 - Append step result to `log.md` (timestamp, step name, model, outcome)
@@ -122,12 +130,12 @@ Go to step 1.
 
 When a step fails:
 1. Mark it `[fail]` via `workflow.sh fail`
-2. Write exception prompt to `<planspace>/artifacts/exception-N-prompt.md`
+2. Write exception prompt to `$PLANSPACE/artifacts/exception-N-prompt.md`
 3. Dispatch via agent file:
    ```bash
    uv run agents --agent-file "$WORKFLOW_HOME/agents/exception-handler.md" \
-     --file <planspace>/artifacts/exception-N-prompt.md \
-     > <planspace>/artifacts/exception-N-output.md 2>&1
+     --file $PLANSPACE/artifacts/exception-N-prompt.md \
+     > $PLANSPACE/artifacts/exception-N-output.md 2>&1
    ```
 4. Read output — if `FIXED:`, continue loop. If `ESCALATE:`, notify user.
 
@@ -139,20 +147,20 @@ When a step agent needs user input:
 3. User responds
 4. Send answer back:
    ```bash
-   bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db <agent-name> --from orchestrator "answer:<response>"
+   bash "$WORKFLOW_HOME/scripts/db.sh" send $PLANSPACE/run.db <agent-name> --from orchestrator "answer:<response>"
    ```
 
 ## Abort
 
-1. List agents: `bash "$WORKFLOW_HOME/scripts/db.sh" agents <planspace>/run.db`
-2. Send abort: `bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db <name> --from orchestrator "abort"`
-3. Cleanup: `bash "$WORKFLOW_HOME/scripts/db.sh" cleanup <planspace>/run.db`
+1. List agents: `bash "$WORKFLOW_HOME/scripts/db.sh" agents $PLANSPACE/run.db`
+2. Send abort: `bash "$WORKFLOW_HOME/scripts/db.sh" send $PLANSPACE/run.db <name> --from orchestrator "abort"`
+3. Cleanup: `bash "$WORKFLOW_HOME/scripts/db.sh" cleanup $PLANSPACE/run.db`
 
 ## Shutdown
 
-1. Clean up: `bash "$WORKFLOW_HOME/scripts/db.sh" cleanup <planspace>/run.db orchestrator`
-2. Unregister: `bash "$WORKFLOW_HOME/scripts/db.sh" unregister <planspace>/run.db orchestrator`
-3. Kill any remaining recv processes: `pkill -f "db.sh recv.*<planspace>"`
+1. Clean up: `bash "$WORKFLOW_HOME/scripts/db.sh" cleanup $PLANSPACE/run.db orchestrator`
+2. Unregister: `bash "$WORKFLOW_HOME/scripts/db.sh" unregister $PLANSPACE/run.db orchestrator`
+3. Kill any remaining recv processes: `pkill -f "db.sh recv.*$PLANSPACE"`
 4. Report summary of completed/failed/remaining steps
 
 ## Rules

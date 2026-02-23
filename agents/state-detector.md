@@ -13,7 +13,13 @@ Given a workspace, report exactly where the workflow stands.
 
 ## Input
 
-The user provides a planspace path at `~/.claude/workspaces/<task-slug>/`.
+Your prompt includes:
+- Planspace path
+
+Set `PLANSPACE` from the planspace path provided in your prompt. Use
+`$PLANSPACE` in all commands below. Do not invent or assume paths.
+
+The planspace lives at `~/.claude/workspaces/<task-slug>/`.
 
 <!-- ==========================================================================
 TODO [sqlite-migration]: Replace 5 remaining file-based operations with DB queries
@@ -31,13 +37,13 @@ Tier 1 (mailbox + events). workflow.sh may be kept as-is initially.
 
 ## Process
 
-1. Run `bash "$WORKFLOW_HOME/scripts/workflow.sh" status <planspace>` for counts
+1. Run `bash "$WORKFLOW_HOME/scripts/workflow.sh" status $PLANSPACE` for counts
 2. Read `schedule.md` — list all steps with their markers
 3. Read `state.md` — current accumulated context and facts
 4. Read `log.md` — recent execution history (last 10 entries)
 5. Check `artifacts/` for any work-in-progress files
-6. Run `bash "$WORKFLOW_HOME/scripts/db.sh" agents <planspace>/run.db` — registered agents and status
-7. For each agent, run `bash "$WORKFLOW_HOME/scripts/db.sh" check <planspace>/run.db <name>` — pending count
+6. Run `bash "$WORKFLOW_HOME/scripts/db.sh" agents $PLANSPACE/run.db` — registered agents and status
+7. For each agent, run `bash "$WORKFLOW_HOME/scripts/db.sh" check $PLANSPACE/run.db <name>` — pending count
 
 ## Output
 

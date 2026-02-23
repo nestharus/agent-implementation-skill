@@ -134,16 +134,31 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
     mode_txt_path = planspace / "artifacts" / "project-mode.txt"
     project_mode = "brownfield"
     mode_constraints: list[str] = []
+    mode_source = "default"
     if mode_json_path.exists():
         try:
             mode_data = json.loads(
                 mode_json_path.read_text(encoding="utf-8"))
             project_mode = mode_data.get("mode", "brownfield")
             mode_constraints = mode_data.get("constraints", [])
+            mode_source = "JSON signal"
         except (json.JSONDecodeError, OSError):
-            pass
+            log("project-mode.json exists but failed to parse — "
+                "trying text fallback")
+            if mode_txt_path.exists():
+                project_mode = mode_txt_path.read_text(
+                    encoding="utf-8").strip()
+                mode_source = "text (JSON malformed)"
+            else:
+                log("No text fallback — pausing for parent (fail-closed)")
+                pause_for_parent(
+                    planspace, parent,
+                    "pause:needs_parent:project-mode-malformed — "
+                    "JSON parse failed and no text fallback exists")
+                mode_source = "default (post-resume)"
     elif mode_txt_path.exists():
         project_mode = mode_txt_path.read_text(encoding="utf-8").strip()
+        mode_source = "text"
     else:
         # Fail closed: no project-mode signal from scan stage.
         log("No project-mode signal found — pausing for parent "
@@ -152,20 +167,26 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             planspace, parent,
             "pause:needs_parent:project-mode-missing — "
             "scan stage did not write project-mode signal")
-        # After parent resumes, re-read (parent may have provided mode)
+        mode_source = "default (post-resume)"
+    # After any pause-for-parent, re-read in case parent provided mode
+    if mode_source.startswith("default (post-resume)"):
         if mode_json_path.exists():
             try:
                 mode_data = json.loads(
                     mode_json_path.read_text(encoding="utf-8"))
                 project_mode = mode_data.get("mode", "brownfield")
                 mode_constraints = mode_data.get("constraints", [])
+                mode_source = "JSON signal (post-resume)"
             except (json.JSONDecodeError, OSError):
-                pass
+                if mode_txt_path.exists():
+                    project_mode = mode_txt_path.read_text(
+                        encoding="utf-8").strip()
+                    mode_source = "text (post-resume)"
         elif mode_txt_path.exists():
             project_mode = mode_txt_path.read_text(
                 encoding="utf-8").strip()
-    log(f"Project mode: {project_mode} "
-        f"(from {'JSON signal' if mode_json_path.exists() else 'text' if mode_txt_path.exists() else 'default'})")
+            mode_source = "text (post-resume)"
+    log(f"Project mode: {project_mode} (from {mode_source})")
 
     # Write formalized mode contract
     mode_contract_path = planspace / "artifacts" / "mode-contract.json"

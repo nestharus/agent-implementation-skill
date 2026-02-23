@@ -15,11 +15,15 @@ and prepare for retry.
 ## Input
 
 Your prompt includes:
-- Planspace path (where schedule, state, log, artifacts live)
-- Codespace path (where source code lives)
+- Planspace path
+- Codespace path
 - Failed step name and number
 - Failure context (error output, agent response)
 - Current state from state.md
+
+Set `PLANSPACE` from the planspace path provided in your prompt. Set
+`CODESPACE` from the codespace path. Use `$PLANSPACE` and `$CODESPACE` in
+all commands below. Do not invent or assume paths.
 
 <!-- ==========================================================================
 TODO [sqlite-migration]: Replace state/log file operations with DB queries
@@ -48,13 +52,13 @@ WHY: Full troubleshooting conversation now persists via db.sh:
 - Apply the minimal fix needed
 - Update `state.md` with what you learned
 - Append fix details to `log.md`
-- Run: `bash "$WORKFLOW_HOME/scripts/workflow.sh" retry <planspace>`
+- Run: `bash "$WORKFLOW_HOME/scripts/workflow.sh" retry $PLANSPACE`
 - Report: `FIXED: <what you did>`
 
 ### 4. Ask for Input (if blocked on information)
 ```bash
-bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator --from exception-handler "ask:exception-handler:<question>"
-bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db exception-handler
+bash "$WORKFLOW_HOME/scripts/db.sh" send $PLANSPACE/run.db orchestrator --from exception-handler "ask:exception-handler:<question>"
+bash "$WORKFLOW_HOME/scripts/db.sh" recv $PLANSPACE/run.db exception-handler
 ```
 
 ### 5. Escalate (if needs human judgment)

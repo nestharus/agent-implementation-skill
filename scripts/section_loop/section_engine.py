@@ -1771,7 +1771,11 @@ WHY — you're capturing WHAT and WHERE at the file level.
                 friction_signal_path.read_text(encoding="utf-8"))
             tool_friction_detected = friction.get("friction", False)
         except (json.JSONDecodeError, OSError):
-            pass
+            # File existence is the signal attempt — treat malformed
+            # JSON as friction detected (fail closed).
+            log(f"Section {section.number}: friction signal file exists "
+                f"but failed to parse — treating as friction detected")
+            tool_friction_detected = True
 
     if tool_friction_detected and tool_registry_path.exists():
         log(f"Section {section.number}: tooling friction detected — "

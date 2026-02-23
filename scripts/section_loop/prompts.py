@@ -481,6 +481,16 @@ def write_integration_alignment_prompt(
     if codemap_path.exists():
         codemap_line = f"\n6. Project codemap (for context): `{codemap_path}`"
 
+    # Codemap corrections — authoritative fixes override codemap.md
+    codemap_corrections_path = (artifacts / "signals"
+                                / "codemap-corrections.json")
+    corrections_line = ""
+    if codemap_corrections_path.exists():
+        corrections_line = (
+            f"\n   - Codemap corrections (authoritative fixes): "
+            f"`{codemap_corrections_path}`"
+        )
+
     heading = (
         f"# Task: Integration Proposal Alignment Check"
         f" — Section {sec}"
@@ -495,12 +505,13 @@ def write_integration_alignment_prompt(
 1. Section alignment excerpt: `{alignment_excerpt}`
 2. Section proposal excerpt: `{proposal_excerpt}`
 3. Section specification: `{section.path}`
-4. Integration proposal to review: `{integration_proposal}`{surface_line}{codemap_line}
+4. Integration proposal to review: `{integration_proposal}`{surface_line}{codemap_line}{corrections_line}
 
 ## Instructions
 
 Read the alignment excerpt and proposal excerpt first — these define the
-PROBLEM and CONSTRAINTS. Then read the integration proposal.
+PROBLEM and CONSTRAINTS. Then read the integration proposal. If codemap
+corrections exist, treat them as authoritative over codemap.md.
 
 Check SHAPE AND DIRECTION only:
 - Is the integration proposal still solving the RIGHT PROBLEM?
@@ -781,6 +792,16 @@ def write_impl_alignment_prompt(
     if codemap_path.exists():
         codemap_line = f"\n7. Project codemap (for context): `{codemap_path}`"
 
+    # Codemap corrections — authoritative fixes override codemap.md
+    codemap_corrections_path = (artifacts / "signals"
+                                / "codemap-corrections.json")
+    impl_corrections_line = ""
+    if codemap_corrections_path.exists():
+        impl_corrections_line = (
+            f"\n   - Codemap corrections (authoritative fixes): "
+            f"`{codemap_corrections_path}`"
+        )
+
     # Microstrategy reference (hierarchical alignment boundary)
     microstrategy_path = (artifacts / "proposals"
                           / f"section-{section.number}-microstrategy.md")
@@ -825,7 +846,7 @@ def write_impl_alignment_prompt(
 3. Integration proposal: `{integration_proposal}`
 4. Section specification: `{section.path}`
 5. Implemented files (read each one):
-{files_block}{surface_line}{codemap_line}{micro_line}{todo_line}{todo_resolution_line}
+{files_block}{surface_line}{codemap_line}{impl_corrections_line}{micro_line}{todo_line}{todo_resolution_line}
 
 ## Worktree root
 `{codespace}`
@@ -834,7 +855,8 @@ def write_impl_alignment_prompt(
 
 Read the alignment excerpt and proposal excerpt first — these define the
 PROBLEM and CONSTRAINTS. Then read the integration proposal to understand
-WHAT was planned. If a microstrategy exists, it provides the tactical
+WHAT was planned. If codemap corrections exist, treat them as authoritative
+over codemap.md. If a microstrategy exists, it provides the tactical
 per-file breakdown. Finally read the implemented files.
 
 Check SHAPE AND DIRECTION:
