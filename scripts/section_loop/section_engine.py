@@ -451,6 +451,8 @@ def _write_traceability_index(
                      / f"section-{sec}-microstrategy.md")
     todos_extraction = (artifacts / "todos"
                         / f"section-{sec}-todos.md")
+    alignment_surface = (artifacts / "sections"
+                         / f"section-{sec}-alignment-surface.md")
 
     # Collect alignment verdicts from output files using structured JSON
     alignment_verdicts: list[dict] = []
@@ -501,6 +503,10 @@ def _write_traceability_index(
             "path": str(todos_extraction),
             "hash": _file_sha256(todos_extraction),
         } if todos_extraction.exists() else None,
+        "alignment_surface": {
+            "path": str(alignment_surface),
+            "hash": _file_sha256(alignment_surface),
+        } if alignment_surface.exists() else None,
         "modified_files": modified_files,
         "alignment_verdicts": alignment_verdicts,
     }
