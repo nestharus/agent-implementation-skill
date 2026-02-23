@@ -58,9 +58,6 @@ Simple lookup or classification?
 - **Prompt format**: `--file <prompt.md>` (reads from file)
 - **Use for**: Constraint alignment reviews, algorithm refinement, IMPL notes, debug/RCA, planning
 
-### gpt-5.3-codex-spark-xhigh (DEPRECATED)
-- **Status**: Replaced by codex-high2 for code writing. Unreliable on 500+ line files.
-
 ### GLM
 - **Strengths**: Command execution, test running, codebase scanning, relevance summarization
 - **Prompt format**: Inline string `"<instructions>"`
@@ -195,7 +192,6 @@ mechanical classification needs controllability.
 ## Anti-Patterns
 
 - **DO NOT use Opus for mechanical auditing** — Codex is better
-- **DO NOT use codex-spark for complex files** — use codex-high2
 - **DO NOT use codex-high for primary synthesis** — it audits, codex-xhigh synthesizes
 - **DO NOT synthesize proposals yourself** — use codex-xhigh
 - **DO NOT send inline instructions to Codex** — use `--file` with prompt file

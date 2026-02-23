@@ -1,0 +1,96 @@
+# Task: Integration Proposal for Section {section_number}
+
+## Summary
+{summary}
+
+## Files to Read
+1. Section proposal excerpt: `{proposal_excerpt}`
+2. Section alignment excerpt: `{alignment_excerpt}`
+3. Section specification: `{section_path}`
+4. Related source files (read each one):
+{files_block}{codemap_ref}{corrections_ref}{tools_ref}{todos_ref}
+{existing_note}{problems_block}{notes_block}{decisions_block}{mode_block}
+## Instructions
+
+A section is a **problem region / concern**, not a file bundle. Related
+files are a starting hypothesis. You are expected to explore and may
+discover additional relevant files or identify irrelevant ones.
+
+Treat TODO extraction (if listed in "Files to Read" above) as the
+canonical in-scope microstrategy surface. If your proposal conflicts with
+TODOs, reconcile explicitly (update plan or propose TODO updates).
+
+You are writing an INTEGRATION PROPOSAL — a strategic document describing
+HOW to wire the existing proposal into the codebase. The proposal excerpt
+already says WHAT to build. Your job is to figure out how it maps onto the
+real code.
+
+### Phase 1: Explore and Understand
+
+Before writing anything, explore the codebase strategically. You MUST
+understand the existing code before proposing how to integrate.
+
+**Start with the codemap** if available — it captures the project's
+structure, key files, and how parts relate. If codemap corrections exist,
+treat them as authoritative fixes (wrong paths, missing entries,
+misclassified files). Use it to orient yourself before diving into
+individual files.
+
+**Dispatch GLM sub-agents for targeted exploration:**
+```bash
+uv run --frozen agents --model glm --project "{codespace}" "<instructions>"
+```
+
+Use GLM to:
+- Read files related to this section and understand their structure
+- Find callers/callees of functions you need to modify
+- Check what interfaces or contracts currently exist
+- Understand the module organization and import patterns
+- Verify assumptions about how the code works
+
+Do NOT try to understand everything upfront. Explore strategically:
+form a hypothesis, verify it with a targeted read, adjust, repeat.
+
+### Phase 2: Write the Integration Proposal
+
+After exploring, write a high-level integration strategy covering:
+
+1. **Problem mapping** — How does the section proposal map onto what
+   currently exists in the code? What's the gap between current and target?
+2. **Integration points** — Where does the new functionality connect to
+   existing code? Which interfaces, call sites, or data flows are affected?
+3. **Change strategy** — High-level approach: which files change, what kind
+   of changes (new functions, modified control flow, new modules, etc.),
+   and in what order?
+4. **Risks and dependencies** — What could go wrong? What assumptions are
+   we making? What depends on other sections?
+
+This is STRATEGIC — not line-by-line changes. Think about the shape of
+the solution, not the exact code.
+
+Write your integration proposal to: `{integration_proposal}`
+
+### Microstrategy Decision
+
+At the end of your proposal, include this line:
+```
+needs_microstrategy: true
+```
+or
+```
+needs_microstrategy: false
+```
+
+Set it to `true` if the section is complex enough that an implementation
+agent would benefit from a tactical per-file breakdown (many files, complex
+interactions, ordering dependencies). Set `false` for simple sections where
+the integration proposal is sufficient guidance.
+
+**Also write a structured JSON signal** to
+`{artifacts}/signals/proposal-{section_number}-microstrategy.json`:
+```json
+{{"needs_microstrategy": true, "reason": "brief justification"}}
+```
+This is the primary channel the script reads — the inline text is a fallback.
+{signal_block}
+{mail_block}

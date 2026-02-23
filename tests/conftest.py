@@ -83,8 +83,11 @@ def mock_dispatch(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     """
     mock = MagicMock(return_value="")
     monkeypatch.setattr("section_loop.dispatch.dispatch_agent", mock)
-    monkeypatch.setattr("section_loop.section_engine.dispatch_agent", mock)
-    monkeypatch.setattr("section_loop.coordination.dispatch_agent", mock)
+    monkeypatch.setattr("section_loop.section_engine.runner.dispatch_agent", mock)
+    monkeypatch.setattr("section_loop.section_engine.reexplore.dispatch_agent", mock)
+    monkeypatch.setattr("section_loop.section_engine.todos.dispatch_agent", mock)
+    monkeypatch.setattr("section_loop.coordination.execution.dispatch_agent", mock)
+    monkeypatch.setattr("section_loop.coordination.runner.dispatch_agent", mock)
     monkeypatch.setattr("section_loop.alignment.dispatch_agent", mock)
     monkeypatch.setattr("section_loop.main.dispatch_agent", mock)
     return mock

@@ -1,6 +1,6 @@
 """Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C).
 
-P2: No brute-force scan patterns in scan.sh.
+P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
 P8: Bridge dispatch only fires on agent directive.
 P9: Agent frontmatter models are in the documented policy set.
@@ -16,8 +16,16 @@ from pathlib import Path
 
 # Resolve project root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SCAN_SH = PROJECT_ROOT / "scripts" / "scan.sh"
+SCAN_PKG = PROJECT_ROOT / "scripts" / "scan"
 AGENTS_DIR = PROJECT_ROOT / "agents"
+
+
+def _read_scan_sources() -> str:
+    """Read all Python source files in the scan package into one string."""
+    parts: list[str] = []
+    for py_file in sorted(SCAN_PKG.rglob("*.py")):
+        parts.append(py_file.read_text())
+    return "\n".join(parts)
 
 # Documented model policy set (from models.md)
 ALLOWED_MODELS = {
@@ -31,26 +39,31 @@ ALLOWED_MODELS = {
 
 
 class TestNoBruteForceScanning:
-    """P2: scan.sh must not contain brute-force scan-all patterns."""
+    """P2: scan package must not contain brute-force scan-all patterns."""
 
     def test_no_scan_all_files_pattern(self) -> None:
-        content = SCAN_SH.read_text()
+        content = _read_scan_sources()
         # "scan all files" or "scan every file" in comments/strings
         assert "scan all files" not in content.lower()
         assert "scan every file" not in content.lower()
 
-    def test_no_find_full_codespace_enumeration(self) -> None:
-        """find commands that enumerate full codespace for scanning are
-        forbidden.  find for specific artifact dirs (logs, signals) is OK."""
-        content = SCAN_SH.read_text()
-        # Pattern: find $CODESPACE or find "$CODESPACE" -name "*.py"
-        # (scanning entire codespace for source files)
-        matches = re.findall(
-            r'find\s+["\']?\$\{?CODESPACE\}?["\']?\s+-name\s+["\']?\*\.',
+    def test_no_glob_full_codespace_enumeration(self) -> None:
+        """Glob or walk patterns that enumerate full codespace for
+        scanning are forbidden.  Artifact-dir globs are OK."""
+        content = _read_scan_sources()
+        # os.walk or Path.rglob("**/*.py") on codespace would be
+        # brute-force source enumeration.
+        assert "os.walk" not in content, (
+            "os.walk detected in scan package — brute-force traversal"
+        )
+        # glob("**/*.py") style patterns that would enumerate all source
+        # files in the codespace
+        brute_glob = re.findall(
+            r'glob\(\s*["\']?\*\*[/\\]\*\.\w+["\']?\s*\)',
             content,
         )
-        assert matches == [], (
-            f"Brute-force find on CODESPACE detected: {matches}"
+        assert brute_glob == [], (
+            f"Brute-force recursive glob detected: {brute_glob}"
         )
 
 

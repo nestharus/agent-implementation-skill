@@ -1,0 +1,357 @@
+"""Section exploration + validation + patching.
+
+Translates ``run_section_exploration()`` and helpers from scan.sh.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import sys
+from pathlib import Path
+
+from .dispatch import dispatch_agent
+
+_TEMPLATES = Path(__file__).resolve().parent / "templates"
+
+
+def _load_template(name: str) -> str:
+    return (_TEMPLATES / name).read_text()
+
+
+def list_section_files(sections_dir: Path) -> list[Path]:
+    """Return sorted list of ``section-N.md`` files."""
+    files = [
+        f
+        for f in sections_dir.iterdir()
+        if f.is_file()
+        and re.match(r"section-\d+\.md$", f.name)
+    ]
+    return sorted(files)
+
+
+def apply_related_files_update(
+    section_file: Path, signal_file: Path,
+) -> bool:
+    """Apply additions/removals from a related-files update signal.
+
+    Returns ``True`` if the update was applied, ``False`` otherwise.
+    """
+    if not signal_file.exists():
+        return False
+
+    try:
+        signal = json.loads(signal_file.read_text())
+    except (json.JSONDecodeError, OSError):
+        return False
+
+    if signal.get("status") != "stale":
+        return False
+
+    section = section_file.read_text()
+    removals = signal.get("removals", [])
+    additions = signal.get("additions", [])
+
+    if not removals and not additions:
+        return False
+
+    # Process removals: remove ### <path> blocks from the section
+    for rm_path in removals:
+        marker = f"### {rm_path}"
+        idx = section.find(marker)
+        if idx == -1:
+            continue
+        rest = section[idx + len(marker) :]
+        match = re.search(r"\n(?=###\s|##\s[^#])", rest)
+        if match:
+            end_pos = idx + len(marker) + match.start()
+        else:
+            end_pos = len(section)
+        before = section[:idx].rstrip("\n")
+        after = section[end_pos:]
+        section = before + after
+
+    # Process additions: append under ## Related Files
+    for add_path in additions:
+        marker = f"### {add_path}"
+        if marker in section:
+            continue
+        rf_idx = section.find("## Related Files")
+        if rf_idx == -1:
+            continue
+        rf_rest = section[rf_idx + len("## Related Files") :]
+        rf_match = re.search(r"\n(?=## [^#])", rf_rest)
+        if rf_match:
+            insert_pos = rf_idx + len("## Related Files") + rf_match.start()
+        else:
+            insert_pos = len(section)
+        entry = (
+            f"\n\n### {add_path}\n"
+            "Added by validation — confirm relevance during deep scan."
+        )
+        section = section[:insert_pos] + entry + section[insert_pos:]
+
+    section_file.write_text(section)
+    n_rm = len(removals)
+    n_add = len(additions)
+    print(f"applied: {n_rm} removals, {n_add} additions")
+    return True
+
+
+def run_section_exploration(
+    *,
+    sections_dir: Path,
+    codemap_path: Path,
+    codespace: Path,
+    artifacts_dir: Path,
+    scan_log_dir: Path,
+) -> None:
+    """Dispatch agents per section to identify related files."""
+    section_files = list_section_files(sections_dir)
+    corrections_file = artifacts_dir / "signals" / "codemap-corrections.json"
+
+    for section_file in section_files:
+        section_name = section_file.stem  # e.g. "section-01"
+
+        # If section already has Related Files, run validation pass
+        section_text = section_file.read_text()
+        if "## Related Files" in section_text:
+            _validate_existing_related_files(
+                section_file=section_file,
+                section_name=section_name,
+                codemap_path=codemap_path,
+                codespace=codespace,
+                artifacts_dir=artifacts_dir,
+                scan_log_dir=scan_log_dir,
+                corrections_file=corrections_file,
+            )
+            continue
+
+        # Fresh exploration
+        _explore_section(
+            section_file=section_file,
+            section_name=section_name,
+            codemap_path=codemap_path,
+            codespace=codespace,
+            artifacts_dir=artifacts_dir,
+            scan_log_dir=scan_log_dir,
+            corrections_file=corrections_file,
+        )
+
+
+# ------------------------------------------------------------------
+# Validation path (section already has Related Files)
+# ------------------------------------------------------------------
+
+
+def _sha256_file(path: Path) -> str:
+    """Return hex sha256 of file contents, or empty string on error."""
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def _validate_existing_related_files(
+    *,
+    section_file: Path,
+    section_name: str,
+    codemap_path: Path,
+    codespace: Path,
+    artifacts_dir: Path,
+    scan_log_dir: Path,
+    corrections_file: Path,
+) -> None:
+    """Check if codemap OR section changed; if so, dispatch validation."""
+    section_log = scan_log_dir / section_name
+    section_log.mkdir(parents=True, exist_ok=True)
+    codemap_hash_file = section_log / "codemap-hash.txt"
+
+    # Build combined hash
+    codemap_hash = _sha256_file(codemap_path) if codemap_path.is_file() else ""
+    corrections_hash = (
+        _sha256_file(corrections_file) if corrections_file.is_file() else ""
+    )
+    section_hash = _sha256_file(section_file)
+    combined = f"{codemap_hash}:{corrections_hash}:{section_hash}"
+    combined_hash = hashlib.sha256(combined.encode()).hexdigest()
+
+    prev_hash = ""
+    if codemap_hash_file.is_file():
+        prev_hash = codemap_hash_file.read_text().strip()
+
+    if combined_hash == prev_hash and prev_hash:
+        print(
+            f"[EXPLORE] {section_name}: Related Files exist, "
+            "codemap+section unchanged — skipping",
+        )
+        codemap_hash_file.write_text(combined_hash)
+        return
+
+    # Dispatch validation
+    print(
+        f"[EXPLORE] {section_name}: validating Related Files "
+        "against updated codemap/section",
+    )
+
+    validate_prompt = section_log / "validate-prompt.md"
+    validate_output = section_log / "validate-output.md"
+    update_signal = (
+        artifacts_dir / "signals" / f"{section_name}-related-files-update.json"
+    )
+
+    corrections_ref = ""
+    if corrections_file.is_file():
+        corrections_ref = (
+            f"3. Codemap corrections (authoritative fixes): "
+            f"`{corrections_file}`"
+        )
+
+    prompt = _load_template("validate_related_files.md").format(
+        section_file=section_file,
+        codemap_path=codemap_path,
+        corrections_ref=corrections_ref,
+        update_signal=update_signal,
+    )
+    validate_prompt.write_text(prompt)
+
+    result = dispatch_agent(
+        model="claude-opus",
+        project=codespace,
+        prompt_file=validate_prompt,
+        stdout_file=validate_output,
+    )
+
+    if result.returncode == 0:
+        print(f"[EXPLORE] {section_name}: validation complete")
+
+        # Apply validation results if stale (at most once per run)
+        list_updated_marker = section_log / "list_updated"
+        if not list_updated_marker.is_file():
+            signal_file = (
+                artifacts_dir
+                / "signals"
+                / f"{section_name}-related-files-update.json"
+            )
+            if signal_file.is_file():
+                try:
+                    data = json.loads(signal_file.read_text())
+                    status = data.get("status", "")
+                except (json.JSONDecodeError, OSError):
+                    status = ""
+
+                if status == "stale":
+                    print(
+                        f"[EXPLORE] {section_name}: "
+                        "applying related-files updates",
+                    )
+                    if apply_related_files_update(section_file, signal_file):
+                        list_updated_marker.touch()
+                        print(
+                            f"[EXPLORE] {section_name}: list updated "
+                            "— will not re-validate this run",
+                        )
+                    else:
+                        print(
+                            f"[EXPLORE] {section_name}: auto-apply "
+                            "failed — keeping existing list",
+                        )
+        else:
+            print(
+                f"[EXPLORE] {section_name}: already updated this run "
+                "— skipping re-validation",
+            )
+    else:
+        print(
+            f"[EXPLORE] {section_name}: validation failed "
+            "— keeping existing list",
+        )
+
+    codemap_hash_file.write_text(combined_hash)
+
+
+# ------------------------------------------------------------------
+# Fresh exploration path
+# ------------------------------------------------------------------
+
+
+def _explore_section(
+    *,
+    section_file: Path,
+    section_name: str,
+    codemap_path: Path,
+    codespace: Path,
+    artifacts_dir: Path,
+    scan_log_dir: Path,
+    corrections_file: Path,
+) -> None:
+    """Dispatch agent to identify related files for a new section."""
+    section_log = scan_log_dir / section_name
+    section_log.mkdir(parents=True, exist_ok=True)
+    prompt_file = section_log / "explore-prompt.md"
+    response_file = section_log / "explore-response.md"
+    stderr_file = section_log / "explore.stderr.log"
+
+    corrections_signal = (
+        artifacts_dir / "signals" / "codemap-corrections.json"
+    )
+
+    prompt = _load_template("explore_section.md").format(
+        codemap_path=codemap_path,
+        section_file=section_file,
+        corrections_signal=corrections_signal,
+    )
+    prompt_file.write_text(prompt)
+
+    result = dispatch_agent(
+        model="claude-opus",
+        project=codespace,
+        prompt_file=prompt_file,
+        stdout_file=response_file,
+        stderr_file=stderr_file,
+    )
+
+    if result.returncode != 0:
+        _log_phase_failure(
+            scan_log_dir,
+            "quick-explore",
+            section_name,
+            f"exploration agent failed (see {stderr_file})",
+        )
+        return
+
+    # Append related files to section file
+    if response_file.is_file():
+        response_text = response_file.read_text()
+        if "## Related Files" in response_text:
+            with section_file.open("a") as f:
+                f.write("\n")
+                f.write(response_text)
+            print(f"[EXPLORE] {section_name} — related files identified")
+        else:
+            _log_phase_failure(
+                scan_log_dir,
+                "quick-explore",
+                section_name,
+                "agent output missing Related Files block",
+            )
+
+
+def _log_phase_failure(
+    scan_log_dir: Path,
+    phase: str,
+    context: str,
+    message: str,
+) -> None:
+    from datetime import datetime, timezone
+
+    failure_log = scan_log_dir / "failures.log"
+    ts = datetime.now(tz=timezone.utc).isoformat()
+    line = f"{ts} phase={phase} context={context} message={message}\n"
+    with failure_log.open("a") as f:
+        f.write(line)
+    print(
+        f"[FAIL] phase={phase} context={context} message={message}",
+        file=sys.stderr,
+    )
