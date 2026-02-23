@@ -638,6 +638,11 @@ def run_section(
         if last_align.exists():
             align_ref = f"4. Last alignment verdict: `{last_align}`"
 
+        # Write incoming notes to artifact file (paths not contents)
+        triage_notes_path = (triage_dir
+                             / f"triage-{section.number}-incoming-notes.md")
+        triage_notes_path.write_text(incoming_notes, encoding="utf-8")
+
         triage_prompt_path.write_text(f"""# Task: Impact Triage for Section {section.number}
 
 ## Context
@@ -648,12 +653,9 @@ expensive rework.
 
 ## Files to Read
 1. Section specification: `{section.path}`
-2. Incoming notes (below)
+2. Incoming notes: `{triage_notes_path}`
 {proposal_ref}
 {align_ref}
-
-## Incoming Notes
-{incoming_notes[:3000]}
 
 ## Instructions
 Classify the impact of these notes on this section:
@@ -661,10 +663,23 @@ Classify the impact of these notes on this section:
 - `needs_code_change`: true if the notes require implementation changes
 - Both false if the notes are informational or already handled
 
+For every note you read, you MUST include an acknowledgment entry in the
+`acknowledge` array. Each note contains a **Note ID** field — use that ID.
+
 Write a JSON signal to: `{triage_signal_path}`
 ```json
-{{"needs_replan": false, "needs_code_change": false, "reasons": ["notes are informational"]}}
+{{
+  "needs_replan": false,
+  "needs_code_change": false,
+  "acknowledge": [
+    {{"note_id": "<note-id-from-note>", "action": "accepted", "reason": "informational; no action required"}}
+  ],
+  "reasons": ["notes are informational"]
+}}
 ```
+
+Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
+"deferred" (will address later).
 """, encoding="utf-8")
         _log_artifact(planspace, f"prompt:triage-{section.number}")
 
@@ -682,27 +697,70 @@ Write a JSON signal to: `{triage_signal_path}`
                 needs_replan = triage.get("needs_replan", True)
                 needs_code = triage.get("needs_code_change", True)
                 if not needs_replan and not needs_code:
-                    log(f"Section {section.number}: triage says no rework "
-                        f"needed — skipping to alignment check")
-                    # Jump straight to alignment verification
-                    from .alignment import _run_alignment_check_with_retries
-                    verify_result = _run_alignment_check_with_retries(
-                        section, planspace, codespace, parent,
-                        section.number,
-                        output_prefix="triage-align",
-                    )
-                    if verify_result == "ALIGNMENT_CHANGED_PENDING":
-                        return None
-                    if verify_result:
-                        verdict = _parse_alignment_verdict(verify_result)
-                        if (verdict is not None
-                                and verdict.get("aligned") is True
-                                and verdict.get("frame_ok", True) is True):
-                            log(f"Section {section.number}: triage + "
-                                f"alignment confirms no rework needed")
-                            reported = collect_modified_files(
-                                planspace, section, codespace)
-                            return reported if reported else []
+                    # Merge triage acknowledgments into note-ack file
+                    triage_acks = triage.get("acknowledge", [])
+                    ack_path = (artifacts / "signals"
+                                / f"note-ack-{section.number}.json")
+                    existing_acks: dict = {"acknowledged": []}
+                    if ack_path.exists():
+                        try:
+                            existing_acks = json.loads(
+                                ack_path.read_text(encoding="utf-8"))
+                        except (json.JSONDecodeError, OSError):
+                            pass
+                    existing_ids = {
+                        e.get("note_id")
+                        for e in existing_acks.get("acknowledged", [])
+                    }
+                    for ack in triage_acks:
+                        nid = ack.get("note_id")
+                        if nid and nid not in existing_ids:
+                            existing_acks.setdefault(
+                                "acknowledged", []).append(ack)
+                            existing_ids.add(nid)
+                    ack_path.parent.mkdir(parents=True, exist_ok=True)
+                    ack_path.write_text(
+                        json.dumps(existing_acks, indent=2),
+                        encoding="utf-8")
+
+                    # Completeness check: all incoming note IDs must be acked
+                    incoming_note_ids = set(re.findall(
+                        r'\*\*Note ID\*\*:\s*`([^`]+)`',
+                        incoming_notes))
+                    acked_ids = {
+                        a.get("note_id") for a in triage_acks
+                    } | existing_ids
+                    if (incoming_note_ids
+                            and not incoming_note_ids.issubset(acked_ids)):
+                        log(f"Section {section.number}: triage did not "
+                            f"acknowledge all notes — full processing")
+                    else:
+                        log(f"Section {section.number}: triage says no "
+                            f"rework needed — skipping to alignment check")
+                        # Jump straight to alignment verification
+                        from .alignment import (
+                            _run_alignment_check_with_retries,
+                        )
+                        verify_result = (
+                            _run_alignment_check_with_retries(
+                                section, planspace, codespace, parent,
+                                section.number,
+                                output_prefix="triage-align",
+                            ))
+                        if verify_result == "ALIGNMENT_CHANGED_PENDING":
+                            return None
+                        if verify_result:
+                            verdict = _parse_alignment_verdict(
+                                verify_result)
+                            if (verdict is not None
+                                    and verdict.get("aligned") is True
+                                    and verdict.get("frame_ok", True)
+                                    is True):
+                                log(f"Section {section.number}: triage + "
+                                    f"alignment confirms no rework needed")
+                                reported = collect_modified_files(
+                                    planspace, section, codespace)
+                                return reported if reported else []
             except (json.JSONDecodeError, OSError):
                 pass  # Fall through to full processing
 
@@ -889,13 +947,17 @@ Write a JSON signal to: `{triage_signal_path}`
     # -----------------------------------------------------------------
     todos_path = (artifacts / "todos"
                   / f"section-{section.number}-todos.md")
-    if not todos_path.exists() and section.related_files:
+    if section.related_files:
         todos_path.parent.mkdir(parents=True, exist_ok=True)
         todo_entries = _extract_todos_from_files(codespace, section.related_files)
         if todo_entries:
             todos_path.write_text(todo_entries, encoding="utf-8")
             log(f"Section {section.number}: extracted TODOs from "
                 f"related files")
+        elif todos_path.exists():
+            todos_path.unlink()
+            log(f"Section {section.number}: removed stale TODO extraction "
+                f"(no TODOs remaining)")
             _record_traceability(
                 planspace, section.number,
                 f"section-{section.number}-todos.md",

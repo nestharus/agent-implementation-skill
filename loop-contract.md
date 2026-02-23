@@ -10,7 +10,7 @@ A section is re-evaluated when ANY of these inputs change:
 - Alignment excerpt (`artifacts/sections/section-NN-alignment-excerpt.md`)
 - Integration proposal (`artifacts/proposals/section-NN-integration-proposal.md`)
 - TODO extraction (`artifacts/todos/section-NN-todos.md`)
-- Microstrategy files (`artifacts/microstrategy-NN*.md`)
+- Microstrategy artifact (`artifacts/proposals/section-NN-microstrategy.md`)
 - Decisions (`artifacts/decisions/section-NN.md`)
 - Consequence notes targeting this section (`artifacts/notes/from-*-to-NN.md`)
 - Tool registry (`artifacts/tool-registry.json`)

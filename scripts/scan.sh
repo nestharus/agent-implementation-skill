@@ -1050,16 +1050,17 @@ print(f'[SCOPE] section-$sec_num: {len(items)} out-of-scope items routed to scop
 " <<< "$all_oos"
   done <<< "$section_files"
 
-  # P10: Feedback loop — apply missing files from deep scan
+  # P10+P3: Feedback loop — apply missing files and prune irrelevant files
   if [ "$has_feedback" -ne 0 ]; then
-    echo "--- Deep Scan: applying feedback (missing files) ---"
+    echo "--- Deep Scan: applying feedback (missing + irrelevant files) ---"
     while IFS= read -r section_file; do
       local sec_name
       sec_name=$(basename "$section_file" .md)
       local sec_log_dir="$SCAN_LOG_DIR/$sec_name"
 
-      # Collect all missing_files from this section's feedback
+      # Collect missing_files and irrelevant files from this section's feedback
       local all_missing=""
+      local all_irrelevant=""
       for fb_file in "$sec_log_dir"/deep-*-feedback.json; do
         [ -f "$fb_file" ] || continue
         local new_missing
@@ -1074,31 +1075,95 @@ except: pass
         if [ -n "$new_missing" ]; then
           all_missing="${all_missing}${new_missing}"$'\n'
         fi
+
+        # Collect irrelevant files (relevant=false in feedback)
+        local is_relevant
+        is_relevant=$(python3 -c "
+import json
+try:
+    d = json.load(open('$fb_file'))
+    print('true' if d.get('relevant', True) else 'false')
+except: print('true')
+" 2>/dev/null || echo "true")
+        if [ "$is_relevant" = "false" ]; then
+          local irr_path
+          irr_path=$(python3 -c "
+import json
+try:
+    d = json.load(open('$fb_file'))
+    p = d.get('source_file', '')
+    if p: print(p)
+except: pass
+" 2>/dev/null || true)
+          if [ -z "$irr_path" ]; then
+            irr_path="${fb_file##*/deep-}"
+            irr_path="${irr_path%%-feedback.json}"
+          fi
+          if [ -n "$irr_path" ]; then
+            all_irrelevant="${all_irrelevant}${irr_path}"$'\n'
+          fi
+        fi
       done
 
-      if [ -z "$all_missing" ]; then
-        continue
-      fi
-
-      # Check if files are already in the section's Related Files
+      # Filter missing files to those not already in the section
       local truly_missing=""
-      while IFS= read -r mf; do
-        [ -z "$mf" ] && continue
-        if ! grep -qF "### $mf" "$section_file" 2>/dev/null; then
-          truly_missing="${truly_missing}${mf}"$'\n'
-        fi
-      done <<< "$all_missing"
+      if [ -n "$all_missing" ]; then
+        while IFS= read -r mf; do
+          [ -z "$mf" ] && continue
+          if ! grep -qF "### $mf" "$section_file" 2>/dev/null; then
+            truly_missing="${truly_missing}${mf}"$'\n'
+          fi
+        done <<< "$all_missing"
+      fi
 
-      if [ -z "$truly_missing" ]; then
+      # Filter irrelevant files to those actually in the section
+      local truly_irrelevant=""
+      if [ -n "$all_irrelevant" ]; then
+        while IFS= read -r irf; do
+          [ -z "$irf" ] && continue
+          if grep -qF "### $irf" "$section_file" 2>/dev/null; then
+            truly_irrelevant="${truly_irrelevant}${irf}"$'\n'
+          fi
+        done <<< "$all_irrelevant"
+      fi
+
+      if [ -z "$truly_missing" ] && [ -z "$truly_irrelevant" ]; then
         continue
       fi
 
-      echo "[FEEDBACK] $sec_name: adding $(echo "$truly_missing" | grep -c '[^[:space:]]') missing files"
+      local missing_count=0 irrelevant_count=0
+      if [ -n "$truly_missing" ]; then
+        missing_count=$(echo "$truly_missing" | grep -c '[^[:space:]]')
+      fi
+      if [ -n "$truly_irrelevant" ]; then
+        irrelevant_count=$(echo "$truly_irrelevant" | grep -c '[^[:space:]]')
+      fi
+      echo "[FEEDBACK] $sec_name: $missing_count missing, $irrelevant_count irrelevant"
 
       # Dispatch agent to produce add/remove patch
       local updater_prompt="$sec_log_dir/related-files-updater-prompt.md"
       local updater_output="$sec_log_dir/related-files-updater-output.md"
       local updater_signal="$ARTIFACTS_DIR/signals/${sec_name}-related-files-update.json"
+
+      # Build missing files section
+      local missing_section=""
+      if [ -n "$truly_missing" ]; then
+        missing_section="## Missing Files Discovered by Deep Scan
+$(echo "$truly_missing" | sed 's/^/- /')
+"
+      fi
+
+      # Build irrelevant files section
+      local irrelevant_section=""
+      if [ -n "$truly_irrelevant" ]; then
+        irrelevant_section="## Irrelevant Files Identified by Deep Scan
+$(echo "$truly_irrelevant" | sed 's/^/- /')
+
+These files were judged irrelevant to this section's concern by deep scan.
+Only include them in removals if you agree they are unrelated to the
+section's problem frame. Give a short reason for each removal.
+"
+      fi
 
       cat > "$updater_prompt" << UPDATER_PROMPT
 # Task: Update Related Files for $sec_name
@@ -1107,20 +1172,17 @@ except: pass
 1. Section: \`$section_file\`
 2. Codemap: \`$CODEMAP_PATH\`
 
-## Missing Files Discovered by Deep Scan
-$(echo "$truly_missing" | sed 's/^/- /')
-
-## Instructions
-For each missing file above, verify it exists and is relevant to the
-section's problem. Then write an update signal:
+${missing_section}${irrelevant_section}## Instructions
+Review the candidates above against the section's problem and related files.
+Write an update signal:
 
 Write to: \`$updater_signal\`
 \`\`\`json
-{"status": "stale", "additions": ["path/to/add.py"], "removals": [], "reason": "deep scan discovered missing dependencies"}
+{"status": "stale", "additions": ["path/to/add.py"], "removals": ["path/to/remove.py"], "reason": "deep scan feedback: added missing dependencies, removed irrelevant files"}
 \`\`\`
 
-Only include files that are genuinely relevant. Don't add files just
-because they were mentioned — verify relevance to the section's problem.
+Only include additions that are genuinely relevant. Only include removals
+when confident the file is unrelated to the section's concern.
 UPDATER_PROMPT
 
       if uv run --frozen agents --model glm --project "$CODESPACE" --file "$updater_prompt" \
