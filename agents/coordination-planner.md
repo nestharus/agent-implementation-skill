@@ -64,13 +64,11 @@ Keep problems separate when:
 
 ## Recurrence Awareness
 
-Before grouping problems, check for recurrence signals:
-`{planspace}/artifacts/signals/section-*-recurrence.json`
-
-Sections with recurrence signals (attempt >= 2) are higher priority —
-they indicate the per-section loop failed to converge. Group these
-sections' problems together when possible and flag them for escalated
-model usage.
+If the prompt provides **Recurrence Data** (a file path to a recurrence
+JSON), read it and prioritize recurring sections. Sections with recurring
+problems (attempt >= 2) indicate the per-section loop failed to converge.
+Group these sections' problems together when possible and flag them for
+escalated model usage.
 
 ## Output Format Extension
 

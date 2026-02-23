@@ -33,18 +33,22 @@ Format:
   "suggested_escalation_target": "<who should handle this: parent, user, or specific section>"
 }}
 ```
-States: UNDERSPECIFIED, NEED_DECISION, DEPENDENCY
+States: UNDERSPECIFIED, NEED_DECISION, DEPENDENCY, OUT_OF_SCOPE, NEEDS_PARENT
 
 **Required fields by state:**
 - ALL states: `state`, `detail`, `needs`
 - UNDERSPECIFIED: also requires `why_blocked` — explain what information is missing and why you cannot infer it
 - DEPENDENCY: also requires `why_blocked` — explain which section/artifact is needed and why work cannot proceed without it
 - NEED_DECISION: `why_blocked` is optional but recommended
+- OUT_OF_SCOPE: also requires `why_blocked` — explain what work is out of scope and why it cannot be absorbed into this section. Optionally include `scope_delta` describing what new section should exist.
+- NEEDS_PARENT: also requires `why_blocked` — explain what parent-level decision or reframing is needed and why this section cannot proceed without it
 
 **Backup output line**: Also output EXACTLY ONE of these on its own line:
 UNDERSPECIFIED: <what information is missing and why you can't proceed>
 NEED_DECISION: <what tradeoff or constraint question needs a human answer>
 DEPENDENCY: <which other section must be implemented first and why>
+OUT_OF_SCOPE: <what work is outside this section's scope and what new section should handle it>
+NEEDS_PARENT: <what parent-level decision is required and why this section is blocked>
 
 Only use these if you truly cannot proceed. Do NOT silently invent
 constraints or make assumptions — signal upward and let the parent decide.
@@ -576,11 +580,18 @@ Read decisions: `{decisions_file}`
         micro_ref = (f"\n6. Microstrategy (tactical per-file breakdown): "
                      f"`{microstrategy_path}`")
 
+    todos_path = (artifacts / "todos"
+                  / f"section-{section.number}-todos.md")
+    todos_ref = ""
+    if todos_path.exists():
+        todos_ref = (f"\n8. TODO extraction (in-code microstrategies): "
+                     f"`{todos_path}`")
+
     tools_path = (artifacts / "sections"
                   / f"section-{section.number}-tools-available.md")
     impl_tools_ref = ""
     if tools_path.exists():
-        impl_tools_ref = (f"\n8. Available tools from earlier sections: "
+        impl_tools_ref = (f"\n9. Available tools from earlier sections: "
                           f"`{tools_path}`")
 
     impl_heading = (
@@ -598,7 +609,7 @@ Read decisions: `{decisions_file}`
 3. Section alignment excerpt: `{alignment_excerpt}`
 4. Section specification: `{section.path}`
 5. Related source files:
-{files_block}{micro_ref}{codemap_ref}{impl_tools_ref}
+{files_block}{micro_ref}{codemap_ref}{todos_ref}{impl_tools_ref}
 {problems_block}{decisions_block}
 ## Instructions
 
@@ -649,6 +660,9 @@ yourself directly.
 5. Ensure imports and references are consistent across modified files
 
 ### TODO Handling
+
+If a TODO extraction file is listed in "Files to Read" above, treat it
+as the canonical in-scope TODO surface for this section.
 
 If the section has in-code TODO blocks (microstrategies), you must either:
 - **Implement** the TODO as specified

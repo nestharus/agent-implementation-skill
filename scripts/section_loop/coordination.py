@@ -712,10 +712,16 @@ Reply with a JSON block:
 
 ```json
 {{"decisions": [
-  {{"section": "03", "action": "accept", "reason": "New section needed for auth module", "new_section_scope": "Authentication middleware setup"}},
-  {{"section": "05", "action": "reject", "reason": "Optimization can be deferred to next round"}}
+  {{"section": "03", "action": "accept", "reason": "New section needed for auth module", "new_sections": [{{"title": "Authentication Middleware", "scope": "Authentication middleware setup and integration"}}]}},
+  {{"section": "05", "action": "reject", "reason": "Optimization can be deferred to next round"}},
+  {{"section": "07", "action": "absorb", "reason": "Small addition fits existing scope", "absorb_into_section": "02", "scope_addition": "Include config validation"}}
 ]}}
 ```
+
+**Required fields by action:**
+- ALL: `section`, `action`, `reason`
+- accept: `new_sections` (array of `{{title, scope}}`)
+- absorb: `absorb_into_section`, `scope_addition`
 """, encoding="utf-8")
                 _log_artifact(planspace, "prompt:scope-delta-adjudication")
 
@@ -745,26 +751,57 @@ Reply with a JSON block:
                                 adj_json = candidate
                     if adj_json:
                         adj_data = json.loads(adj_json)
-                        for decision in adj_data.get("decisions", []):
+                        all_decisions = adj_data.get("decisions", [])
+                        for decision in all_decisions:
                             sec = decision.get("section", "")
                             action = decision.get("action", "")
-                            # Mark delta as adjudicated
+                            # Mark delta as adjudicated — preserve the
+                            # ENTIRE decision object (including
+                            # new_sections, absorb_into_section,
+                            # scope_addition, and any extra fields the
+                            # agent provides).
                             delta_path = (scope_deltas_dir
                                           / f"section-{sec}-scope-delta.json")
                             if delta_path.exists():
                                 delta = json.loads(
                                     delta_path.read_text(encoding="utf-8"))
                                 delta["adjudicated"] = True
-                                delta["adjudication"] = {
-                                    "action": action,
-                                    "reason": decision.get("reason", ""),
-                                }
+                                delta["adjudication"] = decision
                                 delta_path.write_text(
                                     json.dumps(delta, indent=2),
                                     encoding="utf-8",
                                 )
                             log(f"  coordinator: scope delta for section "
                                 f"{sec} → {action}")
+
+                        # Write a rollup artifact of all adjudicated
+                        # scope-delta decisions for parent visibility.
+                        decisions_rollup_path = (
+                            coord_dir
+                            / "scope-delta-decisions.json"
+                        )
+                        decisions_rollup_path.write_text(
+                            json.dumps(
+                                {"decisions": all_decisions}, indent=2,
+                            ),
+                            encoding="utf-8",
+                        )
+                        _log_artifact(
+                            planspace,
+                            "coordination:scope-delta-decisions",
+                        )
+
+                        # Notify parent of each adjudicated delta
+                        for decision in all_decisions:
+                            sec = decision.get("section", "")
+                            action = decision.get("action", "")
+                            reason = decision.get(
+                                "reason", "")[:150]
+                            mailbox_send(
+                                planspace, parent,
+                                f"summary:scope-delta:{sec}:"
+                                f"{action}:{reason}",
+                            )
                 except (json.JSONDecodeError, KeyError, TypeError):
                     log("  coordinator: could not parse scope delta "
                         "adjudication — deltas remain pending")

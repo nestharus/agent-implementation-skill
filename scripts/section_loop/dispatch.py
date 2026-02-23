@@ -296,6 +296,10 @@ def read_signal_tuple(signal_path: Path) -> tuple[str | None, str]:
             return "dependency", detail
         if state in ("loop_detected",):
             return "loop_detected", detail
+        if state in ("out_of_scope", "out-of-scope"):
+            return "out_of_scope", detail
+        if state in ("needs_parent",):
+            return "needs_parent", detail
         return None, ""
     except (json.JSONDecodeError, KeyError):
         return None, ""

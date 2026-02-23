@@ -198,12 +198,17 @@ def _update_blocker_rollup(planspace: Path) -> None:
             data = json.loads(sig_path.read_text(encoding="utf-8"))
             state = data.get("state", "").lower()
             if state in ("underspecified", "underspec", "need_decision",
-                         "dependency"):
+                         "dependency", "out_of_scope", "out-of-scope",
+                         "needs_parent"):
                 # Map state to category
                 if state in ("underspecified", "underspec"):
                     category = "missing_info"
                 elif state == "need_decision":
                     category = "decision_required"
+                elif state in ("out_of_scope", "out-of-scope"):
+                    category = "scope_expansion"
+                elif state == "needs_parent":
+                    category = "needs_parent"
                 else:
                     category = "dependency"
                 blockers.append({
@@ -230,6 +235,8 @@ def _update_blocker_rollup(planspace: Path) -> None:
         "missing_info": [],
         "decision_required": [],
         "dependency": [],
+        "scope_expansion": [],
+        "needs_parent": [],
     }
     for b in blockers:
         groups[b["category"]].append(b)
@@ -238,11 +245,14 @@ def _update_blocker_rollup(planspace: Path) -> None:
         "missing_info": "Missing Information (UNDERSPECIFIED)",
         "decision_required": "Decisions Required (NEED_DECISION)",
         "dependency": "Dependencies (DEPENDENCY)",
+        "scope_expansion": "Scope Expansion (OUT_OF_SCOPE)",
+        "needs_parent": "Parent Decision Required (NEEDS_PARENT)",
     }
 
     lines = ["# Blocker Rollup (auto-generated)\n",
              f"**{len(blockers)} sections need input:**\n"]
-    for cat_key in ("missing_info", "decision_required", "dependency"):
+    for cat_key in ("missing_info", "decision_required", "dependency",
+                    "scope_expansion", "needs_parent"):
         cat_blockers = groups[cat_key]
         if not cat_blockers:
             continue

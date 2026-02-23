@@ -17,7 +17,7 @@ DESIGNING something new under constraints (primary synthesis)?
   → gpt-5.3-codex-xhigh
 
 ALIGNMENT CHECKING for coherence or divergence?
-  → gpt-5.3-codex-high / high2
+  → Opus (default for alignment-judge), codex-high as fallback
 
 WRITING detailed algorithms or IMPL notes from direction?
   → gpt-5.3-codex-high / high2
@@ -105,7 +105,7 @@ rather than hurts.
 |-------|------------------------|
 | Opus | High reasoning + high controllability. Best for directing and judging. |
 | codex-xhigh | Highest reasoning, moderate controllability. Needs clear problem framing. |
-| codex-high | Good reasoning, high controllability. Best for structured checklist work. |
+| codex-high | Good reasoning, high controllability. Best for structured constraint evaluation (not feature coverage). |
 | GLM | Low reasoning, highest controllability. Follows instructions precisely. |
 | Haiku | Minimal reasoning, highest controllability. Classification only. |
 

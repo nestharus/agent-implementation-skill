@@ -107,12 +107,19 @@ to X because Y" IS valid.
 ### Invalid Frame Detection
 
 If a prompt, proposal, or alignment document asks for **feature coverage**
-(checking whether specific features are "done" or "implemented"), respond:
+(checking whether specific features are "done" or "implemented"), respond
+with the PROBLEMS verdict:
 
-**INVALID FRAME:** This requests feature-coverage auditing, not alignment.
-Alignment checks directional coherence between adjacent layers — "is it
-solving the right problem?" — not "is it done?" Restate the question as
-an alignment check against the stated problems and constraints.
+**PROBLEMS:**
+- Invalid frame: feature-coverage audit request, not alignment. Alignment
+  checks directional coherence between adjacent layers — "is it solving
+  the right problem?" — not "is it done?" Restate as an alignment check
+  against the stated problems and constraints.
+
+And set the JSON verdict:
+```json
+{"frame_ok": false, "aligned": false, "problems": ["Invalid frame: feature-coverage audit request (not alignment)"]}
+```
 
 ### TODO/Microstrategy Layer Check
 
