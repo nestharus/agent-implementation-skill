@@ -1,6 +1,6 @@
 ---
 description: QA monitor agent. Runs alongside task agent during live QA to detect cycles, compliance violations, strategic issues, and bugs. Reports to qa-report.md and qa-finding events in the run database.
-model: opus
+model: claude-opus
 ---
 
 # QA Monitor

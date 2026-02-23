@@ -72,17 +72,106 @@ log_phase_failure() {
 # Dispatches agents to explore and understand the codebase.
 # Agents reason about what they find; the script only coordinates.
 
+compute_codespace_fingerprint() {
+  # Mechanical fingerprint of codespace: git HEAD + tracked file listing.
+  # Cheap to compute, detects meaningful changes without reading contents.
+  local fingerprint=""
+  if [ -d "$CODESPACE/.git" ] || git -C "$CODESPACE" rev-parse --git-dir >/dev/null 2>&1; then
+    fingerprint="$(git -C "$CODESPACE" rev-parse HEAD 2>/dev/null || echo "no-head")"
+    fingerprint="$fingerprint:$(git -C "$CODESPACE" diff --stat HEAD 2>/dev/null | tail -1)"
+    fingerprint="$fingerprint:$(git -C "$CODESPACE" ls-files 2>/dev/null | wc -l | tr -d ' ')"
+  else
+    # Non-git: hash file paths + sizes
+    fingerprint="$(find "$CODESPACE" -type f -not -path '*/node_modules/*' -not -path '*/.git/*' \
+      -printf '%p %s\n' 2>/dev/null | sort | sha256sum | cut -d' ' -f1)"
+  fi
+  echo "$fingerprint"
+}
+
+CODEMAP_FINGERPRINT_PATH="$ARTIFACTS_DIR/codemap.codespace.fingerprint"
+
 run_codemap_build() {
   if [ -s "$CODEMAP_PATH" ]; then
-    echo "[CODEMAP] Reusing existing artifact: $CODEMAP_PATH"
-    return 0
+    # Codemap exists — check codespace fingerprint for staleness
+    local current_fingerprint
+    current_fingerprint="$(compute_codespace_fingerprint)"
+    if [ -f "$CODEMAP_FINGERPRINT_PATH" ]; then
+      local stored_fingerprint
+      stored_fingerprint="$(cat "$CODEMAP_FINGERPRINT_PATH")"
+      if [ "$current_fingerprint" = "$stored_fingerprint" ]; then
+        echo "[CODEMAP] Fingerprint unchanged — reusing existing artifact: $CODEMAP_PATH"
+        return 0
+      fi
+      # Fingerprint changed — dispatch GLM verifier to decide rebuild
+      echo "[CODEMAP] Codespace fingerprint changed — dispatching verifier"
+      local freshness_prompt="$SCAN_LOG_DIR/codemap-freshness-prompt.md"
+      local freshness_output="$SCAN_LOG_DIR/codemap-freshness-output.md"
+      local freshness_signal="$ARTIFACTS_DIR/signals/codemap-freshness.json"
+      mkdir -p "$ARTIFACTS_DIR/signals"
+      cat > "$freshness_prompt" << FRESHNESS_PROMPT
+# Task: Evaluate Codemap Freshness
+
+The codespace has changed since the codemap was last built.
+
+## Files to Read
+1. Current codemap: \`$CODEMAP_PATH\`
+2. Codespace root: \`$CODESPACE\`
+
+## What Changed
+- Previous fingerprint: $stored_fingerprint
+- Current fingerprint: $current_fingerprint
+
+## Instructions
+
+Quickly scan the codespace structure (list top-level dirs, check key files
+mentioned in the codemap's Routing Table). Determine whether the existing
+codemap is still a valid routing map or needs rebuilding.
+
+Write your decision as a structured JSON signal to \`$freshness_signal\`:
+
+\`\`\`json
+{"rebuild": true|false, "reason": "brief explanation"}
+\`\`\`
+
+- \`rebuild: false\` if the codemap's routing table and subsystem descriptions
+  are still accurate (minor file additions/changes don't invalidate routing)
+- \`rebuild: true\` if major structural changes occurred (new directories,
+  removed subsystems, reorganized code) that make the routing table wrong
+FRESHNESS_PROMPT
+
+      if uv run --frozen agents --model glm --project "$CODESPACE" --file "$freshness_prompt" \
+        > "$freshness_output" 2>&1; then
+        if [ -f "$freshness_signal" ]; then
+          local rebuild
+          rebuild="$(uv run python -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('rebuild','true'))" \
+            "$freshness_signal" 2>/dev/null || echo "true")"
+          if [ "$rebuild" = "False" ] || [ "$rebuild" = "false" ]; then
+            echo "[CODEMAP] Verifier says codemap still valid — reusing"
+            # Update fingerprint to current
+            echo "$current_fingerprint" > "$CODEMAP_FINGERPRINT_PATH"
+            return 0
+          fi
+          echo "[CODEMAP] Verifier says rebuild needed — rebuilding codemap"
+        else
+          echo "[CODEMAP] Verifier did not produce signal — rebuilding to be safe"
+        fi
+      else
+        echo "[CODEMAP] Freshness check failed — rebuilding codemap"
+      fi
+    else
+      # No stored fingerprint — first run with fingerprinting.
+      # Store fingerprint and reuse existing codemap.
+      echo "$current_fingerprint" > "$CODEMAP_FINGERPRINT_PATH"
+      echo "[CODEMAP] Stored initial fingerprint — reusing existing artifact: $CODEMAP_PATH"
+      return 0
+    fi
   fi
 
   mkdir -p "$(dirname "$CODEMAP_PATH")"
   local prompt_file="$SCAN_LOG_DIR/codemap-prompt.md"
   local stderr_file="$SCAN_LOG_DIR/codemap.stderr.log"
 
-  cat > "$prompt_file" << 'PROMPT'
+  cat > "$prompt_file" << PROMPT
 # Task: Explore Codebase and Build Codemap
 
 You are an exploration agent. Your job is to understand this codebase by exploring it — not by following a template or enforcing a fixed structure.
@@ -110,7 +199,7 @@ The format should fit what you discovered. Don't force the codebase into a templ
 
 At the END of your codemap, include a structured routing section:
 
-```
+\`\`\`
 ## Routing Table
 
 ### Subsystems
@@ -128,7 +217,7 @@ At the END of your codemap, include a structured routing section:
 ### Confidence
 - overall: high|medium|low
 - reason: <why-this-confidence-level>
-```
+\`\`\`
 
 This routing table is consumed by downstream agents for file selection.
 Be honest about unknowns — it's better to say "I'm not sure about X"
@@ -152,14 +241,14 @@ After writing the codemap, determine whether this is a **greenfield** or
   no substantive source code yet)
 - **brownfield**: Existing source code that new work must integrate with
 
-Write your classification to: `$ARTIFACTS_DIR/project-mode.txt`
-The file should contain EXACTLY one word: `greenfield` or `brownfield`.
+Write your classification to: \`$ARTIFACTS_DIR/project-mode.txt\`
+The file should contain EXACTLY one word: \`greenfield\` or \`brownfield\`.
 
 **Also write a structured JSON signal** to
-`$ARTIFACTS_DIR/signals/project-mode.json`:
-```json
+\`$ARTIFACTS_DIR/signals/project-mode.json\`:
+\`\`\`json
 {"mode": "greenfield|brownfield", "confidence": "high|medium|low", "reason": "..."}
-```
+\`\`\`
 PROMPT
 
   if ! uv run --frozen agents --model claude-opus --project "$CODESPACE" --file "$prompt_file" \
@@ -205,6 +294,10 @@ VERIFY_PROMPT
   else
     echo "[CODEMAP] Verification failed — codemap used as-is"
   fi
+
+  # Store codespace fingerprint alongside codemap for staleness detection
+  compute_codespace_fingerprint > "$CODEMAP_FINGERPRINT_PATH"
+  echo "[CODEMAP] Stored codespace fingerprint: $CODEMAP_FINGERPRINT_PATH"
 }
 
 apply_related_files_update() {

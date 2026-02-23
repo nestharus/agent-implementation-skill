@@ -94,7 +94,13 @@ def _section_inputs_hash(
     if integration_path.exists():
         hasher.update(integration_path.read_bytes())
 
-    # Microstrategy files (sorted for stability)
+    # Microstrategy: canonical artifact (actual content)
+    microstrategy_path = (artifacts / "proposals"
+                          / f"section-{sec_num}-microstrategy.md")
+    if microstrategy_path.exists():
+        hasher.update(microstrategy_path.read_bytes())
+
+    # Microstrategy prompt/output logs (secondary)
     for ms_path in sorted(artifacts.glob(f"microstrategy-{sec_num}*.md")):
         hasher.update(ms_path.read_bytes())
 

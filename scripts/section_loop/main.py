@@ -571,7 +571,12 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 )
                 continue
 
-            problems = _extract_problems(align_result)
+            global_align_output = (planspace / "artifacts"
+                                   / f"global-align-{sec_num}-output.md")
+            problems = _extract_problems(
+                align_result, output_path=global_align_output,
+                planspace=planspace, parent=parent, codespace=codespace,
+            )
             main_signal_dir = (planspace / "artifacts" / "signals")
             main_signal_dir.mkdir(parents=True, exist_ok=True)
             signal, detail = check_agent_signals(

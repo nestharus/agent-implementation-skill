@@ -94,13 +94,23 @@ def _parse_alignment_verdict(result: str) -> dict | None:
     return None
 
 
-def _extract_problems(result: str) -> str | None:
+def _extract_problems(
+    result: str,
+    output_path: Path | None = None,
+    planspace: Path | None = None,
+    parent: str | None = None,
+    codespace: Path | None = None,
+) -> str | None:
     """Extract problem list from an alignment check result.
 
     Returns the problems text if misaligned, ``None`` if aligned.
-    Prefers the structured JSON verdict (``aligned``, ``problems``)
-    when available; falls back to text-marker parsing.
+    Uses the structured JSON verdict (``aligned``, ``problems``)
+    when available.  When no JSON verdict is found, dispatches a GLM
+    adjudicator to classify the raw output — scripts never interpret
+    meaning from text.
     """
+    import json as _json
+
     # Primary: structured JSON verdict from alignment judge
     verdict = _parse_alignment_verdict(result)
     if verdict is not None:
@@ -113,21 +123,68 @@ def _extract_problems(result: str) -> str | None:
             return problems.strip()
         return "Alignment judge reported misaligned (no details in verdict)"
 
-    # Fallback: text-marker parsing
-    first_line = ""
-    for line in result.split("\n"):
-        stripped = line.strip()
-        if stripped:
-            first_line = stripped
-            break
+    # Fallback: dispatch GLM adjudicator to classify the alignment output.
+    # Scripts must not interpret meaning from text — the adjudicator decides.
+    if output_path is not None and planspace is not None and parent is not None:
+        artifacts = planspace / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        adj_prompt = artifacts / "alignment-adjudicate-prompt.md"
+        adj_output = artifacts / "alignment-adjudicate-output.md"
+        adj_prompt.write_text(f"""# Task: Classify Alignment Check Output
 
-    if first_line == "ALIGNED" and "PROBLEMS:" not in result \
-            and "UNDERSPECIFIED" not in result:
-        return None
-    idx = result.find("PROBLEMS:")
-    if idx != -1:
-        return result[idx + len("PROBLEMS:"):].strip()
-    return result.strip()
+Read the alignment check output and determine whether the section is aligned.
+
+## Alignment Output File
+`{output_path}`
+
+## Instructions
+
+The alignment judge was expected to produce a structured JSON verdict
+but did not.  Read its output and classify the result.
+
+Reply with a JSON block:
+
+```json
+{{
+  "aligned": true|false,
+  "problems": ["list of problems if misaligned, empty if aligned"],
+  "reason": "brief explanation of classification"
+}}
+```
+
+- If the output indicates alignment / no issues → `"aligned": true`
+- If the output identifies problems or misalignment → `"aligned": false`
+  with the problems listed
+- If you cannot determine the state → `"aligned": false` with a single
+  problem: "Unable to determine alignment state from judge output"
+""", encoding="utf-8")
+
+        adj_result = dispatch_agent(
+            "glm", adj_prompt, adj_output,
+            planspace, parent, codespace=codespace,
+        )
+        if adj_result and adj_result != "ALIGNMENT_CHANGED_PENDING":
+            try:
+                json_start = adj_result.find("{")
+                json_end = adj_result.rfind("}")
+                if json_start >= 0 and json_end > json_start:
+                    data = _json.loads(adj_result[json_start:json_end + 1])
+                    if data.get("aligned") is True:
+                        return None
+                    problems = data.get("problems")
+                    if isinstance(problems, list) and problems:
+                        return "\n".join(str(p) for p in problems)
+                    if isinstance(problems, str) and problems.strip():
+                        return problems.strip()
+                    return ("Adjudicator classified as misaligned "
+                            "(no detail)")
+            except (_json.JSONDecodeError, KeyError):
+                pass
+
+    # No structured verdict and no adjudicator available — treat as
+    # misaligned to avoid false convergence.
+    return ("MISSING_JSON_VERDICT: alignment judge did not produce "
+            "structured output and adjudicator was not available")
 
 
 def _run_alignment_check_with_retries(

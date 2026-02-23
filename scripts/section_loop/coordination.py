@@ -1163,7 +1163,12 @@ Reply with a JSON block:
             )
             continue
 
-        align_problems = _extract_problems(align_result)
+        coord_align_output = (planspace / "artifacts"
+                              / f"coord-align-{sec_num}-output.md")
+        align_problems = _extract_problems(
+            align_result, output_path=coord_align_output,
+            planspace=planspace, parent=parent, codespace=codespace,
+        )
         coord_signal_dir = coord_dir / "signals"
         coord_signal_dir.mkdir(parents=True, exist_ok=True)
         signal, detail = check_agent_signals(

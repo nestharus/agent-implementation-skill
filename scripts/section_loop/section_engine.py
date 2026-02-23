@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .alignment import (
     _extract_problems,
+    _parse_alignment_verdict,
     collect_modified_files,
 )
 from .change_detection import diff_files, snapshot_files
@@ -26,7 +27,6 @@ from .cross_section import (
     read_incoming_notes,
 )
 from .dispatch import (
-    adjudicate_agent_output,
     check_agent_signals,
     dispatch_agent,
     read_agent_signal,
@@ -93,12 +93,12 @@ def _extract_todos_from_files(
 
 def _check_needs_microstrategy(
     proposal_path: Path, planspace: Path, section_number: str,
-    parent: str = "",
+    parent: str = "", codespace: Path | None = None,
 ) -> bool:
     """Check if the integration proposal requests a microstrategy.
 
     Reads the structured signal from the proposal's JSON output.
-    Falls back to adjudicator dispatch if no JSON found.
+    Falls back to GLM dispatch to produce the signal if missing.
     """
     # Primary: structured JSON signal
     signal_path = (planspace / "artifacts" / "signals"
@@ -108,18 +108,47 @@ def _check_needs_microstrategy(
             data = json.loads(signal_path.read_text(encoding="utf-8"))
             return data.get("needs_microstrategy", False) is True
         except (json.JSONDecodeError, OSError):
-            pass  # Fall through to adjudicator
+            pass  # Fall through to GLM dispatch
 
-    # Fallback: adjudicator dispatch to classify proposal output
+    # Fallback: dispatch GLM to produce structured microstrategy signal
     if not proposal_path.exists():
         return False
-    signal_type, detail = adjudicate_agent_output(
-        proposal_path, planspace, parent,
+    artifacts = planspace / "artifacts"
+    decider_prompt = artifacts / f"microstrategy-decider-{section_number}-prompt.md"
+    decider_output = artifacts / f"microstrategy-decider-{section_number}-output.md"
+    decider_prompt.write_text(f"""# Task: Microstrategy Decision for Section {section_number}
+
+## Files to Read
+1. Integration proposal: `{proposal_path}`
+
+## Instructions
+Read the integration proposal and determine whether this section needs a
+microstrategy (a tactical per-file breakdown between the proposal and
+implementation).
+
+A microstrategy is needed when:
+- The proposal touches 5+ files
+- The changes involve complex cross-file dependencies
+- The order of changes matters
+
+Write a JSON signal to: `{signal_path}`
+```json
+{{"needs_microstrategy": true, "reason": "..."}}
+```
+""", encoding="utf-8")
+    signal_path.parent.mkdir(parents=True, exist_ok=True)
+    dispatch_agent(
+        "glm", decider_prompt, decider_output,
+        planspace, parent, codespace=codespace,
+        section_number=section_number,
     )
-    # Map adjudicator states: COMPLETED/ALIGNED with detail mentioning
-    # microstrategy → true; otherwise false
-    if signal_type is None and detail:
-        return "microstrategy" in detail.lower()
+    # Re-read the signal file
+    if signal_path.exists():
+        try:
+            data = json.loads(signal_path.read_text(encoding="utf-8"))
+            return data.get("needs_microstrategy", False) is True
+        except (json.JSONDecodeError, OSError):
+            pass
     return False
 
 
@@ -368,10 +397,10 @@ def _write_alignment_surface(
         for note in incoming:
             lines.append(f"- **Incoming note**: `{note}`")
 
-    # Decisions
+    # Decisions (glob matches both section-03.md and section-03-*.md)
     decisions_dir = artifacts / "decisions"
     if decisions_dir.exists():
-        decisions = sorted(decisions_dir.glob(f"section-{sec}-*.md"))
+        decisions = sorted(decisions_dir.glob(f"section-{sec}*.md"))
         for dec in decisions:
             lines.append(f"- **Decision**: `{dec}`")
 
@@ -411,28 +440,32 @@ def _write_traceability_index(
     microstrategy = (artifacts / "proposals"
                      / f"section-{sec}-microstrategy.md")
 
-    # Collect alignment verdicts from output files
+    # Collect alignment verdicts from output files using structured JSON
     alignment_verdicts: list[dict] = []
-    proposal_align_output = (artifacts
-                             / f"intg-align-{sec}-output.md")
-    if proposal_align_output.exists():
-        text = proposal_align_output.read_text(encoding="utf-8")
-        result = "ALIGNED" if "ALIGNED" in text and "PROBLEMS" not in text else "PROBLEMS"
-        alignment_verdicts.append({
-            "stage": "proposal",
-            "result": result,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-    impl_align_output = (artifacts
-                         / f"impl-align-{sec}-output.md")
-    if impl_align_output.exists():
-        text = impl_align_output.read_text(encoding="utf-8")
-        result = "ALIGNED" if "ALIGNED" in text and "PROBLEMS" not in text else "PROBLEMS"
-        alignment_verdicts.append({
-            "stage": "implementation",
-            "result": result,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+    for stage, prefix in (("proposal", "intg-align"),
+                          ("implementation", "impl-align")):
+        output_path = artifacts / f"{prefix}-{sec}-output.md"
+        if not output_path.exists():
+            continue
+        text = output_path.read_text(encoding="utf-8")
+        verdict = _parse_alignment_verdict(text)
+        if verdict is not None:
+            problems = verdict.get("problems", [])
+            problems_count = (len(problems) if isinstance(problems, list)
+                              else (1 if problems else 0))
+            alignment_verdicts.append({
+                "stage": stage,
+                "frame_ok": verdict.get("frame_ok", True),
+                "aligned": verdict.get("aligned", False),
+                "problems_count": problems_count,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        else:
+            alignment_verdicts.append({
+                "stage": stage,
+                "result": "MISSING_JSON",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
 
     index = {
         "section": sec,
@@ -660,12 +693,16 @@ Write a JSON signal to: `{triage_signal_path}`
                     )
                     if verify_result == "ALIGNMENT_CHANGED_PENDING":
                         return None
-                    if verify_result and "ALIGNED" in verify_result:
-                        log(f"Section {section.number}: triage + alignment "
-                            f"confirms no rework needed")
-                        reported = collect_modified_files(
-                            planspace, section, codespace)
-                        return reported if reported else []
+                    if verify_result:
+                        verdict = _parse_alignment_verdict(verify_result)
+                        if (verdict is not None
+                                and verdict.get("aligned") is True
+                                and verdict.get("frame_ok", True) is True):
+                            log(f"Section {section.number}: triage + "
+                                f"alignment confirms no rework needed")
+                            reported = collect_modified_files(
+                                planspace, section, codespace)
+                            return reported if reported else []
             except (json.JSONDecodeError, OSError):
                 pass  # Fall through to full processing
 
@@ -691,7 +728,6 @@ Write a JSON signal to: `{triage_signal_path}`
             relevant_tools = [
                 t for t in all_tools
                 if t.get("scope") == "cross-section"
-                or t.get("reusability") in ("cross-section", "suggested")
                 or t.get("created_by") == sec_key
             ]
             if relevant_tools:
@@ -1078,7 +1114,10 @@ Write a JSON signal to: `{triage_signal_path}`
             continue
 
         # 2c/2d: Check result
-        problems = _extract_problems(align_result)
+        problems = _extract_problems(
+            align_result, output_path=align_output,
+            planspace=planspace, parent=parent, codespace=codespace,
+        )
 
         signal_dir = artifacts / "signals"
         signal_dir.mkdir(parents=True, exist_ok=True)
@@ -1086,8 +1125,7 @@ Write a JSON signal to: `{triage_signal_path}`
             align_result,
             signal_path=(signal_dir
                          / f"proposal-align-{section.number}-signal.json"),
-            output_path=(artifacts
-                         / f"align-proposal-{section.number}-output.md"),
+            output_path=align_output,
             planspace=planspace, parent=parent, codespace=codespace,
         )
         if signal == "underspec":
@@ -1131,7 +1169,8 @@ Write a JSON signal to: `{triage_signal_path}`
                           / f"section-{section.number}-microstrategy.md")
     needs_microstrategy = (
         _check_needs_microstrategy(
-            integration_proposal, planspace, section.number, parent)
+            integration_proposal, planspace, section.number, parent,
+            codespace=codespace)
         and not microstrategy_path.exists()
     )
     if not needs_microstrategy and not microstrategy_path.exists():
@@ -1355,7 +1394,10 @@ WHY — you're capturing WHAT and WHERE at the file level.
             continue
 
         # 3c/3d: Check result
-        problems = _extract_problems(impl_align_result)
+        problems = _extract_problems(
+            impl_align_result, output_path=impl_align_output,
+            planspace=planspace, parent=parent, codespace=codespace,
+        )
 
         signal_dir = artifacts / "signals"
         signal_dir.mkdir(parents=True, exist_ok=True)
