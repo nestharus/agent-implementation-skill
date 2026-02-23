@@ -150,6 +150,44 @@ def _check_and_clear_alignment_changed(planspace: Path) -> bool:
     return False
 
 
+def requeue_changed_sections(
+    completed: set[str], queue: list[str],
+    sections_by_num: dict[str, Any], planspace: Path,
+    codespace: Path, *, current_section: str | None = None,
+) -> list[str]:
+    """Targeted requeue: only requeue completed sections whose inputs changed.
+
+    Compares current input hashes against persisted baselines in
+    ``artifacts/section-inputs-hashes/``. Returns the list of section
+    numbers that were actually requeued. Always re-adds *current_section*
+    to the front of the queue (it was interrupted mid-flight).
+    """
+    hash_dir = planspace / "artifacts" / "section-inputs-hashes"
+    hash_dir.mkdir(parents=True, exist_ok=True)
+    requeued: list[str] = []
+    for done_num in list(completed):
+        cur = _section_inputs_hash(
+            done_num, planspace, codespace, sections_by_num)
+        prev_file = hash_dir / f"{done_num}.hash"
+        prev = (prev_file.read_text(encoding="utf-8").strip()
+                if prev_file.exists() else "")
+        if cur != prev:
+            completed.discard(done_num)
+            if done_num not in queue:
+                queue.append(done_num)
+            requeued.append(done_num)
+            prev_file.write_text(cur, encoding="utf-8")
+    if current_section and current_section not in queue:
+        queue.insert(0, current_section)
+    if requeued:
+        log("Alignment changed — requeuing sections "
+            f"with changed inputs: {requeued}")
+    else:
+        log("Alignment changed but no section inputs "
+            "differ — skipping requeue")
+    return requeued
+
+
 def wait_if_paused(planspace: Path, parent: str) -> None:
     """Block if pipeline is paused. Polls until state returns to running.
 

@@ -130,6 +130,12 @@ Only clean up the mailbox when no more messages are expected.
 
 ## Pipeline Overview
 
+**Core invariant: every layer repeats the same pattern.** Explore → find
+problems → propose solution → align with parent layer. This applies
+recursively from global proposal down to TODO blocks. Microstrategy/TODO
+extraction is not optional convenience — it is the lowest-layer instance
+of the same explore-propose-align pattern.
+
 1. **Section Decomposition** — Recursive decomposition into atomic section files
 2. **Demand-Driven Docstring Cache** — Ensure relevant source files have module docstrings
 3. **File Relevance Scan** — Quick mode dispatches an Opus agent to explore the codespace and build a codemap, then per-section Opus agents identify related files; deep mode dispatches GLM agents to reason about specific file relevance (preserving `## Related Files`)
@@ -146,7 +152,7 @@ Only clean up the mailbox when no more messages are expected.
 
 --- End per-section loop (all sections aligned = done) ---
 
-6. **Verification** — Constraint audit + lint + tests
+6. **Verification** — Constraint alignment check + lint + tests
 7. **Post-Task Verification** — Full suite + commit
 
 Enter at any stage if prior stages are already complete.
@@ -665,6 +671,7 @@ it's repeating work, it sends `LOOP_DETECTED` to its own queue and stops.
 | `fail:aborted` | Global abort (may occur at any time when no specific section context is available) |
 | `complete` | All sections aligned and coordination done |
 | `pause:underspec:<num>:<detail>` | Script paused — needs information |
+| `pause:needs_parent:<num>:<detail>` | Script paused — needs parent decision |
 | `pause:need_decision:<num>:<question>` | Script paused — needs human answer |
 | `pause:dependency:<num>:<needed_section>` | Script paused — needs other section first |
 | `pause:loop_detected:<num>:<detail>` | Script paused — agent entered infinite loop |
@@ -1087,7 +1094,7 @@ external artifacts — no markers placed in source code.
 After the section queue is empty (all sections clean), verify in the
 task worktree:
 
-### 6a: Constraint Audit (Codex-high2)
+### 6a: Constraint Alignment Check (Codex-high2)
 Check against design principles. Fix violations.
 
 ### 6b: Lint Fix
@@ -1231,7 +1238,7 @@ conflicts after the initial pass.
 | 5: Impact Analysis | GLM | Semantic impact analysis for cross-section communication |
 | 5: Global Coordination | Codex (GPT) | Coordinated fixes for grouped cross-section problems |
 | 5: Coordination Alignment | Opus | Per-section re-verification after coordinated fixes |
-| 6a: Constraint Audit | Codex-high2 | Design principle check |
+| 6a: Constraint Alignment Check | Codex-high2 | Design principle check |
 | 6d: Debug/RCA | Codex-high | Fix test failures |
 
 ## Anti-Patterns
@@ -1245,5 +1252,5 @@ conflicts after the initial pass.
 - **DO NOT work around section dependencies** — if section A needs section B, resolve the dependency externally (ensure B is implemented or provide the missing context), then `resume:proceed`. Do not guess or stub the dependency
 - **DO NOT skip alignment checks** — both integration proposal and implementation alignment are mandatory
 - **DO NOT skip tests** — verify before moving to next section
-- **DO NOT skip constraint audit** — verify before committing
+- **DO NOT skip constraint alignment check** — verify before committing
 - **DO NOT reschedule entire sections on shared-file changes** — use cross-section communication (snapshots, impact analysis, consequence notes) and global coordination instead

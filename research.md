@@ -133,7 +133,7 @@ Present to user for approval. Do NOT proceed without approval.
 |------|-------|
 | Direction + intent + alignment doc | Opus (current session) |
 | Deep architectural synthesis | gpt-5.3-codex-xhigh |
-| Constraint auditing | gpt-5.3-codex-high / high2 |
+| Constraint alignment checking | gpt-5.3-codex-high / high2 |
 | Quick fact-checking | Haiku |
 
 ## Anti-Patterns

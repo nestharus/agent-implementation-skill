@@ -290,6 +290,15 @@ incorporate them into your proposal: `{decisions_file}`
     if codemap_path.exists():
         codemap_ref = f"\n5. Codemap (project understanding): `{codemap_path}`"
 
+    codemap_corrections_path = (artifacts / "signals"
+                                / "codemap-corrections.json")
+    corrections_ref = ""
+    if codemap_corrections_path.exists():
+        corrections_ref = (
+            f"\n   - Codemap corrections (authoritative fixes): "
+            f"`{codemap_corrections_path}`"
+        )
+
     tools_path = (artifacts / "sections"
                   / f"section-{section.number}-tools-available.md")
     tools_ref = ""
@@ -348,7 +357,7 @@ integration proposal should cover both:
 2. Section alignment excerpt: `{alignment_excerpt}`
 3. Section specification: `{section.path}`
 4. Related source files (read each one):
-{files_block}{codemap_ref}{tools_ref}{todos_ref}
+{files_block}{codemap_ref}{corrections_ref}{tools_ref}{todos_ref}
 {existing_note}{problems_block}{notes_block}{decisions_block}{mode_block}
 ## Instructions
 
@@ -371,8 +380,10 @@ Before writing anything, explore the codebase strategically. You MUST
 understand the existing code before proposing how to integrate.
 
 **Start with the codemap** if available — it captures the project's
-structure, key files, and how parts relate. Use it to orient yourself
-before diving into individual files.
+structure, key files, and how parts relate. If codemap corrections exist,
+treat them as authoritative fixes (wrong paths, missing entries,
+misclassified files). Use it to orient yourself before diving into
+individual files.
 
 **Dispatch GLM sub-agents for targeted exploration:**
 ```bash
@@ -584,6 +595,15 @@ Read decisions: `{decisions_file}`
     if codemap_path.exists():
         codemap_ref = f"\n7. Codemap (project understanding): `{codemap_path}`"
 
+    codemap_corrections_path = (artifacts / "signals"
+                                / "codemap-corrections.json")
+    impl_corrections_ref = ""
+    if codemap_corrections_path.exists():
+        impl_corrections_ref = (
+            f"\n   - Codemap corrections (authoritative fixes): "
+            f"`{codemap_corrections_path}`"
+        )
+
     microstrategy_path = (artifacts / "proposals"
                           / f"section-{section.number}-microstrategy.md")
     micro_ref = ""
@@ -632,7 +652,7 @@ as `experimental` and note the uncertainty in the description.
 3. Section alignment excerpt: `{alignment_excerpt}`
 4. Section specification: `{section.path}`
 5. Related source files:
-{files_block}{micro_ref}{codemap_ref}{todos_ref}{impl_tools_ref}
+{files_block}{micro_ref}{codemap_ref}{impl_corrections_ref}{todos_ref}{impl_tools_ref}
 {problems_block}{decisions_block}{tooling_block}
 ## Instructions
 
@@ -649,7 +669,8 @@ execute it strategically.
 **Think strategically, not mechanically.** Read the integration proposal
 and understand the SHAPE of the changes. Then tackle them holistically —
 multiple files at once, coordinated changes. Use the codemap if available
-to understand how your changes fit into the broader project structure.
+to understand how your changes fit into the broader project structure. If
+codemap corrections exist, treat them as authoritative fixes.
 
 **Dispatch sub-agents for exploration and targeted work:**
 

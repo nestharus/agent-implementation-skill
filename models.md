@@ -82,7 +82,7 @@ codex-high     → ALGORITHM block + IMPL notes (NO code)
 codex-high2    → Source code from ALGORITHM + IMPL
 (pytest)       → Tests
 codex-high     → Debug/RCA if failures
-codex-high2    → Constraint audit
+codex-high2    → Constraint alignment check
 ```
 
 ### Research Pipeline

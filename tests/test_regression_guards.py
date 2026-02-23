@@ -1,10 +1,13 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C).
 
 P2: No brute-force scan patterns in scan.sh.
 P4: Codemap fingerprint mismatch triggers verifier.
 P8: Bridge dispatch only fires on agent directive.
 P9: Agent frontmatter models are in the documented policy set.
 R20/P3: Pipeline agent files contain no runtime placeholders.
+R21/P4: Greenfield pause label uses needs_parent (not underspec).
+R21/P5: Targeted requeue only requeues changed sections.
+R21/P6C: Operational agent files have no angle-bracket placeholders.
 """
 
 import json
@@ -222,3 +225,145 @@ class TestAgentFileNoRuntimePlaceholders:
                 f"Pipeline agent file {name} referenced in section_loop "
                 f"but not found in {AGENTS_DIR}"
             )
+
+
+# Operational agent files dispatched by scripts (monitor, qa-monitor, etc.)
+OPERATIONAL_AGENT_FILES = {
+    "monitor.md",
+    "qa-monitor.md",
+}
+
+# Angle-bracket placeholders are banned in ALL agent files (pipeline +
+# operational). Round 20 fixed pipeline agents; Round 21 extends to
+# operational agents. Models treat <planspace> as a literal path.
+ANGLE_BRACKET_PLACEHOLDERS = [
+    "<planspace>",
+    "<codespace>",
+    "<task-agent>",
+    "<your-name>",
+    "<task-agent-name>",
+]
+
+
+class TestOperationalAgentNoAngleBrackets:
+    """R21/P6C: Operational agent files must not contain angle-bracket
+    runtime placeholders.
+
+    Round 20 enforced this for pipeline agents. Round 21 extends the
+    guard to operational agents (monitor, qa-monitor) that are dispatched
+    by scripts and receive runtime paths via prompt variables.
+    """
+
+    def test_no_angle_bracket_placeholders(self) -> None:
+        for name in sorted(OPERATIONAL_AGENT_FILES):
+            path = AGENTS_DIR / name
+            assert path.exists(), f"Operational agent file missing: {name}"
+            content = path.read_text()
+            for placeholder in ANGLE_BRACKET_PLACEHOLDERS:
+                assert placeholder not in content, (
+                    f"{name}: contains banned angle-bracket placeholder "
+                    f"'{placeholder}'. Use $VARIABLE instead."
+                )
+
+
+class TestGreenfieldPauseLabel:
+    """R21/P4: Greenfield pause label must use needs_parent, not underspec.
+
+    The structured blocker signal writes state=needs_parent. The mailbox
+    pause message must match (pause:needs_parent:...), not use the old
+    underspec vocabulary.
+    """
+
+    def test_greenfield_blocker_and_pause_consistent(self) -> None:
+        """main.py greenfield path: blocker signal and mailbox message
+        must both use needs_parent."""
+        main_path = PROJECT_ROOT / "scripts" / "section_loop" / "main.py"
+        content = main_path.read_text()
+
+        # Blocker signal uses needs_parent
+        assert '"state": "needs_parent"' in content or \
+               "'state': 'needs_parent'" in content or \
+               '"needs_parent"' in content, \
+            "Greenfield blocker signal must use state=needs_parent"
+
+        # Mailbox pause uses needs_parent (not underspec)
+        assert "pause:needs_parent:" in content, \
+            "Greenfield mailbox pause must use pause:needs_parent:"
+        assert "pause:underspec:" not in content, \
+            "Old pause:underspec: label found — should be pause:needs_parent:"
+
+
+class TestTargetedRequeue:
+    """R21/P5: Targeted requeue only requeues sections whose inputs changed.
+
+    Verifies that requeue_changed_sections compares hashes and only
+    requeues sections with differing inputs.
+    """
+
+    def test_only_changed_section_requeued(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        from section_loop.pipeline_control import requeue_changed_sections
+        from section_loop.types import Section
+
+        sections = {
+            "01": Section(
+                number="01",
+                path=planspace / "artifacts" / "sections" / "section-01.md",
+                related_files=["src/a.py"],
+            ),
+            "02": Section(
+                number="02",
+                path=planspace / "artifacts" / "sections" / "section-02.md",
+                related_files=["src/b.py"],
+            ),
+        }
+
+        # Create section spec files (needed for hash computation)
+        sec_dir = planspace / "artifacts" / "sections"
+        sec_dir.mkdir(parents=True, exist_ok=True)
+        (sec_dir / "section-01.md").write_text("# Section 01")
+        (sec_dir / "section-02.md").write_text("# Section 02")
+
+        # Simulate both sections completed with baseline hashes
+        completed = {"01", "02"}
+        queue: list[str] = []
+
+        # Write baseline hashes (as if sections completed)
+        from section_loop.pipeline_control import _section_inputs_hash
+
+        hash_dir = planspace / "artifacts" / "section-inputs-hashes"
+        hash_dir.mkdir(parents=True, exist_ok=True)
+        for num in ("01", "02"):
+            h = _section_inputs_hash(num, planspace, codespace, sections)
+            (hash_dir / f"{num}.hash").write_text(h)
+
+        # Now change section 01's inputs (add a note targeting it)
+        notes_dir = planspace / "artifacts" / "notes"
+        notes_dir.mkdir(parents=True, exist_ok=True)
+        (notes_dir / "from-02-to-01.md").write_text(
+            "Section 02 changed config.py interface")
+
+        # Requeue — only section 01 should be requeued
+        requeued = requeue_changed_sections(
+            completed, queue, sections, planspace, codespace)
+
+        assert "01" in requeued, "Section 01 inputs changed — must requeue"
+        assert "02" not in requeued, "Section 02 inputs unchanged — skip"
+        assert "01" not in completed, "Requeued section removed from completed"
+        assert "02" in completed, "Unchanged section stays completed"
+        assert "01" in queue, "Requeued section added to queue"
+
+    def test_baseline_hashes_written_on_completion(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        """After section completes, baseline hash must exist."""
+        hash_dir = planspace / "artifacts" / "section-inputs-hashes"
+        hash_dir.mkdir(parents=True, exist_ok=True)
+
+        # main.py writes baseline hash after completed.add(sec_num).
+        # Verify the main.py code path writes to this directory.
+        main_path = PROJECT_ROOT / "scripts" / "section_loop" / "main.py"
+        content = main_path.read_text()
+        assert "section-inputs-hashes" in content, \
+            "main.py must write baseline hashes to section-inputs-hashes/"

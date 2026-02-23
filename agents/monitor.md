@@ -13,6 +13,8 @@ files or fix issues. You detect, pause, and escalate.
 
 `$WORKFLOW_HOME` is the skill directory (containing SKILL.md). Set by the caller in your prompt or environment.
 
+Set `PLANSPACE` from the planspace path provided in your prompt. Use `$PLANSPACE` in all commands below. Do not invent or assume paths.
+
 ## Input
 
 Your prompt includes:
@@ -20,11 +22,15 @@ Your prompt includes:
 - Task agent mailbox target name (for escalation)
 - Your agent name (for mailbox registration)
 
+Set `AGENT_NAME` from the agent name provided in your prompt. Set
+`TASK_AGENT` from the task agent name provided in your prompt. Use these
+variables in all commands below. Do not invent or assume names.
+
 
 ## Setup
 
 ```bash
-bash "$WORKFLOW_HOME/scripts/db.sh" register <planspace>/run.db <your-name>
+bash "$WORKFLOW_HOME/scripts/db.sh" register $PLANSPACE/run.db $AGENT_NAME
 ```
 
 ## Monitor Loop
@@ -40,7 +46,7 @@ event ID). Each row is pipe-separated: `id|ts|kind|tag|body|agent`.
 ```bash
 # Track cursor position (last seen event ID)
 LAST_EVENT_ID=0
-DB="<planspace>/run.db"
+DB="$PLANSPACE/run.db"
 while true; do
     # Fetch new summary events since last cursor
     NEW_EVENTS=$(bash "$WORKFLOW_HOME/scripts/db.sh" tail "$DB" summary --since "$LAST_EVENT_ID")
@@ -81,18 +87,18 @@ done
 
 **Pause the pipeline** (when stuck/cycle detected):
 ```bash
-bash "$WORKFLOW_HOME/scripts/db.sh" log <planspace>/run.db lifecycle pipeline-state "paused" --agent <your-name>
+bash "$WORKFLOW_HOME/scripts/db.sh" log $PLANSPACE/run.db lifecycle pipeline-state "paused" --agent $AGENT_NAME
 ```
 The section-loop will finish its current agent and stop.
 
 **Resume the pipeline** (after task agent says to continue):
 ```bash
-bash "$WORKFLOW_HOME/scripts/db.sh" log <planspace>/run.db lifecycle pipeline-state "running" --agent <your-name>
+bash "$WORKFLOW_HOME/scripts/db.sh" log $PLANSPACE/run.db lifecycle pipeline-state "running" --agent $AGENT_NAME
 ```
 
 **Escalate to task agent**:
 ```bash
-bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db <task-agent> --from <your-name> "problem:<type>:<detail>"
+bash "$WORKFLOW_HOME/scripts/db.sh" send $PLANSPACE/run.db $TASK_AGENT --from $AGENT_NAME "problem:<type>:<detail>"
 ```
 
 Types:

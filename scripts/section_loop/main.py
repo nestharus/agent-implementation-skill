@@ -29,7 +29,9 @@ from .pipeline_control import (
     _section_inputs_hash,
     alignment_changed_pending,
     handle_pending_messages,
+    pause_for_parent,
     poll_control_messages,
+    requeue_changed_sections,
 )
 from .section_engine import _reexplore_section, run_section
 from .types import Section, SectionResult
@@ -125,8 +127,8 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
     # Project mode (greenfield vs brownfield) is determined by the
     # codemap agent during Stage 3 scan.sh. The mode file is written
     # to artifacts/project-mode.txt by the codemap agent — not by
-    # hardcoded script logic. If it doesn't exist yet, default to
-    # brownfield (the safe assumption).
+    # hardcoded script logic. If neither file exists, fail closed and
+    # pause for parent rather than silently assuming brownfield.
     # Read project mode from structured JSON (preferred) or text fallback
     mode_json_path = planspace / "artifacts" / "signals" / "project-mode.json"
     mode_txt_path = planspace / "artifacts" / "project-mode.txt"
@@ -142,6 +144,26 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             pass
     elif mode_txt_path.exists():
         project_mode = mode_txt_path.read_text(encoding="utf-8").strip()
+    else:
+        # Fail closed: no project-mode signal from scan stage.
+        log("No project-mode signal found — pausing for parent "
+            "(fail-closed)")
+        pause_for_parent(
+            planspace, parent,
+            "pause:needs_parent:project-mode-missing — "
+            "scan stage did not write project-mode signal")
+        # After parent resumes, re-read (parent may have provided mode)
+        if mode_json_path.exists():
+            try:
+                mode_data = json.loads(
+                    mode_json_path.read_text(encoding="utf-8"))
+                project_mode = mode_data.get("mode", "brownfield")
+                mode_constraints = mode_data.get("constraints", [])
+            except (json.JSONDecodeError, OSError):
+                pass
+        elif mode_txt_path.exists():
+            project_mode = mode_txt_path.read_text(
+                encoding="utf-8").strip()
     log(f"Project mode: {project_mode} "
         f"(from {'JSON signal' if mode_json_path.exists() else 'text' if mode_txt_path.exists() else 'default'})")
 
@@ -212,30 +234,9 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 # Clear the flag and requeue only sections whose inputs
                 # actually changed (targeted, not brute-force requeue).
                 if _check_and_clear_alignment_changed(planspace):
-                    hash_dir = (planspace / "artifacts"
-                                / "section-inputs-hashes")
-                    hash_dir.mkdir(parents=True, exist_ok=True)
-                    requeued = []
-                    for done_num in list(completed):
-                        cur = _section_inputs_hash(
-                            done_num, planspace, codespace,
-                            sections_by_num)
-                        prev_file = hash_dir / f"{done_num}.hash"
-                        prev = (prev_file.read_text(encoding="utf-8")
-                                .strip() if prev_file.exists() else "")
-                        if cur != prev:
-                            completed.discard(done_num)
-                            if done_num not in queue:
-                                queue.append(done_num)
-                            requeued.append(done_num)
-                            prev_file.write_text(
-                                cur, encoding="utf-8")
-                    if requeued:
-                        log("Alignment changed — requeuing sections "
-                            f"with changed inputs: {requeued}")
-                    else:
-                        log("Alignment changed but no section inputs "
-                            "differ — skipping requeue")
+                    requeue_changed_sections(
+                        completed, queue, sections_by_num,
+                        planspace, codespace)
                     continue
 
             sec_num = queue.pop(0)
@@ -278,12 +279,10 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                     )
                     if reexplore_result == "ALIGNMENT_CHANGED_PENDING":
                         if _check_and_clear_alignment_changed(planspace):
-                            for done_num in list(completed):
-                                completed.discard(done_num)
-                                if done_num not in queue:
-                                    queue.append(done_num)
-                            if sec_num not in queue:
-                                queue.insert(0, sec_num)
+                            requeue_changed_sections(
+                                completed, queue, sections_by_num,
+                                planspace, codespace,
+                                current_section=sec_num)
                         continue
                     # Read section mode from structured JSON signal (not
                     # substring matching). The re-explorer agent writes
@@ -299,11 +298,16 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                     if mode_signal:
                         section_mode = mode_signal["mode"]
                     else:
-                        # Fallback: agent didn't write structured signal.
-                        # Default to brownfield (safe assumption).
-                        section_mode = "brownfield"
+                        # Fail closed: agent didn't write structured
+                        # signal. Pause for parent rather than guessing.
                         log(f"Section {sec_num}: no structured mode signal "
-                            f"found — defaulting to brownfield")
+                            f"found — pausing for parent (fail-closed)")
+                        pause_for_parent(
+                            planspace, parent,
+                            f"pause:needs_parent:{sec_num}:missing mode "
+                            f"signal — re-explorer did not write "
+                            f"section-{sec_num}-mode.json")
+                        section_mode = "brownfield"
                     mode_path = (planspace / "artifacts" / "sections"
                                  / f"section-{section.number}-mode.txt")
                     mode_path.parent.mkdir(parents=True, exist_ok=True)
@@ -362,14 +366,14 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                     )
                     mailbox_send(
                         planspace, parent,
-                        f"pause:underspec:{sec_num}:greenfield section "
+                        f"pause:needs_parent:{sec_num}:greenfield section "
                         f"needs research — no existing code to "
                         f"integrate with")
                     subprocess.run(  # noqa: S603
                         ["bash", str(DB_SH), "log",  # noqa: S607
                          str(planspace / "run.db"),
                          "lifecycle", f"end:section:{sec_num}",
-                         "needs_research (greenfield)",
+                         "needs_parent (greenfield)",
                          "--agent", AGENT_NAME],
                         capture_output=True, text=True,
                     )
@@ -386,15 +390,10 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             # Check if alignment_changed arrived during run_section
             # (via handle_pending_messages or pause_for_parent)
             if _check_and_clear_alignment_changed(planspace):
-                log("Alignment changed during section processing — "
-                    "requeuing all completed sections")
-                for done_num in list(completed):
-                    completed.discard(done_num)
-                    if done_num not in queue:
-                        queue.append(done_num)
-                # Re-add current section to front of queue
-                if sec_num not in queue:
-                    queue.insert(0, sec_num)
+                requeue_changed_sections(
+                    completed, queue, sections_by_num,
+                    planspace, codespace,
+                    current_section=sec_num)
                 continue
 
             if modified_files is None:
@@ -422,6 +421,17 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 aligned=True,
                 modified_files=modified_files,
             )
+
+            # Persist baseline hash for targeted requeue (P5).
+            # Without this, the first alignment-change triggers
+            # requeue-all because prev="" for every section.
+            baseline_hash_dir = (planspace / "artifacts"
+                                 / "section-inputs-hashes")
+            baseline_hash_dir.mkdir(parents=True, exist_ok=True)
+            (baseline_hash_dir / f"{sec_num}.hash").write_text(
+                _section_inputs_hash(
+                    sec_num, planspace, codespace, sections_by_num),
+                encoding="utf-8")
 
             # Save input hash for incremental Phase 2 checks
             p2hd = planspace / "artifacts" / "phase2-inputs-hashes"

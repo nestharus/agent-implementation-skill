@@ -218,7 +218,7 @@ Control and recovery:
 |-------|----------|
 | `claude-opus` | Section setup (excerpt extraction), alignment checks (shape/direction), decomposition, codemap exploration, per-section file identification |
 | `gpt-5.3-codex-high` | Integration proposals, strategic implementation, coordinated fixes, extraction, investigation |
-| `gpt-5.3-codex-high2` | Constraint audit (same capability, different quota) |
+| `gpt-5.3-codex-high2` | Constraint alignment check (same capability, different quota) |
 | `gpt-5.3-codex-xhigh` | Deep architectural synthesis, proposal drafting |
 | `glm` | Test running, verification, quick commands, deep file analysis, semantic impact analysis, sub-agent exploration during integration proposals |
 

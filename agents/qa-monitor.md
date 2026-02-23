@@ -10,12 +10,14 @@ You detect problems across five categories and escalate with graduated severity.
 Unlike the lightweight pipeline monitor, you actively read artifact files,
 compare outputs, and perform deep analysis of agent behavior patterns.
 
-All event-based detection queries the run database (`<planspace>/run.db`).
+All event-based detection queries the run database (`$PLANSPACE/run.db`).
 Artifact content analysis reads files directly — artifacts stay as files.
 
 ## Paths
 
 `$WORKFLOW_HOME` is the skill directory (containing SKILL.md). Set by the caller in your prompt or environment.
+
+Set `PLANSPACE` from the planspace path provided in your prompt. Use `$PLANSPACE` in all commands below. Do not invent or assume paths.
 
 ## Input
 
@@ -24,26 +26,30 @@ Your prompt includes:
 - Task agent mailbox target name (for escalation)
 - Your agent name (for mailbox registration)
 
+Set `AGENT_NAME` from the agent name provided in your prompt. Set
+`TASK_AGENT` from the task agent name provided in your prompt. Use these
+variables in all commands below. Do not invent or assume names.
+
 ## Setup
 
 Register with the coordination database so other agents can reach you and so you
 appear in registry checks:
 
 ```bash
-DB="<planspace>/run.db"
-bash "$WORKFLOW_HOME/scripts/db.sh" register "$DB" <your-name>
+DB="$PLANSPACE/run.db"
+bash "$WORKFLOW_HOME/scripts/db.sh" register "$DB" $AGENT_NAME
 ```
 
 Initialize the QA report file:
 
 ```bash
-mkdir -p <planspace>/artifacts
-cat > <planspace>/artifacts/qa-report.md << 'EOF'
+mkdir -p $PLANSPACE/artifacts
+cat > $PLANSPACE/artifacts/qa-report.md << 'EOF'
 # QA Monitor Report
 
 - **Start time**: $(date -Iseconds)
-- **Planspace**: <planspace>
-- **Monitor agent**: <your-name>
+- **Planspace**: $PLANSPACE
+- **Monitor agent**: $AGENT_NAME
 
 ## Findings
 
@@ -292,29 +298,29 @@ database via `db.sh log` AND writes to `qa-report.md`.
 
 1. **LOG**: Record the finding in the database and append to qa-report.md:
    ```bash
-   bash "$WORKFLOW_HOME/scripts/db.sh" log "$DB" qa-finding "LOG:<rule_id>" "<detail>" --agent <your-name>
+   bash "$WORKFLOW_HOME/scripts/db.sh" log "$DB" qa-finding "LOG:<rule_id>" "<detail>" --agent $AGENT_NAME
    ```
-   Then append the finding to `<planspace>/artifacts/qa-report.md`. No external
+   Then append the finding to `$PLANSPACE/artifacts/qa-report.md`. No external
    notification.
 
 2. **WARN**: Log the finding AND send a warning message to the task agent:
    ```bash
-   bash "$WORKFLOW_HOME/scripts/db.sh" log "$DB" qa-finding "WARN:<rule_id>" "<detail>" --agent <your-name>
-   bash "$WORKFLOW_HOME/scripts/db.sh" send "$DB" <task-agent> --from <your-name> "qa:warning:<category>:<detail>"
+   bash "$WORKFLOW_HOME/scripts/db.sh" log "$DB" qa-finding "WARN:<rule_id>" "<detail>" --agent $AGENT_NAME
+   bash "$WORKFLOW_HOME/scripts/db.sh" send "$DB" $TASK_AGENT --from $AGENT_NAME "qa:warning:<category>:<detail>"
    ```
 
 3. **PAUSE**: Record the finding, pause the pipeline, AND notify the task agent:
    ```bash
-   bash "$WORKFLOW_HOME/scripts/db.sh" log "$DB" qa-finding "PAUSE:<rule_id>" "<detail>" --agent <your-name>
-   bash "$WORKFLOW_HOME/scripts/db.sh" log "$DB" lifecycle pipeline-state "paused" --agent <your-name>
-   bash "$WORKFLOW_HOME/scripts/db.sh" send "$DB" <task-agent> --from <your-name> "qa:paused:<category>:<detail>"
+   bash "$WORKFLOW_HOME/scripts/db.sh" log "$DB" qa-finding "PAUSE:<rule_id>" "<detail>" --agent $AGENT_NAME
+   bash "$WORKFLOW_HOME/scripts/db.sh" log "$DB" lifecycle pipeline-state "paused" --agent $AGENT_NAME
+   bash "$WORKFLOW_HOME/scripts/db.sh" send "$DB" $TASK_AGENT --from $AGENT_NAME "qa:paused:<category>:<detail>"
    ```
 
 4. **ABORT-RECOMMEND**: Log the finding with full evidence AND send an abort
    recommendation. Do NOT abort autonomously:
    ```bash
-   bash "$WORKFLOW_HOME/scripts/db.sh" log "$DB" qa-finding "ABORT:<rule_id>" "<detail>" --agent <your-name>
-   bash "$WORKFLOW_HOME/scripts/db.sh" send "$DB" <task-agent> --from <your-name> "qa:abort-recommended:<category>:<detail>"
+   bash "$WORKFLOW_HOME/scripts/db.sh" log "$DB" qa-finding "ABORT:<rule_id>" "<detail>" --agent $AGENT_NAME
+   bash "$WORKFLOW_HOME/scripts/db.sh" send "$DB" $TASK_AGENT --from $AGENT_NAME "qa:abort-recommended:<category>:<detail>"
    ```
 
 ## Monitor Loop
@@ -328,7 +334,7 @@ Query the run database for new events using cursors (last seen event ID per
 event kind). Each row is pipe-separated: `id|ts|kind|tag|body|agent`.
 
 ```bash
-DB="<planspace>/run.db"
+DB="$PLANSPACE/run.db"
 LAST_EVENT_ID=0
 LAST_SIGNAL_ID=0
 CYCLE_COUNT=0
@@ -368,9 +374,9 @@ while true; do
     # Each escalation logs a qa-finding event AND writes to qa-report.md.
 
     # ── Non-blocking mailbox check ──
-    PENDING=$(bash "$WORKFLOW_HOME/scripts/db.sh" check "$DB" <your-name>)
+    PENDING=$(bash "$WORKFLOW_HOME/scripts/db.sh" check "$DB" $AGENT_NAME)
     if [ "$PENDING" != "0" ]; then
-        MSGS=$(bash "$WORKFLOW_HOME/scripts/db.sh" drain "$DB" <your-name>)
+        MSGS=$(bash "$WORKFLOW_HOME/scripts/db.sh" drain "$DB" $AGENT_NAME)
         # Process control messages (shutdown, pause-override, etc.)
         # If shutdown message received, clean up and exit.
     fi
@@ -397,9 +403,9 @@ done
 5. Execute escalation actions for any triggered rules.
 6. Non-blocking mailbox check for shutdown or control messages:
    ```bash
-   PENDING=$(bash "$WORKFLOW_HOME/scripts/db.sh" check "$DB" <your-name>)
+   PENDING=$(bash "$WORKFLOW_HOME/scripts/db.sh" check "$DB" $AGENT_NAME)
    if [ "$PENDING" != "0" ]; then
-       MSGS=$(bash "$WORKFLOW_HOME/scripts/db.sh" drain "$DB" <your-name>)
+       MSGS=$(bash "$WORKFLOW_HOME/scripts/db.sh" drain "$DB" $AGENT_NAME)
        # Process control messages...
    fi
    ```
@@ -419,9 +425,9 @@ Every 5th iteration of the primary cycle, also run:
    since the last extended cycle (rules B2, B3, B5, B6, C3-C6, D2, D3, E1, E3).
 4. Write a heartbeat entry to qa-report.md and log it to the database:
    ```bash
-   bash "$WORKFLOW_HOME/scripts/db.sh" log "$DB" qa-finding "HEARTBEAT" "events:<count> agents:<count> findings:<count>" --agent <your-name>
+   bash "$WORKFLOW_HOME/scripts/db.sh" log "$DB" qa-finding "HEARTBEAT" "events:<count> agents:<count> findings:<count>" --agent $AGENT_NAME
    ```
-   Also append to `<planspace>/artifacts/qa-report.md`:
+   Also append to `$PLANSPACE/artifacts/qa-report.md`:
    ```
    **[HEARTBEAT]** <timestamp> — Events processed: <count>, Active agents: <count>, Findings: <count>
    ```
@@ -497,7 +503,7 @@ Used by rule D1 for repeated occurrence escalation (3+ of same type → PAUSE).
 
 ## QA Report Output
 
-Write all findings to `<planspace>/artifacts/qa-report.md`. All findings
+Write all findings to `$PLANSPACE/artifacts/qa-report.md`. All findings
 are also logged to the database as `qa-finding` events for queryability.
 
 ### Run info header
@@ -508,8 +514,8 @@ are also logged to the database as `qa-finding` events for queryability.
 - **Start time**: <ISO timestamp>
 - **Planspace**: <path>
 - **Test project**: <name if known>
-- **Monitor agent**: <your-name>
-- **Task agent**: <task-agent-name>
+- **Monitor agent**: $AGENT_NAME
+- **Task agent**: $TASK_AGENT
 ```
 
 ### Chronological findings
