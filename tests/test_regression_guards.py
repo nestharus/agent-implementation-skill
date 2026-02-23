@@ -372,7 +372,107 @@ class TestTargetedRequeue:
             "main.py must write baseline hashes to section-inputs-hashes/"
 
 
+class TestCodemapCorrectionsInHash:
+    """R23/P1: codemap corrections must change section inputs hash.
+
+    When codemap-corrections.json changes, sections whose proposals
+    depend on the codemap must be requeued. This is the mechanical
+    enforcement for connected understanding.
+    """
+
+    def test_corrections_change_inputs_hash(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        from section_loop.pipeline_control import _section_inputs_hash
+        from section_loop.types import Section
+
+        sections = {
+            "01": Section(
+                number="01",
+                path=planspace / "artifacts" / "sections" / "section-01.md",
+                related_files=["src/main.py"],
+            ),
+        }
+
+        # Hash without corrections
+        h1 = _section_inputs_hash("01", planspace, codespace, sections)
+
+        # Hash with corrections
+        corrections = planspace / "artifacts" / "signals" / "codemap-corrections.json"
+        corrections.parent.mkdir(parents=True, exist_ok=True)
+        corrections.write_text('{"fixes": []}')
+        h2 = _section_inputs_hash("01", planspace, codespace, sections)
+        assert h1 != h2, "Corrections presence must change inputs hash"
+
+        # Hash with modified corrections
+        corrections.write_text('{"fixes": [{"path": "src/a.py"}]}')
+        h3 = _section_inputs_hash("01", planspace, codespace, sections)
+        assert h2 != h3, "Corrections content change must change inputs hash"
+
+
+class TestCodemapCorrectionsInPrompts:
+    """R23/P1: prompt writers must include corrections when the file exists.
+
+    All codemap-consuming prompts must reference corrections to maintain
+    connected understanding across the pipeline.
+    """
+
+    def test_coordination_plan_prompt_includes_corrections(
+        self, planspace: Path,
+    ) -> None:
+        from section_loop.coordination import write_coordination_plan_prompt
+
+        corrections = planspace / "artifacts" / "signals" / "codemap-corrections.json"
+        corrections.parent.mkdir(parents=True, exist_ok=True)
+        corrections.write_text('{"fixes": []}')
+        # Also need codemap for the block to appear
+        codemap = planspace / "artifacts" / "codemap.md"
+        codemap.parent.mkdir(parents=True, exist_ok=True)
+        codemap.write_text("# Codemap")
+
+        write_coordination_plan_prompt(problems=[], planspace=planspace)
+        prompt = (planspace / "artifacts" / "coordination"
+                  / "coordination-plan-prompt.md").read_text()
+        assert "codemap-corrections.json" in prompt
+
+    def test_coordinator_fix_prompt_includes_corrections(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        from section_loop.coordination import write_coordinator_fix_prompt
+
+        corrections = planspace / "artifacts" / "signals" / "codemap-corrections.json"
+        corrections.parent.mkdir(parents=True, exist_ok=True)
+        corrections.write_text('{"fixes": []}')
+        codemap = planspace / "artifacts" / "codemap.md"
+        codemap.parent.mkdir(parents=True, exist_ok=True)
+        codemap.write_text("# Codemap")
+
+        # Create minimal section artifacts needed by the prompt writer
+        sec_dir = planspace / "artifacts" / "sections"
+        sec_dir.mkdir(parents=True, exist_ok=True)
+        (sec_dir / "section-01.md").write_text("# Section 01")
+        (sec_dir / "section-01-proposal-excerpt.md").write_text("")
+        (sec_dir / "section-01-alignment-excerpt.md").write_text("")
+
+        group = [{
+            "section": "01",
+            "type": "test",
+            "description": "test problem",
+            "files": ["src/a.py"],
+        }]
+        write_coordinator_fix_prompt(
+            group=group,
+            planspace=planspace,
+            codespace=codespace,
+            group_id=1,
+        )
+        prompt = (planspace / "artifacts" / "coordination"
+                  / "fix-1-prompt.md").read_text()
+        assert "codemap-corrections.json" in prompt
+
+
 LINT_SH = PROJECT_ROOT / "scripts" / "lint-audit-language.sh"
+DOC_DRIFT_LINT_SH = PROJECT_ROOT / "scripts" / "lint-doc-drift.sh"
 
 
 class TestLintAuditLanguage:
@@ -392,4 +492,24 @@ class TestLintAuditLanguage:
         )
         assert result.returncode == 0, (
             f"lint-audit-language.sh failed:\n{result.stdout}\n{result.stderr}"
+        )
+
+
+class TestLintDocDrift:
+    """R23/P2: lint-doc-drift.sh must pass on the current codebase.
+
+    The lint catches superseded behavior claims like "its exploration is
+    skipped" in docs/templates that conflict with the implemented
+    validation-based approach.
+    """
+
+    def test_lint_doc_drift_passes(self) -> None:
+        import subprocess
+        result = subprocess.run(
+            ["bash", str(DOC_DRIFT_LINT_SH)],
+            capture_output=True, text=True,
+            cwd=str(PROJECT_ROOT),
+        )
+        assert result.returncode == 0, (
+            f"lint-doc-drift.sh failed:\n{result.stdout}\n{result.stderr}"
         )

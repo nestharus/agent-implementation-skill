@@ -291,6 +291,14 @@ def _reexplore_section(
     if codemap_path.exists():
         codemap_ref = f"3. Codemap: `{codemap_path}`"
 
+    corrections_path = artifacts / "signals" / "codemap-corrections.json"
+    corrections_ref = ""
+    if corrections_path.exists():
+        corrections_ref = (
+            f"4. Codemap corrections (authoritative fixes): "
+            f"`{corrections_path}`"
+        )
+
     prompt_path.write_text(f"""# Task: Re-Explore Section {section.number}
 
 ## Summary
@@ -300,6 +308,7 @@ def _reexplore_section(
 1. Section specification: `{section.path}`
 2. Codespace root: `{codespace}`
 {codemap_ref}
+{corrections_ref}
 
 ## Context
 This section has NO related files after the initial codemap exploration.
@@ -307,7 +316,8 @@ Your job is to determine why and classify the situation.
 
 ## Instructions
 1. Read the section specification to understand the problem
-2. Read the codemap (if it exists) for project structure context
+2. Read the codemap (if it exists) for project structure context.
+   If codemap corrections exist, treat them as authoritative over codemap.md.
 3. Explore the codespace strategically — search for files that relate
    to this section's problem space
 4. Use GLM sub-agents for quick file reads:

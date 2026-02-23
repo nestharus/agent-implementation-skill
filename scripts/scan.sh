@@ -106,9 +106,10 @@ compute_codespace_fingerprint() {
     fingerprint="$fingerprint:$(git -C "$CODESPACE" diff --stat HEAD 2>/dev/null | tail -1)"
     fingerprint="$fingerprint:$(git -C "$CODESPACE" ls-files 2>/dev/null | wc -l | tr -d ' ')"
   else
-    # Non-git: hash file paths + sizes
-    fingerprint="$(find "$CODESPACE" -type f -not -path '*/node_modules/*' -not -path '*/.git/*' \
-      -printf '%p %s\n' 2>/dev/null | sort | sha256sum | cut -d' ' -f1)"
+    # Non-git: no cheap fingerprint available. Return a sentinel
+    # so callers know to dispatch the verifier for freshness checks
+    # instead of doing a brute-force full-tree traversal.
+    fingerprint="non-git:no-fingerprint"
   fi
   echo "$fingerprint"
 }
@@ -123,12 +124,16 @@ run_codemap_build() {
     if [ -f "$CODEMAP_FINGERPRINT_PATH" ]; then
       local stored_fingerprint
       stored_fingerprint="$(cat "$CODEMAP_FINGERPRINT_PATH")"
-      if [ "$current_fingerprint" = "$stored_fingerprint" ]; then
+      if [ "$current_fingerprint" = "$stored_fingerprint" ] && [ "$current_fingerprint" != "non-git:no-fingerprint" ]; then
         echo "[CODEMAP] Fingerprint unchanged — reusing existing artifact: $CODEMAP_PATH"
         return 0
       fi
-      # Fingerprint changed — dispatch GLM verifier to decide rebuild
-      echo "[CODEMAP] Codespace fingerprint changed — dispatching verifier"
+      # Fingerprint changed (or non-git with no cheap fingerprint) — dispatch GLM verifier
+      if [ "$current_fingerprint" = "non-git:no-fingerprint" ]; then
+        echo "[CODEMAP] Non-git workspace — dispatching verifier for heuristic freshness check"
+      else
+        echo "[CODEMAP] Codespace fingerprint changed — dispatching verifier"
+      fi
       local freshness_prompt="$SCAN_LOG_DIR/codemap-freshness-prompt.md"
       local freshness_output="$SCAN_LOG_DIR/codemap-freshness-output.md"
       local freshness_signal="$ARTIFACTS_DIR/signals/codemap-freshness.json"
@@ -143,8 +148,13 @@ The codespace has changed since the codemap was last built.
 2. Codespace root: \`$CODESPACE\`
 
 ## What Changed
-- Previous fingerprint: $stored_fingerprint
-- Current fingerprint: $current_fingerprint
+$(if [ "$current_fingerprint" = "non-git:no-fingerprint" ]; then
+  echo "Non-git workspace; no reliable cheap fingerprint available."
+  echo "Use heuristic checks (list top-level dirs, sample key files) to assess freshness."
+else
+  echo "- Previous fingerprint: $stored_fingerprint"
+  echo "- Current fingerprint: $current_fingerprint"
+fi)
 
 ## Instructions
 
@@ -185,10 +195,16 @@ FRESHNESS_PROMPT
       fi
     else
       # No stored fingerprint — first run with fingerprinting.
-      # Store fingerprint and reuse existing codemap.
-      echo "$current_fingerprint" > "$CODEMAP_FINGERPRINT_PATH"
-      echo "[CODEMAP] Stored initial fingerprint — reusing existing artifact: $CODEMAP_PATH"
-      return 0
+      # For git-backed repos, store fingerprint and reuse existing codemap.
+      # For non-git, can't trust freshness — dispatch verifier.
+      if [ "$current_fingerprint" = "non-git:no-fingerprint" ]; then
+        echo "[CODEMAP] Non-git workspace, no stored fingerprint — dispatching verifier"
+        # Fall through to rebuild (verifier will be dispatched on next call)
+      else
+        echo "$current_fingerprint" > "$CODEMAP_FINGERPRINT_PATH"
+        echo "[CODEMAP] Stored initial fingerprint — reusing existing artifact: $CODEMAP_PATH"
+        return 0
+      fi
     fi
   fi
 
@@ -415,11 +431,16 @@ run_section_exploration() {
       local combined_hash=""
       local codemap_content=""
       local section_content=""
+      local corrections_content=""
       if [ -f "$CODEMAP_PATH" ]; then
         codemap_content=$(sha256sum "$CODEMAP_PATH" 2>/dev/null | awk '{print $1}')
       fi
+      local corrections_file="$ARTIFACTS_DIR/signals/codemap-corrections.json"
+      if [ -f "$corrections_file" ]; then
+        corrections_content=$(sha256sum "$corrections_file" 2>/dev/null | awk '{print $1}')
+      fi
       section_content=$(sha256sum "$section_file" 2>/dev/null | awk '{print $1}')
-      combined_hash=$(echo "${codemap_content}:${section_content}" | sha256sum | awk '{print $1}')
+      combined_hash=$(echo "${codemap_content}:${corrections_content}:${section_content}" | sha256sum | awk '{print $1}')
 
       local prev_hash=""
       if [ -f "$codemap_hash_file" ]; then
@@ -437,16 +458,22 @@ run_section_exploration() {
 
       local validate_prompt="$SCAN_LOG_DIR/$section_name/validate-prompt.md"
       local validate_output="$SCAN_LOG_DIR/$section_name/validate-output.md"
+      local corrections_ref=""
+      if [ -f "$ARTIFACTS_DIR/signals/codemap-corrections.json" ]; then
+        corrections_ref="3. Codemap corrections (authoritative fixes): \`$ARTIFACTS_DIR/signals/codemap-corrections.json\`"
+      fi
       cat > "$validate_prompt" << VALIDATE_PROMPT
 # Task: Validate Related Files List
 
 ## Files to Read
 1. Section specification: \`$section_file\`
 2. Codemap: \`$CODEMAP_PATH\`
+$corrections_ref
 
 ## Instructions
 This section already has a \`## Related Files\` list. Check whether it is
 still accurate given the current codemap and section problem statement.
+If codemap corrections exist, treat them as authoritative over codemap.md.
 
 Propose a structured signal at \`$ARTIFACTS_DIR/signals/${section_name}-related-files-update.json\`:
 \`\`\`json
@@ -995,8 +1022,17 @@ import json, sys
 try:
     d = json.load(open('$fb_file'))
     print('true' if d.get('relevant', True) else 'false')
-except: print('true')
-" 2>/dev/null || echo "true")
+except:
+    print('PARSE_ERROR')
+" 2>/dev/null || echo "PARSE_ERROR")
+
+      if [ "$relevant" = "PARSE_ERROR" ]; then
+        echo "[DEEP SCAN] WARNING: Malformed feedback JSON: $fb_file (section: $sec_name)" >&2
+        echo "- Malformed feedback: \`$fb_file\` (section: $sec_name)" >> "$SCAN_LOG_DIR/failures.log"
+        # Do not treat parse failure as relevant=true (fail-closed).
+        # Skip this feedback entry — do not trigger removals or routing.
+        continue
+      fi
 
       if [ "$relevant" = "false" ]; then
         local reason src_path
@@ -1026,7 +1062,9 @@ try:
     d = json.load(open('$fb_file'))
     for f in d.get('missing_files', []):
         if f.strip(): print(f.strip())
-except: pass
+except Exception as e:
+    import sys
+    print(f'PARSE_ERROR:{e}', file=sys.stderr)
 " 2>/dev/null || true)
 
       if [ -n "$new_missing" ]; then
@@ -1044,7 +1082,9 @@ try:
     d = json.load(open('$fb_file'))
     for item in d.get('out_of_scope', []):
         if isinstance(item, str) and item.strip(): print(item.strip())
-except: pass
+except Exception as e:
+    import sys
+    print(f'PARSE_ERROR:{e}', file=sys.stderr)
 " 2>/dev/null || true)
 
       if [ -n "$new_oos" ]; then
@@ -1107,7 +1147,9 @@ try:
     d = json.load(open('$fb_file'))
     for item in d.get('out_of_scope', []):
         if isinstance(item, str) and item.strip(): print(item.strip())
-except: pass
+except Exception as e:
+    import sys
+    print(f'PARSE_ERROR:{e}', file=sys.stderr)
 " 2>/dev/null || true)
       if [ -n "$new_oos" ]; then
         all_oos="${all_oos}${new_oos}"$'\n'

@@ -114,6 +114,11 @@ def _section_inputs_hash(
     if codemap_path.exists():
         hasher.update(codemap_path.read_bytes())
 
+    # Codemap corrections — authoritative fixes that override codemap.md
+    corrections_path = artifacts / "signals" / "codemap-corrections.json"
+    if corrections_path.exists():
+        hasher.update(corrections_path.read_bytes())
+
     return hasher.hexdigest()
 
 

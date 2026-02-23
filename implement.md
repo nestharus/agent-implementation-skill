@@ -424,7 +424,9 @@ section-loop (Stages 4-5). The public CLI remains unchanged.
 2. For each section, dispatch an Opus agent with the codemap + section content.
    The agent reasons about which files are relevant to this section's goals
    and writes `## Related Files` entries into the section file.
-3. If a section already has `## Related Files`, skip it (resume-safe).
+3. If a section already has `## Related Files`, validate the list against
+   the current codemap and section content; apply updates if stale, skip
+   only if unchanged.
 4. Section exploration failures are isolated — if one section agent fails,
    others continue.
 
@@ -476,8 +478,11 @@ A file can appear in multiple section files.
 
 ### Resume support
 
-- Full resume: if `codemap.md` already exists, skip codemap exploration.
-- Section resume: if a section already has `## Related Files`, skip it.
+- Full resume: if `codemap.md` already exists, reuse it only if the
+  codespace fingerprint is unchanged or the verifier says reuse; otherwise
+  rebuild.
+- Section resume: if a section already has `## Related Files`, validate
+  the list against current codemap/section; skip only if unchanged.
 - Deep resume: if a file entry already has deep analysis, skip it.
 - Diagnostics retention: failures are logged to `scan-logs/failures.log`.
 

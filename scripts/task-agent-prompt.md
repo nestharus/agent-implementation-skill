@@ -129,6 +129,19 @@ Enter a monitoring loop. You receive messages from three sources:
      Informational. Many rounds may indicate systemic issues.
    - **`pause:underspec:<num>:<detail>`** — section-loop paused, needs research
      or information. Investigate, then send `resume:<answer>` to `section-loop`.
+   - **`pause:needs_parent:<num>:<detail>`** — section-loop paused because it
+     needs parent guidance (greenfield section with no matches, missing
+     project-mode signal, or problem frame gate failure). Investigate the
+     detail, provide guidance, then send `resume:<answer>` to `section-loop`.
+   - **`pause:out_of_scope:<num>:<detail>`** — section-loop paused because the
+     section's problem requires scope expansion at the root level. Review the
+     scope delta, decide whether to expand scope or reframe, then send
+     `resume:<decision>` to `section-loop`.
+   - **`pause:budget_exhausted:<num>:<detail>`** — section-loop paused because
+     the section exhausted its alignment/implementation budget without
+     converging. Investigate alignment outputs, decide whether to increase
+     budget or restructure the approach, then send `resume:<guidance>` to
+     `section-loop`.
    - **`pause:need_decision:<num>:<question>`** — section-loop paused, needs
      human decision. Either answer it yourself or escalate to orchestrator.
      Send `resume:<answer>` to `section-loop` when resolved.

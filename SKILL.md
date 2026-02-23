@@ -208,8 +208,11 @@ Stage 3 dispatches agents to explore and understand the codebase:
 4. Deep scan dispatches GLM agents to reason about specific file relevance in context.
 
 Control and recovery:
-- If `codemap.md` already exists, codemap exploration can be skipped.
-- If a section already has `## Related Files`, its exploration is skipped.
+- If `codemap.md` already exists, reuse it only if the codespace
+  fingerprint is unchanged or the verifier confirms validity; otherwise
+  rebuild.
+- If a section already has `## Related Files`, validate the list against
+  the current codemap/section content; skip only if unchanged.
 - Non-zero codemap exit stops Stage 3 before section exploration.
 
 ### Model Roles

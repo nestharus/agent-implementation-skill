@@ -380,12 +380,22 @@ def write_coordination_plan_prompt(
 
     # Include codemap reference so the planner sees project skeleton
     codemap_path = planspace / "artifacts" / "codemap.md"
+    corrections_path = (planspace / "artifacts" / "signals"
+                        / "codemap-corrections.json")
     codemap_ref = ""
     if codemap_path.exists():
+        corrections_line = ""
+        if corrections_path.exists():
+            corrections_line = (
+                f"\n- Codemap corrections (authoritative fixes): "
+                f"`{corrections_path}`"
+            )
         codemap_ref = (
             f"\n## Project Skeleton\n\n"
             f"Read the codemap for project structure context: "
-            f"`{codemap_path}`\n"
+            f"`{codemap_path}`{corrections_line}\n"
+            f"\nIf codemap corrections exist, treat them as authoritative "
+            f"over codemap.md.\n"
         )
 
     # Include recurrence data if available
@@ -507,11 +517,22 @@ def write_coordinator_fix_prompt(
     )
 
     codemap_path = planspace / "artifacts" / "codemap.md"
+    corrections_path = (planspace / "artifacts" / "signals"
+                        / "codemap-corrections.json")
     codemap_block = ""
     if codemap_path.exists():
+        corrections_line = ""
+        if corrections_path.exists():
+            corrections_line = (
+                f"- Codemap corrections (authoritative fixes): "
+                f"`{corrections_path}`\n"
+            )
         codemap_block = (
             f"\n## Project Understanding\n"
             f"- Codemap: `{codemap_path}`\n"
+            f"{corrections_line}"
+            f"\nIf codemap corrections exist, treat them as authoritative "
+            f"over codemap.md.\n"
         )
 
     # Include cross-section tools — prefer digest if available
