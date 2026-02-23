@@ -156,16 +156,11 @@ class TestExtractProblems:
         assert problems == "Single problem description"
 
     def test_misaligned_empty_problems_list(self) -> None:
-        """Empty problems list returns empty string (join of empty list).
-
-        Note: this means aligned=false with problems=[] returns ""
-        rather than a descriptive message — the code reaches
-        isinstance(problems, list) before the fallback message.
-        """
+        """Empty problems list falls through to descriptive message."""
         result = '{"frame_ok": true, "aligned": false, "problems": []}'
         problems = _extract_problems(result)
-        assert problems is not None  # not None (misaligned)
-        assert problems == ""  # join of empty list
+        assert problems is not None
+        assert "misaligned" in problems.lower()
 
     def test_misaligned_no_problems_field(self) -> None:
         """Missing problems field falls through to descriptive message."""

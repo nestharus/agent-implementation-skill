@@ -117,7 +117,7 @@ def _extract_problems(
         if verdict.get("aligned", False):
             return None
         problems = verdict.get("problems")
-        if isinstance(problems, list):
+        if isinstance(problems, list) and problems:
             return "\n".join(str(p) for p in problems)
         if isinstance(problems, str) and problems.strip():
             return problems.strip()
