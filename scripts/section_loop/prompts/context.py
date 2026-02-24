@@ -130,6 +130,31 @@ def build_prompt_context(
             "- How new and existing code connect\n"
         )
 
+    # --- additional inputs (contract deltas, bridge notes, etc.) ---
+    inputs_dir = artifacts / "inputs" / f"section-{sec}"
+    additional_inputs_block = ""
+    if inputs_dir.exists():
+        ref_files = sorted(inputs_dir.glob("*.ref"))
+        if ref_files:
+            input_lines = []
+            for ref_file in ref_files:
+                try:
+                    referenced = ref_file.read_text(encoding="utf-8").strip()
+                    if Path(referenced).exists():
+                        input_lines.append(
+                            f"   - `{referenced}` (from {ref_file.stem})"
+                        )
+                except (OSError, ValueError):
+                    pass
+            if input_lines:
+                additional_inputs_block = (
+                    "\n\n## Additional Inputs (from coordination)\n\n"
+                    "These artifacts were produced by cross-section "
+                    "coordination or bridge agents.\n"
+                    "Read them if relevant to your task:\n"
+                    + "\n".join(input_lines)
+                )
+
     # --- related files block ---
     file_list = []
     for rel_path in section.related_files:
@@ -156,6 +181,7 @@ def build_prompt_context(
         "corrections_line": corrections_line,
         "mode_block": mode_block,
         "files_block": files_block,
+        "additional_inputs_block": additional_inputs_block,
     }
     ctx.update(overrides)
     return ctx

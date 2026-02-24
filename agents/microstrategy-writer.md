@@ -24,10 +24,8 @@ follow without re-deriving the strategy.
    the codebase that your microstrategy must align with or explicitly
    supersede
 4. For each related file, verify your assumptions with targeted reads
-5. Use GLM sub-agents for quick file reads when checking many files:
-   ```bash
-   uv run --frozen agents --model glm --project "<codespace>" "<instructions>"
-   ```
+5. Use GLM sub-agents for quick file reads when checking many files,
+   using the `--project` path provided in your dispatch prompt
 
 ### What to Produce
 

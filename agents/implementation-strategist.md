@@ -23,16 +23,11 @@ targeted reads.
 
 ### Sub-Agent Dispatch
 
-**For cheap exploration** (reading, checking, verifying):
-```bash
-uv run --frozen agents --model glm --project "<codespace>" "<instructions>"
-```
+**For cheap exploration** (reading, checking, verifying), dispatch GLM
+sub-agents using the `--project` path provided in your dispatch prompt.
 
-**For targeted implementation** of specific areas:
-```bash
-uv run --frozen agents --model gpt-5.3-codex-high \
-  --project "<codespace>" "<instructions>"
-```
+**For targeted implementation** of specific areas, dispatch codex-high
+sub-agents using the same `--project` path.
 
 Use sub-agents when:
 - You need to read several files to understand context before changing

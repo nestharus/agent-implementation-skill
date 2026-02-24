@@ -431,9 +431,20 @@ Reply with a JSON block:
                     planspace / "artifacts" / "contracts"
                     / f"contract-delta-group-{gidx}.md"
                 )
+                notes_dir = planspace / "artifacts" / "notes"
+                notes_dir.mkdir(parents=True, exist_ok=True)
                 sec_dir = planspace / "artifacts" / "sections"
+
+                # P9-D: Build full context for bridge agent —
+                # include proposal excerpts, alignment excerpts,
+                # and consequence notes (matching bridge-agent.md
+                # Phase 1 requirements)
                 sec_refs = "\n".join(
                     f"- Section {s}: `{sec_dir / f'section-{s}-proposal-excerpt.md'}`"
+                    for s in group_sections
+                )
+                alignment_refs = "\n".join(
+                    f"- Section {s}: `{sec_dir / f'section-{s}-alignment-excerpt.md'}`"
                     for s in group_sections
                 )
                 proposals_dir = planspace / "artifacts" / "proposals"
@@ -441,23 +452,44 @@ Reply with a JSON block:
                     f"- `{proposals_dir / f'section-{s}-integration-proposal.md'}`"
                     for s in group_sections
                 )
+
+                # Collect consequence notes targeting affected sections
+                consequence_refs = []
+                for s in group_sections:
+                    pattern = f"from-*-to-{s}.md"
+                    for note in sorted(notes_dir.glob(pattern)):
+                        consequence_refs.append(f"- `{note}`")
+                consequence_block = ""
+                if consequence_refs:
+                    consequence_block = (
+                        f"\n\n## Existing Consequence Notes\n"
+                        + "\n".join(consequence_refs)
+                    )
+
+                # P9-A: Note output paths use from-bridge-* naming
+                # so read_incoming_notes and _section_inputs_hash
+                # consume them automatically
+                note_output_refs = "\n".join(
+                    f"- `{notes_dir / f'from-bridge-{gidx}-to-{s}.md'}`"
+                    for s in group_sections
+                )
+
                 bridge_prompt.write_text(
                     f"# Bridge: Resolve Cross-Section Friction "
                     f"(Group {gidx})\n\n"
                     f"## Trigger Reason\n{bridge_reason}\n\n"
                     f"## Sections in Conflict\n{sec_refs}\n\n"
+                    f"## Alignment Excerpts\n{alignment_refs}\n\n"
                     f"## Integration Proposals\n{prop_refs}\n\n"
                     f"## Shared Files\n"
                     + "\n".join(f"- `{f}`" for f in group_files)
+                    + consequence_block
                     + f"\n\n## Output\n"
                     f"Write your contract patch to: `{contract_path}`\n"
                     f"Write a contract delta summary to: "
                     f"`{contract_delta_path}`\n"
                     f"Write per-section consequence notes to:\n"
-                    + "\n".join(
-                        f"- `{planspace / 'artifacts' / 'notes' / f'bridge-{gidx}-to-{s}.md'}`"
-                        for s in group_sections
-                    ) + "\n",
+                    + note_output_refs + "\n",
                     encoding="utf-8",
                 )
                 log(f"  coordinator: dispatching bridge agent for group "
@@ -469,32 +501,70 @@ Reply with a JSON block:
                     agent_file="bridge-agent.md",
                 )
 
-                # After bridge completes, write contract delta artifact
-                # and ensure downstream sections can reference it.
+                # P9-E: Fail-closed on missing contract delta.
+                # If bridge didn't write the delta, retry once.
+                # If still missing, emit NEEDS_PARENT blocker.
                 contracts_dir = planspace / "artifacts" / "contracts"
                 contracts_dir.mkdir(parents=True, exist_ok=True)
                 if not contract_delta_path.exists():
-                    # Bridge agent didn't write the delta — generate a
-                    # stub from the contract patch if available.
-                    delta_content = (
-                        f"# Contract Delta: Group {gidx}\n\n"
-                        f"## Trigger\n{bridge_reason}\n\n"
-                        f"## Sections Affected\n"
-                        + "\n".join(
-                            f"- Section {s}" for s in group_sections
-                        )
-                        + "\n\n## Contract Patch\n"
+                    log(f"  coordinator: bridge didn't write contract "
+                        f"delta — retrying (group {gidx})")
+                    dispatch_agent(
+                        "gpt-5.3-codex-xhigh", bridge_prompt,
+                        bridge_output, planspace, parent,
+                        codespace=codespace,
+                        agent_file="bridge-agent.md",
                     )
-                    if contract_path.exists():
-                        delta_content += contract_path.read_text(
-                            encoding="utf-8")
-                    else:
-                        delta_content += (
-                            "(Bridge agent output available at: "
-                            f"`{bridge_output}`)\n"
-                        )
-                    contract_delta_path.write_text(
-                        delta_content, encoding="utf-8")
+                if not contract_delta_path.exists():
+                    log(f"  coordinator: bridge failed to write contract "
+                        f"delta after retry — pausing for parent "
+                        f"(group {gidx})")
+                    blocker_signal = {
+                        "state": "needs_parent",
+                        "why_blocked": (
+                            f"Bridge agent for group {gidx} failed to "
+                            f"produce contract delta after retry. "
+                            f"Sections: {group_sections}. "
+                            f"Reason: {bridge_reason}"
+                        ),
+                    }
+                    blocker_path = (
+                        planspace / "artifacts" / "signals"
+                        / f"blocker-bridge-{gidx}.json"
+                    )
+                    blocker_path.parent.mkdir(parents=True, exist_ok=True)
+                    blocker_path.write_text(
+                        json.dumps(blocker_signal, indent=2),
+                        encoding="utf-8",
+                    )
+                    mailbox_send(
+                        planspace,
+                        f"pause:needs_parent:bridge-{gidx}:"
+                        f"contract delta missing after retry",
+                        "coordinator",
+                    )
+                    continue  # Skip this group, proceed with others
+
+                # P9-B: Inject stable Note IDs into bridge notes.
+                # ID is derived mechanically from contract delta
+                # content + target section (stable across reruns
+                # with same input).
+                delta_bytes = contract_delta_path.read_bytes()
+                for s in group_sections:
+                    note_path = (
+                        notes_dir / f"from-bridge-{gidx}-to-{s}.md"
+                    )
+                    if note_path.exists():
+                        note_text = note_path.read_text(encoding="utf-8")
+                        if "**Note ID**" not in note_text:
+                            fp = hashlib.sha256(
+                                delta_bytes + s.encode("utf-8")
+                            ).hexdigest()[:12]
+                            note_id = f"bridge-{gidx}-to-{s}-{fp}"
+                            note_path.write_text(
+                                f"**Note ID** {note_id}\n\n{note_text}",
+                                encoding="utf-8",
+                            )
 
                 # Register the contract delta as an input artifact for
                 # downstream sections in this group

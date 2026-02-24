@@ -203,6 +203,7 @@ PIPELINE_AGENT_FILES = {
 # Agent files define METHOD; dynamic prompts provide runtime context.
 BANNED_PLACEHOLDERS = [
     "<planspace>",
+    "<codespace>",
     "$PLANSPACE",
     "$section_file",
     "$CODEMAP_PATH",
@@ -609,3 +610,152 @@ class TestSkillManifest:
             f"implement.md references paths that do not exist:\n"
             + "\n".join(f"  - {p}" for p in missing)
         )
+
+
+class TestBridgeNotePropagation:
+    """R27/P9: Bridge notes must be consumed by read_incoming_notes and
+    hashed by _section_inputs_hash.
+
+    P9-A: Bridge notes use from-bridge-* naming convention.
+    P9-C: Input refs affect section inputs hash.
+    """
+
+    def test_bridge_notes_consumed_by_read_incoming_notes(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        """Bridge notes with from-bridge-* prefix are returned by
+        read_incoming_notes (same glob as other cross-section notes)."""
+        from section_loop.cross_section import read_incoming_notes
+        from section_loop.types import Section
+
+        notes_dir = planspace / "artifacts" / "notes"
+        notes_dir.mkdir(parents=True, exist_ok=True)
+        (notes_dir / "from-bridge-0-to-01.md").write_text(
+            "**Note ID** bridge-0-to-01-abc123\n\nContract requires X.")
+
+        section = Section(
+            number="01",
+            path=planspace / "artifacts" / "sections" / "section-01.md",
+            related_files=[],
+        )
+        notes_text = read_incoming_notes(section, planspace, codespace)
+        assert "Contract requires X" in notes_text, (
+            "Bridge notes must be consumed by read_incoming_notes"
+        )
+
+    def test_bridge_notes_affect_inputs_hash(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        """Bridge notes in from-bridge-* format change section inputs hash."""
+        from section_loop.pipeline_control import _section_inputs_hash
+        from section_loop.types import Section
+
+        sections = {
+            "01": Section(
+                number="01",
+                path=planspace / "artifacts" / "sections" / "section-01.md",
+                related_files=[],
+            ),
+        }
+
+        h1 = _section_inputs_hash("01", planspace, codespace, sections)
+
+        notes_dir = planspace / "artifacts" / "notes"
+        notes_dir.mkdir(parents=True, exist_ok=True)
+        (notes_dir / "from-bridge-0-to-01.md").write_text(
+            "Bridge note content")
+
+        h2 = _section_inputs_hash("01", planspace, codespace, sections)
+        assert h1 != h2, "Bridge note must change section inputs hash"
+
+    def test_input_refs_affect_inputs_hash(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        """Contract delta refs in artifacts/inputs/section-{sec}/
+        change section inputs hash."""
+        from section_loop.pipeline_control import _section_inputs_hash
+        from section_loop.types import Section
+
+        sections = {
+            "01": Section(
+                number="01",
+                path=planspace / "artifacts" / "sections" / "section-01.md",
+                related_files=[],
+            ),
+        }
+
+        h1 = _section_inputs_hash("01", planspace, codespace, sections)
+
+        # Create input ref
+        inputs_dir = planspace / "artifacts" / "inputs" / "section-01"
+        inputs_dir.mkdir(parents=True, exist_ok=True)
+        delta_path = planspace / "artifacts" / "contracts" / "contract-delta-group-0.md"
+        delta_path.parent.mkdir(parents=True, exist_ok=True)
+        delta_path.write_text("# Contract Delta\nShared interface spec")
+        (inputs_dir / "contract-delta-group-0.ref").write_text(
+            str(delta_path))
+
+        h2 = _section_inputs_hash("01", planspace, codespace, sections)
+        assert h1 != h2, "Input ref must change section inputs hash"
+
+        # Changing the referenced file also changes hash
+        delta_path.write_text("# Contract Delta v2\nUpdated spec")
+        h3 = _section_inputs_hash("01", planspace, codespace, sections)
+        assert h2 != h3, "Referenced file content change must change hash"
+
+
+class TestModeInputsInHash:
+    """R27/P5: Mode files affect section inputs hash.
+
+    Greenfield/brownfield mode shapes prompt context, so changing mode
+    must trigger section requeue via hash change.
+    """
+
+    def test_project_mode_changes_inputs_hash(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        """project-mode.txt change must change section inputs hash."""
+        from section_loop.pipeline_control import _section_inputs_hash
+        from section_loop.types import Section
+
+        sections = {
+            "01": Section(
+                number="01",
+                path=planspace / "artifacts" / "sections" / "section-01.md",
+                related_files=[],
+            ),
+        }
+
+        h1 = _section_inputs_hash("01", planspace, codespace, sections)
+
+        mode_file = planspace / "artifacts" / "project-mode.txt"
+        mode_file.parent.mkdir(parents=True, exist_ok=True)
+        mode_file.write_text("greenfield")
+
+        h2 = _section_inputs_hash("01", planspace, codespace, sections)
+        assert h1 != h2, "project-mode.txt must change inputs hash"
+
+    def test_section_mode_changes_inputs_hash(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        """section-mode.txt change must change section inputs hash."""
+        from section_loop.pipeline_control import _section_inputs_hash
+        from section_loop.types import Section
+
+        sections = {
+            "01": Section(
+                number="01",
+                path=planspace / "artifacts" / "sections" / "section-01.md",
+                related_files=[],
+            ),
+        }
+
+        h1 = _section_inputs_hash("01", planspace, codespace, sections)
+
+        mode_file = (planspace / "artifacts" / "sections"
+                     / "section-01-mode.txt")
+        mode_file.parent.mkdir(parents=True, exist_ok=True)
+        mode_file.write_text("hybrid")
+
+        h2 = _section_inputs_hash("01", planspace, codespace, sections)
+        assert h1 != h2, "section-mode.txt must change inputs hash"

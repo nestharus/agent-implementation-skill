@@ -22,10 +22,8 @@ section trying to solve? What kind of code would it touch if it existed?
 
 ### Phase 2: Targeted Exploration
 
-Use GLM sub-agents to investigate:
-```bash
-uv run --frozen agents --model glm --project "<codespace>" "<instructions>"
-```
+Use GLM sub-agents to investigate (using the `--project` path provided
+in your dispatch prompt):
 
 - Search for files that might relate to the section's problem space
 - Check if imports, interfaces, or data structures connect to this concern

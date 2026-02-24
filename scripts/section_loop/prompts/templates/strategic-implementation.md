@@ -10,7 +10,7 @@
 4. Section specification: `{section_path}`
 5. Related source files:
 {files_block}{micro_ref}{codemap_ref}{impl_corrections_ref}{todos_ref}{impl_tools_ref}
-{problems_block}{decisions_block}{tooling_block}
+{problems_block}{decisions_block}{tooling_block}{additional_inputs_block}
 ## Instructions
 
 A section is a **problem region / concern**, not a file bundle. Related

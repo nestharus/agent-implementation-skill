@@ -22,10 +22,8 @@ hypotheses about where things connect, verify with targeted reads, adjust.
 **Start with the codemap** if available — it captures the project's
 structure, key files, and how parts relate.
 
-**Dispatch GLM sub-agents for targeted exploration:**
-```bash
-uv run --frozen agents --model glm --project "<codespace>" "<instructions>"
-```
+**Dispatch GLM sub-agents for targeted exploration** using the
+`--project` path provided in your dispatch prompt.
 
 Use GLM to:
 - Read files and understand their structure

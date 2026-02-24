@@ -119,6 +119,28 @@ def _section_inputs_hash(
     if corrections_path.exists():
         hasher.update(corrections_path.read_bytes())
 
+    # Mode files — greenfield/brownfield affects prompt context
+    for mode_file in (
+        artifacts / "project-mode.txt",
+        artifacts / "signals" / "project-mode.json",
+        artifacts / "sections" / f"section-{sec_num}-mode.txt",
+    ):
+        if mode_file.exists():
+            hasher.update(mode_file.read_bytes())
+
+    # Input refs — contract deltas and other registered inputs
+    inputs_dir = artifacts / "inputs" / f"section-{sec_num}"
+    if inputs_dir.exists():
+        for ref_path in sorted(inputs_dir.glob("*.ref")):
+            hasher.update(ref_path.read_bytes())
+            # Also hash the referenced file itself (not just the pointer)
+            try:
+                referenced = Path(ref_path.read_text(encoding="utf-8").strip())
+                if referenced.exists():
+                    hasher.update(referenced.read_bytes())
+            except (OSError, ValueError):
+                pass
+
     return hasher.hexdigest()
 
 
