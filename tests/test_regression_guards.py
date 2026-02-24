@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -2372,3 +2372,193 @@ class TestScanTemplatesExtensionNeutral:
                 f"{template_name} contains .py example paths "
                 f"{matches} — use extension-neutral paths"
             )
+
+
+# ── R38/V1: Blocker signal parsing fail-closed ──────────────────
+
+
+class TestBlockerSignalFailClosed:
+    """R38/V1: Malformed blocker signal must route as needs_parent
+    (fail-closed), not fall through to misaligned code-fix dispatch."""
+
+    PROBLEMS_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+                   / "coordination" / "problems.py")
+
+    def test_no_silent_pass_on_blocker_parse_error(self) -> None:
+        """problems.py must not have 'pass' as fallback for blocker
+        parse failure."""
+        content = self.PROBLEMS_PY.read_text(encoding="utf-8")
+        assert "pass  # Fall through to standard misaligned" not in content, (
+            "problems.py must not silently fall through on malformed "
+            "blocker — must route as needs_parent"
+        )
+
+    def test_malformed_blocker_routes_as_needs_parent(
+        self, planspace: Path,
+    ) -> None:
+        """Malformed blocker JSON must produce a needs_parent problem."""
+        from section_loop.coordination.problems import (
+            _collect_outstanding_problems,
+        )
+        from section_loop.types import Section, SectionResult
+
+        signals_dir = planspace / "artifacts" / "signals"
+        signals_dir.mkdir(parents=True, exist_ok=True)
+        # Write malformed blocker JSON
+        (signals_dir / "section-01-blocker.json").write_text(
+            "{bad json", encoding="utf-8")
+
+        section = Section(
+            number="01",
+            path=planspace / "artifacts" / "sections" / "section-01.md",
+            related_files=[],
+        )
+        section_results = {
+            "01": SectionResult(section_number="01", aligned=False),
+        }
+        sections_by_num = {"01": section}
+        problems = _collect_outstanding_problems(
+            section_results, sections_by_num, planspace,
+        )
+        needs_parent = [p for p in problems if p["type"] == "needs_parent"]
+        assert len(needs_parent) == 1, (
+            "Malformed blocker must produce exactly one needs_parent "
+            "problem, not fall through to misaligned"
+        )
+        assert "malformed" in needs_parent[0]["description"].lower()
+
+    def test_valid_blocker_still_routes_correctly(
+        self, planspace: Path,
+    ) -> None:
+        """Valid needs_parent blocker still works after hardening."""
+        from section_loop.coordination.problems import (
+            _collect_outstanding_problems,
+        )
+        from section_loop.types import Section, SectionResult
+
+        signals_dir = planspace / "artifacts" / "signals"
+        signals_dir.mkdir(parents=True, exist_ok=True)
+        (signals_dir / "section-02-blocker.json").write_text(
+            json.dumps({
+                "state": "needs_parent",
+                "detail": "missing dependency",
+                "needs": "external API spec",
+            }),
+            encoding="utf-8",
+        )
+
+        section = Section(
+            number="02",
+            path=planspace / "artifacts" / "sections" / "section-02.md",
+            related_files=[],
+        )
+        section_results = {
+            "02": SectionResult(section_number="02", aligned=False),
+        }
+        sections_by_num = {"02": section}
+        problems = _collect_outstanding_problems(
+            section_results, sections_by_num, planspace,
+        )
+        assert len(problems) == 1
+        assert problems[0]["type"] == "needs_parent"
+        assert problems[0]["description"] == "missing dependency"
+
+
+# ── R38/V2: Tool registry malformed → warning block ─────────────
+
+
+class TestCoordToolRegistryWarning:
+    """R38/V2: Malformed tool registry in coordination fix prompt
+    must surface a warning block, not silently omit tools."""
+
+    EXECUTION_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+                    / "coordination" / "execution.py")
+
+    def test_no_silent_pass_on_registry_error(self) -> None:
+        """execution.py must not silently pass on malformed registry."""
+        content = self.EXECUTION_PY.read_text(encoding="utf-8")
+        # The old pattern was bare 'pass' after JSONDecodeError
+        # Now it should produce a tools_block warning
+        assert "Tool Registry Warning" in content, (
+            "execution.py must emit a warning block when tool "
+            "registry is malformed, not silently drop tools"
+        )
+
+    def test_warning_references_registry_path(self) -> None:
+        """Warning block must reference the registry file path."""
+        content = self.EXECUTION_PY.read_text(encoding="utf-8")
+        assert "tool_registry_path" in content, (
+            "execution.py warning block must reference the registry "
+            "path so agents can diagnose"
+        )
+
+    def test_warning_suggests_repair(self) -> None:
+        """Warning block must suggest tool-registrar repair."""
+        content = self.EXECUTION_PY.read_text(encoding="utf-8")
+        assert "tool-registrar repair" in content, (
+            "execution.py warning block must suggest dispatching "
+            "tool-registrar repair"
+        )
+
+
+# ── R38/V3: Note content referenced by path, not inlined ────────
+
+
+class TestNoteContentByPath:
+    """R38/V3: Coordinator problems must reference note files by
+    path, not inline note content into problem descriptions."""
+
+    PROBLEMS_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+                   / "coordination" / "problems.py")
+
+    def test_no_inline_note_content(self) -> None:
+        """problems.py must not slice and embed note_content."""
+        content = self.PROBLEMS_PY.read_text(encoding="utf-8")
+        assert "note_content[:500]" not in content, (
+            "problems.py must not embed note_content[:500] — "
+            "reference note_path instead"
+        )
+
+    def test_note_path_in_problem_dict(self) -> None:
+        """Unaddressed note problems must include note_path field."""
+        content = self.PROBLEMS_PY.read_text(encoding="utf-8")
+        assert '"note_path"' in content, (
+            "problems.py must include note_path in unaddressed note "
+            "problem dicts"
+        )
+
+    def test_description_references_file(self) -> None:
+        """Problem description must reference the note file path."""
+        content = self.PROBLEMS_PY.read_text(encoding="utf-8")
+        assert "See note file:" in content, (
+            "problems.py note problem description must say "
+            "'See note file:' with the path"
+        )
+
+
+# ── R38/V4: Note-ack parsing preserves corrupted state ──────────
+
+
+class TestNoteAckPreservesCorrupted:
+    """R38/V4: Malformed note-ack files must be preserved for
+    diagnosis, not silently overwritten."""
+
+    RUNNER_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+                 / "section_engine" / "runner.py")
+
+    def test_no_silent_pass_on_ack_parse_error(self) -> None:
+        """runner.py must not silently pass on malformed note-ack."""
+        content = self.RUNNER_PY.read_text(encoding="utf-8")
+        # The old pattern had bare pass after JSONDecodeError for ack
+        # Check that the ack-related except block now preserves
+        assert ".malformed.json" in content, (
+            "runner.py must preserve malformed note-ack file with "
+            ".malformed.json extension"
+        )
+
+    def test_logs_warning_on_malformed_ack(self) -> None:
+        """runner.py must log a warning when note-ack is malformed."""
+        content = self.RUNNER_PY.read_text(encoding="utf-8")
+        assert "note-ack" in content and "malformed" in content, (
+            "runner.py must log a warning about malformed note-ack"
+        )

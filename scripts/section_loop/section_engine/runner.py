@@ -193,8 +193,20 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                         try:
                             existing_acks = json.loads(
                                 ack_path.read_text(encoding="utf-8"))
-                        except (json.JSONDecodeError, OSError):
-                            pass
+                        except (json.JSONDecodeError, OSError) as exc:
+                            # Preserve corrupted file for diagnosis
+                            malformed_path = ack_path.with_suffix(
+                                ".malformed.json")
+                            try:
+                                ack_path.rename(malformed_path)
+                            except OSError:
+                                pass  # Best-effort preserve
+                            log(
+                                f"Section {section.number}: note-ack "
+                                f"file malformed ({exc}) — preserved "
+                                f"as {malformed_path.name}, starting "
+                                f"fresh"
+                            )
                     existing_ids = {
                         e.get("note_id")
                         for e in existing_acks.get("acknowledged", [])

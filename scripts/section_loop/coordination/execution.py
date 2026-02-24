@@ -108,8 +108,14 @@ def write_coordinator_fix_prompt(
                 tools_block = (
                     f"\n## Available Cross-Section Tools\n{tool_lines}\n"
                 )
-        except (json.JSONDecodeError, ValueError):
-            pass
+        except (json.JSONDecodeError, ValueError) as exc:
+            tools_block = (
+                f"\n## Tool Registry Warning\n"
+                f"Tool registry exists but is malformed ({exc}); "
+                f"see `{tool_registry_path}`.\n"
+                f"Consider dispatching tool-registrar repair before "
+                f"relying on tool context.\n"
+            )
 
     prompt_path.write_text(f"""# Task: Coordinated Fix for Problem Group {group_id}
 

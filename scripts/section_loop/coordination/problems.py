@@ -57,8 +57,21 @@ def _collect_outstanding_problems(
                         "files": files,
                     })
                     continue
-            except (json.JSONDecodeError, OSError):
-                pass  # Fall through to standard misaligned handling
+            except (json.JSONDecodeError, OSError) as exc:
+                # Fail-closed: malformed blocker → needs_parent, not
+                # misaligned (which would trigger code-fix dispatch).
+                problems.append({
+                    "section": sec_num,
+                    "type": "needs_parent",
+                    "description": (
+                        f"Blocker signal at {blocker_path} is malformed "
+                        f"({exc}); cannot determine blocker state — "
+                        f"routing as needs_parent for manual repair."
+                    ),
+                    "needs": "Valid blocker signal JSON",
+                    "files": files,
+                })
+                continue
 
         if result.problems:
             problems.append({
@@ -153,11 +166,12 @@ def _collect_outstanding_problems(
                 "section": target_num,
                 "type": "unaddressed_note",
                 "note_id": note_id,
+                "note_path": str(note_path),
                 "description": (
                     f"Consequence note {note_id} from section "
                     f"{source_label} has not been acknowledged by "
                     f"section {target_num}. "
-                    f"Note content:\n{note_content[:500]}"
+                    f"See note file: `{note_path}`"
                 ),
                 "files": files,
             })
