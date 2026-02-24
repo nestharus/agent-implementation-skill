@@ -33,12 +33,12 @@ codemap corrections exist, treat them as authoritative fixes.
 
 For cheap exploration (reading, checking, verifying):
 ```bash
-uv run --frozen agents --model glm --project "{codespace}" "<instructions>"
+uv run --frozen agents --model {exploration_model} --project "{codespace}" "<instructions>"
 ```
 
 For targeted implementation of specific areas:
 ```bash
-uv run --frozen agents --model gpt-5.3-codex-high \
+uv run --frozen agents --model {delegated_impl_model} \
   --project "{codespace}" "<instructions>"
 ```
 

@@ -91,6 +91,7 @@ def write_integration_proposal_prompt(
     codespace: Path,
     alignment_problems: str | None = None,
     incoming_notes: str | None = None,
+    model_policy: dict | None = None,
 ) -> Path:
     """Write the prompt for creating an integration proposal."""
     artifacts = planspace / "artifacts"
@@ -144,6 +145,7 @@ def write_integration_proposal_prompt(
             f"`{notes_file}`\n"
         )
 
+    _policy = model_policy or {}
     ctx = build_prompt_context(section, planspace, codespace)
     ctx.update({
         "proposal_excerpt": proposal_excerpt,
@@ -152,6 +154,7 @@ def write_integration_proposal_prompt(
         "problems_block": problems_block,
         "existing_note": existing_note,
         "notes_block": notes_block,
+        "exploration_model": _policy.get("exploration", "glm"),
         "signal_block": signal_instructions(
             artifacts / "signals" / f"proposal-{sec}-signal.json",
         ),
@@ -198,6 +201,7 @@ def write_strategic_impl_prompt(
     planspace: Path,
     codespace: Path,
     alignment_problems: str | None = None,
+    model_policy: dict | None = None,
 ) -> Path:
     """Write the prompt for strategic implementation."""
     artifacts = planspace / "artifacts"
@@ -275,13 +279,26 @@ def write_strategic_impl_prompt(
 
     # Tool registry
     tool_registry_path = artifacts / "tool-registry.json"
+    friction_signal_path = (
+        artifacts / "signals" / f"section-{sec}-tool-friction.json"
+    )
     tooling_block = (
         f"\n## Tooling\n\n"
         f"If you create any new tool/script intended for reuse, you MUST append an\n"
         f"entry to the tool registry at: `{tool_registry_path}`\n"
         f"using the documented schema (id/path/created_by/scope/status/description/\n"
         f"registered_at). If you are unsure a script qualifies as a tool, register it\n"
-        f"as `experimental` and note the uncertainty in the description.\n"
+        f"as `experimental` and note the uncertainty in the description.\n\n"
+        f"### Tool Friction Detection\n\n"
+        f"If you encounter tool composition friction (tools that don't compose\n"
+        f"cleanly, a missing bridge tool, or disconnected tool islands), write a\n"
+        f"friction signal to: `{friction_signal_path}`\n\n"
+        f"Format:\n"
+        f"```json\n"
+        f'{{"friction": true, "islands": [["toolA","toolB"]], '
+        f'"missing_bridge": "description of what is missing"}}\n'
+        f"```\n"
+        f"The runner reads this file to dispatch bridge-tool creation.\n"
     )
 
     # Microstrategy ref (numbered 6 in impl)
@@ -295,6 +312,7 @@ def write_strategic_impl_prompt(
             f"`{microstrategy_path}`"
         )
 
+    _policy = model_policy or {}
     ctx = build_prompt_context(section, planspace, codespace)
     ctx.update({
         "proposal_excerpt": proposal_excerpt,
@@ -309,6 +327,9 @@ def write_strategic_impl_prompt(
         "impl_tools_ref": impl_tools_ref,
         "tooling_block": tooling_block,
         "micro_ref": impl_micro_ref,
+        "exploration_model": _policy.get("exploration", "glm"),
+        "delegated_impl_model": _policy.get(
+            "implementation", "gpt-5.3-codex-high"),
         "signal_block": signal_instructions(
             artifacts / "signals" / f"impl-{sec}-signal.json",
         ),

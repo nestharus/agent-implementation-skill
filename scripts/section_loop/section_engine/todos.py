@@ -47,11 +47,15 @@ def _check_needs_microstrategy(
     proposal_path: Path, planspace: Path, section_number: str,
     parent: str = "", codespace: Path | None = None,
     model: str = "glm",
+    escalation_model: str = "gpt-5.3-codex-xhigh",
 ) -> bool:
     """Check if the integration proposal requests a microstrategy.
 
     Reads the structured signal from the proposal's JSON output.
     Falls back to dispatch to produce the signal if missing.
+
+    If the signal cannot be produced after retries (including escalation),
+    defaults to True (fail-closed: prefer more strategy over silent skip).
 
     The ``model`` parameter defaults to ``"glm"`` but callers should
     pass ``policy["microstrategy_decider"]`` for policy-driven selection.
@@ -64,9 +68,9 @@ def _check_needs_microstrategy(
             data = json.loads(signal_path.read_text(encoding="utf-8"))
             return data.get("needs_microstrategy", False) is True
         except (json.JSONDecodeError, OSError):
-            pass  # Fall through to GLM dispatch
+            pass  # Fall through to dispatch
 
-    # Fallback: dispatch GLM to produce structured microstrategy signal
+    # Fallback: dispatch to produce structured microstrategy signal
     if not proposal_path.exists():
         return False
     artifacts = planspace / "artifacts"
@@ -93,16 +97,45 @@ Write a JSON signal to: `{signal_path}`
 ```
 """, encoding="utf-8")
     signal_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # First attempt with default model
     dispatch_agent(
         model, decider_prompt, decider_output,
         planspace, parent, codespace=codespace,
         section_number=section_number,
     )
-    # Re-read the signal file
     if signal_path.exists():
         try:
             data = json.loads(signal_path.read_text(encoding="utf-8"))
             return data.get("needs_microstrategy", False) is True
         except (json.JSONDecodeError, OSError):
             pass
-    return False
+
+    # Retry with escalation model (R34/V3: fail-closed microstrategy)
+    escalation_output = (
+        artifacts
+        / f"microstrategy-decider-{section_number}-escalation-output.md"
+    )
+    dispatch_agent(
+        escalation_model, decider_prompt, escalation_output,
+        planspace, parent, codespace=codespace,
+        section_number=section_number,
+    )
+    if signal_path.exists():
+        try:
+            data = json.loads(signal_path.read_text(encoding="utf-8"))
+            return data.get("needs_microstrategy", False) is True
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Both attempts failed — fail-closed: default to more strategy
+    fallback = {
+        "needs_microstrategy": True,
+        "reason": (
+            "fail-closed: microstrategy decider produced no valid "
+            "signal after retries (default + escalation model)"
+        ),
+    }
+    signal_path.write_text(
+        json.dumps(fallback, indent=2), encoding="utf-8")
+    return True

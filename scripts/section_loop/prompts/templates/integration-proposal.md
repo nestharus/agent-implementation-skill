@@ -36,12 +36,12 @@ treat them as authoritative fixes (wrong paths, missing entries,
 misclassified files). Use it to orient yourself before diving into
 individual files.
 
-**Dispatch GLM sub-agents for targeted exploration:**
+**Dispatch sub-agents for targeted exploration:**
 ```bash
-uv run --frozen agents --model glm --project "{codespace}" "<instructions>"
+uv run --frozen agents --model {exploration_model} --project "{codespace}" "<instructions>"
 ```
 
-Use GLM to:
+Use sub-agents to:
 - Read files related to this section and understand their structure
 - Find callers/callees of functions you need to modify
 - Check what interfaces or contracts currently exist

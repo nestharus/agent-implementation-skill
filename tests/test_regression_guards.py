@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -24,6 +24,10 @@ R33/V1: Related Files parsing unified, block-scoped, code-fence-safe.
 R33/V2: Signal instructions clarify JSON is the only truth channel.
 R33/V3: Problem frame in convergence hashing and traceability.
 R33/V4: loop-contract.md lists all hashed inputs.
+R34/V1: Tool registry malformed → remove stale surface + dispatch repair.
+R34/V2: Post-impl tool registry malformed → repair, not pass.
+R34/V3: Microstrategy decision fails closed (returns True, writes fallback).
+R34/V4: Prompt templates use policy-driven model placeholders.
 """
 
 import json
@@ -1585,4 +1589,282 @@ class TestLoopContractCompleteness:
         assert "_section_inputs_hash" in src, (
             "loop-contract.md must reference _section_inputs_hash() "
             "as the authoritative source"
+        )
+
+
+# ---------------------------------------------------------------
+# R34/V1: Tool registry malformed → remove stale surface + repair
+# ---------------------------------------------------------------
+
+class TestToolRegistryFailClosed:
+    """When tool-registry.json is malformed, runner.py must:
+    1. Delete any stale tools-available surface
+    2. Dispatch tool-registrar for repair
+    3. Write blocker signal if repair fails
+    """
+
+    RUNNER = (PROJECT_ROOT / "scripts" / "section_loop"
+              / "section_engine" / "runner.py")
+
+    def test_malformed_registry_removes_stale_surface(self) -> None:
+        """Step 0b must unlink stale tools-available on malformed JSON."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        # The except block for JSONDecodeError must contain unlink
+        # for tools_available_path
+        assert "tools_available_path.unlink()" in src, (
+            "runner.py Step 0b must delete stale tools-available "
+            "surface when registry is malformed"
+        )
+
+    def test_malformed_registry_dispatches_repair(self) -> None:
+        """Step 0b must dispatch tool-registrar for repair."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert "tool-registry-repair" in src, (
+            "runner.py Step 0b must dispatch a registry repair "
+            "agent when JSON is malformed"
+        )
+
+    def test_malformed_registry_blocker_on_repair_failure(self) -> None:
+        """Step 0b must write blocker signal if repair fails."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert "blocker.json" in src, (
+            "runner.py must write blocker signal when registry "
+            "repair fails"
+        )
+
+
+# ---------------------------------------------------------------
+# R34/V2: Post-impl tool registry malformed → repair, not pass
+# ---------------------------------------------------------------
+
+class TestPostImplToolRegistryRepair:
+    """Step 3b must not silently pass on malformed post-impl registry.
+    It must dispatch repair and fail-closed if repair fails."""
+
+    RUNNER = (PROJECT_ROOT / "scripts" / "section_loop"
+              / "section_engine" / "runner.py")
+
+    def test_no_silent_pass_on_malformed(self) -> None:
+        """Step 3b must not have 'pass' as the only action."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        # The old pattern: except (json.JSONDecodeError, ValueError):\n  pass
+        assert "pass  # Malformed registry" not in src, (
+            "runner.py Step 3b must not silently pass on malformed "
+            "post-impl registry — must dispatch repair"
+        )
+
+    def test_post_impl_dispatches_repair(self) -> None:
+        """Step 3b must dispatch repair agent."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert "tool-registry-post-repair" in src, (
+            "runner.py Step 3b must dispatch post-impl registry "
+            "repair agent"
+        )
+
+    def test_post_impl_writes_blocker_on_failure(self) -> None:
+        """Step 3b must write blocker signal if repair fails."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert "post-impl-blocker.json" in src, (
+            "runner.py Step 3b must write post-impl blocker "
+            "signal when repair fails"
+        )
+
+
+# ---------------------------------------------------------------
+# R34/V3: Microstrategy decision fails closed
+# ---------------------------------------------------------------
+
+class TestMicrostrategyFailClosed:
+    """_check_needs_microstrategy must not silently return False
+    when the decider fails. Must retry with escalation model and
+    default to True (more strategy) on total failure."""
+
+    def test_no_signal_returns_true(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        """When decider never writes signal, function returns True."""
+        from section_loop.section_engine.todos import (
+            _check_needs_microstrategy,
+        )
+
+        # Create a proposal file so the function doesn't bail early
+        proposals_dir = planspace / "artifacts" / "proposals"
+        proposals_dir.mkdir(parents=True, exist_ok=True)
+        proposal = proposals_dir / "section-01-integration-proposal.md"
+        proposal.write_text("# Proposal\nSome changes needed.")
+
+        # dispatch_agent is mocked to do nothing (no signal written)
+        result = _check_needs_microstrategy(
+            proposal, planspace, "01",
+            model="glm", escalation_model="gpt-5.3-codex-xhigh",
+        )
+        assert result is True, (
+            "_check_needs_microstrategy must return True when "
+            "decider produces no signal (fail-closed)"
+        )
+
+    def test_fallback_signal_written(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        """Fallback signal JSON must be written with explicit reason."""
+        from section_loop.section_engine.todos import (
+            _check_needs_microstrategy,
+        )
+
+        proposals_dir = planspace / "artifacts" / "proposals"
+        proposals_dir.mkdir(parents=True, exist_ok=True)
+        proposal = proposals_dir / "section-01-integration-proposal.md"
+        proposal.write_text("# Proposal\nSome changes needed.")
+
+        _check_needs_microstrategy(
+            proposal, planspace, "01",
+            model="glm", escalation_model="gpt-5.3-codex-xhigh",
+        )
+
+        signal_path = (planspace / "artifacts" / "signals"
+                       / "proposal-01-microstrategy.json")
+        assert signal_path.exists(), (
+            "Fallback microstrategy signal must be written on "
+            "total decider failure"
+        )
+        data = json.loads(signal_path.read_text(encoding="utf-8"))
+        assert data["needs_microstrategy"] is True
+        assert "fail-closed" in data.get("reason", "")
+
+    def test_escalation_model_parameter_exists(self) -> None:
+        """_check_needs_microstrategy must accept escalation_model."""
+        import inspect
+        from section_loop.section_engine.todos import (
+            _check_needs_microstrategy,
+        )
+        sig = inspect.signature(_check_needs_microstrategy)
+        assert "escalation_model" in sig.parameters, (
+            "_check_needs_microstrategy must accept "
+            "escalation_model parameter for retry"
+        )
+
+
+# ---------------------------------------------------------------
+# R34/V4: Prompt templates use policy-driven model placeholders
+# ---------------------------------------------------------------
+
+class TestTemplateModelParameterized:
+    """Prompt templates must not embed fixed model names. They must
+    use placeholders injected from model policy."""
+
+    TEMPLATES_DIR = (PROJECT_ROOT / "scripts" / "section_loop"
+                     / "prompts" / "templates")
+
+    def test_no_hardcoded_model_in_dispatch_examples(self) -> None:
+        """Templates must not contain bare model names in dispatch examples."""
+        known_models = ["glm", "gpt-5.3-codex-high", "gpt-5.3-codex-xhigh"]
+        for template_name in (
+            "strategic-implementation.md",
+            "integration-proposal.md",
+        ):
+            content = (self.TEMPLATES_DIR / template_name).read_text(
+                encoding="utf-8")
+            for model in known_models:
+                # Check for --model <literal> pattern in bash examples
+                if f"--model {model}" in content:
+                    raise AssertionError(
+                        f"{template_name} contains hardcoded "
+                        f"'--model {model}' — must use placeholder"
+                    )
+
+    def test_templates_use_model_placeholders(self) -> None:
+        """Templates must use {exploration_model} or {delegated_impl_model}."""
+        impl_content = (
+            self.TEMPLATES_DIR / "strategic-implementation.md"
+        ).read_text(encoding="utf-8")
+        assert "{exploration_model}" in impl_content, (
+            "strategic-implementation.md must use "
+            "{exploration_model} placeholder"
+        )
+        assert "{delegated_impl_model}" in impl_content, (
+            "strategic-implementation.md must use "
+            "{delegated_impl_model} placeholder"
+        )
+        proposal_content = (
+            self.TEMPLATES_DIR / "integration-proposal.md"
+        ).read_text(encoding="utf-8")
+        assert "{exploration_model}" in proposal_content, (
+            "integration-proposal.md must use "
+            "{exploration_model} placeholder"
+        )
+
+    def test_writers_inject_model_from_policy(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        """Writers must inject model names from model_policy dict."""
+        from section_loop.prompts.writers import (
+            write_integration_proposal_prompt,
+            write_strategic_impl_prompt,
+        )
+        from section_loop.types import Section
+
+        sections_dir = planspace / "artifacts" / "sections"
+        sections_dir.mkdir(parents=True, exist_ok=True)
+        section = Section(
+            number="01",
+            path=sections_dir / "section-01.md",
+            related_files=[],
+        )
+        (sections_dir / "section-01.md").write_text("# Section 01")
+        # Create required excerpt files
+        (sections_dir / "section-01-proposal-excerpt.md").write_text("P")
+        (sections_dir / "section-01-alignment-excerpt.md").write_text("A")
+
+        custom_policy = {
+            "exploration": "custom-explore-model",
+            "implementation": "custom-impl-model",
+        }
+
+        intg_path = write_integration_proposal_prompt(
+            section, planspace, codespace,
+            model_policy=custom_policy,
+        )
+        intg_content = intg_path.read_text(encoding="utf-8")
+        assert "custom-explore-model" in intg_content, (
+            "Integration proposal must render exploration model "
+            "from policy"
+        )
+
+        impl_path = write_strategic_impl_prompt(
+            section, planspace, codespace,
+            model_policy=custom_policy,
+        )
+        impl_content = impl_path.read_text(encoding="utf-8")
+        assert "custom-explore-model" in impl_content, (
+            "Strategic impl must render exploration model from policy"
+        )
+        assert "custom-impl-model" in impl_content, (
+            "Strategic impl must render delegated impl model from policy"
+        )
+
+    def test_friction_signal_path_in_impl_prompt(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        """Strategic impl prompt must include friction signal path."""
+        from section_loop.prompts.writers import write_strategic_impl_prompt
+        from section_loop.types import Section
+
+        sections_dir = planspace / "artifacts" / "sections"
+        sections_dir.mkdir(parents=True, exist_ok=True)
+        section = Section(
+            number="01",
+            path=sections_dir / "section-01.md",
+            related_files=[],
+        )
+        (sections_dir / "section-01.md").write_text("# Section 01")
+        (sections_dir / "section-01-proposal-excerpt.md").write_text("P")
+        (sections_dir / "section-01-alignment-excerpt.md").write_text("A")
+
+        impl_path = write_strategic_impl_prompt(
+            section, planspace, codespace,
+        )
+        impl_content = impl_path.read_text(encoding="utf-8")
+        assert "tool-friction.json" in impl_content, (
+            "Strategic impl prompt must include friction signal path "
+            "so agents can signal tool composition friction"
         )

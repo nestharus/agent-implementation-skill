@@ -300,9 +300,71 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                 tools_available_path.unlink()
                 log(f"Section {section.number}: removed stale "
                     f"tools-available surface (no relevant tools)")
-        except (json.JSONDecodeError, ValueError):
-            log(f"Section {section.number}: WARNING — tool-registry.json "
-                f"is malformed, skipping")
+        except (json.JSONDecodeError, ValueError) as exc:
+            # Fail-closed: remove stale surface to prevent agents
+            # from reasoning over outdated tool context (R34/V1)
+            if tools_available_path.exists():
+                tools_available_path.unlink()
+                log(f"Section {section.number}: removed stale "
+                    f"tools-available surface (malformed registry)")
+            # Dispatch tool-registrar to attempt repair
+            log(f"Section {section.number}: tool-registry.json "
+                f"malformed ({exc}) — dispatching repair")
+            repair_prompt = (
+                artifacts
+                / f"tool-registry-repair-{section.number}-prompt.md"
+            )
+            repair_output = (
+                artifacts
+                / f"tool-registry-repair-{section.number}-output.md"
+            )
+            repair_prompt.write_text(
+                f"# Task: Repair Tool Registry\n\n"
+                f"The tool registry at `{tool_registry_path}` contains "
+                f"malformed JSON.\n\nError: {exc}\n\n"
+                f"Read the file, reconstruct valid JSON preserving all "
+                f"tool entries, and write back to the same path.\n",
+                encoding="utf-8",
+            )
+            dispatch_agent(
+                policy.get("tool_registrar", "glm"),
+                repair_prompt, repair_output,
+                planspace, parent, codespace=codespace,
+                section_number=section.number,
+            )
+            # Re-check after repair
+            try:
+                registry = json.loads(
+                    tool_registry_path.read_text(encoding="utf-8"))
+                all_tools = (registry if isinstance(registry, list)
+                             else registry.get("tools", []))
+                pre_tool_total = len(all_tools)
+                log(f"Section {section.number}: tool registry "
+                    f"repaired ({len(all_tools)} tools)")
+            except (json.JSONDecodeError, ValueError):
+                log(f"Section {section.number}: tool registry "
+                    f"repair failed — writing blocker signal")
+                signal_dir = artifacts / "signals"
+                signal_dir.mkdir(parents=True, exist_ok=True)
+                blocker = {
+                    "state": "needs_parent",
+                    "detail": (
+                        "Tool registry malformed; repair agent "
+                        "could not fix it."
+                    ),
+                    "needs": "Valid tool-registry.json",
+                    "why_blocked": (
+                        "Cannot safely surface tools with an "
+                        "invalid registry."
+                    ),
+                }
+                (signal_dir
+                 / f"section-{section.number}-blocker.json"
+                 ).write_text(
+                    json.dumps(blocker, indent=2),
+                    encoding="utf-8",
+                )
+                _update_blocker_rollup(planspace)
 
     # -----------------------------------------------------------------
     # Step 1: Section setup — extract excerpts from global documents
@@ -671,6 +733,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         intg_prompt = write_integration_proposal_prompt(
             section, planspace, codespace, proposal_problems,
             incoming_notes=incoming_notes,
+            model_policy=policy,
         )
         intg_output = artifacts / f"intg-proposal-{section.number}-output.md"
         intg_agent = f"intg-proposal-{section.number}"
@@ -846,7 +909,8 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         _check_needs_microstrategy(
             integration_proposal, planspace, section.number, parent,
             codespace=codespace,
-            model=policy.get("microstrategy_decider", "glm"))
+            model=policy.get("microstrategy_decider", "glm"),
+            escalation_model=policy["escalation_model"])
         and not microstrategy_path.exists()
     )
     if not needs_microstrategy and not microstrategy_path.exists():
@@ -997,6 +1061,7 @@ WHY — you're capturing WHAT and WHERE at the file level.
         # 3a: GPT implements strategically
         impl_prompt = write_strategic_impl_prompt(
             section, planspace, codespace, impl_problems,
+            model_policy=policy,
         )
         impl_output = artifacts / f"impl-{section.number}-output.md"
         impl_agent = f"impl-{section.number}"
@@ -1257,8 +1322,65 @@ WHY — you're capturing WHAT and WHERE at the file level.
                     agent_file="tool-registrar.md",
                     section_number=section.number,
                 )
-        except (json.JSONDecodeError, ValueError):
-            pass  # Malformed registry — already warned in Step 0b
+        except (json.JSONDecodeError, ValueError) as exc:
+            # Fail-closed: dispatch repair instead of silently
+            # proceeding (R34/V2)
+            log(f"Section {section.number}: post-impl registry "
+                f"malformed ({exc}) — dispatching repair")
+            repair_prompt = (
+                artifacts
+                / f"tool-registry-post-repair-{section.number}-prompt.md"
+            )
+            repair_output = (
+                artifacts
+                / f"tool-registry-post-repair-{section.number}-output.md"
+            )
+            repair_prompt.write_text(
+                f"# Task: Repair Tool Registry (Post-Implementation)\n\n"
+                f"The tool registry at `{tool_registry_path}` became "
+                f"malformed after section {section.number} "
+                f"implementation.\n\nError: {exc}\n\n"
+                f"Read the file, reconstruct valid JSON preserving all "
+                f"tool entries, and write back to the same path.\n",
+                encoding="utf-8",
+            )
+            dispatch_agent(
+                policy.get("tool_registrar", "glm"),
+                repair_prompt, repair_output,
+                planspace, parent, codespace=codespace,
+                section_number=section.number,
+            )
+            # Verify repair succeeded
+            try:
+                json.loads(
+                    tool_registry_path.read_text(encoding="utf-8"))
+                log(f"Section {section.number}: post-impl tool "
+                    f"registry repaired")
+            except (json.JSONDecodeError, ValueError):
+                log(f"Section {section.number}: post-impl tool "
+                    f"registry repair failed — writing blocker")
+                signal_dir = artifacts / "signals"
+                signal_dir.mkdir(parents=True, exist_ok=True)
+                blocker = {
+                    "state": "needs_parent",
+                    "detail": (
+                        "Tool registry malformed after "
+                        "implementation; repair agent could "
+                        "not fix it."
+                    ),
+                    "needs": "Valid tool-registry.json",
+                    "why_blocked": (
+                        "Malformed registry affects subsequent "
+                        "sections' tool surfacing."
+                    ),
+                }
+                (signal_dir
+                 / f"section-{section.number}-post-impl-blocker.json"
+                 ).write_text(
+                    json.dumps(blocker, indent=2),
+                    encoding="utf-8",
+                )
+                _update_blocker_rollup(planspace)
 
     # -----------------------------------------------------------------
     # Step 3c: Detect tooling friction and dispatch bridge-tools agent
