@@ -71,7 +71,19 @@ def _update_blocker_rollup(planspace: Path) -> None:
                     "needs": data.get("needs", ""),
                     "why_blocked": data.get("why_blocked", ""),
                 })
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            blockers.append({
+                "signal_file": sig_path.name,
+                "state": "malformed",
+                "category": "malformed_signal",
+                "section": "unknown",
+                "detail": (
+                    f"Signal file {sig_path.name} could not be parsed "
+                    f"({exc}); fix or regenerate this signal."
+                ),
+                "needs": "Valid signal JSON",
+                "why_blocked": str(exc),
+            })
             continue
 
     if not blockers:
@@ -88,6 +100,7 @@ def _update_blocker_rollup(planspace: Path) -> None:
         "dependency": [],
         "scope_expansion": [],
         "needs_parent": [],
+        "malformed_signal": [],
     }
     for b in blockers:
         groups[b["category"]].append(b)
@@ -98,12 +111,14 @@ def _update_blocker_rollup(planspace: Path) -> None:
         "dependency": "Dependencies (DEPENDENCY)",
         "scope_expansion": "Scope Expansion (OUT_OF_SCOPE)",
         "needs_parent": "Parent Decision Required (NEEDS_PARENT)",
+        "malformed_signal": "Malformed Signal Files (parse error)",
     }
 
     lines = ["# Blocker Rollup (auto-generated)\n",
              f"**{len(blockers)} sections need input:**\n"]
     for cat_key in ("missing_info", "decision_required", "dependency",
-                    "scope_expansion", "needs_parent"):
+                    "scope_expansion", "needs_parent",
+                    "malformed_signal"):
         cat_blockers = groups[cat_key]
         if not cat_blockers:
             continue

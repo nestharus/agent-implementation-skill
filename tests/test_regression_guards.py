@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -2561,4 +2561,114 @@ class TestNoteAckPreservesCorrupted:
         content = self.RUNNER_PY.read_text(encoding="utf-8")
         assert "note-ack" in content and "malformed" in content, (
             "runner.py must log a warning about malformed note-ack"
+        )
+
+
+class TestScheduleTemplateModelName:
+    """R39/V1: Schedule template must use the primary model name and
+    include a policy-override note."""
+
+    TEMPLATE = PROJECT_ROOT / "templates" / "implement-proposal.md"
+
+    def test_no_high2_model_in_schedule(self) -> None:
+        """implement-proposal.md must not reference gpt-5.3-codex-high2."""
+        content = self.TEMPLATE.read_text(encoding="utf-8")
+        assert "gpt-5.3-codex-high2" not in content, (
+            "implement-proposal.md must use gpt-5.3-codex-high, "
+            "not gpt-5.3-codex-high2"
+        )
+
+    def test_verify_line_has_policy_note(self) -> None:
+        """verify step should note to use policy's model if different."""
+        content = self.TEMPLATE.read_text(encoding="utf-8")
+        assert "policy" in content.lower(), (
+            "implement-proposal.md verify line should reference the "
+            "policy's verification model"
+        )
+
+    def test_verify_line_uses_primary_model(self) -> None:
+        """verify step should use gpt-5.3-codex-high (primary pool)."""
+        content = self.TEMPLATE.read_text(encoding="utf-8")
+        for line in content.splitlines():
+            if "verify" in line.lower() and "codex" in line.lower():
+                assert "gpt-5.3-codex-high" in line, (
+                    "verify line must use gpt-5.3-codex-high"
+                )
+                break
+        else:
+            pytest.fail("No verify+codex line found in template")
+
+
+class TestBlockerRollupMalformedSignal:
+    """R39/V2: Blocker rollup must not silently drop malformed signal
+    files — they should appear in the rollup."""
+
+    BLOCKERS_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+                   / "section_engine" / "blockers.py")
+
+    def test_no_silent_continue_on_parse_error(self) -> None:
+        """blockers.py must not silently continue past parse errors."""
+        content = self.BLOCKERS_PY.read_text(encoding="utf-8")
+        assert "malformed_signal" in content, (
+            "blockers.py must route malformed signals to a "
+            "malformed_signal category, not skip them"
+        )
+
+    def test_malformed_signal_in_rollup_categories(self) -> None:
+        """blockers.py rollup must include malformed_signal category."""
+        content = self.BLOCKERS_PY.read_text(encoding="utf-8")
+        assert "Malformed Signal Files" in content, (
+            "blockers.py must have a 'Malformed Signal Files' "
+            "category title for malformed signals"
+        )
+
+    def test_malformed_signal_unit(self, tmp_path: Path) -> None:
+        """Malformed signal JSON must appear in the rollup output."""
+        from section_loop.section_engine.blockers import (
+            _update_blocker_rollup,
+        )
+        signals_dir = tmp_path / "artifacts" / "signals"
+        signals_dir.mkdir(parents=True)
+        # Write a malformed signal file
+        (signals_dir / "test-signal.json").write_text(
+            "{invalid json", encoding="utf-8"
+        )
+        _update_blocker_rollup(tmp_path)
+        rollup = (tmp_path / "artifacts" / "decisions"
+                  / "needs-input.md")
+        assert rollup.exists(), "Rollup must be written even for malformed"
+        content = rollup.read_text(encoding="utf-8")
+        assert "Malformed Signal Files" in content
+        assert "test-signal.json" in content
+
+
+class TestTraceabilityPreservesCorrupted:
+    """R39/V3: Traceability log must preserve corrupted files instead
+    of silently resetting to empty."""
+
+    COMM_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+               / "communication.py")
+
+    def test_no_silent_reset_on_parse_error(self) -> None:
+        """communication.py must not silently reset traceability.json."""
+        content = self.COMM_PY.read_text(encoding="utf-8")
+        assert "corrupt" in content.lower(), (
+            "communication.py must preserve corrupted traceability.json "
+            "with a 'corrupt' marker filename"
+        )
+
+    def test_preserves_with_rename(self) -> None:
+        """communication.py must rename corrupted file, not overwrite."""
+        content = self.COMM_PY.read_text(encoding="utf-8")
+        assert "traceability.corrupt-" in content, (
+            "communication.py must rename corrupted file to "
+            "traceability.corrupt-<timestamp>.json"
+        )
+
+    def test_logs_warning_on_corruption(self) -> None:
+        """communication.py must log when traceability.json is malformed."""
+        content = self.COMM_PY.read_text(encoding="utf-8")
+        assert "malformed" in content and "starting fresh" in content, (
+            "communication.py must log a warning about malformed "
+            "traceability.json"
         )

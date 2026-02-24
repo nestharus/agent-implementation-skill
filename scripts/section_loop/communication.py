@@ -160,7 +160,22 @@ def _record_traceability(
     if trace_path.exists():
         try:
             entries = json.loads(trace_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, ValueError) as exc:
+            # Preserve corrupted file for diagnosis
+            import time
+            corrupt_name = (
+                f"traceability.corrupt-"
+                f"{int(time.time())}.json"
+            )
+            corrupt_path = trace_path.parent / corrupt_name
+            try:
+                trace_path.rename(corrupt_path)
+            except OSError:
+                pass  # Best-effort preserve
+            log(
+                f"traceability.json malformed ({exc}) — "
+                f"preserved as {corrupt_name}, starting fresh"
+            )
             entries = []
     entries.append({
         "section": section,
