@@ -9,6 +9,7 @@ from ..types import Section
 def _reexplore_section(
     section: Section, planspace: Path, codespace: Path, parent: str,
     model: str = "claude-opus",
+    exploration_model: str = "glm",
 ) -> str | None:
     """Dispatch a re-explorer when a section has no related files.
 
@@ -61,9 +62,9 @@ Your job is to determine why and classify the situation.
    If codemap corrections exist, treat them as authoritative over codemap.md.
 3. Explore the codespace strategically — search for files that relate
    to this section's problem space
-4. Use GLM sub-agents for quick file reads:
+4. Use sub-agents for quick file reads:
    ```bash
-   uv run --frozen agents --model glm --project "{codespace}" "<instructions>"
+   uv run --frozen agents --model {exploration_model} --project "{codespace}" "<instructions>"
    ```
 
 ## Output

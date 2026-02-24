@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -28,6 +28,9 @@ R34/V1: Tool registry malformed → remove stale surface + dispatch repair.
 R34/V2: Post-impl tool registry malformed → repair, not pass.
 R34/V3: Microstrategy decision fails closed (returns True, writes fallback).
 R34/V4: Prompt templates use policy-driven model placeholders.
+R35/V1: reexplore.py prompt uses policy-driven exploration model.
+R35/V2: coordination/execution.py prompt uses policy-driven model params.
+R35/P11: Sweep guard — no hardcoded --model literals in any prompt surface.
 """
 
 import json
@@ -1868,3 +1871,162 @@ class TestTemplateModelParameterized:
             "Strategic impl prompt must include friction signal path "
             "so agents can signal tool composition friction"
         )
+
+
+# ---------------------------------------------------------------
+# R35/V1: reexplore.py prompt uses policy-driven exploration model
+# ---------------------------------------------------------------
+
+class TestReexploreModelParameterized:
+    """reexplore.py delegation instructions must not hardcode model names."""
+
+    REEXPLORE = (PROJECT_ROOT / "scripts" / "section_loop"
+                 / "section_engine" / "reexplore.py")
+
+    def test_no_hardcoded_model_in_prompt_text(self) -> None:
+        """Prompt f-string must not contain --model glm literally."""
+        src = self.REEXPLORE.read_text(encoding="utf-8")
+        assert "--model glm" not in src, (
+            "reexplore.py prompt text contains hardcoded '--model glm' "
+            "— must use {exploration_model} placeholder"
+        )
+
+    def test_exploration_model_parameter_exists(self) -> None:
+        """_reexplore_section must accept exploration_model parameter."""
+        import inspect
+        from section_loop.section_engine.reexplore import _reexplore_section
+        sig = inspect.signature(_reexplore_section)
+        assert "exploration_model" in sig.parameters, (
+            "_reexplore_section must accept exploration_model parameter "
+            "for policy-driven delegation"
+        )
+
+    def test_caller_passes_exploration_model(self) -> None:
+        """main.py must pass exploration_model from policy."""
+        main_path = PROJECT_ROOT / "scripts" / "section_loop" / "main.py"
+        src = main_path.read_text(encoding="utf-8")
+        assert 'exploration_model=policy["exploration"]' in src, (
+            "main.py must pass exploration_model from policy to "
+            "_reexplore_section"
+        )
+
+
+# ---------------------------------------------------------------
+# R35/V2: coordination/execution.py prompt uses policy-driven models
+# ---------------------------------------------------------------
+
+class TestCoordinationFixPromptModelParameterized:
+    """Coordination fix prompt must not hardcode model names."""
+
+    EXECUTION = (PROJECT_ROOT / "scripts" / "section_loop"
+                 / "coordination" / "execution.py")
+
+    def test_no_hardcoded_glm_in_prompt_text(self) -> None:
+        """Fix prompt must not contain --model glm literally."""
+        src = self.EXECUTION.read_text(encoding="utf-8")
+        assert "--model glm" not in src, (
+            "execution.py fix prompt contains hardcoded '--model glm' "
+            "— must use {exploration_model} placeholder"
+        )
+
+    def test_no_hardcoded_codex_in_prompt_text(self) -> None:
+        """Fix prompt must not contain --model gpt-5.3-codex-high literally."""
+        src = self.EXECUTION.read_text(encoding="utf-8")
+        assert "--model gpt-5.3-codex-high" not in src, (
+            "execution.py fix prompt contains hardcoded "
+            "'--model gpt-5.3-codex-high' — must use placeholder"
+        )
+
+    def test_prompt_writer_accepts_model_params(self) -> None:
+        """write_coordinator_fix_prompt must accept model parameters."""
+        import inspect
+        from section_loop.coordination.execution import (
+            write_coordinator_fix_prompt,
+        )
+        sig = inspect.signature(write_coordinator_fix_prompt)
+        assert "exploration_model" in sig.parameters, (
+            "write_coordinator_fix_prompt must accept exploration_model"
+        )
+        assert "delegation_impl_model" in sig.parameters, (
+            "write_coordinator_fix_prompt must accept "
+            "delegation_impl_model"
+        )
+
+    def test_dispatch_passes_policy_models(self) -> None:
+        """_dispatch_fix_group must pass policy models to prompt writer."""
+        src = self.EXECUTION.read_text(encoding="utf-8")
+        assert 'exploration_model=policy["exploration"]' in src, (
+            "_dispatch_fix_group must pass exploration_model from policy"
+        )
+
+
+# ---------------------------------------------------------------
+# R35/P11: Sweep guard — no hardcoded --model literals in any
+# prompt surface (templates + prompt builder source files)
+# ---------------------------------------------------------------
+
+class TestNoHardcodedModelInPromptSurfaces:
+    """Comprehensive sweep: no prompt template or prompt builder
+    may contain '--model <concrete-model-name>' for any known model.
+
+    This catches propagation drift — when new prompt surfaces are
+    added that embed model names instead of using policy injection.
+    """
+
+    TEMPLATES_DIR = (PROJECT_ROOT / "scripts" / "section_loop"
+                     / "prompts" / "templates")
+    SCAN_TEMPLATES_DIR = PROJECT_ROOT / "scripts" / "scan" / "templates"
+
+    # All prompt builder source files that construct agent instructions
+    PROMPT_BUILDER_FILES = [
+        PROJECT_ROOT / "scripts" / "section_loop" / "section_engine" / "reexplore.py",
+        PROJECT_ROOT / "scripts" / "section_loop" / "coordination" / "execution.py",
+        PROJECT_ROOT / "scripts" / "section_loop" / "coordination" / "planning.py",
+        PROJECT_ROOT / "scripts" / "section_loop" / "prompts" / "writers.py",
+        PROJECT_ROOT / "scripts" / "section_loop" / "prompts" / "context.py",
+    ]
+
+    KNOWN_MODELS = [
+        "glm", "gpt-5.3-codex-high", "gpt-5.3-codex-high2",
+        "gpt-5.3-codex-xhigh", "claude-opus", "claude-haiku",
+    ]
+
+    def test_no_hardcoded_model_in_section_loop_templates(self) -> None:
+        """Section loop .md templates must not contain --model <literal>."""
+        if not self.TEMPLATES_DIR.exists():
+            return
+        for template in sorted(self.TEMPLATES_DIR.glob("*.md")):
+            content = template.read_text(encoding="utf-8")
+            for model in self.KNOWN_MODELS:
+                if f"--model {model}" in content:
+                    raise AssertionError(
+                        f"{template.name} contains hardcoded "
+                        f"'--model {model}' — must use placeholder"
+                    )
+
+    def test_no_hardcoded_model_in_prompt_builders(self) -> None:
+        """Prompt builder .py files must not contain --model <literal>
+        in f-string prompt text. Default parameter values and comments
+        are exempt."""
+        for fpath in self.PROMPT_BUILDER_FILES:
+            if not fpath.exists():
+                continue
+            content = fpath.read_text(encoding="utf-8")
+            lines = content.splitlines()
+            for i, line in enumerate(lines, 1):
+                stripped = line.strip()
+                # Skip comments and docstrings
+                if stripped.startswith("#"):
+                    continue
+                if stripped.startswith(('"""', "'''")):
+                    continue
+                # Skip default parameter definitions
+                if "def " in stripped and "= \"" in stripped:
+                    continue
+                for model in self.KNOWN_MODELS:
+                    if f"--model {model}" in stripped:
+                        raise AssertionError(
+                            f"{fpath.name}:{i}: contains hardcoded "
+                            f"'--model {model}' in prompt text — "
+                            f"must use policy-injected placeholder"
+                        )

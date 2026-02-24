@@ -9,6 +9,8 @@ from ..dispatch import dispatch_agent, write_model_choice_signal
 def write_coordinator_fix_prompt(
     group: list[dict[str, Any]], planspace: Path, codespace: Path,
     group_id: int,
+    exploration_model: str = "glm",
+    delegation_impl_model: str = "gpt-5.3-codex-high",
 ) -> Path:
     """Write a Codex prompt to fix a group of related problems.
 
@@ -133,10 +135,10 @@ creates or re-triggers another.
 
 1. **Explore first.** Before making changes, understand the full picture.
    Read the codemap if available to understand how these files fit into
-   the broader project structure. Then dispatch GLM sub-agents to read
+   the broader project structure. Then dispatch sub-agents to read
    files and understand context:
    ```bash
-   uv run --frozen agents --model glm --project "{codespace}" "<instructions>"
+   uv run --frozen agents --model {exploration_model} --project "{codespace}" "<instructions>"
    ```
 
 2. **Plan holistically.** Consider how all the problems interact. A single
@@ -144,11 +146,11 @@ creates or re-triggers another.
 
 3. **Implement.** Make the changes. For targeted sub-tasks:
    ```bash
-   uv run --frozen agents --model gpt-5.3-codex-high \\
+   uv run --frozen agents --model {delegation_impl_model} \\
      --project "{codespace}" "<instructions>"
    ```
 
-4. **Verify.** After implementation, dispatch GLM to verify the fixes
+4. **Verify.** After implementation, dispatch sub-agents to verify the fixes
    address all listed problems without introducing new issues.
 
 ### Report Modified Files
@@ -179,15 +181,19 @@ def _dispatch_fix_group(
     from ..dispatch import read_model_policy
 
     artifacts = planspace / "artifacts" / "coordination"
+    policy = read_model_policy(planspace)
     fix_prompt = write_coordinator_fix_prompt(
         group, planspace, codespace, group_id,
+        exploration_model=policy["exploration"],
+        delegation_impl_model=policy.get(
+            "coordination_fix", "gpt-5.3-codex-high"),
     )
     fix_output = artifacts / f"fix-{group_id}-output.md"
     modified_report = artifacts / f"fix-{group_id}-modified.txt"
 
     # Check for model escalation (triggered by coordination churn)
     if not default_fix_model:
-        default_fix_model = read_model_policy(planspace)["coordination_fix"]
+        default_fix_model = policy["coordination_fix"]
     fix_model = default_fix_model
     coord_escalated_from = None
     escalation_file = artifacts / "model-escalation.txt"

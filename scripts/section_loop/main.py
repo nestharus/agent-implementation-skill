@@ -299,6 +299,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                     reexplore_result = _reexplore_section(
                         section, planspace, codespace, parent,
                         model=policy["setup"],
+                        exploration_model=policy["exploration"],
                     )
                     if reexplore_result == "ALIGNMENT_CHANGED_PENDING":
                         if _check_and_clear_alignment_changed(planspace):
