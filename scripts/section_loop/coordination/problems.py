@@ -76,12 +76,12 @@ def _collect_outstanding_problems(
     if notes_dir.exists():
         for note_path in sorted(notes_dir.glob("from-*-to-*.md")):
             name_match = re.match(
-                r'from-(\d+)-to-(\d+)\.md', note_path.name,
+                r'from-(.+)-to-(\d+)\.md', note_path.name,
             )
             if not name_match:
                 continue
             target_num = name_match.group(2)
-            source_num = name_match.group(1)
+            source_label = name_match.group(1)
             target_result = section_results.get(target_num)
             if not target_result or not target_result.aligned:
                 continue  # target isn't aligned yet — will see note
@@ -119,7 +119,7 @@ def _collect_outstanding_problems(
                             "note_id": note_id,
                             "description": (
                                 f"Section {target_num} REJECTED note "
-                                f"{note_id} from section {source_num}. "
+                                f"{note_id} from {source_label}. "
                                 f"Reason: "
                                 f"{matching_ack.get('reason', '(none)')}. "
                                 f"This conflict needs coordinator "
@@ -136,7 +136,7 @@ def _collect_outstanding_problems(
                             "note_id": note_id,
                             "description": (
                                 f"Section {target_num} deferred note "
-                                f"{note_id} from section {source_num}. "
+                                f"{note_id} from section {source_label}. "
                                 f"Reason: "
                                 f"{matching_ack.get('reason', '(none)')}. "
                                 f"Will re-evaluate when blocking "
@@ -155,7 +155,7 @@ def _collect_outstanding_problems(
                 "note_id": note_id,
                 "description": (
                     f"Consequence note {note_id} from section "
-                    f"{source_num} has not been acknowledged by "
+                    f"{source_label} has not been acknowledged by "
                     f"section {target_num}. "
                     f"Note content:\n{note_content[:500]}"
                 ),

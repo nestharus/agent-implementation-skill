@@ -45,3 +45,6 @@ UNDERSPECIFIED: <what information is missing and why alignment can't be checked>
 Each problem must be specific and actionable. "Needs more detail" is NOT
 a valid problem. "The proposal routes X through Y, but the alignment says
 X must go through Z because of constraint C" IS a valid problem.
+
+Your first line must be the verdict label above. You MUST also include the
+structured JSON verdict block described by the alignment-judge method.

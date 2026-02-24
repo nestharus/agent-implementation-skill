@@ -631,7 +631,7 @@ class TestBridgeNotePropagation:
         notes_dir = planspace / "artifacts" / "notes"
         notes_dir.mkdir(parents=True, exist_ok=True)
         (notes_dir / "from-bridge-0-to-01.md").write_text(
-            "**Note ID** bridge-0-to-01-abc123\n\nContract requires X.")
+            "**Note ID**: `bridge-0-to-01-abc123`\n\nContract requires X.")
 
         section = Section(
             number="01",
@@ -759,3 +759,119 @@ class TestModeInputsInHash:
 
         h2 = _section_inputs_hash("01", planspace, codespace, sections)
         assert h1 != h2, "section-mode.txt must change inputs hash"
+
+
+class TestBridgeNoteLifecycle:
+    """R28: Bridge notes participate in the full note lifecycle.
+
+    Canonical Note ID format (colon + backticks) is required for bridge
+    notes to be filterable by acknowledgment and visible to coordination.
+    """
+
+    def test_bridge_note_filtered_when_acknowledged(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        """A bridge note with an accepted ack entry must be filtered out
+        by read_incoming_notes."""
+        import json
+        from section_loop.cross_section import read_incoming_notes
+        from section_loop.types import Section
+
+        notes_dir = planspace / "artifacts" / "notes"
+        notes_dir.mkdir(parents=True, exist_ok=True)
+        note_id = "bridge-0-to-01-abc123"
+        (notes_dir / "from-bridge-0-to-01.md").write_text(
+            f"**Note ID**: `{note_id}`\n\nContract requires X.")
+
+        signals_dir = planspace / "artifacts" / "signals"
+        signals_dir.mkdir(parents=True, exist_ok=True)
+        ack = {"acknowledged": [{"note_id": note_id, "action": "accepted"}]}
+        (signals_dir / "note-ack-01.json").write_text(json.dumps(ack))
+
+        section = Section(
+            number="01",
+            path=planspace / "artifacts" / "sections" / "section-01.md",
+            related_files=[],
+        )
+        notes_text = read_incoming_notes(section, planspace, codespace)
+        assert "Contract requires X" not in notes_text, (
+            "Accepted bridge notes must be filtered out by read_incoming_notes"
+        )
+
+    def test_coordination_includes_rejected_bridge_note(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        """A rejected bridge note must appear as an outstanding problem
+        in coordination scanning."""
+        import json
+        from section_loop.coordination.problems import (
+            _collect_outstanding_problems,
+        )
+        from section_loop.types import Section, SectionResult
+
+        notes_dir = planspace / "artifacts" / "notes"
+        notes_dir.mkdir(parents=True, exist_ok=True)
+        note_id = "bridge-0-to-01-abc123"
+        (notes_dir / "from-bridge-0-to-01.md").write_text(
+            f"**Note ID**: `{note_id}`\n\nContract requires X.")
+
+        signals_dir = planspace / "artifacts" / "signals"
+        signals_dir.mkdir(parents=True, exist_ok=True)
+        ack = {"acknowledged": [
+            {"note_id": note_id, "action": "rejected", "reason": "disagree"},
+        ]}
+        (signals_dir / "note-ack-01.json").write_text(json.dumps(ack))
+
+        section = Section(
+            number="01",
+            path=planspace / "artifacts" / "sections" / "section-01.md",
+            related_files=[],
+        )
+        section_results = {
+            "01": SectionResult(section_number="01", aligned=True),
+        }
+        sections_by_num = {"01": section}
+        problems = _collect_outstanding_problems(
+            section_results, sections_by_num, planspace,
+        )
+        bridge_problems = [
+            p for p in problems if p.get("note_id") == note_id
+        ]
+        assert len(bridge_problems) > 0, (
+            "Rejected bridge notes must appear as outstanding problems"
+        )
+        assert bridge_problems[0]["type"] == "consequence_conflict"
+
+
+class TestAlignmentTemplateJsonVerdict:
+    """R28/P10: Alignment templates must reference the structured JSON verdict.
+
+    The alignment-judge agent method requires a JSON block. Task templates
+    must reinforce this to avoid missing-JSON adjudicator cycles.
+    """
+
+    def test_integration_alignment_mentions_json_verdict(self) -> None:
+        from pathlib import Path
+        template = (
+            Path(__file__).resolve().parent.parent
+            / "scripts" / "section_loop" / "prompts" / "templates"
+            / "integration-alignment.md"
+        ).read_text(encoding="utf-8")
+        assert "structured JSON verdict" in template.lower() or \
+               "JSON verdict block" in template, (
+            "integration-alignment.md must reference the structured JSON "
+            "verdict required by alignment-judge.md"
+        )
+
+    def test_implementation_alignment_mentions_json_verdict(self) -> None:
+        from pathlib import Path
+        template = (
+            Path(__file__).resolve().parent.parent
+            / "scripts" / "section_loop" / "prompts" / "templates"
+            / "implementation-alignment.md"
+        ).read_text(encoding="utf-8")
+        assert "structured JSON verdict" in template.lower() or \
+               "JSON verdict block" in template, (
+            "implementation-alignment.md must reference the structured JSON "
+            "verdict required by alignment-judge.md"
+        )

@@ -556,13 +556,13 @@ Reply with a JSON block:
                     )
                     if note_path.exists():
                         note_text = note_path.read_text(encoding="utf-8")
-                        if "**Note ID**" not in note_text:
+                        if "**Note ID**:" not in note_text:
                             fp = hashlib.sha256(
                                 delta_bytes + s.encode("utf-8")
                             ).hexdigest()[:12]
                             note_id = f"bridge-{gidx}-to-{s}-{fp}"
                             note_path.write_text(
-                                f"**Note ID** {note_id}\n\n{note_text}",
+                                f"**Note ID**: `{note_id}`\n\n{note_text}",
                                 encoding="utf-8",
                             )
 

@@ -56,3 +56,6 @@ or
 UNDERSPECIFIED: <what information is missing and why alignment can't be checked>
 
 Each problem must be specific and actionable.
+
+Your first line must be the verdict label above. You MUST also include the
+structured JSON verdict block described by the alignment-judge method.
