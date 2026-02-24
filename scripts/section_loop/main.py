@@ -45,19 +45,12 @@ from .types import Section, SectionResult
 def parse_related_files(section_path: Path) -> list[str]:
     """Extract file paths from ## Related Files / ### <path> entries.
 
-    Only parses lines after the ``## Related Files`` header and skips
-    content inside markdown code fences (``` blocks).
+    Delegates to the unified block-scoped, code-fence-safe parser
+    in ``scan.related_files`` (R33/P9).
     """
-    text = section_path.read_text(encoding="utf-8")
-    # Only look at the content after ## Related Files header
-    marker = "## Related Files"
-    idx = text.find(marker)
-    if idx == -1:
-        return []
-    tail = text[idx + len(marker):]
-    # Strip code fences before matching
-    tail = re.sub(r'```.*?```', '', tail, flags=re.DOTALL)
-    return re.findall(r'^### (.+)$', tail, re.MULTILINE)
+    from scan.related_files import extract_related_files
+
+    return extract_related_files(section_path.read_text(encoding="utf-8"))
 
 
 def load_sections(sections_dir: Path) -> list[Section]:

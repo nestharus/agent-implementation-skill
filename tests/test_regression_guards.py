@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -20,6 +20,10 @@ R32/V1: Coordination plan parse failure retries + fails closed (no script groupi
 R32/V2: Escalation/fix model strictly policy-driven (no hardcoded model writes).
 R32/V3: frame_ok=false is structural failure surfaced upward (no retry loop).
 R32/V4: Feedback signal status acked as applied after update.
+R33/V1: Related Files parsing unified, block-scoped, code-fence-safe.
+R33/V2: Signal instructions clarify JSON is the only truth channel.
+R33/V3: Problem frame in convergence hashing and traceability.
+R33/V4: loop-contract.md lists all hashed inputs.
 """
 
 import json
@@ -1374,4 +1378,211 @@ class TestFeedbackSignalAcked:
         assert '"no_change"' in src, (
             "feedback.py must set status to 'no_change' when "
             "update produces no file change"
+        )
+
+
+# ---------------------------------------------------------------
+# R33/V1: Related Files parsing unified, block-scoped, code-fence-safe
+# ---------------------------------------------------------------
+
+class TestRelatedFilesUnified:
+    """All Related Files parsing and editing must use the shared
+    block-scoped, code-fence-safe utilities in scan.related_files."""
+
+    def test_extract_ignores_code_fenced_entries(self) -> None:
+        """### entries inside code fences must NOT be extracted."""
+        from scan.related_files import extract_related_files
+
+        text = (
+            "# Section\n"
+            "## Related Files\n"
+            "### src/real.py\n"
+            "Real file entry.\n"
+            "```python\n"
+            "### src/fake.py\n"
+            "This is inside a code fence.\n"
+            "```\n"
+            "### src/also_real.py\n"
+            "Another real entry.\n"
+            "## Next Section\n"
+        )
+        result = extract_related_files(text)
+        assert "src/real.py" in result
+        assert "src/also_real.py" in result
+        assert "src/fake.py" not in result, (
+            "Code-fenced ### entry must not be extracted"
+        )
+
+    def test_find_entry_span_block_scoped(self) -> None:
+        """find_entry_span must only find entries in Related Files block."""
+        from scan.related_files import find_entry_span
+
+        text = (
+            "# Section\n"
+            "### src/main.py\n"
+            "This heading is outside Related Files.\n"
+            "## Related Files\n"
+            "### src/main.py\n"
+            "The real entry.\n"
+            "## Next Section\n"
+        )
+        span = find_entry_span(text, "src/main.py")
+        assert span is not None
+        entry_text = text[span[0]:span[1]]
+        assert "The real entry" in entry_text
+        assert "outside Related Files" not in entry_text
+
+    def test_deep_scan_uses_shared_parser(self) -> None:
+        """deep_scan.py must delegate to scan.related_files."""
+        src = (SCAN_PKG / "deep_scan.py").read_text(encoding="utf-8")
+        assert "from .related_files import" in src or \
+               "from scan.related_files import" in src, (
+            "deep_scan.py must import from the shared related_files module"
+        )
+
+    def test_main_uses_shared_parser(self) -> None:
+        """section_loop/main.py must delegate to scan.related_files."""
+        src = (SECTION_LOOP_PKG / "main.py").read_text(encoding="utf-8")
+        assert "from scan.related_files import" in src, (
+            "main.py must import from the shared related_files module"
+        )
+
+    def test_exploration_uses_shared_helpers(self) -> None:
+        """exploration.py must use block-scoped helpers."""
+        src = (SCAN_PKG / "exploration.py").read_text(encoding="utf-8")
+        assert "from .related_files import" in src or \
+               "from scan.related_files import" in src, (
+            "exploration.py must import from the shared related_files module"
+        )
+        # Must NOT use section.find(marker) for whole-file search
+        assert 'section.find(f"### {' not in src, (
+            "exploration.py must not search for ### entries across "
+            "the entire file — use block-scoped find_entry_span instead"
+        )
+
+    def test_update_match_uses_shared_helpers(self) -> None:
+        """deep_scan.py update_match must use block-scoped entry finding."""
+        src = (SCAN_PKG / "deep_scan.py").read_text(encoding="utf-8")
+        # Old pattern: section.find(marker) where marker = f"### {source_file}"
+        assert 'section.find(marker)' not in src and \
+               'section.find(f"### {' not in src, (
+            "deep_scan.py must not use section.find(marker) for "
+            "whole-file search — use find_entry_span instead"
+        )
+
+
+# ---------------------------------------------------------------
+# R33/V2: Signal instructions clarify JSON is the only truth channel
+# ---------------------------------------------------------------
+
+class TestSignalInstructionsNoFallback:
+    """Signal instructions template must not imply the script reads
+    a backup text line. JSON is the only truth channel."""
+
+    TEMPLATE = (PROJECT_ROOT / "scripts" / "section_loop" / "prompts"
+                / "templates" / "signal-instructions.md")
+
+    def test_no_backup_channel_language(self) -> None:
+        """Template must not contain phrases implying script reads text."""
+        src = self.TEMPLATE.read_text(encoding="utf-8")
+        banned = [
+            "backup for the script",
+            "fallback channel",
+            "script reads this line",
+            "Backup output line",
+        ]
+        for phrase in banned:
+            assert phrase not in src, (
+                f"signal-instructions.md contains '{phrase}' — "
+                f"implies script reads text as fallback"
+            )
+
+    def test_json_required_clarification(self) -> None:
+        """Template must explicitly say JSON is required."""
+        src = self.TEMPLATE.read_text(encoding="utf-8")
+        assert "JSON signal" in src and "required" in src, (
+            "signal-instructions.md must clarify JSON signal is required"
+        )
+
+
+# ---------------------------------------------------------------
+# R33/V3: Problem frame in convergence hashing and traceability
+# ---------------------------------------------------------------
+
+class TestProblemFrameInConvergence:
+    """Problem frame must be part of convergence hashing (input hash)
+    and traceability index."""
+
+    def test_problem_frame_changes_inputs_hash(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        """Problem frame change must change section inputs hash."""
+        from section_loop.pipeline_control import _section_inputs_hash
+        from section_loop.types import Section
+
+        sections = {
+            "01": Section(
+                number="01",
+                path=planspace / "artifacts" / "sections" / "section-01.md",
+                related_files=[],
+            ),
+        }
+
+        h1 = _section_inputs_hash("01", planspace, codespace, sections)
+
+        pf = (planspace / "artifacts" / "sections"
+              / "section-01-problem-frame.md")
+        pf.parent.mkdir(parents=True, exist_ok=True)
+        pf.write_text("# Problem Frame\nAuth flow redesign")
+
+        h2 = _section_inputs_hash("01", planspace, codespace, sections)
+        assert h1 != h2, "Problem frame presence must change inputs hash"
+
+        pf.write_text("# Problem Frame\nDifferent problem statement")
+        h3 = _section_inputs_hash("01", planspace, codespace, sections)
+        assert h2 != h3, "Problem frame content change must change hash"
+
+    def test_traceability_index_includes_problem_frame(self) -> None:
+        """traceability.py must record problem_frame in the index."""
+        src = (SECTION_LOOP_PKG / "section_engine"
+               / "traceability.py").read_text(encoding="utf-8")
+        assert '"problem_frame"' in src, (
+            "traceability.py must include problem_frame in the "
+            "traceability index"
+        )
+
+
+# ---------------------------------------------------------------
+# R33/V4: loop-contract.md lists all hashed inputs
+# ---------------------------------------------------------------
+
+class TestLoopContractCompleteness:
+    """loop-contract.md must list all inputs that _section_inputs_hash
+    actually includes."""
+
+    CONTRACT = PROJECT_ROOT / "loop-contract.md"
+
+    def test_contract_lists_all_hashed_inputs(self) -> None:
+        """Every major input in _section_inputs_hash must be named."""
+        src = self.CONTRACT.read_text(encoding="utf-8")
+        required_mentions = [
+            "codemap.md",
+            "codemap-corrections",
+            "project-mode",
+            "section-NN-mode",
+            "problem-frame",
+            "input refs",
+        ]
+        for mention in required_mentions:
+            assert mention.lower() in src.lower(), (
+                f"loop-contract.md missing '{mention}' — "
+                f"must list all hashed inputs"
+            )
+
+    def test_contract_references_authoritative_source(self) -> None:
+        """Contract must reference _section_inputs_hash as authoritative."""
+        src = self.CONTRACT.read_text(encoding="utf-8")
+        assert "_section_inputs_hash" in src, (
+            "loop-contract.md must reference _section_inputs_hash() "
+            "as the authoritative source"
         )

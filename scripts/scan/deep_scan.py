@@ -56,22 +56,14 @@ def validate_tier_file(tier_file: Path) -> bool:
 
 
 def deep_scan_related_files(section_file: Path) -> list[str]:
-    """Parse ``### <path>`` entries under ``## Related Files``."""
-    lines = section_file.read_text().splitlines()
-    in_related = False
-    files: list[str] = []
-    for line in lines:
-        if line.strip() == "## Related Files":
-            in_related = True
-            continue
-        if in_related and line.startswith("## "):
-            in_related = False
-            continue
-        if in_related and line.startswith("### "):
-            path = line[4:].strip()
-            if path:
-                files.append(path)
-    return files
+    """Parse ``### <path>`` entries under ``## Related Files``.
+
+    Delegates to the unified block-scoped, code-fence-safe parser
+    in ``scan.related_files`` (R33/P9).
+    """
+    from .related_files import extract_related_files
+
+    return extract_related_files(section_file.read_text())
 
 
 # ------------------------------------------------------------------
@@ -145,16 +137,14 @@ def update_match(
     if not lines:
         return True
 
+    from .related_files import find_entry_span
+
     section = section_file.read_text()
-    marker = f"### {source_file}"
-    idx = section.find(marker)
-    if idx == -1:
+    span = find_entry_span(section, source_file)
+    if span is None:
         return True
 
-    # Find the boundary of this file's heading block
-    rest = section[idx + len(marker) :]
-    match = re.search(r"\n(?=###\s|##\s[^#])", rest)
-    block_end = idx + len(marker) + (match.start() if match else len(rest))
+    idx, block_end = span
 
     # Remove any existing scan-summary block within this heading's range
     block_text = section[idx:block_end]
@@ -169,10 +159,11 @@ def update_match(
             block_text = block_text[:begin_pos] + block_text[end_pos:]
             # Reconstruct section with cleaned block
             section = section[:idx] + block_text + section[block_end:]
-            # Recompute block_end after removal
-            rest = section[idx + len(marker) :]
-            match = re.search(r"\n(?=###\s|##\s[^#])", rest)
-            block_end = idx + len(marker) + (match.start() if match else len(rest))
+            # Recompute span after removal
+            span = find_entry_span(section, source_file)
+            if span is None:
+                return True
+            idx, block_end = span
 
     summary_lines = "\n".join(f"> {l}" for l in lines)
     summary_block = (

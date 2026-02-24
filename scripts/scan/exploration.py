@@ -49,6 +49,8 @@ def apply_related_files_update(
     if signal.get("status") != "stale":
         return False
 
+    from .related_files import block_insert_position, find_entry_span
+
     section = section_file.read_text()
     removals = signal.get("removals", [])
     additions = signal.get("additions", [])
@@ -56,36 +58,23 @@ def apply_related_files_update(
     if not removals and not additions:
         return False
 
-    # Process removals: remove ### <path> blocks from the section
+    # Process removals: block-scoped — only within Related Files block
     for rm_path in removals:
-        marker = f"### {rm_path}"
-        idx = section.find(marker)
-        if idx == -1:
+        span = find_entry_span(section, rm_path)
+        if span is None:
             continue
-        rest = section[idx + len(marker) :]
-        match = re.search(r"\n(?=###\s|##\s[^#])", rest)
-        if match:
-            end_pos = idx + len(marker) + match.start()
-        else:
-            end_pos = len(section)
-        before = section[:idx].rstrip("\n")
-        after = section[end_pos:]
+        entry_start, entry_end = span
+        before = section[:entry_start].rstrip("\n")
+        after = section[entry_end:]
         section = before + after
 
-    # Process additions: append under ## Related Files
+    # Process additions: append at end of Related Files block
     for add_path in additions:
-        marker = f"### {add_path}"
-        if marker in section:
+        if find_entry_span(section, add_path) is not None:
+            continue  # already present
+        insert_pos = block_insert_position(section)
+        if insert_pos is None:
             continue
-        rf_idx = section.find("## Related Files")
-        if rf_idx == -1:
-            continue
-        rf_rest = section[rf_idx + len("## Related Files") :]
-        rf_match = re.search(r"\n(?=## [^#])", rf_rest)
-        if rf_match:
-            insert_pos = rf_idx + len("## Related Files") + rf_match.start()
-        else:
-            insert_pos = len(section)
         entry = (
             f"\n\n### {add_path}\n"
             "Added by validation — confirm relevance during deep scan."

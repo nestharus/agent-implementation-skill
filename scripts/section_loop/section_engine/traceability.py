@@ -43,6 +43,8 @@ def _write_traceability_index(
                         / f"section-{sec}-todos.md")
     alignment_surface = (artifacts / "sections"
                          / f"section-{sec}-alignment-surface.md")
+    problem_frame = (artifacts / "sections"
+                     / f"section-{sec}-problem-frame.md")
 
     # Collect alignment verdicts from output files using structured JSON
     alignment_verdicts: list[dict] = []
@@ -97,6 +99,10 @@ def _write_traceability_index(
             "path": str(alignment_surface),
             "hash": _file_sha256(alignment_surface),
         } if alignment_surface.exists() else None,
+        "problem_frame": {
+            "path": str(problem_frame),
+            "hash": _file_sha256(problem_frame),
+        } if problem_frame.exists() else None,
         "modified_files": modified_files,
         "alignment_verdicts": alignment_verdicts,
     }

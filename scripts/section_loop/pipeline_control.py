@@ -128,6 +128,13 @@ def _section_inputs_hash(
         if mode_file.exists():
             hasher.update(mode_file.read_bytes())
 
+    # Problem frame — alignment-relevant summary artifact (R33/P11)
+    problem_frame_path = (
+        artifacts / "sections" / f"section-{sec_num}-problem-frame.md"
+    )
+    if problem_frame_path.exists():
+        hasher.update(problem_frame_path.read_bytes())
+
     # Input refs — contract deltas and other registered inputs
     inputs_dir = artifacts / "inputs" / f"section-{sec_num}"
     if inputs_dir.exists():
