@@ -30,10 +30,21 @@ class FileCardCache:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def content_hash(section_file: Path, source_file: Path) -> str:
-        """Compute sha256 over concatenated file contents."""
+    def content_hash(
+        section_file: Path,
+        source_file: Path,
+        *extra_files: Path,
+    ) -> str:
+        """Compute sha256 over concatenated file contents.
+
+        The base key includes ``section_file`` and ``source_file``.
+        Additional files (e.g. codemap corrections) can be passed as
+        positional args to incorporate their content into the hash.
+        When an extra file doesn't exist, it contributes nothing
+        (graceful degradation).
+        """
         h = hashlib.sha256()
-        for p in (section_file, source_file):
+        for p in (section_file, source_file, *extra_files):
             try:
                 h.update(p.read_bytes())
             except OSError:

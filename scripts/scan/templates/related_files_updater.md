@@ -2,9 +2,12 @@
 
 ## Files to Read
 1. Section: `{section_file}`
-2. Codemap: `{codemap_path}`
+2. Codemap: `{codemap_path}`{corrections_ref}
 
 {missing_section}{irrelevant_section}## Instructions
+
+If codemap corrections exist, treat them as authoritative fixes to the
+codemap (wrong paths, missing entries, misclassified files).
 Review the candidates above against the section's problem and related files.
 Write an update signal:
 

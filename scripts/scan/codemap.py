@@ -71,21 +71,23 @@ def run_codemap_build(
             # Fall through to rebuild
 
         else:
-            # No stored fingerprint — first run with fingerprinting.
-            if current_fp == NON_GIT_SENTINEL:
-                print(
-                    "[CODEMAP] Non-git workspace, no stored fingerprint "
-                    "— dispatching verifier",
-                )
-                # Fall through to rebuild
-            else:
-                fingerprint_path.parent.mkdir(parents=True, exist_ok=True)
-                fingerprint_path.write_text(current_fp)
-                print(
-                    f"[CODEMAP] Stored initial fingerprint — reusing "
-                    f"existing artifact: {codemap_path}",
-                )
+            # No stored fingerprint — cannot assume codemap is fresh.
+            # Dispatch verifier to decide reuse vs rebuild.
+            print(
+                "[CODEMAP] No stored fingerprint — dispatching verifier "
+                "to check codemap freshness",
+            )
+            if _run_freshness_check(
+                codemap_path=codemap_path,
+                codespace=codespace,
+                artifacts_dir=artifacts_dir,
+                scan_log_dir=scan_log_dir,
+                fingerprint_path=fingerprint_path,
+                current_fp=current_fp,
+                stored_fp="",
+            ):
                 return True
+            # Fall through to rebuild
 
     # --- Build codemap ---
     codemap_path.parent.mkdir(parents=True, exist_ok=True)

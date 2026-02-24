@@ -341,8 +341,10 @@ def _analyze_file(
     stderr_file = section_log / f"deep-{sname}.stderr.log"
     feedback_file = section_log / f"deep-{sname}-feedback.json"
 
-    # Cache check
-    content_key = file_card_cache.content_hash(section_file, abs_source)
+    # Cache check (includes corrections to invalidate on routing fixes)
+    content_key = file_card_cache.content_hash(
+        section_file, abs_source, corrections_path,
+    )
     cached_response = file_card_cache.get(content_key)
 
     if cached_response is not None:

@@ -63,15 +63,14 @@ def collect_and_route_feedback(
                 )
                 continue
 
-            relevant = data.get("relevant", True)
+            # Schema validation: required fields must be present and typed
+            if not _validate_feedback_schema(data, fb_file, sec_name, scan_log_dir):
+                continue
+
+            relevant = data["relevant"]
             if relevant is False:
                 reason = data.get("reason", "")
-                src_path = data.get("source_file", "")
-                if not src_path:
-                    # Fallback: parse from filename
-                    src_path = fb_file.name.removeprefix("deep-").removesuffix(
-                        "-feedback.json",
-                    )
+                src_path = data["source_file"]
                 irrelevant_files.append(f"- {src_path}: {reason}")
                 has_feedback = True
 
@@ -217,6 +216,14 @@ def _apply_feedback(
     """Apply missing files and prune irrelevant files from feedback."""
     print("--- Deep Scan: applying feedback (missing + irrelevant files) ---")
 
+    corrections_path = artifacts_dir / "signals" / "codemap-corrections.json"
+    corrections_ref = ""
+    if corrections_path.is_file():
+        corrections_ref = (
+            f"\n3. Codemap corrections (authoritative fixes): "
+            f"`{corrections_path}`"
+        )
+
     for section_file in section_files:
         sec_name = section_file.stem
         sec_log_dir = scan_log_dir / sec_name
@@ -231,18 +238,20 @@ def _apply_feedback(
             except (json.JSONDecodeError, OSError):
                 continue
 
+            # Skip entries with missing required fields
+            if not isinstance(data.get("relevant"), bool):
+                continue
+            if not isinstance(data.get("source_file"), str):
+                continue
+
             # Collect missing
             for mf in data.get("missing_files", []):
                 if isinstance(mf, str) and mf.strip():
                     all_missing.append(mf.strip())
 
             # Collect irrelevant
-            if data.get("relevant", True) is False:
-                irr_path = data.get("source_file", "")
-                if not irr_path:
-                    irr_path = fb_file.name.removeprefix(
-                        "deep-",
-                    ).removesuffix("-feedback.json")
+            if data["relevant"] is False:
+                irr_path = data["source_file"]
                 if irr_path:
                     all_irrelevant.append(irr_path)
 
@@ -293,6 +302,7 @@ def _apply_feedback(
             section_name=sec_name,
             section_file=section_file,
             codemap_path=codemap_path,
+            corrections_ref=corrections_ref,
             missing_section=missing_section,
             irrelevant_section=irrelevant_section,
             updater_signal=updater_signal,
@@ -306,24 +316,109 @@ def _apply_feedback(
             stdout_file=updater_output,
         )
 
+        # Check if signal is valid; escalate to Opus on failure
         if result.returncode == 0 and updater_signal.is_file():
-            try:
-                sig_data = json.loads(updater_signal.read_text())
-                status = sig_data.get("status", "")
-            except (json.JSONDecodeError, OSError):
-                status = ""
+            valid_signal = _is_valid_updater_signal(updater_signal)
+        else:
+            valid_signal = False
 
-            if status == "stale":
-                if apply_related_files_update(section_file, updater_signal):
-                    print(
-                        f"[FEEDBACK] {sec_name}: related files updated "
-                        "from deep scan feedback",
-                    )
+        if not valid_signal and result.returncode == 0:
+            # GLM produced output but no valid signal — escalate once
+            print(
+                f"[FEEDBACK] {sec_name}: GLM updater produced no valid "
+                "signal — escalating to Opus",
+            )
+            result = dispatch_agent(
+                model="claude-opus",
+                project=codespace,
+                prompt_file=updater_prompt,
+                stdout_file=updater_output,
+            )
+            valid_signal = (
+                result.returncode == 0
+                and updater_signal.is_file()
+                and _is_valid_updater_signal(updater_signal)
+            )
+
+        if not valid_signal:
+            if result.returncode != 0:
+                _append_to_log(
+                    scan_log_dir / "failures.log",
+                    f"- Updater failed for {sec_name} (no valid signal "
+                    "after escalation)",
+                )
+            continue
+
+        try:
+            sig_data = json.loads(updater_signal.read_text())
+            status = sig_data.get("status", "")
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        if status == "stale":
+            if apply_related_files_update(section_file, updater_signal):
+                print(
+                    f"[FEEDBACK] {sec_name}: related files updated "
+                    "from deep scan feedback",
+                )
 
 
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
+
+def _is_valid_updater_signal(signal_path: Path) -> bool:
+    """Check if an updater signal file contains valid JSON with status."""
+    try:
+        data = json.loads(signal_path.read_text())
+        return isinstance(data.get("status"), str)
+    except (json.JSONDecodeError, OSError):
+        return False
+
+
+def _validate_feedback_schema(
+    data: dict,
+    fb_file: Path,
+    sec_name: str,
+    scan_log_dir: Path,
+) -> bool:
+    """Validate required fields in deep-scan feedback JSON.
+
+    Required: ``relevant`` (bool), ``source_file`` (str).
+    Returns ``True`` if valid, ``False`` if missing/wrong type.
+    """
+    missing: list[str] = []
+    if not isinstance(data.get("relevant"), bool):
+        missing.append("relevant (must be bool)")
+    if not isinstance(data.get("source_file"), str):
+        missing.append("source_file (must be str)")
+
+    if missing:
+        detail = ", ".join(missing)
+        print(
+            f"[DEEP SCAN] WARNING: Feedback missing required fields: "
+            f"{detail} — {fb_file} (section: {sec_name})",
+        )
+        _append_to_log(
+            scan_log_dir / "failures.log",
+            f"- Missing required fields ({detail}): "
+            f"`{fb_file}` (section: {sec_name})",
+        )
+        return False
+
+    # Optional list fields: validate type if present
+    for field in ("missing_files", "out_of_scope"):
+        val = data.get(field)
+        if val is not None and not isinstance(val, list):
+            print(
+                f"[DEEP SCAN] WARNING: Feedback field '{field}' must be "
+                f"list, got {type(val).__name__} — {fb_file}",
+            )
+            # Coerce to empty list rather than skip entire entry
+            data[field] = []
+
+    return True
 
 
 def _extract_section_number(section_name: str) -> str:
