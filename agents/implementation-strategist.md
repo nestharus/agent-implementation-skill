@@ -79,12 +79,18 @@ path provided in your dispatch prompt (listed under "Tooling" or
 
 ```json
 {
-  "path": "scripts/new_tool.py",
-  "created_by": "<section-number>",
+  "id": "new-tool-id",
+  "path": "scripts/new_tool.ext",
+  "created_by": "section-03",
   "scope": "section-local",
-  "description": "Brief description of what the tool does"
+  "status": "experimental",
+  "description": "Brief description of what the tool does",
+  "registered_at": "round-N"
 }
 ```
+
+If you're unsure about `id`/`registered_at`, use a best-effort placeholder;
+tool-registrar will validate and normalize.
 
 If the prompt does not provide a tool registry path, do not guess — emit
 a structured signal requesting it.

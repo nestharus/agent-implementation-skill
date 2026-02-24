@@ -20,7 +20,7 @@ Format:
 {{
   "source_file": "{source_file}",
   "relevant": true,
-  "missing_files": ["path/to/file1.py", "path/to/file2.py"],
+  "missing_files": ["path/to/file1", "path/to/file2"],
   "summary_lines": ["Key finding one.", "Key finding two."],
   "reason": "Brief explanation if not relevant, or why missing files matter"
 }}

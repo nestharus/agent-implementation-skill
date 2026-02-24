@@ -12,7 +12,7 @@ If codemap corrections exist, treat them as authoritative over codemap.md.
 
 Propose a structured signal at `{update_signal}`:
 ```json
-{{"status": "current|stale", "additions": ["path/to/add.py"], "removals": ["path/to/remove.py"], "reason": "..."}}
+{{"status": "current|stale", "additions": ["path/to/add"], "removals": ["path/to/remove"], "reason": "..."}}
 ```
 
 If the list is current, write `{{"status": "current"}}`.

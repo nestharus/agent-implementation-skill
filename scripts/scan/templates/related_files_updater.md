@@ -13,7 +13,7 @@ Write an update signal:
 
 Write to: `{updater_signal}`
 ```json
-{{"status": "stale", "additions": ["path/to/add.py"], "removals": ["path/to/remove.py"], "reason": "deep scan feedback: added missing dependencies, removed irrelevant files"}}
+{{"status": "stale", "additions": ["path/to/add"], "removals": ["path/to/remove"], "reason": "deep scan feedback: added missing dependencies, removed irrelevant files"}}
 ```
 
 Only include additions that are genuinely relevant. Only include removals

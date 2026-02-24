@@ -24,5 +24,5 @@ of them.
 
 Write a JSON file to: `{tier_file}`
 ```json
-{{"tiers": {{"tier-1": ["path/a.py"], "tier-2": ["path/b.py"], "tier-3": ["path/c.py"]}}, "scan_now": ["tier-1", "tier-2"], "reason": "why these tiers need scanning"}}
+{{"tiers": {{"tier-1": ["path/a"], "tier-2": ["path/b"], "tier-3": ["path/c"]}}, "scan_now": ["tier-1", "tier-2"], "reason": "why these tiers need scanning"}}
 ```

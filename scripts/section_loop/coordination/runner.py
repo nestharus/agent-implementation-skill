@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,104 @@ from .problems import (
     _detect_recurrence_patterns,
     build_file_to_sections,
 )
+
+_FENCE_RE = re.compile(r"```(?:json)?\s*\n(.*?)\n```", re.DOTALL)
+_VALID_ACTIONS = {"accept", "reject", "absorb"}
+
+
+def _parse_scope_delta_adjudication(output_text: str) -> dict | None:
+    """Parse scope-delta adjudication JSON from agent output.
+
+    Supports code-fenced JSON blocks, raw JSON objects, and JSON
+    surrounded by prose. Validates schema: top-level object with
+    ``decisions`` list where each decision has ``section``, ``action``,
+    ``reason`` and action is one of accept/reject/absorb.
+
+    Returns parsed dict or None if parsing/validation fails.
+    """
+    candidates: list[str] = []
+
+    # 1. Code-fenced JSON blocks
+    for match in _FENCE_RE.finditer(output_text):
+        candidates.append(match.group(1).strip())
+
+    # 2. Single-line JSON containing "decisions"
+    for line in output_text.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("{") and "decisions" in stripped:
+            candidates.append(stripped)
+
+    # 3. Outermost braces containing "decisions"
+    start = output_text.find("{")
+    end = output_text.rfind("}")
+    if start >= 0 and end > start:
+        candidate = output_text[start:end + 1]
+        if "decisions" in candidate:
+            candidates.append(candidate)
+
+    for candidate in candidates:
+        try:
+            data = json.loads(candidate)
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+        if not isinstance(data, dict):
+            continue
+        decisions = data.get("decisions")
+        if not isinstance(decisions, list):
+            continue
+
+        valid = True
+        for d in decisions:
+            if not isinstance(d, dict):
+                valid = False
+                break
+            if not all(k in d for k in ("section", "action", "reason")):
+                valid = False
+                break
+            if d["action"] not in _VALID_ACTIONS:
+                valid = False
+                break
+            if d["action"] == "accept" and "new_sections" not in d:
+                valid = False
+                break
+            if d["action"] == "absorb" and (
+                "absorb_into_section" not in d
+                or "scope_addition" not in d
+            ):
+                valid = False
+                break
+
+        if valid:
+            return data
+
+    return None
+
+
+def _normalize_section_id(sec_str: str, scope_deltas_dir: Path) -> str:
+    """Normalize a section ID to match existing delta filenames.
+
+    Maps loose IDs like ``"3"`` or ``3`` to ``"03"`` when a file
+    ``section-03-scope-delta.json`` exists in *scope_deltas_dir*.
+    """
+    sec_str = str(sec_str).strip()
+
+    # Already matches a delta file
+    if (scope_deltas_dir / f"section-{sec_str}-scope-delta.json").exists():
+        return sec_str
+
+    # Try zero-padded
+    try:
+        num = int(sec_str)
+        padded = f"{num:02d}"
+        if (scope_deltas_dir
+                / f"section-{padded}-scope-delta.json").exists():
+            return padded
+    except ValueError:
+        pass
+
+    return sec_str
+
 
 # Coordination round limits: hard cap to prevent runaway, but rounds
 # continue adaptively while problem count decreases.
@@ -81,7 +180,7 @@ def run_global_coordination(
         escalation_file.write_text(
             policy["escalation_model"], encoding="utf-8")
         log(f"  coordinator: recurrence escalation — setting model to "
-            f"gpt-5.3-codex-xhigh for "
+            f"{policy['escalation_model']} for "
             f"{recurrence['recurring_problem_count']} recurring problems "
             f"across sections {recurrence['recurring_sections']}")
 
@@ -161,77 +260,113 @@ Reply with a JSON block:
                 if adjudication_result == "ALIGNMENT_CHANGED_PENDING":
                     return False
 
-                # Parse adjudication decisions and mark deltas as handled
-                try:
-                    adj_json = None
-                    for line in adjudication_result.split("\n"):
-                        stripped = line.strip()
-                        if stripped.startswith("{") and "decisions" in stripped:
-                            adj_json = stripped
-                            break
-                    if adj_json is None:
-                        start = adjudication_result.find("{")
-                        end = adjudication_result.rfind("}")
-                        if start >= 0 and end > start:
-                            candidate = adjudication_result[start:end + 1]
-                            if "decisions" in candidate:
-                                adj_json = candidate
-                    if adj_json:
-                        adj_data = json.loads(adj_json)
-                        all_decisions = adj_data.get("decisions", [])
-                        for decision in all_decisions:
-                            sec = decision.get("section", "")
-                            action = decision.get("action", "")
-                            # Mark delta as adjudicated — preserve the
-                            # ENTIRE decision object (including
-                            # new_sections, absorb_into_section,
-                            # scope_addition, and any extra fields the
-                            # agent provides).
-                            delta_path = (scope_deltas_dir
-                                          / f"section-{sec}-scope-delta.json")
-                            if delta_path.exists():
-                                delta = json.loads(
-                                    delta_path.read_text(encoding="utf-8"))
-                                delta["adjudicated"] = True
-                                delta["adjudication"] = decision
-                                delta_path.write_text(
-                                    json.dumps(delta, indent=2),
-                                    encoding="utf-8",
-                                )
-                            log(f"  coordinator: scope delta for section "
-                                f"{sec} → {action}")
+                # Parse adjudication decisions (robust, with retry
+                # + fail-closed — mirrors coordination-plan pattern)
+                adj_data = _parse_scope_delta_adjudication(
+                    adjudication_result)
 
-                        # Write a rollup artifact of all adjudicated
-                        # scope-delta decisions for parent visibility.
-                        decisions_rollup_path = (
-                            coord_dir
-                            / "scope-delta-decisions.json"
-                        )
-                        decisions_rollup_path.write_text(
-                            json.dumps(
-                                {"decisions": all_decisions}, indent=2,
-                            ),
+                if adj_data is None:
+                    # Retry once with escalation model
+                    log("  coordinator: scope-delta adjudication parse "
+                        "failed — retrying with escalation model")
+                    retry_adj_prompt = (
+                        coord_dir / "scope-delta-prompt-retry.md")
+                    retry_adj_prompt.write_text(
+                        adjudication_prompt.read_text(encoding="utf-8")
+                        + "\n\nOutput ONLY the JSON object, no prose.\n",
+                        encoding="utf-8",
+                    )
+                    retry_adj_output = (
+                        coord_dir / "scope-delta-output-retry.md")
+                    retry_adj_result = dispatch_agent(
+                        policy["escalation_model"], retry_adj_prompt,
+                        retry_adj_output, planspace, parent,
+                        agent_file="coordination-planner.md",
+                    )
+                    if retry_adj_result == "ALIGNMENT_CHANGED_PENDING":
+                        return False
+                    adj_data = _parse_scope_delta_adjudication(
+                        retry_adj_result)
+
+                if adj_data is None:
+                    # Fail closed: write failure artifact + mailbox,
+                    # return False (pause global convergence).
+                    log("  coordinator: scope-delta adjudication parse "
+                        "failed after retry — fail closed")
+                    failure_path = (
+                        coord_dir
+                        / "scope-delta-adjudication-failure.json"
+                    )
+                    failure_path.write_text(json.dumps({
+                        "error": "unparseable_adjudication_json",
+                        "prompt_path": str(adjudication_prompt),
+                        "output_path": str(adjudication_output),
+                        "attempts": 2,
+                    }, indent=2), encoding="utf-8")
+                    mailbox_send(
+                        planspace, parent,
+                        "fail:coordination:"
+                        "unparseable_scope_delta_adjudication",
+                    )
+                    return False
+
+                # Apply adjudicated decisions with section ID
+                # normalization (maps "3" → "03" etc.)
+                all_decisions = adj_data.get("decisions", [])
+                for decision in all_decisions:
+                    sec = str(decision.get("section", ""))
+                    sec = _normalize_section_id(
+                        sec, scope_deltas_dir)
+                    action = decision.get("action", "")
+                    # Mark delta as adjudicated — preserve the
+                    # ENTIRE decision object (including
+                    # new_sections, absorb_into_section,
+                    # scope_addition, and any extra fields the
+                    # agent provides).
+                    delta_path = (scope_deltas_dir
+                                  / f"section-{sec}-scope-delta.json")
+                    if delta_path.exists():
+                        delta = json.loads(
+                            delta_path.read_text(encoding="utf-8"))
+                        delta["adjudicated"] = True
+                        delta["adjudication"] = decision
+                        delta_path.write_text(
+                            json.dumps(delta, indent=2),
                             encoding="utf-8",
                         )
-                        _log_artifact(
-                            planspace,
-                            "coordination:scope-delta-decisions",
-                        )
+                    log(f"  coordinator: scope delta for section "
+                        f"{sec} → {action}")
 
-                        # Notify parent of each adjudicated delta
-                        for decision in all_decisions:
-                            sec = decision.get("section", "")
-                            action = decision.get("action", "")
-                            reason = decision.get(
-                                "reason", "")[:150]
-                            mailbox_send(
-                                planspace, parent,
-                                f"summary:scope-delta:{sec}:"
-                                f"{action}:{reason}",
-                            )
-                except (json.JSONDecodeError, KeyError, TypeError):
-                    log("  coordinator: could not parse scope delta "
-                        "adjudication — deltas remain pending")
+                # Write a rollup artifact of all adjudicated
+                # scope-delta decisions for parent visibility.
+                decisions_rollup_path = (
+                    coord_dir
+                    / "scope-delta-decisions.json"
+                )
+                decisions_rollup_path.write_text(
+                    json.dumps(
+                        {"decisions": all_decisions}, indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+                _log_artifact(
+                    planspace,
+                    "coordination:scope-delta-decisions",
+                )
+
+                # Notify parent of each adjudicated delta
+                for decision in all_decisions:
+                    sec = str(decision.get("section", ""))
+                    sec = _normalize_section_id(
+                        sec, scope_deltas_dir)
+                    action = decision.get("action", "")
+                    reason = decision.get(
+                        "reason", "")[:150]
+                    mailbox_send(
+                        planspace, parent,
+                        f"summary:scope-delta:{sec}:"
+                        f"{action}:{reason}",
+                    )
 
     # -----------------------------------------------------------------
     # Step 2: Dispatch coordination-planner agent to group problems
@@ -815,7 +950,7 @@ Reply with a JSON block:
                         f"## Resolution\n\n"
                         f"Resolved during coordination round via "
                         f"coordinated fix with escalated model "
-                        f"(gpt-5.3-codex-xhigh). Section is now ALIGNED.\n\n"
+                        f"({policy['escalation_model']}). Section is now ALIGNED.\n\n"
                         f"## Files Involved\n\n"
                         + "\n".join(
                             f"- `{f}`"

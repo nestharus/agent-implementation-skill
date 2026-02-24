@@ -27,8 +27,8 @@ Write a markdown block starting with `## Related Files` followed by `### <relati
 
 ## Related Files
 
-### src/config.py
+### src/config
 Defines configuration structure that this section needs to extend with event settings.
 
-### src/core/engine.py
+### src/core/engine
 Core processing loop where event emission hooks need to be added.

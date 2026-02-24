@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -33,6 +33,10 @@ R35/V2: coordination/execution.py prompt uses policy-driven model params.
 R35/P11: Sweep guard — no hardcoded --model literals in any prompt surface.
 R36/V1: Codex delegated impl dispatch uses --file, not inline instructions.
 R36/V2: Signal taxonomy in loop-contract.md and blockers.py matches reality.
+R37/V1: Scope-delta adjudication parsing is robust with retry + fail-closed.
+R37/V2: Recurrence escalation log/artifacts use policy model, not hardcoded.
+R37/V3: implementation-strategist.md tool-registry schema matches registrar.
+R37/V4: Scan templates use extension-neutral examples (no .py bias).
 """
 
 import json
@@ -2162,4 +2166,209 @@ class TestSignalTaxonomySynchronized:
         for state in self.FIRST_CLASS_STATES:
             assert state in content, (
                 f"signal-instructions.md must list {state}"
+            )
+
+
+# ── R37/V1: Scope-delta adjudication robust parsing ──────────────
+
+
+class TestScopeDeltaAdjudicationParsing:
+    """R37/V1: Scope-delta adjudication parsing is robust with retry
+    + fail-closed — mirrors the coordination-plan pattern."""
+
+    RUNNER_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+                 / "coordination" / "runner.py")
+
+    def test_parser_code_fenced_json(self) -> None:
+        """_parse_scope_delta_adjudication handles code-fenced JSON."""
+        import sys
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from section_loop.coordination.runner import (
+            _parse_scope_delta_adjudication,
+        )
+        output = (
+            'Here is my analysis:\n\n```json\n'
+            '{"decisions": [{"section": "03", "action": "reject", '
+            '"reason": "not needed"}]}\n```\n\nDone.'
+        )
+        result = _parse_scope_delta_adjudication(output)
+        assert result is not None
+        assert len(result["decisions"]) == 1
+        assert result["decisions"][0]["action"] == "reject"
+
+    def test_parser_bare_json(self) -> None:
+        """_parse_scope_delta_adjudication handles bare JSON."""
+        import sys
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from section_loop.coordination.runner import (
+            _parse_scope_delta_adjudication,
+        )
+        output = (
+            '{"decisions": [{"section": "05", "action": "absorb", '
+            '"reason": "fits existing scope", '
+            '"absorb_into_section": "02", '
+            '"scope_addition": "config validation"}]}'
+        )
+        result = _parse_scope_delta_adjudication(output)
+        assert result is not None
+        assert result["decisions"][0]["action"] == "absorb"
+
+    def test_parser_rejects_invalid_action(self) -> None:
+        """_parse_scope_delta_adjudication rejects unknown actions."""
+        import sys
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from section_loop.coordination.runner import (
+            _parse_scope_delta_adjudication,
+        )
+        output = (
+            '{"decisions": [{"section": "03", "action": "unknown", '
+            '"reason": "bad"}]}'
+        )
+        result = _parse_scope_delta_adjudication(output)
+        assert result is None
+
+    def test_section_normalization(self, tmp_path: Path) -> None:
+        """_normalize_section_id maps '3' → '03' when delta exists."""
+        import sys
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from section_loop.coordination.runner import (
+            _normalize_section_id,
+        )
+        # Create a delta file with zero-padded name
+        delta_file = tmp_path / "section-03-scope-delta.json"
+        delta_file.write_text("{}", encoding="utf-8")
+        assert _normalize_section_id("3", tmp_path) == "03"
+        assert _normalize_section_id("03", tmp_path) == "03"
+
+    def test_runner_has_retry_path(self) -> None:
+        """runner.py scope-delta adjudication retries with escalation
+        model on parse failure (mirrors coordination-plan pattern)."""
+        content = self.RUNNER_PY.read_text(encoding="utf-8")
+        assert "scope-delta-prompt-retry.md" in content, (
+            "runner.py must retry scope-delta adjudication with "
+            "escalation model"
+        )
+        assert "scope-delta-adjudication-failure.json" in content, (
+            "runner.py must write failure artifact on double parse "
+            "failure"
+        )
+
+    def test_runner_fail_closed(self) -> None:
+        """runner.py scope-delta adjudication fails closed — does not
+        silently leave deltas pending."""
+        content = self.RUNNER_PY.read_text(encoding="utf-8")
+        assert "unparseable_scope_delta_adjudication" in content, (
+            "runner.py must send fail-closed mailbox notification"
+        )
+        # Must NOT contain the old "deltas remain pending" log
+        assert "deltas remain pending" not in content, (
+            "runner.py must not silently leave deltas pending — "
+            "fail closed instead"
+        )
+
+
+# ── R37/V2: Recurrence escalation uses policy model ─────────────
+
+
+class TestEscalationLogUsesPolicy:
+    """R37/V2: Recurrence escalation log and resolution artifacts
+    must use policy-driven model name, not hardcoded literals."""
+
+    RUNNER_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+                 / "coordination" / "runner.py")
+
+    def test_escalation_log_no_hardcoded_model(self) -> None:
+        """The recurrence escalation log line must use
+        policy['escalation_model'], not a hardcoded string."""
+        content = self.RUNNER_PY.read_text(encoding="utf-8")
+        # Find the escalation log line (near "recurrence escalation")
+        found = False
+        for line in content.split("\n"):
+            if "recurrence escalation" in line and "setting model" in line:
+                found = True
+                assert "gpt-5.3-codex-xhigh" not in line, (
+                    "escalation log must use policy variable, not "
+                    "hardcoded model name"
+                )
+                break
+        assert found, "Could not find recurrence escalation log line"
+
+    def test_resolution_artifact_no_hardcoded_model(self) -> None:
+        """Resolution artifact text must not hardcode the escalation
+        model name."""
+        content = self.RUNNER_PY.read_text(encoding="utf-8")
+        # The resolution artifact says "escalated model (X)" —
+        # X must come from policy, not a hardcoded literal
+        assert 'f"(gpt-5.3-codex-xhigh)' not in content, (
+            "resolution artifact must use policy['escalation_model'], "
+            "not hardcoded model name"
+        )
+
+
+# ── R37/V3: implementation-strategist.md tool-registry schema ────
+
+
+class TestImplStrategistToolRegistrySchema:
+    """R37/V3: implementation-strategist.md tool registration example
+    must include all required fields from tool-registrar.md."""
+
+    IMPL_STRATEGIST = AGENTS_DIR / "implementation-strategist.md"
+    TOOL_REGISTRAR = AGENTS_DIR / "tool-registrar.md"
+
+    REQUIRED_FIELDS = {"id", "path", "created_by", "scope",
+                       "status", "description", "registered_at"}
+
+    def test_all_required_fields_in_example(self) -> None:
+        """The tool registration JSON example must include all
+        required fields from tool-registrar.md."""
+        content = self.IMPL_STRATEGIST.read_text(encoding="utf-8")
+        for field in self.REQUIRED_FIELDS:
+            assert f'"{field}"' in content, (
+                f"implementation-strategist.md tool registration "
+                f"example must include required field '{field}'"
+            )
+
+    def test_canonical_created_by_format(self) -> None:
+        """created_by must use 'section-NN' format, not bare
+        '<section-number>'."""
+        content = self.IMPL_STRATEGIST.read_text(encoding="utf-8")
+        assert '"created_by": "section-' in content, (
+            "created_by must use canonical 'section-NN' format"
+        )
+        assert '"created_by": "<section-number>"' not in content, (
+            "created_by must not use angle-bracket placeholder"
+        )
+
+
+# ── R37/V4: Scan templates extension-neutral ─────────────────────
+
+
+class TestScanTemplatesExtensionNeutral:
+    """R37/V4: Scan prompt templates must not use .py file extensions
+    in examples — supports any-language codebases."""
+
+    SCAN_TEMPLATES = PROJECT_ROOT / "scripts" / "scan" / "templates"
+
+    # These templates had .py examples that were neutralized
+    TEMPLATE_FILES = [
+        "deep_analysis.md",
+        "explore_section.md",
+        "tier_ranking.md",
+        "validate_related_files.md",
+        "related_files_updater.md",
+    ]
+
+    def test_no_py_in_example_paths(self) -> None:
+        """Example file paths in scan templates must not use .py
+        extension — use extension-neutral paths instead."""
+        py_example_re = re.compile(
+            r'["\'][\w/]+\.py["\']'
+        )
+        for template_name in self.TEMPLATE_FILES:
+            path = self.SCAN_TEMPLATES / template_name
+            content = path.read_text(encoding="utf-8")
+            matches = py_example_re.findall(content)
+            assert not matches, (
+                f"{template_name} contains .py example paths "
+                f"{matches} — use extension-neutral paths"
             )
