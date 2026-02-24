@@ -36,10 +36,15 @@ For cheap exploration (reading, checking, verifying):
 uv run --frozen agents --model {exploration_model} --project "{codespace}" "<instructions>"
 ```
 
-For targeted implementation of specific areas:
+For targeted implementation of specific areas, write a prompt file first
+(Codex models require `--file`, not inline instructions):
 ```bash
+PROMPT="$(mktemp)"
+cat > "$PROMPT" <<'EOF'
+<instructions>
+EOF
 uv run --frozen agents --model {delegated_impl_model} \
-  --project "{codespace}" "<instructions>"
+  --project "{codespace}" --file "$PROMPT"
 ```
 
 Use sub-agents when:

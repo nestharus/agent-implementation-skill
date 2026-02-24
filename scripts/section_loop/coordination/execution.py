@@ -144,10 +144,15 @@ creates or re-triggers another.
 2. **Plan holistically.** Consider how all the problems interact. A single
    coordinated change may fix multiple problems at once.
 
-3. **Implement.** Make the changes. For targeted sub-tasks:
+3. **Implement.** Make the changes. For targeted sub-tasks, write a
+   prompt file first (Codex models require `--file`, not inline):
    ```bash
+   PROMPT="$(mktemp)"
+   cat > "$PROMPT" <<'EOF'
+   <instructions>
+   EOF
    uv run --frozen agents --model {delegation_impl_model} \\
-     --project "{codespace}" "<instructions>"
+     --project "{codespace}" --file "$PROMPT"
    ```
 
 4. **Verify.** After implementation, dispatch sub-agents to verify the fixes

@@ -1049,9 +1049,14 @@ For cheap exploration (reading, checking, verifying):
 uv run --frozen agents --model glm --project <codespace> "<instructions>"
 ```
 
-For targeted implementation of specific areas:
+For targeted implementation of specific areas, write a prompt file first
+(Codex models require `--file`, not inline instructions):
 ```bash
-uv run --frozen agents --model gpt-5.3-codex-high --project <codespace> "<instructions>"
+PROMPT="$(mktemp)"
+cat > "$PROMPT" <<'EOF'
+<instructions>
+EOF
+uv run --frozen agents --model gpt-5.3-codex-high --project <codespace> --file "$PROMPT"
 ```
 
 GPT has authority to go beyond the integration proposal where necessary

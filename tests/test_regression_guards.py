@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -31,6 +31,8 @@ R34/V4: Prompt templates use policy-driven model placeholders.
 R35/V1: reexplore.py prompt uses policy-driven exploration model.
 R35/V2: coordination/execution.py prompt uses policy-driven model params.
 R35/P11: Sweep guard — no hardcoded --model literals in any prompt surface.
+R36/V1: Codex delegated impl dispatch uses --file, not inline instructions.
+R36/V2: Signal taxonomy in loop-contract.md and blockers.py matches reality.
 """
 
 import json
@@ -2030,3 +2032,134 @@ class TestNoHardcodedModelInPromptSurfaces:
                             f"'--model {model}' in prompt text — "
                             f"must use policy-injected placeholder"
                         )
+
+
+# ---------------------------------------------------------------
+# R36/V1: Codex delegated impl dispatch uses --file, not inline
+# ---------------------------------------------------------------
+
+class TestCodexDispatchUsesFile:
+    """Delegated implementation recipes (Codex) must use --file,
+    not inline "<instructions>". Exploration recipes (GLM) may
+    use inline — only the delegated_impl/delegation_impl surface
+    is checked.
+    """
+
+    STRATEGIC_IMPL_TEMPLATE = (
+        PROJECT_ROOT / "scripts" / "section_loop" / "prompts"
+        / "templates" / "strategic-implementation.md"
+    )
+    COORDINATION_EXECUTION = (
+        PROJECT_ROOT / "scripts" / "section_loop" / "coordination"
+        / "execution.py"
+    )
+    IMPLEMENT_MD = PROJECT_ROOT / "implement.md"
+
+    def test_strategic_impl_template_uses_file(self) -> None:
+        """strategic-implementation.md delegated impl recipe uses --file."""
+        content = self.STRATEGIC_IMPL_TEMPLATE.read_text(encoding="utf-8")
+        # Find the delegated_impl_model dispatch block
+        assert "--file" in content, (
+            "strategic-implementation.md must use --file for "
+            "delegated impl model dispatch"
+        )
+        # Ensure delegated impl model line does NOT use inline instructions
+        for line in content.splitlines():
+            if "{delegated_impl_model}" in line and '"<instructions>"' in line:
+                raise AssertionError(
+                    "strategic-implementation.md: delegated impl model "
+                    "dispatch must not use inline \"<instructions>\" — "
+                    "use --file with a prompt file"
+                )
+
+    def test_coordination_fix_prompt_uses_file(self) -> None:
+        """coordination/execution.py delegated impl recipe uses --file."""
+        content = self.COORDINATION_EXECUTION.read_text(encoding="utf-8")
+        # Find the delegation_impl_model dispatch block in the prompt f-string
+        in_prompt = False
+        for line in content.splitlines():
+            if 'prompt_path.write_text(f"""' in line or 'prompt_path.write_text(f"' in line:
+                in_prompt = True
+            if in_prompt and "{delegation_impl_model}" in line:
+                if '"<instructions>"' in line:
+                    raise AssertionError(
+                        "coordination/execution.py: delegation_impl_model "
+                        "dispatch must not use inline \"<instructions>\" "
+                        "— use --file with a prompt file"
+                    )
+            if in_prompt and '""", encoding=' in line:
+                in_prompt = False
+        # Also verify --file appears in the prompt text
+        assert "--file" in content, (
+            "coordination/execution.py must contain --file for "
+            "delegated impl model dispatch"
+        )
+
+    def test_implement_md_codex_uses_file(self) -> None:
+        """implement.md Codex dispatch examples use --file."""
+        content = self.IMPLEMENT_MD.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        for i, line in enumerate(lines):
+            # Check lines with Codex model names using inline instructions
+            if ("gpt-5.3-codex-high" in line and
+                    '"<instructions>"' in line):
+                raise AssertionError(
+                    f"implement.md:{i+1}: Codex dispatch uses inline "
+                    f"\"<instructions>\" — must use --file per models.md"
+                )
+
+
+# ---------------------------------------------------------------
+# R36/V2: Signal taxonomy synchronized in loop-contract.md and
+# blockers.py docstring
+# ---------------------------------------------------------------
+
+class TestSignalTaxonomySynchronized:
+    """loop-contract.md convergence criteria and blockers.py docstring
+    must reflect all first-class signal states.
+    """
+
+    SIGNAL_INSTRUCTIONS = (
+        PROJECT_ROOT / "scripts" / "section_loop" / "prompts"
+        / "templates" / "signal-instructions.md"
+    )
+    LOOP_CONTRACT = PROJECT_ROOT / "loop-contract.md"
+    BLOCKERS_PY = (
+        PROJECT_ROOT / "scripts" / "section_loop" / "section_engine"
+        / "blockers.py"
+    )
+
+    # Authoritative signal states from signal-instructions.md
+    FIRST_CLASS_STATES = [
+        "UNDERSPECIFIED", "NEED_DECISION", "DEPENDENCY",
+        "OUT_OF_SCOPE", "NEEDS_PARENT",
+    ]
+
+    def test_loop_contract_lists_all_signal_states(self) -> None:
+        """loop-contract.md convergence criteria must mention all
+        first-class signal states."""
+        content = self.LOOP_CONTRACT.read_text(encoding="utf-8")
+        for state in self.FIRST_CLASS_STATES:
+            assert state in content, (
+                f"loop-contract.md convergence criteria must mention "
+                f"{state} — it is a first-class signal state"
+            )
+
+    def test_blockers_docstring_lists_all_handled_states(self) -> None:
+        """blockers.py _update_blocker_rollup docstring must mention
+        all states it actually handles."""
+        content = self.BLOCKERS_PY.read_text(encoding="utf-8")
+        # The docstring should mention all 5 states
+        for state in self.FIRST_CLASS_STATES:
+            assert state in content, (
+                f"blockers.py docstring must mention {state} — "
+                f"the code handles it"
+            )
+
+    def test_signal_instructions_is_authoritative(self) -> None:
+        """signal-instructions.md must list all expected states."""
+        content = self.SIGNAL_INSTRUCTIONS.read_text(encoding="utf-8")
+        for state in self.FIRST_CLASS_STATES:
+            assert state in content, (
+                f"signal-instructions.md must list {state}"
+            )

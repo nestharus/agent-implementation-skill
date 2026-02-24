@@ -33,7 +33,7 @@ A section is ALIGNED when the alignment judge confirms:
 1. The integration proposal is consistent with the section spec
 2. TODO blocks in code match the proposal's obligations
 3. No unaddressed consequence notes remain
-4. No signals (underspec, dependency, loop_detected) are active
+4. No active blocker signals (UNDERSPECIFIED, NEED_DECISION, DEPENDENCY, OUT_OF_SCOPE, NEEDS_PARENT, LOOP_DETECTED)
 
 ## Rerun Semantics
 

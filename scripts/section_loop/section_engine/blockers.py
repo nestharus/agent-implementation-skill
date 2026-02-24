@@ -33,10 +33,11 @@ def _append_open_problem(
 def _update_blocker_rollup(planspace: Path) -> None:
     """Auto-generate a decision-surface rollup from blocker signals.
 
-    Scans for UNDERSPECIFIED/NEED_DECISION/DEPENDENCY signals across
-    sections and writes a consolidated needs-input.md for the parent.
-    Blockers are grouped by category: missing_info, decision_required,
-    dependency.
+    Scans for UNDERSPECIFIED/NEED_DECISION/DEPENDENCY/OUT_OF_SCOPE/
+    NEEDS_PARENT signals across sections and writes a consolidated
+    needs-input.md for the parent. Blockers are grouped by category:
+    missing_info, decision_required, dependency, scope_expansion,
+    needs_parent.
     """
     signals_dir = planspace / "artifacts" / "signals"
     if not signals_dir.exists():
