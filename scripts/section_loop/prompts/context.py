@@ -79,6 +79,14 @@ def build_prompt_context(
             f"`{microstrategy_path}`"
         )
 
+    # --- problem frame ---
+    problem_frame_path = sections_dir / f"section-{sec}-problem-frame.md"
+    problem_frame_ref = ""
+    if problem_frame_path.exists():
+        problem_frame_ref = (
+            f"\n   - Problem frame (derived summary): `{problem_frame_path}`"
+        )
+
     # --- alignment surface ---
     alignment_surface = sections_dir / f"section-{sec}-alignment-surface.md"
     surface_line = ""
@@ -180,6 +188,8 @@ def build_prompt_context(
         "codemap_line": codemap_line,
         "corrections_line": corrections_line,
         "mode_block": mode_block,
+        "problem_frame_ref": problem_frame_ref,
+        "problem_frame_path": problem_frame_path,
         "files_block": files_block,
         "additional_inputs_block": additional_inputs_block,
     }

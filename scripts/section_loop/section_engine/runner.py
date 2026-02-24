@@ -170,7 +170,8 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         _log_artifact(planspace, f"prompt:triage-{section.number}")
 
         dispatch_agent(
-            "glm", triage_prompt_path, triage_output_path,
+            policy.get("triage", "glm"),
+            triage_prompt_path, triage_output_path,
             planspace, parent, codespace=codespace,
             section_number=section.number,
         )
@@ -230,6 +231,8 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                                 section.number,
                                 output_prefix="triage-align",
                                 model=policy["alignment"],
+                                adjudicator_model=policy.get(
+                                    "adjudicator", "glm"),
                             ))
                         if verify_result == "ALIGNMENT_CHANGED_PENDING":
                             return None
@@ -349,11 +352,23 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             if signal == "out_of_scope":
                 scope_delta_dir = planspace / "artifacts" / "scope-deltas"
                 scope_delta_dir.mkdir(parents=True, exist_ok=True)
+                # Load full signal payload for richer coordinator context
+                signal_payload = {}
+                setup_sig_path = (signal_dir
+                                  / f"setup-{section.number}-signal.json")
+                if setup_sig_path.exists():
+                    try:
+                        signal_payload = json.loads(
+                            setup_sig_path.read_text(encoding="utf-8"))
+                    except (json.JSONDecodeError, OSError):
+                        pass
                 scope_delta = {
                     "section": section.number,
                     "signal": "out_of_scope",
                     "detail": detail,
                     "requires_root_reframing": True,
+                    "signal_path": str(setup_sig_path),
+                    "signal_payload": signal_payload,
                 }
                 (scope_delta_dir
                  / f"section-{section.number}-scope-delta.json"
@@ -699,11 +714,23 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             if signal == "out_of_scope":
                 scope_delta_dir = planspace / "artifacts" / "scope-deltas"
                 scope_delta_dir.mkdir(parents=True, exist_ok=True)
+                # Load full signal payload for richer coordinator context
+                signal_payload = {}
+                proposal_sig_path = (signal_dir
+                                     / f"proposal-{section.number}-signal.json")
+                if proposal_sig_path.exists():
+                    try:
+                        signal_payload = json.loads(
+                            proposal_sig_path.read_text(encoding="utf-8"))
+                    except (json.JSONDecodeError, OSError):
+                        pass
                 scope_delta = {
                     "section": section.number,
                     "signal": "out_of_scope",
                     "detail": detail,
                     "requires_root_reframing": True,
+                    "signal_path": str(proposal_sig_path),
+                    "signal_payload": signal_payload,
                 }
                 (scope_delta_dir
                  / f"section-{section.number}-scope-delta.json"
@@ -764,6 +791,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         problems = _extract_problems(
             align_result, output_path=align_output,
             planspace=planspace, parent=parent, codespace=codespace,
+            adjudicator_model=policy.get("adjudicator", "glm"),
         )
 
         signal_dir = artifacts / "signals"
@@ -817,7 +845,8 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
     needs_microstrategy = (
         _check_needs_microstrategy(
             integration_proposal, planspace, section.number, parent,
-            codespace=codespace)
+            codespace=codespace,
+            model=policy.get("microstrategy_decider", "glm"))
         and not microstrategy_path.exists()
     )
     if not needs_microstrategy and not microstrategy_path.exists():
@@ -1044,6 +1073,7 @@ WHY — you're capturing WHAT and WHERE at the file level.
         problems = _extract_problems(
             impl_align_result, output_path=impl_align_output,
             planspace=planspace, parent=parent, codespace=codespace,
+            adjudicator_model=policy.get("adjudicator", "glm"),
         )
 
         signal_dir = artifacts / "signals"
@@ -1219,7 +1249,8 @@ WHY — you're capturing WHAT and WHERE at the file level.
                     artifacts / f"tool-registrar-{section.number}-output.md"
                 )
                 dispatch_agent(
-                    "glm", registrar_prompt, registrar_output,
+                    policy.get("tool_registrar", "glm"),
+                    registrar_prompt, registrar_output,
                     planspace, parent,
                     f"tool-registrar-{section.number}",
                     codespace=codespace,
@@ -1272,7 +1303,8 @@ Write your proposal to: `{artifacts / "proposals" / f"section-{section.number}-t
 Update the tool registry if new tools are proposed.
 """, encoding="utf-8")
         dispatch_agent(
-            "gpt-5.3-codex-high", bridge_tools_prompt,
+            policy.get("bridge_tools", "gpt-5.3-codex-high"),
+            bridge_tools_prompt,
             bridge_tools_output,
             planspace, parent,
             f"bridge-tools-{section.number}",
@@ -1288,6 +1320,8 @@ Update the tool registry if new tools are proposed.
         post_section_completion(
             section, actually_changed, all_sections,
             planspace, codespace, parent,
+            impact_model=policy.get("impact_analysis", "glm"),
+            normalizer_model=policy.get("impact_normalizer", "glm"),
         )
 
     return actually_changed

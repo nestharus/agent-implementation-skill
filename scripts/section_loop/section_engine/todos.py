@@ -46,11 +46,15 @@ def _extract_todos_from_files(
 def _check_needs_microstrategy(
     proposal_path: Path, planspace: Path, section_number: str,
     parent: str = "", codespace: Path | None = None,
+    model: str = "glm",
 ) -> bool:
     """Check if the integration proposal requests a microstrategy.
 
     Reads the structured signal from the proposal's JSON output.
-    Falls back to GLM dispatch to produce the signal if missing.
+    Falls back to dispatch to produce the signal if missing.
+
+    The ``model`` parameter defaults to ``"glm"`` but callers should
+    pass ``policy["microstrategy_decider"]`` for policy-driven selection.
     """
     # Primary: structured JSON signal
     signal_path = (planspace / "artifacts" / "signals"
@@ -90,7 +94,7 @@ Write a JSON signal to: `{signal_path}`
 """, encoding="utf-8")
     signal_path.parent.mkdir(parents=True, exist_ok=True)
     dispatch_agent(
-        "glm", decider_prompt, decider_output,
+        model, decider_prompt, decider_output,
         planspace, parent, codespace=codespace,
         section_number=section_number,
     )

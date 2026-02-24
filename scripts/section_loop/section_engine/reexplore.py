@@ -151,6 +151,13 @@ def _write_alignment_surface(
     if microstrategy_path.exists():
         lines.append(f"- **Microstrategy**: `{microstrategy_path}`")
 
+    # Problem frame
+    problem_frame = sections_dir / f"section-{sec}-problem-frame.md"
+    if problem_frame.exists():
+        lines.append(
+            f"- **Problem frame** (derived summary; defer to excerpts "
+            f"on conflict): `{problem_frame}`")
+
     # Incoming consequence notes
     notes_dir = artifacts / "notes"
     if notes_dir.exists():

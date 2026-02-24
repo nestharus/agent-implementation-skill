@@ -9,7 +9,7 @@
 3. Section alignment excerpt: `{alignment_excerpt}`
 4. Section specification: `{section_path}`
 5. Related source files:
-{files_block}{micro_ref}{codemap_ref}{impl_corrections_ref}{todos_ref}{impl_tools_ref}
+{files_block}{problem_frame_ref}{micro_ref}{codemap_ref}{impl_corrections_ref}{todos_ref}{impl_tools_ref}
 {problems_block}{decisions_block}{tooling_block}{additional_inputs_block}
 ## Instructions
 

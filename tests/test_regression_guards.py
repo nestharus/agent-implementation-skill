@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -12,6 +12,10 @@ R24/P9: SKILL.md Paths manifest — every referenced path must exist on disk.
 R30/V1: All dispatch callsites use model policy — no hardcoded model strings.
 R30/V2: check_agent_signals returns (None, "") with no auto-adjudicator.
 R30/V3: read_scan_model_policy warns on parse failure.
+R31/V1: Problem frame surfaces in alignment surface and prompt context.
+R31/V2: Malformed/unknown signal states fail closed as needs_parent.
+R31/V3: Scope-delta artifacts include full signal payload.
+R31/V4: All dispatch callsites use model policy — no hardcoded model literals.
 """
 
 import json
@@ -1002,3 +1006,202 @@ class TestScanPolicyTransparency:
         )
         # Should still return defaults
         assert "codemap_build" in policy
+
+
+# ---------- Round 31 guards ----------
+
+
+class TestProblemFrameInAlignmentSurface:
+    """R31/V1: Problem frame must appear in alignment surface and prompt context.
+
+    The setup phase creates a problem-frame artifact. Downstream consumers
+    (alignment surface, prompt context, templates) must reference it so
+    agents maintain connected understanding.
+    """
+
+    def test_alignment_surface_includes_problem_frame(
+        self, planspace: Path,
+    ) -> None:
+        """_write_alignment_surface includes problem frame when it exists."""
+        from section_loop.section_engine.reexplore import (
+            _write_alignment_surface,
+        )
+        from section_loop.types import Section
+
+        sections_dir = planspace / "artifacts" / "sections"
+        sections_dir.mkdir(parents=True, exist_ok=True)
+        section = Section(
+            number="01",
+            path=sections_dir / "section-01.md",
+            related_files=[],
+        )
+        # Create required excerpts
+        (sections_dir / "section-01-proposal-excerpt.md").write_text("e1")
+        (sections_dir / "section-01-alignment-excerpt.md").write_text("e2")
+        # Create problem frame
+        pf = sections_dir / "section-01-problem-frame.md"
+        pf.write_text("# Problem Frame\n## Problem Statement\nAuth flow")
+
+        _write_alignment_surface(planspace, section)
+
+        surface = (sections_dir / "section-01-alignment-surface.md").read_text()
+        assert "problem-frame" in surface.lower() or "Problem frame" in surface
+
+    def test_prompt_context_includes_problem_frame(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        """build_prompt_context includes problem_frame_ref when file exists."""
+        from section_loop.prompts.context import build_prompt_context
+        from section_loop.types import Section
+
+        sections_dir = planspace / "artifacts" / "sections"
+        sections_dir.mkdir(parents=True, exist_ok=True)
+        section = Section(
+            number="01",
+            path=sections_dir / "section-01.md",
+            related_files=[],
+        )
+        (sections_dir / "section-01.md").write_text("# Section 01")
+        # Create problem frame
+        pf = sections_dir / "section-01-problem-frame.md"
+        pf.write_text("# Problem Frame")
+
+        ctx = build_prompt_context(section, planspace, codespace)
+        assert ctx["problem_frame_ref"] != "", (
+            "problem_frame_ref must be non-empty when problem frame exists"
+        )
+        assert "problem_frame_path" in ctx
+
+    def test_templates_use_problem_frame_placeholder(self) -> None:
+        """Integration proposal and strategic impl templates include
+        {problem_frame_ref} placeholder."""
+        templates_dir = (
+            PROJECT_ROOT / "scripts" / "section_loop" / "prompts" / "templates"
+        )
+        for template_name in (
+            "integration-proposal.md",
+            "strategic-implementation.md",
+        ):
+            content = (templates_dir / template_name).read_text()
+            assert "{problem_frame_ref}" in content, (
+                f"{template_name} must include {{problem_frame_ref}} placeholder"
+            )
+
+
+class TestScopeDeltaPayload:
+    """R31/V3: Scope-delta artifacts must include full signal payload.
+
+    When a section signals OUT_OF_SCOPE, the scope-delta JSON should
+    include signal_path and signal_payload fields for richer coordinator
+    context — not just a compressed detail string.
+    """
+
+    def test_scope_delta_code_includes_signal_payload_field(self) -> None:
+        """runner.py scope-delta blocks include signal_payload key."""
+        runner_path = (SECTION_LOOP_PKG / "section_engine" / "runner.py")
+        content = runner_path.read_text(encoding="utf-8")
+        # Both scope-delta sites must include signal_payload
+        assert content.count('"signal_payload"') >= 2, (
+            "runner.py must include signal_payload in both scope-delta "
+            "blocks (setup + proposal)"
+        )
+        assert content.count('"signal_path"') >= 2, (
+            "runner.py must include signal_path in both scope-delta blocks"
+        )
+
+
+class TestModelPolicyCompleteness:
+    """R31/V4: read_model_policy defaults must cover ALL dispatch callsites.
+
+    Every model string used in a dispatch_agent() call must have a
+    corresponding key in the model policy defaults. This prevents
+    hardcoded model strings from bypassing policy overrides.
+    """
+
+    # All policy keys that must exist in read_model_policy defaults
+    REQUIRED_POLICY_KEYS = [
+        "setup", "proposal", "alignment", "implementation",
+        "coordination_plan", "coordination_fix", "coordination_bridge",
+        "exploration", "adjudicator", "impact_analysis",
+        "impact_normalizer", "triage", "microstrategy_decider",
+        "tool_registrar", "bridge_tools", "escalation_model",
+    ]
+
+    def test_all_policy_keys_have_defaults(self, planspace: Path) -> None:
+        """read_model_policy must return defaults for all known keys."""
+        from section_loop.dispatch import read_model_policy
+        policy = read_model_policy(planspace)
+        for key in self.REQUIRED_POLICY_KEYS:
+            assert key in policy, (
+                f"read_model_policy missing default for '{key}'"
+            )
+            assert isinstance(policy[key], str), (
+                f"policy['{key}'] must be a string model name, "
+                f"got {type(policy[key])}"
+            )
+
+    def test_no_hardcoded_model_in_dispatch_calls(self) -> None:
+        """No dispatch_agent() call uses a bare model string literal.
+
+        Extends R30 guard to catch ALL model literals, not just
+        'claude-opus'. Checks for dispatch_agent("model-name", ...)
+        where model-name is from the known model set.
+        """
+        dispatch_files = [
+            SECTION_LOOP_PKG / "section_engine" / "runner.py",
+            SECTION_LOOP_PKG / "section_engine" / "reexplore.py",
+            SECTION_LOOP_PKG / "section_engine" / "todos.py",
+            SECTION_LOOP_PKG / "alignment.py",
+            SECTION_LOOP_PKG / "coordination" / "runner.py",
+            SECTION_LOOP_PKG / "cross_section.py",
+            SECTION_LOOP_PKG / "main.py",
+        ]
+        known_models = [
+            "claude-opus", "claude-haiku", "glm",
+            "gpt-5.3-codex-high", "gpt-5.3-codex-high2",
+            "gpt-5.3-codex-xhigh",
+        ]
+        # Pattern: dispatch_agent("model-literal", ...) on a non-default line
+        for fpath in dispatch_files:
+            if not fpath.exists():
+                continue
+            content = fpath.read_text(encoding="utf-8")
+            lines = content.splitlines()
+            for i, line in enumerate(lines, 1):
+                stripped = line.strip()
+                # Skip comments, docstrings, default params
+                if stripped.startswith("#"):
+                    continue
+                if stripped.startswith(('"""', "'''")):
+                    continue
+                # Default parameter values are acceptable
+                if "= \"" in stripped and "def " in stripped:
+                    continue
+                if "dispatch_agent(" not in stripped:
+                    continue
+                for model in known_models:
+                    if f'dispatch_agent("{model}"' in stripped:
+                        raise AssertionError(
+                            f"{fpath.name}:{i}: dispatch_agent() uses "
+                            f"hardcoded '{model}' instead of policy lookup"
+                        )
+
+    def test_adjudicate_agent_output_accepts_model_param(self) -> None:
+        """adjudicate_agent_output must accept a model parameter."""
+        import inspect
+        from section_loop.dispatch import adjudicate_agent_output
+        sig = inspect.signature(adjudicate_agent_output)
+        assert "model" in sig.parameters, (
+            "adjudicate_agent_output must accept a model parameter "
+            "for policy-driven selection"
+        )
+
+    def test_alignment_check_accepts_adjudicator_model(self) -> None:
+        """_run_alignment_check_with_retries must accept adjudicator_model."""
+        import inspect
+        from section_loop.alignment import _run_alignment_check_with_retries
+        sig = inspect.signature(_run_alignment_check_with_retries)
+        assert "adjudicator_model" in sig.parameters, (
+            "_run_alignment_check_with_retries must accept "
+            "adjudicator_model for policy-driven selection"
+        )

@@ -94,21 +94,25 @@ class TestReadSignalTuple:
         assert "Refused assumptions: assumed REST" in detail
         assert "Escalation target: architect" in detail
 
-    def test_unknown_state_returns_none(self, tmp_path: Path) -> None:
+    def test_unknown_state_fails_closed(self, tmp_path: Path) -> None:
+        """R31/V2: Unknown signal state fails closed as needs_parent."""
         p = tmp_path / "signal.json"
         p.write_text(json.dumps({
             "state": "something_unexpected",
             "detail": "whatever",
         }))
         sig, detail = read_signal_tuple(p)
-        assert sig is None
+        assert sig == "needs_parent"
+        assert "Unknown signal state" in detail
+        assert "something_unexpected" in detail
 
-    def test_malformed_json(self, tmp_path: Path) -> None:
+    def test_malformed_json_fails_closed(self, tmp_path: Path) -> None:
+        """R31/V2: Malformed signal JSON fails closed as needs_parent."""
         p = tmp_path / "signal.json"
         p.write_text("not json at all {{{")
         sig, detail = read_signal_tuple(p)
-        assert sig is None
-        assert detail == ""
+        assert sig == "needs_parent"
+        assert "Malformed signal JSON" in detail
 
 
 class TestReadAgentSignal:

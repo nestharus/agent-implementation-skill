@@ -300,19 +300,31 @@ def read_signal_tuple(signal_path: Path) -> tuple[str | None, str]:
             return "out_of_scope", detail
         if state in ("needs_parent",):
             return "needs_parent", detail
-        return None, ""
-    except (json.JSONDecodeError, KeyError):
-        return None, ""
+        # Unknown state — fail closed rather than silently ignoring
+        return "needs_parent", (
+            f"Unknown signal state '{state}' in {signal_path} — "
+            f"failing closed. Original detail: {detail}"
+        )
+    except (json.JSONDecodeError, KeyError) as exc:
+        # Malformed signal — fail closed rather than silently ignoring
+        return "needs_parent", (
+            f"Malformed signal JSON at {signal_path} ({exc}) — "
+            f"failing closed"
+        )
 
 
 def adjudicate_agent_output(
     output_path: Path, planspace: Path, parent: str,
     codespace: Path | None = None,
+    model: str = "glm",
 ) -> tuple[str | None, str]:
-    """Dispatch GLM state-adjudicator to classify ambiguous agent output.
+    """Dispatch state-adjudicator to classify ambiguous agent output.
 
     Used when structured signal file is absent but output may contain
     signals. Returns (signal_type, detail) or (None, "").
+
+    The ``model`` parameter defaults to ``"glm"`` but callers should
+    pass ``policy["adjudicator"]`` for policy-driven selection.
     """
     artifacts = planspace / "artifacts"
     artifacts.mkdir(parents=True, exist_ok=True)
@@ -342,7 +354,7 @@ LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
 """, encoding="utf-8")
 
     result = dispatch_agent(
-        "glm", adj_prompt, adj_output,
+        model, adj_prompt, adj_output,
         planspace, parent, codespace=codespace,
     )
     if result == "ALIGNMENT_CHANGED_PENDING":
@@ -479,7 +491,15 @@ def read_model_policy(planspace: Path) -> dict[str, Any]:
         "implementation": "gpt-5.3-codex-high",
         "coordination_plan": "claude-opus",
         "coordination_fix": "gpt-5.3-codex-high",
+        "coordination_bridge": "gpt-5.3-codex-xhigh",
         "exploration": "glm",
+        "adjudicator": "glm",
+        "impact_analysis": "glm",
+        "impact_normalizer": "glm",
+        "triage": "glm",
+        "microstrategy_decider": "glm",
+        "tool_registrar": "glm",
+        "bridge_tools": "gpt-5.3-codex-high",
         "escalation_model": "gpt-5.3-codex-xhigh",
         "escalation_triggers": {
             "stall_count": 2,

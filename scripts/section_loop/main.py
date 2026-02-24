@@ -533,6 +533,8 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             align_result = _run_alignment_check_with_retries(
                 section, planspace, codespace, parent, sec_num,
                 output_prefix="global-align",
+                model=policy["alignment"],
+                adjudicator_model=policy.get("adjudicator", "glm"),
             )
             if align_result == "ALIGNMENT_CHANGED_PENDING":
                 # Alignment changed mid-check — let outer loop restart
@@ -557,6 +559,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             problems = _extract_problems(
                 align_result, output_path=global_align_output,
                 planspace=planspace, parent=parent, codespace=codespace,
+                adjudicator_model=policy.get("adjudicator", "glm"),
             )
             main_signal_dir = (planspace / "artifacts" / "signals")
             main_signal_dir.mkdir(parents=True, exist_ok=True)

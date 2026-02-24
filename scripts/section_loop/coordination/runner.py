@@ -498,8 +498,10 @@ Reply with a JSON block:
                 )
                 log(f"  coordinator: dispatching bridge agent for group "
                     f"{gidx} ({group_sections}) — reason: {bridge_reason}")
+                bridge_model = policy.get(
+                    "coordination_bridge", "gpt-5.3-codex-xhigh")
                 dispatch_agent(
-                    "gpt-5.3-codex-xhigh", bridge_prompt,
+                    bridge_model, bridge_prompt,
                     bridge_output, planspace, parent,
                     codespace=codespace,
                     agent_file="bridge-agent.md",
@@ -514,7 +516,7 @@ Reply with a JSON block:
                     log(f"  coordinator: bridge didn't write contract "
                         f"delta — retrying (group {gidx})")
                     dispatch_agent(
-                        "gpt-5.3-codex-xhigh", bridge_prompt,
+                        bridge_model, bridge_prompt,
                         bridge_output, planspace, parent,
                         codespace=codespace,
                         agent_file="bridge-agent.md",
@@ -710,6 +712,7 @@ Reply with a JSON block:
             section, planspace, codespace, parent, sec_num,
             output_prefix="coord-align",
             model=policy["alignment"],
+            adjudicator_model=policy.get("adjudicator", "glm"),
         )
         if align_result == "ALIGNMENT_CHANGED_PENDING":
             return False  # Let outer loop restart Phase 1
@@ -729,6 +732,7 @@ Reply with a JSON block:
         align_problems = _extract_problems(
             align_result, output_path=coord_align_output,
             planspace=planspace, parent=parent, codespace=codespace,
+            adjudicator_model=policy.get("adjudicator", "glm"),
         )
         coord_signal_dir = coord_dir / "signals"
         coord_signal_dir.mkdir(parents=True, exist_ok=True)

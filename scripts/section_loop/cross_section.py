@@ -54,12 +54,18 @@ def post_section_completion(
     planspace: Path,
     codespace: Path,
     parent: str,
+    impact_model: str = "glm",
+    normalizer_model: str = "glm",
 ) -> None:
     """Post-completion steps after a section is ALIGNED.
 
     a) Snapshot modified files to artifacts/snapshots/section-NN/
-    b) Run semantic impact analysis via GLM
+    b) Run semantic impact analysis
     c) Leave consequence notes for materially impacted sections
+
+    The ``impact_model`` and ``normalizer_model`` parameters default to
+    ``"glm"`` but callers should pass ``policy["impact_analysis"]`` and
+    ``policy["impact_normalizer"]`` for policy-driven selection.
     """
     artifacts = planspace / "artifacts"
     sec_num = section.number
@@ -221,7 +227,7 @@ This is the primary content of the consequence note the target receives.
         capture_output=True, text=True,
     )
     impact_result = dispatch_agent(
-        "glm", impact_prompt_path, impact_output_path,
+        impact_model, impact_prompt_path, impact_output_path,
         planspace, parent, codespace=codespace,
         section_number=sec_num,
     )
@@ -326,7 +332,7 @@ If no material impacts can be extracted, reply:
 ```
 """, encoding="utf-8")
         normalize_result = dispatch_agent(
-            "glm", normalize_prompt_path, normalize_output_path,
+            normalizer_model, normalize_prompt_path, normalize_output_path,
             planspace, parent, codespace=codespace,
             section_number=sec_num,
         )

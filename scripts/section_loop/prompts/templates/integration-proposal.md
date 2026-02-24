@@ -8,7 +8,7 @@
 2. Section alignment excerpt: `{alignment_excerpt}`
 3. Section specification: `{section_path}`
 4. Related source files (read each one):
-{files_block}{codemap_ref}{corrections_ref}{tools_ref}{todos_ref}
+{files_block}{problem_frame_ref}{codemap_ref}{corrections_ref}{tools_ref}{todos_ref}
 {existing_note}{problems_block}{notes_block}{decisions_block}{mode_block}{additional_inputs_block}
 ## Instructions
 
