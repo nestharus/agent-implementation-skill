@@ -192,12 +192,16 @@ def _run_alignment_check_with_retries(
     sec_num: str,
     output_prefix: str = "align",
     max_retries: int = 2,
+    model: str = "claude-opus",
 ) -> str | None:
     """Run an alignment check with TIMEOUT retry logic.
 
-    Dispatches Opus for an implementation alignment check. If the agent
-    times out, retries up to max_retries times. Returns the alignment
-    result text, or None if all retries exhausted.
+    Dispatches the specified model for an implementation alignment check.
+    If the agent times out, retries up to max_retries times. Returns the
+    alignment result text, or None if all retries exhausted.
+
+    The ``model`` parameter defaults to ``"claude-opus"`` but callers
+    should pass ``policy["alignment"]`` for policy-driven selection.
     """
     from .prompts import write_impl_alignment_prompt
 
@@ -212,7 +216,7 @@ def _run_alignment_check_with_retries(
         )
         align_output = artifacts / f"{output_prefix}-{sec_num}-output.md"
         result = dispatch_agent(
-            "claude-opus", align_prompt, align_output,
+            model, align_prompt, align_output,
             planspace, parent, codespace=codespace,
             section_number=sec_num,
             agent_file="alignment-judge.md",

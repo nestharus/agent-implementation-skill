@@ -428,24 +428,23 @@ def check_agent_signals(
     parent: str | None = None,
     codespace: Path | None = None,
 ) -> tuple[str | None, str]:
-    """Check for agent signals using structured file + adjudicator fallback.
+    """Check for agent signals via the structured JSON file.
 
-    Priority:
-    1. Read structured signal file (agents write JSON when they need input)
-    2. Delegate to GLM state-adjudicator for output interpretation
-       (scripts dispatch, agents decide — no regex/prefix heuristics)
+    The JSON signal file is the sole truth channel.  If the agent
+    wrote a signal file, it is read and returned.  If no signal file
+    exists, the function returns ``(None, "")``.
+
+    Adjudication (``adjudicate_agent_output``) is available for
+    callers that detect a mechanical anomaly (expected artifact
+    missing, empty output, malformed signal) — but it is NOT invoked
+    automatically here.  This avoids paying an "adjudicator tax" on
+    every unblocked agent dispatch in the common path.
     """
-    # 1. Structured signal file (most reliable — agents write JSON)
+    # Structured signal file — the only automatic check.
     if signal_path:
         sig, detail = read_signal_tuple(signal_path)
         if sig:
             return sig, detail
-
-    # 2. Adjudicator interprets output (agent decides, not script)
-    if output_path and planspace and parent:
-        return adjudicate_agent_output(
-            output_path, planspace, parent, codespace,
-        )
 
     return None, ""
 

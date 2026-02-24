@@ -8,8 +8,9 @@ from ..types import Section
 
 def _reexplore_section(
     section: Section, planspace: Path, codespace: Path, parent: str,
+    model: str = "claude-opus",
 ) -> str | None:
-    """Dispatch an Opus re-explorer when a section has no related files.
+    """Dispatch a re-explorer when a section has no related files.
 
     The agent reads the codemap + section text and either proposes
     candidate files or declares greenfield. If files are found, the
@@ -17,6 +18,9 @@ def _reexplore_section(
 
     Returns the raw agent output, or "ALIGNMENT_CHANGED_PENDING" if
     alignment changed during dispatch.
+
+    The ``model`` parameter defaults to ``"claude-opus"`` but callers
+    should pass ``policy["setup"]`` for policy-driven selection.
     """
     artifacts = planspace / "artifacts"
     codemap_path = artifacts / "codemap.md"
@@ -90,7 +94,7 @@ the JSON, not unstructured text.
     _log_artifact(planspace, f"prompt:reexplore-{section.number}")
 
     result = dispatch_agent(
-        "claude-opus", prompt_path, output_path,
+        model, prompt_path, output_path,
         planspace, parent, f"reexplore-{section.number}",
         codespace=codespace, section_number=section.number,
         agent_file="section-re-explorer.md",

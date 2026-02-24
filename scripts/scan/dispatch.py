@@ -47,8 +47,11 @@ def read_scan_model_policy(artifacts_dir: Path) -> dict[str, str]:
                 for key, val in scan_overrides.items():
                     if key in policy and isinstance(val, str):
                         policy[key] = val
-        except (json.JSONDecodeError, OSError):
-            pass  # Use defaults
+        except (json.JSONDecodeError, OSError) as exc:
+            print(
+                f"[SCAN] WARNING: model-policy.json exists but is "
+                f"invalid ({exc}) — using defaults",
+            )
     return policy
 
 

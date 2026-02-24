@@ -23,6 +23,7 @@ from .dispatch import (
     check_agent_signals,
     dispatch_agent,
     read_agent_signal,
+    read_model_policy,
 )
 from .pipeline_control import (
     _check_and_clear_alignment_changed,
@@ -228,6 +229,9 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
 
     log(f"Loaded {len(all_sections)} sections")
 
+    # Read model policy once — used for re-exploration dispatch.
+    policy = read_model_policy(planspace)
+
     # Outer loop: alignment_changed during Phase 2 restarts from Phase 1.
     # Each iteration runs Phase 1 (per-section) then Phase 2 (global).
     # The loop exits on: complete, fail, abort, or exhaustion.
@@ -297,6 +301,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                         f"re-explorer agent")
                     reexplore_result = _reexplore_section(
                         section, planspace, codespace, parent,
+                        model=policy["setup"],
                     )
                     if reexplore_result == "ALIGNMENT_CHANGED_PENDING":
                         if _check_and_clear_alignment_changed(planspace):

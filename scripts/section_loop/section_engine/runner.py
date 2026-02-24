@@ -229,6 +229,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                                 section, planspace, codespace, parent,
                                 section.number,
                                 output_prefix="triage-align",
+                                model=policy["alignment"],
                             ))
                         if verify_result == "ALIGNMENT_CHANGED_PENDING":
                             return None
@@ -318,7 +319,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         )
         setup_output = artifacts / f"setup-{section.number}-output.md"
         setup_agent = f"setup-{section.number}"
-        output = dispatch_agent("claude-opus", setup_prompt, setup_output,
+        output = dispatch_agent(policy["setup"], setup_prompt, setup_output,
                                 planspace, parent, setup_agent,
                                 codespace=codespace,
                                 section_number=section.number,
@@ -399,7 +400,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         )
         retry_output = artifacts / f"setup-{section.number}-retry-output.md"
         retry_result = dispatch_agent(
-            "claude-opus", retry_prompt, retry_output,
+            policy["setup"], retry_prompt, retry_output,
             planspace, parent, f"setup-{section.number}-retry",
             codespace=codespace,
             section_number=section.number,
@@ -744,7 +745,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         # (Opus alignment prompts don't include narration instructions,
         # so a monitor would false-positive STALLED after 5 min silence)
         align_result = dispatch_agent(
-            "claude-opus", align_prompt, align_output,
+            policy["alignment"], align_prompt, align_output,
             planspace, parent, codespace=codespace,
             section_number=section.number,
             agent_file="alignment-judge.md",
@@ -1024,7 +1025,7 @@ WHY — you're capturing WHAT and WHERE at the file level.
                              / f"impl-align-{section.number}-output.md")
         # No agent_name → no per-agent monitor (same rationale as 2b)
         impl_align_result = dispatch_agent(
-            "claude-opus", impl_align_prompt, impl_align_output,
+            policy["alignment"], impl_align_prompt, impl_align_output,
             planspace, parent, codespace=codespace,
             section_number=section.number,
             agent_file="alignment-judge.md",

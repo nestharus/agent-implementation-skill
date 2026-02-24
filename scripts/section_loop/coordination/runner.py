@@ -15,6 +15,7 @@ from ..dispatch import (
     check_agent_signals,
     dispatch_agent,
     read_agent_signal,
+    read_model_policy,
 )
 from ..pipeline_control import poll_control_messages
 from ..types import Section, SectionResult
@@ -51,6 +52,7 @@ def run_global_coordination(
     """
     coord_dir = planspace / "artifacts" / "coordination"
     coord_dir.mkdir(parents=True, exist_ok=True)
+    policy = read_model_policy(planspace)
 
     # -----------------------------------------------------------------
     # Step 1: Collect all outstanding problems
@@ -147,7 +149,7 @@ Reply with a JSON block:
                 _log_artifact(planspace, "prompt:scope-delta-adjudication")
 
                 adjudication_result = dispatch_agent(
-                    "claude-opus", adjudication_prompt,
+                    policy["coordination_plan"], adjudication_prompt,
                     adjudication_output,
                     planspace, parent,
                     agent_file="coordination-planner.md",
@@ -238,7 +240,7 @@ Reply with a JSON block:
     plan_output = coord_dir / "coordination-plan-output.md"
     log("  coordinator: dispatching coordination-planner agent")
     plan_result = dispatch_agent(
-        "claude-opus", plan_prompt, plan_output,
+        policy["coordination_plan"], plan_prompt, plan_output,
         planspace, parent, agent_file="coordination-planner.md",
     )
     if plan_result == "ALIGNMENT_CHANGED_PENDING":
@@ -707,6 +709,7 @@ Reply with a JSON block:
         align_result = _run_alignment_check_with_retries(
             section, planspace, codespace, parent, sec_num,
             output_prefix="coord-align",
+            model=policy["alignment"],
         )
         if align_result == "ALIGNMENT_CHANGED_PENDING":
             return False  # Let outer loop restart Phase 1

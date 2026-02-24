@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -9,6 +9,9 @@ R21/P4: Greenfield pause label uses needs_parent (not underspec).
 R21/P5: Targeted requeue only requeues changed sections.
 R21/P6C: Operational agent files have no angle-bracket placeholders.
 R24/P9: SKILL.md Paths manifest — every referenced path must exist on disk.
+R30/V1: All dispatch callsites use model policy — no hardcoded model strings.
+R30/V2: check_agent_signals returns (None, "") with no auto-adjudicator.
+R30/V3: read_scan_model_policy warns on parse failure.
 """
 
 import json
@@ -875,3 +878,127 @@ class TestAlignmentTemplateJsonVerdict:
             "implementation-alignment.md must reference the structured JSON "
             "verdict required by alignment-judge.md"
         )
+
+
+# ---------- Round 30 guards ----------
+
+SECTION_LOOP_PKG = PROJECT_ROOT / "scripts" / "section_loop"
+
+
+class TestModelPolicyConsistency:
+    """R30/V1: All dispatch callsites in section_loop use model policy.
+
+    Every dispatch_agent() call must use a policy[...] lookup, not a
+    hardcoded model string like "claude-opus".  The only allowed hardcoded
+    strings are in default parameter values and docstrings.
+    """
+
+    # Files that contain dispatch_agent() calls.
+    DISPATCH_FILES = [
+        SECTION_LOOP_PKG / "section_engine" / "runner.py",
+        SECTION_LOOP_PKG / "section_engine" / "reexplore.py",
+        SECTION_LOOP_PKG / "alignment.py",
+        SECTION_LOOP_PKG / "coordination" / "runner.py",
+    ]
+
+    def test_no_hardcoded_claude_opus_in_dispatch_calls(self) -> None:
+        """dispatch_agent("claude-opus", ...) must not appear in
+        section_loop dispatch callsites (except defaults/docstrings)."""
+        for fpath in self.DISPATCH_FILES:
+            content = fpath.read_text(encoding="utf-8")
+            lines = content.splitlines()
+            for i, line in enumerate(lines, 1):
+                stripped = line.strip()
+                # Skip comments, docstrings, default parameter values
+                if stripped.startswith("#"):
+                    continue
+                if stripped.startswith(('"""', "'''")):
+                    continue
+                if "= \"claude-opus\"" in stripped:
+                    # Default parameter — acceptable
+                    continue
+                # The violation: dispatch_agent("claude-opus"
+                if ("dispatch_agent(" in stripped
+                        and '"claude-opus"' in stripped):
+                    raise AssertionError(
+                        f"{fpath.name}:{i}: dispatch_agent() call uses "
+                        f"hardcoded 'claude-opus' instead of policy lookup"
+                    )
+
+
+class TestCheckAgentSignalsNoAdjudicator:
+    """R30/V2: check_agent_signals must NOT auto-dispatch an adjudicator.
+
+    When no signal file exists, the function returns (None, "").
+    Adjudication is available via adjudicate_agent_output for callers
+    that detect mechanical anomalies, but check_agent_signals itself
+    must not invoke it.
+    """
+
+    def test_no_adjudicate_call_in_check_agent_signals(self) -> None:
+        """check_agent_signals body must not call adjudicate_agent_output.
+
+        The docstring may mention it for context, but the function body
+        must not invoke it.
+        """
+        import ast
+        import inspect
+        import textwrap
+        from section_loop.dispatch import check_agent_signals
+        source = textwrap.dedent(inspect.getsource(check_agent_signals))
+        tree = ast.parse(source)
+        func = tree.body[0]
+        assert isinstance(func, ast.FunctionDef)
+        # Walk the function body (skip docstring) for Name references
+        for node in ast.walk(func):
+            if isinstance(node, ast.Name) and node.id == "adjudicate_agent_output":
+                raise AssertionError(
+                    "check_agent_signals must not reference "
+                    "adjudicate_agent_output in its body — "
+                    "adjudicator tax removed in R30"
+                )
+            if isinstance(node, ast.Attribute) and node.attr == "adjudicate_agent_output":
+                raise AssertionError(
+                    "check_agent_signals must not reference "
+                    "adjudicate_agent_output in its body — "
+                    "adjudicator tax removed in R30"
+                )
+
+    def test_no_dispatch_agent_in_check_agent_signals(self) -> None:
+        """check_agent_signals must not dispatch any agent."""
+        import inspect
+        from section_loop.dispatch import check_agent_signals
+        source = inspect.getsource(check_agent_signals)
+        assert "dispatch_agent(" not in source, (
+            "check_agent_signals must not call dispatch_agent — "
+            "adjudicator tax removed in R30"
+        )
+
+
+class TestScanPolicyTransparency:
+    """R30/V3: read_scan_model_policy must warn on parse failure.
+
+    Silent failure (bare pass in except) is forbidden — the function
+    must print a warning when model-policy.json is malformed.
+    """
+
+    def test_warns_on_invalid_json(self, tmp_path: Path) -> None:
+        """Malformed JSON triggers a printed warning, not silent pass."""
+        import io
+        import sys
+        from scan.dispatch import read_scan_model_policy
+
+        (tmp_path / "model-policy.json").write_text("{bad json")
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            policy = read_scan_model_policy(tmp_path)
+        finally:
+            sys.stdout = old_stdout
+        output = captured.getvalue()
+        assert "WARNING" in output, (
+            "read_scan_model_policy must print WARNING on parse failure"
+        )
+        # Should still return defaults
+        assert "codemap_build" in policy
