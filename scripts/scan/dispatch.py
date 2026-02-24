@@ -1,4 +1,15 @@
-"""Thin subprocess wrapper for ``uv run --frozen agents ...`` dispatch."""
+"""Thin subprocess wrapper for ``uv run --frozen agents ...`` dispatch.
+
+This is intentionally separate from ``section_loop.dispatch``.
+Stage 3 scan is a different execution stage with simpler needs:
+no monitoring, no pause/resume, no mailbox integration.  Keeping
+a thin boundary here avoids coupling scan to the section-loop
+orchestration layer.
+
+For testing, mock ``scan.dispatch.dispatch_agent`` the same way
+``section_loop.dispatch.dispatch_agent`` is mocked — both are the
+single LLM boundary for their respective stages.
+"""
 
 from __future__ import annotations
 

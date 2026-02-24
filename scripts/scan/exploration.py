@@ -226,42 +226,38 @@ def _validate_existing_related_files(
     if result.returncode == 0:
         print(f"[EXPLORE] {section_name}: validation complete")
 
-        # Apply validation results if stale (at most once per run)
-        list_updated_marker = section_log / "list_updated"
-        if not list_updated_marker.is_file():
-            signal_file = (
-                artifacts_dir
-                / "signals"
-                / f"{section_name}-related-files-update.json"
-            )
-            if signal_file.is_file():
-                try:
-                    data = json.loads(signal_file.read_text())
-                    status = data.get("status", "")
-                except (json.JSONDecodeError, OSError):
-                    status = ""
+        # Apply validation results if stale
+        signal_file = (
+            artifacts_dir
+            / "signals"
+            / f"{section_name}-related-files-update.json"
+        )
+        if signal_file.is_file():
+            try:
+                data = json.loads(signal_file.read_text())
+                status = data.get("status", "")
+            except (json.JSONDecodeError, OSError):
+                status = ""
 
-                if status == "stale":
-                    print(
-                        f"[EXPLORE] {section_name}: "
-                        "applying related-files updates",
+            if status == "stale":
+                print(
+                    f"[EXPLORE] {section_name}: "
+                    "applying related-files updates",
+                )
+                if apply_related_files_update(section_file, signal_file):
+                    # Mark signal as applied so re-runs don't re-apply
+                    data["status"] = "applied"
+                    signal_file.write_text(
+                        json.dumps(data, indent=2),
                     )
-                    if apply_related_files_update(section_file, signal_file):
-                        list_updated_marker.touch()
-                        print(
-                            f"[EXPLORE] {section_name}: list updated "
-                            "— will not re-validate this run",
-                        )
-                    else:
-                        print(
-                            f"[EXPLORE] {section_name}: auto-apply "
-                            "failed — keeping existing list",
-                        )
-        else:
-            print(
-                f"[EXPLORE] {section_name}: already updated this run "
-                "— skipping re-validation",
-            )
+                    print(
+                        f"[EXPLORE] {section_name}: list updated",
+                    )
+                else:
+                    print(
+                        f"[EXPLORE] {section_name}: auto-apply "
+                        "failed — keeping existing list",
+                    )
     else:
         print(
             f"[EXPLORE] {section_name}: validation failed "

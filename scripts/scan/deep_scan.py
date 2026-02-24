@@ -104,24 +104,6 @@ def _safe_name(source_file: str) -> str:
 
 
 # ------------------------------------------------------------------
-# deep_already_annotated
-# ------------------------------------------------------------------
-
-
-def deep_already_annotated(
-    section_file: Path,
-    source_file: str,
-    scan_log_dir: Path,
-) -> bool:
-    """Check if deep-scan response already exists for this pair."""
-    section_name = section_file.stem
-    section_log_dir = scan_log_dir / section_name
-    sname = _safe_name(source_file)
-    response = section_log_dir / f"deep-{sname}-response.md"
-    return response.is_file() and response.stat().st_size > 0
-
-
-# ------------------------------------------------------------------
 # update_match — annotate section file from feedback
 # ------------------------------------------------------------------
 
@@ -193,8 +175,13 @@ def _run_tier_ranking(
     Returns the tier file path if successful, ``None`` on failure.
     """
     tier_file = artifacts_dir / "sections" / f"{section_name}-file-tiers.json"
+    tier_inputs_sidecar = artifacts_dir / "sections" / f"{section_name}-file-tiers.inputs.sha256"
 
-    # Validate existing tier file
+    # Compute inputs fingerprint: section content + sorted related files
+    tier_inputs = section_file.read_text() + "\n" + "\n".join(sorted(related_files))
+    tier_inputs_hash = hashlib.sha256(tier_inputs.encode()).hexdigest()
+
+    # Validate existing tier file: schema + inputs match
     if tier_file.is_file():
         if not validate_tier_file(tier_file):
             print(
@@ -202,8 +189,14 @@ def _run_tier_ranking(
                 "(missing scan_now or bad schema) — regenerating",
             )
             tier_file.unlink()
-        else:
+        elif tier_inputs_sidecar.is_file() and tier_inputs_sidecar.read_text().strip() == tier_inputs_hash:
             return tier_file
+        else:
+            print(
+                f"[TIER] {section_name}: inputs changed since last "
+                "tier ranking — regenerating",
+            )
+            tier_file.unlink()
 
     section_log = scan_log_dir / section_name
     section_log.mkdir(parents=True, exist_ok=True)
@@ -278,6 +271,10 @@ def _run_tier_ranking(
         fail_path.write_text(json.dumps(fail_data, indent=2))
         tier_file.unlink()
 
+    # Write inputs sidecar on success for future invalidation checks
+    if tier_file.is_file():
+        tier_inputs_sidecar.write_text(tier_inputs_hash)
+
     return tier_file if tier_file.is_file() else None
 
 
@@ -317,6 +314,7 @@ def _analyze_file(
     source_file: str,
     codespace: Path,
     codemap_path: Path,
+    corrections_path: Path,
     scan_log_dir: Path,
     file_card_cache: FileCardCache,
 ) -> bool:
@@ -369,11 +367,20 @@ def _analyze_file(
         print(f"[DEEP] {section_name} x {Path(source_file).name} (cached)")
         return True
 
+    # Build corrections reference
+    corrections_ref = ""
+    if corrections_path.is_file():
+        corrections_ref = (
+            f"\n4. Codemap corrections (authoritative fixes): "
+            f"`{corrections_path}`"
+        )
+
     # Dispatch analysis agent
     prompt = _load_template("deep_analysis.md").format(
         section_file=section_file,
         abs_source=abs_source,
         codemap_path=codemap_path,
+        corrections_ref=corrections_ref,
         feedback_file=feedback_file,
         source_file=source_file,
     )
@@ -453,6 +460,7 @@ def run_deep_scan(
     phase_failed = False
     section_files = list_section_files(sections_dir)
     file_card_cache = FileCardCache(artifacts_dir / "file-cards")
+    corrections_path = artifacts_dir / "signals" / "codemap-corrections.json"
 
     for section_file in section_files:
         section_name = section_file.stem
@@ -518,15 +526,13 @@ def run_deep_scan(
             if not source_file.strip():
                 continue
 
-            if deep_already_annotated(section_file, source_file, scan_log_dir):
-                continue
-
             ok = _analyze_file(
                 section_file=section_file,
                 section_name=section_name,
                 source_file=source_file,
                 codespace=codespace,
                 codemap_path=codemap_path,
+                corrections_path=corrections_path,
                 scan_log_dir=scan_log_dir,
                 file_card_cache=file_card_cache,
             )

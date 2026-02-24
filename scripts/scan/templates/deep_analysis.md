@@ -5,7 +5,7 @@ Read this file in the context of the section's goals. Explain what parts of the 
 ## Files to Read
 1. Section specification: `{section_file}`
 2. Source file: `{abs_source}`
-3. Codemap (for context): `{codemap_path}`
+3. Codemap (for context): `{codemap_path}`{corrections_ref}
 
 ## Instructions
 

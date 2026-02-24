@@ -91,6 +91,7 @@ the integration proposal is sufficient guidance.
 ```json
 {{"needs_microstrategy": true, "reason": "brief justification"}}
 ```
-This is the primary channel the script reads — the inline text is a fallback.
+The JSON signal is mandatory and is the primary channel the script reads.
+Inline text is optional for human readability; the script does not parse it.
 {signal_block}
 {mail_block}
