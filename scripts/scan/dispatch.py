@@ -13,8 +13,43 @@ single LLM boundary for their respective stages.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
+
+# Default model assignments per scan task.
+_DEFAULT_MODELS: dict[str, str] = {
+    "codemap_build": "claude-opus",
+    "codemap_freshness": "claude-opus",
+    "exploration": "claude-opus",
+    "validation": "claude-opus",
+    "tier_ranking": "glm",
+    "deep_analysis": "glm",
+    "feedback_updater": "glm",
+}
+
+
+def read_scan_model_policy(artifacts_dir: Path) -> dict[str, str]:
+    """Read scan-stage model policy from ``model-policy.json``.
+
+    Looks for a ``"scan"`` key inside the policy file. Falls back to
+    defaults when the file is missing, malformed, or has no scan key.
+
+    Returns a dict mapping task name → model string.
+    """
+    policy = dict(_DEFAULT_MODELS)
+    policy_path = artifacts_dir / "model-policy.json"
+    if policy_path.is_file():
+        try:
+            data = json.loads(policy_path.read_text())
+            scan_overrides = data.get("scan", {})
+            if isinstance(scan_overrides, dict):
+                for key, val in scan_overrides.items():
+                    if key in policy and isinstance(val, str):
+                        policy[key] = val
+        except (json.JSONDecodeError, OSError):
+            pass  # Use defaults
+    return policy
 
 
 def dispatch_agent(

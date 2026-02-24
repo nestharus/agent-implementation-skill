@@ -9,7 +9,7 @@ import json
 import sys
 from pathlib import Path
 
-from .dispatch import dispatch_agent
+from .dispatch import dispatch_agent, read_scan_model_policy
 from .fingerprint import NON_GIT_SENTINEL, compute_codespace_fingerprint
 
 # Template directory lives alongside this module
@@ -27,11 +27,14 @@ def run_codemap_build(
     artifacts_dir: Path,
     scan_log_dir: Path,
     fingerprint_path: Path,
+    model_policy: dict[str, str] | None = None,
 ) -> bool:
     """Build (or reuse) the codemap artifact.
 
     Returns ``True`` on success, ``False`` on failure.
     """
+    if model_policy is None:
+        model_policy = read_scan_model_policy(artifacts_dir)
     # --- Reuse check ---
     if codemap_path.is_file() and codemap_path.stat().st_size > 0:
         current_fp = compute_codespace_fingerprint(codespace)
@@ -66,6 +69,7 @@ def run_codemap_build(
                 fingerprint_path=fingerprint_path,
                 current_fp=current_fp,
                 stored_fp=stored_fp,
+                model_policy=model_policy,
             ):
                 return True
             # Fall through to rebuild
@@ -85,6 +89,7 @@ def run_codemap_build(
                 fingerprint_path=fingerprint_path,
                 current_fp=current_fp,
                 stored_fp="",
+                model_policy=model_policy,
             ):
                 return True
             # Fall through to rebuild
@@ -104,7 +109,7 @@ def run_codemap_build(
     prompt_file.write_text(prompt)
 
     result = dispatch_agent(
-        model="claude-opus",
+        model=model_policy["codemap_build"],
         project=codespace,
         prompt_file=prompt_file,
         stdout_file=codemap_path,
@@ -137,6 +142,7 @@ def run_codemap_build(
         codespace=codespace,
         artifacts_dir=artifacts_dir,
         scan_log_dir=scan_log_dir,
+        model_policy=model_policy,
     )
 
     # Store fingerprint
@@ -162,6 +168,7 @@ def _run_freshness_check(
     fingerprint_path: Path,
     current_fp: str,
     stored_fp: str,
+    model_policy: dict[str, str],
 ) -> bool:
     """Dispatch GLM verifier for codemap freshness.
 
@@ -194,7 +201,7 @@ def _run_freshness_check(
     freshness_prompt.write_text(prompt)
 
     result = dispatch_agent(
-        model="glm",
+        model=model_policy["codemap_freshness"],
         project=codespace,
         prompt_file=freshness_prompt,
         stdout_file=freshness_output,
@@ -232,6 +239,7 @@ def _run_verification(
     codespace: Path,
     artifacts_dir: Path,
     scan_log_dir: Path,
+    model_policy: dict[str, str],
 ) -> None:
     """P5: Lightweight codemap verifier — sample files to validate routing."""
     verifier_prompt = scan_log_dir / "codemap-verify-prompt.md"
@@ -245,7 +253,7 @@ def _run_verification(
     verifier_prompt.write_text(prompt)
 
     result = dispatch_agent(
-        model="glm",
+        model=model_policy.get("validation", "glm"),
         project=codespace,
         prompt_file=verifier_prompt,
         stdout_file=verifier_output,

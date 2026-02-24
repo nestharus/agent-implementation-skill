@@ -9,7 +9,7 @@ import json
 import re
 from pathlib import Path
 
-from .dispatch import dispatch_agent
+from .dispatch import dispatch_agent, read_scan_model_policy
 from .exploration import apply_related_files_update
 
 _TEMPLATES = Path(__file__).resolve().parent / "templates"
@@ -26,11 +26,14 @@ def collect_and_route_feedback(
     codespace: Path,
     artifacts_dir: Path,
     scan_log_dir: Path,
+    model_policy: dict[str, str] | None = None,
 ) -> bool:
     """Collect feedback from deep scan, produce report, and route findings.
 
     Returns ``True`` if any feedback was found.
     """
+    if model_policy is None:
+        model_policy = read_scan_model_policy(artifacts_dir)
     print("--- Deep Scan: collecting feedback ---")
 
     feedback_report = artifacts_dir / "scan-feedback.md"
@@ -132,6 +135,7 @@ def collect_and_route_feedback(
             codespace=codespace,
             artifacts_dir=artifacts_dir,
             scan_log_dir=scan_log_dir,
+            model_policy=model_policy,
         )
 
     return has_feedback
@@ -212,6 +216,7 @@ def _apply_feedback(
     codespace: Path,
     artifacts_dir: Path,
     scan_log_dir: Path,
+    model_policy: dict[str, str],
 ) -> None:
     """Apply missing files and prune irrelevant files from feedback."""
     print("--- Deep Scan: applying feedback (missing + irrelevant files) ---")
@@ -309,27 +314,28 @@ def _apply_feedback(
         )
         updater_prompt.write_text(prompt)
 
+        updater_model = model_policy.get("feedback_updater", "glm")
+        escalation_model = model_policy.get("exploration", "claude-opus")
         result = dispatch_agent(
-            model="glm",
+            model=updater_model,
             project=codespace,
             prompt_file=updater_prompt,
             stdout_file=updater_output,
         )
 
-        # Check if signal is valid; escalate to Opus on failure
+        # Check if signal is valid; escalate on failure
         if result.returncode == 0 and updater_signal.is_file():
             valid_signal = _is_valid_updater_signal(updater_signal)
         else:
             valid_signal = False
 
         if not valid_signal and result.returncode == 0:
-            # GLM produced output but no valid signal — escalate once
             print(
-                f"[FEEDBACK] {sec_name}: GLM updater produced no valid "
-                "signal — escalating to Opus",
+                f"[FEEDBACK] {sec_name}: {updater_model} updater produced "
+                f"no valid signal — escalating to {escalation_model}",
             )
             result = dispatch_agent(
-                model="claude-opus",
+                model=escalation_model,
                 project=codespace,
                 prompt_file=updater_prompt,
                 stdout_file=updater_output,

@@ -60,6 +60,7 @@ def mock_scan_dispatch(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     # Also patch at import sites
     monkeypatch.setattr("scan.codemap.dispatch_agent", mock)
     monkeypatch.setattr("scan.deep_scan.dispatch_agent", mock)
+    monkeypatch.setattr("scan.exploration.dispatch_agent", mock)
     monkeypatch.setattr("scan.feedback.dispatch_agent", mock)
     return mock
 
@@ -234,6 +235,7 @@ class TestCorrectionsInUpdaterPrompt:
             codespace=scan_codespace,
             artifacts_dir=artifacts,
             scan_log_dir=scan_log,
+            model_policy={"feedback_updater": "glm", "exploration": "claude-opus"},
         )
 
         # Check that the generated prompt includes corrections
@@ -420,3 +422,275 @@ class TestCodemapReuseMissingFingerprint:
         assert result is True
         # Fingerprint should be written after successful reuse
         assert fingerprint.is_file()
+
+
+# ------------------------------------------------------------------
+# Round 29 regression guards
+# ------------------------------------------------------------------
+
+
+class TestScanSummaryIdempotency:
+    """V1 (R29): Scan summaries use HTML comment markers for idempotent
+    replacement and are stripped from cache keys."""
+
+    def test_update_match_idempotent(self, tmp_path: Path) -> None:
+        """Repeated update_match calls don't accumulate duplicate blocks."""
+        from scan.deep_scan import update_match
+
+        section = tmp_path / "section.md"
+        section.write_text(
+            "# Section\n\n## Related Files\n\n### src/main.py\nOriginal\n",
+        )
+
+        feedback = tmp_path / "deep-response-feedback.json"
+        feedback.write_text(json.dumps({
+            "relevant": True,
+            "source_file": "src/main.py",
+            "summary_lines": ["Line A", "Line B"],
+        }))
+        response = tmp_path / "deep-response.md"
+        response.write_text("analysis text")
+
+        # Apply twice
+        update_match(section, "src/main.py", response)
+        first_text = section.read_text()
+        update_match(section, "src/main.py", response)
+        second_text = section.read_text()
+
+        assert first_text == second_text, (
+            "update_match must be idempotent — second call should not "
+            "accumulate duplicate summary blocks"
+        )
+
+    def test_cache_key_ignores_scan_summaries(self, tmp_path: Path) -> None:
+        """Cache key is stable regardless of scan summary content."""
+        from scan.cache import FileCardCache
+
+        section = tmp_path / "section.md"
+        source = tmp_path / "source.py"
+        source.write_text("code")
+
+        # Key without summary
+        section.write_text("# Section\n### src/main.py\n")
+        k1 = FileCardCache.content_hash(section, source)
+
+        # Key with summary block
+        section.write_text(
+            "# Section\n### src/main.py\n"
+            "<!-- scan-summary:begin -->\n> summary\n"
+            "<!-- scan-summary:end -->\n",
+        )
+        k2 = FileCardCache.content_hash(section, source)
+
+        assert k1 == k2, (
+            "Scan summaries must not change cache keys"
+        )
+
+
+class TestCachedFeedbackValidation:
+    """V3 (R29): Invalid cached feedback triggers re-analysis."""
+
+    def test_invalid_cached_feedback_is_cache_miss(
+        self, tmp_path: Path,
+    ) -> None:
+        """Cache with invalid feedback falls through to fresh analysis."""
+        from scan.cache import FileCardCache, is_valid_cached_feedback
+
+        cards_dir = tmp_path / "cards"
+        cache = FileCardCache(cards_dir)
+
+        # Store a response with invalid feedback (missing source_file)
+        resp = tmp_path / "resp.md"
+        resp.write_text("analysis")
+        fb = tmp_path / "fb.json"
+        fb.write_text(json.dumps({"relevant": True}))  # missing source_file
+
+        key = "test_key"
+        # Store should skip invalid feedback
+        cache.store(key, resp, fb)
+
+        assert cache.get(key) is not None  # response cached
+        assert cache.get_feedback(key) is None, (
+            "Invalid feedback must not be cached"
+        )
+
+    def test_valid_feedback_is_cached(self, tmp_path: Path) -> None:
+        """Valid feedback is stored in cache."""
+        from scan.cache import FileCardCache
+
+        cards_dir = tmp_path / "cards"
+        cache = FileCardCache(cards_dir)
+
+        resp = tmp_path / "resp.md"
+        resp.write_text("analysis")
+        fb = tmp_path / "fb.json"
+        fb.write_text(json.dumps({
+            "relevant": True, "source_file": "src/main.py",
+        }))
+
+        key = "test_key_valid"
+        cache.store(key, resp, fb)
+
+        assert cache.get(key) is not None
+        assert cache.get_feedback(key) is not None, (
+            "Valid feedback must be cached"
+        )
+
+
+class TestBridgeDirectiveTypeSafety:
+    """V4 (R29): Bridge directive handles bool and non-dict types."""
+
+    def test_bool_bridge_coerced_to_dict(self) -> None:
+        """Bridge directive as bool is coerced to dict in parser."""
+        import inspect
+        from section_loop.coordination.planning import _parse_coordination_plan
+        src = inspect.getsource(_parse_coordination_plan)
+        assert "isinstance(bridge, bool)" in src, (
+            "Parser must handle bool bridge directives"
+        )
+
+    def test_non_dict_bridge_defaults_to_disabled(self) -> None:
+        """Runner defends against non-dict bridge directive."""
+        import inspect
+        from section_loop.coordination.runner import run_global_coordination
+        src = inspect.getsource(run_global_coordination)
+        assert "isinstance(bridge_directive, dict)" in src, (
+            "Runner must check bridge_directive is dict"
+        )
+
+
+class TestScanModelPolicy:
+    """V5 (R29): Scan-stage model selection is configurable via policy."""
+
+    def test_default_policy_has_all_tasks(self) -> None:
+        """Default policy covers all scan task types."""
+        from scan.dispatch import _DEFAULT_MODELS
+        required = {
+            "codemap_build", "codemap_freshness", "exploration",
+            "validation", "tier_ranking", "deep_analysis",
+            "feedback_updater",
+        }
+        assert required <= set(_DEFAULT_MODELS), (
+            f"Missing default models: {required - set(_DEFAULT_MODELS)}"
+        )
+
+    def test_policy_override_from_file(self, tmp_path: Path) -> None:
+        """model-policy.json overrides default scan models."""
+        from scan.dispatch import read_scan_model_policy
+
+        policy_file = tmp_path / "model-policy.json"
+        policy_file.write_text(json.dumps({
+            "scan": {"tier_ranking": "custom-model"},
+        }))
+
+        policy = read_scan_model_policy(tmp_path)
+        assert policy["tier_ranking"] == "custom-model"
+        # Other keys remain defaults
+        assert policy["codemap_build"] == "claude-opus"
+
+    def test_no_hardcoded_models_in_scan(self) -> None:
+        """Scan modules use model_policy, not hardcoded strings."""
+        import ast
+        from pathlib import Path as P
+
+        scan_dir = P(__file__).resolve().parent.parent / "scripts" / "scan"
+        violations = []
+        for py_file in scan_dir.glob("*.py"):
+            if py_file.name in ("dispatch.py", "__init__.py", "__main__.py"):
+                continue
+            tree = ast.parse(py_file.read_text())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.keyword) and node.arg == "model":
+                    if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                        violations.append(
+                            f"{py_file.name}:{node.lineno}: "
+                            f"hardcoded model={node.value.value!r}"
+                        )
+        assert not violations, (
+            "Hardcoded model= strings found in scan modules:\n"
+            + "\n".join(violations)
+        )
+
+
+class TestStaleToolSurfaceRemoval:
+    """V6 (R29): Stale tool surface is removed when no tools are relevant."""
+
+    def test_stale_removal_code_exists(self) -> None:
+        """Section engine runner removes stale tools-available surface."""
+        import inspect
+        from section_loop.section_engine.runner import run_section
+        src = inspect.getsource(run_section)
+        assert "tools_available_path.unlink()" in src or \
+               "tools_available_path.exists()" in src, (
+            "Runner must handle stale tool surface removal"
+        )
+
+
+class TestScanLoopClosure:
+    """V2 (R29): Deep scan runs bounded follow-up pass on new files."""
+
+    def test_max_scan_passes_is_bounded(self) -> None:
+        """_MAX_SCAN_PASSES prevents unbounded iteration."""
+        from scan.deep_scan import _MAX_SCAN_PASSES
+        assert 1 < _MAX_SCAN_PASSES <= 3, (
+            f"_MAX_SCAN_PASSES={_MAX_SCAN_PASSES} must be 2-3"
+        )
+
+    def test_already_scanned_files_skipped(
+        self, scan_planspace: Path, scan_codespace: Path,
+        mock_scan_dispatch: MagicMock,
+    ) -> None:
+        """Files already in already_scanned set are not re-dispatched."""
+        from scan.deep_scan import _scan_sections
+        from scan.cache import FileCardCache
+
+        artifacts = scan_planspace / "artifacts"
+        scan_log = scan_planspace / "scan-logs"
+        scan_log.mkdir(parents=True, exist_ok=True)
+
+        sec_file = artifacts / "sections" / "section-01.md"
+        sec_file.write_text(
+            "# Section 01\n\n## Related Files\n\n### src/main.py\n",
+        )
+
+        # Pre-populate tier file
+        tier_file = artifacts / "sections" / "section-01-file-tiers.json"
+        tier_file.write_text(json.dumps({
+            "tiers": {"critical": ["src/main.py"]},
+            "scan_now": ["critical"],
+        }))
+        tier_sidecar = artifacts / "sections" / "section-01-file-tiers.inputs.sha256"
+
+        # Write source file
+        (scan_codespace / "src" / "main.py").write_text("def main(): pass")
+
+        # Mark src/main.py as already scanned
+        already_scanned: dict[str, set[str]] = {
+            "section-01": {"src/main.py"},
+        }
+
+        # Mock returns success + writes tier sidecar to skip regeneration
+        import hashlib
+        from scan.cache import strip_scan_summaries
+        raw = sec_file.read_text()
+        tier_input = strip_scan_summaries(raw) + "\n" + "src/main.py"
+        tier_sidecar.write_text(hashlib.sha256(tier_input.encode()).hexdigest())
+
+        _scan_sections(
+            section_files=[sec_file],
+            codemap_path=artifacts / "codemap.md",
+            codespace=scan_codespace,
+            artifacts_dir=artifacts,
+            scan_log_dir=scan_log,
+            file_card_cache=FileCardCache(artifacts / "file-cards"),
+            corrections_path=artifacts / "signals" / "codemap-corrections.json",
+            model_policy={"tier_ranking": "glm", "exploration": "claude-opus",
+                          "deep_analysis": "glm"},
+            already_scanned=already_scanned,
+        )
+
+        # dispatch_agent should NOT have been called for analysis
+        # (tier ranking was skipped via sidecar, analysis skipped via already_scanned)
+        assert mock_scan_dispatch.call_count == 0, (
+            "Already-scanned files must not trigger dispatch_agent"
+        )

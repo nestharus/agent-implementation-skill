@@ -366,6 +366,8 @@ Reply with a JSON block:
             group = confirmed_groups[gidx]
             plan_group = coord_plan["groups"][gidx] if gidx < len(coord_plan["groups"]) else {}
             bridge_directive = plan_group.get("bridge", {})
+            if not isinstance(bridge_directive, dict):
+                bridge_directive = {}
             bridge_needed = bridge_directive.get("needed", False)
             bridge_reason = bridge_directive.get("reason", "planner-requested")
 

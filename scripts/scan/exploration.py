@@ -11,7 +11,7 @@ import re
 import sys
 from pathlib import Path
 
-from .dispatch import dispatch_agent
+from .dispatch import dispatch_agent, read_scan_model_policy
 
 _TEMPLATES = Path(__file__).resolve().parent / "templates"
 
@@ -106,8 +106,11 @@ def run_section_exploration(
     codespace: Path,
     artifacts_dir: Path,
     scan_log_dir: Path,
+    model_policy: dict[str, str] | None = None,
 ) -> None:
     """Dispatch agents per section to identify related files."""
+    if model_policy is None:
+        model_policy = read_scan_model_policy(artifacts_dir)
     section_files = list_section_files(sections_dir)
     corrections_file = artifacts_dir / "signals" / "codemap-corrections.json"
 
@@ -125,6 +128,7 @@ def run_section_exploration(
                 artifacts_dir=artifacts_dir,
                 scan_log_dir=scan_log_dir,
                 corrections_file=corrections_file,
+                model_policy=model_policy,
             )
             continue
 
@@ -137,6 +141,7 @@ def run_section_exploration(
             artifacts_dir=artifacts_dir,
             scan_log_dir=scan_log_dir,
             corrections_file=corrections_file,
+            model_policy=model_policy,
         )
 
 
@@ -162,6 +167,7 @@ def _validate_existing_related_files(
     artifacts_dir: Path,
     scan_log_dir: Path,
     corrections_file: Path,
+    model_policy: dict[str, str],
 ) -> None:
     """Check if codemap OR section changed; if so, dispatch validation."""
     section_log = scan_log_dir / section_name
@@ -217,7 +223,7 @@ def _validate_existing_related_files(
     validate_prompt.write_text(prompt)
 
     result = dispatch_agent(
-        model="claude-opus",
+        model=model_policy.get("validation", "claude-opus"),
         project=codespace,
         prompt_file=validate_prompt,
         stdout_file=validate_output,
@@ -281,6 +287,7 @@ def _explore_section(
     artifacts_dir: Path,
     scan_log_dir: Path,
     corrections_file: Path,
+    model_policy: dict[str, str],
 ) -> None:
     """Dispatch agent to identify related files for a new section."""
     section_log = scan_log_dir / section_name
@@ -301,7 +308,7 @@ def _explore_section(
     prompt_file.write_text(prompt)
 
     result = dispatch_agent(
-        model="claude-opus",
+        model=model_policy.get("exploration", "claude-opus"),
         project=codespace,
         prompt_file=prompt_file,
         stdout_file=response_file,

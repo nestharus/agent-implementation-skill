@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .codemap import run_codemap_build
 from .deep_scan import run_deep_scan
+from .dispatch import read_scan_model_policy
 from .exploration import list_section_files, run_section_exploration
 
 
@@ -56,6 +57,7 @@ def run_quick_scan(
     artifacts_dir: Path,
     scan_log_dir: Path,
     fingerprint_path: Path,
+    model_policy: dict[str, str],
 ) -> bool:
     """Run quick scan: codemap exploration + per-section file identification."""
     print("=== Quick Scan: codemap exploration + per-section file identification ===")
@@ -66,6 +68,7 @@ def run_quick_scan(
         artifacts_dir=artifacts_dir,
         scan_log_dir=scan_log_dir,
         fingerprint_path=fingerprint_path,
+        model_policy=model_policy,
     ):
         return False
 
@@ -75,6 +78,7 @@ def run_quick_scan(
         codespace=codespace,
         artifacts_dir=artifacts_dir,
         scan_log_dir=scan_log_dir,
+        model_policy=model_policy,
     )
 
     print("=== Quick Scan Complete ===")
@@ -111,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     if not validate_preflight(codespace, sections_dir):
         return 1
 
+    model_policy = read_scan_model_policy(artifacts_dir)
     cmd = args.command
 
     if cmd == "quick":
@@ -121,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
             artifacts_dir=artifacts_dir,
             scan_log_dir=scan_log_dir,
             fingerprint_path=fingerprint_path,
+            model_policy=model_policy,
         )
         return 0 if ok else 1
 
@@ -131,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             codespace=codespace,
             artifacts_dir=artifacts_dir,
             scan_log_dir=scan_log_dir,
+            model_policy=model_policy,
         )
         return 0 if ok else 1
 
@@ -142,6 +149,7 @@ def main(argv: list[str] | None = None) -> int:
             artifacts_dir=artifacts_dir,
             scan_log_dir=scan_log_dir,
             fingerprint_path=fingerprint_path,
+            model_policy=model_policy,
         )
         if not ok:
             return 1
@@ -151,6 +159,7 @@ def main(argv: list[str] | None = None) -> int:
             codespace=codespace,
             artifacts_dir=artifacts_dir,
             scan_log_dir=scan_log_dir,
+            model_policy=model_policy,
         )
         return 0 if ok else 1
 

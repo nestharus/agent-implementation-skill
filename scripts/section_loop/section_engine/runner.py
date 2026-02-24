@@ -290,6 +290,12 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                 )
                 log(f"Section {section.number}: {len(relevant_tools)} "
                     f"relevant tools (of {len(all_tools)} total)")
+            elif tools_available_path.exists():
+                # No relevant tools — remove stale surface to prevent
+                # agents from reasoning over outdated tool context.
+                tools_available_path.unlink()
+                log(f"Section {section.number}: removed stale "
+                    f"tools-available surface (no relevant tools)")
         except (json.JSONDecodeError, ValueError):
             log(f"Section {section.number}: WARNING — tool-registry.json "
                 f"is malformed, skipping")

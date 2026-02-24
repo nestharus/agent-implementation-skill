@@ -11,8 +11,8 @@ import re
 import sys
 from pathlib import Path
 
-from .cache import FileCardCache
-from .dispatch import dispatch_agent
+from .cache import FileCardCache, is_valid_cached_feedback, strip_scan_summaries
+from .dispatch import dispatch_agent, read_scan_model_policy
 from .exploration import list_section_files
 from .feedback import collect_and_route_feedback
 
@@ -108,12 +108,20 @@ def _safe_name(source_file: str) -> str:
 # ------------------------------------------------------------------
 
 
+_SUMMARY_BEGIN = "<!-- scan-summary:begin -->"
+_SUMMARY_END = "<!-- scan-summary:end -->"
+
+
 def update_match(
     section_file: Path,
     source_file: str,
     details_file: Path,
 ) -> bool:
     """Annotate section file with summary lines from feedback JSON.
+
+    Summary blocks are wrapped in HTML comment markers for idempotency:
+    existing blocks for the same file heading are replaced, preventing
+    duplicate accumulation and cache-key thrashing.
 
     Returns ``True`` on success, ``False`` on failure.
     """
@@ -143,14 +151,36 @@ def update_match(
     if idx == -1:
         return True
 
-    summary = "\n".join(f"> {l}" for l in lines)
-
+    # Find the boundary of this file's heading block
     rest = section[idx + len(marker) :]
     match = re.search(r"\n(?=###\s|##\s[^#])", rest)
-    insert_pos = idx + len(marker) + (match.start() if match else len(rest))
+    block_end = idx + len(marker) + (match.start() if match else len(rest))
+
+    # Remove any existing scan-summary block within this heading's range
+    block_text = section[idx:block_end]
+    begin_pos = block_text.find(_SUMMARY_BEGIN)
+    if begin_pos != -1:
+        end_pos = block_text.find(_SUMMARY_END, begin_pos)
+        if end_pos != -1:
+            end_pos += len(_SUMMARY_END)
+            # Consume trailing newline
+            if end_pos < len(block_text) and block_text[end_pos] == "\n":
+                end_pos += 1
+            block_text = block_text[:begin_pos] + block_text[end_pos:]
+            # Reconstruct section with cleaned block
+            section = section[:idx] + block_text + section[block_end:]
+            # Recompute block_end after removal
+            rest = section[idx + len(marker) :]
+            match = re.search(r"\n(?=###\s|##\s[^#])", rest)
+            block_end = idx + len(marker) + (match.start() if match else len(rest))
+
+    summary_lines = "\n".join(f"> {l}" for l in lines)
+    summary_block = (
+        f"\n{_SUMMARY_BEGIN}\n{summary_lines}\n{_SUMMARY_END}"
+    )
 
     new_section = (
-        section[:insert_pos].rstrip() + "\n" + summary + "\n" + section[insert_pos:]
+        section[:block_end].rstrip() + summary_block + "\n" + section[block_end:]
     )
     section_file.write_text(new_section)
     return True
@@ -169,6 +199,7 @@ def _run_tier_ranking(
     codespace: Path,
     artifacts_dir: Path,
     scan_log_dir: Path,
+    model_policy: dict[str, str],
 ) -> Path | None:
     """Dispatch GLM (escalating to Opus) for tier ranking.
 
@@ -177,8 +208,11 @@ def _run_tier_ranking(
     tier_file = artifacts_dir / "sections" / f"{section_name}-file-tiers.json"
     tier_inputs_sidecar = artifacts_dir / "sections" / f"{section_name}-file-tiers.inputs.sha256"
 
-    # Compute inputs fingerprint: section content + sorted related files
-    tier_inputs = section_file.read_text() + "\n" + "\n".join(sorted(related_files))
+    # Compute inputs fingerprint: normalized section content + sorted related files.
+    # Normalization strips scan-generated summary blocks so derived annotations
+    # don't invalidate tier ranking across runs.
+    raw_section = section_file.read_text()
+    tier_inputs = strip_scan_summaries(raw_section) + "\n" + "\n".join(sorted(related_files))
     tier_inputs_hash = hashlib.sha256(tier_inputs.encode()).hexdigest()
 
     # Validate existing tier file: schema + inputs match
@@ -212,9 +246,11 @@ def _run_tier_ranking(
     )
     tier_prompt.write_text(prompt)
 
-    # Try GLM first, escalate to Opus
+    # Try primary model first, escalate to exploration model on failure
+    tier_model = model_policy.get("tier_ranking", "glm")
+    escalation_model = model_policy.get("exploration", "claude-opus")
     result = dispatch_agent(
-        model="glm",
+        model=tier_model,
         project=codespace,
         prompt_file=tier_prompt,
         stdout_file=tier_output,
@@ -224,11 +260,11 @@ def _run_tier_ranking(
         print(f"[TIER] {section_name}: file tiers ranked")
     else:
         print(
-            f"[TIER] {section_name}: tier ranking failed with GLM "
-            "— escalating to Opus",
+            f"[TIER] {section_name}: tier ranking failed with {tier_model} "
+            f"— escalating to {escalation_model}",
         )
         result = dispatch_agent(
-            model="claude-opus",
+            model=escalation_model,
             project=codespace,
             prompt_file=tier_prompt,
             stdout_file=tier_output,
@@ -317,6 +353,7 @@ def _analyze_file(
     corrections_path: Path,
     scan_log_dir: Path,
     file_card_cache: FileCardCache,
+    model_policy: dict[str, str],
 ) -> bool:
     """Run deep analysis on a single file.
 
@@ -348,26 +385,35 @@ def _analyze_file(
     cached_response = file_card_cache.get(content_key)
 
     if cached_response is not None:
-        print(f"  {section_name}: {source_file} (cached)")
-        # Populate response and feedback from cache
-        import shutil
-
-        shutil.copy2(cached_response, response_file)
+        # Validate cached feedback — if missing or invalid, treat as
+        # cache miss to avoid permanently locking in bad data.
         cached_fb = file_card_cache.get_feedback(content_key)
-        if cached_fb is not None:
-            shutil.copy2(cached_fb, feedback_file)
-
-        if not update_match(section_file, source_file, response_file):
-            _log_phase_failure(
-                scan_log_dir,
-                "deep-update",
-                f"{section_name}:{source_file}",
-                "failed to update section file (cached)",
+        if cached_fb is not None and not is_valid_cached_feedback(cached_fb):
+            print(
+                f"  {section_name}: {source_file} cached feedback "
+                "invalid — re-dispatching",
             )
-            return False
+            cached_response = None  # Fall through to fresh analysis
+        else:
+            print(f"  {section_name}: {source_file} (cached)")
+            # Populate response and feedback from cache
+            import shutil
 
-        print(f"[DEEP] {section_name} x {Path(source_file).name} (cached)")
-        return True
+            shutil.copy2(cached_response, response_file)
+            if cached_fb is not None:
+                shutil.copy2(cached_fb, feedback_file)
+
+            if not update_match(section_file, source_file, response_file):
+                _log_phase_failure(
+                    scan_log_dir,
+                    "deep-update",
+                    f"{section_name}:{source_file}",
+                    "failed to update section file (cached)",
+                )
+                return False
+
+            print(f"[DEEP] {section_name} x {Path(source_file).name} (cached)")
+            return True
 
     # Build corrections reference
     corrections_ref = ""
@@ -389,7 +435,7 @@ def _analyze_file(
     prompt_file.write_text(prompt)
 
     result = dispatch_agent(
-        model="glm",
+        model=model_policy.get("deep_analysis", "glm"),
         project=codespace,
         prompt_file=prompt_file,
         stdout_file=response_file,
@@ -439,30 +485,30 @@ def _analyze_file(
 # ------------------------------------------------------------------
 
 
-def run_deep_scan(
+_MAX_SCAN_PASSES = 2
+
+
+def _scan_sections(
     *,
-    sections_dir: Path,
+    section_files: list[Path],
     codemap_path: Path,
     codespace: Path,
     artifacts_dir: Path,
     scan_log_dir: Path,
+    file_card_cache: FileCardCache,
+    corrections_path: Path,
+    model_policy: dict[str, str],
+    already_scanned: dict[str, set[str]],
 ) -> bool:
-    """Run deep scan over all sections.
+    """Run one pass of per-section tier ranking + per-file analysis.
 
-    Returns ``True`` on full success, ``False`` if any failures occurred.
+    ``already_scanned`` maps section stem → set of source files already
+    analyzed.  Only files NOT in the set are dispatched.  The set is
+    updated in place so callers can track cumulative coverage.
+
+    Returns ``True`` if any failures occurred.
     """
-    # Skip for greenfield projects
-    mode_file = artifacts_dir / "project-mode.txt"
-    if mode_file.is_file() and mode_file.read_text().strip() == "greenfield":
-        print("=== Deep Scan: skipped (greenfield project) ===")
-        return True
-
-    print("=== Deep Scan: agent-driven analysis of confirmed related files ===")
-
     phase_failed = False
-    section_files = list_section_files(sections_dir)
-    file_card_cache = FileCardCache(artifacts_dir / "file-cards")
-    corrections_path = artifacts_dir / "signals" / "codemap-corrections.json"
 
     for section_file in section_files:
         section_name = section_file.stem
@@ -502,6 +548,7 @@ def run_deep_scan(
             codespace=codespace,
             artifacts_dir=artifacts_dir,
             scan_log_dir=scan_log_dir,
+            model_policy=model_policy,
         )
 
         # Get scoped files from tier ranking
@@ -523,9 +570,12 @@ def run_deep_scan(
             )
             continue
 
-        # Per-file analysis
+        # Per-file analysis (skip already-scanned files)
+        done = already_scanned.setdefault(section_name, set())
         for source_file in scan_files:
             if not source_file.strip():
+                continue
+            if source_file in done:
                 continue
 
             ok = _analyze_file(
@@ -537,20 +587,98 @@ def run_deep_scan(
                 corrections_path=corrections_path,
                 scan_log_dir=scan_log_dir,
                 file_card_cache=file_card_cache,
+                model_policy=model_policy,
             )
+            done.add(source_file)
             if not ok:
                 phase_failed = True
 
-    # Post-scan: collect feedback and route
-    has_feedback = collect_and_route_feedback(
-        section_files=section_files,
-        codemap_path=codemap_path,
-        codespace=codespace,
-        artifacts_dir=artifacts_dir,
-        scan_log_dir=scan_log_dir,
-    )
+    return phase_failed
 
-    if phase_failed:
+
+def run_deep_scan(
+    *,
+    sections_dir: Path,
+    codemap_path: Path,
+    codespace: Path,
+    artifacts_dir: Path,
+    scan_log_dir: Path,
+    model_policy: dict[str, str] | None = None,
+) -> bool:
+    """Run deep scan over all sections.
+
+    Runs up to ``_MAX_SCAN_PASSES`` passes: after each pass, feedback
+    is collected and may add missing files to sections.  A follow-up
+    pass scans only the newly-added files, closing the feedback loop
+    without unbounded iteration.
+
+    Returns ``True`` on full success, ``False`` if any failures occurred.
+    """
+    if model_policy is None:
+        model_policy = read_scan_model_policy(artifacts_dir)
+
+    # Skip for greenfield projects
+    mode_file = artifacts_dir / "project-mode.txt"
+    if mode_file.is_file() and mode_file.read_text().strip() == "greenfield":
+        print("=== Deep Scan: skipped (greenfield project) ===")
+        return True
+
+    print("=== Deep Scan: agent-driven analysis of confirmed related files ===")
+
+    section_files = list_section_files(sections_dir)
+    file_card_cache = FileCardCache(artifacts_dir / "file-cards")
+    corrections_path = artifacts_dir / "signals" / "codemap-corrections.json"
+    already_scanned: dict[str, set[str]] = {}
+    any_failures = False
+
+    for pass_num in range(1, _MAX_SCAN_PASSES + 1):
+        if pass_num > 1:
+            print(
+                f"=== Deep Scan: follow-up pass {pass_num} "
+                "(scanning newly-added files) ===",
+            )
+
+        phase_failed = _scan_sections(
+            section_files=section_files,
+            codemap_path=codemap_path,
+            codespace=codespace,
+            artifacts_dir=artifacts_dir,
+            scan_log_dir=scan_log_dir,
+            file_card_cache=file_card_cache,
+            corrections_path=corrections_path,
+            model_policy=model_policy,
+            already_scanned=already_scanned,
+        )
+        if phase_failed:
+            any_failures = True
+
+        # Collect feedback and route — may add files to sections
+        has_feedback = collect_and_route_feedback(
+            section_files=section_files,
+            codemap_path=codemap_path,
+            codespace=codespace,
+            artifacts_dir=artifacts_dir,
+            scan_log_dir=scan_log_dir,
+            model_policy=model_policy,
+        )
+
+        if not has_feedback or pass_num == _MAX_SCAN_PASSES:
+            break
+
+        # Check if feedback actually added new files worth scanning
+        new_files_found = False
+        for section_file in section_files:
+            sec_name = section_file.stem
+            current_related = set(deep_scan_related_files(section_file))
+            prev_scanned = already_scanned.get(sec_name, set())
+            if current_related - prev_scanned:
+                new_files_found = True
+                break
+
+        if not new_files_found:
+            break
+
+    if any_failures:
         print("=== Deep Scan Complete (with failures) ===")
         return False
 

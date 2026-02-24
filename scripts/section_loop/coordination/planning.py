@@ -112,8 +112,16 @@ def _parse_coordination_plan(
                 del plan["batches"]
 
     # Extract bridge directives if present (planner decides, not script)
+    # Validate type: must be a dict. Coerce other types safely.
     for g in plan["groups"]:
-        if "bridge" not in g:
+        bridge = g.get("bridge")
+        if bridge is None:
+            g["bridge"] = {"needed": False}
+        elif isinstance(bridge, bool):
+            g["bridge"] = {"needed": bridge}
+        elif not isinstance(bridge, dict):
+            log(f"  coordinator: bridge directive has unexpected type "
+                f"{type(bridge).__name__} — defaulting to disabled")
             g["bridge"] = {"needed": False}
 
     return plan
