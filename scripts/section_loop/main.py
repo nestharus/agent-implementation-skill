@@ -4,7 +4,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .alignment import _extract_problems, _run_alignment_check_with_retries
+from .alignment import (
+    _extract_problems,
+    _parse_alignment_verdict,
+    _run_alignment_check_with_retries,
+)
 from .communication import (
     AGENT_NAME,
     DB_SH,
@@ -540,6 +544,25 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 # Alignment changed mid-check — let outer loop restart
                 restart_phase1 = True
                 break
+            if align_result == "INVALID_FRAME":
+                # Structural failure — alignment prompt frame is wrong.
+                # Surface upward, don't continue with broken evaluation.
+                log(f"Section {sec_num}: invalid alignment frame — "
+                    f"requires parent intervention")
+                mailbox_send(
+                    planspace, parent,
+                    f"fail:invalid_alignment_frame:{sec_num}",
+                )
+                section_results[sec_num] = SectionResult(
+                    section_number=sec_num,
+                    aligned=False,
+                    problems="invalid alignment frame — requires "
+                             "parent intervention",
+                    modified_files=section_results.get(
+                        sec_num, SectionResult(sec_num)
+                    ).modified_files,
+                )
+                continue
             if align_result is None:
                 # All retries timed out
                 log(f"Section {sec_num}: global alignment check timed "
@@ -679,7 +702,10 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             # Adaptive termination: stop if not making progress
             if cur_unresolved >= prev_unresolved:
                 stall_count += 1
-                if stall_count == 2:
+                escalation_threshold = policy.get(
+                    "escalation_triggers", {},
+                ).get("stall_count", 2)
+                if stall_count == escalation_threshold:
                     # Escalation on churn: flag for stronger model on
                     # next round's coordination fixes
                     log(f"Coordination churning ({stall_count} rounds "
@@ -689,7 +715,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                         / "model-escalation.txt"
                     )
                     escalation_file.write_text(
-                        "gpt-5.3-codex-xhigh", encoding="utf-8")
+                        policy["escalation_model"], encoding="utf-8")
                     mailbox_send(planspace, parent,
                                  f"escalation:coordination:"
                                  f"round-{round_num}:stall_count="

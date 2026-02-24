@@ -234,9 +234,14 @@ def _run_alignment_check_with_retries(
             # Check for structured JSON verdict from alignment judge
             verdict = _parse_alignment_verdict(result)
             if verdict is not None and verdict.get("frame_ok") is False:
+                # Structural failure — the alignment prompt frame was
+                # invalid.  Do NOT retry; surface upward for parent
+                # intervention.  Retrying the same broken frame wastes
+                # cycles without fixing the root cause.
                 log(f"  alignment judge reported invalid frame for "
-                    f"section {sec_num} — retrying")
-                continue
+                    f"section {sec_num} — structural failure, "
+                    f"requires parent intervention")
+                return "INVALID_FRAME"
             return result
         log(f"  alignment check for section {sec_num} timed out "
             f"(attempt {attempt}/{max_retries + 1})")

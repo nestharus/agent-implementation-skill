@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -16,6 +16,10 @@ R31/V1: Problem frame surfaces in alignment surface and prompt context.
 R31/V2: Malformed/unknown signal states fail closed as needs_parent.
 R31/V3: Scope-delta artifacts include full signal payload.
 R31/V4: All dispatch callsites use model policy — no hardcoded model literals.
+R32/V1: Coordination plan parse failure retries + fails closed (no script grouping).
+R32/V2: Escalation/fix model strictly policy-driven (no hardcoded model writes).
+R32/V3: frame_ok=false is structural failure surfaced upward (no retry loop).
+R32/V4: Feedback signal status acked as applied after update.
 """
 
 import json
@@ -1204,4 +1208,170 @@ class TestModelPolicyCompleteness:
         assert "adjudicator_model" in sig.parameters, (
             "_run_alignment_check_with_retries must accept "
             "adjudicator_model for policy-driven selection"
+        )
+
+
+# ---------------------------------------------------------------
+# R32/V1: No script-side grouping fallback in coordination plan
+# ---------------------------------------------------------------
+
+class TestCoordinationPlanNoScriptGrouping:
+    """Coordination plan parse failure must retry + fail closed,
+    never fall back to script-constructed one-problem-per-group."""
+
+    RUNNER = (PROJECT_ROOT / "scripts" / "section_loop"
+              / "coordination" / "runner.py")
+
+    def test_no_one_problem_per_group_fallback(self) -> None:
+        """runner.py must not construct groups in script code."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        # The old fallback had: "reason": "fallback"
+        assert '"reason": "fallback"' not in src, (
+            "coordination/runner.py still contains script-side "
+            "'fallback' grouping — must retry + fail closed instead"
+        )
+
+    def test_fail_closed_artifact_written(self) -> None:
+        """runner.py must write coordination-plan-failure.md on fail."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert "coordination-plan-failure.md" in src, (
+            "coordination/runner.py must write failure artifact "
+            "when plan is unparseable"
+        )
+
+    def test_retry_with_escalation_model(self) -> None:
+        """runner.py must retry plan with escalation model before fail."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert 'policy["escalation_model"]' in src, (
+            "coordination/runner.py must use policy escalation model "
+            "for plan retry"
+        )
+        assert "coordination-plan-output-retry.md" in src, (
+            "coordination/runner.py must write retry output for "
+            "traceability"
+        )
+
+
+# ---------------------------------------------------------------
+# R32/V2: Escalation and fix model strictly policy-driven
+# ---------------------------------------------------------------
+
+class TestEscalationModelPolicyDriven:
+    """Hard-coded model strings in escalation file writes and fix
+    model defaults must use policy lookups instead."""
+
+    RUNNER = (PROJECT_ROOT / "scripts" / "section_loop"
+              / "coordination" / "runner.py")
+    MAIN = PROJECT_ROOT / "scripts" / "section_loop" / "main.py"
+    EXECUTION = (PROJECT_ROOT / "scripts" / "section_loop"
+                 / "coordination" / "execution.py")
+
+    def test_no_hardcoded_escalation_model_in_runner(self) -> None:
+        """coordination/runner.py must not hardcode escalation model string."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        # The old pattern: write_text("gpt-5.3-codex-xhigh"
+        for line in src.split("\n"):
+            if "write_text" in line and "gpt-5.3-codex-xhigh" in line:
+                raise AssertionError(
+                    "coordination/runner.py has hardcoded escalation "
+                    "model in write_text call — must use policy"
+                )
+
+    def test_no_hardcoded_escalation_model_in_main(self) -> None:
+        """main.py must not hardcode escalation model string."""
+        src = self.MAIN.read_text(encoding="utf-8")
+        for line in src.split("\n"):
+            if "write_text" in line and "gpt-5.3-codex-xhigh" in line:
+                raise AssertionError(
+                    "main.py has hardcoded escalation model in "
+                    "write_text call — must use policy"
+                )
+
+    def test_no_hardcoded_fix_model_in_execution(self) -> None:
+        """execution.py must not hardcode default fix model."""
+        src = self.EXECUTION.read_text(encoding="utf-8")
+        assert 'fix_model = "gpt-5.3-codex-high"' not in src, (
+            "execution.py has hardcoded fix model default — "
+            "must come from policy"
+        )
+
+    def test_stall_threshold_from_policy(self) -> None:
+        """main.py must read stall_count threshold from policy."""
+        src = self.MAIN.read_text(encoding="utf-8")
+        assert "escalation_triggers" in src, (
+            "main.py must read escalation threshold from "
+            "policy escalation_triggers"
+        )
+
+
+# ---------------------------------------------------------------
+# R32/V3: frame_ok=false is structural failure, not retry
+# ---------------------------------------------------------------
+
+class TestInvalidFrameNoRetry:
+    """When alignment judge returns frame_ok=false, the system must
+    surface upward (INVALID_FRAME) instead of retrying."""
+
+    ALIGNMENT = (PROJECT_ROOT / "scripts" / "section_loop"
+                 / "alignment.py")
+    MAIN = PROJECT_ROOT / "scripts" / "section_loop" / "main.py"
+    COORD_RUNNER = (PROJECT_ROOT / "scripts" / "section_loop"
+                    / "coordination" / "runner.py")
+
+    def test_alignment_returns_invalid_frame_sentinel(self) -> None:
+        """alignment.py must return INVALID_FRAME on frame_ok=false."""
+        src = self.ALIGNMENT.read_text(encoding="utf-8")
+        assert 'return "INVALID_FRAME"' in src, (
+            "alignment.py must return INVALID_FRAME sentinel "
+            "when frame_ok is False"
+        )
+        # Must NOT retry on frame_ok=false
+        lines = src.split("\n")
+        for i, line in enumerate(lines):
+            if "frame_ok" in line and "continue" in line:
+                raise AssertionError(
+                    f"alignment.py:{i+1} retries on frame_ok=false — "
+                    f"must return INVALID_FRAME instead"
+                )
+
+    def test_main_handles_invalid_frame(self) -> None:
+        """main.py must check for INVALID_FRAME and surface upward."""
+        src = self.MAIN.read_text(encoding="utf-8")
+        assert "INVALID_FRAME" in src, (
+            "main.py must handle INVALID_FRAME sentinel from "
+            "alignment checks"
+        )
+        assert "fail:invalid_alignment_frame" in src, (
+            "main.py must send mailbox message on invalid frame"
+        )
+
+    def test_coordination_handles_invalid_frame(self) -> None:
+        """coordination/runner.py must check for INVALID_FRAME."""
+        src = self.COORD_RUNNER.read_text(encoding="utf-8")
+        assert "INVALID_FRAME" in src, (
+            "coordination/runner.py must handle INVALID_FRAME "
+            "sentinel from alignment checks"
+        )
+
+
+# ---------------------------------------------------------------
+# R32/V4: Feedback signal status acked after update
+# ---------------------------------------------------------------
+
+class TestFeedbackSignalAcked:
+    """After applying a related-files update, the signal status must
+    be updated from 'stale' to 'applied' or 'no_change'."""
+
+    FEEDBACK = PROJECT_ROOT / "scripts" / "scan" / "feedback.py"
+
+    def test_signal_status_updated_after_apply(self) -> None:
+        """feedback.py must update signal status after application."""
+        src = self.FEEDBACK.read_text(encoding="utf-8")
+        assert '"applied"' in src, (
+            "feedback.py must set status to 'applied' after "
+            "successful update"
+        )
+        assert '"no_change"' in src, (
+            "feedback.py must set status to 'no_change' when "
+            "update produces no file change"
         )

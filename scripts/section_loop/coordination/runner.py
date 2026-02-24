@@ -4,7 +4,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from ..alignment import _extract_problems, _run_alignment_check_with_retries
+from ..alignment import (
+    _extract_problems,
+    _parse_alignment_verdict,
+    _run_alignment_check_with_retries,
+)
 from ..communication import (
     _log_artifact,
     log,
@@ -75,7 +79,7 @@ def run_global_coordination(
     if recurrence:
         escalation_file = coord_dir / "model-escalation.txt"
         escalation_file.write_text(
-            "gpt-5.3-codex-xhigh", encoding="utf-8")
+            policy["escalation_model"], encoding="utf-8")
         log(f"  coordinator: recurrence escalation — setting model to "
             f"gpt-5.3-codex-xhigh for "
             f"{recurrence['recurring_problem_count']} recurring problems "
@@ -249,15 +253,33 @@ Reply with a JSON block:
     # Parse the JSON coordination plan from agent output
     coord_plan = _parse_coordination_plan(plan_result, problems)
     if coord_plan is None:
-        # Fallback: treat each problem as its own group, sequential
-        log("  coordinator: WARNING — could not parse coordination plan, "
-            "falling back to one-problem-per-group")
-        coord_plan = {
-            "groups": [
-                {"problems": [i], "reason": "fallback", "strategy": "parallel"}
-                for i in range(len(problems))
-            ],
-        }
+        # Retry once with escalation model — scripts must not decide
+        # problem grouping (that is a strategic agent decision).
+        log("  coordinator: plan parse failed — retrying with "
+            "escalation model")
+        plan_output_retry = coord_dir / "coordination-plan-output-retry.md"
+        retry_result = dispatch_agent(
+            policy["escalation_model"], plan_prompt, plan_output_retry,
+            planspace, parent, agent_file="coordination-planner.md",
+        )
+        if retry_result == "ALIGNMENT_CHANGED_PENDING":
+            return False
+        coord_plan = _parse_coordination_plan(retry_result, problems)
+
+    if coord_plan is None:
+        # Fail closed: write failure artifact + mailbox, return False.
+        # Scripts must not invent grouping — only the agent decides.
+        log("  coordinator: plan parse failed after retry — fail closed")
+        failure_path = coord_dir / "coordination-plan-failure.md"
+        failure_path.write_text(json.dumps({
+            "reason": "unparseable_plan_json",
+            "attempts": 2,
+        }, indent=2), encoding="utf-8")
+        mailbox_send(
+            planspace, parent,
+            "fail:coordination:unparseable_plan_json",
+        )
+        return False
 
     # Build confirmed groups from the plan
     confirmed_groups: list[list[dict[str, Any]]] = []
@@ -590,11 +612,13 @@ Reply with a JSON block:
                 log(f"  coordinator: bridge complete for group {gidx}, "
                     f"contract delta at {contract_delta_path}")
 
+        fix_model_default = policy["coordination_fix"]
         if len(batch) == 1:
             gidx = batch[0]
             _, modified = _dispatch_fix_group(
                 confirmed_groups[gidx], gidx,
                 planspace, codespace, parent,
+                default_fix_model=fix_model_default,
             )
             if modified is None:
                 return False
@@ -608,6 +632,7 @@ Reply with a JSON block:
                         _dispatch_fix_group,
                         confirmed_groups[gidx], gidx,
                         planspace, codespace, parent,
+                        fix_model_default,
                     ): gidx
                     for gidx in batch
                 }
@@ -716,6 +741,22 @@ Reply with a JSON block:
         )
         if align_result == "ALIGNMENT_CHANGED_PENDING":
             return False  # Let outer loop restart Phase 1
+        if align_result == "INVALID_FRAME":
+            # Structural failure — alignment prompt frame is wrong.
+            # Surface upward, don't continue with broken evaluation.
+            log(f"  coordinator: section {sec_num} invalid alignment "
+                f"frame — requires parent intervention")
+            mailbox_send(
+                planspace, parent,
+                f"fail:invalid_alignment_frame:{sec_num}",
+            )
+            section_results[sec_num] = SectionResult(
+                section_number=sec_num,
+                aligned=False,
+                problems="invalid alignment frame — requires "
+                         "parent intervention",
+            )
+            continue
         if align_result is None:
             # All retries timed out
             log(f"  coordinator: section {sec_num} alignment check "

@@ -166,12 +166,18 @@ Include files modified by sub-agents.
 def _dispatch_fix_group(
     group: list[dict[str, Any]], group_id: int,
     planspace: Path, codespace: Path, parent: str,
+    default_fix_model: str = "",
 ) -> tuple[int, list[str] | None]:
     """Dispatch a Codex agent to fix a single problem group.
 
     Returns (group_id, list_of_modified_files) on success.
     Returns (group_id, None) if ALIGNMENT_CHANGED_PENDING sentinel received.
+
+    The ``default_fix_model`` should come from ``policy["coordination_fix"]``
+    so that model selection is strictly policy-driven.
     """
+    from ..dispatch import read_model_policy
+
     artifacts = planspace / "artifacts" / "coordination"
     fix_prompt = write_coordinator_fix_prompt(
         group, planspace, codespace, group_id,
@@ -180,7 +186,9 @@ def _dispatch_fix_group(
     modified_report = artifacts / f"fix-{group_id}-modified.txt"
 
     # Check for model escalation (triggered by coordination churn)
-    fix_model = "gpt-5.3-codex-high"
+    if not default_fix_model:
+        default_fix_model = read_model_policy(planspace)["coordination_fix"]
+    fix_model = default_fix_model
     coord_escalated_from = None
     escalation_file = artifacts / "model-escalation.txt"
     if escalation_file.exists():

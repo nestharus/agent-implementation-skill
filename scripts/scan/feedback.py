@@ -362,7 +362,17 @@ def _apply_feedback(
             continue
 
         if status == "stale":
-            if apply_related_files_update(section_file, updater_signal):
+            applied = apply_related_files_update(
+                section_file, updater_signal)
+            # Acknowledge the signal — update status so it isn't
+            # re-applied on subsequent runs.
+            try:
+                sig_data["status"] = "applied" if applied else "no_change"
+                updater_signal.write_text(
+                    json.dumps(sig_data, indent=2), encoding="utf-8")
+            except OSError:
+                pass  # Best-effort ack; signal file may be read-only
+            if applied:
                 print(
                     f"[FEEDBACK] {sec_name}: related files updated "
                     "from deep scan feedback",
