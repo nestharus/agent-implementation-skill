@@ -999,7 +999,39 @@ WHY — you're capturing WHAT and WHERE at the file level.
         )
         if micro_result == "ALIGNMENT_CHANGED_PENDING":
             return None
-        log(f"Section {section.number}: microstrategy generated")
+
+        # -- V2/R43: Verify microstrategy output exists --
+        if not microstrategy_path.exists() or microstrategy_path.stat().st_size == 0:
+            log(f"Section {section.number}: microstrategy missing after "
+                f"dispatch — retrying with escalation model")
+            escalation_output = (artifacts
+                                 / f"microstrategy-{section.number}-escalation-output.md")
+            esc_result = dispatch_agent(
+                policy["escalation_model"],
+                micro_prompt_path, escalation_output,
+                planspace, parent, f"{a_name}-escalation",
+                codespace=codespace,
+                section_number=section.number,
+                agent_file="microstrategy-writer.md",
+            )
+            if esc_result == "ALIGNMENT_CHANGED_PENDING":
+                return None
+
+        if microstrategy_path.exists() and microstrategy_path.stat().st_size > 0:
+            log(f"Section {section.number}: microstrategy generated")
+        else:
+            log(f"Section {section.number}: microstrategy generation "
+                f"failed — stub written")
+            microstrategy_path.write_text(
+                f"# Microstrategy for Section {section.number}\n\n"
+                f"**STATUS: GENERATION FAILED**\n\n"
+                f"The microstrategy agent did not produce output after "
+                f"two attempts (primary + escalation). The implementer "
+                f"must derive a microstrategy as the first step of "
+                f"implementation by reading the integration proposal "
+                f"and producing a per-file tactical breakdown.\n",
+                encoding="utf-8",
+            )
         _record_traceability(
             planspace, section.number,
             f"section-{section.number}-microstrategy.md",
@@ -1425,6 +1457,12 @@ WHY — you're capturing WHAT and WHERE at the file level.
             artifacts / f"bridge-tools-{section.number}-prompt.md")
         bridge_tools_output = (
             artifacts / f"bridge-tools-{section.number}-output.md")
+        bridge_signal_path = (
+            artifacts / "signals"
+            / f"section-{section.number}-tool-bridge.json")
+        default_proposal_path = (
+            artifacts / "proposals"
+            / f"section-{section.number}-tool-bridge.md")
         bridge_tools_prompt.write_text(f"""# Task: Bridge Tool Islands for Section {section.number}
 
 ## Context
@@ -1441,8 +1479,12 @@ Analyze the tool registry and section needs. Either:
 (a) Propose a new tool that bridges the gap
 (b) Propose a composition pattern connecting existing tools
 
-Write your proposal to: `{artifacts / "proposals" / f"section-{section.number}-tool-bridge.md"}`
+Write your proposal to: `{default_proposal_path}`
 Update the tool registry if new tools are proposed.
+
+## Structured Signal (Required)
+Write a structured signal to: `{bridge_signal_path}`
+with JSON: {{"status": "bridged"|"no_action"|"needs_parent", "proposal_path": "...", "notes": "..."}}
 """, encoding="utf-8")
         dispatch_agent(
             policy.get("bridge_tools", "gpt-5.3-codex-high"),
@@ -1454,6 +1496,74 @@ Update the tool registry if new tools are proposed.
             agent_file="bridge-tools.md",
             section_number=section.number,
         )
+
+        # -- V1/R43: Verify bridge-tools output --
+        bridge_valid = False
+        if bridge_signal_path.exists():
+            try:
+                bridge_data = json.loads(
+                    bridge_signal_path.read_text(encoding="utf-8"))
+                if bridge_data.get("status") in (
+                    "bridged", "no_action", "needs_parent",
+                ):
+                    proposal_path = Path(bridge_data.get(
+                        "proposal_path", str(default_proposal_path)))
+                    if (bridge_data["status"] == "no_action"
+                            or proposal_path.exists()):
+                        bridge_valid = True
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        if not bridge_valid:
+            log(f"Section {section.number}: bridge signal missing or "
+                f"invalid — retrying with escalation model")
+            escalation_output = (
+                artifacts
+                / f"bridge-tools-{section.number}-escalation-output.md")
+            dispatch_agent(
+                policy["escalation_model"],
+                bridge_tools_prompt,
+                escalation_output,
+                planspace, parent,
+                f"bridge-tools-{section.number}-escalation",
+                codespace=codespace,
+                agent_file="bridge-tools.md",
+                section_number=section.number,
+            )
+            # Re-check after escalation
+            if bridge_signal_path.exists():
+                try:
+                    bridge_data = json.loads(
+                        bridge_signal_path.read_text(encoding="utf-8"))
+                    if bridge_data.get("status") in (
+                        "bridged", "no_action", "needs_parent",
+                    ):
+                        bridge_valid = True
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+            if not bridge_valid:
+                log(f"Section {section.number}: bridge-tools dispatch "
+                    f"failed after escalation — writing failure artifact")
+                failure_artifact = (
+                    artifacts / "signals"
+                    / f"section-{section.number}-bridge-tools-failure.json")
+                failure_artifact.write_text(json.dumps({
+                    "section": section.number,
+                    "status": "failed",
+                    "reason": "bridge-tools agent did not produce valid "
+                              "signal after primary + escalation dispatch",
+                }, indent=2), encoding="utf-8")
+
+        # Acknowledge friction signal so it doesn't re-fire
+        try:
+            friction_signal_path.write_text(json.dumps({
+                "friction": False,
+                "status": "handled",
+            }), encoding="utf-8")
+        except OSError:
+            log(f"Section {section.number}: could not acknowledge "
+                f"friction signal — file write failed")
 
     # -----------------------------------------------------------------
     # Step 4: Post-completion — snapshots, impact analysis, notes

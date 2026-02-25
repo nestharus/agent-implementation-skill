@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -40,6 +40,8 @@ R37/V4: Scan templates use extension-neutral examples (no .py bias).
 R42/V1-V2: Skip-hash not written on validation failure; section hash strips scan summaries.
 R42/V3: Fresh exploration appends only Related Files block, not full response.
 R42/V4: Codemap prompt does not contradict itself about templates.
+R43/V1: Bridge-tools loop closed — signal verified, friction acknowledged.
+R43/V2: Microstrategy writer dispatch fail-closed on output production.
 """
 
 import json
@@ -3188,4 +3190,168 @@ class TestImplementMdRoutingTableRef:
         assert "Routing Table" in content, (
             "implement.md must reference the codemap Routing Table "
             "consumed by downstream agents"
+        )
+
+
+# ── R43/V1: Bridge-tools loop closed ─────────────────────────────
+
+
+class TestBridgeToolsLoopClosure:
+    """R43/V1: Bridge-tools dispatch must close the loop:
+    - Verify bridge signal JSON exists and parses
+    - Verify proposal file after dispatch
+    - Retry with escalation model if missing
+    - Acknowledge friction signal after handling
+    """
+
+    RUNNER = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
+              / "section_engine" / "runner.py")
+
+    def test_friction_signal_acknowledged(self) -> None:
+        """After bridge-tools dispatch, friction signal must be updated
+        to friction=false, status=handled."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        # The bridge-tools block must write friction=False after handling
+        assert '"friction": False' in src, (
+            "runner.py must acknowledge friction signal by writing "
+            "friction=False after bridge-tools dispatch"
+        )
+        assert '"status": "handled"' in src, (
+            "runner.py must write status=handled to friction signal "
+            "after bridge-tools dispatch"
+        )
+
+    def test_bridge_tools_prompt_includes_structured_signal_instruction(
+        self,
+    ) -> None:
+        """Bridge-tools prompt must instruct agent to write a structured
+        signal JSON with status/proposal_path/notes fields."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert "Structured Signal (Required)" in src, (
+            "runner.py bridge-tools prompt must include a "
+            "'Structured Signal (Required)' section"
+        )
+        assert "tool-bridge.json" in src, (
+            "runner.py bridge-tools prompt must reference the "
+            "bridge signal JSON path"
+        )
+        assert '"bridged"|"no_action"|"needs_parent"' in src, (
+            "runner.py bridge-tools prompt must list allowed "
+            "status values"
+        )
+
+    def test_bridge_signal_missing_triggers_escalation(self) -> None:
+        """If bridge signal is missing after dispatch, runner.py must
+        retry with escalation model."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert "bridge signal missing or" in src, (
+            "runner.py must log when bridge signal is missing "
+            "after primary dispatch"
+        )
+        assert 'policy["escalation_model"]' in src, (
+            "runner.py must use policy escalation_model for "
+            "bridge-tools retry"
+        )
+        assert "bridge-tools-failure.json" in src, (
+            "runner.py must write bridge-tools-failure.json when "
+            "both primary and escalation dispatch fail"
+        )
+
+    def test_ast_dispatch_followed_by_verification(self) -> None:
+        """AST check: dispatch_agent call in the bridge-tools section
+        is followed by verification logic (not bare dispatch)."""
+        import ast
+
+        src = self.RUNNER.read_text(encoding="utf-8")
+        tree = ast.parse(src)
+
+        # Find the bridge-tools dispatch in the source — look for
+        # the string "bridge-tools-{section.number}" in dispatch calls
+        # and verify the next statements include bridge_valid checks.
+        lines = src.splitlines()
+        bridge_dispatch_line = None
+        for i, line in enumerate(lines, 1):
+            if ('f"bridge-tools-{section.number}"' in line
+                    and "dispatch_agent(" not in line):
+                # This is the agent_name argument line inside
+                # the dispatch_agent call
+                bridge_dispatch_line = i
+                break
+        assert bridge_dispatch_line is not None, (
+            "Could not find bridge-tools dispatch_agent call"
+        )
+        # Check that within the next 30 lines there is verification
+        following = "\n".join(
+            lines[bridge_dispatch_line:bridge_dispatch_line + 30])
+        assert "bridge_valid" in following, (
+            "bridge-tools dispatch_agent call must be followed by "
+            "bridge_valid verification logic"
+        )
+
+
+# ── R43/V2: Microstrategy writer dispatch fail-closed ────────────
+
+
+class TestMicrostrategyOutputEnforcement:
+    """R43/V2: Microstrategy writer dispatch must verify output
+    production — 'microstrategy generated' log requires file existence."""
+
+    RUNNER = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
+              / "section_engine" / "runner.py")
+
+    def test_microstrategy_generated_log_requires_file_existence(
+        self,
+    ) -> None:
+        """'microstrategy generated' log must be conditional on file
+        existence, not unconditional after dispatch."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        lines = src.splitlines()
+        for i, line in enumerate(lines):
+            if "microstrategy generated" in line:
+                # This log line must be inside an if-branch that
+                # checks microstrategy_path.exists()
+                # Look at the preceding lines for the condition
+                block = "\n".join(lines[max(0, i - 5):i + 1])
+                assert "microstrategy_path.exists()" in block, (
+                    "'microstrategy generated' log must be guarded by "
+                    "microstrategy_path.exists() check"
+                )
+                break
+        else:
+            pytest.fail(
+                "Could not find 'microstrategy generated' log line "
+                "in runner.py"
+            )
+
+    def test_missing_microstrategy_triggers_escalation(self) -> None:
+        """Missing microstrategy must trigger retry with escalation model."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert "microstrategy missing after" in src, (
+            "runner.py must log when microstrategy is missing "
+            "after primary dispatch"
+        )
+        assert "-escalation-output.md" in src, (
+            "runner.py must write escalation output for "
+            "microstrategy retry traceability"
+        )
+
+    def test_failed_escalation_writes_stub(self) -> None:
+        """Failed escalation must write a stub microstrategy file."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert "GENERATION FAILED" in src, (
+            "runner.py must write a stub with GENERATION FAILED "
+            "when both primary and escalation fail"
+        )
+        assert "stub written" in src, (
+            "runner.py must log 'stub written' when microstrategy "
+            "generation fails completely"
+        )
+
+    def test_stub_contains_failure_indication(self) -> None:
+        """Stub file must contain clear failure indication text
+        directing the implementer to derive a microstrategy."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert "must derive a microstrategy" in src, (
+            "Stub microstrategy must instruct the implementer to "
+            "derive a microstrategy as first step of implementation"
         )
