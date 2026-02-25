@@ -12,6 +12,7 @@ from .surfaces import (
     mark_surfaces_applied,
     mark_surfaces_discarded,
     merge_surfaces_into_registry,
+    normalize_surface_ids,
     save_surface_registry,
     surfaces_are_diminishing,
 )
@@ -50,9 +51,20 @@ def run_expansion_cycle(
 
     # Load and update surface registry
     registry = load_surface_registry(section_number, planspace)
+
+    # Assign stable mechanical IDs before merge (P3/R52)
+    surfaces = normalize_surface_ids(surfaces, registry, section_number)
+
     new_surfaces, duplicate_ids = merge_surfaces_into_registry(
         registry, surfaces,
     )
+
+    # Rewrite surfaces file with normalized IDs so expanders see them
+    surfaces_path = (
+        planspace / "artifacts" / "signals"
+        / f"intent-surfaces-{section_number}.json"
+    )
+    surfaces_path.write_text(json.dumps(surfaces, indent=2), encoding="utf-8")
 
     # Check diminishing returns
     if surfaces_are_diminishing(registry, new_surfaces, duplicate_ids):

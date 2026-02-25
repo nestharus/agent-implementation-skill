@@ -8,14 +8,46 @@ from ..dispatch import dispatch_agent, read_model_policy
 from ..types import Section
 
 
+def _find_philosophy_sources(
+    planspace: Path, codespace: Path,
+) -> list[Path]:
+    """Find candidate philosophy source files in planspace/codespace.
+
+    Returns a list of paths that could be used as philosophy input.
+    """
+    candidates: list[Path] = []
+    artifacts = planspace / "artifacts"
+
+    # Check known locations where philosophy sources may exist
+    for root in (planspace, codespace, artifacts):
+        if not root.exists():
+            continue
+        for name in (
+            "constraints.md", "design-philosophy-notes.md",
+            "philosophy.md", "execution-philosophy.md",
+        ):
+            p = root / name
+            if p.exists() and p.stat().st_size > 0:
+                candidates.append(p)
+
+    # Check SKILL.md (common in skill repos)
+    for root in (planspace, codespace):
+        skill = root / "SKILL.md"
+        if skill.exists() and skill.stat().st_size > 0:
+            candidates.append(skill)
+
+    return candidates
+
+
 def ensure_global_philosophy(
     planspace: Path,
     codespace: Path,
     parent: str,
-) -> Path:
+) -> Path | None:
     """Ensure the operational philosophy exists; distill if missing.
 
-    Returns the path to ``artifacts/intent/global/philosophy.md``.
+    Returns the path to ``artifacts/intent/global/philosophy.md``,
+    or ``None`` if no philosophy source was found (fail-closed).
     """
     policy = read_model_policy(planspace)
     artifacts = planspace / "artifacts"
@@ -26,12 +58,32 @@ def ensure_global_philosophy(
     if philosophy_path.exists() and philosophy_path.stat().st_size > 0:
         return philosophy_path
 
-    log("Intent bootstrap: distilling operational philosophy")
+    # Fail-closed: check for grounded source before dispatching (P7/R52)
+    sources = _find_philosophy_sources(planspace, codespace)
+    if not sources:
+        log("Intent bootstrap: no philosophy source files found — "
+            "skipping distillation (fail-closed)")
+        signal_dir = artifacts / "signals"
+        signal_dir.mkdir(parents=True, exist_ok=True)
+        signal = {
+            "state": "philosophy_source_missing",
+            "detail": (
+                "No philosophy source files found in planspace or "
+                "codespace. Intent mode will downgrade to lightweight."
+            ),
+        }
+        (signal_dir / "philosophy-source-missing.json").write_text(
+            json.dumps(signal, indent=2), encoding="utf-8")
+        return None
+
+    log(f"Intent bootstrap: distilling operational philosophy from "
+        f"{len(sources)} source(s)")
 
     prompt_path = artifacts / "philosophy-distill-prompt.md"
     output_path = artifacts / "philosophy-distill-output.md"
     source_map_path = intent_global / "philosophy-source-map.json"
 
+    sources_block = "\n".join(f"- `{s}`" for s in sources)
     prompt_path.write_text(f"""# Task: Distill Operational Philosophy
 
 ## Context
@@ -39,12 +91,10 @@ Convert the execution philosophy into an operational philosophy document
 that alignment agents can use for per-section philosophy checks.
 
 ## Input
-Read the execution philosophy files in the planspace. If a philosophy
-artifact already exists at `{philosophy_path}`, skip this task.
+Read these philosophy source files:
+{sources_block}
 
-The philosophy zip contents are typically committed into the planspace
-or referenced by the orchestrator. Look for philosophy-related .md files
-under `{artifacts}` or in the project's skill documentation.
+If a philosophy artifact already exists at `{philosophy_path}`, skip this task.
 
 ## Output
 Write an operational philosophy to: `{philosophy_path}`
@@ -62,6 +112,7 @@ Format: JSON mapping principle ID to source file/section.
 - Number them P1..PN for machine-stable references
 - Note known tensions between principles explicitly
 - Include expansion guidance: what classifies as absorbable vs tension vs contradiction
+- Do NOT invent principles — every principle must trace to one of the source files
 """, encoding="utf-8")
     _log_artifact(planspace, "prompt:philosophy-distill")
 
@@ -79,15 +130,22 @@ Format: JSON mapping principle ID to source file/section.
         return philosophy_path
 
     if not philosophy_path.exists() or philosophy_path.stat().st_size == 0:
-        log("Intent bootstrap: philosophy distillation failed — writing stub")
-        philosophy_path.write_text(
-            "# Operational Philosophy\n\n"
-            "**STATUS: DISTILLATION FAILED**\n\n"
-            "The philosophy distiller did not produce output. "
-            "Intent alignment will proceed without philosophy checks "
-            "until this is resolved.\n",
-            encoding="utf-8",
-        )
+        log("Intent bootstrap: philosophy distillation failed — "
+            "no output (fail-closed, downgrading to lightweight)")
+        signal_dir = artifacts / "signals"
+        signal_dir.mkdir(parents=True, exist_ok=True)
+        signal = {
+            "state": "philosophy_distillation_failed",
+            "detail": (
+                "Philosophy distiller did not produce output despite "
+                "source files being available. Intent mode will "
+                "downgrade to lightweight."
+            ),
+            "sources": [str(s) for s in sources],
+        }
+        (signal_dir / "philosophy-distillation-failed.json").write_text(
+            json.dumps(signal, indent=2), encoding="utf-8")
+        return None
 
     return philosophy_path
 

@@ -7,8 +7,8 @@
 1. Section alignment excerpt: `{alignment_excerpt}`
 2. Section proposal excerpt: `{proposal_excerpt}`
 3. Section specification: `{section_path}`
-4. Integration proposal to review: `{integration_proposal}`{surface_line}{codemap_line}{corrections_line}
-
+4. Integration proposal to review: `{integration_proposal}`{surface_line}{codemap_line}{corrections_line}{intent_problem_ref}{intent_rubric_ref}{intent_philosophy_ref}{intent_registry_ref}
+{intent_surfaces_block}
 ## Instructions
 
 Read the alignment excerpt and proposal excerpt first — these define the

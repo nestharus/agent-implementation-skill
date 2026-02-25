@@ -13,6 +13,7 @@ import pytest
 from section_loop.intent.surfaces import (
     load_surface_registry,
     merge_surfaces_into_registry,
+    normalize_surface_ids,
     save_surface_registry,
     surfaces_are_diminishing,
     mark_surfaces_applied,
@@ -248,6 +249,10 @@ class TestIntentBootstrap:
         self, intent_planspace: Path, mock_dispatch: MagicMock,
     ) -> None:
         """Philosophy distiller creates the operational philosophy."""
+        # Provide a grounded source so fail-closed check passes (P7/R52)
+        (intent_planspace / "constraints.md").write_text(
+            "# Constraints\nNo new deps.\n", encoding="utf-8")
+
         philosophy_path = (
             intent_planspace / "artifacts" / "intent" / "global"
             / "philosophy.md"
@@ -331,14 +336,16 @@ class TestExpansionCycle:
         mock_dispatch: MagicMock,
     ) -> None:
         """Problem surfaces trigger problem expander and restart."""
-        # Write surfaces signal
+        # Write surfaces signal — no pre-set id, normalization assigns it
         surfaces = {
             "section": "01",
             "stage": "integration_proposal",
             "attempt": 1,
             "problem_surfaces": [
-                {"id": "P-01-0001", "kind": "emergent", "axis_id": "A3",
-                 "title": "Missing migration path"},
+                {"kind": "emergent", "axis_id": "A3",
+                 "title": "Missing migration path",
+                 "description": "No migration strategy for OAuth2",
+                 "evidence": "Legacy auth module"},
             ],
             "philosophy_surfaces": [],
         }
@@ -356,7 +363,7 @@ class TestExpansionCycle:
             encoding="utf-8",
         )
 
-        # Simulate problem expander writing delta
+        # Simulate problem expander writing delta — ID assigned by normalization
         delta = {
             "section": "01",
             "applied": {
@@ -390,38 +397,52 @@ class TestExpansionCycle:
         self, intent_planspace: Path, mock_dispatch: MagicMock,
     ) -> None:
         """When >60% surfaces are discarded duplicates, skip expansion."""
-        # Write surfaces with all-duplicate IDs
+        import hashlib
+
+        def _fp(kind, axis_id, title, description, evidence):
+            raw = "|".join(str(v).strip() for v in (kind, axis_id, title, description, evidence))
+            return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+
+        # Three surfaces — each with distinct content for fingerprinting
+        s1 = {"kind": "emergent", "axis_id": "A1", "title": "T1",
+               "description": "D1", "evidence": "E1"}
+        s2 = {"kind": "emergent", "axis_id": "A2", "title": "T2",
+               "description": "D2", "evidence": "E2"}
+        s3 = {"kind": "emergent", "axis_id": "A3", "title": "T3",
+               "description": "D3", "evidence": "E3"}
+
+        fp1, fp2, fp3 = _fp(**s1), _fp(**s2), _fp(**s3)
+
         surfaces = {
             "section": "01",
             "stage": "integration_proposal",
             "attempt": 3,
-            "problem_surfaces": [
-                {"id": "P-01-0001", "kind": "emergent"},
-                {"id": "P-01-0002", "kind": "emergent"},
-                {"id": "P-01-0003", "kind": "emergent"},
-            ],
+            "problem_surfaces": [s1, s2, s3],
             "philosophy_surfaces": [],
         }
         surfaces_path = (intent_planspace / "artifacts" / "signals"
                          / "intent-surfaces-01.json")
         surfaces_path.write_text(json.dumps(surfaces), encoding="utf-8")
 
-        # Registry has all three already discarded
+        # Registry has all three already discarded with matching fingerprints
         registry = {
             "section": "01", "next_id": 4,
             "surfaces": [
                 {"id": "P-01-0001", "status": "discarded",
-                 "kind": "emergent", "axis_id": "",
+                 "kind": "emergent", "axis_id": "A1",
+                 "fingerprint": fp1,
                  "first_seen": {"stage": "x", "attempt": 1},
                  "last_seen": {"stage": "x", "attempt": 1},
                  "notes": ""},
                 {"id": "P-01-0002", "status": "discarded",
-                 "kind": "emergent", "axis_id": "",
+                 "kind": "emergent", "axis_id": "A2",
+                 "fingerprint": fp2,
                  "first_seen": {"stage": "x", "attempt": 1},
                  "last_seen": {"stage": "x", "attempt": 1},
                  "notes": ""},
                 {"id": "P-01-0003", "status": "discarded",
-                 "kind": "emergent", "axis_id": "",
+                 "kind": "emergent", "axis_id": "A3",
+                 "fingerprint": fp3,
                  "first_seen": {"stage": "x", "attempt": 1},
                  "last_seen": {"stage": "x", "attempt": 1},
                  "notes": ""},
@@ -451,6 +472,9 @@ class TestRunnerIntentIntegration:
         mock_dispatch: MagicMock,
     ) -> None:
         """In full mode, alignment uses intent-judge.md not alignment-judge.md."""
+        # Provide philosophy source for fail-closed check (P7/R52)
+        (intent_planspace / "constraints.md").write_text(
+            "# Constraints\nNo new deps.\n", encoding="utf-8")
         section = _make_intent_section(intent_planspace, codespace)
 
         call_log: list[dict] = []
@@ -694,6 +718,7 @@ class TestIntentConventions:
             generate_intent_pack,
             load_surface_registry,
             merge_surfaces_into_registry,
+            normalize_surface_ids,
             run_expansion_cycle,
             run_intent_triage,
             surfaces_are_diminishing,
@@ -703,6 +728,97 @@ class TestIntentConventions:
         assert callable(generate_intent_pack)
         assert callable(load_surface_registry)
         assert callable(merge_surfaces_into_registry)
+        assert callable(normalize_surface_ids)
         assert callable(run_expansion_cycle)
         assert callable(run_intent_triage)
         assert callable(surfaces_are_diminishing)
+
+    def test_normalize_surface_ids_assigns_stable_ids(self) -> None:
+        """normalize_surface_ids assigns P-sec-NNNN / F-sec-NNNN IDs."""
+        registry = {"section": "01", "next_id": 1, "surfaces": []}
+        surfaces = {
+            "problem_surfaces": [
+                {"kind": "emergent", "axis_id": "A3",
+                 "title": "Missing migration path",
+                 "description": "No migration strategy",
+                 "evidence": "Legacy auth module"},
+            ],
+            "philosophy_surfaces": [
+                {"kind": "tension", "axis_id": "",
+                 "title": "Speed vs safety",
+                 "description": "P1 and P3 conflict",
+                 "evidence": "Section 01 constraints"},
+            ],
+        }
+        result = normalize_surface_ids(surfaces, registry, "01")
+        assert result["problem_surfaces"][0]["id"] == "P-01-0001"
+        assert result["philosophy_surfaces"][0]["id"] == "F-01-0002"
+        assert registry["next_id"] == 3
+        # Fingerprints are set
+        assert "_fingerprint" in result["problem_surfaces"][0]
+        assert "_fingerprint" in result["philosophy_surfaces"][0]
+
+    def test_normalize_reuses_existing_ids_by_fingerprint(self) -> None:
+        """Duplicate surfaces get the same ID via fingerprint match."""
+        import hashlib
+        raw = "|".join(["emergent", "A3", "T1", "D1", "E1"])
+        fp = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+
+        registry = {
+            "section": "01", "next_id": 5,
+            "surfaces": [
+                {"id": "P-01-0003", "fingerprint": fp, "status": "applied"},
+            ],
+        }
+        surfaces = {
+            "problem_surfaces": [
+                {"kind": "emergent", "axis_id": "A3",
+                 "title": "T1", "description": "D1", "evidence": "E1"},
+            ],
+            "philosophy_surfaces": [],
+        }
+        result = normalize_surface_ids(surfaces, registry, "01")
+        # Should reuse existing ID, not allocate a new one
+        assert result["problem_surfaces"][0]["id"] == "P-01-0003"
+        assert registry["next_id"] == 5  # counter unchanged
+
+    def test_philosophy_fail_closed_no_sources(
+        self, intent_planspace: Path, mock_dispatch: MagicMock,
+    ) -> None:
+        """No philosophy sources → fail-closed, return None, write signal."""
+        from section_loop.intent.bootstrap import ensure_global_philosophy
+        # No constraints.md, philosophy.md etc. in planspace
+        result = ensure_global_philosophy(
+            intent_planspace, intent_planspace, "parent",
+        )
+        assert result is None
+        # Distiller should NOT have been called
+        assert mock_dispatch.call_count == 0
+        # Signal should exist
+        signal_path = (intent_planspace / "artifacts" / "signals"
+                       / "philosophy-source-missing.json")
+        assert signal_path.exists()
+        signal = json.loads(signal_path.read_text(encoding="utf-8"))
+        assert signal["state"] == "philosophy_source_missing"
+
+    def test_loop_contract_includes_intent_artifacts(self) -> None:
+        """loop-contract.md lists intent artifacts in inputs."""
+        contract = Path(__file__).resolve().parent.parent / "src" / "loop-contract.md"
+        if not contract.exists():
+            pytest.skip("loop-contract.md not found")
+        text = contract.read_text(encoding="utf-8")
+        assert "intent/global/philosophy.md" in text
+        assert "intent/sections/section-NN/problem.md" in text
+        assert "intent/sections/section-NN/problem-alignment.md" in text
+
+    def test_alignment_template_includes_intent_refs(self) -> None:
+        """Integration alignment template references intent artifacts."""
+        tmpl = (Path(__file__).resolve().parent.parent / "src"
+                / "scripts" / "section_loop" / "prompts" / "templates"
+                / "integration-alignment.md")
+        if not tmpl.exists():
+            pytest.skip("integration-alignment.md not found")
+        text = tmpl.read_text(encoding="utf-8")
+        assert "{intent_problem_ref}" in text
+        assert "{intent_rubric_ref}" in text
+        assert "{intent_philosophy_ref}" in text

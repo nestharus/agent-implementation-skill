@@ -25,6 +25,10 @@ must stay in sync with that function.
 - Project mode (`artifacts/project-mode.txt`, `artifacts/signals/project-mode.json`)
 - Section mode (`artifacts/sections/section-NN-mode.txt`)
 - Problem frame (`artifacts/sections/section-NN-problem-frame.md`)
+- Intent global philosophy (`artifacts/intent/global/philosophy.md`)
+- Intent per-section problem definition (`artifacts/intent/sections/section-NN/problem.md`)
+- Intent per-section problem alignment rubric (`artifacts/intent/sections/section-NN/problem-alignment.md`)
+- Intent per-section philosophy excerpt (`artifacts/intent/sections/section-NN/philosophy-excerpt.md`)
 - Input refs — contract deltas and registered inputs (`artifacts/inputs/section-NN/*.ref` + referenced files)
 
 ## Convergence Criteria

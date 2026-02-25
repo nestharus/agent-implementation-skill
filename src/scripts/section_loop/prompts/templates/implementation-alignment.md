@@ -9,7 +9,7 @@
 3. Integration proposal: `{integration_proposal}`
 4. Section specification: `{section_path}`
 5. Implemented files (read each one):
-{files_block}{surface_line}{codemap_line}{impl_corrections_line}{micro_line}{todo_line}{todo_resolution_line}
+{files_block}{surface_line}{codemap_line}{impl_corrections_line}{micro_line}{todo_line}{todo_resolution_line}{intent_problem_ref}{intent_rubric_ref}{intent_philosophy_ref}
 
 ## Worktree root
 `{codespace}`

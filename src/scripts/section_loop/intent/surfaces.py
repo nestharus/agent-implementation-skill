@@ -1,5 +1,6 @@
 """Surface registry: deduplication, tracking, and diminishing returns."""
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -59,6 +60,51 @@ def load_intent_surfaces(
     return read_agent_signal(surfaces_path)
 
 
+def normalize_surface_ids(
+    surfaces: dict, registry: dict, section_number: str,
+) -> dict:
+    """Assign stable mechanical IDs to surfaces using registry counter.
+
+    Computes a fingerprint per surface (hash of kind+axis+title+description+evidence)
+    and maps to a stable ID via the registry. Duplicate fingerprints reuse existing IDs.
+    Rewrites the surfaces dict in-place with IDs filled in.
+
+    Returns the updated surfaces dict.
+    """
+    # Build fingerprint→id lookup from existing registry entries
+    fp_to_id: dict[str, str] = {}
+    for entry in registry.get("surfaces", []):
+        fp = entry.get("fingerprint", "")
+        if fp:
+            fp_to_id[fp] = entry["id"]
+
+    next_id = registry.get("next_id", 1)
+
+    for kind_key, prefix in (
+        ("problem_surfaces", "P"),
+        ("philosophy_surfaces", "F"),
+    ):
+        for surface in surfaces.get(kind_key, []):
+            # Compute fingerprint from content fields
+            fp_input = "|".join(
+                str(surface.get(f, "")).strip()
+                for f in ("kind", "axis_id", "title", "description", "evidence")
+            )
+            fp = hashlib.sha256(fp_input.encode("utf-8")).hexdigest()[:12]
+            surface["_fingerprint"] = fp
+
+            if fp in fp_to_id:
+                surface["id"] = fp_to_id[fp]
+            else:
+                new_id = f"{prefix}-{section_number}-{next_id:04d}"
+                surface["id"] = new_id
+                fp_to_id[fp] = new_id
+                next_id += 1
+
+    registry["next_id"] = next_id
+    return surfaces
+
+
 def merge_surfaces_into_registry(
     registry: dict, surfaces: dict,
 ) -> tuple[list[dict], list[str]]:
@@ -91,6 +137,7 @@ def merge_surfaces_into_registry(
                     "kind": surface.get("kind", "unknown"),
                     "axis_id": surface.get("axis_id", ""),
                     "status": "pending",
+                    "fingerprint": surface.get("_fingerprint", ""),
                     "first_seen": {
                         "stage": surfaces.get("stage", "unknown"),
                         "attempt": surfaces.get("attempt", 0),
@@ -100,6 +147,8 @@ def merge_surfaces_into_registry(
                         "attempt": surfaces.get("attempt", 0),
                     },
                     "notes": surface.get("title", ""),
+                    "description": surface.get("description", ""),
+                    "evidence": surface.get("evidence", ""),
                 }
                 registry.setdefault("surfaces", []).append(entry)
                 existing_ids.add(sid)

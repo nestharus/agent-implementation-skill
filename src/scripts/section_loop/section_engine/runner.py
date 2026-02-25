@@ -679,21 +679,30 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
     intent_budgets = triage_result.get("budgets", {})
 
     if intent_mode == "full":
-        # Ensure global philosophy exists
-        ensure_global_philosophy(planspace, codespace, parent)
+        # Ensure global philosophy exists (fail-closed: returns None
+        # if no source found or distillation failed — P7/R52)
+        philosophy_result = ensure_global_philosophy(
+            planspace, codespace, parent)
         if alignment_changed_pending(planspace):
             return None
 
-        # Generate per-section intent pack
-        generate_intent_pack(
-            section, planspace, codespace, parent,
-            incoming_notes=incoming_notes or "",
-        )
-        if alignment_changed_pending(planspace):
-            return None
+        if philosophy_result is None:
+            log(f"Section {section.number}: philosophy unavailable — "
+                f"downgrading to lightweight intent mode")
+            intent_mode = "lightweight"
+        else:
+            # Generate per-section intent pack
+            generate_intent_pack(
+                section, planspace, codespace, parent,
+                incoming_notes=incoming_notes or "",
+            )
+            if alignment_changed_pending(planspace):
+                return None
 
-        log(f"Section {section.number}: intent bootstrap complete (full mode)")
-    else:
+            log(f"Section {section.number}: intent bootstrap complete "
+                f"(full mode)")
+
+    if intent_mode == "lightweight":
         log(f"Section {section.number}: lightweight intent mode")
 
     # Merge intent budgets into cycle budget

@@ -85,14 +85,19 @@ This format is backward compatible with `_extract_problems`.
 
 ## Surface Discovery Output (Conditional)
 
-If and ONLY if you discovered surfaces during phase 3, include a
-SECOND JSON block labeled for `intent-surfaces-NN.json`:
+If and ONLY if you discovered surfaces during phase 3, write a JSON
+file to the **surfaces signal path provided in the prompt** (look for
+"Surfaces Signal Output" in the prompt's instructions).
 
+The file is the authoritative truth channel — do NOT rely on stdout
+for surface delivery. Optionally paste the same JSON in stdout for
+human traceability, but the file is what the pipeline reads.
+
+Surface JSON schema:
 ```json
 {
   "problem_surfaces": [
     {
-      "id": "PS-001",
       "kind": "gap|tension|ungrounded_assumption",
       "axis_id": "A3",
       "title": "Short title",
@@ -104,7 +109,6 @@ SECOND JSON block labeled for `intent-surfaces-NN.json`:
   ],
   "philosophy_surfaces": [
     {
-      "id": "XS-001",
       "kind": "conflict|silence|ambiguity",
       "axis_id": null,
       "title": "Short title",
@@ -117,7 +121,10 @@ SECOND JSON block labeled for `intent-surfaces-NN.json`:
 }
 ```
 
-If no surfaces were found, omit this block entirely. Do not emit an
+Do NOT include an `id` field — IDs are assigned mechanically by the
+pipeline after you write the file.
+
+If no surfaces were found, do NOT write the file. Do not write an
 empty surfaces block.
 
 ## Anti-Patterns

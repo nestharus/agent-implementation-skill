@@ -176,6 +176,23 @@ def write_integration_alignment_prompt(
     sec = section.number
 
     ctx = build_prompt_context(section, planspace, codespace)
+
+    # Intent surfaces output path (for intent-judge in full mode).
+    # Conditional: only add the block when intent pack exists.
+    intent_surfaces_block = ""
+    intent_pack = (
+        artifacts / "intent" / "sections" / f"section-{sec}" / "problem.md"
+    )
+    if intent_pack.exists():
+        surfaces_path = (
+            artifacts / "signals" / f"intent-surfaces-{sec}.json"
+        )
+        intent_surfaces_block = (
+            f"## Surfaces Signal Output\n\n"
+            f"If you discover intent surfaces during alignment checking, "
+            f"write them to:\n`{surfaces_path}`\n"
+        )
+
     ctx.update({
         "proposal_excerpt": (
             artifacts / "sections" / f"section-{sec}-proposal-excerpt.md"
@@ -187,6 +204,7 @@ def write_integration_alignment_prompt(
             artifacts / "proposals"
             / f"section-{sec}-integration-proposal.md"
         ),
+        "intent_surfaces_block": intent_surfaces_block,
     })
 
     prompt_path = artifacts / f"intg-align-{sec}-prompt.md"
