@@ -694,3 +694,64 @@ class TestScanLoopClosure:
         assert mock_scan_dispatch.call_count == 0, (
             "Already-scanned files must not trigger dispatch_agent"
         )
+
+
+# ------------------------------------------------------------------
+# R41/V1: Missing tier ranking must be a first-class failure
+# ------------------------------------------------------------------
+
+
+class TestDeepScanTierRankingFailureUnit:
+    """R41/V1: _scan_sections must return failure (True) and log when
+    tier ranking is unavailable, not silently skip."""
+
+    def test_missing_tier_ranking_returns_failure(
+        self,
+        scan_planspace: Path,
+        scan_codespace: Path,
+        mock_scan_dispatch: MagicMock,
+    ) -> None:
+        """_scan_sections returns True (failure) when no tier ranking."""
+        from scan.cache import FileCardCache
+        from scan.deep_scan import _scan_sections
+
+        artifacts = scan_planspace / "artifacts"
+        scan_log = scan_planspace / "scan-logs"
+        scan_log.mkdir(parents=True, exist_ok=True)
+
+        # Section with related files but NO tier file
+        sec_file = artifacts / "sections" / "section-01.md"
+        sec_file.write_text(
+            "# Section 01\n\n## Related Files\n\n### src/main.py\n",
+        )
+
+        # Mock dispatch to fail tier ranking (returncode != 0, no tier file)
+        mock_scan_dispatch.return_value = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="tier failed",
+        )
+
+        result = _scan_sections(
+            section_files=[sec_file],
+            codemap_path=artifacts / "codemap.md",
+            codespace=scan_codespace,
+            artifacts_dir=artifacts,
+            scan_log_dir=scan_log,
+            file_card_cache=FileCardCache(artifacts / "file-cards"),
+            corrections_path=artifacts / "signals" / "codemap-corrections.json",
+            model_policy={
+                "tier_ranking": "glm", "exploration": "claude-opus",
+                "deep_analysis": "glm",
+            },
+            already_scanned={},
+        )
+
+        assert result is True, (
+            "_scan_sections must return True (failure) when tier "
+            "ranking is unavailable"
+        )
+        # Failure must be logged
+        failures_log = scan_log / "failures.log"
+        assert failures_log.is_file(), (
+            "failures.log must exist when tier ranking is unavailable"
+        )
+        assert "tier ranking unavailable" in failures_log.read_text()

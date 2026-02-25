@@ -52,3 +52,8 @@ When requesting or building a new tool:
   be updated simultaneously.
 - **Fail-closed**: If a tool cannot produce valid output, it must exit
   non-zero with a diagnostic. Silent fallbacks are forbidden.
+  - `NO DOCSTRING` / `NO SUMMARY` means **true absence** (file parsed OK
+    but no docstring/summary found).
+  - `ERROR: <type>: <message>` means **read or parse failure** — the file
+    could not be processed. This is reported per-file so batch output
+    remains complete; the tool exits with code 2 if any errors occurred.

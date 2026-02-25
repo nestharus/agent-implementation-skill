@@ -6,30 +6,37 @@ Usage: extract-docstring-py <file-path>
        find ... | extract-docstring-py --stdin
 
 Output: file path + docstring (or "NO DOCSTRING" if absent).
+On read/parse errors: file path + "ERROR: <type>: <message>".
 Batch/stdin mode outputs one block per file, separated by ---
+Exit code 2 if any file had errors (per tool contract: fail-closed).
 """
 import ast
 import sys
 
 
-def extract_docstring(filepath: str) -> tuple[str, str | None]:
-    """Return (filepath, docstring) or (filepath, None)."""
+def extract_docstring(filepath: str) -> tuple[str, str | None, str | None]:
+    """Return (filepath, docstring, error).
+
+    On success: error is None, docstring may be None (true absence).
+    On failure: error is a diagnostic string, docstring is None.
+    """
     try:
         with open(filepath, "r", encoding="utf-8", errors="replace") as f:
             source = f.read()
         tree = ast.parse(source, filename=filepath)
         docstring = ast.get_docstring(tree)
-        return filepath, docstring
-    except (SyntaxError, ValueError):
-        return filepath, None
+        return filepath, docstring, None
+    except (SyntaxError, ValueError) as exc:
+        return filepath, None, f"{type(exc).__name__}: {exc}"
 
 
-def print_result(filepath: str, docstring: str | None) -> None:
-    if docstring:
-        print(f"{filepath}")
+def print_result(filepath: str, docstring: str | None, error: str | None) -> None:
+    print(f"{filepath}")
+    if error:
+        print(f"ERROR: {error}")
+    elif docstring:
         print(docstring)
     else:
-        print(f"{filepath}")
         print("NO DOCSTRING")
 
 
@@ -39,23 +46,34 @@ def main() -> None:
         print(__doc__, file=sys.stderr)
         sys.exit(1)
 
+    error_count = 0
+
     if args[0] == "--stdin":
         files = [line.strip() for line in sys.stdin if line.strip()]
         for i, f in enumerate(files):
             if i > 0:
                 print("---")
-            filepath, doc = extract_docstring(f)
-            print_result(filepath, doc)
+            filepath, doc, err = extract_docstring(f)
+            if err:
+                error_count += 1
+            print_result(filepath, doc, err)
     elif args[0] == "--batch":
         files = args[1:]
         for i, f in enumerate(files):
             if i > 0:
                 print("---")
-            filepath, doc = extract_docstring(f)
-            print_result(filepath, doc)
+            filepath, doc, err = extract_docstring(f)
+            if err:
+                error_count += 1
+            print_result(filepath, doc, err)
     else:
-        filepath, doc = extract_docstring(args[0])
-        print_result(filepath, doc)
+        filepath, doc, err = extract_docstring(args[0])
+        if err:
+            error_count += 1
+        print_result(filepath, doc, err)
+
+    if error_count > 0:
+        sys.exit(2)
 
 
 if __name__ == "__main__":

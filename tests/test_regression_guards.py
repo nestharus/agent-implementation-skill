@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -41,7 +41,11 @@ R37/V4: Scan templates use extension-neutral examples (no .py bias).
 
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 # Resolve project root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -2814,4 +2818,164 @@ class TestRelatedFilesUpdateWarning:
         assert "return False" in content, (
             "exploration.py must return False on malformed signal "
             "after warning"
+        )
+
+
+# ── R41/V1: Deep scan treats missing tier ranking as failure ─────
+
+
+class TestDeepScanTierRankingFailure:
+    """R41/V1: When tier ranking is unavailable, _scan_sections must set
+    phase_failed=True and log a failure entry, not silently skip."""
+
+    DEEP_SCAN_PY = PROJECT_ROOT / "scripts" / "scan" / "deep_scan.py"
+
+    def test_no_tier_ranking_sets_phase_failed(self) -> None:
+        """_scan_sections must set phase_failed when no scan_files."""
+        content = self.DEEP_SCAN_PY.read_text(encoding="utf-8")
+        # Find the "no tier ranking available" block — it must set phase_failed
+        lines = content.splitlines()
+        for i, line in enumerate(lines):
+            if "no tier ranking available" in line:
+                # Check surrounding lines for phase_failed = True
+                block = "\n".join(lines[max(0, i - 5):i + 10])
+                assert "phase_failed = True" in block, (
+                    "When tier ranking is unavailable, _scan_sections must "
+                    "set phase_failed = True"
+                )
+                break
+        else:
+            pytest.fail("Could not find 'no tier ranking available' in deep_scan.py")
+
+    def test_no_tier_ranking_logs_failure(self) -> None:
+        """_scan_sections must log failure when tier ranking unavailable."""
+        content = self.DEEP_SCAN_PY.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        for i, line in enumerate(lines):
+            if "no tier ranking available" in line:
+                block = "\n".join(lines[max(0, i - 5):i + 15])
+                assert "_log_phase_failure" in block, (
+                    "When tier ranking is unavailable, _scan_sections must "
+                    "call _log_phase_failure"
+                )
+                break
+        else:
+            pytest.fail("Could not find 'no tier ranking available' in deep_scan.py")
+
+    def test_get_scan_files_warns_on_malformed(self) -> None:
+        """_get_scan_files must warn when tier file is malformed JSON."""
+        content = self.DEEP_SCAN_PY.read_text(encoding="utf-8")
+        assert "[TIER][WARN]" in content, (
+            "_get_scan_files must emit [TIER][WARN] when tier file "
+            "is malformed JSON"
+        )
+
+    # Unit test for this violation lives in test_scan_stage3.py
+    # (TestDeepScanTierRankingFailureUnit) where scan fixtures exist.
+
+
+# ── R41/V2: Extractor tools fail-closed with ERROR diagnostics ───
+
+
+class TestExtractorToolsFailClosed:
+    """R41/V2: Extractor tools must output ERROR on read/parse failures
+    and exit non-zero, not conflate errors with 'NO DOCSTRING/SUMMARY'."""
+
+    TOOLS_DIR = PROJECT_ROOT / "tools"
+
+    def test_extract_docstring_py_error_on_syntax_error(
+        self, tmp_path: Path,
+    ) -> None:
+        """extract-docstring-py outputs ERROR on SyntaxError, exits 2."""
+        bad_py = tmp_path / "bad.py"
+        bad_py.write_text("def broken(\n", encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(self.TOOLS_DIR / "extract-docstring-py"),
+             str(bad_py)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 2, (
+            "extract-docstring-py must exit 2 on parse errors"
+        )
+        assert "ERROR:" in result.stdout, (
+            "extract-docstring-py must output ERROR: on parse failure"
+        )
+        assert "NO DOCSTRING" not in result.stdout, (
+            "extract-docstring-py must not say NO DOCSTRING on parse "
+            "failure — that conflates absence with error"
+        )
+
+    def test_extract_docstring_py_no_docstring_on_true_absence(
+        self, tmp_path: Path,
+    ) -> None:
+        """extract-docstring-py outputs NO DOCSTRING when truly absent."""
+        no_doc = tmp_path / "nodoc.py"
+        no_doc.write_text("x = 1\n", encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(self.TOOLS_DIR / "extract-docstring-py"),
+             str(no_doc)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, (
+            "extract-docstring-py must exit 0 when no errors"
+        )
+        assert "NO DOCSTRING" in result.stdout
+
+    def test_extract_docstring_py_batch_continues_after_error(
+        self, tmp_path: Path,
+    ) -> None:
+        """Batch mode processes all files even if one has errors."""
+        bad = tmp_path / "bad.py"
+        bad.write_text("def broken(\n", encoding="utf-8")
+        good = tmp_path / "good.py"
+        good.write_text('"""My docstring."""\n', encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(self.TOOLS_DIR / "extract-docstring-py"),
+             "--batch", str(bad), str(good)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 2, (
+            "Batch must exit 2 when any file has errors"
+        )
+        assert "ERROR:" in result.stdout, "Bad file must show ERROR"
+        assert "My docstring." in result.stdout, (
+            "Good file must still produce output in batch"
+        )
+
+    def test_extract_docstring_sh_error_on_read_failure(
+        self, tmp_path: Path,
+    ) -> None:
+        """extract-docstring-sh outputs ERROR on unreadable file."""
+        result = subprocess.run(
+            [sys.executable, str(self.TOOLS_DIR / "extract-docstring-sh"),
+             str(tmp_path / "nonexistent.sh")],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 2, (
+            "extract-docstring-sh must exit 2 on read errors"
+        )
+        assert "ERROR:" in result.stdout
+
+    def test_extract_summary_md_error_on_read_failure(
+        self, tmp_path: Path,
+    ) -> None:
+        """extract-summary-md outputs ERROR on unreadable file."""
+        result = subprocess.run(
+            [sys.executable, str(self.TOOLS_DIR / "extract-summary-md"),
+             str(tmp_path / "nonexistent.md")],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 2, (
+            "extract-summary-md must exit 2 on read errors"
+        )
+        assert "ERROR:" in result.stdout
+
+    def test_readme_documents_error_vs_absence(self) -> None:
+        """tools/README.md must distinguish ERROR from NO DOCSTRING/SUMMARY."""
+        content = (self.TOOLS_DIR / "README.md").read_text(encoding="utf-8")
+        assert "ERROR:" in content, (
+            "tools/README.md must document ERROR output format"
+        )
+        assert "true absence" in content, (
+            "tools/README.md must clarify NO DOCSTRING means true absence"
         )

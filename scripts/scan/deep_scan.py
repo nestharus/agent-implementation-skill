@@ -312,7 +312,11 @@ def _get_scan_files(tier_file: Path) -> tuple[list[str], str]:
     """
     try:
         data = json.loads(tier_file.read_text())
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        print(
+            f"[TIER][WARN] Malformed tier file: {tier_file} ({exc})",
+            file=sys.stderr,
+        )
         return [], ""
 
     tiers = data.get("tiers", {})
@@ -558,6 +562,13 @@ def _scan_sections(
             print(
                 f"[DEEP] {section_name}: no tier ranking available "
                 "— skipping deep scan (fail-closed)",
+            )
+            phase_failed = True
+            _log_phase_failure(
+                scan_log_dir,
+                "deep-scan",
+                section_name,
+                "tier ranking unavailable — deep scan skipped",
             )
             continue
 
