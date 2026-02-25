@@ -90,4 +90,7 @@ def mock_dispatch(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     monkeypatch.setattr("section_loop.coordination.runner.dispatch_agent", mock)
     monkeypatch.setattr("section_loop.alignment.dispatch_agent", mock)
     monkeypatch.setattr("section_loop.main.dispatch_agent", mock)
+    monkeypatch.setattr("section_loop.intent.bootstrap.dispatch_agent", mock)
+    monkeypatch.setattr("section_loop.intent.triage.dispatch_agent", mock)
+    monkeypatch.setattr("section_loop.intent.expansion.dispatch_agent", mock)
     return mock

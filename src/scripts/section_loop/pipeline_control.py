@@ -135,6 +135,19 @@ def _section_inputs_hash(
     if problem_frame_path.exists():
         hasher.update(problem_frame_path.read_bytes())
 
+    # Intent layer artifacts — trigger re-proposal when definitions evolve
+    intent_global_philosophy = artifacts / "intent" / "global" / "philosophy.md"
+    if intent_global_philosophy.exists():
+        hasher.update(intent_global_philosophy.read_bytes())
+    intent_sec_dir = artifacts / "intent" / "sections" / f"section-{sec_num}"
+    for intent_file in (
+        intent_sec_dir / "problem.md",
+        intent_sec_dir / "problem-alignment.md",
+        intent_sec_dir / "philosophy-excerpt.md",
+    ):
+        if intent_file.exists():
+            hasher.update(intent_file.read_bytes())
+
     # Input refs — contract deltas and other registered inputs
     inputs_dir = artifacts / "inputs" / f"section-{sec_num}"
     if inputs_dir.exists():

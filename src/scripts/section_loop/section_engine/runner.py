@@ -51,6 +51,14 @@ from ..prompts import (
     write_strategic_impl_prompt,
 )
 from ..types import Section
+from ..intent import (
+    ensure_global_philosophy,
+    generate_intent_pack,
+    run_intent_triage,
+)
+from ..intent.expansion import handle_user_gate, run_expansion_cycle
+from ..intent.surfaces import load_intent_surfaces
+from ..intent.triage import load_triage_result
 from .blockers import _append_open_problem, _update_blocker_rollup
 from .reexplore import _write_alignment_surface
 from .todos import _check_needs_microstrategy, _extract_todos_from_files
@@ -638,7 +646,75 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         _write_alignment_surface(planspace, section)
 
     # -----------------------------------------------------------------
-    # Step 1.5: Extract TODO blocks from related files (conditional)
+    # Step 1.5a: Intent bootstrap (full mode only)
+    # -----------------------------------------------------------------
+    intent_mode = "lightweight"
+    intent_budgets: dict = {}
+    section_mode_file = (artifacts / "sections"
+                         / f"section-{section.number}-mode.txt")
+    project_mode_file = artifacts / "project-mode.txt"
+    effective_mode = "brownfield"
+    if section_mode_file.exists():
+        effective_mode = section_mode_file.read_text(
+            encoding="utf-8").strip() or "brownfield"
+    elif project_mode_file.exists():
+        effective_mode = project_mode_file.read_text(
+            encoding="utf-8").strip() or "brownfield"
+
+    notes_count = 0
+    notes_dir_check = artifacts / "notes"
+    if notes_dir_check.exists():
+        notes_count = len(list(
+            notes_dir_check.glob(f"from-*-to-{section.number}.md")))
+
+    triage_result = run_intent_triage(
+        section.number, planspace, codespace, parent,
+        related_files_count=len(section.related_files),
+        incoming_notes_count=notes_count,
+        mode=effective_mode,
+        solve_count=section.solve_count,
+        section_summary=pf_content[:500] if pf_content else "",
+    )
+    intent_mode = triage_result.get("intent_mode", "lightweight")
+    intent_budgets = triage_result.get("budgets", {})
+
+    if intent_mode == "full":
+        # Ensure global philosophy exists
+        ensure_global_philosophy(planspace, codespace, parent)
+        if alignment_changed_pending(planspace):
+            return None
+
+        # Generate per-section intent pack
+        generate_intent_pack(
+            section, planspace, codespace, parent,
+            incoming_notes=incoming_notes or "",
+        )
+        if alignment_changed_pending(planspace):
+            return None
+
+        log(f"Section {section.number}: intent bootstrap complete (full mode)")
+    else:
+        log(f"Section {section.number}: lightweight intent mode")
+
+    # Merge intent budgets into cycle budget
+    if intent_budgets:
+        cycle_budget_path_ib = (artifacts / "signals"
+                                / f"section-{section.number}-cycle-budget.json")
+        if cycle_budget_path_ib.exists():
+            try:
+                existing_budget = json.loads(
+                    cycle_budget_path_ib.read_text(encoding="utf-8"))
+                existing_budget.update({
+                    k: v for k, v in intent_budgets.items()
+                    if k.startswith("intent_") or k.startswith("max_new_")
+                })
+                cycle_budget_path_ib.write_text(
+                    json.dumps(existing_budget, indent=2), encoding="utf-8")
+            except (json.JSONDecodeError, OSError):
+                pass  # Leave existing budget unchanged
+
+    # -----------------------------------------------------------------
+    # Step 1.5b: Extract TODO blocks from related files (conditional)
     # -----------------------------------------------------------------
     todos_path = (artifacts / "todos"
                   / f"section-{section.number}-todos.md")
@@ -873,21 +949,31 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                          f"not written")
             return None
 
-        # 2b: Opus checks alignment
+        # 2b: Opus checks alignment (intent-judge in full mode)
         log(f"Section {section.number}: proposal alignment check")
         align_prompt = write_integration_alignment_prompt(
             section, planspace, codespace,
         )
         align_output = (artifacts
                         / f"intg-align-{section.number}-output.md")
+        # Select agent file based on intent mode
+        alignment_agent_file = (
+            "intent-judge.md" if intent_mode == "full"
+            else "alignment-judge.md"
+        )
+        alignment_model = (
+            policy.get("intent_judge", policy["alignment"])
+            if intent_mode == "full"
+            else policy["alignment"]
+        )
         # No agent_name → no per-agent monitor for alignment checks
         # (Opus alignment prompts don't include narration instructions,
         # so a monitor would false-positive STALLED after 5 min silence)
         align_result = dispatch_agent(
-            policy["alignment"], align_prompt, align_output,
+            alignment_model, align_prompt, align_output,
             planspace, parent, codespace=codespace,
             section_number=section.number,
-            agent_file="alignment-judge.md",
+            agent_file=alignment_agent_file,
         )
         if align_result == "ALIGNMENT_CHANGED_PENDING":
             return None
@@ -930,7 +1016,77 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             continue
 
         if problems is None:
-            # ALIGNED — proceed to implementation
+            # ALIGNED — check for intent surfaces before proceeding
+            if intent_mode == "full":
+                surfaces = load_intent_surfaces(section.number, planspace)
+                if surfaces:
+                    # Check expansion budget
+                    expansion_max = intent_budgets.get(
+                        "intent_expansion_max", 2)
+                    expansion_count = getattr(
+                        run_section, "_expansion_counts", {}
+                    ).get(section.number, 0)
+                    if expansion_count >= expansion_max:
+                        log(f"Section {section.number}: intent expansion "
+                            f"budget exhausted ({expansion_count}/"
+                            f"{expansion_max}) — proceeding without expansion")
+                        stalled_signal = {
+                            "section": section.number,
+                            "reason": "expansion budget exhausted",
+                            "cycles": expansion_count,
+                        }
+                        (artifacts / "signals"
+                         / f"intent-stalled-{section.number}.json"
+                         ).write_text(
+                            json.dumps(stalled_signal, indent=2),
+                            encoding="utf-8")
+                    else:
+                        log(f"Section {section.number}: surfaces found — "
+                            f"running expansion cycle")
+                        mailbox_send(
+                            planspace, parent,
+                            f"summary:intent-expand:{section.number}:"
+                            f"cycle-{expansion_count + 1}")
+
+                        delta_result = run_expansion_cycle(
+                            section.number, planspace, codespace, parent,
+                            budgets=intent_budgets,
+                        )
+
+                        # Track expansion count
+                        if not hasattr(run_section, "_expansion_counts"):
+                            run_section._expansion_counts = {}
+                        run_section._expansion_counts[section.number] = (
+                            expansion_count + 1
+                        )
+
+                        # Handle user gate if needed
+                        if delta_result.get("needs_user_input"):
+                            gate_response = handle_user_gate(
+                                section.number, planspace, parent,
+                                delta_result,
+                            )
+                            if (gate_response
+                                    and not gate_response.startswith("resume")):
+                                return None
+                            from ..cross_section import persist_decision
+                            payload = gate_response.partition(":")[2].strip()
+                            if payload:
+                                persist_decision(
+                                    planspace, section.number, payload)
+                            if alignment_changed_pending(planspace):
+                                return None
+
+                        # If expansion applied changes, re-propose
+                        if delta_result.get("restart_required"):
+                            proposal_problems = (
+                                "Intent expanded; re-propose against "
+                                "updated problem/philosophy definitions."
+                            )
+                            log(f"Section {section.number}: intent "
+                                f"expanded — re-proposing")
+                            continue  # Re-enter proposal loop
+
             log(f"Section {section.number}: integration proposal ALIGNED")
             mailbox_send(planspace, parent,
                          f"summary:proposal-align:{section.number}:ALIGNED")

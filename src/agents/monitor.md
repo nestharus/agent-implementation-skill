@@ -119,6 +119,31 @@ Types:
 4. If no threshold hit → sleep 15 seconds, repeat
 5. Check your own mailbox periodically for shutdown or control messages
 
+### Intent Layer Monitoring
+
+When intent-layer signals are present, also track:
+
+- **Intent expansion cycles**: events where `evt_tag` starts with
+  `summary:intent-expand:` or `evt_body` contains `intent expanded`.
+  Count per section. Same section with 3+ expansion cycles without
+  convergence = expansion thrash.
+- **Repeated identical surfaces**: If `evt_body` mentions "surfaces
+  diminishing" for the same section repeatedly = surface discovery
+  noise.
+- **Intent budget exhaustion**: events where `evt_body` contains
+  `intent-stalled` or `expansion budget exhausted` = section has
+  hit intent limits.
+- **Philosophy user gates**: events where `evt_body` contains
+  `need_decision` and `philosophy` = waiting for user input on
+  philosophy tension.
+
+Actions for intent issues:
+- Expansion thrash (3+ cycles, no convergence) → pause + escalate
+  `problem:intent-thrash:<section>:<cycle count>`
+- Intent budget exhausted → log warning only (system handles this)
+- Philosophy gate pending for 10+ minutes → escalate
+  `problem:intent-gate:<section>:philosophy decision pending`
+
 ## Rules
 
 - **DO NOT** read source files, plans, or outputs

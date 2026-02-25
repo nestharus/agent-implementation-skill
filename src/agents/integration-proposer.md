@@ -49,6 +49,28 @@ After exploring, write a high-level integration strategy covering:
 
 This is STRATEGIC — not line-by-line changes.
 
+### Intent-Aware Proposal (when intent pack exists)
+
+If the prompt includes intent pack references (problem.md, problem-alignment.md,
+philosophy.md or philosophy-excerpt.md), structure your proposal around the
+intent axes:
+
+1. **Read the rubric first** — the axis reference table tells you what
+   dimensions to cover
+2. **Structure by axes** — for each axis, explain how your integration
+   strategy addresses the core difficulty
+3. **Cite constraints** — when a design choice is driven by a constraint
+   from the problem definition, cite it (e.g., "per §A3, backward
+   compatibility requires...")
+4. **Surface unknowns** — if you discover something that the problem
+   definition doesn't cover, note it explicitly. The intent judge will
+   pick it up as a surface for expansion.
+5. **Read the surface registry summary** if provided — avoid re-raising
+   surfaces that were already discarded
+
+This layered proposal gives the intent judge the structure it needs for
+per-axis alignment checking and surface discovery.
+
 ## Proposal Evaluation Rules
 
 Your proposal MUST solve the problems identified in the section proposal

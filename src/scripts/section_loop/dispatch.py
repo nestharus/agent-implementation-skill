@@ -529,6 +529,12 @@ def read_model_policy(planspace: Path) -> dict[str, Any]:
         "tool_registrar": "glm",
         "bridge_tools": "gpt-5.3-codex-high",
         "escalation_model": "gpt-5.3-codex-xhigh",
+        "intent_triage": "glm",
+        "intent_philosophy": "claude-opus",
+        "intent_pack": "gpt-5.3-codex-high",
+        "intent_judge": "claude-opus",
+        "intent_problem_expander": "claude-opus",
+        "intent_philosophy_expander": "claude-opus",
         "escalation_triggers": {
             "stall_count": 2,
             "max_attempts_before_escalation": 3,

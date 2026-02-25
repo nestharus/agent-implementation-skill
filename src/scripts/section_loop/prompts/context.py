@@ -138,6 +138,43 @@ def build_prompt_context(
             "- How new and existing code connect\n"
         )
 
+    # --- intent layer artifacts ---
+    intent_sec_dir = (
+        artifacts / "intent" / "sections" / f"section-{sec}"
+    )
+    intent_problem_ref = ""
+    intent_problem_path = intent_sec_dir / "problem.md"
+    if intent_problem_path.exists():
+        intent_problem_ref = (
+            f"\n   - Intent problem definition: `{intent_problem_path}`"
+        )
+
+    intent_rubric_ref = ""
+    intent_rubric_path = intent_sec_dir / "problem-alignment.md"
+    if intent_rubric_path.exists():
+        intent_rubric_ref = (
+            f"\n   - Intent alignment rubric: `{intent_rubric_path}`"
+        )
+
+    intent_philosophy_ref = ""
+    intent_excerpt_path = intent_sec_dir / "philosophy-excerpt.md"
+    intent_global_path = artifacts / "intent" / "global" / "philosophy.md"
+    if intent_excerpt_path.exists():
+        intent_philosophy_ref = (
+            f"\n   - Philosophy excerpt: `{intent_excerpt_path}`"
+        )
+    elif intent_global_path.exists():
+        intent_philosophy_ref = (
+            f"\n   - Operational philosophy: `{intent_global_path}`"
+        )
+
+    intent_registry_ref = ""
+    intent_registry_path = intent_sec_dir / "surface-registry.json"
+    if intent_registry_path.exists():
+        intent_registry_ref = (
+            f"\n   - Surface registry: `{intent_registry_path}`"
+        )
+
     # --- additional inputs (contract deltas, bridge notes, etc.) ---
     inputs_dir = artifacts / "inputs" / f"section-{sec}"
     additional_inputs_block = ""
@@ -192,6 +229,10 @@ def build_prompt_context(
         "problem_frame_path": problem_frame_path,
         "files_block": files_block,
         "additional_inputs_block": additional_inputs_block,
+        "intent_problem_ref": intent_problem_ref,
+        "intent_rubric_ref": intent_rubric_ref,
+        "intent_philosophy_ref": intent_philosophy_ref,
+        "intent_registry_ref": intent_registry_ref,
     }
     ctx.update(overrides)
     return ctx
