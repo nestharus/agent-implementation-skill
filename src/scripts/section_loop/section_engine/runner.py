@@ -1559,7 +1559,11 @@ with JSON:
                     if bridge_data.get("status") in (
                         "bridged", "no_action", "needs_parent",
                     ):
-                        bridge_valid = True
+                        proposal_path = Path(bridge_data.get(
+                            "proposal_path", str(default_proposal_path)))
+                        if (bridge_data["status"] == "no_action"
+                                or proposal_path.exists()):
+                            bridge_valid = True
                 except (json.JSONDecodeError, OSError):
                     pass
 
@@ -1605,8 +1609,7 @@ with JSON:
             if tool_registry_path.exists():
                 post_bridge_registry_hash = hashlib.sha256(
                     tool_registry_path.read_bytes()).hexdigest()
-            if (pre_bridge_registry_hash
-                    and post_bridge_registry_hash
+            if (post_bridge_registry_hash
                     and pre_bridge_registry_hash
                     != post_bridge_registry_hash):
                 log(f"Section {section.number}: tool registry modified "

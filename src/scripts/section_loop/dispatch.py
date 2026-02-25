@@ -404,9 +404,25 @@ def read_agent_signal(
         return None
     try:
         data = json.loads(signal_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        print(
+            f"[SIGNAL][WARN] Malformed JSON in {signal_path} ({exc}) "
+            f"— renaming to .malformed.json",
+        )
+        try:
+            signal_path.rename(signal_path.with_suffix(".malformed.json"))
+        except OSError:
+            pass
         return None
     if not isinstance(data, dict):
+        print(
+            f"[SIGNAL][WARN] Signal at {signal_path} is not a JSON object "
+            f"— renaming to .malformed.json",
+        )
+        try:
+            signal_path.rename(signal_path.with_suffix(".malformed.json"))
+        except OSError:
+            pass
         return None
     if expected_fields:
         for f in expected_fields:

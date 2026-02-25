@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -44,6 +44,10 @@ R43/V1: Bridge-tools loop closed — signal verified, friction acknowledged.
 R43/V2: Microstrategy writer dispatch fail-closed on output production.
 R44/V1: Bridge-tools outputs wired into downstream channels (.ref, notes, blocker, digest).
 R44/V2: Scan-stage validation signal parsing fail-closed on malformed JSON.
+R45/V1: Bridge-tools post-escalation verification checks proposal existence.
+R45/V2: Tool digest regeneration triggers on registry creation (not just modification).
+R45/V3: read_agent_signal() preserves malformed JSON as .malformed.json.
+R45/V4: Microstrategy pre-existing signal malformed — renamed and re-dispatched.
 """
 
 import hashlib
@@ -3982,4 +3986,285 @@ class TestScanValidationSignalFailClosed:
         assert hash_file.exists(), (
             "codemap-hash.txt must be written when stale status "
             "successfully applied"
+        )
+
+
+# ---------------------------------------------------------------
+# R45/V1: Bridge-tools post-escalation verification checks
+#          proposal existence (not just status).
+# ---------------------------------------------------------------
+
+class TestBridgeToolsEscalationVerification:
+    """R45/V1: Post-escalation bridge verification must check that
+    the proposal file actually exists, not just the status field."""
+
+    RUNNER = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
+              / "section_engine" / "runner.py")
+
+    def test_escalation_missing_proposal_not_valid(self) -> None:
+        """Escalation returns status=bridged but proposal_path doesn't
+        exist on disk -> bridge_valid stays False, failure artifact written."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        # Find the post-escalation re-check block (after "Re-check after
+        # escalation" comment) and verify it includes proposal_path.exists()
+        lines = src.splitlines()
+        in_recheck = False
+        found_proposal_exists = False
+        for line in lines:
+            if "Re-check after escalation" in line:
+                in_recheck = True
+            if in_recheck and "proposal_path.exists()" in line:
+                found_proposal_exists = True
+                break
+            # Stop searching once we leave the re-check block
+            if in_recheck and "Wire bridge outputs" in line:
+                break
+        assert found_proposal_exists, (
+            "Post-escalation re-check must verify proposal_path.exists() "
+            "before setting bridge_valid = True"
+        )
+
+    def test_escalation_no_action_valid_without_proposal(self) -> None:
+        """status=no_action should be valid even without a proposal file,
+        mirroring the primary verification block."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        lines = src.splitlines()
+        in_recheck = False
+        found_no_action_bypass = False
+        for line in lines:
+            if "Re-check after escalation" in line:
+                in_recheck = True
+            if in_recheck and '"no_action"' in line:
+                found_no_action_bypass = True
+                break
+            if in_recheck and "Wire bridge outputs" in line:
+                break
+        assert found_no_action_bypass, (
+            "Post-escalation re-check must treat no_action as valid "
+            "without requiring proposal existence"
+        )
+
+
+# ---------------------------------------------------------------
+# R45/V2: Tool digest regeneration triggers on registry creation
+#          (pre_hash empty, post_hash non-empty).
+# ---------------------------------------------------------------
+
+class TestToolDigestRegenOnCreation:
+    """R45/V2: Digest regen must fire when registry is created (not
+    just modified) — pre_hash empty + post_hash non-empty."""
+
+    RUNNER = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
+              / "section_engine" / "runner.py")
+
+    def test_regen_when_registry_created(self) -> None:
+        """Condition must only require post_bridge_registry_hash to be
+        truthy and differ from pre_bridge_registry_hash. When pre is
+        empty and post is non-empty, that's a creation — must trigger."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        # The old pattern required both hashes truthy:
+        #   if (pre_bridge_registry_hash
+        #       and post_bridge_registry_hash
+        #       and pre != post):
+        # The fix should check only post truthy + differ:
+        #   if (post_bridge_registry_hash
+        #       and pre != post):
+        lines = src.splitlines()
+        in_digest_section = False
+        condition_lines: list[str] = []
+        for line in lines:
+            if "Regenerate tool digest if bridge" in line:
+                in_digest_section = True
+            if in_digest_section and "if (" in line:
+                # Collect the multi-line condition
+                condition_lines.append(line.strip())
+                continue
+            if condition_lines and line.strip().startswith("and "):
+                condition_lines.append(line.strip())
+                continue
+            if condition_lines and "!=" in line:
+                condition_lines.append(line.strip())
+                break
+            if condition_lines:
+                break
+        condition = " ".join(condition_lines)
+        # The condition must NOT start with pre_bridge_registry_hash
+        assert "if (post_bridge_registry_hash" in condition, (
+            "Digest regen condition must start with "
+            "post_bridge_registry_hash (not pre_bridge_registry_hash)"
+        )
+
+    def test_no_regen_when_registry_unchanged(self) -> None:
+        """When pre and post hashes are the same, no regen should fire.
+        The condition `pre != post` ensures this — verify it's present."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert "pre_bridge_registry_hash\n" in src or (
+            "pre_bridge_registry_hash" in src
+            and "!= post_bridge_registry_hash" in src
+        ), (
+            "Digest regen condition must compare pre != post hashes"
+        )
+
+    def test_regen_when_registry_modified(self) -> None:
+        """When both hashes exist but differ, regen must trigger.
+        This is the existing case — verify the log message is present."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert "tool registry modified" in src, (
+            "runner.py must log 'tool registry modified by bridge-tools' "
+            "when hashes differ"
+        )
+
+
+# ---------------------------------------------------------------
+# R45/V3: read_agent_signal() preserves malformed JSON as
+#          .malformed.json with warning.
+# ---------------------------------------------------------------
+
+class TestReadAgentSignalCorruptionPreservation:
+    """R45/V3: read_agent_signal must rename malformed/non-dict JSON
+    to .malformed.json and warn, not silently discard."""
+
+    def test_malformed_json_renamed_and_warned(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Malformed JSON -> returns None, file renamed to .malformed.json."""
+        from section_loop.dispatch import read_agent_signal
+
+        signal = tmp_path / "test-signal.json"
+        signal.write_text("{bad json", encoding="utf-8")
+        result = read_agent_signal(signal)
+
+        assert result is None
+        malformed = tmp_path / "test-signal.malformed.json"
+        assert malformed.exists(), (
+            "Malformed JSON must be renamed to .malformed.json"
+        )
+        assert not signal.exists(), (
+            "Original malformed file must no longer exist after rename"
+        )
+        captured = capsys.readouterr()
+        assert "[SIGNAL][WARN]" in captured.out
+
+    def test_non_dict_json_renamed_and_warned(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Valid JSON that's not a dict -> returns None, file renamed."""
+        from section_loop.dispatch import read_agent_signal
+
+        signal = tmp_path / "test-signal.json"
+        signal.write_text("[1, 2, 3]", encoding="utf-8")
+        result = read_agent_signal(signal)
+
+        assert result is None
+        malformed = tmp_path / "test-signal.malformed.json"
+        assert malformed.exists(), (
+            "Non-dict JSON must be renamed to .malformed.json"
+        )
+        captured = capsys.readouterr()
+        assert "[SIGNAL][WARN]" in captured.out
+
+    def test_missing_expected_fields_returns_none(
+        self, tmp_path: Path,
+    ) -> None:
+        """Valid JSON missing expected field -> returns None (no rename
+        since JSON itself is valid)."""
+        from section_loop.dispatch import read_agent_signal
+
+        signal = tmp_path / "test-signal.json"
+        signal.write_text(json.dumps({"foo": "bar"}), encoding="utf-8")
+        result = read_agent_signal(signal, expected_fields=["status"])
+
+        assert result is None
+        # File should NOT be renamed — JSON is valid, just missing fields
+        assert signal.exists(), (
+            "Valid JSON with missing fields must not be renamed"
+        )
+
+    def test_valid_signal_returned_normally(
+        self, tmp_path: Path,
+    ) -> None:
+        """Valid JSON dict with expected fields -> returned as dict."""
+        from section_loop.dispatch import read_agent_signal
+
+        payload = {"status": "done", "detail": "all good"}
+        signal = tmp_path / "test-signal.json"
+        signal.write_text(json.dumps(payload), encoding="utf-8")
+        result = read_agent_signal(signal, expected_fields=["status"])
+
+        assert result == payload
+        assert signal.exists()
+
+
+# ---------------------------------------------------------------
+# R45/V4: Microstrategy pre-existing signal malformed — renamed
+#          and re-dispatched.
+# ---------------------------------------------------------------
+
+class TestMicrostrategySignalCorruptionPreservation:
+    """R45/V4: Malformed pre-existing microstrategy signal must be
+    renamed to .malformed.json and fall through to dispatch."""
+
+    def test_malformed_existing_signal_renamed(
+        self, planspace: Path, codespace: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Write malformed JSON to microstrategy signal path ->
+        file renamed to .malformed.json."""
+        from section_loop.section_engine.todos import (
+            _check_needs_microstrategy,
+        )
+
+        signals_dir = planspace / "artifacts" / "signals"
+        signals_dir.mkdir(parents=True, exist_ok=True)
+        signal = signals_dir / "proposal-01-microstrategy.json"
+        signal.write_text("{not valid json", encoding="utf-8")
+
+        # Create a proposal so the function doesn't bail early
+        proposals_dir = planspace / "artifacts" / "proposals"
+        proposals_dir.mkdir(parents=True, exist_ok=True)
+        proposal = proposals_dir / "section-01-integration-proposal.md"
+        proposal.write_text("# Proposal\nSome changes needed.")
+
+        _check_needs_microstrategy(
+            proposal, planspace, "01",
+            model="glm", escalation_model="gpt-5.3-codex-xhigh",
+        )
+
+        malformed = signals_dir / "proposal-01-microstrategy.malformed.json"
+        assert malformed.exists(), (
+            "Malformed microstrategy signal must be renamed to "
+            ".malformed.json"
+        )
+        captured = capsys.readouterr()
+        assert "[MICROSTRATEGY][WARN]" in captured.out
+
+    def test_malformed_falls_through_to_dispatch(
+        self, planspace: Path, codespace: Path,
+        mock_dispatch: "MagicMock",
+    ) -> None:
+        """After renaming malformed signal, dispatch still happens
+        to produce a fresh signal."""
+        from section_loop.section_engine.todos import (
+            _check_needs_microstrategy,
+        )
+
+        signals_dir = planspace / "artifacts" / "signals"
+        signals_dir.mkdir(parents=True, exist_ok=True)
+        signal = signals_dir / "proposal-01-microstrategy.json"
+        signal.write_text("{bad", encoding="utf-8")
+
+        proposals_dir = planspace / "artifacts" / "proposals"
+        proposals_dir.mkdir(parents=True, exist_ok=True)
+        proposal = proposals_dir / "section-01-integration-proposal.md"
+        proposal.write_text("# Proposal\nSome changes needed.")
+
+        _check_needs_microstrategy(
+            proposal, planspace, "01",
+            model="glm", escalation_model="gpt-5.3-codex-xhigh",
+        )
+
+        # dispatch_agent must have been called (fall-through to dispatch)
+        assert mock_dispatch.called, (
+            "After renaming malformed signal, dispatch must be called "
+            "to produce fresh microstrategy decision"
         )

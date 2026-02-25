@@ -67,8 +67,17 @@ def _check_needs_microstrategy(
         try:
             data = json.loads(signal_path.read_text(encoding="utf-8"))
             return data.get("needs_microstrategy", False) is True
-        except (json.JSONDecodeError, OSError):
-            pass  # Fall through to dispatch
+        except (json.JSONDecodeError, OSError) as exc:
+            print(
+                f"[MICROSTRATEGY][WARN] Malformed signal at {signal_path} "
+                f"({exc}) — renaming and dispatching fresh",
+            )
+            try:
+                signal_path.rename(
+                    signal_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass
+            # Fall through to dispatch
 
     # Fallback: dispatch to produce structured microstrategy signal
     if not proposal_path.exists():
