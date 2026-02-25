@@ -11,6 +11,7 @@ import re
 import sys
 from pathlib import Path
 
+from .cache import strip_scan_summaries
 from .dispatch import dispatch_agent, read_scan_model_policy
 
 _TEMPLATES = Path(__file__).resolve().parent / "templates"
@@ -172,7 +173,10 @@ def _validate_existing_related_files(
     corrections_hash = (
         _sha256_file(corrections_file) if corrections_file.is_file() else ""
     )
-    section_hash = _sha256_file(section_file)
+    section_text_raw = section_file.read_text() if section_file.is_file() else ""
+    section_hash = hashlib.sha256(
+        strip_scan_summaries(section_text_raw).encode(),
+    ).hexdigest()
     combined = f"{codemap_hash}:{corrections_hash}:{section_hash}"
     combined_hash = hashlib.sha256(combined.encode()).hexdigest()
 
@@ -231,6 +235,7 @@ def _validate_existing_related_files(
             / "signals"
             / f"{section_name}-related-files-update.json"
         )
+        write_hash = True
         if signal_file.is_file():
             try:
                 data = json.loads(signal_file.read_text())
@@ -252,18 +257,35 @@ def _validate_existing_related_files(
                     print(
                         f"[EXPLORE] {section_name}: list updated",
                     )
+                    # Recompute hash from updated section file
+                    section_text_updated = (
+                        section_file.read_text()
+                        if section_file.is_file()
+                        else ""
+                    )
+                    section_hash = hashlib.sha256(
+                        strip_scan_summaries(section_text_updated).encode(),
+                    ).hexdigest()
+                    combined = (
+                        f"{codemap_hash}:{corrections_hash}:{section_hash}"
+                    )
+                    combined_hash = hashlib.sha256(
+                        combined.encode(),
+                    ).hexdigest()
                 else:
                     print(
                         f"[EXPLORE] {section_name}: auto-apply "
                         "failed — keeping existing list",
                     )
+                    write_hash = False
+
+        if write_hash:
+            codemap_hash_file.write_text(combined_hash)
     else:
         print(
             f"[EXPLORE] {section_name}: validation failed "
             "— keeping existing list",
         )
-
-    codemap_hash_file.write_text(combined_hash)
 
 
 # ------------------------------------------------------------------
@@ -317,13 +339,25 @@ def _explore_section(
         )
         return
 
-    # Append related files to section file
+    # Append only the Related Files block to section file
     if response_file.is_file():
         response_text = response_file.read_text()
         if "## Related Files" in response_text:
+            # Extract only the ## Related Files block
+            rf_idx = response_text.index("## Related Files")
+            rf_block = response_text[rf_idx:]
+            # Trim at next ## heading that isn't a ### sub-heading
+            lines = rf_block.split("\n")
+            end_idx = len(lines)
+            for i, line in enumerate(lines[1:], start=1):
+                if line.startswith("## ") and not line.startswith("### "):
+                    end_idx = i
+                    break
+            rf_block = "\n".join(lines[:end_idx]).rstrip()
+
             with section_file.open("a") as f:
                 f.write("\n")
-                f.write(response_text)
+                f.write(rf_block)
             print(f"[EXPLORE] {section_name} — related files identified")
         else:
             _log_phase_failure(

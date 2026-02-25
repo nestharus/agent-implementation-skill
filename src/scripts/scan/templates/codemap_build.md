@@ -1,6 +1,6 @@
 # Task: Explore Codebase and Build Codemap
 
-You are an exploration agent. Your job is to understand this codebase by exploring it — not by following a template or enforcing a fixed structure.
+You are an exploration agent. Your job is to understand this codebase by exploring it — not by enforcing a rigid template on the codebase's structure.
 
 ## How to Explore
 
@@ -19,9 +19,9 @@ Write a codemap that captures your understanding of the codebase. Include:
 - How different parts relate to each other
 - Anything surprising, unusual, or important for someone working with this code
 
-The format should fit what you discovered. Don't force the codebase into a template — let the structure of the codemap reflect the structure of the project.
+The format should fit what you discovered. Let the codemap body reflect the natural structure of the project. The only required structured interface is the Routing Table section below.
 
-## Structured Routing Section (Required)
+## Routing Table Interface (Required)
 
 At the END of your codemap, include a structured routing section:
 

@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -37,6 +37,9 @@ R37/V1: Scope-delta adjudication parsing is robust with retry + fail-closed.
 R37/V2: Recurrence escalation log/artifacts use policy model, not hardcoded.
 R37/V3: implementation-strategist.md tool-registry schema matches registrar.
 R37/V4: Scan templates use extension-neutral examples (no .py bias).
+R42/V1-V2: Skip-hash not written on validation failure; section hash strips scan summaries.
+R42/V3: Fresh exploration appends only Related Files block, not full response.
+R42/V4: Codemap prompt does not contradict itself about templates.
 """
 
 import json
@@ -2978,4 +2981,211 @@ class TestExtractorToolsFailClosed:
         )
         assert "true absence" in content, (
             "tools/README.md must clarify NO DOCSTRING means true absence"
+        )
+
+
+# ── R42/V1-V2: Skip-hash semantics + scan-summary stripping ─────
+
+
+class TestRelatedFilesValidationHashSemantics:
+    """R42: Skip-hash must not be written on validation failure."""
+
+    EXPLORATION_PY = PROJECT_ROOT / "src" / "scripts" / "scan" / "exploration.py"
+
+    def test_no_unconditional_hash_write(self) -> None:
+        """Hash write must be conditional, not at the end of the function."""
+        import ast
+        import textwrap
+
+        content = self.EXPLORATION_PY.read_text(encoding="utf-8")
+        tree = ast.parse(content)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "_validate_existing_related_files":
+                # The last statement of the function must NOT be a bare
+                # write_text call — it should be inside an if branch.
+                last_stmt = node.body[-1]
+                # If last statement is an Expr with write_text, it's
+                # unconditional — that's the bug we fixed.
+                if isinstance(last_stmt, ast.Expr):
+                    src = ast.get_source_segment(content, last_stmt) or ""
+                    assert "write_text" not in src, (
+                        "codemap_hash_file.write_text must not be the "
+                        "unconditional last statement of "
+                        "_validate_existing_related_files"
+                    )
+                break
+        else:
+            pytest.fail("Could not find _validate_existing_related_files")
+
+    def test_hash_not_written_on_dispatch_failure(self) -> None:
+        """Hash must not be written when dispatch returns non-zero."""
+        content = self.EXPLORATION_PY.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        # Find the "validation failed" else branch (returncode != 0)
+        for i, line in enumerate(lines):
+            if "validation failed" in line:
+                # Look only at the else branch itself (from this line
+                # to the next dedented line or function end)
+                block = "\n".join(lines[i:i + 10])
+                assert "write_text" not in block, (
+                    "The dispatch-failure branch must NOT write the "
+                    "skip hash"
+                )
+                break
+        else:
+            pytest.fail("Could not find 'validation failed' message")
+
+    def test_hash_recomputed_after_successful_apply(self) -> None:
+        """After apply succeeds, hash is recomputed from updated section."""
+        content = self.EXPLORATION_PY.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        # Find "list updated" print — the apply-success path
+        for i, line in enumerate(lines):
+            if "list updated" in line:
+                # The block after apply success must recompute the hash
+                block = "\n".join(lines[i:i + 20])
+                assert "strip_scan_summaries" in block, (
+                    "After successful apply, section_hash must be "
+                    "recomputed using strip_scan_summaries"
+                )
+                assert "combined_hash" in block, (
+                    "After successful apply, combined_hash must be "
+                    "recomputed from updated section"
+                )
+                break
+        else:
+            pytest.fail("Could not find 'list updated' message")
+
+    def test_section_hash_uses_strip_scan_summaries(self) -> None:
+        """Section hash must exclude scan-generated summaries."""
+        content = self.EXPLORATION_PY.read_text(encoding="utf-8")
+        # Verify exploration.py imports strip_scan_summaries
+        assert "from .cache import strip_scan_summaries" in content, (
+            "exploration.py must import strip_scan_summaries from cache"
+        )
+        # Verify section_hash computation uses strip_scan_summaries
+        # (not _sha256_file which hashes raw bytes).
+        # The call may span multiple lines, so check a window around
+        # each line containing "section_hash".
+        lines = content.splitlines()
+        in_validate = False
+        found_normalized_hash = False
+        for i, line in enumerate(lines):
+            if "def _validate_existing_related_files" in line:
+                in_validate = True
+            elif in_validate and line.startswith("def "):
+                break
+            elif in_validate and "section_hash" in line:
+                # Check a small window around this line for the call
+                window = "\n".join(lines[i:i + 4])
+                if "strip_scan_summaries" in window:
+                    found_normalized_hash = True
+                    break
+        assert found_normalized_hash, (
+            "section_hash in _validate_existing_related_files must be "
+            "computed via strip_scan_summaries, not _sha256_file"
+        )
+
+
+# ── R42/V3: Fresh exploration appends only Related Files block ───
+
+
+class TestFreshExplorationAppendsOnlyRelatedFiles:
+    """R42: Fresh exploration must append only the Related Files block."""
+
+    EXPLORATION_PY = PROJECT_ROOT / "src" / "scripts" / "scan" / "exploration.py"
+
+    def test_no_full_response_append(self) -> None:
+        """_explore_section must not append entire response_text."""
+        content = self.EXPLORATION_PY.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        in_explore = False
+        for line in lines:
+            if "def _explore_section" in line:
+                in_explore = True
+            elif in_explore and line.startswith("def "):
+                break
+            elif in_explore:
+                # Must not write full response_text to the section file
+                stripped = line.strip()
+                if "f.write(response_text)" in stripped:
+                    pytest.fail(
+                        "_explore_section writes full response_text — "
+                        "must extract only the Related Files block"
+                    )
+
+    def test_extracts_related_files_block(self) -> None:
+        """Extraction must find ## Related Files and trim at next ## heading."""
+        content = self.EXPLORATION_PY.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        in_explore = False
+        found_extraction = False
+        for line in lines:
+            if "def _explore_section" in line:
+                in_explore = True
+            elif in_explore and line.startswith("def "):
+                break
+            elif in_explore and '## Related Files' in line and ".index(" in line:
+                found_extraction = True
+                break
+        assert found_extraction, (
+            "_explore_section must extract the Related Files block "
+            "using .index('## Related Files')"
+        )
+
+
+# ── R42/V4: Codemap prompt coherence ─────────────────────────────
+
+
+class TestCodemapBuildPromptCoherence:
+    """R42: Codemap prompt must not contradict itself about templates."""
+
+    CODEMAP_BUILD_MD = (
+        PROJECT_ROOT / "src" / "scripts" / "scan" / "templates"
+        / "codemap_build.md"
+    )
+
+    def test_no_template_contradiction(self) -> None:
+        """Prompt must not say 'don't follow a template' while requiring one."""
+        content = self.CODEMAP_BUILD_MD.read_text(encoding="utf-8")
+        assert "not by following a template" not in content, (
+            "codemap_build.md must not say 'not by following a template' "
+            "— this contradicts the required Routing Table section"
+        )
+        assert "enforcing a fixed structure" not in content, (
+            "codemap_build.md must not say 'enforcing a fixed structure' "
+            "— routing table IS a required structure"
+        )
+
+    def test_routing_table_documented_as_interface(self) -> None:
+        """Routing table must be framed as a required interface, not a template."""
+        content = self.CODEMAP_BUILD_MD.read_text(encoding="utf-8")
+        assert "Routing Table Interface (Required)" in content, (
+            "codemap_build.md must frame the routing table as a "
+            "'Routing Table Interface (Required)'"
+        )
+
+    def test_body_structure_distinguished_from_interface(self) -> None:
+        """Prompt must distinguish free-form body from required interface."""
+        content = self.CODEMAP_BUILD_MD.read_text(encoding="utf-8")
+        assert "required structured interface" in content, (
+            "codemap_build.md must mention the routing table is the "
+            "'only required structured interface'"
+        )
+
+
+# ── R42: implement.md routing table reference ────────────────────
+
+
+class TestImplementMdRoutingTableRef:
+    """R42: implement.md must reference codemap routing table."""
+
+    IMPLEMENT_MD = PROJECT_ROOT / "src" / "implement.md"
+
+    def test_implement_md_mentions_routing_table(self) -> None:
+        """Stage 3 description should mention routing table for downstream use."""
+        content = self.IMPLEMENT_MD.read_text(encoding="utf-8")
+        assert "Routing Table" in content, (
+            "implement.md must reference the codemap Routing Table "
+            "consumed by downstream agents"
         )

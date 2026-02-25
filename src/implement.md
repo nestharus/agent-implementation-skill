@@ -138,7 +138,7 @@ of the same explore-propose-align pattern.
 
 1. **Section Decomposition** — Recursive decomposition into atomic section files
 2. **Demand-Driven Docstring Cache** — Ensure relevant source files have module docstrings
-3. **File Relevance Scan** — Quick mode dispatches an Opus agent to explore the codespace and build a codemap, then per-section Opus agents identify related files; deep mode dispatches GLM agents to reason about specific file relevance (preserving `## Related Files`)
+3. **File Relevance Scan** — Quick mode dispatches an Opus agent to explore the codespace and build a codemap (which must include a Routing Table section consumed by downstream agents for file selection), then per-section Opus agents identify related files; deep mode dispatches GLM agents to reason about specific file relevance (preserving `## Related Files`)
 
 --- Per-section loop (strategic, agent-driven) ---
 
