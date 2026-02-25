@@ -770,6 +770,33 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                     )
                 return  # exhausted — exit
 
+            # All sections aligned but coordination stalled/exhausted.
+            # Check for outstanding cross-section problems that didn't
+            # manifest as misalignment (upward signaling contract).
+            outstanding = _collect_outstanding_problems(
+                section_results, sections_by_num, planspace,
+            )
+            if outstanding:
+                log(f"=== Coordination exhausted after {round_num} rounds: "
+                    f"all sections aligned but {len(outstanding)} "
+                    f"outstanding problems remain ===")
+                # Write structured rollup artifact for parent visibility
+                rollup_dir = planspace / "artifacts" / "coordination"
+                rollup_dir.mkdir(parents=True, exist_ok=True)
+                rollup_path = rollup_dir / "coordination-exhausted.json"
+                rollup_path.write_text(json.dumps(
+                    [{"type": p["type"],
+                      "section": p["section"],
+                      "description": p["description"][:200]}
+                     for p in outstanding],
+                    indent=2), encoding="utf-8")
+                mailbox_send(
+                    planspace, parent,
+                    f"fail:coordination_exhausted:outstanding:"
+                    f"{len(outstanding)}",
+                )
+                return  # exhausted — exit
+
         if restart_phase1:
             continue  # outer while True → restart Phase 1
 

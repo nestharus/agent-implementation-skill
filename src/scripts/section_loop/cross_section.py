@@ -15,6 +15,7 @@ from .communication import (
     log,
 )
 from .dispatch import dispatch_agent
+from .pipeline_control import _set_alignment_changed_flag
 from .types import Section
 
 
@@ -150,7 +151,7 @@ def post_section_completion(
     log(f"Section {sec_num}: {len(candidate_sections)} candidate sections "
         f"(of {len(other_sections)} total) for impact analysis")
 
-    # Stage B: Semantic impact analysis on candidates only (Opus)
+    # Stage B: Semantic impact analysis on candidates only (policy-controlled)
     candidate_lines = []
     for other in candidate_sections:
         files_str = ", ".join(f"`{f}`" for f in other.related_files[:10])
@@ -450,6 +451,22 @@ Snapshot directory: `{snapshot_dir}`
         _log_artifact(planspace, f"note:from-{sec_num}-to-{target_num}")
         log(f"Section {sec_num}: left note for section {target_num} "
             f"at {note_path}")
+
+    # Trigger targeted requeue for completed target sections.
+    # When a note targets a section that already has a baseline hash,
+    # that section needs to rerun alignment with the new input.
+    # Setting the flag is mechanical — the main loop's requeue logic
+    # determines which sections actually changed (hash comparison).
+    baseline_hash_dir = planspace / "artifacts" / "section-inputs-hashes"
+    completed_targets = [
+        t for t, _r, _cr, _nm in impacted_sections
+        if (baseline_hash_dir / f"{t}.hash").exists()
+    ]
+    if completed_targets:
+        _set_alignment_changed_flag(planspace)
+        log(f"Section {sec_num}: set alignment_changed_pending — "
+            f"{len(completed_targets)} target section(s) have baseline "
+            f"hashes: {completed_targets}")
 
     # P8: Generate contract artifact for contract-risk impacts
     contract_risk_targets = [
