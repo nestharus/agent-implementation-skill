@@ -1484,8 +1484,29 @@ Update the tool registry if new tools are proposed.
 
 ## Structured Signal (Required)
 Write a structured signal to: `{bridge_signal_path}`
-with JSON: {{"status": "bridged"|"no_action"|"needs_parent", "proposal_path": "...", "notes": "..."}}
+with JSON:
+```json
+{{
+  "status": "bridged"|"no_action"|"needs_parent",
+  "proposal_path": "...",
+  "notes": "...",
+  "targets": ["03", "07"],
+  "broadcast": false,
+  "note_markdown": "..."
+}}
+```
+
+- `targets` (optional): section numbers that need this bridge info
+- `broadcast` (optional): if true, all sections receive a note
+- `note_markdown` (optional): summary for target sections
 """, encoding="utf-8")
+
+        # Part 4: Hash tool registry before bridge dispatch
+        pre_bridge_registry_hash = ""
+        if tool_registry_path.exists():
+            pre_bridge_registry_hash = hashlib.sha256(
+                tool_registry_path.read_bytes()).hexdigest()
+
         dispatch_agent(
             policy.get("bridge_tools", "gpt-5.3-codex-high"),
             bridge_tools_prompt,
@@ -1542,18 +1563,110 @@ with JSON: {{"status": "bridged"|"no_action"|"needs_parent", "proposal_path": ".
                 except (json.JSONDecodeError, OSError):
                     pass
 
-            if not bridge_valid:
-                log(f"Section {section.number}: bridge-tools dispatch "
-                    f"failed after escalation — writing failure artifact")
-                failure_artifact = (
-                    artifacts / "signals"
-                    / f"section-{section.number}-bridge-tools-failure.json")
-                failure_artifact.write_text(json.dumps({
-                    "section": section.number,
-                    "status": "failed",
-                    "reason": "bridge-tools agent did not produce valid "
-                              "signal after primary + escalation dispatch",
-                }, indent=2), encoding="utf-8")
+        # -- R44/V1: Wire bridge outputs into downstream channels --
+        if bridge_valid:
+            # Part 1: Write .ref input for downstream reasoning
+            bridge_proposal = bridge_data.get(
+                "proposal_path", str(default_proposal_path))
+            inputs_dir = artifacts / "inputs" / f"section-{section.number}"
+            inputs_dir.mkdir(parents=True, exist_ok=True)
+            ref_file = inputs_dir / "tool-bridge.ref"
+            ref_file.write_text(str(bridge_proposal), encoding="utf-8")
+            log(f"Section {section.number}: bridge proposal registered "
+                f"as input ref")
+
+            # Part 2: Cross-section note routing
+            targets = bridge_data.get("targets", [])
+            broadcast = bridge_data.get("broadcast", False)
+            note_md = bridge_data.get("note_markdown", "")
+            if note_md and (targets or broadcast):
+                notes_dir = artifacts / "notes"
+                notes_dir.mkdir(parents=True, exist_ok=True)
+                if broadcast and all_sections:
+                    # All sections except self
+                    targets = [s.number for s in all_sections
+                               if s.number != section.number]
+                for target in targets:
+                    note_path = (notes_dir
+                                 / f"from-bridge-{section.number}"
+                                 f"-to-{target}.md")
+                    note_path.write_text(
+                        f"# Bridge Note from Section {section.number}\n\n"
+                        f"{note_md}\n\n"
+                        f"See full proposal: `{bridge_proposal}`\n",
+                        encoding="utf-8",
+                    )
+                if targets:
+                    log(f"Section {section.number}: bridge notes routed "
+                        f"to {len(targets)} section(s)")
+
+            # Part 4: Regenerate tool digest if bridge modified registry
+            post_bridge_registry_hash = ""
+            if tool_registry_path.exists():
+                post_bridge_registry_hash = hashlib.sha256(
+                    tool_registry_path.read_bytes()).hexdigest()
+            if (pre_bridge_registry_hash
+                    and post_bridge_registry_hash
+                    and pre_bridge_registry_hash
+                    != post_bridge_registry_hash):
+                log(f"Section {section.number}: tool registry modified "
+                    f"by bridge-tools — regenerating digest")
+                digest_prompt = (
+                    artifacts
+                    / f"tool-digest-regen-{section.number}-prompt.md")
+                digest_output = (
+                    artifacts
+                    / f"tool-digest-regen-{section.number}-output.md")
+                digest_prompt.write_text(
+                    f"# Task: Regenerate Tool Digest\n\n"
+                    f"The tool registry at `{tool_registry_path}` was "
+                    f"modified by bridge-tools for section "
+                    f"{section.number}.\n\n"
+                    f"Read the registry and write an updated tool digest "
+                    f"to: `{artifacts / 'tool-digest.md'}`\n\n"
+                    f"Format: one line per tool grouped by scope "
+                    f"(cross-section, section-local, test-only).\n",
+                    encoding="utf-8",
+                )
+                dispatch_agent(
+                    policy.get("tool_registrar", "glm"),
+                    digest_prompt, digest_output,
+                    planspace, parent,
+                    f"tool-digest-regen-{section.number}",
+                    codespace=codespace,
+                    section_number=section.number,
+                )
+        else:
+            # Part 3: Bridge failed after escalation — write blocker
+            log(f"Section {section.number}: bridge-tools dispatch "
+                f"failed after escalation — writing failure artifact")
+            failure_artifact = (
+                artifacts / "signals"
+                / f"section-{section.number}-bridge-tools-failure.json")
+            failure_artifact.write_text(json.dumps({
+                "section": section.number,
+                "status": "failed",
+                "reason": "bridge-tools agent did not produce valid "
+                          "signal after primary + escalation dispatch",
+            }, indent=2), encoding="utf-8")
+            # Also write a structured blocker for rollup
+            blocker_path = (
+                artifacts / "signals"
+                / f"section-{section.number}-post-impl-blocker.json")
+            blocker_path.write_text(json.dumps({
+                "state": "needs_parent",
+                "detail": (
+                    "Bridge-tools agent failed to produce valid output "
+                    "after primary + escalation dispatch. Tool friction "
+                    "remains unresolved."
+                ),
+                "needs": "Manual review of tool composition gaps",
+                "why_blocked": (
+                    f"See failure details: "
+                    f"{failure_artifact}"
+                ),
+            }, indent=2), encoding="utf-8")
+            _update_blocker_rollup(planspace)
 
         # Acknowledge friction signal so it doesn't re-fire
         try:

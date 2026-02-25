@@ -240,7 +240,21 @@ def _validate_existing_related_files(
             try:
                 data = json.loads(signal_file.read_text())
                 status = data.get("status", "")
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                # Fail-closed: malformed signal must NOT write skip-hash
+                print(
+                    f"[EXPLORE][WARN] {section_name}: malformed "
+                    f"related-files update signal ({exc}) — "
+                    f"forcing revalidation on next run",
+                )
+                # Preserve corrupted file for diagnosis
+                malformed_path = signal_file.with_suffix(
+                    ".malformed.json")
+                try:
+                    signal_file.rename(malformed_path)
+                except OSError:
+                    pass
+                write_hash = False
                 status = ""
 
             if status == "stale":
@@ -278,6 +292,14 @@ def _validate_existing_related_files(
                         "failed — keeping existing list",
                     )
                     write_hash = False
+            elif status and status not in ("ok", "applied"):
+                # Unknown status — treat as invalid
+                print(
+                    f"[EXPLORE][WARN] {section_name}: unexpected "
+                    f"validation signal status '{status}' — "
+                    f"forcing revalidation on next run",
+                )
+                write_hash = False
 
         if write_hash:
             codemap_hash_file.write_text(combined_hash)

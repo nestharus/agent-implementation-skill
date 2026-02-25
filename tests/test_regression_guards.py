@@ -42,8 +42,11 @@ R42/V3: Fresh exploration appends only Related Files block, not full response.
 R42/V4: Codemap prompt does not contradict itself about templates.
 R43/V1: Bridge-tools loop closed — signal verified, friction acknowledged.
 R43/V2: Microstrategy writer dispatch fail-closed on output production.
+R44/V1: Bridge-tools outputs wired into downstream channels (.ref, notes, blocker, digest).
+R44/V2: Scan-stage validation signal parsing fail-closed on malformed JSON.
 """
 
+import hashlib
 import json
 import re
 import subprocess
@@ -3354,4 +3357,629 @@ class TestMicrostrategyOutputEnforcement:
         assert "must derive a microstrategy" in src, (
             "Stub microstrategy must instruct the implementer to "
             "derive a microstrategy as first step of implementation"
+        )
+
+
+# ── R44/V1: Bridge-tools outputs wired into downstream channels ──
+
+
+class TestBridgeToolsDownstreamWiring:
+    """R44/V1: Bridge-tools outputs wired into downstream channels."""
+
+    RUNNER = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
+              / "section_engine" / "runner.py")
+
+    def test_bridge_success_writes_ref_input(self) -> None:
+        """Valid bridge signal path must write a .ref input file."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert 'inputs_dir / "tool-bridge.ref"' in src, (
+            "runner.py must write tool-bridge.ref when bridge succeeds"
+        )
+        assert "bridge proposal registered" in src, (
+            "runner.py must log 'bridge proposal registered as input "
+            "ref' after writing .ref"
+        )
+
+    def test_bridge_failure_writes_blocker(self) -> None:
+        """Bridge failure after escalation must write needs_parent blocker."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        # The failure path must write a post-impl-blocker with
+        # state=needs_parent.  Find the bridge-specific occurrence
+        # (near the "Bridge failed after escalation" comment).
+        lines = src.splitlines()
+        in_bridge_failure = False
+        found = False
+        for i, line in enumerate(lines):
+            if "Bridge failed after escalation" in line:
+                in_bridge_failure = True
+            if in_bridge_failure and "post-impl-blocker.json" in line:
+                block = "\n".join(lines[i:i + 15])
+                assert "needs_parent" in block, (
+                    "post-impl-blocker must have state=needs_parent"
+                )
+                found = True
+                break
+        assert found, (
+            "runner.py must write post-impl-blocker.json in the "
+            "bridge failure path"
+        )
+
+    def test_bridge_failure_updates_rollup(self) -> None:
+        """Bridge failure path must call _update_blocker_rollup."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        lines = src.splitlines()
+        # Find the bridge failure block (comment line) and verify
+        # rollup is called before friction acknowledgment
+        in_bridge_failure = False
+        found_rollup_in_bridge_failure = False
+        for line in lines:
+            if "Bridge failed after escalation" in line:
+                in_bridge_failure = True
+            if in_bridge_failure and "_update_blocker_rollup" in line:
+                found_rollup_in_bridge_failure = True
+                break
+            # Exit once we hit the friction acknowledgment
+            if in_bridge_failure and "Acknowledge friction" in line:
+                break
+        assert found_rollup_in_bridge_failure, (
+            "runner.py bridge failure path must call "
+            "_update_blocker_rollup after writing blocker"
+        )
+
+    def test_bridge_cross_section_notes(self) -> None:
+        """Bridge with targets must write cross-section note files."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert "from-bridge-{section.number}" in src, (
+            "runner.py must write cross-section notes with "
+            "'from-bridge-{N}-to-{T}.md' naming"
+        )
+        assert "bridge notes routed" in src, (
+            "runner.py must log 'bridge notes routed to N section(s)'"
+        )
+
+    def test_bridge_prompt_includes_cross_section_schema(self) -> None:
+        """Bridge-tools prompt must document targets/broadcast/note_markdown."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert '"targets"' in src, (
+            "runner.py bridge-tools prompt must include targets field"
+        )
+        assert '"broadcast"' in src, (
+            "runner.py bridge-tools prompt must include broadcast field"
+        )
+        assert '"note_markdown"' in src, (
+            "runner.py bridge-tools prompt must include note_markdown "
+            "field"
+        )
+
+    def test_bridge_registry_change_triggers_digest_regen(self) -> None:
+        """Changed tool registry must trigger digest regeneration."""
+        src = self.RUNNER.read_text(encoding="utf-8")
+        assert "pre_bridge_registry_hash" in src, (
+            "runner.py must hash tool registry before bridge dispatch"
+        )
+        assert "post_bridge_registry_hash" in src, (
+            "runner.py must hash tool registry after bridge dispatch"
+        )
+        assert "tool-digest-regen" in src, (
+            "runner.py must dispatch tool-digest-regen when registry "
+            "changed by bridge-tools"
+        )
+        assert "regenerating digest" in src, (
+            "runner.py must log 'regenerating digest' when registry "
+            "modified by bridge-tools"
+        )
+
+    def test_bridge_valid_writes_ref_unit(
+        self, planspace: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Unit: valid bridge signal produces a .ref input file."""
+        from unittest.mock import MagicMock
+
+        from section_loop.section_engine.runner import run_section
+        from section_loop.types import Section
+
+        artifacts = planspace / "artifacts"
+        sec_path = artifacts / "sections" / "section-05.md"
+        sec_path.write_text("# Section 05\nBuild widget.")
+
+        section = Section(
+            number="05", path=sec_path,
+            related_files=[], solve_count=0,
+            global_proposal_path=planspace / "proposal.md",
+            global_alignment_path=planspace / "alignment.md",
+        )
+
+        # Create prerequisite artifacts so runner proceeds past setup
+        (artifacts / "sections"
+         / "section-05-proposal-excerpt.md").write_text("excerpt")
+        (artifacts / "sections"
+         / "section-05-alignment-excerpt.md").write_text("excerpt")
+        pf = artifacts / "sections" / "section-05-problem-frame.md"
+        pf.write_text(
+            "# Problem Statement\nFoo\n# Evidence\nBar\n"
+            "# Constraints\nBaz\n# Success Criteria\nQux\n"
+            "# Out of Scope\nNone\n"
+        )
+        # Create integration proposal so loop passes
+        (artifacts / "proposals"
+         / "section-05-integration-proposal.md").write_text("proposal")
+
+        # Create friction signal and tool registry
+        (artifacts / "signals"
+         / "section-05-tool-friction.json").write_text(
+            json.dumps({"friction": True}))
+        (artifacts / "tool-registry.json").write_text(
+            json.dumps({"tools": []}))
+
+        # Create the bridge proposal file so validation passes
+        bridge_proposal_path = (
+            artifacts / "proposals" / "section-05-tool-bridge.md")
+        bridge_proposal_path.write_text("bridge proposal")
+
+        call_count = 0
+
+        def fake_dispatch(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            agent_name = args[5] if len(args) > 5 else kwargs.get(
+                "agent_name", "")
+            # Handle setup agent — write excerpts
+            if isinstance(agent_name, str) and "setup" in agent_name:
+                return ""
+            # Handle impl agent — make alignment pass
+            if isinstance(agent_name, str) and "impl" in agent_name:
+                return '{"aligned": true}'
+            # Handle bridge-tools — write valid signal
+            if isinstance(agent_name, str) and "bridge-tools" in agent_name:
+                bridge_sig = (
+                    artifacts / "signals"
+                    / "section-05-tool-bridge.json")
+                bridge_sig.write_text(json.dumps({
+                    "status": "bridged",
+                    "proposal_path": str(bridge_proposal_path),
+                }))
+                return ""
+            return ""
+
+        mock = MagicMock(side_effect=fake_dispatch)
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.dispatch_agent", mock)
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.pause_for_parent",
+            MagicMock(return_value="resume"))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner._extract_problems",
+            MagicMock(return_value=None))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.check_agent_signals",
+            MagicMock(return_value=(None, "")))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner._parse_alignment_verdict",
+            MagicMock(return_value={"aligned": True, "frame_ok": True}))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.read_model_policy",
+            MagicMock(return_value={
+                "setup": "glm", "proposal": "glm",
+                "alignment": "glm", "implementation": "glm",
+                "escalation_model": "glm",
+                "escalation_triggers": {},
+            }))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.mailbox_send",
+            MagicMock())
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner._run_alignment_check_with_retries",
+            MagicMock(return_value=None))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.collect_modified_files",
+            MagicMock(return_value=[]))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.write_model_choice_signal",
+            MagicMock())
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.summarize_output",
+            MagicMock(return_value="summary"))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.read_incoming_notes",
+            MagicMock(return_value=""))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner._check_needs_microstrategy",
+            MagicMock(return_value=False))
+
+        run_section(planspace, planspace / "codespace", section, "parent")
+
+        # Assert .ref was written
+        ref_file = (artifacts / "inputs" / "section-05"
+                    / "tool-bridge.ref")
+        assert ref_file.exists(), (
+            "tool-bridge.ref must be written when bridge succeeds"
+        )
+        assert str(bridge_proposal_path) in ref_file.read_text()
+
+    def test_bridge_failure_writes_blocker_unit(
+        self, planspace: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Unit: bridge failure after escalation writes needs_parent blocker."""
+        from unittest.mock import MagicMock
+
+        from section_loop.section_engine.runner import run_section
+        from section_loop.types import Section
+
+        artifacts = planspace / "artifacts"
+        sec_path = artifacts / "sections" / "section-06.md"
+        sec_path.write_text("# Section 06\nBuild widget.")
+
+        section = Section(
+            number="06", path=sec_path,
+            related_files=[], solve_count=0,
+            global_proposal_path=planspace / "proposal.md",
+            global_alignment_path=planspace / "alignment.md",
+        )
+
+        # Create prerequisite artifacts
+        (artifacts / "sections"
+         / "section-06-proposal-excerpt.md").write_text("excerpt")
+        (artifacts / "sections"
+         / "section-06-alignment-excerpt.md").write_text("excerpt")
+        pf = artifacts / "sections" / "section-06-problem-frame.md"
+        pf.write_text(
+            "# Problem Statement\nFoo\n# Evidence\nBar\n"
+            "# Constraints\nBaz\n# Success Criteria\nQux\n"
+            "# Out of Scope\nNone\n"
+        )
+        (artifacts / "proposals"
+         / "section-06-integration-proposal.md").write_text("proposal")
+
+        # Create friction signal and tool registry
+        (artifacts / "signals"
+         / "section-06-tool-friction.json").write_text(
+            json.dumps({"friction": True}))
+        (artifacts / "tool-registry.json").write_text(
+            json.dumps({"tools": []}))
+
+        # dispatch_agent never writes bridge signal → failure path
+        mock = MagicMock(return_value="")
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.dispatch_agent", mock)
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.pause_for_parent",
+            MagicMock(return_value="resume"))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner._extract_problems",
+            MagicMock(return_value=None))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.check_agent_signals",
+            MagicMock(return_value=(None, "")))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner._parse_alignment_verdict",
+            MagicMock(return_value={"aligned": True, "frame_ok": True}))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.read_model_policy",
+            MagicMock(return_value={
+                "setup": "glm", "proposal": "glm",
+                "alignment": "glm", "implementation": "glm",
+                "escalation_model": "glm",
+                "escalation_triggers": {},
+            }))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.mailbox_send",
+            MagicMock())
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner._run_alignment_check_with_retries",
+            MagicMock(return_value=None))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.collect_modified_files",
+            MagicMock(return_value=[]))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.write_model_choice_signal",
+            MagicMock())
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.summarize_output",
+            MagicMock(return_value="summary"))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.read_incoming_notes",
+            MagicMock(return_value=""))
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner._check_needs_microstrategy",
+            MagicMock(return_value=False))
+
+        run_section(planspace, planspace / "codespace", section, "parent")
+
+        # Assert blocker was written
+        blocker_path = (artifacts / "signals"
+                        / "section-06-post-impl-blocker.json")
+        assert blocker_path.exists(), (
+            "post-impl-blocker.json must be written on bridge failure"
+        )
+        blocker = json.loads(blocker_path.read_text())
+        assert blocker["state"] == "needs_parent"
+
+
+# ── R44/V2: Scan validation signal parsing fail-closed ───────────
+
+
+class TestScanValidationSignalFailClosed:
+    """R44/V2: Malformed scan validation signals don't write skip-hash."""
+
+    EXPLORATION_PY = (PROJECT_ROOT / "src" / "scripts" / "scan"
+                      / "exploration.py")
+
+    def test_malformed_json_warns(self) -> None:
+        """Malformed signal JSON must emit [EXPLORE][WARN]."""
+        src = self.EXPLORATION_PY.read_text(encoding="utf-8")
+        assert "[EXPLORE][WARN]" in src, (
+            "exploration.py must emit [EXPLORE][WARN] on malformed "
+            "related-files update signal"
+        )
+
+    def test_malformed_json_sets_write_hash_false(self) -> None:
+        """Malformed signal JSON must set write_hash = False."""
+        src = self.EXPLORATION_PY.read_text(encoding="utf-8")
+        lines = src.splitlines()
+        # Find the except block for JSONDecodeError in
+        # _validate_existing_related_files
+        in_validate = False
+        found_write_hash_false = False
+        for i, line in enumerate(lines):
+            if "def _validate_existing_related_files" in line:
+                in_validate = True
+            elif in_validate and line.startswith("def "):
+                break
+            elif (in_validate
+                  and "json.JSONDecodeError" in line
+                  and "OSError" in line
+                  and "exc" in line):
+                # Check the except block for write_hash = False
+                block = "\n".join(lines[i:i + 15])
+                if "write_hash = False" in block:
+                    found_write_hash_false = True
+                    break
+        assert found_write_hash_false, (
+            "exploration.py malformed signal except block must set "
+            "write_hash = False to prevent skip-hash write"
+        )
+
+    def test_malformed_json_preserved_as_malformed(self) -> None:
+        """Malformed signal must be renamed to .malformed.json."""
+        src = self.EXPLORATION_PY.read_text(encoding="utf-8")
+        lines = src.splitlines()
+        in_validate = False
+        found_malformed_rename = False
+        for i, line in enumerate(lines):
+            if "def _validate_existing_related_files" in line:
+                in_validate = True
+            elif in_validate and line.startswith("def "):
+                break
+            elif in_validate and ".malformed.json" in line:
+                found_malformed_rename = True
+                break
+        assert found_malformed_rename, (
+            "exploration.py must rename malformed signal to "
+            ".malformed.json for diagnosis"
+        )
+
+    def test_unknown_status_sets_write_hash_false(self) -> None:
+        """Unknown status value must set write_hash = False."""
+        src = self.EXPLORATION_PY.read_text(encoding="utf-8")
+        lines = src.splitlines()
+        in_validate = False
+        found_unknown_status_guard = False
+        for i, line in enumerate(lines):
+            if "def _validate_existing_related_files" in line:
+                in_validate = True
+            elif in_validate and line.startswith("def "):
+                break
+            elif in_validate and "Unknown status" in line:
+                # Check surrounding block for both the warning and
+                # write_hash = False
+                block = "\n".join(lines[i:i + 10])
+                if ("write_hash = False" in block
+                        and "unexpected" in block):
+                    found_unknown_status_guard = True
+                    break
+        assert found_unknown_status_guard, (
+            "exploration.py must set write_hash = False on unknown "
+            "signal status values"
+        )
+
+    def test_malformed_json_no_hash_write_unit(self, tmp_path: Path) -> None:
+        """Malformed signal JSON prevents hash write."""
+        from scan.exploration import _validate_existing_related_files
+
+        # Set up directory structure
+        section_file = tmp_path / "section-01.md"
+        section_file.write_text("# Section 01\n\n## Related Files\n")
+        codemap = tmp_path / "codemap.md"
+        codemap.write_text("# Codemap\n")
+        artifacts = tmp_path / "artifacts"
+        signals_dir = artifacts / "signals"
+        signals_dir.mkdir(parents=True)
+        scan_log = tmp_path / "scan-log"
+        sec_log = scan_log / "section-01"
+        sec_log.mkdir(parents=True)
+        corrections = artifacts / "signals" / "codemap-corrections.json"
+
+        # Write malformed signal
+        signal_file = signals_dir / "section-01-related-files-update.json"
+        signal_file.write_text("{bad json", encoding="utf-8")
+
+        # Mock dispatch to succeed
+        import types
+        from unittest.mock import MagicMock
+
+        mock_result = types.SimpleNamespace(returncode=0)
+        import scan.exploration as expl_mod
+        orig = expl_mod.dispatch_agent
+        expl_mod.dispatch_agent = MagicMock(return_value=mock_result)
+        try:
+            _validate_existing_related_files(
+                section_file=section_file,
+                section_name="section-01",
+                codemap_path=codemap,
+                codespace=tmp_path,
+                artifacts_dir=artifacts,
+                scan_log_dir=scan_log,
+                corrections_file=corrections,
+                model_policy={"validation": "claude-opus"},
+            )
+        finally:
+            expl_mod.dispatch_agent = orig
+
+        # Assert hash NOT written (codemap-hash.txt should not exist
+        # or should contain the old value)
+        hash_file = sec_log / "codemap-hash.txt"
+        assert not hash_file.exists(), (
+            "codemap-hash.txt must NOT be written when signal is "
+            "malformed"
+        )
+
+    def test_malformed_json_preserved_unit(self, tmp_path: Path) -> None:
+        """Malformed signal renamed to .malformed.json."""
+        from scan.exploration import _validate_existing_related_files
+
+        section_file = tmp_path / "section-02.md"
+        section_file.write_text("# Section 02\n\n## Related Files\n")
+        codemap = tmp_path / "codemap.md"
+        codemap.write_text("# Codemap\n")
+        artifacts = tmp_path / "artifacts"
+        signals_dir = artifacts / "signals"
+        signals_dir.mkdir(parents=True)
+        scan_log = tmp_path / "scan-log"
+        sec_log = scan_log / "section-02"
+        sec_log.mkdir(parents=True)
+        corrections = artifacts / "signals" / "codemap-corrections.json"
+
+        signal_file = signals_dir / "section-02-related-files-update.json"
+        signal_file.write_text("{bad json", encoding="utf-8")
+
+        import types
+        from unittest.mock import MagicMock
+
+        mock_result = types.SimpleNamespace(returncode=0)
+        import scan.exploration as expl_mod
+        orig = expl_mod.dispatch_agent
+        expl_mod.dispatch_agent = MagicMock(return_value=mock_result)
+        try:
+            _validate_existing_related_files(
+                section_file=section_file,
+                section_name="section-02",
+                codemap_path=codemap,
+                codespace=tmp_path,
+                artifacts_dir=artifacts,
+                scan_log_dir=scan_log,
+                corrections_file=corrections,
+                model_policy={"validation": "claude-opus"},
+            )
+        finally:
+            expl_mod.dispatch_agent = orig
+
+        malformed = signals_dir / "section-02-related-files-update.malformed.json"
+        assert malformed.exists(), (
+            "Malformed signal must be preserved as .malformed.json"
+        )
+        assert malformed.read_text() == "{bad json"
+
+    def test_unknown_status_no_hash_write_unit(
+        self, tmp_path: Path,
+    ) -> None:
+        """Unknown status value prevents hash write."""
+        from scan.exploration import _validate_existing_related_files
+
+        section_file = tmp_path / "section-03.md"
+        section_file.write_text("# Section 03\n\n## Related Files\n")
+        codemap = tmp_path / "codemap.md"
+        codemap.write_text("# Codemap\n")
+        artifacts = tmp_path / "artifacts"
+        signals_dir = artifacts / "signals"
+        signals_dir.mkdir(parents=True)
+        scan_log = tmp_path / "scan-log"
+        sec_log = scan_log / "section-03"
+        sec_log.mkdir(parents=True)
+        corrections = artifacts / "signals" / "codemap-corrections.json"
+
+        signal_file = signals_dir / "section-03-related-files-update.json"
+        signal_file.write_text(
+            json.dumps({"status": "garbage"}), encoding="utf-8")
+
+        import types
+        from unittest.mock import MagicMock
+
+        mock_result = types.SimpleNamespace(returncode=0)
+        import scan.exploration as expl_mod
+        orig = expl_mod.dispatch_agent
+        expl_mod.dispatch_agent = MagicMock(return_value=mock_result)
+        try:
+            _validate_existing_related_files(
+                section_file=section_file,
+                section_name="section-03",
+                codemap_path=codemap,
+                codespace=tmp_path,
+                artifacts_dir=artifacts,
+                scan_log_dir=scan_log,
+                corrections_file=corrections,
+                model_policy={"validation": "claude-opus"},
+            )
+        finally:
+            expl_mod.dispatch_agent = orig
+
+        hash_file = sec_log / "codemap-hash.txt"
+        assert not hash_file.exists(), (
+            "codemap-hash.txt must NOT be written when signal status "
+            "is unknown"
+        )
+
+    def test_valid_stale_status_writes_hash_unit(
+        self, tmp_path: Path,
+    ) -> None:
+        """Valid stale status with successful apply still writes hash."""
+        from scan.exploration import _validate_existing_related_files
+
+        section_file = tmp_path / "section-04.md"
+        section_file.write_text(
+            "# Section 04\n\n## Related Files\n\n"
+            "### src/old_file\nSome context.\n"
+        )
+        codemap = tmp_path / "codemap.md"
+        codemap.write_text("# Codemap\n")
+        artifacts = tmp_path / "artifacts"
+        signals_dir = artifacts / "signals"
+        signals_dir.mkdir(parents=True)
+        scan_log = tmp_path / "scan-log"
+        sec_log = scan_log / "section-04"
+        sec_log.mkdir(parents=True)
+        corrections = artifacts / "signals" / "codemap-corrections.json"
+
+        # Write a "stale" signal with an addition
+        signal_file = signals_dir / "section-04-related-files-update.json"
+        signal_file.write_text(json.dumps({
+            "status": "stale",
+            "removals": [],
+            "additions": ["src/new_file"],
+        }), encoding="utf-8")
+
+        import types
+        from unittest.mock import MagicMock
+
+        mock_result = types.SimpleNamespace(returncode=0)
+        import scan.exploration as expl_mod
+        orig = expl_mod.dispatch_agent
+        expl_mod.dispatch_agent = MagicMock(return_value=mock_result)
+        try:
+            _validate_existing_related_files(
+                section_file=section_file,
+                section_name="section-04",
+                codemap_path=codemap,
+                codespace=tmp_path,
+                artifacts_dir=artifacts,
+                scan_log_dir=scan_log,
+                corrections_file=corrections,
+                model_policy={"validation": "claude-opus"},
+            )
+        finally:
+            expl_mod.dispatch_agent = orig
+
+        hash_file = sec_log / "codemap-hash.txt"
+        assert hash_file.exists(), (
+            "codemap-hash.txt must be written when stale status "
+            "successfully applied"
         )
