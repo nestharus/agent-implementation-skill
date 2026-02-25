@@ -380,8 +380,11 @@ LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
                 return "needs_parent", detail
             if state in ("out_of_scope", "out-of-scope"):
                 return "out_of_scope", detail
-    except (json.JSONDecodeError, KeyError):
-        pass
+    except (json.JSONDecodeError, KeyError) as exc:
+        print(
+            f"[ADJUDICATOR][WARN] Malformed adjudicator verdict JSON "
+            f"({exc}) — treating as unrecognized signal",
+        )
     return None, ""
 
 

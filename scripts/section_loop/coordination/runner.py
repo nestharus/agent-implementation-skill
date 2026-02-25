@@ -204,7 +204,9 @@ def run_global_coordination(
                     if delta.get("adjudicated"):
                         continue
                     pending_deltas.append(delta)
-                except (json.JSONDecodeError, OSError):
+                except (json.JSONDecodeError, OSError) as exc:
+                    log(f"  coordinator: WARNING — malformed scope-delta "
+                        f"{df.name} ({exc}), skipping")
                     continue
 
             if pending_deltas:

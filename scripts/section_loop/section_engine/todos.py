@@ -108,8 +108,12 @@ Write a JSON signal to: `{signal_path}`
         try:
             data = json.loads(signal_path.read_text(encoding="utf-8"))
             return data.get("needs_microstrategy", False) is True
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            print(
+                f"[MICROSTRATEGY][WARN] Section {section_number}: "
+                f"malformed signal after primary attempt ({exc}) "
+                f"— retrying with escalation model",
+            )
 
     # Retry with escalation model (R34/V3: fail-closed microstrategy)
     escalation_output = (
@@ -125,8 +129,12 @@ Write a JSON signal to: `{signal_path}`
         try:
             data = json.loads(signal_path.read_text(encoding="utf-8"))
             return data.get("needs_microstrategy", False) is True
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            print(
+                f"[MICROSTRATEGY][WARN] Section {section_number}: "
+                f"malformed signal after escalation attempt ({exc}) "
+                f"— defaulting to fail-closed (needs microstrategy)",
+            )
 
     # Both attempts failed — fail-closed: default to more strategy
     fallback = {

@@ -167,7 +167,11 @@ def _route_scope_deltas(
         for fb_file in sorted(sec_log_dir.glob("deep-*-feedback.json")):
             try:
                 data = json.loads(fb_file.read_text())
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                print(
+                    f"[SCOPE][WARN] Malformed feedback JSON in "
+                    f"scope-delta routing: {fb_file} ({exc})",
+                )
                 continue
             for item in data.get("out_of_scope", []):
                 if isinstance(item, str) and item.strip():
@@ -253,7 +257,11 @@ def _apply_feedback(
         for fb_file in sorted(sec_log_dir.glob("deep-*-feedback.json")):
             try:
                 data = json.loads(fb_file.read_text())
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                print(
+                    f"[FEEDBACK][WARN] Malformed feedback JSON in "
+                    f"apply_feedback: {fb_file} ({exc})",
+                )
                 continue
 
             # Skip entries with missing required fields
@@ -371,7 +379,11 @@ def _apply_feedback(
         try:
             sig_data = json.loads(updater_signal.read_text())
             status = sig_data.get("status", "")
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            print(
+                f"[FEEDBACK][WARN] Malformed updater signal: "
+                f"{updater_signal} ({exc})",
+            )
             continue
 
         if status == "stale":

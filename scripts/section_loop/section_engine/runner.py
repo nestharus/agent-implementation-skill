@@ -434,8 +434,10 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                     try:
                         signal_payload = json.loads(
                             setup_sig_path.read_text(encoding="utf-8"))
-                    except (json.JSONDecodeError, OSError):
-                        pass
+                    except (json.JSONDecodeError, OSError) as exc:
+                        log(f"Section {section.number}: WARNING — "
+                            f"malformed setup signal ({exc}), scope-delta "
+                            f"will lack payload enrichment")
                 scope_delta = {
                     "section": section.number,
                     "signal": "out_of_scope",
@@ -708,8 +710,10 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                 try:
                     cycle_budget.update(json.loads(
                         cycle_budget_path.read_text(encoding="utf-8")))
-                except (json.JSONDecodeError, OSError):
-                    pass
+                except (json.JSONDecodeError, OSError) as exc:
+                    log(f"Section {section.number}: WARNING — "
+                        f"malformed cycle-budget.json ({exc}), "
+                        f"keeping previous budget")
         tag = "revise " if proposal_problems else ""
         log(f"Section {section.number}: {tag}integration proposal "
             f"(attempt {proposal_attempt})")
@@ -797,8 +801,10 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                     try:
                         signal_payload = json.loads(
                             proposal_sig_path.read_text(encoding="utf-8"))
-                    except (json.JSONDecodeError, OSError):
-                        pass
+                    except (json.JSONDecodeError, OSError) as exc:
+                        log(f"Section {section.number}: WARNING — "
+                            f"malformed proposal signal ({exc}), "
+                            f"scope-delta will lack payload enrichment")
                 scope_delta = {
                     "section": section.number,
                     "signal": "out_of_scope",
@@ -1063,8 +1069,10 @@ WHY — you're capturing WHAT and WHERE at the file level.
                 try:
                     cycle_budget.update(json.loads(
                         cycle_budget_path.read_text(encoding="utf-8")))
-                except (json.JSONDecodeError, OSError):
-                    pass
+                except (json.JSONDecodeError, OSError) as exc:
+                    log(f"Section {section.number}: WARNING — "
+                        f"malformed cycle-budget.json ({exc}), "
+                        f"keeping previous budget")
 
         tag = "fix " if impl_problems else ""
         log(f"Section {section.number}: {tag}strategic implementation "
