@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48, R49).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -4744,3 +4744,127 @@ class TestImpactAnalysisCommentModel:
         else:
             # If no Stage B line found, that's also fine (comment was removed)
             pass
+
+
+# ── R49 ─────────────────────────────────────────────────────────────
+
+
+class TestCodemapFreshnessPreservation:
+    """R49: codemap freshness signal uses corruption-preservation."""
+
+    def test_dict_type_check(self):
+        """codemap.py must validate freshness signal is a dict."""
+        from pathlib import Path
+        codemap_path = (Path(__file__).resolve().parent.parent
+                        / "src" / "scripts" / "scan" / "codemap.py")
+        content = codemap_path.read_text(encoding="utf-8")
+        assert "isinstance(data, dict)" in content, (
+            "codemap.py freshness signal parse must check "
+            "isinstance(data, dict)")
+
+    def test_malformed_rename(self):
+        """codemap.py must rename malformed freshness signal."""
+        from pathlib import Path
+        codemap_path = (Path(__file__).resolve().parent.parent
+                        / "src" / "scripts" / "scan" / "codemap.py")
+        content = codemap_path.read_text(encoding="utf-8")
+        idx = content.find("freshness_signal.is_file()")
+        assert idx != -1, "Could not find freshness signal parse"
+        region = content[idx:idx + 1200]
+        assert ".malformed.json" in region, (
+            "codemap.py freshness signal parse must rename malformed "
+            "files to .malformed.json")
+
+
+class TestProjectModePreservation:
+    """R49: project-mode JSON parse uses corruption-preservation."""
+
+    def test_both_sites_preserve(self):
+        """main.py must rename malformed project-mode.json at both sites."""
+        from pathlib import Path
+        main_path = (Path(__file__).resolve().parent.parent
+                     / "src" / "scripts" / "section_loop" / "main.py")
+        content = main_path.read_text(encoding="utf-8")
+        # Count .malformed.json occurrences near mode_json_path references
+        lines = content.splitlines()
+        preserve_count = 0
+        for i, line in enumerate(lines):
+            if ".malformed.json" in line and "mode_json_path" in lines[max(0,i-3):i+1][0] if lines[max(0,i-3):i+1] else False:
+                preserve_count += 1
+        # Simpler: just count .malformed.json in the mode-parsing region
+        mode_start = content.find("# Read project mode from structured JSON")
+        mode_end = content.find("log(f\"Project mode:")
+        assert mode_start != -1 and mode_end != -1
+        mode_region = content[mode_start:mode_end]
+        count = mode_region.count(".malformed.json")
+        assert count >= 2, (
+            f"main.py must preserve malformed project-mode.json at both "
+            f"parse sites (found {count} preservation renames, need >= 2)")
+
+
+class TestTriageSignalPreservation:
+    """R49: triage signal parse uses corruption-preservation."""
+
+    def test_triage_except_preserves(self):
+        """runner.py triage signal except must not be bare pass."""
+        from pathlib import Path
+        runner_path = (Path(__file__).resolve().parent.parent
+                       / "src" / "scripts" / "section_loop"
+                       / "section_engine" / "runner.py")
+        content = runner_path.read_text(encoding="utf-8")
+        idx = content.find("# Read triage signal")
+        assert idx != -1, "Could not find triage signal region"
+        region = content[idx:idx + 1300]
+        assert "triage signal" in region and ".malformed.json" in region, (
+            "runner.py triage signal outer except must rename to "
+            ".malformed.json instead of bare pass")
+
+
+class TestFrictionSignalPreservation:
+    """R49: friction signal parse uses corruption-preservation."""
+
+    def test_friction_except_preserves(self):
+        """runner.py friction signal except must preserve malformed file."""
+        from pathlib import Path
+        runner_path = (Path(__file__).resolve().parent.parent
+                       / "src" / "scripts" / "section_loop"
+                       / "section_engine" / "runner.py")
+        content = runner_path.read_text(encoding="utf-8")
+        idx = content.find("Step 3c: Detect tooling friction")
+        assert idx != -1, "Could not find friction signal region"
+        region = content[idx:idx + 1000]
+        assert ".malformed.json" in region, (
+            "runner.py friction signal except must rename malformed "
+            "file to .malformed.json")
+
+
+class TestBridgeSignalPreservation:
+    """R49: bridge signal parse uses corruption-preservation."""
+
+    def test_primary_verification_preserves(self):
+        """runner.py primary bridge verification must preserve malformed."""
+        from pathlib import Path
+        runner_path = (Path(__file__).resolve().parent.parent
+                       / "src" / "scripts" / "section_loop"
+                       / "section_engine" / "runner.py")
+        content = runner_path.read_text(encoding="utf-8")
+        idx = content.find("V1/R43: Verify bridge-tools output")
+        assert idx != -1, "Could not find bridge verification region"
+        region = content[idx:idx + 1200]
+        assert ".malformed.json" in region, (
+            "runner.py primary bridge signal except must rename to "
+            ".malformed.json")
+
+    def test_escalation_verification_preserves(self):
+        """runner.py post-escalation bridge verification must preserve."""
+        from pathlib import Path
+        runner_path = (Path(__file__).resolve().parent.parent
+                       / "src" / "scripts" / "section_loop"
+                       / "section_engine" / "runner.py")
+        content = runner_path.read_text(encoding="utf-8")
+        idx = content.find("Re-check after escalation")
+        assert idx != -1, "Could not find escalation re-check region"
+        region = content[idx:idx + 1300]
+        assert ".malformed.json" in region, (
+            "runner.py post-escalation bridge signal except must rename "
+            "to .malformed.json")

@@ -210,8 +210,29 @@ def _run_freshness_check(
     if result.returncode == 0 and freshness_signal.is_file():
         try:
             data = json.loads(freshness_signal.read_text())
-            rebuild = data.get("rebuild", True)
-        except (json.JSONDecodeError, OSError):
+            if not isinstance(data, dict):
+                print(
+                    f"[CODEMAP][WARN] Freshness signal at "
+                    f"{freshness_signal} is not a JSON object "
+                    f"— renaming to .malformed.json")
+                try:
+                    freshness_signal.rename(
+                        freshness_signal.with_suffix(".malformed.json"))
+                except OSError:
+                    pass
+                rebuild = True
+            else:
+                rebuild = data.get("rebuild", True)
+        except (json.JSONDecodeError, OSError) as exc:
+            print(
+                f"[CODEMAP][WARN] Malformed freshness signal at "
+                f"{freshness_signal} ({exc}) "
+                f"— renaming to .malformed.json")
+            try:
+                freshness_signal.rename(
+                    freshness_signal.with_suffix(".malformed.json"))
+            except OSError:
+                pass
             rebuild = True
 
         if str(rebuild).lower() == "false" or rebuild is False:

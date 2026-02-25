@@ -296,8 +296,15 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                                 reported = collect_modified_files(
                                     planspace, section, codespace)
                                 return reported if reported else []
-            except (json.JSONDecodeError, OSError):
-                pass  # Fall through to full processing
+            except (json.JSONDecodeError, OSError) as exc:
+                log(f"Section {section.number}: triage signal "
+                    f"malformed ({exc}) — preserving and falling "
+                    f"through to full processing")
+                try:
+                    triage_signal_path.rename(
+                        triage_signal_path.with_suffix(".malformed.json"))
+                except OSError:
+                    pass  # Best-effort preserve
 
     # -----------------------------------------------------------------
     # Step 0b: Surface section-relevant tools from tool registry
@@ -1461,11 +1468,17 @@ WHY — you're capturing WHAT and WHERE at the file level.
             friction = json.loads(
                 friction_signal_path.read_text(encoding="utf-8"))
             tool_friction_detected = friction.get("friction", False)
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
             # File existence is the signal attempt — treat malformed
             # JSON as friction detected (fail closed).
-            log(f"Section {section.number}: friction signal file exists "
-                f"but failed to parse — treating as friction detected")
+            try:
+                friction_signal_path.rename(
+                    friction_signal_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass  # Best-effort preserve
+            log(f"Section {section.number}: friction signal malformed "
+                f"({exc}) — preserved as .malformed.json, treating "
+                f"as friction detected")
             tool_friction_detected = True
 
     if tool_friction_detected and tool_registry_path.exists():
@@ -1550,8 +1563,14 @@ with JSON:
                     if (bridge_data["status"] == "no_action"
                             or proposal_path.exists()):
                         bridge_valid = True
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                log(f"Section {section.number}: bridge signal "
+                    f"malformed ({exc}) — preserving")
+                try:
+                    bridge_signal_path.rename(
+                        bridge_signal_path.with_suffix(".malformed.json"))
+                except OSError:
+                    pass  # Best-effort preserve
 
         if not bridge_valid:
             log(f"Section {section.number}: bridge signal missing or "
@@ -1582,8 +1601,16 @@ with JSON:
                         if (bridge_data["status"] == "no_action"
                                 or proposal_path.exists()):
                             bridge_valid = True
-                except (json.JSONDecodeError, OSError):
-                    pass
+                except (json.JSONDecodeError, OSError) as exc:
+                    log(f"Section {section.number}: bridge signal "
+                        f"malformed after escalation ({exc}) "
+                        f"— preserving")
+                    try:
+                        bridge_signal_path.rename(
+                            bridge_signal_path.with_suffix(
+                                ".malformed.json"))
+                    except OSError:
+                        pass  # Best-effort preserve
 
         # -- R44/V1: Wire bridge outputs into downstream channels --
         if bridge_valid:

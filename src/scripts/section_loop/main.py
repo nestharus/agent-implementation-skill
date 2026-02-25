@@ -141,9 +141,14 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             project_mode = mode_data.get("mode", "brownfield")
             mode_constraints = mode_data.get("constraints", [])
             mode_source = "JSON signal"
-        except (json.JSONDecodeError, OSError):
-            log("project-mode.json exists but failed to parse — "
-                "trying text fallback")
+        except (json.JSONDecodeError, OSError) as exc:
+            try:
+                mode_json_path.rename(
+                    mode_json_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass  # Best-effort preserve
+            log(f"project-mode.json malformed ({exc}) — "
+                "preserved as .malformed.json, trying text fallback")
             if mode_txt_path.exists():
                 project_mode = mode_txt_path.read_text(
                     encoding="utf-8").strip()
@@ -176,7 +181,14 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 project_mode = mode_data.get("mode", "brownfield")
                 mode_constraints = mode_data.get("constraints", [])
                 mode_source = "JSON signal (post-resume)"
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                try:
+                    mode_json_path.rename(
+                        mode_json_path.with_suffix(".malformed.json"))
+                except OSError:
+                    pass  # Best-effort preserve
+                log(f"project-mode.json malformed after resume ({exc}) "
+                    "— preserved as .malformed.json, trying text fallback")
                 if mode_txt_path.exists():
                     project_mode = mode_txt_path.read_text(
                         encoding="utf-8").strip()
