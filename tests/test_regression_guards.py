@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -51,10 +51,12 @@ R45/V4: Microstrategy pre-existing signal malformed — renamed and re-dispatche
 R46/V1: Completion gate must check outstanding cross-section problems.
 R46/V2: Tool surface must be rebuilt after registry repair.
 R46/V3: read_signal_tuple preserves corrupted files as .malformed.json.
+R47/V1: Lint scripts use WORKFLOW_HOME for layout portability (no hardcoded src/ paths).
 """
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -547,10 +549,12 @@ class TestLintAuditLanguage:
 
     def test_lint_audit_language_passes(self) -> None:
         import subprocess
+        env = {**os.environ, "WORKFLOW_HOME": "src"}
         result = subprocess.run(
             ["bash", str(LINT_SH)],
             capture_output=True, text=True,
             cwd=str(PROJECT_ROOT),
+            env=env,
         )
         assert result.returncode == 0, (
             f"lint-audit-language.sh failed:\n{result.stdout}\n{result.stderr}"
@@ -567,10 +571,12 @@ class TestLintDocDrift:
 
     def test_lint_doc_drift_passes(self) -> None:
         import subprocess
+        env = {**os.environ, "WORKFLOW_HOME": "src"}
         result = subprocess.run(
             ["bash", str(DOC_DRIFT_LINT_SH)],
             capture_output=True, text=True,
             cwd=str(PROJECT_ROOT),
+            env=env,
         )
         assert result.returncode == 0, (
             f"lint-doc-drift.sh failed:\n{result.stdout}\n{result.stderr}"
@@ -4549,3 +4555,51 @@ class TestReadSignalTupleCorruptionPreservation:
         # Original should remain (not renamed)
         assert signal.exists()
         assert not (tmp_path / "signal.malformed.json").exists()
+
+
+class TestLintScriptsLayoutPortable:
+    """R47: Lint scripts must use WORKFLOW_HOME, not hardcoded src/ paths."""
+
+    @staticmethod
+    def _operational_lines(content: str) -> str:
+        """Return non-comment, non-blank lines of a shell script."""
+        return "\n".join(
+            line for line in content.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+
+    def test_lint_audit_language_no_hardcoded_src(self):
+        script = PROJECT_ROOT / "src" / "scripts" / "lint-audit-language.sh"
+        content = script.read_text()
+        # Should use WORKFLOW_HOME, not REPO_ROOT/src/
+        assert "WORKFLOW_HOME" in content, (
+            "lint-audit-language.sh must use WORKFLOW_HOME for layout portability"
+        )
+        ops = self._operational_lines(content)
+        assert "/src/" not in ops, (
+            "lint-audit-language.sh must not hardcode /src/ paths in operational lines"
+        )
+
+    def test_lint_doc_drift_no_hardcoded_src(self):
+        script = PROJECT_ROOT / "src" / "scripts" / "lint-doc-drift.sh"
+        content = script.read_text()
+        assert "WORKFLOW_HOME" in content, (
+            "lint-doc-drift.sh must use WORKFLOW_HOME for layout portability"
+        )
+        ops = self._operational_lines(content)
+        assert "/src/" not in ops, (
+            "lint-doc-drift.sh must not hardcode /src/ paths in operational lines"
+        )
+
+    def test_implement_md_lint_reference_exists(self):
+        """implement.md references lint-audit-language.sh -- verify it exists."""
+        impl = PROJECT_ROOT / "src" / "implement.md"
+        content = impl.read_text()
+        # Extract the script path referenced in implement.md
+        match = re.search(r"`scripts/(lint-[^`]+\.sh)`", content)
+        assert match, "implement.md should reference a lint script"
+        script_name = match.group(1)
+        script_path = PROJECT_ROOT / "src" / "scripts" / script_name
+        assert script_path.exists(), (
+            f"implement.md references scripts/{script_name} but it doesn't exist"
+        )

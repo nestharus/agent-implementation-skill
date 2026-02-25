@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Lint: detect "feature coverage audit" language in docs/prompts.
 # Exits non-zero if prohibited patterns found outside anti-pattern sections.
+#
+# Layout-portable: uses WORKFLOW_HOME env var to locate skill content root.
+#   Dev repo:  WORKFLOW_HOME=src ./src/scripts/lint-audit-language.sh
+#   Deployed:  ./scripts/lint-audit-language.sh  (WORKFLOW_HOME defaults to .)
 set -euo pipefail
 
-REPO_ROOT="${1:-.}"
+WH="${WORKFLOW_HOME:-.}"
 EXIT_CODE=0
 
 # Search for prohibited patterns
@@ -21,8 +25,8 @@ done < <(grep -rn -i \
   --include="*.md" --include="*.py" \
   --exclude="alignment-judge.md" \
   --exclude="qa-monitor.md" \
-  "$REPO_ROOT/src/agents" "$REPO_ROOT/src/scripts" "$REPO_ROOT/src/models.md" \
-  "$REPO_ROOT/src/implement.md" "$REPO_ROOT/src/SKILL.md" 2>/dev/null || true)
+  "$WH/agents" "$WH/scripts" "$WH/models.md" \
+  "$WH/implement.md" "$WH/SKILL.md" 2>/dev/null || true)
 
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "[LINT] No prohibited audit-framing language found."

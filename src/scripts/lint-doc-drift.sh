@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Lint: detect superseded behavior claims in docs/templates.
 # Exits non-zero if known-wrong phrases reappear.
+#
+# Layout-portable: uses WORKFLOW_HOME env var to locate skill content root.
+#   Dev repo:  WORKFLOW_HOME=src ./src/scripts/lint-doc-drift.sh
+#   Deployed:  ./scripts/lint-doc-drift.sh  (WORKFLOW_HOME defaults to .)
 set -euo pipefail
 
-REPO_ROOT="${1:-.}"
+WH="${WORKFLOW_HOME:-.}"
 EXIT_CODE=0
 
-# Phrases that describe superseded behavior. Each is a regex pattern
-# matched case-insensitively. These phrases were accurate in earlier
-# iterations but now conflict with the implemented validation approach.
 BANNED_PHRASES=(
   "its exploration is skipped"
   "skip codemap exploration"
@@ -22,8 +23,8 @@ for phrase in "${BANNED_PHRASES[@]}"; do
   done < <(grep -rn -i \
     -e "$phrase" \
     --include="*.md" \
-    "$REPO_ROOT/src/implement.md" "$REPO_ROOT/src/SKILL.md" \
-    "$REPO_ROOT/src/scripts/task-agent-prompt.md" 2>/dev/null || true)
+    "$WH/implement.md" "$WH/SKILL.md" \
+    "$WH/scripts/task-agent-prompt.md" 2>/dev/null || true)
 done
 
 if [ "$EXIT_CODE" -eq 0 ]; then
