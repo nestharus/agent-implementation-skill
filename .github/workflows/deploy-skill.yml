@@ -32,9 +32,6 @@ jobs:
           find public -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
           find public -name '*.pyc' -delete 2>/dev/null || true
 
-          # Deploy .gitignore
-          printf '__pycache__/\n*.pyc\n' > public/.gitignore
-
       - name: Commit and push
         run: |
           cd public
