@@ -49,8 +49,8 @@ import pytest
 
 # Resolve project root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SCAN_PKG = PROJECT_ROOT / "scripts" / "scan"
-AGENTS_DIR = PROJECT_ROOT / "agents"
+SCAN_PKG = PROJECT_ROOT / "src" / "scripts" / "scan"
+AGENTS_DIR = PROJECT_ROOT / "src" / "agents"
 
 
 def _read_scan_sources() -> str:
@@ -327,7 +327,7 @@ class TestGreenfieldPauseLabel:
     def test_greenfield_blocker_and_pause_consistent(self) -> None:
         """main.py greenfield path: blocker signal and mailbox message
         must both use needs_parent."""
-        main_path = PROJECT_ROOT / "scripts" / "section_loop" / "main.py"
+        main_path = PROJECT_ROOT / "src" / "scripts" / "section_loop" / "main.py"
         content = main_path.read_text()
 
         # Blocker signal uses needs_parent
@@ -413,7 +413,7 @@ class TestTargetedRequeue:
 
         # main.py writes baseline hash after completed.add(sec_num).
         # Verify the main.py code path writes to this directory.
-        main_path = PROJECT_ROOT / "scripts" / "section_loop" / "main.py"
+        main_path = PROJECT_ROOT / "src" / "scripts" / "section_loop" / "main.py"
         content = main_path.read_text()
         assert "section-inputs-hashes" in content, \
             "main.py must write baseline hashes to section-inputs-hashes/"
@@ -518,8 +518,8 @@ class TestCodemapCorrectionsInPrompts:
         assert "codemap-corrections.json" in prompt
 
 
-LINT_SH = PROJECT_ROOT / "scripts" / "lint-audit-language.sh"
-DOC_DRIFT_LINT_SH = PROJECT_ROOT / "scripts" / "lint-doc-drift.sh"
+LINT_SH = PROJECT_ROOT / "src" / "scripts" / "lint-audit-language.sh"
+DOC_DRIFT_LINT_SH = PROJECT_ROOT / "src" / "scripts" / "lint-doc-drift.sh"
 
 
 class TestLintAuditLanguage:
@@ -569,45 +569,45 @@ class TestLintDocDrift:
 # and 24.
 SKILL_MD_MANIFEST = [
     # Root-level docs
-    "SKILL.md",
-    "implement.md",
-    "research.md",
-    "rca.md",
-    "evaluate.md",
-    "baseline.md",
-    "audit.md",
-    "constraints.md",
-    "models.md",
+    "src/SKILL.md",
+    "src/implement.md",
+    "src/research.md",
+    "src/rca.md",
+    "src/evaluate.md",
+    "src/baseline.md",
+    "src/audit.md",
+    "src/constraints.md",
+    "src/models.md",
     # Scripts
-    "scripts/workflow.sh",
-    "scripts/db.sh",
-    "scripts/scan.sh",
-    "scripts/section-loop.py",
+    "src/scripts/workflow.sh",
+    "src/scripts/db.sh",
+    "src/scripts/scan.sh",
+    "src/scripts/section-loop.py",
     # Tools
-    "tools/extract-docstring-py",
-    "tools/extract-summary-md",
-    "tools/README.md",
+    "src/tools/extract-docstring-py",
+    "src/tools/extract-summary-md",
+    "src/tools/README.md",
     # Agents
-    "agents/orchestrator.md",
-    "agents/monitor.md",
-    "agents/qa-monitor.md",
-    "agents/agent-monitor.md",
-    "agents/state-detector.md",
-    "agents/exception-handler.md",
-    "agents/microstrategy-writer.md",
-    "agents/section-re-explorer.md",
-    "agents/setup-excerpter.md",
-    "agents/bridge-agent.md",
+    "src/agents/orchestrator.md",
+    "src/agents/monitor.md",
+    "src/agents/qa-monitor.md",
+    "src/agents/agent-monitor.md",
+    "src/agents/state-detector.md",
+    "src/agents/exception-handler.md",
+    "src/agents/microstrategy-writer.md",
+    "src/agents/section-re-explorer.md",
+    "src/agents/setup-excerpter.md",
+    "src/agents/bridge-agent.md",
     # Templates
-    "templates/implement-proposal.md",
-    "templates/research-cycle.md",
-    "templates/rca-cycle.md",
+    "src/templates/implement-proposal.md",
+    "src/templates/research-cycle.md",
+    "src/templates/rca-cycle.md",
 ]
 
 # Additionally, implement.md references tools/README.md as the tool
 # interface spec.  Already covered above but kept explicit.
 IMPLEMENT_MD_TOOL_REFS = [
-    "tools/README.md",
+    "src/tools/README.md",
 ]
 
 
@@ -886,7 +886,7 @@ class TestAlignmentTemplateJsonVerdict:
         from pathlib import Path
         template = (
             Path(__file__).resolve().parent.parent
-            / "scripts" / "section_loop" / "prompts" / "templates"
+            / "src" / "scripts" / "section_loop" / "prompts" / "templates"
             / "integration-alignment.md"
         ).read_text(encoding="utf-8")
         assert "structured JSON verdict" in template.lower() or \
@@ -899,7 +899,7 @@ class TestAlignmentTemplateJsonVerdict:
         from pathlib import Path
         template = (
             Path(__file__).resolve().parent.parent
-            / "scripts" / "section_loop" / "prompts" / "templates"
+            / "src" / "scripts" / "section_loop" / "prompts" / "templates"
             / "implementation-alignment.md"
         ).read_text(encoding="utf-8")
         assert "structured JSON verdict" in template.lower() or \
@@ -911,7 +911,7 @@ class TestAlignmentTemplateJsonVerdict:
 
 # ---------- Round 30 guards ----------
 
-SECTION_LOOP_PKG = PROJECT_ROOT / "scripts" / "section_loop"
+SECTION_LOOP_PKG = PROJECT_ROOT / "src" / "scripts" / "section_loop"
 
 
 class TestModelPolicyConsistency:
@@ -1101,7 +1101,7 @@ class TestProblemFrameInAlignmentSurface:
         """Integration proposal and strategic impl templates include
         {problem_frame_ref} placeholder."""
         templates_dir = (
-            PROJECT_ROOT / "scripts" / "section_loop" / "prompts" / "templates"
+            PROJECT_ROOT / "src" / "scripts" / "section_loop" / "prompts" / "templates"
         )
         for template_name in (
             "integration-proposal.md",
@@ -1240,7 +1240,7 @@ class TestCoordinationPlanNoScriptGrouping:
     """Coordination plan parse failure must retry + fail closed,
     never fall back to script-constructed one-problem-per-group."""
 
-    RUNNER = (PROJECT_ROOT / "scripts" / "section_loop"
+    RUNNER = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
               / "coordination" / "runner.py")
 
     def test_no_one_problem_per_group_fallback(self) -> None:
@@ -1281,10 +1281,10 @@ class TestEscalationModelPolicyDriven:
     """Hard-coded model strings in escalation file writes and fix
     model defaults must use policy lookups instead."""
 
-    RUNNER = (PROJECT_ROOT / "scripts" / "section_loop"
+    RUNNER = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
               / "coordination" / "runner.py")
-    MAIN = PROJECT_ROOT / "scripts" / "section_loop" / "main.py"
-    EXECUTION = (PROJECT_ROOT / "scripts" / "section_loop"
+    MAIN = PROJECT_ROOT / "src" / "scripts" / "section_loop" / "main.py"
+    EXECUTION = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                  / "coordination" / "execution.py")
 
     def test_no_hardcoded_escalation_model_in_runner(self) -> None:
@@ -1333,10 +1333,10 @@ class TestInvalidFrameNoRetry:
     """When alignment judge returns frame_ok=false, the system must
     surface upward (INVALID_FRAME) instead of retrying."""
 
-    ALIGNMENT = (PROJECT_ROOT / "scripts" / "section_loop"
+    ALIGNMENT = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                  / "alignment.py")
-    MAIN = PROJECT_ROOT / "scripts" / "section_loop" / "main.py"
-    COORD_RUNNER = (PROJECT_ROOT / "scripts" / "section_loop"
+    MAIN = PROJECT_ROOT / "src" / "scripts" / "section_loop" / "main.py"
+    COORD_RUNNER = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                     / "coordination" / "runner.py")
 
     def test_alignment_returns_invalid_frame_sentinel(self) -> None:
@@ -1383,7 +1383,7 @@ class TestFeedbackSignalAcked:
     """After applying a related-files update, the signal status must
     be updated from 'stale' to 'applied' or 'no_change'."""
 
-    FEEDBACK = PROJECT_ROOT / "scripts" / "scan" / "feedback.py"
+    FEEDBACK = PROJECT_ROOT / "src" / "scripts" / "scan" / "feedback.py"
 
     def test_signal_status_updated_after_apply(self) -> None:
         """feedback.py must update signal status after application."""
@@ -1496,7 +1496,7 @@ class TestSignalInstructionsNoFallback:
     """Signal instructions template must not imply the script reads
     a backup text line. JSON is the only truth channel."""
 
-    TEMPLATE = (PROJECT_ROOT / "scripts" / "section_loop" / "prompts"
+    TEMPLATE = (PROJECT_ROOT / "src" / "scripts" / "section_loop" / "prompts"
                 / "templates" / "signal-instructions.md")
 
     def test_no_backup_channel_language(self) -> None:
@@ -1577,7 +1577,7 @@ class TestLoopContractCompleteness:
     """loop-contract.md must list all inputs that _section_inputs_hash
     actually includes."""
 
-    CONTRACT = PROJECT_ROOT / "loop-contract.md"
+    CONTRACT = PROJECT_ROOT / "src" / "loop-contract.md"
 
     def test_contract_lists_all_hashed_inputs(self) -> None:
         """Every major input in _section_inputs_hash must be named."""
@@ -1616,7 +1616,7 @@ class TestToolRegistryFailClosed:
     3. Write blocker signal if repair fails
     """
 
-    RUNNER = (PROJECT_ROOT / "scripts" / "section_loop"
+    RUNNER = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
               / "section_engine" / "runner.py")
 
     def test_malformed_registry_removes_stale_surface(self) -> None:
@@ -1654,7 +1654,7 @@ class TestPostImplToolRegistryRepair:
     """Step 3b must not silently pass on malformed post-impl registry.
     It must dispatch repair and fail-closed if repair fails."""
 
-    RUNNER = (PROJECT_ROOT / "scripts" / "section_loop"
+    RUNNER = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
               / "section_engine" / "runner.py")
 
     def test_no_silent_pass_on_malformed(self) -> None:
@@ -1765,7 +1765,7 @@ class TestTemplateModelParameterized:
     """Prompt templates must not embed fixed model names. They must
     use placeholders injected from model policy."""
 
-    TEMPLATES_DIR = (PROJECT_ROOT / "scripts" / "section_loop"
+    TEMPLATES_DIR = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                      / "prompts" / "templates")
 
     def test_no_hardcoded_model_in_dispatch_examples(self) -> None:
@@ -1890,7 +1890,7 @@ class TestTemplateModelParameterized:
 class TestReexploreModelParameterized:
     """reexplore.py delegation instructions must not hardcode model names."""
 
-    REEXPLORE = (PROJECT_ROOT / "scripts" / "section_loop"
+    REEXPLORE = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                  / "section_engine" / "reexplore.py")
 
     def test_no_hardcoded_model_in_prompt_text(self) -> None:
@@ -1913,7 +1913,7 @@ class TestReexploreModelParameterized:
 
     def test_caller_passes_exploration_model(self) -> None:
         """main.py must pass exploration_model from policy."""
-        main_path = PROJECT_ROOT / "scripts" / "section_loop" / "main.py"
+        main_path = PROJECT_ROOT / "src" / "scripts" / "section_loop" / "main.py"
         src = main_path.read_text(encoding="utf-8")
         assert 'exploration_model=policy["exploration"]' in src, (
             "main.py must pass exploration_model from policy to "
@@ -1928,7 +1928,7 @@ class TestReexploreModelParameterized:
 class TestCoordinationFixPromptModelParameterized:
     """Coordination fix prompt must not hardcode model names."""
 
-    EXECUTION = (PROJECT_ROOT / "scripts" / "section_loop"
+    EXECUTION = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                  / "coordination" / "execution.py")
 
     def test_no_hardcoded_glm_in_prompt_text(self) -> None:
@@ -1983,17 +1983,17 @@ class TestNoHardcodedModelInPromptSurfaces:
     added that embed model names instead of using policy injection.
     """
 
-    TEMPLATES_DIR = (PROJECT_ROOT / "scripts" / "section_loop"
+    TEMPLATES_DIR = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                      / "prompts" / "templates")
-    SCAN_TEMPLATES_DIR = PROJECT_ROOT / "scripts" / "scan" / "templates"
+    SCAN_TEMPLATES_DIR = PROJECT_ROOT / "src" / "scripts" / "scan" / "templates"
 
     # All prompt builder source files that construct agent instructions
     PROMPT_BUILDER_FILES = [
-        PROJECT_ROOT / "scripts" / "section_loop" / "section_engine" / "reexplore.py",
-        PROJECT_ROOT / "scripts" / "section_loop" / "coordination" / "execution.py",
-        PROJECT_ROOT / "scripts" / "section_loop" / "coordination" / "planning.py",
-        PROJECT_ROOT / "scripts" / "section_loop" / "prompts" / "writers.py",
-        PROJECT_ROOT / "scripts" / "section_loop" / "prompts" / "context.py",
+        PROJECT_ROOT / "src" / "scripts" / "section_loop" / "section_engine" / "reexplore.py",
+        PROJECT_ROOT / "src" / "scripts" / "section_loop" / "coordination" / "execution.py",
+        PROJECT_ROOT / "src" / "scripts" / "section_loop" / "coordination" / "planning.py",
+        PROJECT_ROOT / "src" / "scripts" / "section_loop" / "prompts" / "writers.py",
+        PROJECT_ROOT / "src" / "scripts" / "section_loop" / "prompts" / "context.py",
     ]
 
     KNOWN_MODELS = [
@@ -2054,14 +2054,14 @@ class TestCodexDispatchUsesFile:
     """
 
     STRATEGIC_IMPL_TEMPLATE = (
-        PROJECT_ROOT / "scripts" / "section_loop" / "prompts"
+        PROJECT_ROOT / "src" / "scripts" / "section_loop" / "prompts"
         / "templates" / "strategic-implementation.md"
     )
     COORDINATION_EXECUTION = (
-        PROJECT_ROOT / "scripts" / "section_loop" / "coordination"
+        PROJECT_ROOT / "src" / "scripts" / "section_loop" / "coordination"
         / "execution.py"
     )
-    IMPLEMENT_MD = PROJECT_ROOT / "implement.md"
+    IMPLEMENT_MD = PROJECT_ROOT / "src" / "implement.md"
 
     def test_strategic_impl_template_uses_file(self) -> None:
         """strategic-implementation.md delegated impl recipe uses --file."""
@@ -2128,12 +2128,12 @@ class TestSignalTaxonomySynchronized:
     """
 
     SIGNAL_INSTRUCTIONS = (
-        PROJECT_ROOT / "scripts" / "section_loop" / "prompts"
+        PROJECT_ROOT / "src" / "scripts" / "section_loop" / "prompts"
         / "templates" / "signal-instructions.md"
     )
-    LOOP_CONTRACT = PROJECT_ROOT / "loop-contract.md"
+    LOOP_CONTRACT = PROJECT_ROOT / "src" / "loop-contract.md"
     BLOCKERS_PY = (
-        PROJECT_ROOT / "scripts" / "section_loop" / "section_engine"
+        PROJECT_ROOT / "src" / "scripts" / "section_loop" / "section_engine"
         / "blockers.py"
     )
 
@@ -2180,13 +2180,13 @@ class TestScopeDeltaAdjudicationParsing:
     """R37/V1: Scope-delta adjudication parsing is robust with retry
     + fail-closed — mirrors the coordination-plan pattern."""
 
-    RUNNER_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+    RUNNER_PY = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                  / "coordination" / "runner.py")
 
     def test_parser_code_fenced_json(self) -> None:
         """_parse_scope_delta_adjudication handles code-fenced JSON."""
         import sys
-        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "scripts"))
         from section_loop.coordination.runner import (
             _parse_scope_delta_adjudication,
         )
@@ -2203,7 +2203,7 @@ class TestScopeDeltaAdjudicationParsing:
     def test_parser_bare_json(self) -> None:
         """_parse_scope_delta_adjudication handles bare JSON."""
         import sys
-        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "scripts"))
         from section_loop.coordination.runner import (
             _parse_scope_delta_adjudication,
         )
@@ -2220,7 +2220,7 @@ class TestScopeDeltaAdjudicationParsing:
     def test_parser_rejects_invalid_action(self) -> None:
         """_parse_scope_delta_adjudication rejects unknown actions."""
         import sys
-        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "scripts"))
         from section_loop.coordination.runner import (
             _parse_scope_delta_adjudication,
         )
@@ -2234,7 +2234,7 @@ class TestScopeDeltaAdjudicationParsing:
     def test_section_normalization(self, tmp_path: Path) -> None:
         """_normalize_section_id maps '3' → '03' when delta exists."""
         import sys
-        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        sys.path.insert(0, str(PROJECT_ROOT / "src" / "scripts"))
         from section_loop.coordination.runner import (
             _normalize_section_id,
         )
@@ -2278,7 +2278,7 @@ class TestEscalationLogUsesPolicy:
     """R37/V2: Recurrence escalation log and resolution artifacts
     must use policy-driven model name, not hardcoded literals."""
 
-    RUNNER_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+    RUNNER_PY = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                  / "coordination" / "runner.py")
 
     def test_escalation_log_no_hardcoded_model(self) -> None:
@@ -2351,7 +2351,7 @@ class TestScanTemplatesExtensionNeutral:
     """R37/V4: Scan prompt templates must not use .py file extensions
     in examples — supports any-language codebases."""
 
-    SCAN_TEMPLATES = PROJECT_ROOT / "scripts" / "scan" / "templates"
+    SCAN_TEMPLATES = PROJECT_ROOT / "src" / "scripts" / "scan" / "templates"
 
     # These templates had .py examples that were neutralized
     TEMPLATE_FILES = [
@@ -2385,7 +2385,7 @@ class TestBlockerSignalFailClosed:
     """R38/V1: Malformed blocker signal must route as needs_parent
     (fail-closed), not fall through to misaligned code-fix dispatch."""
 
-    PROBLEMS_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+    PROBLEMS_PY = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                    / "coordination" / "problems.py")
 
     def test_no_silent_pass_on_blocker_parse_error(self) -> None:
@@ -2475,7 +2475,7 @@ class TestCoordToolRegistryWarning:
     """R38/V2: Malformed tool registry in coordination fix prompt
     must surface a warning block, not silently omit tools."""
 
-    EXECUTION_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+    EXECUTION_PY = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                     / "coordination" / "execution.py")
 
     def test_no_silent_pass_on_registry_error(self) -> None:
@@ -2512,7 +2512,7 @@ class TestNoteContentByPath:
     """R38/V3: Coordinator problems must reference note files by
     path, not inline note content into problem descriptions."""
 
-    PROBLEMS_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+    PROBLEMS_PY = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                    / "coordination" / "problems.py")
 
     def test_no_inline_note_content(self) -> None:
@@ -2547,7 +2547,7 @@ class TestNoteAckPreservesCorrupted:
     """R38/V4: Malformed note-ack files must be preserved for
     diagnosis, not silently overwritten."""
 
-    RUNNER_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+    RUNNER_PY = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                  / "section_engine" / "runner.py")
 
     def test_no_silent_pass_on_ack_parse_error(self) -> None:
@@ -2572,7 +2572,7 @@ class TestScheduleTemplateModelName:
     """R39/V1: Schedule template must use the primary model name and
     include a policy-override note."""
 
-    TEMPLATE = PROJECT_ROOT / "templates" / "implement-proposal.md"
+    TEMPLATE = PROJECT_ROOT / "src" / "templates" / "implement-proposal.md"
 
     def test_no_high2_model_in_schedule(self) -> None:
         """implement-proposal.md must not reference gpt-5.3-codex-high2."""
@@ -2607,7 +2607,7 @@ class TestBlockerRollupMalformedSignal:
     """R39/V2: Blocker rollup must not silently drop malformed signal
     files — they should appear in the rollup."""
 
-    BLOCKERS_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+    BLOCKERS_PY = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                    / "section_engine" / "blockers.py")
 
     def test_no_silent_continue_on_parse_error(self) -> None:
@@ -2650,7 +2650,7 @@ class TestTraceabilityPreservesCorrupted:
     """R39/V3: Traceability log must preserve corrupted files instead
     of silently resetting to empty."""
 
-    COMM_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+    COMM_PY = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                / "communication.py")
 
     def test_no_silent_reset_on_parse_error(self) -> None:
@@ -2685,7 +2685,7 @@ class TestScopeDeltaPreservesCorrupted:
     """R40/V1: Scope-delta routing must preserve malformed scope-delta
     files instead of silently overwriting them."""
 
-    FEEDBACK_PY = PROJECT_ROOT / "scripts" / "scan" / "feedback.py"
+    FEEDBACK_PY = PROJECT_ROOT / "src" / "scripts" / "scan" / "feedback.py"
 
     def test_no_silent_overwrite_on_malformed(self) -> None:
         """feedback.py must not silently pass on malformed scope-delta."""
@@ -2766,7 +2766,7 @@ class TestNoteAckReadPathPreservesCorrupted:
     """R40/V2: cross_section.py read_incoming_notes must not silently
     ignore malformed note-ack JSON — must log warning and preserve."""
 
-    CROSS_SECTION_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+    CROSS_SECTION_PY = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
                         / "cross_section.py")
 
     def test_no_silent_pass_on_ack_parse_error(self) -> None:
@@ -2801,7 +2801,7 @@ class TestRelatedFilesUpdateWarning:
     """R40/V3: apply_related_files_update must print a warning when
     the signal JSON is malformed, not silently return False."""
 
-    EXPLORATION_PY = PROJECT_ROOT / "scripts" / "scan" / "exploration.py"
+    EXPLORATION_PY = PROJECT_ROOT / "src" / "scripts" / "scan" / "exploration.py"
 
     def test_emits_warning_on_malformed_signal(self) -> None:
         """exploration.py must print a warning on malformed signal."""
@@ -2828,7 +2828,7 @@ class TestDeepScanTierRankingFailure:
     """R41/V1: When tier ranking is unavailable, _scan_sections must set
     phase_failed=True and log a failure entry, not silently skip."""
 
-    DEEP_SCAN_PY = PROJECT_ROOT / "scripts" / "scan" / "deep_scan.py"
+    DEEP_SCAN_PY = PROJECT_ROOT / "src" / "scripts" / "scan" / "deep_scan.py"
 
     def test_no_tier_ranking_sets_phase_failed(self) -> None:
         """_scan_sections must set phase_failed when no scan_files."""
@@ -2881,7 +2881,7 @@ class TestExtractorToolsFailClosed:
     """R41/V2: Extractor tools must output ERROR on read/parse failures
     and exit non-zero, not conflate errors with 'NO DOCSTRING/SUMMARY'."""
 
-    TOOLS_DIR = PROJECT_ROOT / "tools"
+    TOOLS_DIR = PROJECT_ROOT / "src" / "tools"
 
     def test_extract_docstring_py_error_on_syntax_error(
         self, tmp_path: Path,

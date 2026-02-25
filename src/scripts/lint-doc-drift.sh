@@ -22,8 +22,8 @@ for phrase in "${BANNED_PHRASES[@]}"; do
   done < <(grep -rn -i \
     -e "$phrase" \
     --include="*.md" \
-    "$REPO_ROOT/implement.md" "$REPO_ROOT/SKILL.md" \
-    "$REPO_ROOT/scripts/task-agent-prompt.md" 2>/dev/null || true)
+    "$REPO_ROOT/src/implement.md" "$REPO_ROOT/src/SKILL.md" \
+    "$REPO_ROOT/src/scripts/task-agent-prompt.md" 2>/dev/null || true)
 done
 
 if [ "$EXIT_CODE" -eq 0 ]; then

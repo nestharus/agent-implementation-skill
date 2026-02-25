@@ -21,8 +21,8 @@ done < <(grep -rn -i \
   --include="*.md" --include="*.py" \
   --exclude="alignment-judge.md" \
   --exclude="qa-monitor.md" \
-  "$REPO_ROOT/agents" "$REPO_ROOT/scripts" "$REPO_ROOT/models.md" \
-  "$REPO_ROOT/implement.md" "$REPO_ROOT/SKILL.md" 2>/dev/null || true)
+  "$REPO_ROOT/src/agents" "$REPO_ROOT/src/scripts" "$REPO_ROOT/src/models.md" \
+  "$REPO_ROOT/src/implement.md" "$REPO_ROOT/src/SKILL.md" 2>/dev/null || true)
 
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "[LINT] No prohibited audit-framing language found."

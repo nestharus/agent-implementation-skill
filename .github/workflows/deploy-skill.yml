@@ -1,0 +1,49 @@
+name: Deploy Skill to Public Repo
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout dev repo
+        uses: actions/checkout@v4
+        with:
+          path: dev
+
+      - name: Checkout public repo
+        uses: actions/checkout@v4
+        with:
+          repository: oulipoly/agent-software-developer-skill
+          token: ${{ secrets.SKILL_DEPLOY_TOKEN }}
+          path: public
+
+      - name: Sync skill files
+        run: |
+          # Clear public repo (preserve .git and LICENSE)
+          find public -mindepth 1 -not -path 'public/.git*' \
+               -not -name 'LICENSE' -delete 2>/dev/null || true
+
+          # Copy src/ contents to public repo root
+          cp -r dev/src/* public/
+
+          # Clean Python cache
+          find public -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+          find public -name '*.pyc' -delete 2>/dev/null || true
+
+          # Deploy .gitignore
+          printf '__pycache__/\n*.pyc\n' > public/.gitignore
+
+      - name: Commit and push
+        run: |
+          cd public
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to deploy"
+          else
+            git commit -m "Deploy from nestharus/agent-implementation-skill@${GITHUB_SHA::7}"
+            git push
+          fi

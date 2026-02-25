@@ -14,7 +14,7 @@ import pytest
 
 # Resolve project root from this file's location (tests/ -> project root)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DB_SH = PROJECT_ROOT / "scripts" / "db.sh"
+DB_SH = PROJECT_ROOT / "src" / "scripts" / "db.sh"
 
 
 @pytest.fixture()
