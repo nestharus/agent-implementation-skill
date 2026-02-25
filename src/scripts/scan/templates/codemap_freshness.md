@@ -4,7 +4,7 @@ The codespace has changed since the codemap was last built.
 
 ## Files to Read
 1. Current codemap: `{codemap_path}`
-2. Codespace root: `{codespace}`
+2. Codespace root: `{codespace}`{corrections_ref}
 
 ## What Changed
 {change_description}
@@ -14,6 +14,9 @@ The codespace has changed since the codemap was last built.
 Quickly scan the codespace structure (list top-level dirs, check key files
 mentioned in the codemap's Routing Table). Determine whether the existing
 codemap is still a valid routing map or needs rebuilding.
+
+If codemap corrections exist, treat them as authoritative fixes to the
+codemap when judging whether routing is still valid.
 
 Write your decision as a structured JSON signal to `{freshness_signal}`:
 

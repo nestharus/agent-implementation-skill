@@ -684,8 +684,14 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         try:
             cycle_budget.update(
                 json.loads(cycle_budget_path.read_text(encoding="utf-8")))
-        except (json.JSONDecodeError, OSError):
-            pass  # Use defaults
+        except (json.JSONDecodeError, OSError) as exc:
+            log(f"Section {section.number}: cycle budget signal "
+                f"malformed ({exc}) — preserving and using defaults")
+            try:
+                cycle_budget_path.rename(
+                    cycle_budget_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass  # Best-effort preserve
 
     while True:
         # Check for pending messages between iterations

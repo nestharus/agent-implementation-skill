@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48, R49).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48, R49, R50).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -4868,3 +4868,101 @@ class TestBridgeSignalPreservation:
         assert ".malformed.json" in region, (
             "runner.py post-escalation bridge signal except must rename "
             "to .malformed.json")
+
+
+# ── R50 ──────────────────────────────────────────────────────────────
+
+
+class TestCodemapCorrectionsInFreshness:
+    """R50/V1: Codemap freshness verifier must include corrections overlay."""
+
+    def test_template_includes_corrections_ref(self):
+        """codemap_freshness.md must include {corrections_ref} placeholder."""
+        from pathlib import Path
+        tmpl_path = (Path(__file__).resolve().parent.parent
+                     / "src" / "scripts" / "scan" / "templates"
+                     / "codemap_freshness.md")
+        content = tmpl_path.read_text(encoding="utf-8")
+        assert "{corrections_ref}" in content, (
+            "codemap_freshness.md must include {corrections_ref} "
+            "placeholder in Files to Read section")
+
+    def test_template_has_corrections_instruction(self):
+        """codemap_freshness.md must instruct about corrections authority."""
+        from pathlib import Path
+        tmpl_path = (Path(__file__).resolve().parent.parent
+                     / "src" / "scripts" / "scan" / "templates"
+                     / "codemap_freshness.md")
+        content = tmpl_path.read_text(encoding="utf-8")
+        assert "corrections exist" in content.lower(), (
+            "codemap_freshness.md must instruct agent to treat "
+            "corrections as authoritative")
+
+    def test_codemap_py_injects_corrections(self):
+        """codemap.py must inject corrections_ref into freshness template."""
+        from pathlib import Path
+        codemap_path = (Path(__file__).resolve().parent.parent
+                        / "src" / "scripts" / "scan" / "codemap.py")
+        content = codemap_path.read_text(encoding="utf-8")
+        idx = content.find("def _run_freshness_check")
+        assert idx != -1, "Could not find _run_freshness_check definition"
+        region = content[idx:idx + 2000]
+        assert "corrections_ref" in region, (
+            "codemap.py _run_freshness_check must inject corrections_ref "
+            "into freshness template format call")
+        assert "codemap-corrections.json" in region, (
+            "codemap.py _run_freshness_check must reference "
+            "codemap-corrections.json")
+
+
+class TestCycleBudgetPreservation:
+    """R50/V2: Cycle budget initial read uses corruption-preservation."""
+
+    def test_cycle_budget_preserves_malformed(self):
+        """runner.py cycle budget initial read must preserve malformed."""
+        from pathlib import Path
+        runner_path = (Path(__file__).resolve().parent.parent
+                       / "src" / "scripts" / "section_loop"
+                       / "section_engine" / "runner.py")
+        content = runner_path.read_text(encoding="utf-8")
+        idx = content.find("Cycle budget: read per-section")
+        assert idx != -1, "Could not find cycle budget region"
+        region = content[idx:idx + 900]
+        assert ".malformed.json" in region, (
+            "runner.py cycle budget initial read except must rename "
+            "to .malformed.json")
+
+
+class TestRecurrenceSignalPreservation:
+    """R50/V3: Recurrence signal parsing uses corruption-preservation."""
+
+    def test_recurrence_preserves_malformed(self):
+        """problems.py load_recurrence_signals must preserve malformed."""
+        from pathlib import Path
+        problems_path = (Path(__file__).resolve().parent.parent
+                         / "src" / "scripts" / "section_loop"
+                         / "coordination" / "problems.py")
+        content = problems_path.read_text(encoding="utf-8")
+        idx = content.find("section-*-recurrence.json")
+        assert idx != -1, "Could not find recurrence glob pattern"
+        region = content[idx:idx + 500]
+        assert ".malformed.json" in region, (
+            "problems.py recurrence signal except must rename "
+            "to .malformed.json")
+
+
+class TestTierRankingPreservation:
+    """R50/V4: Invalid tier ranking preserved instead of deleted."""
+
+    def test_tier_preserves_instead_of_unlink(self):
+        """deep_scan.py must preserve invalid tier files, not delete."""
+        from pathlib import Path
+        deep_path = (Path(__file__).resolve().parent.parent
+                     / "src" / "scripts" / "scan" / "deep_scan.py")
+        content = deep_path.read_text(encoding="utf-8")
+        idx = content.find("Validate existing tier file")
+        assert idx != -1, "Could not find tier validation region"
+        region = content[idx:idx + 500]
+        assert ".malformed.json" in region, (
+            "deep_scan.py must rename invalid tier files to "
+            ".malformed.json instead of unlinking")

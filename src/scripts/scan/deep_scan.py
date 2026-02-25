@@ -211,9 +211,14 @@ def _run_tier_ranking(
         if not validate_tier_file(tier_file):
             print(
                 f"[TIER] {section_name}: existing tier file invalid "
-                "(missing scan_now or bad schema) — regenerating",
+                "(missing scan_now or bad schema) — preserving as "
+                ".malformed.json and regenerating",
             )
-            tier_file.unlink()
+            try:
+                tier_file.rename(
+                    tier_file.with_suffix(".malformed.json"))
+            except OSError:
+                tier_file.unlink()  # Fallback: remove if rename fails
         elif tier_inputs_sidecar.is_file() and tier_inputs_sidecar.read_text().strip() == tier_inputs_hash:
             return tier_file
         else:

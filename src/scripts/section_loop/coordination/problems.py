@@ -198,7 +198,13 @@ def _detect_recurrence_patterns(
             data = json.loads(sig_path.read_text(encoding="utf-8"))
             if data.get("recurring"):
                 recurring_sections.append(data)
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            log(f"Recurrence signal malformed at {sig_path} ({exc}) "
+                "— preserving as .malformed.json")
+            try:
+                sig_path.rename(sig_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass  # Best-effort preserve
             continue
 
     if not recurring_sections:

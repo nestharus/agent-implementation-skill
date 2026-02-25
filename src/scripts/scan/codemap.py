@@ -192,11 +192,21 @@ def _run_freshness_check(
             f"- Current fingerprint: {current_fp}"
         )
 
+    # Thread codemap corrections into freshness evaluation (P9/Thread #1)
+    corrections_path = artifacts_dir / "signals" / "codemap-corrections.json"
+    corrections_ref = ""
+    if corrections_path.is_file():
+        corrections_ref = (
+            f"\n3. Codemap corrections (authoritative fixes): "
+            f"`{corrections_path}`"
+        )
+
     prompt = _load_template("codemap_freshness.md").format(
         codemap_path=codemap_path,
         codespace=codespace,
         change_description=change_desc,
         freshness_signal=freshness_signal,
+        corrections_ref=corrections_ref,
     )
     freshness_prompt.write_text(prompt)
 
