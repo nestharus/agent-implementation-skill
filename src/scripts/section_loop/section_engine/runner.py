@@ -57,6 +57,42 @@ from .todos import _check_needs_microstrategy, _extract_todos_from_files
 from .traceability import _file_sha256, _write_traceability_index
 
 
+def _write_tool_surface(
+    all_tools: list, section_number: str,
+    tools_available_path: Path,
+) -> int:
+    """Filter and write section-relevant tools surface.
+
+    Returns the count of relevant tools written.
+    """
+    sec_key = f"section-{section_number}"
+    relevant_tools = [
+        t for t in all_tools
+        if t.get("scope") == "cross-section"
+        or t.get("created_by") == sec_key
+    ]
+    if relevant_tools:
+        lines = ["# Available Tools\n",
+                 "Cross-section and section-local tools:\n"]
+        for tool in relevant_tools:
+            path = tool.get("path", "unknown")
+            desc = tool.get("description", "")
+            scope = tool.get("scope", "section-local")
+            creator = tool.get("created_by", "unknown")
+            status = tool.get("status", "experimental")
+            tool_id = tool.get("id", "")
+            id_tag = f" id={tool_id}" if tool_id else ""
+            lines.append(
+                f"- `{path}` [{status}] ({scope}, "
+                f"from {creator}{id_tag}): {desc}")
+        tools_available_path.write_text(
+            "\n".join(lines) + "\n", encoding="utf-8",
+        )
+    elif tools_available_path.exists():
+        tools_available_path.unlink()
+    return len(relevant_tools)
+
+
 def run_section(
     planspace: Path, codespace: Path, section: Section, parent: str,
     all_sections: list[Section] | None = None,
@@ -278,38 +314,13 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             all_tools = (registry if isinstance(registry, list)
                          else registry.get("tools", []))
             pre_tool_total = len(all_tools)
-            # Filter to section-relevant: cross-section tools + tools
-            # created by this section (section-local from other sections
-            # are not surfaced)
-            sec_key = f"section-{section.number}"
-            relevant_tools = [
-                t for t in all_tools
-                if t.get("scope") == "cross-section"
-                or t.get("created_by") == sec_key
-            ]
-            if relevant_tools:
-                lines = ["# Available Tools\n",
-                         "Cross-section and section-local tools:\n"]
-                for tool in relevant_tools:
-                    path = tool.get("path", "unknown")
-                    desc = tool.get("description", "")
-                    scope = tool.get("scope", "section-local")
-                    creator = tool.get("created_by", "unknown")
-                    status = tool.get("status", "experimental")
-                    tool_id = tool.get("id", "")
-                    id_tag = f" id={tool_id}" if tool_id else ""
-                    lines.append(
-                        f"- `{path}` [{status}] ({scope}, "
-                        f"from {creator}{id_tag}): {desc}")
-                tools_available_path.write_text(
-                    "\n".join(lines) + "\n", encoding="utf-8",
-                )
-                log(f"Section {section.number}: {len(relevant_tools)} "
+            relevant_count = _write_tool_surface(
+                all_tools, section.number, tools_available_path,
+            )
+            if relevant_count:
+                log(f"Section {section.number}: {relevant_count} "
                     f"relevant tools (of {len(all_tools)} total)")
             elif tools_available_path.exists():
-                # No relevant tools — remove stale surface to prevent
-                # agents from reasoning over outdated tool context.
-                tools_available_path.unlink()
                 log(f"Section {section.number}: removed stale "
                     f"tools-available surface (no relevant tools)")
         except (json.JSONDecodeError, ValueError) as exc:
@@ -353,6 +364,13 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                 pre_tool_total = len(all_tools)
                 log(f"Section {section.number}: tool registry "
                     f"repaired ({len(all_tools)} tools)")
+                # Rebuild tool surface after successful repair
+                relevant_count = _write_tool_surface(
+                    all_tools, section.number, tools_available_path,
+                )
+                if relevant_count:
+                    log(f"Section {section.number}: rebuilt tools "
+                        f"surface ({relevant_count} relevant tools)")
             except (json.JSONDecodeError, ValueError):
                 log(f"Section {section.number}: tool registry "
                     f"repair failed — writing blocker signal")

@@ -982,6 +982,17 @@ Reply with a JSON block:
     # Check if everything is now aligned
     remaining = [r for r in section_results.values() if not r.aligned]
     if not remaining:
+        # Re-check outstanding problems (notes may have been generated
+        # during coordination fixes).
+        outstanding_after = _collect_outstanding_problems(
+            section_results, sections_by_num, planspace,
+        )
+        if outstanding_after:
+            outstanding_types = [p["type"] for p in outstanding_after]
+            log(f"  coordinator: all sections aligned but "
+                f"{len(outstanding_after)} outstanding problems "
+                f"remain (types: {outstanding_types})")
+            return False
         log("  coordinator: all sections now ALIGNED")
         return True
 

@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -48,6 +48,9 @@ R45/V1: Bridge-tools post-escalation verification checks proposal existence.
 R45/V2: Tool digest regeneration triggers on registry creation (not just modification).
 R45/V3: read_agent_signal() preserves malformed JSON as .malformed.json.
 R45/V4: Microstrategy pre-existing signal malformed — renamed and re-dispatched.
+R46/V1: Completion gate must check outstanding cross-section problems.
+R46/V2: Tool surface must be rebuilt after registry repair.
+R46/V3: read_signal_tuple preserves corrupted files as .malformed.json.
 """
 
 import hashlib
@@ -4268,3 +4271,281 @@ class TestMicrostrategySignalCorruptionPreservation:
             "After renaming malformed signal, dispatch must be called "
             "to produce fresh microstrategy decision"
         )
+
+
+# =====================================================================
+# R46/V1: Completion gate must check outstanding problems
+# =====================================================================
+
+class TestCompletionGateOutstandingProblems:
+    """R46/V1: Completion gate must check outstanding problems."""
+
+    def test_main_loop_blocks_on_unaddressed_notes(self, tmp_path):
+        """Main loop doesn't exit 'complete' when unaddressed notes exist."""
+        from section_loop.coordination.problems import (
+            _collect_outstanding_problems,
+        )
+        from section_loop.types import Section, SectionResult
+
+        planspace = tmp_path / "plan"
+        planspace.mkdir()
+
+        # Create two sections — both aligned
+        section_results = {
+            "01": SectionResult(section_number="01", aligned=True),
+            "02": SectionResult(section_number="02", aligned=True),
+        }
+        sections_by_num = {
+            "01": Section(
+                number="01", path=tmp_path / "s01.md",
+                related_files=["auth.py"],
+            ),
+            "02": Section(
+                number="02", path=tmp_path / "s02.md",
+                related_files=["db.py"],
+            ),
+        }
+
+        # Create an unaddressed note from 01 to 02
+        notes_dir = planspace / "artifacts" / "notes"
+        notes_dir.mkdir(parents=True)
+        note = notes_dir / "from-01-to-02.md"
+        note.write_text(
+            "# Consequence Note\n\n"
+            "**Note ID**: `01:abc123`\n\nChange auth flow.",
+            encoding="utf-8",
+        )
+        # No ack file — note is unaddressed
+
+        problems = _collect_outstanding_problems(
+            section_results, sections_by_num, planspace,
+        )
+        # Should find the unaddressed note
+        assert any(p["type"] == "unaddressed_note" for p in problems), (
+            f"Expected unaddressed_note problem, got: {problems}"
+        )
+
+    def test_coordinator_blocks_on_outstanding_after_alignment(
+        self, tmp_path,
+    ):
+        """Coordinator returns False when notes remain after all align."""
+        from section_loop.coordination.problems import (
+            _collect_outstanding_problems,
+        )
+        from section_loop.types import Section, SectionResult
+
+        planspace = tmp_path / "plan"
+        planspace.mkdir()
+
+        section_results = {
+            "01": SectionResult(section_number="01", aligned=True),
+            "02": SectionResult(section_number="02", aligned=True),
+        }
+        sections_by_num = {
+            "01": Section(
+                number="01", path=tmp_path / "s01.md",
+                related_files=[],
+            ),
+            "02": Section(
+                number="02", path=tmp_path / "s02.md",
+                related_files=[],
+            ),
+        }
+
+        # Unaddressed note
+        notes_dir = planspace / "artifacts" / "notes"
+        notes_dir.mkdir(parents=True)
+        (notes_dir / "from-01-to-02.md").write_text(
+            "# Note\n\n**Note ID**: `01:def456`\n\nSomething.",
+            encoding="utf-8",
+        )
+
+        problems = _collect_outstanding_problems(
+            section_results, sections_by_num, planspace,
+        )
+        assert len(problems) > 0
+        assert problems[0]["type"] == "unaddressed_note"
+
+    def test_completion_allowed_when_notes_acknowledged(self, tmp_path):
+        """Completion allowed when all notes are acknowledged."""
+        from section_loop.coordination.problems import (
+            _collect_outstanding_problems,
+        )
+        from section_loop.types import Section, SectionResult
+
+        planspace = tmp_path / "plan"
+        planspace.mkdir()
+
+        section_results = {
+            "01": SectionResult(section_number="01", aligned=True),
+            "02": SectionResult(section_number="02", aligned=True),
+        }
+        sections_by_num = {
+            "01": Section(
+                number="01", path=tmp_path / "s01.md",
+                related_files=[],
+            ),
+            "02": Section(
+                number="02", path=tmp_path / "s02.md",
+                related_files=[],
+            ),
+        }
+
+        # Create note
+        notes_dir = planspace / "artifacts" / "notes"
+        notes_dir.mkdir(parents=True)
+        (notes_dir / "from-01-to-02.md").write_text(
+            "# Note\n\n**Note ID**: `01:ghi789`\n\nDone.",
+            encoding="utf-8",
+        )
+
+        # Create ack
+        signals_dir = planspace / "artifacts" / "signals"
+        signals_dir.mkdir(parents=True)
+        (signals_dir / "note-ack-02.json").write_text(
+            json.dumps({
+                "acknowledged": [
+                    {"note_id": "01:ghi789", "action": "accepted"}
+                ]
+            }),
+            encoding="utf-8",
+        )
+
+        problems = _collect_outstanding_problems(
+            section_results, sections_by_num, planspace,
+        )
+        note_problems = [
+            p for p in problems if p["type"] == "unaddressed_note"
+        ]
+        assert not note_problems, (
+            f"Expected no unaddressed notes, got: {note_problems}"
+        )
+
+
+# =====================================================================
+# R46/V2: Tool surface must be rebuilt after registry repair
+# =====================================================================
+
+class TestToolSurfaceRebuiltAfterRepair:
+    """R46/V2: Tool surface must be rebuilt after registry repair."""
+
+    def test_surface_written_after_repair(self, tmp_path):
+        """After repair, relevant tools appear in tools-available file."""
+        from section_loop.section_engine.runner import _write_tool_surface
+
+        artifacts = tmp_path / "artifacts" / "sections"
+        artifacts.mkdir(parents=True)
+        tools_available = artifacts / "section-01-tools-available.md"
+
+        tools = [{
+            "id": "tool-1",
+            "path": "tools/helper.sh",
+            "scope": "cross-section",
+            "created_by": "section-02",
+            "status": "stable",
+            "description": "A helper tool",
+        }]
+
+        count = _write_tool_surface(tools, "01", tools_available)
+        assert tools_available.exists()
+        content = tools_available.read_text(encoding="utf-8")
+        assert "tools/helper.sh" in content
+        assert count == 1
+
+    def test_surface_cleared_when_no_relevant_after_repair(self, tmp_path):
+        """After repair with no relevant tools, surface is removed."""
+        from section_loop.section_engine.runner import _write_tool_surface
+
+        artifacts = tmp_path / "artifacts" / "sections"
+        artifacts.mkdir(parents=True)
+        tools_available = artifacts / "section-01-tools-available.md"
+        # Write stale surface
+        tools_available.write_text("# Old tools", encoding="utf-8")
+
+        # Registry with only section-02 local tools (not relevant to 01)
+        tools = [{
+            "id": "tool-1",
+            "path": "tools/helper.sh",
+            "scope": "section-local",
+            "created_by": "section-02",
+            "status": "stable",
+            "description": "A helper tool",
+        }]
+
+        count = _write_tool_surface(tools, "01", tools_available)
+        assert count == 0
+        assert not tools_available.exists()
+
+    def test_helper_includes_section_local_tools(self, tmp_path):
+        """Section-local tools from the same section are included."""
+        from section_loop.section_engine.runner import _write_tool_surface
+
+        artifacts = tmp_path / "artifacts" / "sections"
+        artifacts.mkdir(parents=True)
+        tools_available = artifacts / "section-03-tools-available.md"
+
+        tools = [{
+            "id": "tool-local",
+            "path": "tools/local.sh",
+            "scope": "section-local",
+            "created_by": "section-03",
+            "status": "experimental",
+            "description": "Local tool",
+        }]
+
+        count = _write_tool_surface(tools, "03", tools_available)
+        assert count == 1
+        assert tools_available.exists()
+        content = tools_available.read_text(encoding="utf-8")
+        assert "tools/local.sh" in content
+
+
+# =====================================================================
+# R46/V3: read_signal_tuple preserves corrupted files
+# =====================================================================
+
+class TestReadSignalTupleCorruptionPreservation:
+    """R46/V3: read_signal_tuple preserves corrupted files."""
+
+    def test_malformed_json_renamed(self, tmp_path):
+        """Malformed signal JSON is renamed to .malformed.json."""
+        from section_loop.dispatch import read_signal_tuple
+
+        signal = tmp_path / "signal.json"
+        signal.write_text("{bad json", encoding="utf-8")
+
+        state, detail = read_signal_tuple(signal)
+        assert state == "needs_parent"
+        assert "malformed" in detail.lower() or "Malformed" in detail
+        assert not signal.exists(), "Original should be renamed"
+        assert (tmp_path / "signal.malformed.json").exists()
+
+    def test_malformed_content_preserved(self, tmp_path):
+        """Renamed file preserves the corrupted content."""
+        from section_loop.dispatch import read_signal_tuple
+
+        signal = tmp_path / "signal.json"
+        bad_content = "{broken: content"
+        signal.write_text(bad_content, encoding="utf-8")
+
+        read_signal_tuple(signal)
+
+        preserved = tmp_path / "signal.malformed.json"
+        assert preserved.exists()
+        assert preserved.read_text(encoding="utf-8") == bad_content
+
+    def test_valid_json_not_renamed(self, tmp_path):
+        """Valid signal JSON is NOT renamed."""
+        from section_loop.dispatch import read_signal_tuple
+
+        signal = tmp_path / "signal.json"
+        signal.write_text(
+            json.dumps({"state": "needs_parent", "detail": "test"}),
+            encoding="utf-8",
+        )
+
+        state, detail = read_signal_tuple(signal)
+        assert state == "needs_parent"
+        # Original should remain (not renamed)
+        assert signal.exists()
+        assert not (tmp_path / "signal.malformed.json").exists()

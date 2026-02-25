@@ -22,6 +22,7 @@ from .coordination import (
     MIN_COORDINATION_ROUNDS,
     run_global_coordination,
 )
+from .coordination.problems import _collect_outstanding_problems
 from .cross_section import read_incoming_notes
 from .dispatch import (
     check_agent_signals,
@@ -624,22 +625,41 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             r for r in section_results.values() if not r.aligned
         ]
         if not misaligned:
-            # Final control-message drain — catch alignment_changed or
-            # abort that arrived during the last dispatch.
-            ctrl = poll_control_messages(planspace, parent)
-            if ctrl == "alignment_changed":
-                log("Alignment changed just before completion — "
-                    "restarting from Phase 1")
-                continue  # outer while True → restart Phase 1
-            log("=== All sections ALIGNED after initial pass ===")
-            mailbox_send(planspace, parent, "complete")
-            return
+            # Check for outstanding cross-section problems
+            # (unaddressed notes, conflicts) before declaring completion.
+            outstanding = _collect_outstanding_problems(
+                section_results, sections_by_num, planspace,
+            )
+            if outstanding:
+                outstanding_types = [p["type"] for p in outstanding]
+                log(f"{len(outstanding)} outstanding cross-section "
+                    f"problems remain (types: {outstanding_types}) — "
+                    f"cannot declare completion")
+                # Fall through to coordination to address outstanding
+            else:
+                # Final control-message drain — catch alignment_changed
+                # or abort that arrived during the last dispatch.
+                ctrl = poll_control_messages(planspace, parent)
+                if ctrl == "alignment_changed":
+                    log("Alignment changed just before completion — "
+                        "restarting from Phase 1")
+                    continue  # outer while True → restart Phase 1
+                log("=== All sections ALIGNED after initial pass ===")
+                mailbox_send(planspace, parent, "complete")
+                return
 
-        log(f"{len(misaligned)} sections need coordination: "
-            f"{sorted(r.section_number for r in misaligned)}")
+        # Include outstanding cross-section problems in unresolved count
+        # so stall detection works when misaligned=0 but notes exist.
+        outstanding_count = len(outstanding) if not misaligned else 0
+        if misaligned:
+            log(f"{len(misaligned)} sections need coordination: "
+                f"{sorted(r.section_number for r in misaligned)}")
+        else:
+            log(f"All sections aligned but {outstanding_count} "
+                f"outstanding cross-section problems need coordination")
 
         # Run the coordinator loop (adaptive: continues while improving)
-        prev_unresolved = len(misaligned)
+        prev_unresolved = len(misaligned) + outstanding_count
         stall_count = 0
         round_num = 0
         while round_num < MAX_COORDINATION_ROUNDS:
@@ -688,9 +708,18 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             remaining = [
                 r for r in section_results.values() if not r.aligned
             ]
-            cur_unresolved = len(remaining)
+            # Include outstanding problems in stall detection so
+            # note-only rounds aren't immediately marked as stalled.
+            remaining_outstanding = (
+                _collect_outstanding_problems(
+                    section_results, sections_by_num, planspace,
+                ) if not remaining else []
+            )
+            cur_unresolved = len(remaining) + len(remaining_outstanding)
             log(f"Coordination round {round_num}: "
-                f"{cur_unresolved} sections still unresolved "
+                f"{cur_unresolved} unresolved "
+                f"({len(remaining)} misaligned, "
+                f"{len(remaining_outstanding)} outstanding) "
                 f"(was {prev_unresolved})")
 
             # Adaptive termination: stop if not making progress

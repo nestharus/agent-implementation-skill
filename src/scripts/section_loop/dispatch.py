@@ -306,7 +306,16 @@ def read_signal_tuple(signal_path: Path) -> tuple[str | None, str]:
             f"failing closed. Original detail: {detail}"
         )
     except (json.JSONDecodeError, KeyError) as exc:
-        # Malformed signal — fail closed rather than silently ignoring
+        # Malformed signal — preserve corrupted file for diagnosis,
+        # then fail closed rather than silently ignoring.
+        print(
+            f"[SIGNAL][WARN] Malformed signal JSON at {signal_path} "
+            f"({exc}) — renaming to .malformed.json",
+        )
+        try:
+            signal_path.rename(signal_path.with_suffix(".malformed.json"))
+        except OSError:
+            pass
         return "needs_parent", (
             f"Malformed signal JSON at {signal_path} ({exc}) — "
             f"failing closed"
