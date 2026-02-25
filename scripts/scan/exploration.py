@@ -43,7 +43,11 @@ def apply_related_files_update(
 
     try:
         signal = json.loads(signal_file.read_text())
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        print(
+            f"[RELATED FILES][WARN] Malformed update signal: "
+            f"{signal_file} ({exc})",
+        )
         return False
 
     if signal.get("status") != "stale":

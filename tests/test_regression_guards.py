@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -2671,4 +2671,147 @@ class TestTraceabilityPreservesCorrupted:
         assert "malformed" in content and "starting fresh" in content, (
             "communication.py must log a warning about malformed "
             "traceability.json"
+        )
+
+
+# ── R40/V1: Scope-delta routing preserves corrupted files ────────
+
+
+class TestScopeDeltaPreservesCorrupted:
+    """R40/V1: Scope-delta routing must preserve malformed scope-delta
+    files instead of silently overwriting them."""
+
+    FEEDBACK_PY = PROJECT_ROOT / "scripts" / "scan" / "feedback.py"
+
+    def test_no_silent_overwrite_on_malformed(self) -> None:
+        """feedback.py must not silently pass on malformed scope-delta."""
+        content = self.FEEDBACK_PY.read_text(encoding="utf-8")
+        assert "malformed" in content and "scope-delta" in content, (
+            "feedback.py must handle malformed scope-delta with "
+            "preservation, not silent pass"
+        )
+
+    def test_preserves_with_rename(self) -> None:
+        """feedback.py must rename malformed scope-delta file."""
+        content = self.FEEDBACK_PY.read_text(encoding="utf-8")
+        assert "scope-delta.malformed.json" in content, (
+            "feedback.py must rename malformed scope-delta to "
+            ".malformed.json for diagnosis"
+        )
+
+    def test_emits_warning(self) -> None:
+        """feedback.py must print a WARN message on malformed scope-delta."""
+        content = self.FEEDBACK_PY.read_text(encoding="utf-8")
+        assert "[SCOPE][WARN]" in content, (
+            "feedback.py must emit [SCOPE][WARN] for malformed "
+            "scope-delta JSON"
+        )
+
+    def test_unit_malformed_scope_delta(self, tmp_path: Path) -> None:
+        """Malformed scope-delta is preserved and new delta written."""
+        from scan.feedback import _route_scope_deltas
+
+        sections_dir = tmp_path / "sections"
+        sections_dir.mkdir()
+        sec_file = sections_dir / "section-03.md"
+        sec_file.write_text("# Section 03")
+
+        artifacts = tmp_path / "artifacts"
+        scope_deltas_dir = artifacts / "scope-deltas"
+        scope_deltas_dir.mkdir(parents=True)
+        scan_log = tmp_path / "scan-log"
+        sec_log = scan_log / "section-03"
+        sec_log.mkdir(parents=True)
+
+        # Write a malformed scope-delta
+        delta_path = scope_deltas_dir / "section-03-scope-delta.json"
+        delta_path.write_text("{bad json", encoding="utf-8")
+
+        # Write a feedback file with out-of-scope items
+        fb = sec_log / "deep-01-feedback.json"
+        fb.write_text(json.dumps({
+            "relevant": True,
+            "source_file": "src/main",
+            "out_of_scope": ["new requirement X"],
+        }), encoding="utf-8")
+
+        _route_scope_deltas(
+            section_files=[sec_file],
+            artifacts_dir=artifacts,
+            scan_log_dir=scan_log,
+        )
+
+        # Malformed file should be preserved
+        malformed = scope_deltas_dir / "section-03-scope-delta.malformed.json"
+        assert malformed.exists(), (
+            "Malformed scope-delta must be preserved as .malformed.json"
+        )
+        assert malformed.read_text() == "{bad json"
+
+        # New delta should be written
+        assert delta_path.exists(), "New scope-delta must be written"
+        new_data = json.loads(delta_path.read_text())
+        assert new_data["section"] == "03"
+        assert "new requirement X" in new_data["items"]
+
+
+# ── R40/V2: Note-ack read-path preserves corrupted state ────────
+
+
+class TestNoteAckReadPathPreservesCorrupted:
+    """R40/V2: cross_section.py read_incoming_notes must not silently
+    ignore malformed note-ack JSON — must log warning and preserve."""
+
+    CROSS_SECTION_PY = (PROJECT_ROOT / "scripts" / "section_loop"
+                        / "cross_section.py")
+
+    def test_no_silent_pass_on_ack_parse_error(self) -> None:
+        """cross_section.py must not silently pass on malformed note-ack."""
+        content = self.CROSS_SECTION_PY.read_text(encoding="utf-8")
+        assert "malformed" in content and "note-ack" in content, (
+            "cross_section.py must handle malformed note-ack with "
+            "warning and preservation"
+        )
+
+    def test_preserves_with_rename(self) -> None:
+        """cross_section.py must rename malformed note-ack file."""
+        content = self.CROSS_SECTION_PY.read_text(encoding="utf-8")
+        assert ".malformed.json" in content, (
+            "cross_section.py must rename malformed note-ack to "
+            ".malformed.json for diagnosis"
+        )
+
+    def test_logs_warning(self) -> None:
+        """cross_section.py must log when note-ack is malformed."""
+        content = self.CROSS_SECTION_PY.read_text(encoding="utf-8")
+        assert "no acknowledgements" in content, (
+            "cross_section.py must log warning treating malformed "
+            "note-ack as no acknowledgements"
+        )
+
+
+# ── R40/V3: Related-files update signal warns on malformed JSON ──
+
+
+class TestRelatedFilesUpdateWarning:
+    """R40/V3: apply_related_files_update must print a warning when
+    the signal JSON is malformed, not silently return False."""
+
+    EXPLORATION_PY = PROJECT_ROOT / "scripts" / "scan" / "exploration.py"
+
+    def test_emits_warning_on_malformed_signal(self) -> None:
+        """exploration.py must print a warning on malformed signal."""
+        content = self.EXPLORATION_PY.read_text(encoding="utf-8")
+        assert "[RELATED FILES][WARN]" in content, (
+            "exploration.py must emit [RELATED FILES][WARN] for "
+            "malformed update signal JSON"
+        )
+
+    def test_still_returns_false(self) -> None:
+        """exploration.py must still return False on malformed signal."""
+        content = self.EXPLORATION_PY.read_text(encoding="utf-8")
+        # After the warning print, the function should return False
+        assert "return False" in content, (
+            "exploration.py must return False on malformed signal "
+            "after warning"
         )

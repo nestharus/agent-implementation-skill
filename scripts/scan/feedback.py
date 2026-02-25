@@ -188,8 +188,21 @@ def _route_scope_deltas(
                         "already adjudicated — skipping",
                     )
                     continue
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                # Preserve corrupted scope-delta for diagnosis
+                malformed_path = (
+                    scope_deltas_dir
+                    / f"section-{sec_num}-scope-delta.malformed.json"
+                )
+                try:
+                    delta_path.rename(malformed_path)
+                except OSError:
+                    pass  # Best-effort preserve
+                print(
+                    f"[SCOPE][WARN] section-{sec_num}: malformed "
+                    f"scope-delta JSON preserved as "
+                    f"{malformed_path.name} ({exc})",
+                )
 
         delta = {
             "section": sec_num,

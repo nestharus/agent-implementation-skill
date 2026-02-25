@@ -520,8 +520,18 @@ def read_incoming_notes(
                 action = entry.get("action", "accepted")
                 if nid and action in ("accepted", "deferred"):
                     resolved_ids.add(nid)
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            # Preserve corrupted note-ack for diagnosis
+            malformed_path = ack_path.with_suffix(".malformed.json")
+            try:
+                ack_path.rename(malformed_path)
+            except OSError:
+                pass  # Best-effort preserve
+            log(
+                f"Section {sec_num}: note-ack malformed ({exc}) — "
+                f"preserved as {malformed_path.name}, treating as "
+                f"no acknowledgements"
+            )
 
     log(f"Section {sec_num}: found {len(note_files)} incoming notes"
         + (f" ({len(resolved_ids)} resolved)" if resolved_ids else ""))
