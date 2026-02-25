@@ -21,8 +21,8 @@ jobs:
 
       - name: Sync skill files
         run: |
-          # Clear public repo (preserve .git and LICENSE)
-          find public -mindepth 1 -not -path 'public/.git*' \
+          # Clear public repo (preserve .git/ dir and LICENSE)
+          find public -mindepth 1 -not -path 'public/.git/*' -not -name '.git' \
                -not -name 'LICENSE' -delete 2>/dev/null || true
 
           # Copy src/ contents to public repo root
