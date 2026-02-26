@@ -18,12 +18,16 @@ def _walk_md_bounded(
     *,
     max_depth: int,
     exclude_top_dirs: frozenset[str] = frozenset(),
+    extensions: frozenset[str] = frozenset({".md"}),
 ):
-    """Yield ``*.md`` files under *root* with depth-bounded traversal.
+    """Yield files matching *extensions* under *root* with depth-bounded traversal.
 
     Uses ``os.walk`` with directory pruning so the full tree is never
     materialized.  Entries are sorted per-directory for determinism.
     *exclude_top_dirs* names are pruned at the first level only.
+
+    V4/R61: *extensions* parameter makes the walker agent-steerable
+    instead of hardcoding ``.md``.
     """
     if not root.is_dir():
         return
@@ -49,7 +53,7 @@ def _walk_md_bounded(
             continue
 
         for fname in sorted(filenames):
-            if fname.endswith(".md"):
+            if any(fname.endswith(ext) for ext in extensions):
                 yield Path(dirpath) / fname
 
 
@@ -60,12 +64,16 @@ def _build_philosophy_catalog(
     max_files: int = 50,
     max_size_kb: int = 100,
     max_depth: int = 3,
+    extensions: frozenset[str] = frozenset({".md"}),
 ) -> list[dict]:
     """Build a mechanical catalog of candidate philosophy source files.
 
     Uses depth-bounded directory walks (``os.walk`` with pruning) to
     avoid materializing the full file tree.  Per-root quotas guarantee
     codespace coverage.  Planspace ``artifacts/`` is excluded.
+
+    V4/R61: *extensions* parameter is agent-steerable — the source
+    selector can request additional extensions for a second walk.
 
     Returns a list of ``{path, size_kb, first_lines}`` entries.
     """
@@ -83,28 +91,29 @@ def _build_philosophy_catalog(
         (planspace, planspace_quota, frozenset({"artifacts"})),
     ):
         root_count = 0
-        for md_file in _walk_md_bounded(
+        for found_file in _walk_md_bounded(
             root_dir, max_depth=max_depth, exclude_top_dirs=exclude_top,
+            extensions=extensions,
         ):
             # Size check
             try:
-                size = md_file.stat().st_size
+                size = found_file.stat().st_size
             except OSError:
                 continue
             if size == 0 or size > max_size_kb * 1024:
                 continue
             # Dedup by resolved path
-            resolved = str(md_file.resolve())
+            resolved = str(found_file.resolve())
             if resolved in seen:
                 continue
             seen.add(resolved)
             # Read first N lines for catalog preview
             try:
-                lines = md_file.read_text(encoding="utf-8").splitlines()[:10]
+                lines = found_file.read_text(encoding="utf-8").splitlines()[:10]
             except (OSError, UnicodeDecodeError):
                 continue
             candidates.append({
-                "path": str(md_file),
+                "path": str(found_file),
                 "size_kb": round(size / 1024, 1),
                 "first_lines": "\n".join(lines),
             })
@@ -332,9 +341,15 @@ Write a JSON signal to: `{selected_signal}`
 {{
   "sources": [
     {{"path": "...", "reason": "Contains design constraints"}}
-  ]
+  ],
+  "additional_extensions": [".txt", ".rst"]
 }}
 ```
+
+The ``additional_extensions`` field is **optional**. Include it only
+if you believe philosophy sources may exist in non-markdown formats
+that were not included in the catalog. The catalog will be rebuilt
+with these extensions and you will be re-invoked once.
 
 If NO files contain philosophy or constraints, write:
 ```json
@@ -355,6 +370,42 @@ If NO files contain philosophy or constraints, write:
 
     # Read selected sources; fail-closed on malformed/missing
     selected = read_agent_signal(selected_signal)
+
+    # V4/R61: Agent-steerable expansion — if selector requests additional
+    # extensions, rebuild catalog once with expanded extensions and re-invoke.
+    _EXPANSION_CAP = 5  # max additional extensions to prevent abuse
+    if (selected and isinstance(selected.get("additional_extensions"), list)
+            and selected["additional_extensions"]):
+        raw_exts = selected["additional_extensions"][:_EXPANSION_CAP]
+        # Sanitize: must be dot-prefixed, short, no path separators
+        extra = frozenset(
+            e for e in raw_exts
+            if isinstance(e, str) and e.startswith(".")
+            and len(e) <= 6 and "/" not in e and "\\" not in e
+        )
+        if extra:
+            expanded_exts = frozenset({".md"}) | extra
+            log(f"Intent bootstrap: selector requested extensions "
+                f"{sorted(extra)} — rebuilding catalog (one-shot)")
+            catalog = _build_philosophy_catalog(
+                planspace, codespace, extensions=expanded_exts)
+            catalog_path.write_text(
+                json.dumps(catalog, indent=2), encoding="utf-8")
+
+            # Re-invoke selector once with expanded catalog
+            selector_output2 = artifacts / "philosophy-select-output-2.md"
+            dispatch_agent(
+                policy.get("intent_philosophy_selector", "glm"),
+                selector_prompt,
+                selector_output2,
+                planspace,
+                parent,
+                codespace=codespace,
+                agent_file="philosophy-source-selector.md",
+            )
+            expanded = read_agent_signal(selected_signal)
+            if expanded and expanded.get("sources"):
+                selected = expanded
     if not selected or not selected.get("sources"):
         log("Intent bootstrap: source selector found no philosophy "
             "files — skipping distillation (fail-closed)")

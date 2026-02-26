@@ -9,13 +9,17 @@
 3. Section alignment excerpt: `{alignment_excerpt}`
 4. Section specification: `{section_path}`
 5. Related source files:
-{files_block}{problem_frame_ref}{micro_ref}{codemap_ref}{impl_corrections_ref}{todos_ref}{impl_tools_ref}
+{files_block}{problem_frame_ref}{micro_ref}{codemap_ref}{impl_corrections_ref}{todos_ref}{impl_tools_ref}{intent_problem_ref}{intent_rubric_ref}{intent_philosophy_ref}{intent_registry_ref}
 {problems_block}{decisions_block}{tooling_block}{additional_inputs_block}
 ## Instructions
 
 A section is a **problem region / concern**, not a file bundle. Related
 files are a starting hypothesis. You may discover additional relevant files
 or determine that some listed files are not actually needed.
+
+If an intent problem definition or rubric is listed above, treat it as the
+canonical problem definition and alignment rubric for this section. Anchor
+your implementation to it.
 
 You are implementing the changes described in the integration proposal.
 The proposal has been alignment-checked and approved. Your job is to

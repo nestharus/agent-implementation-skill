@@ -5,6 +5,7 @@ Everything else — file I/O, JSON parsing, registry logic — runs for real.
 """
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -2581,3 +2582,183 @@ class TestR60ToolOSErrorHandling:
         )
         assert result.returncode == 2, (
             f"Must exit 2 on file errors, got {result.returncode}")
+
+
+# ---------------------------------------------------------------------------
+# R61: V1 — Alignment surface includes intent artifacts
+# ---------------------------------------------------------------------------
+
+class TestR61AlignmentSurfaceIntentArtifacts:
+    """V1/R61: _write_alignment_surface must include intent pack artifacts."""
+
+    def test_surface_includes_intent_problem(
+        self, planspace: Path, section_01: None,
+    ) -> None:
+        """Alignment surface must include intent problem.md when present."""
+        from section_loop.section_engine.reexplore import (
+            _write_alignment_surface,
+        )
+        from section_loop.types import Section
+
+        sec_path = planspace / "artifacts" / "sections" / "section-01.md"
+        section = Section(number="01", path=sec_path, related_files=[])
+
+        # Create intent problem artifact
+        intent_dir = (
+            planspace / "artifacts" / "intent" / "sections" / "section-01"
+        )
+        intent_dir.mkdir(parents=True)
+        (intent_dir / "problem.md").write_text("# Problem\n")
+
+        _write_alignment_surface(planspace, section)
+
+        surface = (
+            planspace / "artifacts" / "sections"
+            / "section-01-alignment-surface.md"
+        )
+        text = surface.read_text(encoding="utf-8")
+        assert "intent problem definition" in text.lower()
+        assert "problem.md" in text
+
+    def test_surface_includes_intent_rubric(
+        self, planspace: Path, section_01: None,
+    ) -> None:
+        """Alignment surface must include problem-alignment.md when present."""
+        from section_loop.section_engine.reexplore import (
+            _write_alignment_surface,
+        )
+        from section_loop.types import Section
+
+        sec_path = planspace / "artifacts" / "sections" / "section-01.md"
+        section = Section(number="01", path=sec_path, related_files=[])
+
+        intent_dir = (
+            planspace / "artifacts" / "intent" / "sections" / "section-01"
+        )
+        intent_dir.mkdir(parents=True)
+        (intent_dir / "problem-alignment.md").write_text("# Rubric\n")
+
+        _write_alignment_surface(planspace, section)
+
+        surface = (
+            planspace / "artifacts" / "sections"
+            / "section-01-alignment-surface.md"
+        )
+        text = surface.read_text(encoding="utf-8")
+        assert "intent alignment rubric" in text.lower()
+
+    def test_surface_includes_all_four_intent_artifacts(
+        self, planspace: Path, section_01: None,
+    ) -> None:
+        """All four intent artifacts appear in surface when present."""
+        from section_loop.section_engine.reexplore import (
+            _write_alignment_surface,
+        )
+        from section_loop.types import Section
+
+        sec_path = planspace / "artifacts" / "sections" / "section-01.md"
+        section = Section(number="01", path=sec_path, related_files=[])
+
+        intent_dir = (
+            planspace / "artifacts" / "intent" / "sections" / "section-01"
+        )
+        intent_dir.mkdir(parents=True)
+        (intent_dir / "problem.md").write_text("# P\n")
+        (intent_dir / "problem-alignment.md").write_text("# R\n")
+        (intent_dir / "philosophy-excerpt.md").write_text("# E\n")
+        (intent_dir / "surface-registry.json").write_text("{}\n")
+
+        _write_alignment_surface(planspace, section)
+
+        surface = (
+            planspace / "artifacts" / "sections"
+            / "section-01-alignment-surface.md"
+        )
+        text = surface.read_text(encoding="utf-8")
+        assert "problem.md" in text
+        assert "problem-alignment.md" in text
+        assert "philosophy-excerpt.md" in text
+        assert "surface-registry.json" in text
+
+    def test_surface_omits_missing_intent_artifacts(
+        self, planspace: Path, section_01: None,
+    ) -> None:
+        """No intent references when intent artifacts don't exist."""
+        from section_loop.section_engine.reexplore import (
+            _write_alignment_surface,
+        )
+        from section_loop.types import Section
+
+        sec_path = planspace / "artifacts" / "sections" / "section-01.md"
+        section = Section(number="01", path=sec_path, related_files=[])
+
+        _write_alignment_surface(planspace, section)
+
+        surface = (
+            planspace / "artifacts" / "sections"
+            / "section-01-alignment-surface.md"
+        )
+        text = surface.read_text(encoding="utf-8")
+        assert "intent" not in text.lower()
+
+
+# ---------------------------------------------------------------------------
+# R61: V4 — Agent-steerable extension expansion in catalog walker
+# ---------------------------------------------------------------------------
+
+class TestR61AgentSteerableExtensions:
+    """V4/R61: _walk_md_bounded accepts extensions; catalog is steerable."""
+
+    def test_walk_with_txt_extension(self, tmp_path: Path) -> None:
+        """Walker yields .txt files when extensions include .txt."""
+        from section_loop.intent.bootstrap import _walk_md_bounded
+
+        (tmp_path / "notes.txt").write_text("philosophy notes")
+        (tmp_path / "readme.md").write_text("readme")
+        (tmp_path / "code.py").write_text("pass")
+
+        results = list(_walk_md_bounded(
+            tmp_path, max_depth=3,
+            extensions=frozenset({".md", ".txt"}),
+        ))
+        names = {r.name for r in results}
+        assert "notes.txt" in names
+        assert "readme.md" in names
+        assert "code.py" not in names
+
+    def test_walk_default_extensions_is_md_only(self, tmp_path: Path) -> None:
+        """Default extensions parameter yields only .md files."""
+        from section_loop.intent.bootstrap import _walk_md_bounded
+
+        (tmp_path / "notes.txt").write_text("philosophy notes")
+        (tmp_path / "readme.md").write_text("readme")
+
+        results = list(_walk_md_bounded(tmp_path, max_depth=3))
+        names = {r.name for r in results}
+        assert "readme.md" in names
+        assert "notes.txt" not in names
+
+    def test_catalog_accepts_extensions_parameter(
+        self, tmp_path: Path,
+    ) -> None:
+        """_build_philosophy_catalog passes extensions to walker."""
+        from section_loop.intent.bootstrap import _build_philosophy_catalog
+
+        ps = tmp_path / "plan"
+        cs = tmp_path / "code"
+        ps.mkdir()
+        cs.mkdir()
+        (cs / "design.rst").write_text("# Design Principles\nP1: test\n")
+        (cs / "readme.md").write_text("# README\nProject readme\n")
+
+        # Default: only .md
+        md_only = _build_philosophy_catalog(ps, cs)
+        paths = [c["path"] for c in md_only]
+        assert any("readme.md" in p for p in paths)
+        assert not any("design.rst" in p for p in paths)
+
+        # With .rst extension
+        with_rst = _build_philosophy_catalog(
+            ps, cs, extensions=frozenset({".md", ".rst"}))
+        paths = [c["path"] for c in with_rst]
+        assert any("design.rst" in p for p in paths)

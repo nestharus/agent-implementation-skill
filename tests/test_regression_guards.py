@@ -5905,3 +5905,183 @@ class TestR60LayoutAgnosticRootGuard:
             "Must check for scripts/ directory as anchor")
         assert '"agents"' in func_body or "'agents'" in func_body, (
             "Must check for agents/ directory as anchor")
+
+
+# ---------------------------------------------------------------------------
+# R61: Alignment surface intent propagation guard
+# ---------------------------------------------------------------------------
+
+class TestR61AlignmentSurfaceIntentGuard:
+    """V1/R61: Alignment surface writer must include intent artifacts."""
+
+    def test_surface_writer_references_intent_artifacts(self) -> None:
+        """_write_alignment_surface source must reference intent paths."""
+        reexplore_path = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "scripts" / "section_loop" / "section_engine"
+            / "reexplore.py"
+        )
+        text = reexplore_path.read_text(encoding="utf-8")
+
+        # Extract _write_alignment_surface function body
+        func_start = text.find("def _write_alignment_surface(")
+        assert func_start >= 0, "Function must exist"
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert "problem.md" in func_body, (
+            "Must include intent problem definition in surface")
+        assert "problem-alignment.md" in func_body, (
+            "Must include intent rubric in surface")
+        assert "philosophy-excerpt.md" in func_body, (
+            "Must include philosophy excerpt in surface")
+        assert "surface-registry.json" in func_body, (
+            "Must include surface registry in surface")
+
+
+# ---------------------------------------------------------------------------
+# R61: No brute-force reading instructions guard
+# ---------------------------------------------------------------------------
+
+class TestR61NoBruteForceReadingGuard:
+    """V2/R61: Templates must not contain 'read each one' mandates."""
+
+    def test_integration_proposal_no_read_each_one(self) -> None:
+        """integration-proposal.md must not mandate exhaustive reading."""
+        tpl_path = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "scripts" / "section_loop" / "prompts"
+            / "templates" / "integration-proposal.md"
+        )
+        text = tpl_path.read_text(encoding="utf-8")
+        assert "read each one" not in text.lower(), (
+            "Template must not contain brute-force 'read each one' mandate")
+
+    def test_implementation_alignment_no_read_each_one(self) -> None:
+        """implementation-alignment.md must not mandate exhaustive reading."""
+        tpl_path = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "scripts" / "section_loop" / "prompts"
+            / "templates" / "implementation-alignment.md"
+        )
+        text = tpl_path.read_text(encoding="utf-8")
+        assert "read each one" not in text.lower(), (
+            "Template must not contain brute-force 'read each one' mandate")
+
+
+# ---------------------------------------------------------------------------
+# R61: Intent refs in generation templates guard
+# ---------------------------------------------------------------------------
+
+class TestR61IntentRefsInGenerationGuard:
+    """V3/R61: Generation templates must include intent placeholders."""
+
+    def test_integration_proposal_has_intent_refs(self) -> None:
+        """integration-proposal.md must include intent_* placeholders."""
+        tpl_path = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "scripts" / "section_loop" / "prompts"
+            / "templates" / "integration-proposal.md"
+        )
+        text = tpl_path.read_text(encoding="utf-8")
+        assert "{intent_problem_ref}" in text, (
+            "Must include intent problem ref placeholder")
+        assert "{intent_rubric_ref}" in text, (
+            "Must include intent rubric ref placeholder")
+        assert "{intent_philosophy_ref}" in text, (
+            "Must include intent philosophy ref placeholder")
+
+    def test_strategic_implementation_has_intent_refs(self) -> None:
+        """strategic-implementation.md must include intent_* placeholders."""
+        tpl_path = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "scripts" / "section_loop" / "prompts"
+            / "templates" / "strategic-implementation.md"
+        )
+        text = tpl_path.read_text(encoding="utf-8")
+        assert "{intent_problem_ref}" in text, (
+            "Must include intent problem ref placeholder")
+        assert "{intent_rubric_ref}" in text, (
+            "Must include intent rubric ref placeholder")
+        assert "{intent_philosophy_ref}" in text, (
+            "Must include intent philosophy ref placeholder")
+
+
+# ---------------------------------------------------------------------------
+# R61: Agent-steerable extensions guard
+# ---------------------------------------------------------------------------
+
+class TestR61AgentSteerableExtensionsGuard:
+    """V4/R61: Catalog walker must accept configurable extensions."""
+
+    def test_walk_md_bounded_has_extensions_param(self) -> None:
+        """_walk_md_bounded must accept an extensions parameter."""
+        bootstrap_path = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "scripts" / "section_loop" / "intent" / "bootstrap.py"
+        )
+        text = bootstrap_path.read_text(encoding="utf-8")
+        func_start = text.find("def _walk_md_bounded(")
+        assert func_start >= 0
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert "extensions" in func_body, (
+            "Walker must accept extensions parameter (V4/R61)")
+
+    def test_catalog_builder_has_extensions_param(self) -> None:
+        """_build_philosophy_catalog must accept extensions parameter."""
+        bootstrap_path = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "scripts" / "section_loop" / "intent" / "bootstrap.py"
+        )
+        text = bootstrap_path.read_text(encoding="utf-8")
+        func_start = text.find("def _build_philosophy_catalog(")
+        assert func_start >= 0
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert "extensions" in func_body, (
+            "Catalog builder must accept extensions parameter (V4/R61)")
+
+    def test_no_hardcoded_endswith_md_in_walker(self) -> None:
+        """Walker must not hardcode .endswith('.md') — must use extensions."""
+        bootstrap_path = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "scripts" / "section_loop" / "intent" / "bootstrap.py"
+        )
+        text = bootstrap_path.read_text(encoding="utf-8")
+        func_start = text.find("def _walk_md_bounded(")
+        assert func_start >= 0
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert '.endswith(".md")' not in func_body, (
+            "Walker must not hardcode .md — must use extensions param")
+        assert ".endswith('.md')" not in func_body, (
+            "Walker must not hardcode .md — must use extensions param")
+
+    def test_expansion_mechanism_exists(self) -> None:
+        """ensure_global_philosophy must handle additional_extensions."""
+        bootstrap_path = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "scripts" / "section_loop" / "intent" / "bootstrap.py"
+        )
+        text = bootstrap_path.read_text(encoding="utf-8")
+        func_start = text.find("def ensure_global_philosophy(")
+        assert func_start >= 0
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert "additional_extensions" in func_body, (
+            "Must handle agent-requested extension expansion (V4/R61)")

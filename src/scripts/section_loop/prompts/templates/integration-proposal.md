@@ -7,14 +7,18 @@
 1. Section proposal excerpt: `{proposal_excerpt}`
 2. Section alignment excerpt: `{alignment_excerpt}`
 3. Section specification: `{section_path}`
-4. Related source files (read each one):
-{files_block}{problem_frame_ref}{codemap_ref}{corrections_ref}{tools_ref}{todos_ref}
+4. Related source files (prioritize; read what's necessary; delegate/summarize if long):
+{files_block}{problem_frame_ref}{codemap_ref}{corrections_ref}{tools_ref}{todos_ref}{intent_problem_ref}{intent_rubric_ref}{intent_philosophy_ref}{intent_registry_ref}
 {existing_note}{problems_block}{notes_block}{decisions_block}{mode_block}{additional_inputs_block}
 ## Instructions
 
 A section is a **problem region / concern**, not a file bundle. Related
 files are a starting hypothesis. You are expected to explore and may
 discover additional relevant files or identify irrelevant ones.
+
+If an intent problem definition or rubric is listed above, treat it as the
+canonical problem definition and alignment rubric for this section. Anchor
+your proposal to it.
 
 Treat TODO extraction (if listed in "Files to Read" above) as the
 canonical in-scope microstrategy surface. If your proposal conflicts with

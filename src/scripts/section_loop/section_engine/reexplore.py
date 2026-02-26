@@ -173,5 +173,30 @@ def _write_alignment_surface(
         for dec in decisions:
             lines.append(f"- **Decision**: `{dec}`")
 
+    # V1/R61: Intent pack artifacts — propagate to alignment surface
+    # so the surface is truly authoritative over all alignment inputs.
+    intent_sec_dir = (
+        artifacts / "intent" / "sections" / f"section-{sec}"
+    )
+    intent_problem = intent_sec_dir / "problem.md"
+    if intent_problem.exists():
+        lines.append(
+            f"- **Intent problem definition**: `{intent_problem}`")
+
+    intent_rubric = intent_sec_dir / "problem-alignment.md"
+    if intent_rubric.exists():
+        lines.append(
+            f"- **Intent alignment rubric**: `{intent_rubric}`")
+
+    intent_philosophy = intent_sec_dir / "philosophy-excerpt.md"
+    if intent_philosophy.exists():
+        lines.append(
+            f"- **Philosophy excerpt**: `{intent_philosophy}`")
+
+    intent_registry = intent_sec_dir / "surface-registry.json"
+    if intent_registry.exists():
+        lines.append(
+            f"- **Surface registry**: `{intent_registry}`")
+
     lines.append("")  # trailing newline
     surface_path.write_text("\n".join(lines), encoding="utf-8")
