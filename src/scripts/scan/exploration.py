@@ -49,6 +49,12 @@ def apply_related_files_update(
             f"[RELATED FILES][WARN] Malformed update signal: "
             f"{signal_file} ({exc})",
         )
+        # V3/R58: Preserve corrupted signal for diagnosis.
+        try:
+            signal_file.rename(
+                signal_file.with_suffix(".malformed.json"))
+        except OSError:
+            pass  # Best-effort preserve
         return False
 
     if signal.get("status") != "stale":

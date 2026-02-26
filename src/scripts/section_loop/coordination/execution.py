@@ -109,10 +109,20 @@ def write_coordinator_fix_prompt(
                     f"\n## Available Cross-Section Tools\n{tool_lines}\n"
                 )
         except (json.JSONDecodeError, ValueError) as exc:
+            # V2/R58: Preserve corrupted tool-registry for diagnosis.
+            malformed_path = tool_registry_path.with_suffix(
+                ".malformed.json")
+            try:
+                import shutil
+                shutil.copy2(tool_registry_path, malformed_path)
+            except OSError:
+                pass  # Best-effort preserve
             tools_block = (
                 f"\n## Tool Registry Warning\n"
                 f"Tool registry exists but is malformed ({exc}); "
                 f"see `{tool_registry_path}`.\n"
+                f"Malformed copy preserved at "
+                f"`{malformed_path}`.\n"
                 f"Consider dispatching tool-registrar repair before "
                 f"relying on tool context.\n"
             )

@@ -334,8 +334,40 @@ Reply with a JSON block:
                     delta_path = (scope_deltas_dir
                                   / f"section-{sec}-scope-delta.json")
                     if delta_path.exists():
-                        delta = json.loads(
-                            delta_path.read_text(encoding="utf-8"))
+                        try:
+                            delta = json.loads(
+                                delta_path.read_text(encoding="utf-8"))
+                        except (json.JSONDecodeError, OSError) as exc:
+                            # V1/R58: Preserve corrupted delta for
+                            # diagnosis — don't crash the coordinator.
+                            log(f"  coordinator: WARNING — malformed "
+                                f"scope-delta {delta_path.name} during "
+                                f"adjudication application ({exc}), "
+                                f"preserving as .malformed.json")
+                            malformed = delta_path.with_suffix(
+                                ".malformed.json")
+                            try:
+                                delta_path.rename(malformed)
+                            except OSError:
+                                pass  # Best-effort preserve
+                            # Write a valid replacement so downstream
+                            # code doesn't re-crash on this section.
+                            delta = {
+                                "section": sec,
+                                "origin": "unknown",
+                                "adjudicated": True,
+                                "adjudication": decision,
+                                "error": (
+                                    "original scope-delta malformed "
+                                    "during adjudication application"
+                                ),
+                                "preserved_path": str(malformed),
+                            }
+                            delta_path.write_text(
+                                json.dumps(delta, indent=2),
+                                encoding="utf-8",
+                            )
+                            continue
                         delta["adjudicated"] = True
                         delta["adjudication"] = decision
                         delta_path.write_text(

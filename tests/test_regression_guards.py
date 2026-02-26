@@ -5517,3 +5517,113 @@ class TestR57DocSignalTaxonomyGuard:
         # Check that "codex-xhigh generates" pattern is gone
         assert "codex-xhigh generates" not in content, (
             "implement.md must not hardcode model names in prescriptive text")
+
+
+# ---------------------------------------------------------------------------
+# R58 — V1: Scope-delta adjudication write-back fail-closed guard
+# ---------------------------------------------------------------------------
+
+
+class TestR58ScopeDeltaAdjudicationGuard:
+    """Guard: scope-delta adjudication application must be wrapped in
+    try/except with corruption preservation."""
+
+    def test_adjudication_writeback_is_protected(self):
+        """The json.loads in adjudication write-back must be inside
+        try/except with corruption preservation."""
+        from pathlib import Path
+
+        runner_path = (Path(__file__).resolve().parent.parent
+                       / "src" / "scripts" / "section_loop"
+                       / "coordination" / "runner.py")
+        source = runner_path.read_text(encoding="utf-8")
+
+        # Find the adjudication application block (after
+        # "Apply adjudicated decisions") and verify it has
+        # try/except with .malformed.json preservation.
+        apply_marker = "Apply adjudicated decisions"
+        apply_idx = source.find(apply_marker)
+        assert apply_idx >= 0, (
+            "Runner must have 'Apply adjudicated decisions' block")
+
+        apply_block = source[apply_idx:]
+        assert "try:" in apply_block, (
+            "Adjudication write-back must have try/except protection")
+        assert ".malformed.json" in apply_block, (
+            "Adjudication write-back must preserve as .malformed.json")
+
+    def test_replacement_delta_has_error_field(self):
+        """The replacement delta written on corruption must contain
+        an 'error' field."""
+        from pathlib import Path
+
+        runner_path = (Path(__file__).resolve().parent.parent
+                       / "src" / "scripts" / "section_loop"
+                       / "coordination" / "runner.py")
+        source = runner_path.read_text(encoding="utf-8")
+
+        assert '"error"' in source or "'error'" in source, (
+            "Runner must write an 'error' field in replacement delta")
+        assert "preserved_path" in source, (
+            "Runner must write 'preserved_path' in replacement delta")
+
+
+# ---------------------------------------------------------------------------
+# R58 — V2: Tool-registry preservation in coordinator guard
+# ---------------------------------------------------------------------------
+
+
+class TestR58ToolRegistryCoordinationGuard:
+    """Guard: coordinator tools-block builder must preserve malformed
+    tool-registry as .malformed.json (copy)."""
+
+    def test_copy_to_malformed_in_except_block(self):
+        """The except block must copy to .malformed.json."""
+        from pathlib import Path
+
+        exec_path = (Path(__file__).resolve().parent.parent
+                     / "src" / "scripts" / "section_loop"
+                     / "coordination" / "execution.py")
+        source = exec_path.read_text(encoding="utf-8")
+
+        assert ".malformed.json" in source, (
+            "execution.py must preserve malformed tool-registry "
+            "as .malformed.json")
+        assert "shutil.copy2" in source or "shutil.copy" in source, (
+            "execution.py must use shutil.copy to preserve "
+            "(copy, not rename)")
+
+
+# ---------------------------------------------------------------------------
+# R58 — V3: Related-files update signal preservation guard
+# ---------------------------------------------------------------------------
+
+
+class TestR58RelatedFilesSignalGuard:
+    """Guard: apply_related_files_update must preserve malformed
+    signals as .malformed.json."""
+
+    def test_malformed_rename_in_apply_function(self):
+        """The apply_related_files_update except block must rename
+        to .malformed.json."""
+        from pathlib import Path
+
+        expl_path = (Path(__file__).resolve().parent.parent
+                     / "src" / "scripts" / "scan" / "exploration.py")
+        source = expl_path.read_text(encoding="utf-8")
+
+        # Find the apply_related_files_update function and check
+        # it has .malformed.json rename
+        func_start = source.find("def apply_related_files_update(")
+        assert func_start >= 0, (
+            "apply_related_files_update must exist in exploration.py")
+
+        # Get function body (up to next def at same indent level)
+        func_body = source[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert ".malformed.json" in func_body, (
+            "apply_related_files_update must rename malformed signals "
+            "to .malformed.json")

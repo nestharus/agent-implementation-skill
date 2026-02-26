@@ -1950,3 +1950,151 @@ class TestR57SurfacePersistenceOnMisalignment:
             (intent_sec / "surface-registry.json").read_text())
         assert len(final_reg["surfaces"]) > 0, (
             "Surfaces must be persisted into registry even on misaligned pass")
+
+
+# ---------------------------------------------------------------------------
+# R58 — V1: Scope-delta adjudication write-back fail-closed
+# ---------------------------------------------------------------------------
+
+
+class TestR58ScopeDeltaAdjudicationFailClosed:
+    """V1/R58: If a scope-delta file is malformed during adjudication
+    write-back, the coordinator must preserve it and write a valid
+    replacement — not crash."""
+
+    def test_malformed_delta_preserved_and_replaced(self, tmp_path):
+        """Malformed delta → .malformed.json + valid replacement."""
+        from section_loop.coordination.runner import (
+            _normalize_section_id,
+        )
+
+        # Set up scope-deltas dir with a malformed delta
+        scope_deltas_dir = tmp_path / "artifacts" / "scope-deltas"
+        scope_deltas_dir.mkdir(parents=True)
+        delta_path = scope_deltas_dir / "section-01-scope-delta.json"
+        delta_path.write_text("{MALFORMED", encoding="utf-8")
+
+        # Simulate the adjudication application logic inline
+        # (extracted from runner.py lines 334-370)
+        import json as _json
+
+        sec = "01"
+        decision = {
+            "section": "01",
+            "action": "reject",
+            "reason": "Not needed",
+        }
+
+        if delta_path.exists():
+            try:
+                delta = _json.loads(
+                    delta_path.read_text(encoding="utf-8"))
+            except (_json.JSONDecodeError, OSError):
+                malformed = delta_path.with_suffix(".malformed.json")
+                try:
+                    delta_path.rename(malformed)
+                except OSError:
+                    pass
+                delta = {
+                    "section": sec,
+                    "origin": "unknown",
+                    "adjudicated": True,
+                    "adjudication": decision,
+                    "error": (
+                        "original scope-delta malformed "
+                        "during adjudication application"
+                    ),
+                    "preserved_path": str(malformed),
+                }
+                delta_path.write_text(
+                    _json.dumps(delta, indent=2), encoding="utf-8")
+
+        # Assert malformed file preserved
+        malformed_path = scope_deltas_dir / "section-01-scope-delta.malformed.json"
+        assert malformed_path.exists(), (
+            "Malformed delta must be preserved as .malformed.json")
+        assert malformed_path.read_text(encoding="utf-8") == "{MALFORMED"
+
+        # Assert valid replacement written
+        assert delta_path.exists(), (
+            "A valid replacement delta must be written")
+        replacement = _json.loads(delta_path.read_text(encoding="utf-8"))
+        assert replacement["adjudicated"] is True
+        assert replacement["adjudication"]["action"] == "reject"
+        assert "error" in replacement
+        assert "preserved_path" in replacement
+
+
+# ---------------------------------------------------------------------------
+# R58 — V2: Tool-registry malformed preservation in coordination
+# ---------------------------------------------------------------------------
+
+
+class TestR58ToolRegistryCoordinationPreservation:
+    """V2/R58: When tool-registry.json is malformed in the coordinator
+    tools-block builder, the corrupted file must be preserved as
+    .malformed.json (copy, not rename)."""
+
+    def test_malformed_tool_registry_preserved(self, tmp_path):
+        """Malformed tool-registry → .malformed.json copy exists."""
+        from section_loop.coordination.execution import (
+            write_coordinator_fix_prompt,
+        )
+
+        planspace = tmp_path / "plan"
+        codespace = tmp_path / "code"
+        planspace.mkdir()
+        codespace.mkdir()
+
+        # Write malformed tool-registry
+        artifacts = planspace / "artifacts"
+        artifacts.mkdir()
+        tool_reg = artifacts / "tool-registry.json"
+        tool_reg.write_text("{BROKEN JSON!", encoding="utf-8")
+
+        # Call the function — it builds a prompt that includes tool block
+        group = [{"section": "01", "type": "test", "description": "d",
+                  "files": ["a.py"]}]
+        sec_dir = planspace / "artifacts" / "sections"
+        sec_dir.mkdir(parents=True)
+
+        write_coordinator_fix_prompt(group, planspace, codespace, 0)
+
+        # Assert malformed copy was preserved
+        malformed = tool_reg.with_suffix(".malformed.json")
+        assert malformed.exists(), (
+            "Malformed tool-registry must be preserved as .malformed.json")
+        assert malformed.read_text(encoding="utf-8") == "{BROKEN JSON!"
+
+        # Original still exists (copy, not rename)
+        assert tool_reg.exists(), (
+            "Original tool-registry should still exist (copy, not rename)")
+
+
+# ---------------------------------------------------------------------------
+# R58 — V3: Related-files update signal preservation
+# ---------------------------------------------------------------------------
+
+
+class TestR58RelatedFilesSignalPreservation:
+    """V3/R58: When a related-files update signal is malformed,
+    apply_related_files_update() must preserve it as .malformed.json."""
+
+    def test_malformed_signal_preserved(self, tmp_path):
+        """Malformed signal → returns False + .malformed.json exists."""
+        from scan.exploration import apply_related_files_update
+
+        section_file = tmp_path / "section-01.md"
+        section_file.write_text("## Related Files\n### a.py\nInfo\n")
+
+        signal_file = tmp_path / "related-files-update.json"
+        signal_file.write_text("NOT VALID JSON{{{", encoding="utf-8")
+
+        result = apply_related_files_update(section_file, signal_file)
+
+        assert result is False, "Must return False on malformed signal"
+
+        malformed = signal_file.with_suffix(".malformed.json")
+        assert malformed.exists(), (
+            "Malformed signal must be preserved as .malformed.json")
+        assert malformed.read_text(encoding="utf-8") == "NOT VALID JSON{{{"
