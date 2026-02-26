@@ -47,16 +47,19 @@ or lightweight alignment (existing alignment judge only).
 - Previous solve attempts: {solve_count}
 - Summary: {section_summary[:500] if section_summary else "(none)"}
 
-## Full Mode Triggers (any TWO = full mode)
-1. related_files >= 5
-2. incoming_notes >= 2
-3. mode is "greenfield" or "hybrid"
-4. section contains architecture keywords (refactor, migration, schema, API, security, contract)
-5. section has prior failure history (solve_count >= 2)
+## Decision Factors
 
-## Always Lightweight (unless user overrides)
-- related_files == 1 AND no incoming notes AND brownfield
-- doc-only, rename-only, or tiny local fix
+Consider these factors when choosing intent mode:
+
+- **Integration breadth**: How many files and modules does this section touch?
+- **Cross-section coupling**: Are there incoming notes or dependencies from other sections?
+- **Environment uncertainty**: Is this greenfield, hybrid, or pure modification?
+- **Failure history**: Have prior attempts at this section failed?
+- **Risk of hidden constraints**: Does the summary suggest architectural complexity?
+
+Weigh these factors heuristically. Sections that are narrow, well-understood,
+and have no failure history lean lightweight. Sections with broad integration,
+uncertainty, or prior failures lean full.
 
 ## Output
 Write a JSON signal to: `{triage_signal_path}`
@@ -65,13 +68,8 @@ Write a JSON signal to: `{triage_signal_path}`
 {{
   "section": "{section_number}",
   "intent_mode": "full"|"lightweight",
-  "complexity": {{
-    "related_files": {related_files_count},
-    "incoming_notes": {incoming_notes_count},
-    "mode": "{mode}",
-    "keywords": [],
-    "risk": "low"|"medium"|"high"
-  }},
+  "confidence": "high"|"medium"|"low",
+  "escalate": false,
   "budgets": {{
     "proposal_max": 5,
     "implementation_max": 5,
@@ -105,6 +103,32 @@ Write a JSON signal to: `{triage_signal_path}`
         expected_fields=["intent_mode"],
     )
     if triage:
+        # Escalation: if agent flags uncertainty, re-dispatch with
+        # stronger model and accept that result (V1/R54).
+        if triage.get("escalate"):
+            log(f"Section {section_number}: triage flagged escalation — "
+                f"re-dispatching with stronger model")
+            escalation_model = policy.get(
+                "intent_triage_escalation", "claude-opus")
+            dispatch_agent(
+                escalation_model,
+                triage_prompt_path,
+                triage_output_path,
+                planspace,
+                parent,
+                codespace=codespace,
+                section_number=section_number,
+                agent_file="intent-triager.md",
+            )
+            escalated = read_agent_signal(
+                triage_signal_path,
+                expected_fields=["intent_mode"],
+            )
+            if escalated:
+                log(f"Section {section_number}: escalated triage → "
+                    f"{escalated.get('intent_mode', 'unknown')}")
+                return escalated
+
         log(f"Section {section_number}: intent triage → "
             f"{triage.get('intent_mode', 'unknown')}")
         return triage

@@ -535,6 +535,8 @@ def read_model_policy(planspace: Path) -> dict[str, Any]:
         "intent_judge": "claude-opus",
         "intent_problem_expander": "claude-opus",
         "intent_philosophy_expander": "claude-opus",
+        "intent_triage_escalation": "claude-opus",
+        "intent_recurrence_adjudicator": "glm",
         "escalation_triggers": {
             "stall_count": 2,
             "max_attempts_before_escalation": 3,

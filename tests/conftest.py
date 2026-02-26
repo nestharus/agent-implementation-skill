@@ -14,7 +14,13 @@ import pytest
 
 # Resolve project root from this file's location (tests/ -> project root)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DB_SH = PROJECT_ROOT / "src" / "scripts" / "db.sh"
+# Layout-agnostic: support both src/ development layout and deployed layout (V6/R54)
+_WORKFLOW_HOME = (
+    PROJECT_ROOT / "src"
+    if (PROJECT_ROOT / "src" / "scripts").exists()
+    else PROJECT_ROOT
+)
+DB_SH = _WORKFLOW_HOME / "scripts" / "db.sh"
 
 
 @pytest.fixture()

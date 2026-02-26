@@ -256,7 +256,7 @@ Structure:
 # Problem Alignment Rubric — Section {sec}
 
 ## Method
-Coverage scan → per-axis alignment check → surface discovery
+Axis alignment pass → per-axis coherence check → surface discovery
 
 ## Axis reference
 
@@ -271,27 +271,18 @@ Coverage scan → per-axis alignment check → surface discovery
 If the operational philosophy has 10+ principles, write a focused excerpt
 with only the 5-12 most relevant principles for this section.
 
-## Axis Taxonomy (base palette — select from these)
+## Axis Selection Guidance
 
-**Always include (default axes):**
-1. Intent correctness (solves stated problem; no scope drift)
-2. Constraints preservation (explicit constraints + "no new deps")
-3. Integration points (where/how it connects to existing architecture)
-4. Failure modes & recovery
-5. Verification (tests, checks, how to prove correct)
+Select axes based on evidence from the section spec, excerpts, code
+context, and problem frame. Each axis should represent a dimension
+where the solution could independently succeed or fail.
 
-**Conditional axes (add if relevant):**
-- Public interface changes → API/compat axis
-- Persistence/schema → migration/backfill axis
-- Concurrency/async → ordering/idempotency axis
-- Security/auth/config → security/privacy axis
-- Performance-sensitive → perf/resources axis
-- Cross-section coupling → contract/coordination axis
-- Greenfield module → module boundaries axis
-- Tooling/CLI → DX axis
+Do not treat axes as a checklist. Include only axes justified by
+evidence in the provided inputs. Missing common axes (like error
+handling or testing) can be a signal that those dimensions are not
+relevant to this section — that is fine.
 
-Keep 6-12 axes for full mode. Each axis describes a CORE DIFFICULTY,
-not a solution wishlist.
+Each axis describes a CORE DIFFICULTY, not a solution wishlist.
 
 ## Initialize Surface Registry
 

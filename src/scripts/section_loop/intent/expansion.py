@@ -7,6 +7,7 @@ from ..communication import _log_artifact, log, mailbox_send
 from ..dispatch import dispatch_agent, read_agent_signal, read_model_policy
 from ..pipeline_control import pause_for_parent
 from .surfaces import (
+    find_discarded_recurrences,
     load_intent_surfaces,
     load_surface_registry,
     mark_surfaces_applied,
@@ -14,7 +15,6 @@ from .surfaces import (
     merge_surfaces_into_registry,
     normalize_surface_ids,
     save_surface_registry,
-    surfaces_are_diminishing,
 )
 
 
@@ -66,18 +66,41 @@ def run_expansion_cycle(
     )
     surfaces_path.write_text(json.dumps(surfaces, indent=2), encoding="utf-8")
 
-    # Check diminishing returns
-    if surfaces_are_diminishing(registry, new_surfaces, duplicate_ids):
-        log(f"Section {section_number}: surfaces diminishing — "
-            f"skipping expansion")
-        save_surface_registry(section_number, planspace, registry)
-        return {
-            "restart_required": False,
-            "needs_user_input": False,
-            "expansion_applied": False,
-            "surfaces_found": len(new_surfaces),
-            "diminishing": True,
-        }
+    # Handle recurrence: discarded surfaces that resurfaced (V4/V5 R54)
+    # Instead of a script-side threshold, dispatch an adjudicator when
+    # discarded surfaces recur — the agent decides what to reopen.
+    if not new_surfaces:
+        recurrences = find_discarded_recurrences(registry, duplicate_ids)
+        if recurrences:
+            reopened = _adjudicate_recurrence(
+                section_number, planspace, codespace, parent,
+                policy, recurrences,
+            )
+            if reopened:
+                # Reopened surfaces become new work for expanders
+                for sid in reopened:
+                    for entry in registry.get("surfaces", []):
+                        if entry["id"] == sid:
+                            entry["status"] = "pending"
+                            new_surfaces.append(entry)
+            else:
+                # Adjudicator says keep all discarded — no new work
+                save_surface_registry(section_number, planspace, registry)
+                return {
+                    "restart_required": False,
+                    "needs_user_input": False,
+                    "expansion_applied": False,
+                    "surfaces_found": 0,
+                }
+        else:
+            # All duplicates are applied/pending — no new work
+            save_surface_registry(section_number, planspace, registry)
+            return {
+                "restart_required": False,
+                "needs_user_input": False,
+                "expansion_applied": False,
+                "surfaces_found": 0,
+            }
 
     # Check budget
     max_surfaces = _budgets.get("max_new_surfaces_per_cycle", 8)
@@ -380,3 +403,102 @@ Validate each philosophy surface and classify it:
         return None
 
     return read_agent_signal(delta_path)
+
+
+def _adjudicate_recurrence(
+    section_number: str,
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+    policy: dict,
+    recurrences: list[dict],
+) -> list[str]:
+    """Dispatch adjudicator to decide on discarded surfaces that resurfaced.
+
+    Returns a list of surface IDs to reopen (may be empty).
+    """
+    artifacts = planspace / "artifacts"
+    signals_dir = artifacts / "signals"
+    signals_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write recurrence artifact for the adjudicator
+    recurrence_signal = {
+        "section": section_number,
+        "discarded_resurfaced": [
+            {
+                "id": r["id"],
+                "kind": r.get("kind", "unknown"),
+                "notes": r.get("notes", ""),
+                "description": r.get("description", ""),
+                "evidence": r.get("evidence", ""),
+                "last_seen": r.get("last_seen", {}),
+            }
+            for r in recurrences
+        ],
+    }
+    recurrence_path = (
+        signals_dir / f"intent-surface-recurrence-{section_number}.json"
+    )
+    recurrence_path.write_text(
+        json.dumps(recurrence_signal, indent=2), encoding="utf-8")
+
+    adjudication_path = (
+        signals_dir / f"intent-recurrence-adjudication-{section_number}.json"
+    )
+    prompt_path = (
+        artifacts / f"recurrence-adjudicate-{section_number}-prompt.md"
+    )
+    output_path = (
+        artifacts / f"recurrence-adjudicate-{section_number}-output.md"
+    )
+
+    ids_list = ", ".join(r["id"] for r in recurrences)
+    prompt_path.write_text(f"""# Task: Adjudicate Surface Recurrence for Section {section_number}
+
+## Context
+These previously-discarded surfaces have resurfaced during alignment:
+{ids_list}
+
+Read the recurrence signal at: `{recurrence_path}`
+
+Each entry includes the surface's original description, evidence, and
+when it was last seen. Decide for each surface whether it should be
+reopened (the discard was premature or conditions changed) or kept
+discarded (it is genuinely resolved or irrelevant).
+
+## Output
+Write a JSON signal to: `{adjudication_path}`
+```json
+{{
+  "section": "{section_number}",
+  "reopen_ids": [],
+  "keep_discarded_ids": [],
+  "reason": "..."
+}}
+```
+""", encoding="utf-8")
+    _log_artifact(planspace, f"prompt:recurrence-adjudicate-{section_number}")
+
+    adjudicator_model = policy.get(
+        "intent_recurrence_adjudicator", "glm")
+    dispatch_agent(
+        adjudicator_model,
+        prompt_path,
+        output_path,
+        planspace,
+        parent,
+        codespace=codespace,
+        section_number=section_number,
+    )
+
+    result = read_agent_signal(adjudication_path)
+    if result:
+        reopen = result.get("reopen_ids", [])
+        if reopen:
+            log(f"Section {section_number}: adjudicator reopened "
+                f"{len(reopen)} surface(s): {reopen}")
+        return reopen
+
+    log(f"Section {section_number}: recurrence adjudication signal "
+        f"missing — keeping surfaces discarded (fail-closed)")
+    return []

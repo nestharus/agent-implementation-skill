@@ -11,11 +11,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from section_loop.intent.surfaces import (
+    find_discarded_recurrences,
     load_surface_registry,
     merge_surfaces_into_registry,
     normalize_surface_ids,
     save_surface_registry,
-    surfaces_are_diminishing,
     mark_surfaces_applied,
     mark_surfaces_discarded,
 )
@@ -115,32 +115,42 @@ class TestSurfaceRegistry:
         # last_seen should be updated
         assert registry["surfaces"][0]["last_seen"]["attempt"] == 2
 
-    def test_diminishing_returns_no_surfaces(self) -> None:
-        """No surfaces at all = diminishing."""
-        registry = {"surfaces": []}
-        assert surfaces_are_diminishing(registry, [], []) is True
+    def test_find_discarded_recurrences_returns_matches(self) -> None:
+        """Discarded surfaces that reappear are returned as recurrences."""
+        registry = {
+            "surfaces": [
+                {"id": "P-01-0001", "status": "discarded",
+                 "notes": "was wrong"},
+                {"id": "P-01-0002", "status": "applied"},
+                {"id": "P-01-0003", "status": "discarded",
+                 "notes": "out of scope"},
+            ],
+        }
+        dupes = ["P-01-0001", "P-01-0002", "P-01-0003"]
+        recurrences = find_discarded_recurrences(registry, dupes)
+        ids = [r["id"] for r in recurrences]
+        assert "P-01-0001" in ids
+        assert "P-01-0003" in ids
+        assert "P-01-0002" not in ids  # applied, not discarded
 
-    def test_diminishing_returns_mostly_discarded_dupes(self) -> None:
-        """Over 60% discarded duplicates = diminishing."""
+    def test_find_discarded_recurrences_empty_when_none(self) -> None:
+        """No discarded surfaces → empty recurrence list."""
+        registry = {
+            "surfaces": [
+                {"id": "P-01-0001", "status": "applied"},
+            ],
+        }
+        dupes = ["P-01-0001"]
+        assert find_discarded_recurrences(registry, dupes) == []
+
+    def test_find_discarded_recurrences_empty_no_dupes(self) -> None:
+        """No duplicate IDs at all → empty recurrence list."""
         registry = {
             "surfaces": [
                 {"id": "P-01-0001", "status": "discarded"},
-                {"id": "P-01-0002", "status": "discarded"},
-                {"id": "P-01-0003", "status": "discarded"},
             ],
         }
-        new = [{"id": "P-01-0004"}]
-        dupes = ["P-01-0001", "P-01-0002", "P-01-0003"]
-        # 3 discarded dupes / 4 total = 75% > 60%
-        assert surfaces_are_diminishing(registry, new, dupes) is True
-
-    def test_not_diminishing_with_fresh_surfaces(self) -> None:
-        """Mostly new surfaces = not diminishing."""
-        registry = {"surfaces": []}
-        new = [{"id": "P-01-0004"}, {"id": "P-01-0005"},
-               {"id": "P-01-0006"}]
-        dupes = ["P-01-0001"]
-        assert surfaces_are_diminishing(registry, new, dupes) is False
+        assert find_discarded_recurrences(registry, []) == []
 
     def test_mark_applied_and_discarded(self) -> None:
         registry = {
@@ -393,10 +403,10 @@ class TestExpansionCycle:
         assert result["expansion_applied"] is True
         assert result["surfaces_found"] == 1
 
-    def test_diminishing_returns_skips_expansion(
+    def test_recurrence_adjudication_dispatches_on_discarded_dupes(
         self, intent_planspace: Path, mock_dispatch: MagicMock,
     ) -> None:
-        """When >60% surfaces are discarded duplicates, skip expansion."""
+        """When all surfaces are discarded duplicates, adjudicator is dispatched (V4/V5 R54)."""
         import hashlib
 
         def _fp(kind, axis_id, title, description, evidence):
@@ -433,31 +443,54 @@ class TestExpansionCycle:
                  "fingerprint": fp1,
                  "first_seen": {"stage": "x", "attempt": 1},
                  "last_seen": {"stage": "x", "attempt": 1},
-                 "notes": ""},
+                 "notes": "", "description": "D1", "evidence": "E1"},
                 {"id": "P-01-0002", "status": "discarded",
                  "kind": "emergent", "axis_id": "A2",
                  "fingerprint": fp2,
                  "first_seen": {"stage": "x", "attempt": 1},
                  "last_seen": {"stage": "x", "attempt": 1},
-                 "notes": ""},
+                 "notes": "", "description": "D2", "evidence": "E2"},
                 {"id": "P-01-0003", "status": "discarded",
                  "kind": "emergent", "axis_id": "A3",
                  "fingerprint": fp3,
                  "first_seen": {"stage": "x", "attempt": 1},
                  "last_seen": {"stage": "x", "attempt": 1},
-                 "notes": ""},
+                 "notes": "", "description": "D3", "evidence": "E3"},
             ],
         }
         save_surface_registry("01", intent_planspace, registry)
+
+        # Write model policy so adjudicator model is available
+        (intent_planspace / "artifacts" / "model-policy.json").write_text(
+            json.dumps({}), encoding="utf-8")
+
+        # Adjudicator keeps all discarded (empty reopen list)
+        def write_adjudication(*args, **kwargs):
+            adj_path = (intent_planspace / "artifacts" / "signals"
+                        / "intent-recurrence-adjudication-01.json")
+            adj_path.parent.mkdir(parents=True, exist_ok=True)
+            adj_path.write_text(json.dumps({
+                "section": "01",
+                "reopen_ids": [],
+                "keep_discarded_ids": ["P-01-0001", "P-01-0002", "P-01-0003"],
+                "reason": "All correctly discarded",
+            }), encoding="utf-8")
+            return ""
+
+        mock_dispatch.side_effect = write_adjudication
 
         from section_loop.intent.expansion import run_expansion_cycle
         result = run_expansion_cycle(
             "01", intent_planspace, intent_planspace, "parent",
         )
-        assert result.get("diminishing") is True
         assert result["expansion_applied"] is False
-        # Expanders should NOT have been dispatched
-        assert mock_dispatch.call_count == 0
+        assert result["surfaces_found"] == 0
+        # Adjudicator was dispatched (not expanders)
+        assert mock_dispatch.call_count == 1
+        # Recurrence signal should exist
+        recurrence_path = (intent_planspace / "artifacts" / "signals"
+                           / "intent-surface-recurrence-01.json")
+        assert recurrence_path.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -715,23 +748,23 @@ class TestIntentConventions:
         """Intent module public API is importable."""
         from section_loop.intent import (
             ensure_global_philosophy,
+            find_discarded_recurrences,
             generate_intent_pack,
             load_surface_registry,
             merge_surfaces_into_registry,
             normalize_surface_ids,
             run_expansion_cycle,
             run_intent_triage,
-            surfaces_are_diminishing,
         )
         # Smoke check — all names resolve
         assert callable(ensure_global_philosophy)
+        assert callable(find_discarded_recurrences)
         assert callable(generate_intent_pack)
         assert callable(load_surface_registry)
         assert callable(merge_surfaces_into_registry)
         assert callable(normalize_surface_ids)
         assert callable(run_expansion_cycle)
         assert callable(run_intent_triage)
-        assert callable(surfaces_are_diminishing)
 
     def test_normalize_surface_ids_assigns_stable_ids(self) -> None:
         """normalize_surface_ids assigns P-sec-NNNN / F-sec-NNNN IDs."""
@@ -1092,3 +1125,158 @@ class TestIntentConventions:
 
         # Malformed file should be renamed
         assert budget_path.with_suffix(".malformed.json").exists()
+
+    def test_triage_escalation_dispatches_stronger_model(
+        self, intent_planspace: Path, mock_dispatch: MagicMock,
+    ) -> None:
+        """Triage escalation re-dispatches with stronger model (V1/R54)."""
+        call_models: list[str] = []
+
+        def track_calls(*args, **kwargs):
+            model = args[0] if args else "unknown"
+            call_models.append(model)
+            agent_file = kwargs.get("agent_file", "")
+            sec_num = kwargs.get("section_number", "")
+
+            if agent_file == "intent-triager.md":
+                signal_path = (intent_planspace / "artifacts" / "signals"
+                               / f"intent-triage-{sec_num}.json")
+                signal_path.parent.mkdir(parents=True, exist_ok=True)
+                # First call: escalate. Second call: resolved.
+                if len(call_models) <= 1:
+                    signal_path.write_text(json.dumps({
+                        "section": sec_num, "intent_mode": "full",
+                        "confidence": "low", "escalate": True,
+                        "budgets": {"proposal_max": 5,
+                                    "implementation_max": 5,
+                                    "intent_expansion_max": 2,
+                                    "max_new_surfaces_per_cycle": 8,
+                                    "max_new_axes_total": 6},
+                        "reason": "uncertain",
+                    }), encoding="utf-8")
+                else:
+                    signal_path.write_text(json.dumps({
+                        "section": sec_num, "intent_mode": "lightweight",
+                        "confidence": "high", "escalate": False,
+                        "budgets": {"proposal_max": 5,
+                                    "implementation_max": 5,
+                                    "intent_expansion_max": 0},
+                        "reason": "escalated: actually simple",
+                    }), encoding="utf-8")
+                return ""
+
+            if agent_file == "integration-proposer.md":
+                prop = (intent_planspace / "artifacts" / "proposals"
+                        / f"section-{sec_num}-integration-proposal.md")
+                prop.parent.mkdir(parents=True, exist_ok=True)
+                prop.write_text("# Proposal\n")
+                return ""
+
+            if agent_file == "alignment-judge.md":
+                return '{"frame_ok": true, "aligned": true, "problems": []}'
+
+            if agent_file == "implementation-strategist.md":
+                mod = (intent_planspace / "artifacts"
+                       / f"impl-{sec_num}-modified.txt")
+                mod.write_text("src/main.py\n")
+                return ""
+
+            return ""
+
+        mock_dispatch.side_effect = track_calls
+        section = _make_intent_section(intent_planspace, intent_planspace)
+
+        from section_loop.section_engine import run_section
+        run_section(intent_planspace, intent_planspace, section, "parent")
+
+        # First model is GLM (triage), second is escalation model
+        assert len(call_models) >= 2
+        assert call_models[0] == "glm"  # initial triage
+        assert call_models[1] == "claude-opus"  # escalation
+
+    def test_no_hard_rule_in_triager(self) -> None:
+        """intent-triager.md must not contain 'hard rule' phrasing (V2/R54)."""
+        agent = (Path(__file__).resolve().parent.parent / "src"
+                 / "agents" / "intent-triager.md")
+        if not agent.exists():
+            pytest.skip("intent-triager.md not found")
+        text = agent.read_text(encoding="utf-8").lower()
+        assert "hard rule" not in text, (
+            "intent-triager.md must not contain 'hard rule' — "
+            "triage should use heuristic judgment")
+        assert "do not expand the list" not in text, (
+            "intent-triager.md must not freeze keyword lists")
+
+    def test_no_default_axes_mandate_in_bootstrap(self) -> None:
+        """bootstrap.py prompt must not mandate default axes (V3/V8 R54)."""
+        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
+        if not bootstrap.exists():
+            pytest.skip("bootstrap.py not found")
+        text = bootstrap.read_text(encoding="utf-8")
+        assert "Always include" not in text, (
+            "bootstrap.py must not mandate default axes — "
+            "axes should be evidence-driven")
+        assert "Coverage scan" not in text, (
+            "bootstrap.py must not use 'Coverage scan' framing — "
+            "use 'Axis alignment pass' or similar")
+
+    def test_no_diminishing_returns_threshold_in_surfaces(self) -> None:
+        """surfaces.py must not contain hardcoded diminishing threshold (V4/R54)."""
+        surf = (Path(__file__).resolve().parent.parent / "src"
+                / "scripts" / "section_loop" / "intent" / "surfaces.py")
+        if not surf.exists():
+            pytest.skip("surfaces.py not found")
+        text = surf.read_text(encoding="utf-8")
+        assert "0.6" not in text, (
+            "surfaces.py must not contain hardcoded 0.6 threshold")
+        assert "surfaces_are_diminishing" not in text, (
+            "surfaces.py must not define surfaces_are_diminishing — "
+            "recurrence is adjudicated by agents")
+
+    def test_intent_model_policy_escalation_keys(self) -> None:
+        """Model policy includes escalation and recurrence adjudicator keys (V1/V5 R54)."""
+        from section_loop.dispatch import read_model_policy
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            ps = Path(td)
+            (ps / "artifacts").mkdir(parents=True)
+            policy = read_model_policy(ps)
+            assert "intent_triage_escalation" in policy, (
+                "Model policy must include intent_triage_escalation key")
+            assert "intent_recurrence_adjudicator" in policy, (
+                "Model policy must include intent_recurrence_adjudicator key")
+
+    def test_layout_agnostic_conftest(self) -> None:
+        """conftest.py DB_SH path resolves without hardcoded src/ (V6/R54)."""
+        conftest = (Path(__file__).resolve().parent / "conftest.py")
+        text = conftest.read_text(encoding="utf-8")
+        # Must NOT hardcode "src" / "scripts" / "db.sh" directly
+        assert "PROJECT_ROOT / \"src\" / \"scripts\" / \"db.sh\"" not in text, (
+            "conftest.py must use layout-agnostic path resolution")
+
+    def test_implement_md_describes_intent_layer(self) -> None:
+        """implement.md must describe the intent layer (V7/R54)."""
+        impl = (Path(__file__).resolve().parent.parent / "src"
+                / "implement.md")
+        if not impl.exists():
+            pytest.skip("implement.md not found")
+        text = impl.read_text(encoding="utf-8")
+        assert "intent triage" in text.lower(), (
+            "implement.md must describe intent triage")
+        assert "intent pack" in text.lower(), (
+            "implement.md must describe intent pack generation")
+
+    def test_skill_md_lists_intent_agents(self) -> None:
+        """SKILL.md must list intent layer agents (V7/R54)."""
+        skill = (Path(__file__).resolve().parent.parent / "src"
+                 / "SKILL.md")
+        if not skill.exists():
+            pytest.skip("SKILL.md not found")
+        text = skill.read_text(encoding="utf-8")
+        for agent_name in ("intent-triager.md", "intent-judge.md",
+                           "intent-pack-generator.md",
+                           "philosophy-distiller.md"):
+            assert agent_name in text, (
+                f"SKILL.md must list {agent_name}")

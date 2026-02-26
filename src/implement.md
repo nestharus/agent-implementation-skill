@@ -1018,6 +1018,41 @@ After exploring, GPT writes an integration proposal to
 This is STRATEGIC — not line-by-line changes. The shape of the solution,
 not the exact code.
 
+### Intent layer (conditional, per-section)
+
+Before alignment, the section loop runs intent triage to decide whether
+a full or lightweight intent cycle is needed:
+
+1. **Intent triage** (GLM) — evaluates section complexity factors
+   (integration breadth, cross-section coupling, environment uncertainty,
+   failure history) and returns `full` or `lightweight` intent mode.
+   If uncertain, the agent escalates to a stronger model.
+
+2. **Full intent mode** (when selected):
+   - **Philosophy distillation** (Opus) — distills operational philosophy
+     from source files into numbered principles with expansion guidance.
+     Runs once globally, not per-section.
+   - **Intent pack generation** (Codex-high) — produces per-section
+     `problem.md` (seed problem definition with axes) and
+     `problem-alignment.md` (rubric) from section spec, excerpts, code
+     context, and TODOs.
+   - **Intent-judge alignment** (Opus) — replaces the standard alignment
+     judge; checks proposal coherence against the problem definition and
+     rubric, discovers problem and philosophy surfaces.
+   - **Expansion cycle** — dispatches problem-expander and
+     philosophy-expander to integrate discovered surfaces into the living
+     problem definition and philosophy. May trigger proposal restart if
+     axes materially change.
+
+3. **Lightweight mode** — skips intent pack and expanders, uses the
+   standard alignment judge directly.
+
+Artifacts: `artifacts/intent/global/philosophy.md`,
+`artifacts/intent/sections/section-NN/problem.md`,
+`artifacts/intent/sections/section-NN/problem-alignment.md`,
+`artifacts/intent/sections/section-NN/surface-registry.json`.
+See `loop-contract.md` for the full inputs list.
+
 ### Integration alignment check (Opus)
 
 Opus reads the alignment excerpt, proposal excerpt, section spec, and

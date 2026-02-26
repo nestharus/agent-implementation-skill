@@ -186,23 +186,23 @@ def mark_surfaces_discarded(
             surface["status"] = "discarded"
 
 
-def surfaces_are_diminishing(
+def find_discarded_recurrences(
     registry: dict,
-    new_surfaces: list[dict],
     duplicate_ids: list[str],
-) -> bool:
-    """Check if surface discovery has hit diminishing returns.
+) -> list[dict]:
+    """Find discarded surfaces that have resurfaced.
 
-    Returns True when >60% of newly-reported surfaces are duplicates
-    of already-discarded surfaces.
+    Returns a list of registry entries for surfaces that were previously
+    discarded but have now been re-reported by the intent judge.
+    Recurrence is a signal worth adjudicating — it may indicate a real
+    problem that was incorrectly discarded, or a false positive.
     """
-    total = len(new_surfaces) + len(duplicate_ids)
-    if total == 0:
-        return True  # No surfaces at all — nothing left to discover
-
-    discarded_ids = {
-        s["id"] for s in registry.get("surfaces", [])
+    discarded_lookup = {
+        s["id"]: s for s in registry.get("surfaces", [])
         if s.get("status") == "discarded"
     }
-    discarded_dupes = sum(1 for sid in duplicate_ids if sid in discarded_ids)
-    return discarded_dupes / total > 0.6
+    return [
+        discarded_lookup[sid]
+        for sid in duplicate_ids
+        if sid in discarded_lookup
+    ]

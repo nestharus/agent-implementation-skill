@@ -48,6 +48,12 @@ $WORKFLOW_HOME/
     section-re-explorer.md  # re-explores sections with no related files (model: claude-opus)
     setup-excerpter.md      # extracts section excerpts from globals (model: claude-opus)
     bridge-agent.md         # resolves cross-section interface friction (model: gpt-5.3-codex-xhigh)
+    intent-triager.md       # intent triage: lightweight vs full intent cycle (model: glm)
+    intent-judge.md         # per-section alignment with surface discovery (model: claude-opus)
+    intent-pack-generator.md  # generates problem definition + rubric per section (model: gpt-5.3-codex-high)
+    philosophy-distiller.md   # distills operational philosophy from sources (model: claude-opus)
+    problem-expander.md       # integrates problem surfaces into definitions (model: claude-opus)
+    philosophy-expander.md    # integrates philosophy surfaces, gates tensions (model: claude-opus)
   templates/
     implement-proposal.md   # 10-step implementation schedule
     research-cycle.md       # 7-step research schedule
