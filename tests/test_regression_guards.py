@@ -5219,3 +5219,130 @@ class TestR55BudgetEnforcement:
         content = exp.read_text(encoding="utf-8")
         assert "pending_surfaces_path" in content, (
             "Expander functions must accept pending_surfaces_path parameter")
+
+
+# ===================================================================
+# R56 Regression Guards
+# ===================================================================
+
+
+class TestR56QueueSemanticsGuard:
+    """R56/V1: Expansion must use queue semantics (all pending, not just new)."""
+
+    def test_worklist_from_pending_registry(self):
+        from pathlib import Path
+        exp = (Path(__file__).resolve().parent.parent
+               / "src" / "scripts" / "section_loop" / "intent"
+               / "expansion.py")
+        content = exp.read_text(encoding="utf-8")
+        assert 'status") == "pending"' in content, (
+            "expansion.py must build worklist from ALL pending surfaces")
+
+    def test_no_new_surfaces_only_check(self):
+        from pathlib import Path
+        exp = (Path(__file__).resolve().parent.parent
+               / "src" / "scripts" / "section_loop" / "intent"
+               / "expansion.py")
+        content = exp.read_text(encoding="utf-8")
+        # The old pattern "if not new_surfaces: return" should not
+        # be the sole termination condition after merge
+        assert "worklist" in content, (
+            "expansion.py must use 'worklist' variable for pending queue")
+
+
+class TestR56AgentSelectedSourcesGuard:
+    """R56/V2: Philosophy sources selected by agent from mechanical catalog."""
+
+    def test_no_hardcoded_filenames(self):
+        from pathlib import Path
+        boot = (Path(__file__).resolve().parent.parent
+                / "src" / "scripts" / "section_loop" / "intent"
+                / "bootstrap.py")
+        if not boot.exists():
+            pytest.skip("bootstrap.py not found")
+        content = boot.read_text(encoding="utf-8")
+        assert '"constraints.md"' not in content, (
+            "bootstrap.py must not hardcode constraints.md")
+        assert '"design-philosophy-notes.md"' not in content, (
+            "bootstrap.py must not hardcode design-philosophy-notes.md")
+
+    def test_catalog_builder_exists(self):
+        from pathlib import Path
+        boot = (Path(__file__).resolve().parent.parent
+                / "src" / "scripts" / "section_loop" / "intent"
+                / "bootstrap.py")
+        if not boot.exists():
+            pytest.skip("bootstrap.py not found")
+        content = boot.read_text(encoding="utf-8")
+        assert "_build_philosophy_catalog" in content, (
+            "bootstrap.py must have _build_philosophy_catalog function")
+
+    def test_selector_agent_exists(self):
+        from pathlib import Path
+        agent = (Path(__file__).resolve().parent.parent
+                 / "src" / "agents"
+                 / "philosophy-source-selector.md")
+        if not agent.exists():
+            pytest.skip("philosophy-source-selector.md not found")
+        content = agent.read_text(encoding="utf-8")
+        assert "sources" in content
+
+    def test_selector_model_policy_key(self):
+        from pathlib import Path
+        dispatch = (Path(__file__).resolve().parent.parent
+                    / "src" / "scripts" / "section_loop"
+                    / "dispatch.py")
+        content = dispatch.read_text(encoding="utf-8")
+        assert "intent_philosophy_selector" in content, (
+            "dispatch.py must have intent_philosophy_selector policy key")
+
+
+class TestR56UpdaterSignalPreservationGuard:
+    """R56/V3: Malformed updater signal preserved as .malformed.json."""
+
+    def test_updater_signal_preservation(self):
+        from pathlib import Path
+        fb = (Path(__file__).resolve().parent.parent
+              / "src" / "scripts" / "scan" / "feedback.py")
+        content = fb.read_text(encoding="utf-8")
+        # Find updater signal parse site
+        idx = content.find("Malformed updater signal:")
+        assert idx != -1, "feedback.py must warn on malformed updater signal"
+        region = content[idx:idx + 500]
+        assert ".malformed.json" in region, (
+            "feedback.py must rename malformed updater signal "
+            "to .malformed.json (V3/R56)")
+
+
+class TestR56AxisBudgetEnforcementGuard:
+    """R56/V5: max_new_axes_total enforced, not just declared."""
+
+    def test_axes_tracked_in_registry(self):
+        from pathlib import Path
+        exp = (Path(__file__).resolve().parent.parent
+               / "src" / "scripts" / "section_loop" / "intent"
+               / "expansion.py")
+        content = exp.read_text(encoding="utf-8")
+        assert "axes_added_so_far" in content, (
+            "expansion.py must track axes_added_so_far in registry")
+
+    def test_axis_budget_enforcement_exists(self):
+        from pathlib import Path
+        exp = (Path(__file__).resolve().parent.parent
+               / "src" / "scripts" / "section_loop" / "intent"
+               / "expansion.py")
+        content = exp.read_text(encoding="utf-8")
+        assert "remaining_axis_budget" in content, (
+            "expansion.py must compute remaining_axis_budget")
+        assert "NEED_DECISION" in content, (
+            "expansion.py must block with NEED_DECISION when "
+            "axis budget exceeded")
+
+    def test_axis_budget_in_expander_prompt(self):
+        from pathlib import Path
+        exp = (Path(__file__).resolve().parent.parent
+               / "src" / "scripts" / "section_loop" / "intent"
+               / "expansion.py")
+        content = exp.read_text(encoding="utf-8")
+        assert "Axis budget" in content, (
+            "Expander prompt must include axis budget constraint")

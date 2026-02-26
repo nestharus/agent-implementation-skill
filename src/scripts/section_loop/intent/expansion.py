@@ -33,21 +33,22 @@ def run_expansion_cycle(
     - ``needs_user_input``: bool — whether user decision is required
     - ``user_input_path``: str — path to decisions file if needed
     - ``expansion_applied``: bool — whether any definitions changed
-    - ``surfaces_found``: int — how many new surfaces were processed
+    - ``surfaces_found``: int — how many surfaces were processed
     """
     policy = read_model_policy(planspace)
     artifacts = planspace / "artifacts"
     _budgets = budgets or {}
+    _no_work = {
+        "restart_required": False,
+        "needs_user_input": False,
+        "expansion_applied": False,
+        "surfaces_found": 0,
+    }
 
     # Load surfaces signal written by intent-judge
     surfaces = load_intent_surfaces(section_number, planspace)
     if not surfaces:
-        return {
-            "restart_required": False,
-            "needs_user_input": False,
-            "expansion_applied": False,
-            "surfaces_found": 0,
-        }
+        return _no_work
 
     # Load and update surface registry
     registry = load_surface_registry(section_number, planspace)
@@ -77,50 +78,71 @@ def run_expansion_cycle(
                 policy, recurrences,
             )
             if reopened:
-                # Reopened surfaces become new work for expanders
+                # Reopened surfaces become pending work
                 for sid in reopened:
                     for entry in registry.get("surfaces", []):
                         if entry["id"] == sid:
                             entry["status"] = "pending"
-                            new_surfaces.append(entry)
-            else:
-                # Adjudicator says keep all discarded — no new work
-                save_surface_registry(section_number, planspace, registry)
-                return {
-                    "restart_required": False,
-                    "needs_user_input": False,
-                    "expansion_applied": False,
-                    "surfaces_found": 0,
-                }
-        else:
-            # All duplicates are applied/pending — no new work
-            save_surface_registry(section_number, planspace, registry)
-            return {
-                "restart_required": False,
-                "needs_user_input": False,
-                "expansion_applied": False,
-                "surfaces_found": 0,
-            }
 
-    # Check budget
+    # V1/R56: Queue semantics — use ALL pending surfaces from registry,
+    # not just newly-added ones. This prevents budget-truncated surfaces
+    # from being permanently stranded as pending.
+    worklist = [
+        s for s in registry.get("surfaces", [])
+        if s.get("status") == "pending"
+    ]
+
+    if not worklist:
+        save_surface_registry(section_number, planspace, registry)
+        return _no_work
+
+    # Apply surface budget to worklist (oldest-first by registry order)
     max_surfaces = _budgets.get("max_new_surfaces_per_cycle", 8)
-    if len(new_surfaces) > max_surfaces:
-        log(f"Section {section_number}: {len(new_surfaces)} surfaces "
-            f"exceeds budget of {max_surfaces} — truncating")
-        new_surfaces = new_surfaces[:max_surfaces]
+    if len(worklist) > max_surfaces:
+        log(f"Section {section_number}: {len(worklist)} pending surfaces "
+            f"exceeds budget of {max_surfaces} — processing oldest "
+            f"{max_surfaces}")
+        worklist = worklist[:max_surfaces]
 
-    # Enforce budget on actual expander workload (V10/R55):
-    # Write budgeted surfaces to a separate file so expanders only
-    # see the truncated set, not the full signal.
-    budgeted_surface_ids = {s["id"] for s in new_surfaces if "id" in s}
-    problem_surfaces = [
-        s for s in surfaces.get("problem_surfaces", [])
-        if s.get("id") in budgeted_surface_ids
-    ]
-    philosophy_surfaces = [
-        s for s in surfaces.get("philosophy_surfaces", [])
-        if s.get("id") in budgeted_surface_ids
-    ]
+    # Build budgeted surfaces signal for expanders.
+    # Source from judge signal when available; reconstruct from registry
+    # for backlog items not in the current judge signal.
+    budgeted_ids = {s["id"] for s in worklist}
+    judge_problem = {
+        s.get("id"): s for s in surfaces.get("problem_surfaces", [])
+    }
+    judge_philosophy = {
+        s.get("id"): s for s in surfaces.get("philosophy_surfaces", [])
+    }
+    problem_surfaces: list[dict] = []
+    philosophy_surfaces: list[dict] = []
+    for entry in worklist:
+        sid = entry["id"]
+        if sid in judge_problem:
+            if sid in budgeted_ids:
+                problem_surfaces.append(judge_problem[sid])
+        elif sid in judge_philosophy:
+            if sid in budgeted_ids:
+                philosophy_surfaces.append(judge_philosophy[sid])
+        elif sid.startswith("P-"):
+            # Backlog item — reconstruct from registry (V1/R56)
+            problem_surfaces.append({
+                "id": sid,
+                "kind": entry.get("kind", ""),
+                "axis_id": entry.get("axis_id", ""),
+                "title": entry.get("notes", ""),
+                "description": entry.get("description", ""),
+                "evidence": entry.get("evidence", ""),
+            })
+        elif sid.startswith("F-"):
+            philosophy_surfaces.append({
+                "id": sid,
+                "kind": entry.get("kind", ""),
+                "axis_id": entry.get("axis_id", ""),
+                "title": entry.get("notes", ""),
+                "description": entry.get("description", ""),
+                "evidence": entry.get("evidence", ""),
+            })
 
     # Write budgeted surfaces signal for expanders
     budgeted_surfaces = {
@@ -133,6 +155,12 @@ def run_expansion_cycle(
     )
     pending_surfaces_path.write_text(
         json.dumps(budgeted_surfaces, indent=2), encoding="utf-8")
+
+    # V5/R56: Axis budget enforcement — compute remaining axis budget
+    # from registry metadata so expanders know the constraint.
+    axes_added = registry.get("axes_added_so_far", 0)
+    max_axes = _budgets.get("max_new_axes_total", 6)
+    remaining_axis_budget = max(0, max_axes - axes_added)
 
     delta = {
         "section": section_number,
@@ -152,30 +180,57 @@ def run_expansion_cycle(
         problem_delta = _run_problem_expander(
             section_number, planspace, codespace, parent, policy,
             pending_surfaces_path=pending_surfaces_path,
+            remaining_axis_budget=remaining_axis_budget,
         )
         if problem_delta:
-            delta["applied"]["problem_definition_updated"] = (
-                problem_delta.get("applied", {})
-                .get("problem_definition_updated", False)
-            )
-            delta["applied"]["problem_rubric_updated"] = (
-                problem_delta.get("applied", {})
-                .get("problem_rubric_updated", False)
-            )
-            delta["applied_surface_ids"].extend(
-                problem_delta.get("applied_surface_ids", []),
-            )
-            delta["discarded_surface_ids"].extend(
-                problem_delta.get("discarded_surface_ids", []),
-            )
-            delta["new_axes"].extend(
-                problem_delta.get("new_axes", []),
-            )
-            if problem_delta.get("restart_required"):
-                delta["restart_required"] = True
-                delta["restart_reason"] = problem_delta.get(
-                    "restart_reason", "Problem definition expanded",
+            proposed_axes = problem_delta.get("new_axes", [])
+            # V5/R56: Enforce axis budget — if expander proposes more
+            # axes than the remaining budget, block as NEED_DECISION.
+            if len(proposed_axes) > remaining_axis_budget:
+                log(f"Section {section_number}: expander proposed "
+                    f"{len(proposed_axes)} new axes but budget allows "
+                    f"{remaining_axis_budget} — blocking as NEED_DECISION")
+                blocker = {
+                    "state": "NEED_DECISION",
+                    "detail": (
+                        f"Problem expander proposed {len(proposed_axes)} "
+                        f"new axes ({proposed_axes}) but axis budget "
+                        f"allows {remaining_axis_budget}. "
+                        f"Total so far: {axes_added}/{max_axes}."
+                    ),
+                    "needs": "Decide which axes to accept",
+                    "why_blocked": "Axis budget exceeded",
+                }
+                blocker_path = (
+                    artifacts / "signals"
+                    / f"intent-axis-budget-{section_number}-signal.json"
                 )
+                blocker_path.parent.mkdir(parents=True, exist_ok=True)
+                blocker_path.write_text(
+                    json.dumps(blocker, indent=2), encoding="utf-8")
+                delta["needs_user_input"] = True
+                delta["restart_required"] = True
+            else:
+                delta["applied"]["problem_definition_updated"] = (
+                    problem_delta.get("applied", {})
+                    .get("problem_definition_updated", False)
+                )
+                delta["applied"]["problem_rubric_updated"] = (
+                    problem_delta.get("applied", {})
+                    .get("problem_rubric_updated", False)
+                )
+                delta["applied_surface_ids"].extend(
+                    problem_delta.get("applied_surface_ids", []),
+                )
+                delta["discarded_surface_ids"].extend(
+                    problem_delta.get("discarded_surface_ids", []),
+                )
+                delta["new_axes"].extend(proposed_axes)
+                if problem_delta.get("restart_required"):
+                    delta["restart_required"] = True
+                    delta["restart_reason"] = problem_delta.get(
+                        "restart_reason", "Problem definition expanded",
+                    )
 
     if philosophy_surfaces:
         philosophy_delta = _run_philosophy_expander(
@@ -205,6 +260,10 @@ def run_expansion_cycle(
     # Update registry with applied/discarded status
     mark_surfaces_applied(registry, delta["applied_surface_ids"])
     mark_surfaces_discarded(registry, delta["discarded_surface_ids"])
+
+    # V5/R56: Track cumulative axis count in registry metadata
+    registry["axes_added_so_far"] = axes_added + len(delta["new_axes"])
+
     save_surface_registry(section_number, planspace, registry)
 
     # Write the combined delta signal
@@ -225,7 +284,7 @@ def run_expansion_cycle(
         "needs_user_input": delta.get("needs_user_input", False),
         "user_input_path": delta.get("user_input_path", ""),
         "expansion_applied": expansion_applied,
-        "surfaces_found": len(new_surfaces),
+        "surfaces_found": len(worklist),
     }
 
 
@@ -281,6 +340,7 @@ def _run_problem_expander(
     policy: dict,
     *,
     pending_surfaces_path: Path | None = None,
+    remaining_axis_budget: int = 6,
 ) -> dict | None:
     """Dispatch problem-expander and return its delta."""
     artifacts = planspace / "artifacts"
@@ -302,6 +362,15 @@ def _run_problem_expander(
     prompt_path = artifacts / f"problem-expand-{section_number}-prompt.md"
     output_path = artifacts / f"problem-expand-{section_number}-output.md"
 
+    # V5/R56: Include axis budget constraint in prompt
+    axis_budget_note = ""
+    if remaining_axis_budget < 6:
+        axis_budget_note = (
+            f"\n**Axis budget**: {remaining_axis_budget} new axes remaining. "
+            f"Prefer expanding existing axes over adding new ones when "
+            f"possible.\n"
+        )
+
     prompt_path.write_text(f"""# Task: Expand Problem Definition for Section {section_number}
 
 ## Files to Read
@@ -312,7 +381,7 @@ def _run_problem_expander(
 ## Instructions
 Validate each problem surface and integrate validated ones into the
 living problem definition and rubric.
-
+{axis_budget_note}
 For each surface:
 1. Is it already covered by an existing axis? → discard (already_covered)
 2. Is it real and in scope? → integrate (expand existing axis or add new)

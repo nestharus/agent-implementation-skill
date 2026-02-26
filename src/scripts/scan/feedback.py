@@ -399,6 +399,12 @@ def _apply_feedback(
                 f"[FEEDBACK][WARN] Malformed updater signal: "
                 f"{updater_signal} ({exc})",
             )
+            # Preserve corrupted signal for diagnosis (V3/R56)
+            try:
+                updater_signal.rename(
+                    updater_signal.with_suffix(".malformed.json"))
+            except OSError:
+                pass  # Best-effort preserve
             continue
 
         if status == "stale":

@@ -259,8 +259,9 @@ class TestIntentBootstrap:
         self, intent_planspace: Path, mock_dispatch: MagicMock,
     ) -> None:
         """Philosophy distiller creates the operational philosophy."""
-        # Provide a grounded source so fail-closed check passes (P7/R52)
-        (intent_planspace / "constraints.md").write_text(
+        # Provide a grounded source so catalog finds it
+        constraints_path = intent_planspace / "constraints.md"
+        constraints_path.write_text(
             "# Constraints\nNo new deps.\n", encoding="utf-8")
 
         philosophy_path = (
@@ -268,16 +269,32 @@ class TestIntentBootstrap:
             / "philosophy.md"
         )
 
-        def write_philosophy(*args, **kwargs):
-            philosophy_path.write_text(
-                "# Operational Philosophy\n\n"
-                "## P1 Strategy over brute force\n"
-                "Choose the path that collapses cycles.\n",
-                encoding="utf-8",
-            )
+        def handle_dispatch(*args, **kwargs):
+            agent_file = kwargs.get("agent_file", "")
+            # V2/R56: source selector writes selection signal
+            if agent_file == "philosophy-source-selector.md":
+                signal_path = (
+                    intent_planspace / "artifacts" / "signals"
+                    / "philosophy-selected-sources.json"
+                )
+                signal_path.parent.mkdir(parents=True, exist_ok=True)
+                signal_path.write_text(json.dumps({
+                    "sources": [{"path": str(constraints_path),
+                                 "reason": "constraints"}],
+                }), encoding="utf-8")
+                return ""
+            # Philosophy distiller writes output
+            if agent_file == "philosophy-distiller.md":
+                philosophy_path.write_text(
+                    "# Operational Philosophy\n\n"
+                    "## P1 Strategy over brute force\n"
+                    "Choose the path that collapses cycles.\n",
+                    encoding="utf-8",
+                )
+                return ""
             return ""
 
-        mock_dispatch.side_effect = write_philosophy
+        mock_dispatch.side_effect = handle_dispatch
 
         from section_loop.intent.bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(
@@ -533,6 +550,18 @@ class TestRunnerIntentIntegration:
                         "max_new_axes_total": 6,
                     },
                     "reason": "test",
+                }), encoding="utf-8")
+                return ""
+
+            # V2/R56: Philosophy source selector
+            if agent_file == "philosophy-source-selector.md":
+                signal_path = (intent_planspace / "artifacts" / "signals"
+                               / "philosophy-selected-sources.json")
+                signal_path.parent.mkdir(parents=True, exist_ok=True)
+                signal_path.write_text(json.dumps({
+                    "sources": [{"path": str(
+                        intent_planspace / "constraints.md"),
+                        "reason": "constraints"}],
                 }), encoding="utf-8")
                 return ""
 
@@ -960,6 +989,18 @@ class TestIntentConventions:
                 }), encoding="utf-8")
                 return ""
 
+            # V2/R56: Philosophy source selector
+            if agent_file == "philosophy-source-selector.md":
+                signal_path = (intent_planspace / "artifacts" / "signals"
+                               / "philosophy-selected-sources.json")
+                signal_path.parent.mkdir(parents=True, exist_ok=True)
+                signal_path.write_text(json.dumps({
+                    "sources": [{"path": str(
+                        intent_planspace / "constraints.md"),
+                        "reason": "constraints"}],
+                }), encoding="utf-8")
+                return ""
+
             if agent_file == "philosophy-distiller.md":
                 phi = (intent_planspace / "artifacts" / "intent"
                        / "global" / "philosophy.md")
@@ -1376,3 +1417,297 @@ class TestR55BudgetEnforcementFunctional:
         total += len(data.get("philosophy_surfaces", []))
         assert total <= 3, (
             f"Pending surfaces must respect budget (got {total}, max 3)")
+
+
+# ---------------------------------------------------------------------------
+# R56 Regression Guards
+# ---------------------------------------------------------------------------
+
+
+class TestR56QueueSemantics:
+    """V1/R56: Expansion uses queue semantics — pending backlog is drained."""
+
+    def test_backlog_surfaces_processed_in_next_cycle(
+        self, planspace, codespace, section_01, mock_dispatch,
+    ) -> None:
+        """Pending surfaces from prior truncation are processed next cycle."""
+        from section_loop.intent.expansion import run_expansion_cycle
+
+        artifacts = planspace / "artifacts"
+        signals = artifacts / "signals"
+        signals.mkdir(parents=True, exist_ok=True)
+        (planspace / "model-policy.json").write_text("{}")
+
+        intent_sec = artifacts / "intent" / "sections" / "section-01"
+        intent_sec.mkdir(parents=True, exist_ok=True)
+        (intent_sec / "problem.md").write_text("# Problem\n")
+        (intent_sec / "problem-alignment.md").write_text("# Rubric\n")
+
+        # Registry has 3 pending surfaces from prior truncation
+        registry = {
+            "section": "01", "next_id": 4,
+            "surfaces": [
+                {"id": "P-01-0001", "status": "pending",
+                 "kind": "emergent", "axis_id": "A1",
+                 "fingerprint": "aaa", "notes": "Backlog 1",
+                 "description": "D1", "evidence": "E1",
+                 "first_seen": {"stage": "x", "attempt": 1},
+                 "last_seen": {"stage": "x", "attempt": 1}},
+                {"id": "P-01-0002", "status": "pending",
+                 "kind": "emergent", "axis_id": "A2",
+                 "fingerprint": "bbb", "notes": "Backlog 2",
+                 "description": "D2", "evidence": "E2",
+                 "first_seen": {"stage": "x", "attempt": 1},
+                 "last_seen": {"stage": "x", "attempt": 1}},
+                {"id": "P-01-0003", "status": "applied",
+                 "kind": "emergent", "axis_id": "A3",
+                 "fingerprint": "ccc", "notes": "Done",
+                 "description": "D3", "evidence": "E3",
+                 "first_seen": {"stage": "x", "attempt": 1},
+                 "last_seen": {"stage": "x", "attempt": 1}},
+            ],
+        }
+        (intent_sec / "surface-registry.json").write_text(
+            json.dumps(registry))
+
+        # Empty judge signal — no new surfaces, but pending backlog exists
+        surfaces = {
+            "problem_surfaces": [],
+            "philosophy_surfaces": [],
+        }
+        (signals / "intent-surfaces-01.json").write_text(
+            json.dumps(surfaces))
+
+        mock_dispatch.return_value = ""
+
+        result = run_expansion_cycle(
+            "01", planspace, codespace, "test-parent",
+            budgets={"max_new_surfaces_per_cycle": 8},
+        )
+
+        # Backlog should be processed (2 pending surfaces)
+        assert result["surfaces_found"] == 2, (
+            "Queue semantics: pending backlog must be processed "
+            f"even with empty judge signal (got {result['surfaces_found']})")
+
+        # Pending surfaces file should contain the backlog items
+        pending = signals / "intent-surfaces-pending-01.json"
+        assert pending.exists()
+        data = json.loads(pending.read_text())
+        ids = [s["id"] for s in data.get("problem_surfaces", [])]
+        assert "P-01-0001" in ids, "Backlog P-01-0001 must be in pending"
+        assert "P-01-0002" in ids, "Backlog P-01-0002 must be in pending"
+
+
+class TestR56AgentSelectedSources:
+    """V2/R56: Philosophy sources selected by agent, not hardcoded."""
+
+    def test_no_hardcoded_filenames_in_bootstrap(self) -> None:
+        """bootstrap.py must not contain hardcoded philosophy filename lists."""
+        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
+        if not bootstrap.exists():
+            pytest.skip("bootstrap.py not found")
+        text = bootstrap.read_text(encoding="utf-8")
+        # Must not have hardcoded candidate names
+        assert '"constraints.md"' not in text, (
+            "bootstrap.py must not hardcode 'constraints.md' filename")
+        assert '"design-philosophy-notes.md"' not in text, (
+            "bootstrap.py must not hardcode philosophy filenames")
+        assert '"SKILL.md"' not in text, (
+            "bootstrap.py must not hardcode SKILL.md")
+
+    def test_catalog_builder_is_mechanical(self) -> None:
+        """_build_philosophy_catalog uses rglob, not name matching."""
+        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
+        if not bootstrap.exists():
+            pytest.skip("bootstrap.py not found")
+        text = bootstrap.read_text(encoding="utf-8")
+        assert "rglob" in text, (
+            "Catalog builder must use rglob for mechanical collection")
+
+    def test_selector_agent_file_exists(self) -> None:
+        """philosophy-source-selector.md agent file must exist."""
+        agent = (Path(__file__).resolve().parent.parent / "src"
+                 / "agents" / "philosophy-source-selector.md")
+        if not agent.exists():
+            pytest.skip("philosophy-source-selector.md not found")
+        text = agent.read_text(encoding="utf-8")
+        assert "sources" in text, (
+            "Agent must define 'sources' in its output schema")
+
+    def test_model_policy_has_selector_key(self) -> None:
+        """Model policy must include intent_philosophy_selector key."""
+        from section_loop.dispatch import read_model_policy
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            ps = Path(td)
+            (ps / "artifacts").mkdir(parents=True)
+            policy = read_model_policy(ps)
+            assert "intent_philosophy_selector" in policy, (
+                "Model policy must include intent_philosophy_selector key")
+
+    def test_selector_fail_closed_no_selection(
+        self, planspace, codespace, mock_dispatch,
+    ) -> None:
+        """Selector that returns empty sources → fail-closed."""
+        # Create a markdown file so catalog isn't empty
+        (planspace / "readme.md").write_text("# Readme\n")
+
+        def selector_empty(*args, **kwargs):
+            agent_file = kwargs.get("agent_file", "")
+            if agent_file == "philosophy-source-selector.md":
+                signal = planspace / "artifacts" / "signals" / \
+                    "philosophy-selected-sources.json"
+                signal.parent.mkdir(parents=True, exist_ok=True)
+                signal.write_text(json.dumps({"sources": []}))
+                return ""
+            return ""
+
+        mock_dispatch.side_effect = selector_empty
+
+        from section_loop.intent.bootstrap import ensure_global_philosophy
+        result = ensure_global_philosophy(planspace, codespace, "parent")
+        assert result is None, (
+            "Empty selection must fail-closed (return None)")
+
+
+class TestR56UpdaterSignalPreservation:
+    """V3/R56: Malformed updater signal renamed to .malformed.json."""
+
+    def test_malformed_updater_signal_preserved(self) -> None:
+        """feedback.py updater signal parse site preserves malformed files."""
+        content = (Path(__file__).resolve().parent.parent / "src"
+                   / "scripts" / "scan" / "feedback.py").read_text()
+        # Find the updater signal parse site (around _apply_feedback)
+        region_start = content.find("Malformed updater signal:")
+        assert region_start != -1, (
+            "feedback.py must have 'Malformed updater signal' warning")
+        region = content[region_start:region_start + 500]
+        assert ".malformed.json" in region, (
+            "feedback.py must rename malformed updater signal to "
+            ".malformed.json (V3/R56)")
+
+
+class TestR56AxisBudgetEnforcement:
+    """V5/R56: max_new_axes_total is enforced, not just declared."""
+
+    def test_axes_added_tracked_in_registry(
+        self, planspace, codespace, section_01, mock_dispatch,
+    ) -> None:
+        """axes_added_so_far is persisted in registry after expansion."""
+        from section_loop.intent.expansion import run_expansion_cycle
+
+        artifacts = planspace / "artifacts"
+        signals = artifacts / "signals"
+        signals.mkdir(parents=True, exist_ok=True)
+        (planspace / "model-policy.json").write_text("{}")
+
+        intent_sec = artifacts / "intent" / "sections" / "section-01"
+        intent_sec.mkdir(parents=True, exist_ok=True)
+        (intent_sec / "problem.md").write_text("# Problem\n")
+        (intent_sec / "problem-alignment.md").write_text("# Rubric\n")
+
+        # Create registry and surfaces
+        registry = {"section": "01", "next_id": 1, "surfaces": []}
+        (intent_sec / "surface-registry.json").write_text(
+            json.dumps(registry))
+        surfaces = {
+            "problem_surfaces": [
+                {"kind": "emergent", "axis_id": "A1", "title": "T",
+                 "description": "D", "evidence": "E"},
+            ],
+            "philosophy_surfaces": [],
+        }
+        (signals / "intent-surfaces-01.json").write_text(
+            json.dumps(surfaces))
+
+        # Expander adds 2 new axes
+        def write_delta(*args, **kwargs):
+            delta = {
+                "section": "01",
+                "applied": {"problem_definition_updated": True,
+                             "problem_rubric_updated": True},
+                "applied_surface_ids": ["P-01-0001"],
+                "discarded_surface_ids": [],
+                "new_axes": ["A5", "A6"],
+                "restart_required": False,
+            }
+            delta_path = signals / "intent-delta-01.json"
+            delta_path.write_text(json.dumps(delta))
+            return ""
+
+        mock_dispatch.side_effect = write_delta
+
+        run_expansion_cycle(
+            "01", planspace, codespace, "test-parent",
+            budgets={"max_new_axes_total": 6},
+        )
+
+        # Registry should track axes_added_so_far
+        reg = json.loads(
+            (intent_sec / "surface-registry.json").read_text())
+        assert reg.get("axes_added_so_far") == 2, (
+            "Registry must track axes_added_so_far after expansion")
+
+    def test_axis_budget_exceeded_blocks(
+        self, planspace, codespace, section_01, mock_dispatch,
+    ) -> None:
+        """Exceeding max_new_axes_total creates NEED_DECISION blocker."""
+        from section_loop.intent.expansion import run_expansion_cycle
+
+        artifacts = planspace / "artifacts"
+        signals = artifacts / "signals"
+        signals.mkdir(parents=True, exist_ok=True)
+        (planspace / "model-policy.json").write_text("{}")
+
+        intent_sec = artifacts / "intent" / "sections" / "section-01"
+        intent_sec.mkdir(parents=True, exist_ok=True)
+        (intent_sec / "problem.md").write_text("# Problem\n")
+        (intent_sec / "problem-alignment.md").write_text("# Rubric\n")
+
+        # Registry already has 5 axes added
+        registry = {"section": "01", "next_id": 1, "surfaces": [],
+                     "axes_added_so_far": 5}
+        (intent_sec / "surface-registry.json").write_text(
+            json.dumps(registry))
+        surfaces = {
+            "problem_surfaces": [
+                {"kind": "emergent", "axis_id": "A1", "title": "T",
+                 "description": "D", "evidence": "E"},
+            ],
+            "philosophy_surfaces": [],
+        }
+        (signals / "intent-surfaces-01.json").write_text(
+            json.dumps(surfaces))
+
+        # Expander tries to add 3 axes but budget allows only 1
+        def write_delta(*args, **kwargs):
+            delta = {
+                "section": "01",
+                "applied": {"problem_definition_updated": True,
+                             "problem_rubric_updated": True},
+                "applied_surface_ids": ["P-01-0001"],
+                "discarded_surface_ids": [],
+                "new_axes": ["A7", "A8", "A9"],
+                "restart_required": True,
+            }
+            (signals / "intent-delta-01.json").write_text(
+                json.dumps(delta))
+            return ""
+
+        mock_dispatch.side_effect = write_delta
+
+        result = run_expansion_cycle(
+            "01", planspace, codespace, "test-parent",
+            budgets={"max_new_axes_total": 6},
+        )
+
+        # Should create a NEED_DECISION blocker
+        assert result["needs_user_input"] is True, (
+            "Exceeding axis budget must trigger NEED_DECISION")
+        blocker_path = (
+            signals / "intent-axis-budget-01-signal.json")
+        assert blocker_path.exists(), (
+            "Axis budget blocker signal must be written")

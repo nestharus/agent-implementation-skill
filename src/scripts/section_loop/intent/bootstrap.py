@@ -4,37 +4,64 @@ import json
 from pathlib import Path
 
 from ..communication import _log_artifact, log
-from ..dispatch import dispatch_agent, read_model_policy
+from ..dispatch import (
+    dispatch_agent, read_agent_signal, read_model_policy,
+)
 from ..types import Section
 
 
-def _find_philosophy_sources(
-    planspace: Path, codespace: Path,
-) -> list[Path]:
-    """Find candidate philosophy source files in planspace/codespace.
+def _build_philosophy_catalog(
+    planspace: Path,
+    codespace: Path,
+    *,
+    max_files: int = 50,
+    max_size_kb: int = 100,
+    max_depth: int = 3,
+) -> list[dict]:
+    """Build a mechanical catalog of candidate philosophy source files.
 
-    Returns a list of paths that could be used as philosophy input.
+    Collects markdown docs within bounded depth/size from planspace and
+    codespace. No semantic filtering — purely mechanical collection.
+    Returns a list of ``{path, size_kb, first_lines}`` entries.
     """
-    candidates: list[Path] = []
-    artifacts = planspace / "artifacts"
+    candidates: list[dict] = []
+    seen: set[str] = set()
 
-    # Check known locations where philosophy sources may exist
-    for root in (planspace, codespace, artifacts):
-        if not root.exists():
+    for root_dir in (planspace, codespace):
+        if not root_dir.exists():
             continue
-        for name in (
-            "constraints.md", "design-philosophy-notes.md",
-            "philosophy.md", "execution-philosophy.md",
-        ):
-            p = root / name
-            if p.exists() and p.stat().st_size > 0:
-                candidates.append(p)
-
-    # Check SKILL.md (common in skill repos)
-    for root in (planspace, codespace):
-        skill = root / "SKILL.md"
-        if skill.exists() and skill.stat().st_size > 0:
-            candidates.append(skill)
+        for md_file in sorted(root_dir.rglob("*.md")):
+            # Depth check
+            try:
+                rel = md_file.relative_to(root_dir)
+            except ValueError:
+                continue
+            if len(rel.parts) > max_depth:
+                continue
+            # Size check
+            try:
+                size = md_file.stat().st_size
+            except OSError:
+                continue
+            if size == 0 or size > max_size_kb * 1024:
+                continue
+            # Dedup by resolved path
+            resolved = str(md_file.resolve())
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            # Read first N lines for catalog preview
+            try:
+                lines = md_file.read_text(encoding="utf-8").splitlines()[:10]
+            except (OSError, UnicodeDecodeError):
+                continue
+            candidates.append({
+                "path": str(md_file),
+                "size_kb": round(size / 1024, 1),
+                "first_lines": "\n".join(lines),
+            })
+            if len(candidates) >= max_files:
+                return candidates
 
     return candidates
 
@@ -58,26 +85,116 @@ def ensure_global_philosophy(
     if philosophy_path.exists() and philosophy_path.stat().st_size > 0:
         return philosophy_path
 
-    # Fail-closed: check for grounded source before dispatching (P7/R52)
-    sources = _find_philosophy_sources(planspace, codespace)
-    if not sources:
-        log("Intent bootstrap: no philosophy source files found — "
-            "skipping distillation (fail-closed)")
+    # V2/R56: Build mechanical catalog of candidate docs, then let an
+    # agent select which ones are philosophy sources. No hardcoded
+    # filename assumptions in scripts.
+    catalog = _build_philosophy_catalog(planspace, codespace)
+    if not catalog:
+        log("Intent bootstrap: no markdown files found for philosophy "
+            "catalog — skipping distillation (fail-closed)")
         signal_dir = artifacts / "signals"
         signal_dir.mkdir(parents=True, exist_ok=True)
         signal = {
             "state": "philosophy_source_missing",
             "detail": (
-                "No philosophy source files found in planspace or "
-                "codespace. Intent mode will downgrade to lightweight."
+                "No markdown files found in planspace or codespace. "
+                "Intent mode will downgrade to lightweight."
             ),
         }
         (signal_dir / "philosophy-source-missing.json").write_text(
             json.dumps(signal, indent=2), encoding="utf-8")
         return None
 
+    # Write catalog for source selector agent
+    catalog_path = artifacts / "philosophy-candidate-catalog.json"
+    catalog_path.write_text(
+        json.dumps(catalog, indent=2), encoding="utf-8")
+
+    # Dispatch source selector to pick philosophy files from catalog
+    selector_prompt = artifacts / "philosophy-select-prompt.md"
+    selector_output = artifacts / "philosophy-select-output.md"
+    selected_signal = (
+        artifacts / "signals" / "philosophy-selected-sources.json"
+    )
+    selected_signal.parent.mkdir(parents=True, exist_ok=True)
+
+    selector_prompt.write_text(f"""# Task: Select Philosophy Source Files
+
+## Context
+Select which files from the candidate catalog contain execution
+philosophy, design constraints, or operational principles that should
+be distilled into the project's operational philosophy.
+
+## Input
+Read the candidate catalog at: `{catalog_path}`
+
+Each entry has a path, size, and first 10 lines as a preview.
+
+## Selection Criteria
+- Files that describe HOW to build (design principles, constraints,
+  operational rules) — not WHAT to build (requirements, specs)
+- Files that contain explicit principles, constraints, or philosophy
+- Prefer fewer, higher-quality sources over many marginal ones
+- Select 1-10 files maximum
+
+## Output
+Write a JSON signal to: `{selected_signal}`
+
+```json
+{{
+  "sources": [
+    {{"path": "...", "reason": "Contains design constraints"}}
+  ]
+}}
+```
+
+If NO files contain philosophy or constraints, write:
+```json
+{{"sources": []}}
+```
+""", encoding="utf-8")
+    _log_artifact(planspace, "prompt:philosophy-select")
+
+    dispatch_agent(
+        policy.get("intent_philosophy_selector", "glm"),
+        selector_prompt,
+        selector_output,
+        planspace,
+        parent,
+        codespace=codespace,
+        agent_file="philosophy-source-selector.md",
+    )
+
+    # Read selected sources; fail-closed on malformed/missing
+    selected = read_agent_signal(selected_signal)
+    if not selected or not selected.get("sources"):
+        log("Intent bootstrap: source selector found no philosophy "
+            "files — skipping distillation (fail-closed)")
+        signal_dir = artifacts / "signals"
+        signal_dir.mkdir(parents=True, exist_ok=True)
+        signal = {
+            "state": "philosophy_source_missing",
+            "detail": (
+                "Source selector found no philosophy files in the "
+                "candidate catalog. Intent mode will downgrade to "
+                "lightweight."
+            ),
+        }
+        (signal_dir / "philosophy-source-missing.json").write_text(
+            json.dumps(signal, indent=2), encoding="utf-8")
+        return None
+
+    sources = [
+        Path(s["path"]) for s in selected["sources"]
+        if Path(s["path"]).exists()
+    ]
+    if not sources:
+        log("Intent bootstrap: selected source paths do not exist — "
+            "skipping distillation (fail-closed)")
+        return None
+
     log(f"Intent bootstrap: distilling operational philosophy from "
-        f"{len(sources)} source(s)")
+        f"{len(sources)} agent-selected source(s)")
 
     prompt_path = artifacts / "philosophy-distill-prompt.md"
     output_path = artifacts / "philosophy-distill-output.md"
