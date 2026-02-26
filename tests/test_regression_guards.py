@@ -5627,3 +5627,161 @@ class TestR58RelatedFilesSignalGuard:
         assert ".malformed.json" in func_body, (
             "apply_related_files_update must rename malformed signals "
             "to .malformed.json")
+
+
+# ---------------------------------------------------------------------------
+# R59 Guards
+# ---------------------------------------------------------------------------
+
+
+class TestR59CatalogQuotaGuard:
+    """V1/R59: _build_philosophy_catalog must use per-root quotas and
+    scan codespace first."""
+
+    def test_codespace_scanned_first_in_iteration(self) -> None:
+        """The for-loop must iterate (codespace, ...) before (planspace, ...)."""
+        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
+        if not bootstrap.exists():
+            pytest.skip("bootstrap.py not found")
+        text = bootstrap.read_text(encoding="utf-8")
+
+        # Find the catalog function
+        func_start = text.find("def _build_philosophy_catalog(")
+        assert func_start >= 0
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        # codespace must appear before planspace in iteration
+        cs_pos = func_body.find("codespace, codespace_quota")
+        ps_pos = func_body.find("planspace, planspace_quota")
+        assert cs_pos >= 0, "Must iterate over codespace with quota"
+        assert ps_pos >= 0, "Must iterate over planspace with quota"
+        assert cs_pos < ps_pos, (
+            "Codespace must be iterated BEFORE planspace")
+
+    def test_artifacts_excluded(self) -> None:
+        """Planspace artifacts/ must be excluded from catalog."""
+        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
+        if not bootstrap.exists():
+            pytest.skip("bootstrap.py not found")
+        text = bootstrap.read_text(encoding="utf-8")
+
+        func_start = text.find("def _build_philosophy_catalog(")
+        assert func_start >= 0
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert '"artifacts"' in func_body, (
+            "Catalog must exclude planspace artifacts/ directory")
+
+    def test_per_root_quotas(self) -> None:
+        """Must use per-root quotas (not global max_files early return)."""
+        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
+        if not bootstrap.exists():
+            pytest.skip("bootstrap.py not found")
+        text = bootstrap.read_text(encoding="utf-8")
+
+        func_start = text.find("def _build_philosophy_catalog(")
+        assert func_start >= 0
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert "codespace_quota" in func_body, (
+            "Must define codespace_quota for per-root allocation")
+        assert "planspace_quota" in func_body, (
+            "Must define planspace_quota for per-root allocation")
+        # Must NOT have global early return on max_files
+        assert "if len(candidates) >= max_files" not in func_body, (
+            "Must NOT use global max_files early return — "
+            "use per-root quotas instead")
+
+
+class TestR59GroundingValidationGuard:
+    """V2/R59: ensure_global_philosophy must validate source map after
+    distillation."""
+
+    def test_grounding_validation_called(self) -> None:
+        """ensure_global_philosophy must call _validate_philosophy_grounding."""
+        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
+        if not bootstrap.exists():
+            pytest.skip("bootstrap.py not found")
+        text = bootstrap.read_text(encoding="utf-8")
+
+        func_start = text.find("def ensure_global_philosophy(")
+        assert func_start >= 0
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert "_validate_philosophy_grounding" in func_body, (
+            "ensure_global_philosophy must call "
+            "_validate_philosophy_grounding after distillation")
+
+    def test_grounding_validator_exists_and_checks_coverage(self) -> None:
+        """_validate_philosophy_grounding must check principle coverage."""
+        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
+        if not bootstrap.exists():
+            pytest.skip("bootstrap.py not found")
+        text = bootstrap.read_text(encoding="utf-8")
+
+        func_start = text.find("def _validate_philosophy_grounding(")
+        assert func_start >= 0, (
+            "_validate_philosophy_grounding function must exist")
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert "philosophy-grounding-failed.json" in func_body, (
+            "Must write grounding-failed signal")
+        assert ".malformed.json" in func_body, (
+            "Must preserve malformed source map")
+        assert r"P\d+" in func_body or "P\\d+" in func_body, (
+            "Must extract principle IDs with P\\d+ pattern")
+
+
+class TestR59IntentPackHashGuard:
+    """V3/R59: generate_intent_pack must use hash-based invalidation."""
+
+    def test_hash_computation_exists(self) -> None:
+        """_compute_intent_pack_hash function must exist."""
+        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
+        if not bootstrap.exists():
+            pytest.skip("bootstrap.py not found")
+        text = bootstrap.read_text(encoding="utf-8")
+
+        assert "def _compute_intent_pack_hash(" in text, (
+            "_compute_intent_pack_hash function must exist")
+
+    def test_generate_intent_pack_uses_hash(self) -> None:
+        """generate_intent_pack must compute and check input hash."""
+        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
+        if not bootstrap.exists():
+            pytest.skip("bootstrap.py not found")
+        text = bootstrap.read_text(encoding="utf-8")
+
+        func_start = text.find("def generate_intent_pack(")
+        assert func_start >= 0
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert "_compute_intent_pack_hash" in func_body, (
+            "generate_intent_pack must call _compute_intent_pack_hash")
+        assert "intent-pack-input-hash.txt" in func_body, (
+            "Must read/write intent-pack-input-hash.txt")

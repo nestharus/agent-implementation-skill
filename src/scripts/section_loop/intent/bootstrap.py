@@ -1,6 +1,8 @@
 """Intent bootstrap: ensure philosophy and per-section intent packs exist."""
 
+import hashlib
 import json
+import re
 from pathlib import Path
 
 from ..communication import _log_artifact, log
@@ -20,17 +22,38 @@ def _build_philosophy_catalog(
 ) -> list[dict]:
     """Build a mechanical catalog of candidate philosophy source files.
 
-    Collects markdown docs within bounded depth/size from planspace and
-    codespace. No semantic filtering — purely mechanical collection.
+    Collects markdown docs within bounded depth/size from codespace first
+    (where real project philosophy lives), then planspace. Per-root
+    quotas ensure both roots are represented. Planspace ``artifacts/``
+    directories are excluded (pipeline outputs, not philosophy sources).
+
     Returns a list of ``{path, size_kb, first_lines}`` entries.
     """
+    # V1/R59: Per-root quotas guarantee codespace coverage.
+    # Codespace is scanned first because real philosophy lives there;
+    # planspace artifacts/ excluded to avoid crowding by pipeline outputs.
+    codespace_quota = max(max_files * 4 // 5, 1)  # 80% for codespace
+    planspace_quota = max(max_files - codespace_quota, 1)  # 20% for plan
+
     candidates: list[dict] = []
     seen: set[str] = set()
 
-    for root_dir in (planspace, codespace):
+    for root_dir, quota in (
+        (codespace, codespace_quota),
+        (planspace, planspace_quota),
+    ):
         if not root_dir.exists():
             continue
+        root_count = 0
         for md_file in sorted(root_dir.rglob("*.md")):
+            # Exclude planspace artifacts/ (pipeline outputs)
+            if root_dir == planspace:
+                try:
+                    rel_check = md_file.relative_to(root_dir)
+                except ValueError:
+                    continue
+                if rel_check.parts and rel_check.parts[0] == "artifacts":
+                    continue
             # Depth check
             try:
                 rel = md_file.relative_to(root_dir)
@@ -60,10 +83,150 @@ def _build_philosophy_catalog(
                 "size_kb": round(size / 1024, 1),
                 "first_lines": "\n".join(lines),
             })
-            if len(candidates) >= max_files:
-                return candidates
+            root_count += 1
+            if root_count >= quota:
+                break
 
     return candidates
+
+
+def _validate_philosophy_grounding(
+    philosophy_path: Path,
+    source_map_path: Path,
+    artifacts: Path,
+) -> bool:
+    """Validate that distilled philosophy is grounded in source files.
+
+    Checks: source map exists, parses as JSON object, and every
+    principle ID (``P\\d+``) found in philosophy.md has a mapping entry.
+    Writes a ``philosophy-grounding-failed.json`` signal on failure.
+
+    Returns ``True`` if grounding is valid; ``False`` otherwise.
+    """
+    signal_dir = artifacts / "signals"
+    signal_dir.mkdir(parents=True, exist_ok=True)
+    fail_signal = signal_dir / "philosophy-grounding-failed.json"
+
+    # Check source map exists
+    if not source_map_path.exists() or source_map_path.stat().st_size == 0:
+        signal = {
+            "state": "philosophy_grounding_failed",
+            "detail": (
+                "Philosophy source map is missing or empty. "
+                "Distilled philosophy cannot be verified as grounded. "
+                "Intent mode will downgrade to lightweight."
+            ),
+        }
+        fail_signal.write_text(
+            json.dumps(signal, indent=2), encoding="utf-8")
+        return False
+
+    # Parse source map
+    try:
+        source_map = json.loads(
+            source_map_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        log(f"Intent bootstrap: malformed source map ({exc}) — "
+            f"preserving as .malformed.json")
+        malformed = source_map_path.with_suffix(".malformed.json")
+        try:
+            source_map_path.rename(malformed)
+        except OSError:
+            pass
+        signal = {
+            "state": "philosophy_grounding_failed",
+            "detail": (
+                f"Philosophy source map is malformed ({exc}). "
+                "Intent mode will downgrade to lightweight."
+            ),
+        }
+        fail_signal.write_text(
+            json.dumps(signal, indent=2), encoding="utf-8")
+        return False
+
+    if not isinstance(source_map, dict):
+        signal = {
+            "state": "philosophy_grounding_failed",
+            "detail": (
+                "Philosophy source map is not a JSON object. "
+                "Intent mode will downgrade to lightweight."
+            ),
+        }
+        fail_signal.write_text(
+            json.dumps(signal, indent=2), encoding="utf-8")
+        return False
+
+    # Extract principle IDs from philosophy.md
+    try:
+        philosophy_text = philosophy_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+
+    principle_ids = set(re.findall(r"\bP\d+\b", philosophy_text))
+    if not principle_ids:
+        # No principle IDs found — can't validate coverage, pass through
+        return True
+
+    # Check coverage: every principle ID must have a source map entry
+    map_keys = set(source_map.keys())
+    unmapped = principle_ids - map_keys
+    if unmapped:
+        signal = {
+            "state": "philosophy_grounding_failed",
+            "detail": (
+                f"Principle IDs missing from source map: "
+                f"{sorted(unmapped)}. Distilled philosophy may contain "
+                f"invented principles. Intent mode will downgrade."
+            ),
+            "unmapped_principles": sorted(unmapped),
+            "total_principles": len(principle_ids),
+            "mapped_principles": len(principle_ids - unmapped),
+        }
+        fail_signal.write_text(
+            json.dumps(signal, indent=2), encoding="utf-8")
+        return False
+
+    return True
+
+
+def _sha256_file(path: Path) -> str:
+    """Return hex sha256 of file contents, or empty string on error."""
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def _compute_intent_pack_hash(
+    *,
+    section_path: Path,
+    proposal_excerpt: Path,
+    alignment_excerpt: Path,
+    problem_frame: Path,
+    codemap_path: Path,
+    corrections_path: Path,
+    philosophy_path: Path,
+    todos_path: Path,
+    incoming_notes: str,
+) -> str:
+    """Compute a combined hash over all intent pack input files.
+
+    Used for V3/R59 hash-based invalidation — regenerate pack when
+    any upstream input changes.
+    """
+    parts = [
+        _sha256_file(section_path),
+        _sha256_file(proposal_excerpt),
+        _sha256_file(alignment_excerpt),
+        _sha256_file(problem_frame),
+        _sha256_file(codemap_path),
+        _sha256_file(corrections_path),
+        _sha256_file(philosophy_path),
+        _sha256_file(todos_path),
+        hashlib.sha256(incoming_notes.encode()).hexdigest(),
+    ]
+    combined = ":".join(parts)
+    return hashlib.sha256(combined.encode()).hexdigest()
 
 
 def ensure_global_philosophy(
@@ -264,6 +427,16 @@ Format: JSON mapping principle ID to source file/section.
             json.dumps(signal, indent=2), encoding="utf-8")
         return None
 
+    # V2/R59: Validate philosophy source grounding — the distiller
+    # prompt requires a source map, and we must mechanically verify
+    # it exists, parses, and covers all principle IDs.
+    grounding_ok = _validate_philosophy_grounding(
+        philosophy_path, source_map_path, artifacts)
+    if not grounding_ok:
+        log("Intent bootstrap: philosophy grounding validation failed "
+            "— downgrading to lightweight (fail-closed)")
+        return None
+
     return philosophy_path
 
 
@@ -288,22 +461,46 @@ def generate_intent_pack(
     problem_path = intent_sec / "problem.md"
     rubric_path = intent_sec / "problem-alignment.md"
 
-    # If both exist with content, skip regeneration
-    if (problem_path.exists() and problem_path.stat().st_size > 0
-            and rubric_path.exists() and rubric_path.stat().st_size > 0):
-        log(f"Section {sec}: intent pack already exists — skipping generation")
-        return intent_sec
-
-    log(f"Section {sec}: generating intent pack")
-
-    # Gather input references
+    # Gather input references (needed for both hash check and prompt)
     sections_dir = artifacts / "sections"
     proposal_excerpt = sections_dir / f"section-{sec}-proposal-excerpt.md"
     alignment_excerpt = sections_dir / f"section-{sec}-alignment-excerpt.md"
     problem_frame = sections_dir / f"section-{sec}-problem-frame.md"
     codemap_path = artifacts / "codemap.md"
+    corrections_path = artifacts / "signals" / "codemap-corrections.json"
     philosophy_path = artifacts / "intent" / "global" / "philosophy.md"
     todos_path = artifacts / "todos" / f"section-{sec}-todos.md"
+
+    # V3/R59: Hash-based invalidation — regenerate if inputs changed
+    # even when problem.md/rubric exist.
+    input_hash = _compute_intent_pack_hash(
+        section_path=section.path,
+        proposal_excerpt=proposal_excerpt,
+        alignment_excerpt=alignment_excerpt,
+        problem_frame=problem_frame,
+        codemap_path=codemap_path,
+        corrections_path=corrections_path,
+        philosophy_path=philosophy_path,
+        todos_path=todos_path,
+        incoming_notes=incoming_notes,
+    )
+    hash_file = intent_sec / "intent-pack-input-hash.txt"
+    prev_hash = ""
+    if hash_file.exists():
+        prev_hash = hash_file.read_text(encoding="utf-8").strip()
+
+    if (problem_path.exists() and problem_path.stat().st_size > 0
+            and rubric_path.exists() and rubric_path.stat().st_size > 0
+            and input_hash == prev_hash and prev_hash):
+        log(f"Section {sec}: intent pack exists, inputs unchanged "
+            "— skipping generation")
+        return intent_sec
+
+    if (problem_path.exists() and problem_path.stat().st_size > 0
+            and rubric_path.exists() and rubric_path.stat().st_size > 0):
+        log(f"Section {sec}: intent pack inputs changed — regenerating")
+    else:
+        log(f"Section {sec}: generating intent pack")
 
     inputs_block = f"1. Section spec: `{section.path}`\n"
     if proposal_excerpt.exists():
@@ -312,7 +509,6 @@ def generate_intent_pack(
         inputs_block += f"3. Alignment excerpt: `{alignment_excerpt}`\n"
     if problem_frame.exists():
         inputs_block += f"4. Problem frame: `{problem_frame}`\n"
-    corrections_path = artifacts / "signals" / "codemap-corrections.json"
     if codemap_path.exists():
         inputs_block += f"5. Codemap: `{codemap_path}`\n"
         if corrections_path.exists():
@@ -441,6 +637,8 @@ Write an empty surface registry to: `{intent_sec / "surface-registry.json"}`
 
     if problem_path.exists() and rubric_path.exists():
         log(f"Section {sec}: intent pack generated")
+        # V3/R59: Write input hash so future runs can detect changes
+        hash_file.write_text(input_hash, encoding="utf-8")
     else:
         log(f"Section {sec}: intent pack generation incomplete")
 

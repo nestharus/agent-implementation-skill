@@ -283,7 +283,7 @@ class TestIntentBootstrap:
                                  "reason": "constraints"}],
                 }), encoding="utf-8")
                 return ""
-            # Philosophy distiller writes output
+            # Philosophy distiller writes output + source map
             if agent_file == "philosophy-distiller.md":
                 philosophy_path.write_text(
                     "# Operational Philosophy\n\n"
@@ -291,6 +291,11 @@ class TestIntentBootstrap:
                     "Choose the path that collapses cycles.\n",
                     encoding="utf-8",
                 )
+                source_map = philosophy_path.parent / \
+                    "philosophy-source-map.json"
+                source_map.write_text(json.dumps({
+                    "P1": str(constraints_path) + ":1-5",
+                }), encoding="utf-8")
                 return ""
             return ""
 
@@ -571,6 +576,8 @@ class TestRunnerIntentIntegration:
                             / "global" / "philosophy.md")
                 phi_path.parent.mkdir(parents=True, exist_ok=True)
                 phi_path.write_text("# Operational Philosophy\nP1...\n")
+                smap = phi_path.parent / "philosophy-source-map.json"
+                smap.write_text(json.dumps({"P1": "constraints.md:1"}))
                 return ""
 
             # Intent pack generator
@@ -1006,6 +1013,8 @@ class TestIntentConventions:
                        / "global" / "philosophy.md")
                 phi.parent.mkdir(parents=True, exist_ok=True)
                 phi.write_text("# Philosophy\nP1...\n")
+                smap = phi.parent / "philosophy-source-map.json"
+                smap.write_text(json.dumps({"P1": "constraints.md:1"}))
                 return ""
 
             if agent_file == "intent-pack-generator.md":
@@ -2098,3 +2107,366 @@ class TestR58RelatedFilesSignalPreservation:
         assert malformed.exists(), (
             "Malformed signal must be preserved as .malformed.json")
         assert malformed.read_text(encoding="utf-8") == "NOT VALID JSON{{{"
+
+
+# ---------------------------------------------------------------------------
+# R59 Tests
+# ---------------------------------------------------------------------------
+
+
+class TestR59CatalogCodespaceCoverage:
+    """V1/R59: Catalog must guarantee codespace coverage even when
+    planspace has many markdown files."""
+
+    def test_codespace_included_when_planspace_has_many_files(
+        self, tmp_path,
+    ) -> None:
+        """Planspace >50 artifacts must not crowd out codespace docs."""
+        from section_loop.intent.bootstrap import _build_philosophy_catalog
+
+        planspace = tmp_path / "planspace"
+        codespace = tmp_path / "codespace"
+        planspace.mkdir()
+        codespace.mkdir()
+
+        # Create 55 planspace markdown files (non-artifacts)
+        for i in range(55):
+            f = planspace / f"doc-{i:03d}.md"
+            f.write_text(f"# Doc {i}\nContent.\n")
+
+        # Create a single codespace philosophy doc
+        cs_doc = codespace / "philosophy.md"
+        cs_doc.write_text("# Execution Philosophy\nP1: Test.\n")
+
+        catalog = _build_philosophy_catalog(
+            planspace, codespace, max_files=50)
+
+        paths = [c["path"] for c in catalog]
+        assert any("codespace" in p and "philosophy.md" in p
+                    for p in paths), (
+            "Codespace philosophy doc must be included even when "
+            "planspace has many markdown files")
+
+    def test_codespace_scanned_first(self, tmp_path) -> None:
+        """Codespace should appear before planspace in catalog."""
+        from section_loop.intent.bootstrap import _build_philosophy_catalog
+
+        planspace = tmp_path / "planspace"
+        codespace = tmp_path / "codespace"
+        planspace.mkdir()
+        codespace.mkdir()
+
+        (planspace / "plan.md").write_text("# Plan\n")
+        (codespace / "philo.md").write_text("# Philo\n")
+
+        catalog = _build_philosophy_catalog(
+            planspace, codespace, max_files=50)
+
+        paths = [c["path"] for c in catalog]
+        assert len(paths) == 2
+        assert "codespace" in paths[0], (
+            "Codespace files must appear before planspace files")
+
+    def test_planspace_artifacts_excluded(self, tmp_path) -> None:
+        """Planspace artifacts/ directory must be excluded from catalog."""
+        from section_loop.intent.bootstrap import _build_philosophy_catalog
+
+        planspace = tmp_path / "planspace"
+        codespace = tmp_path / "codespace"
+        planspace.mkdir()
+        codespace.mkdir()
+
+        # Create planspace artifacts (pipeline outputs)
+        arts = planspace / "artifacts"
+        arts.mkdir()
+        (arts / "codemap.md").write_text("# Codemap\n")
+        (arts / "proposal.md").write_text("# Proposal\n")
+
+        # Create a real planspace doc
+        (planspace / "design.md").write_text("# Design\n")
+
+        catalog = _build_philosophy_catalog(
+            planspace, codespace, max_files=50)
+
+        paths = [c["path"] for c in catalog]
+        # Check no path has planspace/artifacts/ in it
+        planspace_str = str(planspace)
+        assert not any(
+            p.startswith(planspace_str + "/artifacts/") for p in paths
+        ), "Planspace artifacts/ must be excluded from catalog"
+        assert any("design.md" in p for p in paths), (
+            "Non-artifacts planspace docs should be included")
+
+
+class TestR59PhilosophyGroundingValidation:
+    """V2/R59: Philosophy source grounding must be mechanically validated."""
+
+    def test_missing_source_map_fails_closed(
+        self, planspace, codespace, mock_dispatch,
+    ) -> None:
+        """Missing source map → grounding failure signal + return None."""
+        artifacts = planspace / "artifacts"
+        intent_global = artifacts / "intent" / "global"
+        intent_global.mkdir(parents=True, exist_ok=True)
+
+        # Create a codespace doc for catalog
+        (codespace / "philo.md").write_text("# Philosophy\nP1: Test.\n")
+
+        def side_effect(*args, **kwargs):
+            agent_file = kwargs.get("agent_file", "")
+            if agent_file == "philosophy-source-selector.md":
+                signal = artifacts / "signals" / \
+                    "philosophy-selected-sources.json"
+                signal.parent.mkdir(parents=True, exist_ok=True)
+                signal.write_text(json.dumps({
+                    "sources": [{"path": str(codespace / "philo.md"),
+                                 "reason": "test"}],
+                }))
+                return ""
+            if agent_file == "philosophy-distiller.md":
+                # Write philosophy but NO source map
+                (intent_global / "philosophy.md").write_text(
+                    "# Philosophy\n## P1: Test principle\nDo stuff.\n")
+                return ""
+            return ""
+
+        mock_dispatch.side_effect = side_effect
+
+        from section_loop.intent.bootstrap import ensure_global_philosophy
+        result = ensure_global_philosophy(planspace, codespace, "parent")
+        assert result is None, (
+            "Missing source map must cause grounding failure (None)")
+
+        fail_signal = artifacts / "signals" / \
+            "philosophy-grounding-failed.json"
+        assert fail_signal.exists(), (
+            "Must write philosophy-grounding-failed.json signal")
+
+    def test_malformed_source_map_preserved(
+        self, planspace, codespace, mock_dispatch,
+    ) -> None:
+        """Malformed source map → preserve as .malformed.json + fail."""
+        artifacts = planspace / "artifacts"
+        intent_global = artifacts / "intent" / "global"
+        intent_global.mkdir(parents=True, exist_ok=True)
+
+        (codespace / "philo.md").write_text("# Philosophy\nP1: Test.\n")
+
+        def side_effect(*args, **kwargs):
+            agent_file = kwargs.get("agent_file", "")
+            if agent_file == "philosophy-source-selector.md":
+                signal = artifacts / "signals" / \
+                    "philosophy-selected-sources.json"
+                signal.parent.mkdir(parents=True, exist_ok=True)
+                signal.write_text(json.dumps({
+                    "sources": [{"path": str(codespace / "philo.md"),
+                                 "reason": "test"}],
+                }))
+                return ""
+            if agent_file == "philosophy-distiller.md":
+                (intent_global / "philosophy.md").write_text(
+                    "# Philosophy\n## P1: Test\nDo stuff.\n")
+                # Write malformed source map
+                (intent_global / "philosophy-source-map.json").write_text(
+                    "NOT{VALID}JSON")
+                return ""
+            return ""
+
+        mock_dispatch.side_effect = side_effect
+
+        from section_loop.intent.bootstrap import ensure_global_philosophy
+        result = ensure_global_philosophy(planspace, codespace, "parent")
+        assert result is None
+
+        malformed = intent_global / "philosophy-source-map.malformed.json"
+        assert malformed.exists(), (
+            "Malformed source map must be preserved as .malformed.json")
+
+    def test_unmapped_principles_fail_closed(
+        self, planspace, codespace, mock_dispatch,
+    ) -> None:
+        """Principles in philosophy.md without source map entries → fail."""
+        artifacts = planspace / "artifacts"
+        intent_global = artifacts / "intent" / "global"
+        intent_global.mkdir(parents=True, exist_ok=True)
+
+        (codespace / "philo.md").write_text("# Philosophy\nP1: Test.\n")
+
+        def side_effect(*args, **kwargs):
+            agent_file = kwargs.get("agent_file", "")
+            if agent_file == "philosophy-source-selector.md":
+                signal = artifacts / "signals" / \
+                    "philosophy-selected-sources.json"
+                signal.parent.mkdir(parents=True, exist_ok=True)
+                signal.write_text(json.dumps({
+                    "sources": [{"path": str(codespace / "philo.md"),
+                                 "reason": "test"}],
+                }))
+                return ""
+            if agent_file == "philosophy-distiller.md":
+                (intent_global / "philosophy.md").write_text(
+                    "# Philosophy\n## P1: One\n## P2: Two\n## P3: Three\n")
+                # Source map only covers P1
+                (intent_global / "philosophy-source-map.json").write_text(
+                    json.dumps({"P1": "philo.md line 5"}))
+                return ""
+            return ""
+
+        mock_dispatch.side_effect = side_effect
+
+        from section_loop.intent.bootstrap import ensure_global_philosophy
+        result = ensure_global_philosophy(planspace, codespace, "parent")
+        assert result is None, (
+            "Unmapped principles must cause grounding failure")
+
+        fail_signal = artifacts / "signals" / \
+            "philosophy-grounding-failed.json"
+        data = json.loads(fail_signal.read_text())
+        assert "P2" in data.get("unmapped_principles", [])
+        assert "P3" in data.get("unmapped_principles", [])
+
+    def test_fully_grounded_passes(
+        self, planspace, codespace, mock_dispatch,
+    ) -> None:
+        """All principles mapped → grounding passes."""
+        artifacts = planspace / "artifacts"
+        intent_global = artifacts / "intent" / "global"
+        intent_global.mkdir(parents=True, exist_ok=True)
+
+        (codespace / "philo.md").write_text("# Philosophy\nP1: Test.\n")
+
+        def side_effect(*args, **kwargs):
+            agent_file = kwargs.get("agent_file", "")
+            if agent_file == "philosophy-source-selector.md":
+                signal = artifacts / "signals" / \
+                    "philosophy-selected-sources.json"
+                signal.parent.mkdir(parents=True, exist_ok=True)
+                signal.write_text(json.dumps({
+                    "sources": [{"path": str(codespace / "philo.md"),
+                                 "reason": "test"}],
+                }))
+                return ""
+            if agent_file == "philosophy-distiller.md":
+                (intent_global / "philosophy.md").write_text(
+                    "# Philosophy\n## P1: One\n## P2: Two\n")
+                (intent_global / "philosophy-source-map.json").write_text(
+                    json.dumps({"P1": "philo.md:3", "P2": "philo.md:7"}))
+                return ""
+            return ""
+
+        mock_dispatch.side_effect = side_effect
+
+        from section_loop.intent.bootstrap import ensure_global_philosophy
+        result = ensure_global_philosophy(planspace, codespace, "parent")
+        assert result is not None, (
+            "Fully grounded philosophy must succeed")
+
+
+class TestR59IntentPackHashInvalidation:
+    """V3/R59: Intent pack uses hash-based invalidation, not
+    existence-only skipping."""
+
+    def test_regenerates_when_inputs_change(
+        self, planspace, codespace, mock_dispatch,
+    ) -> None:
+        """Existing pack must regenerate when upstream inputs change."""
+        from section_loop.intent.bootstrap import generate_intent_pack
+
+        sec = _make_intent_section(planspace, codespace)
+        artifacts = planspace / "artifacts"
+        intent_sec = artifacts / "intent" / "sections" / "section-01"
+        intent_sec.mkdir(parents=True, exist_ok=True)
+
+        # Create existing pack
+        (intent_sec / "problem.md").write_text("# Problem\nOld.\n")
+        (intent_sec / "problem-alignment.md").write_text("# Rubric\nOld.\n")
+
+        # Write a hash that doesn't match current inputs
+        (intent_sec / "intent-pack-input-hash.txt").write_text(
+            "stale-hash-that-does-not-match")
+
+        dispatch_called = []
+
+        def side_effect(*args, **kwargs):
+            dispatch_called.append(True)
+            # Update problem.md to simulate regeneration
+            (intent_sec / "problem.md").write_text("# Problem\nNew.\n")
+            (intent_sec / "problem-alignment.md").write_text(
+                "# Rubric\nNew.\n")
+            return ""
+
+        mock_dispatch.side_effect = side_effect
+
+        generate_intent_pack(sec, planspace, codespace, "parent")
+        assert len(dispatch_called) > 0, (
+            "Must dispatch agent when input hash differs (regenerate)")
+
+    def test_skips_when_hash_matches(
+        self, planspace, codespace, mock_dispatch,
+    ) -> None:
+        """Existing pack with matching hash must skip regeneration."""
+        from section_loop.intent.bootstrap import (
+            generate_intent_pack, _compute_intent_pack_hash,
+        )
+
+        sec = _make_intent_section(planspace, codespace)
+        artifacts = planspace / "artifacts"
+        intent_sec = artifacts / "intent" / "sections" / "section-01"
+        intent_sec.mkdir(parents=True, exist_ok=True)
+
+        # Create existing pack
+        (intent_sec / "problem.md").write_text("# Problem\nExisting.\n")
+        (intent_sec / "problem-alignment.md").write_text("# Rubric\n")
+
+        # Compute the real hash from current inputs
+        sections_dir = artifacts / "sections"
+        real_hash = _compute_intent_pack_hash(
+            section_path=sec.path,
+            proposal_excerpt=sections_dir / "section-01-proposal-excerpt.md",
+            alignment_excerpt=sections_dir / "section-01-alignment-excerpt.md",
+            problem_frame=sections_dir / "section-01-problem-frame.md",
+            codemap_path=artifacts / "codemap.md",
+            corrections_path=artifacts / "signals" / "codemap-corrections.json",
+            philosophy_path=artifacts / "intent" / "global" / "philosophy.md",
+            todos_path=artifacts / "todos" / "section-01-todos.md",
+            incoming_notes="",
+        )
+        (intent_sec / "intent-pack-input-hash.txt").write_text(real_hash)
+
+        dispatch_called = []
+
+        def side_effect(*args, **kwargs):
+            dispatch_called.append(True)
+            return ""
+
+        mock_dispatch.side_effect = side_effect
+
+        generate_intent_pack(sec, planspace, codespace, "parent")
+        assert len(dispatch_called) == 0, (
+            "Must NOT dispatch when input hash matches (skip)")
+
+    def test_hash_written_after_successful_generation(
+        self, planspace, codespace, mock_dispatch,
+    ) -> None:
+        """Successful generation must write input hash file."""
+        from section_loop.intent.bootstrap import generate_intent_pack
+
+        sec = _make_intent_section(planspace, codespace)
+        artifacts = planspace / "artifacts"
+        intent_sec = artifacts / "intent" / "sections" / "section-01"
+        intent_sec.mkdir(parents=True, exist_ok=True)
+
+        def side_effect(*args, **kwargs):
+            (intent_sec / "problem.md").write_text("# Problem\n")
+            (intent_sec / "problem-alignment.md").write_text("# Rubric\n")
+            return ""
+
+        mock_dispatch.side_effect = side_effect
+
+        generate_intent_pack(sec, planspace, codespace, "parent")
+
+        hash_file = intent_sec / "intent-pack-input-hash.txt"
+        assert hash_file.exists(), (
+            "Must write intent-pack-input-hash.txt after successful gen")
+        assert len(hash_file.read_text().strip()) == 64, (
+            "Hash must be a 64-char hex sha256")
