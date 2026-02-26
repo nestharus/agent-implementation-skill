@@ -26,7 +26,7 @@ def extract_docstring(filepath: str) -> tuple[str, str | None, str | None]:
         tree = ast.parse(source, filename=filepath)
         docstring = ast.get_docstring(tree)
         return filepath, docstring, None
-    except (SyntaxError, ValueError) as exc:
+    except (SyntaxError, ValueError, OSError) as exc:
         return filepath, None, f"{type(exc).__name__}: {exc}"
 
 

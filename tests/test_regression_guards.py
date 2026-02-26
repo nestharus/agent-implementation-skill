@@ -5785,3 +5785,123 @@ class TestR59IntentPackHashGuard:
             "generate_intent_pack must call _compute_intent_pack_hash")
         assert "intent-pack-input-hash.txt" in func_body, (
             "Must read/write intent-pack-input-hash.txt")
+
+
+# ---- R60 Regression Guards ----
+
+
+class TestR60BoundedWalkGuard:
+    """V1/R60: Philosophy catalog must use os.walk, not sorted(rglob(...))."""
+
+    def test_no_sorted_rglob_in_catalog(self) -> None:
+        """_build_philosophy_catalog must NOT use sorted(rglob(...))."""
+        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
+        if not bootstrap.exists():
+            pytest.skip("bootstrap.py not found")
+        text = bootstrap.read_text(encoding="utf-8")
+
+        func_start = text.find("def _build_philosophy_catalog(")
+        assert func_start >= 0
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert "sorted(root_dir.rglob" not in func_body, (
+            "Must NOT use sorted(rglob(...)) — materializes full tree")
+        assert ".rglob(" not in func_body, (
+            "Must NOT use rglob — use _walk_md_bounded instead")
+
+    def test_walk_md_bounded_exists(self) -> None:
+        """_walk_md_bounded function must exist and use os.walk."""
+        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
+        if not bootstrap.exists():
+            pytest.skip("bootstrap.py not found")
+        text = bootstrap.read_text(encoding="utf-8")
+
+        assert "def _walk_md_bounded(" in text, (
+            "_walk_md_bounded function must exist")
+
+        func_start = text.find("def _walk_md_bounded(")
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert "os.walk(" in func_body, (
+            "_walk_md_bounded must use os.walk for lazy traversal")
+        assert "dirnames" in func_body, (
+            "Must prune dirnames for depth/exclusion control")
+
+    def test_catalog_uses_bounded_walk(self) -> None:
+        """_build_philosophy_catalog must call _walk_md_bounded."""
+        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
+        if not bootstrap.exists():
+            pytest.skip("bootstrap.py not found")
+        text = bootstrap.read_text(encoding="utf-8")
+
+        func_start = text.find("def _build_philosophy_catalog(")
+        assert func_start >= 0
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert "_walk_md_bounded" in func_body, (
+            "_build_philosophy_catalog must use _walk_md_bounded")
+
+
+class TestR60ToolContractGuard:
+    """V2/R60: extract-docstring-py must catch OSError for structured errors."""
+
+    def test_oserror_in_except_clause(self) -> None:
+        """extract_docstring must catch OSError alongside parse errors."""
+        tool_path = (Path(__file__).resolve().parent.parent
+                     / "src" / "tools" / "extract-docstring-py")
+        if not tool_path.exists():
+            pytest.skip("extract-docstring-py not found")
+        text = tool_path.read_text(encoding="utf-8")
+
+        func_start = text.find("def extract_docstring(")
+        assert func_start >= 0
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert "OSError" in func_body, (
+            "extract_docstring must catch OSError for file read failures")
+
+
+class TestR60LayoutAgnosticRootGuard:
+    """V3/R60: conftest.py must use anchor-based project root resolution."""
+
+    def test_conftest_uses_anchor_walk(self) -> None:
+        """conftest.py must use _find_project_root helper."""
+        conftest_path = Path(__file__).resolve().parent / "conftest.py"
+        text = conftest_path.read_text(encoding="utf-8")
+
+        assert "_find_project_root" in text, (
+            "conftest must use _find_project_root helper (V3/R60)")
+        assert "SKILL.md" in text, (
+            "Must use SKILL.md as a stable anchor for root resolution")
+
+    def test_conftest_anchor_checks_skill_and_dirs(self) -> None:
+        """_find_project_root must check for scripts/ + agents/ directories."""
+        conftest_path = Path(__file__).resolve().parent / "conftest.py"
+        text = conftest_path.read_text(encoding="utf-8")
+
+        func_start = text.find("def _find_project_root(")
+        assert func_start >= 0
+        func_body = text[func_start:]
+        next_def = func_body.find("\ndef ", 1)
+        if next_def > 0:
+            func_body = func_body[:next_def]
+
+        assert '"scripts"' in func_body or "'scripts'" in func_body, (
+            "Must check for scripts/ directory as anchor")
+        assert '"agents"' in func_body or "'agents'" in func_body, (
+            "Must check for agents/ directory as anchor")

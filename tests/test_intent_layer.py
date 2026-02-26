@@ -5,6 +5,8 @@ Everything else — file I/O, JSON parsing, registry logic — runs for real.
 """
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -1527,14 +1529,15 @@ class TestR56AgentSelectedSources:
             "bootstrap.py must not hardcode SKILL.md")
 
     def test_catalog_builder_is_mechanical(self) -> None:
-        """_build_philosophy_catalog uses rglob, not name matching."""
+        """_build_philosophy_catalog uses bounded walk, not name matching."""
         bootstrap = (Path(__file__).resolve().parent.parent / "src"
                      / "scripts" / "section_loop" / "intent" / "bootstrap.py")
         if not bootstrap.exists():
             pytest.skip("bootstrap.py not found")
         text = bootstrap.read_text(encoding="utf-8")
-        assert "rglob" in text, (
-            "Catalog builder must use rglob for mechanical collection")
+        # V1/R60: replaced rglob with _walk_md_bounded (os.walk based)
+        assert "_walk_md_bounded" in text, (
+            "Catalog builder must use _walk_md_bounded for mechanical collection")
 
     def test_selector_agent_file_exists(self) -> None:
         """philosophy-source-selector.md agent file must exist."""
@@ -2470,3 +2473,111 @@ class TestR59IntentPackHashInvalidation:
             "Must write intent-pack-input-hash.txt after successful gen")
         assert len(hash_file.read_text().strip()) == 64, (
             "Hash must be a 64-char hex sha256")
+
+
+# ---------------------------------------------------------------------------
+# R60 — V1: Bounded catalog walk
+# ---------------------------------------------------------------------------
+
+
+class TestR60BoundedCatalogWalk:
+    """V1/R60: Philosophy catalog must use depth-bounded traversal, not sorted rglob."""
+
+    def test_walk_respects_max_depth(self, tmp_path: Path) -> None:
+        """Files beyond max_depth must not be returned."""
+        from section_loop.intent.bootstrap import _walk_md_bounded
+
+        (tmp_path / "a.md").write_text("top")
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "b.md").write_text("depth 2")
+        (tmp_path / "sub" / "deep").mkdir()
+        (tmp_path / "sub" / "deep" / "c.md").write_text("depth 3")
+        (tmp_path / "sub" / "deep" / "deeper").mkdir()
+        (tmp_path / "sub" / "deep" / "deeper" / "d.md").write_text("depth 4")
+
+        results = list(_walk_md_bounded(tmp_path, max_depth=3))
+        names = {p.name for p in results}
+        assert "a.md" in names, "depth-1 file must be included"
+        assert "b.md" in names, "depth-2 file must be included"
+        assert "c.md" in names, "depth-3 file must be included"
+        assert "d.md" not in names, "depth-4 file must be excluded"
+
+    def test_walk_excludes_top_dirs(self, tmp_path: Path) -> None:
+        """Top-level excluded dirs must be pruned during traversal."""
+        from section_loop.intent.bootstrap import _walk_md_bounded
+
+        (tmp_path / "keep").mkdir()
+        (tmp_path / "keep" / "good.md").write_text("keep me")
+        (tmp_path / "artifacts").mkdir()
+        (tmp_path / "artifacts" / "skip.md").write_text("skip me")
+
+        results = list(_walk_md_bounded(
+            tmp_path, max_depth=3,
+            exclude_top_dirs=frozenset({"artifacts"}),
+        ))
+        names = {p.name for p in results}
+        assert "good.md" in names
+        assert "skip.md" not in names, "artifacts/ must be pruned"
+
+    def test_walk_sorted_per_directory(self, tmp_path: Path) -> None:
+        """Files within each directory must be sorted."""
+        from section_loop.intent.bootstrap import _walk_md_bounded
+
+        for name in ("c.md", "a.md", "b.md"):
+            (tmp_path / name).write_text(f"file {name}")
+
+        results = [p.name for p in _walk_md_bounded(tmp_path, max_depth=3)]
+        assert results == ["a.md", "b.md", "c.md"]
+
+    def test_catalog_uses_bounded_walk(self, tmp_path: Path) -> None:
+        """_build_philosophy_catalog must use bounded walk (basic functionality)."""
+        from section_loop.intent.bootstrap import _build_philosophy_catalog
+
+        codespace = tmp_path / "codespace"
+        planspace = tmp_path / "planspace"
+        codespace.mkdir()
+        planspace.mkdir()
+        (codespace / "design.md").write_text("# Design\nPrinciple here")
+        (planspace / "plan.md").write_text("# Plan\nGoals here")
+
+        catalog = _build_philosophy_catalog(planspace, codespace)
+        assert len(catalog) >= 2
+
+
+# ---------------------------------------------------------------------------
+# R60 — V2: Tool OSError handling
+# ---------------------------------------------------------------------------
+
+
+class TestR60ToolOSErrorHandling:
+    """V2/R60: extract-docstring-py must handle OSError with structured output."""
+
+    def test_missing_file_structured_error(self) -> None:
+        """Missing file must produce structured ERROR output, not crash."""
+        tool_path = (Path(__file__).resolve().parent.parent
+                     / "src" / "tools" / "extract-docstring-py")
+        if not tool_path.exists():
+            pytest.skip("extract-docstring-py not found")
+
+        result = subprocess.run(
+            [sys.executable, str(tool_path), "/nonexistent/path/file.py"],
+            capture_output=True, text=True,
+        )
+        assert "ERROR:" in result.stdout, (
+            "Must output structured ERROR: line for missing file")
+        assert "/nonexistent/path/file.py" in result.stdout, (
+            "Must include the file path in output")
+
+    def test_missing_file_exit_code_2(self) -> None:
+        """Running tool against missing file must exit with code 2."""
+        tool_path = (Path(__file__).resolve().parent.parent
+                     / "src" / "tools" / "extract-docstring-py")
+        if not tool_path.exists():
+            pytest.skip("extract-docstring-py not found")
+
+        result = subprocess.run(
+            [sys.executable, str(tool_path), "/nonexistent/path/file.py"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 2, (
+            f"Must exit 2 on file errors, got {result.returncode}")

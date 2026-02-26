@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 
@@ -10,6 +11,46 @@ from ..dispatch import (
     dispatch_agent, read_agent_signal, read_model_policy,
 )
 from ..types import Section
+
+
+def _walk_md_bounded(
+    root: Path,
+    *,
+    max_depth: int,
+    exclude_top_dirs: frozenset[str] = frozenset(),
+):
+    """Yield ``*.md`` files under *root* with depth-bounded traversal.
+
+    Uses ``os.walk`` with directory pruning so the full tree is never
+    materialized.  Entries are sorted per-directory for determinism.
+    *exclude_top_dirs* names are pruned at the first level only.
+    """
+    if not root.is_dir():
+        return
+    root_s = str(root)
+    for dirpath, dirnames, filenames in os.walk(root_s):
+        rel = os.path.relpath(dirpath, root_s)
+        depth = 0 if rel == "." else rel.count(os.sep) + 1
+
+        # Prune excluded top-level dirs; sort all levels for determinism.
+        if depth == 0:
+            dirnames[:] = sorted(
+                d for d in dirnames if d not in exclude_top_dirs
+            )
+        else:
+            dirnames.sort()
+
+        # Stop descending when children would exceed max_depth.
+        if depth + 1 >= max_depth:
+            dirnames.clear()
+
+        # Files here have (depth+1) relative-path parts; yield if ≤ max_depth.
+        if depth + 1 > max_depth:
+            continue
+
+        for fname in sorted(filenames):
+            if fname.endswith(".md"):
+                yield Path(dirpath) / fname
 
 
 def _build_philosophy_catalog(
@@ -22,45 +63,29 @@ def _build_philosophy_catalog(
 ) -> list[dict]:
     """Build a mechanical catalog of candidate philosophy source files.
 
-    Collects markdown docs within bounded depth/size from codespace first
-    (where real project philosophy lives), then planspace. Per-root
-    quotas ensure both roots are represented. Planspace ``artifacts/``
-    directories are excluded (pipeline outputs, not philosophy sources).
+    Uses depth-bounded directory walks (``os.walk`` with pruning) to
+    avoid materializing the full file tree.  Per-root quotas guarantee
+    codespace coverage.  Planspace ``artifacts/`` is excluded.
 
     Returns a list of ``{path, size_kb, first_lines}`` entries.
     """
     # V1/R59: Per-root quotas guarantee codespace coverage.
-    # Codespace is scanned first because real philosophy lives there;
-    # planspace artifacts/ excluded to avoid crowding by pipeline outputs.
+    # V1/R60: Traversal is depth-bounded via os.walk with pruning —
+    # the full tree is never materialized or sorted.
     codespace_quota = max(max_files * 4 // 5, 1)  # 80% for codespace
     planspace_quota = max(max_files - codespace_quota, 1)  # 20% for plan
 
     candidates: list[dict] = []
     seen: set[str] = set()
 
-    for root_dir, quota in (
-        (codespace, codespace_quota),
-        (planspace, planspace_quota),
+    for root_dir, quota, exclude_top in (
+        (codespace, codespace_quota, frozenset()),
+        (planspace, planspace_quota, frozenset({"artifacts"})),
     ):
-        if not root_dir.exists():
-            continue
         root_count = 0
-        for md_file in sorted(root_dir.rglob("*.md")):
-            # Exclude planspace artifacts/ (pipeline outputs)
-            if root_dir == planspace:
-                try:
-                    rel_check = md_file.relative_to(root_dir)
-                except ValueError:
-                    continue
-                if rel_check.parts and rel_check.parts[0] == "artifacts":
-                    continue
-            # Depth check
-            try:
-                rel = md_file.relative_to(root_dir)
-            except ValueError:
-                continue
-            if len(rel.parts) > max_depth:
-                continue
+        for md_file in _walk_md_bounded(
+            root_dir, max_depth=max_depth, exclude_top_dirs=exclude_top,
+        ):
             # Size check
             try:
                 size = md_file.stat().st_size

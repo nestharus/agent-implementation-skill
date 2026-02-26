@@ -12,8 +12,32 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# Resolve project root from this file's location (tests/ -> project root)
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+def _find_project_root() -> Path:
+    """Walk upward to find the project root using stable anchors.
+
+    Stable anchors (in priority order):
+    1. SKILL.md file
+    2. scripts/ + agents/ directories co-located
+
+    Falls back to parent.parent for the standard tests/ layout.
+    Layout-agnostic: works in tests/, flat, or bundle layouts (V3/R60).
+    """
+    current = Path(__file__).resolve().parent
+    for _ in range(5):
+        if (current / "SKILL.md").exists():
+            return current
+        if (current / "scripts").is_dir() and (current / "agents").is_dir():
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    # Fallback: standard tests/ → project root layout
+    return Path(__file__).resolve().parent.parent
+
+
+# Resolve project root from stable anchors (V3/R60 layout-agnostic)
+PROJECT_ROOT = _find_project_root()
 # Layout-agnostic: support both src/ development layout and deployed layout (V6/R54)
 _WORKFLOW_HOME = (
     PROJECT_ROOT / "src"
