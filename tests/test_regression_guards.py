@@ -5346,3 +5346,174 @@ class TestR56AxisBudgetEnforcementGuard:
         content = exp.read_text(encoding="utf-8")
         assert "Axis budget" in content, (
             "Expander prompt must include axis budget constraint")
+
+
+class TestR57DeepScanPreservationGuard:
+    """V1/R57: deep_scan.update_match() must not silently swallow errors."""
+
+    def test_update_match_has_malformed_rename(self):
+        from pathlib import Path
+        ds = (Path(__file__).resolve().parent.parent
+              / "src" / "scripts" / "scan" / "deep_scan.py")
+        content = ds.read_text(encoding="utf-8")
+        # Find the update_match function
+        fn_start = content.find("def update_match(")
+        assert fn_start != -1
+        fn_body = content[fn_start:content.find("\ndef ", fn_start + 1)]
+        assert ".malformed.json" in fn_body, (
+            "update_match must rename malformed feedback to .malformed.json")
+        assert "WARN" in fn_body, (
+            "update_match must emit a warning on malformed feedback")
+
+    def test_update_match_no_silent_except(self):
+        from pathlib import Path
+        ds = (Path(__file__).resolve().parent.parent
+              / "src" / "scripts" / "scan" / "deep_scan.py")
+        content = ds.read_text(encoding="utf-8")
+        fn_start = content.find("def update_match(")
+        fn_body = content[fn_start:content.find("\ndef ", fn_start + 1)]
+        # The old pattern was: except (json.JSONDecodeError, OSError):\n        return True
+        # with nothing between except and return. Now there should be
+        # warning + rename between except and return.
+        lines = fn_body.split("\n")
+        for i, line in enumerate(lines):
+            if "JSONDecodeError" in line and "except" in line:
+                # Next non-blank line should NOT be just "return True"
+                for j in range(i + 1, min(i + 3, len(lines))):
+                    stripped = lines[j].strip()
+                    if stripped and stripped != "":
+                        assert stripped != "return True", (
+                            "except block must not silently return True")
+                        break
+
+
+class TestR57UpdaterValidityPreservationGuard:
+    """V2/R57: _is_valid_updater_signal() must preserve malformed signals."""
+
+    def test_validity_check_has_rename(self):
+        from pathlib import Path
+        fb = (Path(__file__).resolve().parent.parent
+              / "src" / "scripts" / "scan" / "feedback.py")
+        content = fb.read_text(encoding="utf-8")
+        fn_start = content.find("def _is_valid_updater_signal(")
+        assert fn_start != -1
+        fn_end = content.find("\ndef ", fn_start + 1)
+        fn_body = content[fn_start:fn_end] if fn_end != -1 else content[fn_start:]
+        assert ".malformed.json" in fn_body, (
+            "_is_valid_updater_signal must rename malformed signals")
+        assert "WARN" in fn_body, (
+            "_is_valid_updater_signal must warn on malformed signals")
+
+
+class TestR57RefExpansionGuard:
+    """V3/R57: Ref expansion failures must warn, not silently pass."""
+
+    def test_pipeline_hash_uses_ref_error_marker(self):
+        from pathlib import Path
+        pc = (Path(__file__).resolve().parent.parent
+              / "src" / "scripts" / "section_loop"
+              / "pipeline_control.py")
+        content = pc.read_text(encoding="utf-8")
+        assert "REF_READ_ERROR" in content, (
+            "Pipeline hash must use REF_READ_ERROR marker on broken refs")
+        assert "WARN" in content, (
+            "Pipeline hash must warn on broken refs")
+
+    def test_context_builder_no_silent_pass(self):
+        from pathlib import Path
+        ctx = (Path(__file__).resolve().parent.parent
+               / "src" / "scripts" / "section_loop" / "prompts"
+               / "context.py")
+        content = ctx.read_text(encoding="utf-8")
+        # Find the ref_files loop
+        ref_idx = content.find("for ref_file in ref_files:")
+        assert ref_idx != -1
+        ref_block = content[ref_idx:ref_idx + 500]
+        assert "WARN" in ref_block, (
+            "Context builder must warn on broken ref files, not silently pass")
+        assert "pass" not in ref_block.split("except")[1].split("\n")[1] if "except" in ref_block else True, (
+            "Context builder except block must not just 'pass'")
+
+
+class TestR57GateTypeGuard:
+    """V4/R57: handle_user_gate() must be gate-type-specific."""
+
+    def test_handle_user_gate_uses_gate_kind(self):
+        from pathlib import Path
+        exp = (Path(__file__).resolve().parent.parent
+               / "src" / "scripts" / "section_loop" / "intent"
+               / "expansion.py")
+        content = exp.read_text(encoding="utf-8")
+        fn_start = content.find("def handle_user_gate(")
+        fn_end = content.find("\ndef ", fn_start + 1)
+        fn_body = content[fn_start:fn_end] if fn_end != -1 else content[fn_start:]
+        assert "user_input_kind" in fn_body, (
+            "handle_user_gate must read user_input_kind from delta")
+        assert "gate_kind" in fn_body or "gate_messages" in fn_body, (
+            "handle_user_gate must dispatch on gate kind")
+
+    def test_axis_budget_gate_kind_set_in_expansion(self):
+        from pathlib import Path
+        exp = (Path(__file__).resolve().parent.parent
+               / "src" / "scripts" / "section_loop" / "intent"
+               / "expansion.py")
+        content = exp.read_text(encoding="utf-8")
+        fn_start = content.find("def run_expansion_cycle(")
+        fn_end = content.find("\ndef ", fn_start + 1)
+        fn_body = content[fn_start:fn_end] if fn_end != -1 else content[fn_start:]
+        assert '"axis_budget"' in fn_body, (
+            "Axis budget enforcement must set user_input_kind to 'axis_budget'")
+
+
+class TestR57SurfacePersistenceGuard:
+    """V5/R57: Intent surfaces must be persisted even when misaligned."""
+
+    def test_runner_merges_surfaces_on_misalignment(self):
+        from pathlib import Path
+        runner = (Path(__file__).resolve().parent.parent
+                  / "src" / "scripts" / "section_loop"
+                  / "section_engine" / "runner.py")
+        content = runner.read_text(encoding="utf-8")
+        # The PROBLEMS branch should contain surface merge logic
+        problems_idx = content.find("# Problems found — feed back into")
+        assert problems_idx != -1
+        # Check the block BEFORE "Problems found" for surface persistence
+        pre_block = content[max(0, problems_idx - 800):problems_idx]
+        assert "merge_surfaces_into_registry" in pre_block, (
+            "Runner must merge surfaces into registry even on PROBLEMS verdict")
+        assert "misaligned" in pre_block.lower(), (
+            "Surface merge on misalignment must be documented in comments")
+
+    def test_runner_imports_surface_functions(self):
+        from pathlib import Path
+        runner = (Path(__file__).resolve().parent.parent
+                  / "src" / "scripts" / "section_loop"
+                  / "section_engine" / "runner.py")
+        content = runner.read_text(encoding="utf-8")
+        for fn in ("load_surface_registry", "merge_surfaces_into_registry",
+                    "normalize_surface_ids", "save_surface_registry"):
+            assert fn in content, (
+                f"runner.py must import {fn} for misalignment merge")
+
+
+class TestR57DocSignalTaxonomyGuard:
+    """V6/R57: implement.md must list all signal states."""
+
+    def test_all_signal_states_present(self):
+        from pathlib import Path
+        impl = (Path(__file__).resolve().parent.parent
+                / "src" / "implement.md")
+        content = impl.read_text(encoding="utf-8")
+        for signal in ("UNDERSPECIFIED", "NEED_DECISION", "DEPENDENCY",
+                        "OUT_OF_SCOPE", "NEEDS_PARENT"):
+            assert signal in content, (
+                f"implement.md must document signal state: {signal}")
+
+    def test_no_hardcoded_model_in_prescriptive_text(self):
+        from pathlib import Path
+        impl = (Path(__file__).resolve().parent.parent
+                / "src" / "implement.md")
+        content = impl.read_text(encoding="utf-8")
+        # Check that "codex-xhigh generates" pattern is gone
+        assert "codex-xhigh generates" not in content, (
+            "implement.md must not hardcode model names in prescriptive text")

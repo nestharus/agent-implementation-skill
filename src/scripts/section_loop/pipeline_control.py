@@ -158,8 +158,15 @@ def _section_inputs_hash(
                 referenced = Path(ref_path.read_text(encoding="utf-8").strip())
                 if referenced.exists():
                     hasher.update(referenced.read_bytes())
-            except (OSError, ValueError):
-                pass
+            except (OSError, ValueError) as exc:
+                # V3/R57: Use stable error marker so convergence cannot
+                # be falsely reported when refs are unreadable.
+                hasher.update(
+                    f"REF_READ_ERROR:{ref_path}".encode("utf-8"))
+                print(
+                    f"[HASH][WARN] Failed to read ref "
+                    f"{ref_path}: {exc}",
+                )
 
     return hasher.hexdigest()
 

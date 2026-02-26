@@ -125,7 +125,18 @@ def update_match(
 
     try:
         feedback = json.loads(feedback_file.read_text())
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        print(
+            f"[DEEP][WARN] Malformed feedback JSON: "
+            f"{feedback_file} ({exc})",
+            file=sys.stderr,
+        )
+        # Preserve corrupted file for diagnosis (V1/R57)
+        try:
+            feedback_file.rename(
+                feedback_file.with_suffix(".malformed.json"))
+        except OSError:
+            pass  # Best-effort preserve
         return True
 
     lines = feedback.get("summary_lines")

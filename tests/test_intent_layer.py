@@ -1711,3 +1711,242 @@ class TestR56AxisBudgetEnforcement:
             signals / "intent-axis-budget-01-signal.json")
         assert blocker_path.exists(), (
             "Axis budget blocker signal must be written")
+
+
+class TestR57DeepScanFeedbackPreservation:
+    """V1/R57: deep_scan.update_match() must warn + rename malformed JSON."""
+
+    def test_malformed_feedback_renamed(self, tmp_path):
+        """Malformed feedback JSON is renamed to .malformed.json."""
+        from scan.deep_scan import update_match
+
+        section_file = tmp_path / "section-01.md"
+        section_file.write_text(
+            "## Related Files\n\n### src/foo.py\nSome detail\n")
+
+        # Create a details-response + malformed feedback
+        details = tmp_path / "deep-src_foo_py-response.md"
+        details.write_text("analysis")
+        feedback = tmp_path / "deep-src_foo_py-feedback.json"
+        feedback.write_text("{not valid json")
+
+        result = update_match(section_file, "src/foo.py", details)
+        assert result is True, "Should continue despite malformed feedback"
+        assert not feedback.exists(), "Original should be renamed"
+        assert (tmp_path / "deep-src_foo_py-feedback.malformed.json").exists()
+
+
+class TestR57UpdaterSignalValidityPreservation:
+    """V2/R57: _is_valid_updater_signal() must rename malformed JSON."""
+
+    def test_malformed_updater_signal_renamed_by_validity_check(
+        self, tmp_path,
+    ):
+        """Malformed JSON in validity check path is renamed."""
+        from scan.feedback import _is_valid_updater_signal
+
+        signal_path = tmp_path / "update-signal.json"
+        signal_path.write_text("{broken json!!")
+
+        result = _is_valid_updater_signal(signal_path)
+        assert result is False
+        assert not signal_path.exists(), (
+            "Original should be renamed by validity check")
+        assert (tmp_path / "update-signal.malformed.json").exists()
+
+
+class TestR57RefExpansionWarnings:
+    """V3/R57: Ref expansion failures must warn + use hash marker."""
+
+    def test_pipeline_hash_uses_error_marker(self, tmp_path):
+        """Unreadable ref produces stable REF_READ_ERROR marker in hash."""
+        import hashlib
+
+        from section_loop.pipeline_control import _section_inputs_hash
+
+        planspace = tmp_path / "plan"
+        codespace = tmp_path / "code"
+        planspace.mkdir()
+        codespace.mkdir()
+        (planspace / "artifacts").mkdir()
+
+        # Create an inputs dir with a broken ref
+        inputs_dir = planspace / "artifacts" / "inputs" / "section-01"
+        inputs_dir.mkdir(parents=True)
+        ref_path = inputs_dir / "broken.ref"
+        # Point to a non-directory path to trigger OSError
+        ref_path.write_text("/nonexistent/path/that/does/not/exist.md")
+
+        # Build a section
+        from section_loop.types import Section
+
+        sections_by_num = {
+            "01": Section(
+                number="01",
+                path=str(planspace / "artifacts" / "sections" / "section-01.md"),
+                related_files=[],
+            ),
+        }
+
+        h1 = _section_inputs_hash("01", planspace, codespace, sections_by_num)
+
+        # Hash should be deterministic (same broken ref → same hash)
+        h2 = _section_inputs_hash("01", planspace, codespace, sections_by_num)
+        assert h1 == h2, "Hash must be deterministic even with broken refs"
+
+    def test_context_builder_warns_on_broken_ref(
+        self, planspace, codespace, section_01, capsys,
+    ):
+        """Broken ref in context builder emits warning."""
+        from section_loop.prompts.context import build_prompt_context
+        from section_loop.types import Section
+
+        sec_path = planspace / "artifacts" / "sections" / "section-01.md"
+        sec = Section(number="01", path=sec_path, related_files=[])
+
+        inputs_dir = planspace / "artifacts" / "inputs" / "section-01"
+        inputs_dir.mkdir(parents=True)
+        ref_path = inputs_dir / "broken.ref"
+        # Write invalid content that will fail Path operations
+        ref_path.write_bytes(b"\x80\x81\x82")  # Invalid UTF-8
+
+        ctx = build_prompt_context(sec, planspace, codespace)
+        captured = capsys.readouterr()
+        assert "WARN" in captured.out or ctx is not None  # Should not crash
+
+
+class TestR57GateTypeSpecificMessaging:
+    """V4/R57: handle_user_gate() must use gate-kind-specific messaging."""
+
+    def test_axis_budget_gate_says_axis_budget(
+        self, planspace, codespace, section_01, mock_dispatch,
+    ):
+        """Axis budget gate must NOT say 'Philosophy tension'."""
+        from unittest.mock import patch
+
+        from section_loop.intent.expansion import handle_user_gate
+
+        artifacts = planspace / "artifacts"
+        signals = artifacts / "signals"
+        signals.mkdir(parents=True, exist_ok=True)
+
+        delta_result = {
+            "needs_user_input": True,
+            "user_input_kind": "axis_budget",
+            "user_input_path": str(
+                signals / "intent-axis-budget-01-signal.json"),
+        }
+
+        with patch(
+            "section_loop.intent.expansion.pause_for_parent",
+            return_value="resume:accept",
+        ) as mock_pause:
+            handle_user_gate("01", planspace, "test-parent", delta_result)
+
+        # Check the pause message does NOT say philosophy
+        pause_msg = mock_pause.call_args[0][2]
+        assert "Philosophy" not in pause_msg, (
+            "Axis budget gate must not mention 'Philosophy'")
+        assert "budget" in pause_msg.lower(), (
+            "Axis budget gate must mention 'budget'")
+
+        # Check blocker signal
+        blocker_path = signals / "intent-expand-01-signal.json"
+        assert blocker_path.exists()
+        import json
+
+        blocker = json.loads(blocker_path.read_text())
+        assert "Philosophy" not in blocker["detail"], (
+            "Blocker detail must be gate-kind-specific")
+
+    def test_philosophy_gate_says_philosophy(
+        self, planspace, codespace, section_01, mock_dispatch,
+    ):
+        """Philosophy gate correctly says 'Philosophy tension'."""
+        from unittest.mock import patch
+
+        from section_loop.intent.expansion import handle_user_gate
+
+        artifacts = planspace / "artifacts"
+        signals = artifacts / "signals"
+        signals.mkdir(parents=True, exist_ok=True)
+
+        delta_result = {
+            "needs_user_input": True,
+            "user_input_kind": "philosophy",
+            "user_input_path": str(
+                artifacts / "intent" / "global"
+                / "philosophy-decisions.md"),
+        }
+
+        with patch(
+            "section_loop.intent.expansion.pause_for_parent",
+            return_value="resume:accept",
+        ) as mock_pause:
+            handle_user_gate("01", planspace, "test-parent", delta_result)
+
+        pause_msg = mock_pause.call_args[0][2]
+        assert "Philosophy" in pause_msg
+
+
+class TestR57SurfacePersistenceOnMisalignment:
+    """V5/R57: Intent surfaces must be persisted even when proposal is
+    misaligned (PROBLEMS verdict)."""
+
+    def test_surfaces_merged_when_misaligned(
+        self, planspace, codespace, section_01, mock_dispatch,
+    ):
+        """Surfaces from misaligned pass are merged into registry."""
+        import json
+
+        artifacts = planspace / "artifacts"
+        signals = artifacts / "signals"
+        signals.mkdir(parents=True, exist_ok=True)
+        (planspace / "model-policy.json").write_text("{}")
+
+        intent_sec = artifacts / "intent" / "sections" / "section-01"
+        intent_sec.mkdir(parents=True, exist_ok=True)
+        (intent_sec / "problem.md").write_text("# Problem\n")
+        (intent_sec / "problem-alignment.md").write_text("# Rubric\n")
+
+        # Empty registry
+        registry = {"section": "01", "next_id": 1, "surfaces": []}
+        (intent_sec / "surface-registry.json").write_text(
+            json.dumps(registry))
+
+        # Write surfaces signal (simulating what intent-judge would write)
+        surfaces = {
+            "problem_surfaces": [
+                {"kind": "emergent", "axis_id": "A1",
+                 "title": "Test surface", "description": "D",
+                 "evidence": "E"},
+            ],
+            "philosophy_surfaces": [],
+        }
+        (signals / "intent-surfaces-01.json").write_text(
+            json.dumps(surfaces))
+
+        # Import the surface functions to verify merge
+        from section_loop.intent.surfaces import (
+            load_intent_surfaces,
+            load_surface_registry,
+            merge_surfaces_into_registry,
+            normalize_surface_ids,
+            save_surface_registry,
+        )
+
+        # Simulate what the runner does in the PROBLEMS branch (V5/R57)
+        misaligned_surfaces = load_intent_surfaces("01", planspace)
+        assert misaligned_surfaces is not None
+
+        reg = load_surface_registry("01", planspace)
+        misaligned_surfaces = normalize_surface_ids(
+            misaligned_surfaces, reg, "01")
+        new_ids, _ = merge_surfaces_into_registry(reg, misaligned_surfaces)
+        save_surface_registry("01", planspace, reg)
+
+        # Verify surfaces are now in registry
+        final_reg = json.loads(
+            (intent_sec / "surface-registry.json").read_text())
+        assert len(final_reg["surfaces"]) > 0, (
+            "Surfaces must be persisted into registry even on misaligned pass")

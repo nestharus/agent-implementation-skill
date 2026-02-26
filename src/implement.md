@@ -1184,7 +1184,7 @@ the agent signals via its output and the section-loop pauses.
 ### Signal flow
 
 ```
-Agent output contains UNDERSPECIFIED/NEED_DECISION/DEPENDENCY
+Agent output contains UNDERSPECIFIED/NEED_DECISION/DEPENDENCY/OUT_OF_SCOPE/NEEDS_PARENT
   → section-loop detects signal
   → section-loop sends pause:* to parent mailbox
   → section-loop blocks on its own recv (context preserved)
@@ -1204,7 +1204,7 @@ section-loop sends: `pause:underspec:<section>:<description>`
 
 The parent handles:
 1. **Research**: create a sub-proposal via the research skill
-   (`research.md` Phase C — codex-xhigh generates the proposal)
+   (`research.md` Phase C — model per policy; see `models.md`)
 2. **Evaluate**: review the sub-proposal via the evaluate skill
    (`evaluate.md` — alignment check against design principles)
 3. **Human gate**: present proposal to user for approval
@@ -1255,6 +1255,26 @@ referencing the existing code and continues. No pause needed.
 If the target is in another section, cross-section communication
 handles it. Consequence notes and file snapshots from the completing
 section inform the dependent section's integration proposal.
+
+### Case 5: Work is out of scope for this section
+
+Agent signals: `OUT_OF_SCOPE: <what and why>`
+
+The agent has discovered work that does not belong in the current
+section's problem frame. The section-loop routes the finding to
+scope-delta artifacts. The parent may create new sections or route
+the finding to an existing section. The current section continues
+without addressing the out-of-scope item.
+
+### Case 6: Needs parent-level authority
+
+Agent signals: `NEEDS_PARENT: <what authority is needed>`
+section-loop sends: `pause:needs_parent:<section>:<detail>`
+
+The agent has encountered a decision that exceeds its authority
+(e.g., cross-section architectural changes, external dependency
+decisions). The parent investigates, makes the decision, and
+sends `resume:<decision>`.
 
 ## Other Escape Hatches
 

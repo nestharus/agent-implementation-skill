@@ -189,8 +189,11 @@ def build_prompt_context(
                         input_lines.append(
                             f"   - `{referenced}` (from {ref_file.stem})"
                         )
-                except (OSError, ValueError):
-                    pass
+                except (OSError, ValueError) as exc:
+                    print(
+                        f"[CONTEXT][WARN] Failed to read ref "
+                        f"{ref_file}: {exc}",
+                    )
             if input_lines:
                 additional_inputs_block = (
                     "\n\n## Additional Inputs (from coordination)\n\n"

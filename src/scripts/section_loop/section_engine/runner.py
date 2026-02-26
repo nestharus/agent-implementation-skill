@@ -57,7 +57,13 @@ from ..intent import (
     run_intent_triage,
 )
 from ..intent.expansion import handle_user_gate, run_expansion_cycle
-from ..intent.surfaces import load_intent_surfaces
+from ..intent.surfaces import (
+    load_intent_surfaces,
+    load_surface_registry,
+    merge_surfaces_into_registry,
+    normalize_surface_ids,
+    save_surface_registry,
+)
 from ..intent.triage import load_triage_result
 from .blockers import _append_open_problem, _update_blocker_rollup
 from .reexplore import _write_alignment_surface
@@ -1124,6 +1130,24 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                          f"summary:proposal-align:{section.number}:ALIGNED")
             _write_alignment_surface(planspace, section)
             break
+
+        # V5/R57: Persist intent surfaces even when misaligned.
+        # Surfaces are strategic signals that should survive across
+        # proposal attempts — merge into registry (no expansion).
+        if intent_mode == "full":
+            misaligned_surfaces = load_intent_surfaces(
+                section.number, planspace)
+            if misaligned_surfaces:
+                registry = load_surface_registry(
+                    section.number, planspace)
+                misaligned_surfaces = normalize_surface_ids(
+                    misaligned_surfaces, registry, section.number)
+                merge_surfaces_into_registry(
+                    registry, misaligned_surfaces)
+                save_surface_registry(
+                    section.number, planspace, registry)
+                log(f"Section {section.number}: persisted intent "
+                    f"surfaces from misaligned pass")
 
         # Problems found — feed back into next proposal attempt
         proposal_problems = problems

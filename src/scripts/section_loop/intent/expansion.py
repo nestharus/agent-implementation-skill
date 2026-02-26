@@ -209,6 +209,8 @@ def run_expansion_cycle(
                 blocker_path.write_text(
                     json.dumps(blocker, indent=2), encoding="utf-8")
                 delta["needs_user_input"] = True
+                delta["user_input_kind"] = "axis_budget"
+                delta["user_input_path"] = str(blocker_path)
                 delta["restart_required"] = True
             else:
                 delta["applied"]["problem_definition_updated"] = (
@@ -297,6 +299,8 @@ def handle_user_gate(
     """Handle user gate pause if expansion needs a decision.
 
     Returns the user's response message, or None if no gate needed.
+    Uses the ``user_input_kind`` from the delta to produce gate-type-specific
+    messaging (V4/R57).
     """
     if not delta_result.get("needs_user_input"):
         return None
@@ -305,29 +309,59 @@ def handle_user_gate(
     signals_dir = artifacts / "signals"
     signals_dir.mkdir(parents=True, exist_ok=True)
 
-    # Write blocker signal for rollup
-    blocker = {
-        "state": "NEED_DECISION",
-        "detail": (
-            f"Philosophy tension requires user direction: "
-            f"see {delta_result.get('user_input_path', 'philosophy-decisions.md')}"
-        ),
-        "needs": "User chooses stance for philosophical tension",
-        "why_blocked": (
-            "Cannot decide which principle to optimize "
-            "without user priority"
-        ),
+    gate_kind = delta_result.get("user_input_kind", "unknown")
+    input_path = delta_result.get(
+        "user_input_path", "philosophy-decisions.md")
+
+    # V4/R57: Gate-type-specific messaging
+    gate_messages = {
+        "philosophy": {
+            "detail": (
+                f"Philosophy tension requires user direction: "
+                f"see {input_path}"
+            ),
+            "needs": "User chooses stance for philosophical tension",
+            "why_blocked": (
+                "Cannot decide which principle to optimize "
+                "without user priority"
+            ),
+            "pause_summary": "Philosophy tension requires user direction",
+        },
+        "axis_budget": {
+            "detail": (
+                f"Axis budget exceeded — see {input_path}"
+            ),
+            "needs": "Decide which axes to accept within budget",
+            "why_blocked": "Proposed axes exceed remaining axis budget",
+            "pause_summary": "Axis budget exceeded",
+        },
     }
+    msg = gate_messages.get(gate_kind, {
+        "detail": f"User decision required: see {input_path}",
+        "needs": "User direction needed",
+        "why_blocked": f"Gate type: {gate_kind}",
+        "pause_summary": f"{gate_kind} requires user direction",
+    })
+
+    # Only write blocker if no signal already exists for this gate
     blocker_path = (
         signals_dir / f"intent-expand-{section_number}-signal.json"
     )
-    blocker_path.write_text(json.dumps(blocker, indent=2), encoding="utf-8")
+    if not blocker_path.exists():
+        blocker = {
+            "state": "NEED_DECISION",
+            "detail": msg["detail"],
+            "needs": msg["needs"],
+            "why_blocked": msg["why_blocked"],
+        }
+        blocker_path.write_text(
+            json.dumps(blocker, indent=2), encoding="utf-8")
 
     # Pause for parent
     response = pause_for_parent(
         planspace, parent,
         f"pause:need_decision:{section_number}:"
-        f"Philosophy tension requires user direction",
+        f"{msg['pause_summary']}",
     )
     return response
 

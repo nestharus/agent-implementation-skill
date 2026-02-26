@@ -435,7 +435,17 @@ def _is_valid_updater_signal(signal_path: Path) -> bool:
     try:
         data = json.loads(signal_path.read_text())
         return isinstance(data.get("status"), str)
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        print(
+            f"[FEEDBACK][WARN] Malformed updater signal in validity "
+            f"check: {signal_path} ({exc})",
+        )
+        # Preserve corrupted signal for diagnosis (V2/R57)
+        try:
+            signal_path.rename(
+                signal_path.with_suffix(".malformed.json"))
+        except OSError:
+            pass  # Best-effort preserve
         return False
 
 
