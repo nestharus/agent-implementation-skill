@@ -76,27 +76,22 @@ Emit `intent-delta-NN.json`:
 
 ```json
 {
-  "source": "problem-expander",
-  "surfaces_received": 3,
-  "surfaces_integrated": 1,
-  "surfaces_discarded": 2,
-  "changes": [
-    {
-      "type": "new_axis|extended_axis",
-      "axis_id": "A7",
-      "title": "Short title",
-      "reason": "Why this surface was integrated",
-      "source_surface_id": "PS-003"
-    }
-  ],
-  "discards": [
-    {
-      "surface_id": "PS-001",
-      "reason": "Already covered by §A2 error boundary definition"
-    }
-  ]
+  "section": "section-name",
+  "applied": {
+    "problem_definition_updated": true,
+    "problem_rubric_updated": true
+  },
+  "applied_surface_ids": ["P-01-0003"],
+  "discarded_surface_ids": ["P-01-0001"],
+  "new_axes": ["A7"],
+  "restart_required": true,
+  "restart_reason": "New axis A7 added with new constraints"
 }
 ```
+
+Set `restart_required` to true if new axes were added or existing axes
+materially changed (new constraints, new success criteria). Set to false
+if all surfaces were discarded or only minor clarifications were appended.
 
 ## Anti-Patterns
 

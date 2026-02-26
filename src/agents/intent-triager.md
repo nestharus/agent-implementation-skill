@@ -50,14 +50,16 @@ This is a hard rule. Do not override it with judgment.
 
 ### Budget Assignment
 
-Based on the trigger count and section characteristics:
+Based on the trigger count and section characteristics, assign cycle
+budgets that control how many proposal/implementation/expansion passes
+the pipeline is allowed:
 
-| Intent Mode | Judge Budget | Expander Budget | Total Budget |
-|-------------|-------------|----------------|--------------|
-| lightweight | 4K tokens   | 0 (skipped)    | 4K tokens    |
-| full        | 8K tokens   | 6K tokens each | 20K tokens   |
+| Intent Mode | proposal_max | implementation_max | intent_expansion_max | max_new_surfaces_per_cycle | max_new_axes_total |
+|-------------|-------------|-------------------|---------------------|---------------------------|-------------------|
+| lightweight | 5           | 5                 | 0                   | 0                         | 0                 |
+| full        | 5           | 5                 | 2                   | 8                         | 6                 |
 
-Adjust total budget upward (max 1.5x) only if related_files > 10 or
+Adjust upward (max 1.5x) only if related_files > 10 or
 incoming_notes > 4. Document the reason.
 
 ## Output
@@ -89,9 +91,11 @@ Emit `intent-triage-NN.json`:
     }
   ],
   "budgets": {
-    "judge_tokens": 8000,
-    "expander_tokens": 6000,
-    "total_tokens": 20000
+    "proposal_max": 5,
+    "implementation_max": 5,
+    "intent_expansion_max": 2,
+    "max_new_surfaces_per_cycle": 8,
+    "max_new_axes_total": 6
   },
   "budget_adjustment": null,
   "reason": "2 triggers fired (related_files=7, architecture_keywords=2): full intent cycle"
@@ -101,7 +105,7 @@ Emit `intent-triage-NN.json`:
 Also print a one-line summary to stdout:
 
 ```
-TRIAGE: section-name → full (2 triggers: related_files=7, arch_keywords=2) budget=20K
+TRIAGE: section-name → full (2 triggers: related_files=7, arch_keywords=2) expansion=2
 ```
 
 ## Anti-Patterns

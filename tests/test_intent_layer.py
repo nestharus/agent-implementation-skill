@@ -822,3 +822,273 @@ class TestIntentConventions:
         assert "{intent_problem_ref}" in text
         assert "{intent_rubric_ref}" in text
         assert "{intent_philosophy_ref}" in text
+
+    def test_agent_contract_triager_budget_keys(self) -> None:
+        """intent-triager.md contains cycle-budget schema keys (V1/R53)."""
+        agent = (Path(__file__).resolve().parent.parent / "src"
+                 / "agents" / "intent-triager.md")
+        if not agent.exists():
+            pytest.skip("intent-triager.md not found")
+        text = agent.read_text(encoding="utf-8")
+        for key in ("proposal_max", "implementation_max",
+                     "intent_expansion_max", "max_new_surfaces_per_cycle",
+                     "max_new_axes_total"):
+            assert key in text, f"intent-triager.md missing budget key: {key}"
+
+    def test_agent_contract_problem_expander_delta_keys(self) -> None:
+        """problem-expander.md delta matches expansion.py schema (V2/R53)."""
+        agent = (Path(__file__).resolve().parent.parent / "src"
+                 / "agents" / "problem-expander.md")
+        if not agent.exists():
+            pytest.skip("problem-expander.md not found")
+        text = agent.read_text(encoding="utf-8")
+        for key in ("applied_surface_ids", "discarded_surface_ids",
+                     "problem_definition_updated", "restart_required"):
+            assert key in text, (
+                f"problem-expander.md missing delta key: {key}")
+
+    def test_agent_contract_philosophy_expander_delta_keys(self) -> None:
+        """philosophy-expander.md delta matches expansion.py schema (V3/R53)."""
+        agent = (Path(__file__).resolve().parent.parent / "src"
+                 / "agents" / "philosophy-expander.md")
+        if not agent.exists():
+            pytest.skip("philosophy-expander.md not found")
+        text = agent.read_text(encoding="utf-8")
+        for key in ("applied_surface_ids", "discarded_surface_ids",
+                     "philosophy_updated", "needs_user_input"):
+            assert key in text, (
+                f"philosophy-expander.md missing delta key: {key}")
+
+    def test_agent_contract_pack_generator_registry_schema(self) -> None:
+        """intent-pack-generator.md defines dedupe registry, not axis metadata (V4/R53)."""
+        agent = (Path(__file__).resolve().parent.parent / "src"
+                 / "agents" / "intent-pack-generator.md")
+        if not agent.exists():
+            pytest.skip("intent-pack-generator.md not found")
+        text = agent.read_text(encoding="utf-8")
+        assert "next_id" in text, (
+            "intent-pack-generator.md must define registry with next_id")
+        assert '"surfaces": []' in text, (
+            "intent-pack-generator.md must define registry with surfaces list")
+        assert "axis_count" not in text, (
+            "intent-pack-generator.md must NOT put axis metadata in registry")
+
+    def test_surface_registry_wrong_schema_renamed(
+        self, intent_planspace: Path,
+    ) -> None:
+        """Registry with valid JSON but wrong schema → renamed + default (V6/R53)."""
+        registry_path = (
+            intent_planspace / "artifacts" / "intent" / "sections"
+            / "section-01" / "surface-registry.json"
+        )
+        # Valid JSON but wrong schema (axis metadata instead of dedupe registry)
+        registry_path.write_text(json.dumps({
+            "section": "01", "axis_count": 8,
+            "axes": [{"id": "A1", "title": "Intent"}],
+        }), encoding="utf-8")
+        loaded = load_surface_registry("01", intent_planspace)
+        assert loaded["surfaces"] == []
+        assert loaded["next_id"] == 1
+        assert registry_path.with_suffix(".malformed.json").exists()
+
+    def test_todo_extraction_before_intent_pack(
+        self, intent_planspace: Path, codespace: Path,
+        mock_dispatch: MagicMock,
+    ) -> None:
+        """TODO extraction runs before intent pack generation (V5/R53)."""
+        (intent_planspace / "constraints.md").write_text(
+            "# Constraints\nNo new deps.\n", encoding="utf-8")
+        section = _make_intent_section(intent_planspace, codespace)
+
+        # Write a TODO in a related file
+        src_dir = codespace / "src"
+        src_dir.mkdir(parents=True, exist_ok=True)
+        (src_dir / "main.py").write_text(
+            "# TODO: migrate auth to OAuth2\ndef main(): pass\n")
+
+        call_order: list[str] = []
+
+        def track_calls(*args, **kwargs):
+            agent_file = kwargs.get("agent_file", "")
+            sec_num = kwargs.get("section_number", "")
+            call_order.append(agent_file)
+
+            if agent_file == "intent-triager.md":
+                signal_path = (intent_planspace / "artifacts" / "signals"
+                               / f"intent-triage-{sec_num}.json")
+                signal_path.parent.mkdir(parents=True, exist_ok=True)
+                signal_path.write_text(json.dumps({
+                    "section": sec_num, "intent_mode": "full",
+                    "budgets": {"proposal_max": 5, "implementation_max": 5,
+                                "intent_expansion_max": 2,
+                                "max_new_surfaces_per_cycle": 8,
+                                "max_new_axes_total": 6},
+                    "reason": "test",
+                }), encoding="utf-8")
+                return ""
+
+            if agent_file == "philosophy-distiller.md":
+                phi = (intent_planspace / "artifacts" / "intent"
+                       / "global" / "philosophy.md")
+                phi.parent.mkdir(parents=True, exist_ok=True)
+                phi.write_text("# Philosophy\nP1...\n")
+                return ""
+
+            if agent_file == "intent-pack-generator.md":
+                # Verify TODOs file exists BEFORE pack generation
+                todos = (intent_planspace / "artifacts" / "todos"
+                         / f"section-{sec_num}-todos.md")
+                assert todos.exists(), (
+                    "TODOs must be extracted before intent pack generation")
+                pack_dir = (intent_planspace / "artifacts" / "intent"
+                            / "sections" / f"section-{sec_num}")
+                pack_dir.mkdir(parents=True, exist_ok=True)
+                (pack_dir / "problem.md").write_text("# Problem\n")
+                (pack_dir / "problem-alignment.md").write_text("# Rubric\n")
+                return ""
+
+            if agent_file == "integration-proposer.md":
+                prop = (intent_planspace / "artifacts" / "proposals"
+                        / f"section-{sec_num}-integration-proposal.md")
+                prop.parent.mkdir(parents=True, exist_ok=True)
+                prop.write_text("# Proposal\n")
+                return ""
+
+            if agent_file == "intent-judge.md":
+                return '{"frame_ok": true, "aligned": true, "problems": []}'
+
+            if agent_file == "implementation-strategist.md":
+                mod = (intent_planspace / "artifacts"
+                       / f"impl-{sec_num}-modified.txt")
+                mod.write_text("src/main.py\n")
+                return ""
+
+            if agent_file == "alignment-judge.md":
+                return '{"frame_ok": true, "aligned": true, "problems": []}'
+
+            return ""
+
+        mock_dispatch.side_effect = track_calls
+
+        from section_loop.section_engine import run_section
+        run_section(intent_planspace, codespace, section, "parent")
+
+        # intent-pack-generator must come AFTER TODO extraction
+        # (which happens before any agent dispatch in full mode)
+        assert "intent-pack-generator.md" in call_order
+
+    def test_triage_budgets_applied_to_cycle_budget(
+        self, intent_planspace: Path, codespace: Path,
+        mock_dispatch: MagicMock,
+    ) -> None:
+        """proposal_max and implementation_max from triage reach cycle budget (V7/R53)."""
+        section = _make_intent_section(intent_planspace, codespace)
+
+        # Pre-create a cycle budget file
+        budget_path = (intent_planspace / "artifacts" / "signals"
+                       / f"section-{section.number}-cycle-budget.json")
+        budget_path.parent.mkdir(parents=True, exist_ok=True)
+        budget_path.write_text(json.dumps({"existing_key": 42}),
+                               encoding="utf-8")
+
+        def track_calls(*args, **kwargs):
+            agent_file = kwargs.get("agent_file", "")
+            sec_num = kwargs.get("section_number", "")
+
+            if agent_file == "intent-triager.md":
+                signal_path = (intent_planspace / "artifacts" / "signals"
+                               / f"intent-triage-{sec_num}.json")
+                signal_path.parent.mkdir(parents=True, exist_ok=True)
+                signal_path.write_text(json.dumps({
+                    "section": sec_num, "intent_mode": "lightweight",
+                    "budgets": {"proposal_max": 7, "implementation_max": 3,
+                                "intent_expansion_max": 0},
+                    "reason": "test",
+                }), encoding="utf-8")
+                return ""
+
+            if agent_file == "integration-proposer.md":
+                prop = (intent_planspace / "artifacts" / "proposals"
+                        / f"section-{sec_num}-integration-proposal.md")
+                prop.parent.mkdir(parents=True, exist_ok=True)
+                prop.write_text("# Proposal\n")
+                return ""
+
+            if agent_file == "alignment-judge.md":
+                return '{"frame_ok": true, "aligned": true, "problems": []}'
+
+            if agent_file == "implementation-strategist.md":
+                mod = (intent_planspace / "artifacts"
+                       / f"impl-{sec_num}-modified.txt")
+                mod.write_text("src/main.py\n")
+                return ""
+
+            return ""
+
+        mock_dispatch.side_effect = track_calls
+
+        from section_loop.section_engine import run_section
+        run_section(intent_planspace, codespace, section, "parent")
+
+        # Read cycle budget and verify triage keys are present
+        updated = json.loads(budget_path.read_text(encoding="utf-8"))
+        assert updated.get("proposal_max") == 7, (
+            "proposal_max from triage must be applied to cycle budget")
+        assert updated.get("implementation_max") == 3, (
+            "implementation_max from triage must be applied to cycle budget")
+
+    def test_cycle_budget_malformed_preserved(
+        self, intent_planspace: Path, codespace: Path,
+        mock_dispatch: MagicMock,
+    ) -> None:
+        """Malformed cycle budget → renamed + proceeds (V6/R53)."""
+        section = _make_intent_section(intent_planspace, codespace)
+
+        # Write malformed cycle budget
+        budget_path = (intent_planspace / "artifacts" / "signals"
+                       / f"section-{section.number}-cycle-budget.json")
+        budget_path.parent.mkdir(parents=True, exist_ok=True)
+        budget_path.write_text("not json!", encoding="utf-8")
+
+        def track_calls(*args, **kwargs):
+            agent_file = kwargs.get("agent_file", "")
+            sec_num = kwargs.get("section_number", "")
+
+            if agent_file == "intent-triager.md":
+                signal_path = (intent_planspace / "artifacts" / "signals"
+                               / f"intent-triage-{sec_num}.json")
+                signal_path.parent.mkdir(parents=True, exist_ok=True)
+                signal_path.write_text(json.dumps({
+                    "section": sec_num, "intent_mode": "lightweight",
+                    "budgets": {"proposal_max": 5, "implementation_max": 5,
+                                "intent_expansion_max": 0},
+                    "reason": "test",
+                }), encoding="utf-8")
+                return ""
+
+            if agent_file == "integration-proposer.md":
+                prop = (intent_planspace / "artifacts" / "proposals"
+                        / f"section-{sec_num}-integration-proposal.md")
+                prop.parent.mkdir(parents=True, exist_ok=True)
+                prop.write_text("# Proposal\n")
+                return ""
+
+            if agent_file == "alignment-judge.md":
+                return '{"frame_ok": true, "aligned": true, "problems": []}'
+
+            if agent_file == "implementation-strategist.md":
+                mod = (intent_planspace / "artifacts"
+                       / f"impl-{sec_num}-modified.txt")
+                mod.write_text("src/main.py\n")
+                return ""
+
+            return ""
+
+        mock_dispatch.side_effect = track_calls
+
+        from section_loop.section_engine import run_section
+        # Should not crash
+        run_section(intent_planspace, codespace, section, "parent")
+
+        # Malformed file should be renamed
+        assert budget_path.with_suffix(".malformed.json").exists()

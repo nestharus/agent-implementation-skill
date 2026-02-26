@@ -85,34 +85,21 @@ Emit `intent-delta-NN.json`:
 
 ```json
 {
-  "source": "philosophy-expander",
-  "surfaces_received": 2,
-  "classifications": {
-    "absorbable": 0,
-    "compatible": 1,
-    "tension": 1,
-    "contradiction": 0,
-    "noise": 0
+  "section": "section-name",
+  "applied": {
+    "philosophy_updated": true
   },
-  "integrated": [
-    {
-      "surface_id": "XS-002",
-      "classification": "compatible",
-      "principle_added": "P8",
-      "title": "Short title"
-    }
-  ],
-  "gated": [
-    {
-      "surface_id": "XS-001",
-      "classification": "tension",
-      "principles_involved": ["P2", "P5"],
-      "decision_required": true
-    }
-  ],
-  "discarded": []
+  "applied_surface_ids": ["F-01-0002"],
+  "discarded_surface_ids": ["F-01-0001"],
+  "needs_user_input": true,
+  "restart_required": true
 }
 ```
+
+Set `needs_user_input` to true only if tensions or contradictions require
+user decisions (and you wrote `philosophy-decisions.md`). Set
+`restart_required` to true if philosophy was updated or user gate is
+needed.
 
 ## Anti-Patterns
 

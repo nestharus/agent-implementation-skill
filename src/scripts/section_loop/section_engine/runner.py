@@ -678,52 +678,10 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
     intent_mode = triage_result.get("intent_mode", "lightweight")
     intent_budgets = triage_result.get("budgets", {})
 
-    if intent_mode == "full":
-        # Ensure global philosophy exists (fail-closed: returns None
-        # if no source found or distillation failed — P7/R52)
-        philosophy_result = ensure_global_philosophy(
-            planspace, codespace, parent)
-        if alignment_changed_pending(planspace):
-            return None
-
-        if philosophy_result is None:
-            log(f"Section {section.number}: philosophy unavailable — "
-                f"downgrading to lightweight intent mode")
-            intent_mode = "lightweight"
-        else:
-            # Generate per-section intent pack
-            generate_intent_pack(
-                section, planspace, codespace, parent,
-                incoming_notes=incoming_notes or "",
-            )
-            if alignment_changed_pending(planspace):
-                return None
-
-            log(f"Section {section.number}: intent bootstrap complete "
-                f"(full mode)")
-
-    if intent_mode == "lightweight":
-        log(f"Section {section.number}: lightweight intent mode")
-
-    # Merge intent budgets into cycle budget
-    if intent_budgets:
-        cycle_budget_path_ib = (artifacts / "signals"
-                                / f"section-{section.number}-cycle-budget.json")
-        if cycle_budget_path_ib.exists():
-            try:
-                existing_budget = json.loads(
-                    cycle_budget_path_ib.read_text(encoding="utf-8"))
-                existing_budget.update({
-                    k: v for k, v in intent_budgets.items()
-                    if k.startswith("intent_") or k.startswith("max_new_")
-                })
-                cycle_budget_path_ib.write_text(
-                    json.dumps(existing_budget, indent=2), encoding="utf-8")
-            except (json.JSONDecodeError, OSError):
-                pass  # Leave existing budget unchanged
-
     # -----------------------------------------------------------------
     # Step 1.5b: Extract TODO blocks from related files (conditional)
+    # Must run BEFORE intent pack generation so TODOs (microstrategies)
+    # are available as input to the intent pack generator (V5/R53).
     # -----------------------------------------------------------------
     todos_path = (artifacts / "todos"
                   / f"section-{section.number}-todos.md")
@@ -752,6 +710,62 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             )
         else:
             log(f"Section {section.number}: no TODOs found in related files")
+
+    if intent_mode == "full":
+        # Ensure global philosophy exists (fail-closed: returns None
+        # if no source found or distillation failed — P7/R52)
+        philosophy_result = ensure_global_philosophy(
+            planspace, codespace, parent)
+        if alignment_changed_pending(planspace):
+            return None
+
+        if philosophy_result is None:
+            log(f"Section {section.number}: philosophy unavailable — "
+                f"downgrading to lightweight intent mode")
+            intent_mode = "lightweight"
+        else:
+            # Generate per-section intent pack
+            generate_intent_pack(
+                section, planspace, codespace, parent,
+                incoming_notes=incoming_notes or "",
+            )
+            if alignment_changed_pending(planspace):
+                return None
+
+            log(f"Section {section.number}: intent bootstrap complete "
+                f"(full mode)")
+
+    if intent_mode == "lightweight":
+        log(f"Section {section.number}: lightweight intent mode")
+
+    # Merge intent budgets into cycle budget (V7/R53: include
+    # proposal_max and implementation_max alongside intent_ and max_new_)
+    if intent_budgets:
+        _triage_budget_keys = frozenset(
+            ("proposal_max", "implementation_max"))
+        cycle_budget_path_ib = (artifacts / "signals"
+                                / f"section-{section.number}-cycle-budget.json")
+        if cycle_budget_path_ib.exists():
+            try:
+                existing_budget = json.loads(
+                    cycle_budget_path_ib.read_text(encoding="utf-8"))
+                existing_budget.update({
+                    k: v for k, v in intent_budgets.items()
+                    if (k.startswith("intent_") or k.startswith("max_new_")
+                        or k in _triage_budget_keys)
+                })
+                cycle_budget_path_ib.write_text(
+                    json.dumps(existing_budget, indent=2), encoding="utf-8")
+            except (json.JSONDecodeError, OSError) as exc:
+                log(f"Section {section.number}: cycle budget malformed "
+                    f"({exc}) — preserving and proceeding with triage "
+                    f"defaults")
+                try:
+                    cycle_budget_path_ib.rename(
+                        cycle_budget_path_ib.with_suffix(".malformed.json"))
+                except OSError as rename_exc:
+                    log(f"Section {section.number}: failed to rename "
+                        f"malformed cycle budget: {rename_exc}")
 
     # -----------------------------------------------------------------
     # Step 2: Integration proposal loop

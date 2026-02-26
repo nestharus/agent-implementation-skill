@@ -26,13 +26,22 @@ def load_surface_registry(
         data = json.loads(registry_path.read_text(encoding="utf-8"))
         if isinstance(data, dict) and "surfaces" in data:
             return data
+        # Schema mismatch: JSON valid but missing required keys (V6/R53)
+        log(f"Section {section_number}: surface registry missing 'surfaces' "
+            f"key — preserving and starting fresh")
+        try:
+            registry_path.rename(registry_path.with_suffix(".malformed.json"))
+        except OSError as rename_exc:
+            log(f"Section {section_number}: failed to rename schema-"
+                f"mismatched registry: {rename_exc}")
     except (json.JSONDecodeError, OSError) as exc:
         log(f"Section {section_number}: surface registry malformed ({exc}) "
             f"— preserving and starting fresh")
         try:
             registry_path.rename(registry_path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
+        except OSError as rename_exc:
+            log(f"Section {section_number}: failed to rename malformed "
+                f"registry: {rename_exc}")
 
     return {"section": section_number, "next_id": 1, "surfaces": []}
 

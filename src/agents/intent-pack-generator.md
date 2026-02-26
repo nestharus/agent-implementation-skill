@@ -106,26 +106,24 @@ statements (how work should be done, not what should be built),
 extract them into `philosophy-excerpt.md` for the philosophy distiller.
 Only create this file if philosophy content exists. Do not fabricate.
 
-### Structured Output (Required)
+### Surface Registry (Required)
 
-Emit `surface-registry.json`:
+Initialize the surface registry at `surface-registry.json`. This is the
+dedupe/status registry used by downstream agents to track discovered
+surfaces across expansion cycles:
 
 ```json
 {
   "section": "section-name",
-  "axis_count": 8,
-  "axes": [
-    {
-      "id": "A1",
-      "title": "Short title",
-      "category": "correctness|structural|behavioral|evolution",
-      "weight": "critical|important|informational"
-    }
-  ],
-  "has_philosophy_excerpt": false,
-  "source_files_read": ["list of files consulted"]
+  "next_id": 1,
+  "surfaces": []
 }
 ```
+
+The registry starts empty. Surfaces are added by the intent judge during
+alignment checks and tracked here for deduplication and status (pending,
+applied, discarded). Do NOT put axis metadata here — axes belong in
+`problem-alignment.md`.
 
 ## Anti-Patterns
 
