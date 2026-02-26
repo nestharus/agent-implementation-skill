@@ -64,6 +64,11 @@ def collect_and_route_feedback(
                     scan_log_dir / "failures.log",
                     f"- Malformed feedback: `{fb_file}` (section: {sec_name})",
                 )
+                # Preserve corrupted file for diagnosis (V2/R55)
+                try:
+                    fb_file.rename(fb_file.with_suffix(".malformed.json"))
+                except OSError:
+                    pass  # Best-effort preserve
                 continue
 
             # Schema validation: required fields must be present and typed
@@ -172,6 +177,11 @@ def _route_scope_deltas(
                     f"[SCOPE][WARN] Malformed feedback JSON in "
                     f"scope-delta routing: {fb_file} ({exc})",
                 )
+                # Preserve corrupted file for diagnosis (V2/R55)
+                try:
+                    fb_file.rename(fb_file.with_suffix(".malformed.json"))
+                except OSError:
+                    pass  # Best-effort preserve
                 continue
             for item in data.get("out_of_scope", []):
                 if isinstance(item, str) and item.strip():
@@ -262,6 +272,11 @@ def _apply_feedback(
                     f"[FEEDBACK][WARN] Malformed feedback JSON in "
                     f"apply_feedback: {fb_file} ({exc})",
                 )
+                # Preserve corrupted file for diagnosis (V2/R55)
+                try:
+                    fb_file.rename(fb_file.with_suffix(".malformed.json"))
+                except OSError:
+                    pass  # Best-effort preserve
                 continue
 
             # Skip entries with missing required fields

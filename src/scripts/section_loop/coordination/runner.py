@@ -206,7 +206,13 @@ def run_global_coordination(
                     pending_deltas.append(delta)
                 except (json.JSONDecodeError, OSError) as exc:
                     log(f"  coordinator: WARNING — malformed scope-delta "
-                        f"{df.name} ({exc}), skipping")
+                        f"{df.name} ({exc}), preserving as "
+                        f".malformed.json")
+                    # Preserve corrupted scope-delta (V7/R55)
+                    try:
+                        df.rename(df.with_suffix(".malformed.json"))
+                    except OSError:
+                        pass  # Best-effort preserve
                     continue
 
             if pending_deltas:

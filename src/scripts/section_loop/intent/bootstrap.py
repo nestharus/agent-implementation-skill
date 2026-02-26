@@ -195,8 +195,14 @@ def generate_intent_pack(
         inputs_block += f"3. Alignment excerpt: `{alignment_excerpt}`\n"
     if problem_frame.exists():
         inputs_block += f"4. Problem frame: `{problem_frame}`\n"
+    corrections_path = artifacts / "signals" / "codemap-corrections.json"
     if codemap_path.exists():
         inputs_block += f"5. Codemap: `{codemap_path}`\n"
+        if corrections_path.exists():
+            inputs_block += (
+                f"   Codemap corrections (authoritative fixes): "
+                f"`{corrections_path}`\n"
+            )
     if philosophy_path.exists():
         inputs_block += f"6. Operational philosophy: `{philosophy_path}`\n"
     if todos_path.exists():

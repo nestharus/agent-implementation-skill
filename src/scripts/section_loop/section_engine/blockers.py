@@ -84,6 +84,11 @@ def _update_blocker_rollup(planspace: Path) -> None:
                 "needs": "Valid signal JSON",
                 "why_blocked": str(exc),
             })
+            # Preserve corrupted signal for diagnosis (V5/R55)
+            try:
+                sig_path.rename(sig_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass  # Best-effort preserve
             continue
 
     if not blockers:

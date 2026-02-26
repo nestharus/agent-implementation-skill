@@ -1280,3 +1280,99 @@ class TestIntentConventions:
                            "philosophy-distiller.md"):
             assert agent_name in text, (
                 f"SKILL.md must list {agent_name}")
+
+
+class TestR55IntentPackCorrections:
+    """R55/V1: generate_intent_pack includes codemap corrections."""
+
+    def test_codemap_corrections_in_prompt(
+        self, planspace, codespace, section_01, mock_dispatch,
+    ) -> None:
+        """Intent pack prompt references codemap corrections when present."""
+        from section_loop.intent.bootstrap import generate_intent_pack
+        from section_loop.types import Section
+
+        # Create codemap and corrections
+        artifacts = planspace / "artifacts"
+        codemap = artifacts / "codemap.md"
+        codemap.write_text("# Codemap\nFiles here\n")
+        corrections = artifacts / "signals" / "codemap-corrections.json"
+        corrections.parent.mkdir(parents=True, exist_ok=True)
+        corrections.write_text('{"fixes": []}')
+
+        # Create model policy
+        (planspace / "model-policy.json").write_text("{}")
+
+        sec = Section(
+            number="01",
+            path=planspace / "artifacts" / "sections" / "section-01.md",
+            related_files=[],
+        )
+        mock_dispatch.return_value = ""
+
+        generate_intent_pack(sec, planspace, codespace, "test-parent")
+
+        # The prompt should reference corrections
+        prompt_path = artifacts / "intent-pack-01-prompt.md"
+        assert prompt_path.exists()
+        prompt_text = prompt_path.read_text(encoding="utf-8")
+        assert "codemap-corrections" in prompt_text, (
+            "Intent pack prompt must reference codemap corrections")
+
+
+class TestR55BudgetEnforcementFunctional:
+    """R55/V10: expansion cycle enforces budget on expander workload."""
+
+    def test_pending_surfaces_written_on_budget(
+        self, planspace, codespace, section_01, mock_dispatch,
+    ) -> None:
+        """When budget truncates, pending-surfaces file is written."""
+        import json
+        from section_loop.intent.expansion import run_expansion_cycle
+
+        artifacts = planspace / "artifacts"
+        signals = artifacts / "signals"
+        signals.mkdir(parents=True, exist_ok=True)
+
+        # Create model policy
+        (planspace / "model-policy.json").write_text("{}")
+
+        # Create surface registry
+        intent_sec = artifacts / "intent" / "sections" / "section-01"
+        intent_sec.mkdir(parents=True, exist_ok=True)
+        registry = {"section": "01", "next_id": 20, "surfaces": []}
+        (intent_sec / "surface-registry.json").write_text(
+            json.dumps(registry))
+
+        # Create surfaces signal with many surfaces
+        surfaces = {
+            "problem_surfaces": [
+                {"id": f"P-01-{i:04d}", "kind": "problem",
+                 "description": f"Surface {i}", "evidence": "test"}
+                for i in range(1, 12)
+            ],
+            "philosophy_surfaces": [],
+        }
+        (signals / "intent-surfaces-01.json").write_text(
+            json.dumps(surfaces))
+
+        # Create intent pack files so expander has targets
+        (intent_sec / "problem.md").write_text("# Problem\n")
+        (intent_sec / "problem-alignment.md").write_text("# Rubric\n")
+
+        mock_dispatch.return_value = ""
+
+        run_expansion_cycle(
+            "01", planspace, codespace, "test-parent",
+            budgets={"max_new_surfaces_per_cycle": 3},
+        )
+
+        # The pending surfaces file should exist with only budgeted entries
+        pending = signals / "intent-surfaces-pending-01.json"
+        assert pending.exists(), (
+            "Pending surfaces file must be written when budget applies")
+        data = json.loads(pending.read_text())
+        total = len(data.get("problem_surfaces", []))
+        total += len(data.get("philosophy_surfaces", []))
+        assert total <= 3, (
+            f"Pending surfaces must respect budget (got {total}, max 3)")

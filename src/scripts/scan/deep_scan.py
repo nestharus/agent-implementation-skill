@@ -319,9 +319,15 @@ def _get_scan_files(tier_file: Path) -> tuple[list[str], str]:
         data = json.loads(tier_file.read_text())
     except (json.JSONDecodeError, OSError) as exc:
         print(
-            f"[TIER][WARN] Malformed tier file: {tier_file} ({exc})",
+            f"[TIER][WARN] Malformed tier file: {tier_file} ({exc}) "
+            f"— preserving as .malformed.json",
             file=sys.stderr,
         )
+        # Preserve corrupted file for diagnosis (V4/R55)
+        try:
+            tier_file.rename(tier_file.with_suffix(".malformed.json"))
+        except OSError:
+            pass  # Best-effort preserve
         return [], ""
 
     tiers = data.get("tiers", {})

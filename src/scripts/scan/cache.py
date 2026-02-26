@@ -129,7 +129,11 @@ def is_valid_cached_feedback(feedback_path: Path) -> bool:
         return False
     try:
         data = json.loads(feedback_path.read_text())
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        print(
+            f"[CACHE][WARN] Malformed cached feedback: "
+            f"{feedback_path} ({exc})",
+        )
         return False
     if not isinstance(data, dict):
         return False

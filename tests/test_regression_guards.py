@@ -2010,17 +2010,34 @@ class TestNoHardcodedModelInPromptSurfaces:
     added that embed model names instead of using policy injection.
     """
 
-    TEMPLATES_DIR = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
-                     / "prompts" / "templates")
-    SCAN_TEMPLATES_DIR = PROJECT_ROOT / "src" / "scripts" / "scan" / "templates"
+    # Layout-agnostic: support both src/ development and flat deployed (V9/R55)
+    _SRC_TEMPLATES = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
+                      / "prompts" / "templates")
+    _FLAT_TEMPLATES = (PROJECT_ROOT / "scripts" / "section_loop"
+                       / "prompts" / "templates")
+    TEMPLATES_DIR = _SRC_TEMPLATES if _SRC_TEMPLATES.exists() else _FLAT_TEMPLATES
+
+    _SRC_SCAN_TEMPLATES = PROJECT_ROOT / "src" / "scripts" / "scan" / "templates"
+    _FLAT_SCAN_TEMPLATES = PROJECT_ROOT / "scripts" / "scan" / "templates"
+    SCAN_TEMPLATES_DIR = (
+        _SRC_SCAN_TEMPLATES if _SRC_SCAN_TEMPLATES.exists()
+        else _FLAT_SCAN_TEMPLATES
+    )
+
+    # Layout-agnostic prefix for prompt builder files
+    _PREFIX = (
+        PROJECT_ROOT / "src" / "scripts"
+        if (PROJECT_ROOT / "src" / "scripts").exists()
+        else PROJECT_ROOT / "scripts"
+    )
 
     # All prompt builder source files that construct agent instructions
     PROMPT_BUILDER_FILES = [
-        PROJECT_ROOT / "src" / "scripts" / "section_loop" / "section_engine" / "reexplore.py",
-        PROJECT_ROOT / "src" / "scripts" / "section_loop" / "coordination" / "execution.py",
-        PROJECT_ROOT / "src" / "scripts" / "section_loop" / "coordination" / "planning.py",
-        PROJECT_ROOT / "src" / "scripts" / "section_loop" / "prompts" / "writers.py",
-        PROJECT_ROOT / "src" / "scripts" / "section_loop" / "prompts" / "context.py",
+        _PREFIX / "section_loop" / "section_engine" / "reexplore.py",
+        _PREFIX / "section_loop" / "coordination" / "execution.py",
+        _PREFIX / "section_loop" / "coordination" / "planning.py",
+        _PREFIX / "section_loop" / "prompts" / "writers.py",
+        _PREFIX / "section_loop" / "prompts" / "context.py",
     ]
 
     KNOWN_MODELS = [
@@ -2031,7 +2048,7 @@ class TestNoHardcodedModelInPromptSurfaces:
     def test_no_hardcoded_model_in_section_loop_templates(self) -> None:
         """Section loop .md templates must not contain --model <literal>."""
         if not self.TEMPLATES_DIR.exists():
-            return
+            pytest.skip("templates dir not found in either layout")
         for template in sorted(self.TEMPLATES_DIR.glob("*.md")):
             content = template.read_text(encoding="utf-8")
             for model in self.KNOWN_MODELS:
@@ -4972,3 +4989,233 @@ class TestTierRankingPreservation:
         assert ".malformed.json" in region, (
             "deep_scan.py must rename invalid tier files to "
             ".malformed.json instead of unlinking")
+
+
+# ---------------------------------------------------------------
+# R55: Corruption preservation, codemap corrections propagation,
+# budget enforcement, layout-agnostic guards
+# ---------------------------------------------------------------
+
+
+class TestR55CodemapCorrectionsInBootstrap:
+    """R55/V1: bootstrap.py must reference codemap corrections in intent pack."""
+
+    def test_corrections_in_generate_intent_pack(self):
+        from pathlib import Path
+        bootstrap = (Path(__file__).resolve().parent.parent
+                     / "src" / "scripts" / "section_loop" / "intent"
+                     / "bootstrap.py")
+        content = bootstrap.read_text(encoding="utf-8")
+        assert "codemap-corrections" in content, (
+            "bootstrap.py generate_intent_pack must include codemap "
+            "corrections reference")
+        assert "corrections_path" in content, (
+            "bootstrap.py must define corrections_path variable")
+
+    def test_agent_file_mentions_corrections(self):
+        from pathlib import Path
+        agent = (Path(__file__).resolve().parent.parent
+                 / "src" / "agents" / "intent-pack-generator.md")
+        content = agent.read_text(encoding="utf-8")
+        assert "corrections" in content.lower(), (
+            "intent-pack-generator.md Phase 1 must mention codemap "
+            "corrections")
+
+
+class TestR55FeedbackPreservation:
+    """R55/V2: feedback.py parse sites must rename malformed to .malformed.json."""
+
+    def test_collect_and_route_preserves(self):
+        from pathlib import Path
+        fb = (Path(__file__).resolve().parent.parent
+              / "src" / "scripts" / "scan" / "feedback.py")
+        content = fb.read_text(encoding="utf-8")
+        # All 3 parse sites in feedback.py must have preservation
+        idx_collect = content.find("Malformed feedback JSON:")
+        assert idx_collect != -1
+        region = content[idx_collect:idx_collect + 600]
+        assert ".malformed.json" in region, (
+            "collect_and_route_feedback must preserve malformed files")
+
+    def test_route_scope_deltas_preserves(self):
+        from pathlib import Path
+        fb = (Path(__file__).resolve().parent.parent
+              / "src" / "scripts" / "scan" / "feedback.py")
+        content = fb.read_text(encoding="utf-8")
+        idx = content.find("scope-delta routing:")
+        assert idx != -1
+        region = content[idx:idx + 300]
+        assert ".malformed.json" in region, (
+            "_route_scope_deltas must preserve malformed files")
+
+    def test_apply_feedback_preserves(self):
+        from pathlib import Path
+        fb = (Path(__file__).resolve().parent.parent
+              / "src" / "scripts" / "scan" / "feedback.py")
+        content = fb.read_text(encoding="utf-8")
+        idx = content.find("apply_feedback:")
+        assert idx != -1
+        region = content[idx:idx + 300]
+        assert ".malformed.json" in region, (
+            "_apply_feedback must preserve malformed files")
+
+
+class TestR55CacheWarning:
+    """R55/V3: cache.py must warn on malformed cached feedback."""
+
+    def test_is_valid_warns(self):
+        from pathlib import Path
+        cache = (Path(__file__).resolve().parent.parent
+                 / "src" / "scripts" / "scan" / "cache.py")
+        content = cache.read_text(encoding="utf-8")
+        idx = content.find("def is_valid_cached_feedback")
+        assert idx != -1
+        region = content[idx:idx + 700]
+        assert "WARN" in region, (
+            "is_valid_cached_feedback must warn on parse failure")
+
+
+class TestR55TierGetScanFilesPreservation:
+    """R55/V4: _get_scan_files must preserve malformed tier files."""
+
+    def test_get_scan_files_preserves(self):
+        from pathlib import Path
+        deep = (Path(__file__).resolve().parent.parent
+                / "src" / "scripts" / "scan" / "deep_scan.py")
+        content = deep.read_text(encoding="utf-8")
+        idx = content.find("def _get_scan_files")
+        assert idx != -1
+        region = content[idx:idx + 500]
+        assert ".malformed.json" in region, (
+            "_get_scan_files must preserve malformed tier files")
+
+
+class TestR55BlockerPreservation:
+    """R55/V5: blockers.py must rename malformed signals."""
+
+    def test_blocker_rollup_preserves(self):
+        from pathlib import Path
+        bl = (Path(__file__).resolve().parent.parent
+              / "src" / "scripts" / "section_loop" / "section_engine"
+              / "blockers.py")
+        content = bl.read_text(encoding="utf-8")
+        idx = content.find("malformed_signal")
+        assert idx != -1
+        region = content[idx:idx + 500]
+        assert ".malformed.json" in region, (
+            "blockers.py must rename malformed signals to .malformed.json")
+
+
+class TestR55CoordinationBlockerPreservation:
+    """R55/V6: problems.py must preserve malformed blocker signals."""
+
+    def test_problems_preserves_blocker(self):
+        from pathlib import Path
+        prob = (Path(__file__).resolve().parent.parent
+                / "src" / "scripts" / "section_loop" / "coordination"
+                / "problems.py")
+        content = prob.read_text(encoding="utf-8")
+        idx = content.find("Blocker signal at")
+        assert idx != -1
+        region = content[idx:idx + 700]
+        assert ".malformed.json" in region, (
+            "problems.py must preserve malformed blocker signals")
+
+
+class TestR55ScopeDeltaPreservation:
+    """R55/V7: runner.py must preserve malformed scope-delta files."""
+
+    def test_scope_delta_preserves(self):
+        from pathlib import Path
+        runner = (Path(__file__).resolve().parent.parent
+                  / "src" / "scripts" / "section_loop" / "coordination"
+                  / "runner.py")
+        content = runner.read_text(encoding="utf-8")
+        idx = content.find("malformed scope-delta")
+        assert idx != -1
+        region = content[idx:idx + 500]
+        assert ".malformed.json" in region, (
+            "runner.py must preserve malformed scope-delta files")
+
+
+class TestR55ToolRegistryPreservation:
+    """R55/V8: section_engine/runner.py must preserve registry before repair."""
+
+    def test_pre_impl_preserves(self):
+        from pathlib import Path
+        runner = (Path(__file__).resolve().parent.parent
+                  / "src" / "scripts" / "section_loop" / "section_engine"
+                  / "runner.py")
+        content = runner.read_text(encoding="utf-8")
+        idx = content.find("tool-registry.json")
+        assert idx != -1
+        # Find the pre-impl repair site
+        pre_idx = content.find("dispatching repair", idx)
+        assert pre_idx != -1
+        region = content[pre_idx - 500:pre_idx]
+        assert ".malformed.json" in region or "malformed_path" in region, (
+            "Pre-impl repair must preserve corrupted registry")
+
+    def test_post_impl_preserves(self):
+        from pathlib import Path
+        runner = (Path(__file__).resolve().parent.parent
+                  / "src" / "scripts" / "section_loop" / "section_engine"
+                  / "runner.py")
+        content = runner.read_text(encoding="utf-8")
+        idx = content.find("post-impl registry")
+        assert idx != -1
+        region = content[idx - 500:idx]
+        assert ".malformed.json" in region or "malformed_path" in region, (
+            "Post-impl repair must preserve corrupted registry")
+
+
+class TestR55LayoutAgnosticGuards:
+    """R55/V9: TestNoHardcodedModelInPromptSurfaces must not silently skip."""
+
+    def test_templates_dir_not_hardcoded_src(self):
+        from pathlib import Path
+        guards = (Path(__file__).resolve())
+        content = guards.read_text(encoding="utf-8")
+        # The class must NOT have hardcoded PROJECT_ROOT / "src" / ... / "templates"
+        # as the sole TEMPLATES_DIR definition
+        class_idx = content.find("class TestNoHardcodedModelInPromptSurfaces")
+        assert class_idx != -1
+        region = content[class_idx:class_idx + 800]
+        assert "_SRC_TEMPLATES" in region or "_FLAT_TEMPLATES" in region, (
+            "TestNoHardcodedModelInPromptSurfaces must try both layouts")
+
+    def test_no_silent_return_on_missing(self):
+        from pathlib import Path
+        guards = (Path(__file__).resolve())
+        content = guards.read_text(encoding="utf-8")
+        class_idx = content.find("class TestNoHardcodedModelInPromptSurfaces")
+        assert class_idx != -1
+        # Find the first test method after class definition
+        method_idx = content.find("def test_no_hardcoded_model_in_section_loop", class_idx)
+        assert method_idx != -1
+        region = content[method_idx:method_idx + 300]
+        # Must use pytest.skip, not bare return
+        assert "pytest.skip" in region or "TEMPLATES_DIR.exists" not in region, (
+            "Guard must use pytest.skip, not bare return, when dir missing")
+
+
+class TestR55BudgetEnforcement:
+    """R55/V10: expansion.py must enforce budget on actual expander workload."""
+
+    def test_pending_surfaces_written(self):
+        from pathlib import Path
+        exp = (Path(__file__).resolve().parent.parent
+               / "src" / "scripts" / "section_loop" / "intent"
+               / "expansion.py")
+        content = exp.read_text(encoding="utf-8")
+        assert "intent-surfaces-pending" in content, (
+            "expansion.py must write budgeted pending-surfaces file")
+
+    def test_expanders_use_pending_path(self):
+        from pathlib import Path
+        exp = (Path(__file__).resolve().parent.parent
+               / "src" / "scripts" / "section_loop" / "intent"
+               / "expansion.py")
+        content = exp.read_text(encoding="utf-8")
+        assert "pending_surfaces_path" in content, (
+            "Expander functions must accept pending_surfaces_path parameter")

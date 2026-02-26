@@ -109,9 +109,30 @@ def run_expansion_cycle(
             f"exceeds budget of {max_surfaces} — truncating")
         new_surfaces = new_surfaces[:max_surfaces]
 
-    # Dispatch problem expander (if problem surfaces exist)
-    problem_surfaces = surfaces.get("problem_surfaces", [])
-    philosophy_surfaces = surfaces.get("philosophy_surfaces", [])
+    # Enforce budget on actual expander workload (V10/R55):
+    # Write budgeted surfaces to a separate file so expanders only
+    # see the truncated set, not the full signal.
+    budgeted_surface_ids = {s["id"] for s in new_surfaces if "id" in s}
+    problem_surfaces = [
+        s for s in surfaces.get("problem_surfaces", [])
+        if s.get("id") in budgeted_surface_ids
+    ]
+    philosophy_surfaces = [
+        s for s in surfaces.get("philosophy_surfaces", [])
+        if s.get("id") in budgeted_surface_ids
+    ]
+
+    # Write budgeted surfaces signal for expanders
+    budgeted_surfaces = {
+        "problem_surfaces": problem_surfaces,
+        "philosophy_surfaces": philosophy_surfaces,
+    }
+    pending_surfaces_path = (
+        planspace / "artifacts" / "signals"
+        / f"intent-surfaces-pending-{section_number}.json"
+    )
+    pending_surfaces_path.write_text(
+        json.dumps(budgeted_surfaces, indent=2), encoding="utf-8")
 
     delta = {
         "section": section_number,
@@ -130,6 +151,7 @@ def run_expansion_cycle(
     if problem_surfaces:
         problem_delta = _run_problem_expander(
             section_number, planspace, codespace, parent, policy,
+            pending_surfaces_path=pending_surfaces_path,
         )
         if problem_delta:
             delta["applied"]["problem_definition_updated"] = (
@@ -158,6 +180,7 @@ def run_expansion_cycle(
     if philosophy_surfaces:
         philosophy_delta = _run_philosophy_expander(
             section_number, planspace, codespace, parent, policy,
+            pending_surfaces_path=pending_surfaces_path,
         )
         if philosophy_delta:
             delta["applied"]["philosophy_updated"] = (
@@ -256,6 +279,8 @@ def _run_problem_expander(
     codespace: Path,
     parent: str,
     policy: dict,
+    *,
+    pending_surfaces_path: Path | None = None,
 ) -> dict | None:
     """Dispatch problem-expander and return its delta."""
     artifacts = planspace / "artifacts"
@@ -264,7 +289,12 @@ def _run_problem_expander(
     )
     signals_dir = artifacts / "signals"
 
-    surfaces_path = signals_dir / f"intent-surfaces-{section_number}.json"
+    # Use budgeted pending surfaces if available (V10/R55)
+    surfaces_path = (
+        pending_surfaces_path
+        if pending_surfaces_path is not None
+        else signals_dir / f"intent-surfaces-{section_number}.json"
+    )
     problem_path = intent_sec / "problem.md"
     rubric_path = intent_sec / "problem-alignment.md"
     delta_path = signals_dir / f"intent-delta-{section_number}.json"
@@ -335,13 +365,20 @@ def _run_philosophy_expander(
     codespace: Path,
     parent: str,
     policy: dict,
+    *,
+    pending_surfaces_path: Path | None = None,
 ) -> dict | None:
     """Dispatch philosophy-expander and return its delta."""
     artifacts = planspace / "artifacts"
     signals_dir = artifacts / "signals"
     intent_global = artifacts / "intent" / "global"
 
-    surfaces_path = signals_dir / f"intent-surfaces-{section_number}.json"
+    # Use budgeted pending surfaces if available (V10/R55)
+    surfaces_path = (
+        pending_surfaces_path
+        if pending_surfaces_path is not None
+        else signals_dir / f"intent-surfaces-{section_number}.json"
+    )
     philosophy_path = intent_global / "philosophy.md"
     decisions_path = intent_global / "philosophy-decisions.md"
     delta_path = signals_dir / f"intent-delta-{section_number}.json"

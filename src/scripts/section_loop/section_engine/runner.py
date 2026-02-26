@@ -345,9 +345,18 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                 tools_available_path.unlink()
                 log(f"Section {section.number}: removed stale "
                     f"tools-available surface (malformed registry)")
+            # Preserve corrupted registry before repair (V8/R55)
+            malformed_path = tool_registry_path.with_suffix(
+                ".malformed.json")
+            try:
+                import shutil
+                shutil.copy2(tool_registry_path, malformed_path)
+            except OSError:
+                pass  # Best-effort preserve
             # Dispatch tool-registrar to attempt repair
             log(f"Section {section.number}: tool-registry.json "
-                f"malformed ({exc}) — dispatching repair")
+                f"malformed ({exc}) — dispatching repair "
+                f"(original preserved as {malformed_path.name})")
             repair_prompt = (
                 artifacts
                 / f"tool-registry-repair-{section.number}-prompt.md"
@@ -1585,10 +1594,19 @@ WHY — you're capturing WHAT and WHERE at the file level.
                     section_number=section.number,
                 )
         except (json.JSONDecodeError, ValueError) as exc:
+            # Preserve corrupted registry before repair (V8/R55)
+            malformed_path = tool_registry_path.with_suffix(
+                ".malformed.json")
+            try:
+                import shutil
+                shutil.copy2(tool_registry_path, malformed_path)
+            except OSError:
+                pass  # Best-effort preserve
             # Fail-closed: dispatch repair instead of silently
             # proceeding (R34/V2)
             log(f"Section {section.number}: post-impl registry "
-                f"malformed ({exc}) — dispatching repair")
+                f"malformed ({exc}) — dispatching repair "
+                f"(original preserved as {malformed_path.name})")
             repair_prompt = (
                 artifacts
                 / f"tool-registry-post-repair-{section.number}-prompt.md"

@@ -29,6 +29,7 @@ Read all provided inputs:
 2. **Excerpts**: Relevant passages from higher-level documents
 3. **Problem frame**: Any existing problem framing from the proposal
 4. **Codemap**: Structure and key files of the target codebase
+5. **Codemap corrections**: Authoritative fixes to codemap errors (if present)
 
 Form a mental model of what this section touches, what constraints
 it operates under, and what tradeoffs it faces.

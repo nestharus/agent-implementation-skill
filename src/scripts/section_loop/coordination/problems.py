@@ -71,6 +71,12 @@ def _collect_outstanding_problems(
                     "needs": "Valid blocker signal JSON",
                     "files": files,
                 })
+                # Preserve corrupted blocker for diagnosis (V6/R55)
+                try:
+                    blocker_path.rename(
+                        blocker_path.with_suffix(".malformed.json"))
+                except OSError:
+                    pass  # Best-effort preserve
                 continue
 
         if result.problems:
