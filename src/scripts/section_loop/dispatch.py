@@ -538,6 +538,9 @@ def read_model_policy(planspace: Path) -> dict[str, Any]:
         "intent_triage_escalation": "claude-opus",
         "intent_recurrence_adjudicator": "glm",
         "intent_philosophy_selector": "glm",
+        "substrate_shard": "gpt-codex-high",
+        "substrate_pruner": "gpt-codex-xhigh",
+        "substrate_seeder": "gpt-codex-high",
         "escalation_triggers": {
             "stall_count": 2,
             "max_attempts_before_escalation": 3,

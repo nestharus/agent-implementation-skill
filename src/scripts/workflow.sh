@@ -3,6 +3,7 @@
 #
 # Schedule line format:
 #   [status] N. step-name | model-name -- description (skill-section-ref)
+#   N may be integer (3) or decimal (3.5)
 #
 # Usage:
 #   workflow.sh next|done|fail|retry|skip|status <workspace-dir>
@@ -42,7 +43,7 @@ if [ "$cmd" = "parse" ]; then
   eval "$(python3 -c "
 import re, sys
 line = sys.argv[1]
-m = re.match(r'\[(\w+)\]\s+(\d+)\.\s+(\S+)\s*\|\s*(.+?)\s*--\s*(.*?)(?:\s*\(([^)]*)\))?\s*$', line)
+m = re.match(r'\[(\w+)\]\s+(\d+(?:\.\d+)?)\.\s+(\S+)\s*\|\s*(.+?)\s*--\s*(.*?)(?:\s*\(([^)]*)\))?\s*$', line)
 if m:
     print(f'step_status=[{m.group(1)}]')
     print(f'step_num={m.group(2)}')

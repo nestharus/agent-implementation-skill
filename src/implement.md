@@ -32,6 +32,7 @@ Schedule step → Skill section mapping:
 - `decompose` → Stage 1: Section Decomposition
 - `docstrings` → Stage 2: Docstring Infrastructure
 - `scan` → Stage 3: File Relevance Scan
+- `substrate` → Stage 3.5: Shared Integration Substrate (SIS) Discovery
 - `section-loop` → Stages 4–5: Integration Proposals + Strategic Implementation + Global Coordination
 - `verify` → Stage 6: Verification
 - `post-verify` → Stage 7: Post-Task Verification
@@ -963,6 +964,82 @@ in `main()` ensures cleanup runs even on exceptions. The parent should also
 verify cleanup after the background task exits. Messages and events remain
 in `run.db` as part of the audit trail — only agent registration status
 is updated to `cleaned`.
+
+## Stage 3.5: Shared Integration Substrate (SIS) Discovery
+
+**Conditional** — runs between scan and section-loop when greenfield or
+vacuum sections are detected.
+
+### Purpose
+
+When sections have nothing to integrate against (greenfield projects or
+brownfield with new subsystems that have zero existing related files),
+integration proposals become hollow because each section independently
+invents project structure. SIS discovers shared integration seams
+*before* proposals begin, so sections have real anchor points.
+
+### Trigger conditions
+
+- **Greenfield**: always runs, targeting all sections.
+- **Brownfield/hybrid**: runs when vacuum sections (zero existing related
+  files in codespace) meet the configured threshold (read from
+  `model-policy.json` key `substrate_trigger_min_vacuum_sections`,
+  default 2). Targets only vacuum sections.
+
+### Pipeline
+
+1. **Shard exploration** (per target section, `substrate_shard` model):
+   Each section's spec + intent pack is analyzed to produce a structured
+   JSON shard describing what the section needs, provides, and what
+   shared seams it touches.
+2. **Pruning** (single strategic agent, `substrate_pruner` model):
+   Reads all shards, identifies convergence (same seam from multiple
+   sections), resolves contradictions, and produces the minimal substrate
+   document + seed plan. May emit `NEEDS_PARENT` if blocking questions
+   cannot be resolved without parent input.
+3. **Seeding** (`substrate_seeder` model): Creates minimal anchor files
+   in codespace from the seed plan, writes related-files-update signals,
+   and writes `substrate.ref` input files per wired section.
+4. **Wiring** (mechanical, no agent): Applies related-files-update signals
+   to section specs and verifies all artifacts are in place.
+
+### Artifacts produced
+
+| Artifact | Path | Consumer |
+|----------|------|----------|
+| Shard JSON (per section) | `artifacts/substrate/shards/shard-<NN>.json` | Pruner |
+| Substrate document | `artifacts/substrate/substrate.md` | Section-loop prompts (context.py) |
+| Seed plan | `artifacts/substrate/seed-plan.json` | Seeder |
+| Prune signal | `artifacts/substrate/prune-signal.json` | Runner (READY/NEEDS_PARENT gating) |
+| Seed signal | `artifacts/substrate/seed-signal.json` | Runner (completion verification) |
+| Substrate input refs | `artifacts/inputs/section-<NN>/substrate.ref` | Pipeline control (input hashing) |
+| Related-files-update signals | `artifacts/signals/related-files-update/section-<NN>.json` | Runner (mechanical wiring) |
+| Trigger signal | `artifacts/substrate/trigger-signal.json` | Audit trail |
+| Status | `artifacts/substrate/status.json` | Orchestrator |
+
+### How section-loop consumes it
+
+- `context.py` checks for `artifacts/substrate/substrate.md` and adds it
+  to prompt context. Greenfield mode block changes to "Substrate Available"
+  variant with SIS-aware guidance.
+- `pipeline_control.py` hashes `*.ref` files in `artifacts/inputs/section-<NN>/`,
+  including `substrate.ref`, so substrate changes trigger targeted requeue.
+- Integration proposal and strategic implementation templates include a
+  `{substrate_ref}` placeholder.
+
+### Model policy keys
+
+| Key | Default | Role |
+|-----|---------|------|
+| `substrate_shard` | `gpt-codex-high` | Per-section dependency exploration |
+| `substrate_pruner` | `gpt-codex-xhigh` | Strategic cross-section convergence |
+| `substrate_seeder` | `gpt-codex-high` | Anchor creation from seed plan |
+
+### CLI
+
+```bash
+scripts/substrate.sh <planspace> <codespace>
+```
 
 ## Stage 4: Section Setup + Integration Proposal
 

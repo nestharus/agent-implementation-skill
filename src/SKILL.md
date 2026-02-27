@@ -32,6 +32,8 @@ $WORKFLOW_HOME/
     workflow.sh         # schedule driver ([wait]/[run]/[done]/[fail])
     db.sh               # SQLite-backed coordination database
     scan.sh             # Stage 3 coordinator: dispatches agents to explore codespace and build codemap, then per-section file identification
+    substrate.sh        # Stage 3.5 shim: sets PYTHONPATH, runs python -m substrate
+    substrate/          # Stage 3.5: shared integration substrate discovery (shards → prune → seed) for greenfield/vacuum sections
     section-loop.py     # strategic section-loop orchestrator: integration proposals, strategic implementation, cross-section communication, global coordination (Stages 4-5 of implement.md)
   tools/
     extract-docstring-py  # extract Python module docstrings
@@ -54,6 +56,9 @@ $WORKFLOW_HOME/
     philosophy-distiller.md     # distills design philosophy
     qa-monitor.md               # deep QA with PAUSE authority
     state-detector.md           # workspace state reporting
+    substrate-shard-explorer.md  # produces needs/provides/shared-seam JSON shards per section
+    substrate-pruner.md          # merges shards, prunes contradictions, produces substrate + seed plan
+    substrate-seeder.md          # creates minimal anchor files from seed plan, wires substrate refs
   templates/
     implement-proposal.md   # 10-step implementation schedule
     research-cycle.md       # 7-step research schedule

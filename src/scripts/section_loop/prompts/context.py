@@ -117,17 +117,37 @@ def build_prompt_context(
     if project_mode_file.exists():
         project_mode = project_mode_file.read_text(encoding="utf-8").strip()
     effective_mode = section_mode or project_mode
+
+    # --- substrate awareness ---
+    substrate_path = artifacts / "substrate" / "substrate.md"
+    substrate_ref = ""
+    if substrate_path.exists():
+        substrate_ref = (
+            f"\n   - Shared integration substrate: `{substrate_path}`"
+        )
+
     mode_block = ""
     if effective_mode == "greenfield":
-        mode_block = (
-            "\n## Section Mode: GREENFIELD\n\n"
-            "This section has no existing code to modify. Your integration proposal\n"
-            "should focus on:\n"
-            "- What NEW files and modules to create\n"
-            "- Where in the project structure they belong\n"
-            "- How they connect to existing architecture (imports, interfaces)\n"
-            "- What scaffolding is needed before implementation\n"
-        )
+        if substrate_path.exists():
+            mode_block = (
+                "\n## Section Mode: GREENFIELD (Substrate Available)\n\n"
+                "This section has no pre-existing code, but a shared integration\n"
+                "substrate has been established. Your integration proposal should:\n"
+                "- Integrate against SIS anchor files listed in your related files\n"
+                "- Reference substrate.md for shared seam decisions and conventions\n"
+                "- Extend shared types/interfaces, do not redefine them\n"
+                "- Propose NEW files that connect to the established anchors\n"
+            )
+        else:
+            mode_block = (
+                "\n## Section Mode: GREENFIELD\n\n"
+                "This section has no existing code to modify. Your integration proposal\n"
+                "should focus on:\n"
+                "- What NEW files and modules to create\n"
+                "- Where in the project structure they belong\n"
+                "- How they connect to existing architecture (imports, interfaces)\n"
+                "- What scaffolding is needed before implementation\n"
+            )
     elif effective_mode == "hybrid":
         mode_block = (
             "\n## Section Mode: HYBRID\n\n"
@@ -221,6 +241,7 @@ def build_prompt_context(
         "decisions_block": decisions_block,
         "codemap_ref": codemap_ref,
         "corrections_ref": corrections_ref,
+        "substrate_ref": substrate_ref,
         "tools_ref": tools_ref,
         "todos_ref": todos_ref,
         "micro_ref": micro_ref,

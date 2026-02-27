@@ -71,6 +71,21 @@ Simple lookup or classification?
 - **Strengths**: Fastest, cheapest, simple classification
 - **Use via**: Task tool with `model: "haiku"`
 
+## Stage 3.5 Model Policy Keys
+
+The Shared Integration Substrate (SIS) stage uses three model policy keys,
+configurable in `model-policy.json`:
+
+| Key | Default | Why |
+|-----|---------|-----|
+| `substrate_shard` | `gpt-codex-high` | Per-section dependency exploration — structured extraction, high controllability needed |
+| `substrate_pruner` | `gpt-codex-xhigh` | Strategic cross-section convergence analysis — highest reasoning for graph exploration with pruning |
+| `substrate_seeder` | `gpt-codex-high` | Anchor creation from seed plan — follows precise instructions, no novel reasoning |
+
+The pruner is the only SIS agent that requires xhigh reasoning — it must
+identify convergence patterns, resolve contradictions, and make strategic
+deferral decisions across all shards simultaneously.
+
 ## Pipeline Patterns
 
 ### Implementation Pipeline
