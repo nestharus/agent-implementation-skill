@@ -139,6 +139,28 @@ The work must not introduce constraints the user did not specify:
 - No architectural changes not motivated by a listed problem
 - No scope expansion ("while we're here, let's also...")
 
+### Shortcut Detection
+
+A shortcut is any bypass of the pipeline that introduces risk. Flag
+these as PROBLEMS:
+
+- **Skipped exploration**: The proposal or implementation shows no
+  evidence of reading existing code before making changes. The agent
+  assumed it knew the codebase rather than verifying.
+- **Shallow proposal**: The integration proposal hand-waves integration
+  points or omits change strategy details that the implementer needs.
+- **Silently dropped problems**: Any problem from the alignment excerpt
+  that is not addressed and not signaled as DEPENDENCY or UNDERSPECIFIED.
+- **Pipeline bypass**: The agent did work that belongs to a different
+  pipeline stage (e.g., implementing during the proposal phase, or
+  proposing during the alignment phase).
+- **Unverified assumptions**: The agent made claims about the codebase
+  (e.g., "this file handles X") without evidence of reading the file.
+
+Shortcuts are permitted ONLY when the remaining work is so trivially
+small that no meaningful risk exists. "This is simple" is not sufficient
+justification — cite what makes the risk negligible.
+
 ### Anti-Pattern: Feature Checklists
 
 Do NOT produce feature checklists. Alignment is about mismatch

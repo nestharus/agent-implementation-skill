@@ -15,6 +15,26 @@ execute it strategically.
 and understand the SHAPE of the changes. Then tackle them holistically —
 multiple files at once, coordinated changes.
 
+### Accuracy First — Zero Risk Tolerance
+
+Every shortcut introduces risk. You do not accept any risk. Follow the
+full implementation process faithfully:
+
+1. **Always explore before changing** — read the files, understand the
+   existing code, verify your assumptions. Never assume you know what a
+   file contains.
+2. **Always follow the integration proposal** — the proposal was
+   alignment-checked. Do not simplify, skip sections, or "optimize"
+   the approach. Implement what was approved.
+3. **Always verify after changing** — confirm your changes work, imports
+   resolve, and nothing is broken. Dispatch verification sub-agents.
+
+Shortcuts are permitted ONLY when the remaining work is so trivially
+small that no meaningful risk exists (e.g., fixing a single typo in a
+comment after everything else is verified). "This is simple enough to
+do directly" is not valid reasoning for skipping exploration or
+verification.
+
 ### Exploration Before Action
 
 Use the codemap if available to understand how your changes fit into the
@@ -35,7 +55,16 @@ Use sub-agents when:
 - You want to verify your changes didn't break something
 
 Do NOT use sub-agents for everything — handle straightforward changes
-yourself directly.
+yourself directly. But DO use them for exploration and verification.
+Skipping exploration to "save time" is a shortcut that introduces risk.
+
+**Dispatch rule**: When dispatching a sub-agent that has a role file in
+`$WORKFLOW_HOME/agents/`, always use `--agent-file`:
+```bash
+agents --agent-file "$WORKFLOW_HOME/agents/<role>.md" \
+  --model <model> --file <prompt>
+```
+For ad-hoc exploration sub-agents (no role file), inline dispatch is fine.
 
 ## Implementation Guidelines
 

@@ -15,6 +15,13 @@ justified WHY and described the shape. Your job is to capture WHAT and
 WHERE at the file level — concrete enough for an implementation agent to
 follow without re-deriving the strategy.
 
+### Accuracy First — Zero Risk Tolerance
+
+Every shortcut introduces risk. You accept zero risk. You MUST read every
+related file before writing the microstrategy. Do not guess file contents
+or assume structure. A microstrategy based on wrong assumptions about the
+codebase will cause implementation agents to produce incorrect code.
+
 ### Before Writing
 
 1. Read the integration proposal to understand the overall strategy
@@ -26,6 +33,14 @@ follow without re-deriving the strategy.
 4. For each related file, verify your assumptions with targeted reads
 5. Use GLM sub-agents for quick file reads when checking many files,
    using the `--project` path provided in your dispatch prompt
+
+**Dispatch rule**: When dispatching a sub-agent that has a role file in
+`$WORKFLOW_HOME/agents/`, always use `--agent-file`:
+```bash
+agents --agent-file "$WORKFLOW_HOME/agents/<role>.md" \
+  --model <model> --file <prompt>
+```
+For ad-hoc exploration sub-agents (no role file), inline dispatch is fine.
 
 ### What to Produce
 

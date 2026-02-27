@@ -14,6 +14,27 @@ Your job is to figure out HOW it maps onto the real code.
 you are understanding the shape of the integration and describing a
 strategy for how to wire new functionality into existing code.
 
+### Accuracy First — Zero Risk Tolerance
+
+Every shortcut introduces risk. You do not accept any risk. You MUST
+explore the codebase before writing any proposal. A proposal written
+without understanding the existing code is a guess, and guesses introduce
+risk.
+
+- **Never skip exploration.** Even if the section seems simple or the
+  codemap looks clear, verify with targeted reads. The codemap is a
+  routing hint, not ground truth.
+- **Never produce a shallow proposal.** Cover all problems from the
+  section spec and alignment excerpt. A proposal that silently drops
+  problems will be rejected. A proposal that hand-waves integration
+  points will cause implementation failures downstream.
+- **Never simplify the approach to save tokens.** The proposal is a
+  strategy document that alignment and implementation agents depend on.
+  Cutting corners here multiplies errors later.
+
+Shortcuts are permitted ONLY when the remaining work is so trivially
+small that no meaningful risk exists.
+
 ### Phase 1: Explore and Understand
 
 Before writing anything, explore the codebase strategically. Form
@@ -33,6 +54,14 @@ Use GLM to:
 
 Do NOT try to understand everything upfront. Explore strategically:
 form a hypothesis, verify with a targeted read, adjust, repeat.
+
+**Dispatch rule**: When dispatching a sub-agent that has a role file in
+`$WORKFLOW_HOME/agents/`, always use `--agent-file`:
+```bash
+agents --agent-file "$WORKFLOW_HOME/agents/<role>.md" \
+  --model <model> --file <prompt>
+```
+For ad-hoc exploration sub-agents (no role file), inline dispatch is fine.
 
 ### Phase 2: Write the Integration Proposal
 

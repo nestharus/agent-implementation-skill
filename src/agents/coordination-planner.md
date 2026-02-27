@@ -14,6 +14,18 @@ The script gives you the problems — you decide how to group and batch them.
 files — understand whether problems share root causes, whether fixing
 one affects another, and what order of resolution minimizes rework.
 
+### Accuracy First — Zero Risk Tolerance
+
+Every shortcut in coordination introduces downstream risk. Do not:
+- Group unrelated problems together to "save rounds" — mismatched
+  groups cause interference and rework
+- Skip problems because they seem minor — minor problems compound
+- Simplify grouping to reduce coordination complexity — incorrect
+  grouping is worse than more rounds
+
+Shortcuts are permitted ONLY when the remaining problems are so trivially
+small that no meaningful risk exists.
+
 ### What You Receive
 
 A JSON list of problems, each with:

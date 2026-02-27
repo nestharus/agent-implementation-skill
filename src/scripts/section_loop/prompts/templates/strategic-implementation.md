@@ -25,6 +25,15 @@ You are implementing the changes described in the integration proposal.
 The proposal has been alignment-checked and approved. Your job is to
 execute it strategically.
 
+### Accuracy First — Zero Risk Tolerance
+
+Every shortcut introduces risk. You accept zero risk. Follow the full
+process faithfully: explore before changing, follow the proposal exactly,
+verify after changing. Shortcuts are permitted ONLY when the remaining
+work is so trivially small that no meaningful risk exists. "This is
+simple enough to do directly" is not valid reasoning for skipping
+exploration or verification.
+
 ### How to Work
 
 **Think strategically, not mechanically.** Read the integration proposal
@@ -37,7 +46,7 @@ codemap corrections exist, treat them as authoritative fixes.
 
 For cheap exploration (reading, checking, verifying):
 ```bash
-uv run --frozen agents --model {exploration_model} --project "{codespace}" "<instructions>"
+agents --model {exploration_model} --project "{codespace}" "<instructions>"
 ```
 
 For targeted implementation of specific areas, write a prompt file first
@@ -47,7 +56,7 @@ PROMPT="$(mktemp)"
 cat > "$PROMPT" <<'EOF'
 <instructions>
 EOF
-uv run --frozen agents --model {delegated_impl_model} \
+agents --model {delegated_impl_model} \
   --project "{codespace}" --file "$PROMPT"
 ```
 
@@ -58,6 +67,13 @@ Use sub-agents when:
 
 Do NOT use sub-agents for everything — handle straightforward changes
 yourself directly.
+
+**Dispatch rule**: If dispatching an agent that has a defined role file in
+`$WORKFLOW_HOME/agents/`, attach it via `--agent-file`:
+```bash
+agents --agent-file "$WORKFLOW_HOME/agents/<role>.md" \
+  --model <model> --file <prompt>
+```
 
 ### Implementation Guidelines
 

@@ -59,7 +59,7 @@ dispatches the agent once per section; the agent handles file scope.
 
 **CRITICAL**: Prompts reference filepaths — agents read files themselves.
 
-Agents dispatched via `uv run agents` have full filesystem access. Prompts
+Agents dispatched via `agents` have full filesystem access. Prompts
 must NOT embed file contents inline. Instead, list filepaths and instruct
 the agent to read them.
 
@@ -111,7 +111,7 @@ bash "$DB" register <planspace>/run.db orchestrator
 bash "$DB" recv <planspace>/run.db orchestrator 600  # run_in_background: true
 
 # 3. Fire-and-forget: each agent sends message on completion
-(uv run agents --model <model> --file <prompt.md> \
+(agents --model <model> --file <prompt.md> \
   > <planspace>/artifacts/<output.md> 2>&1 && \
   bash "$DB" send <planspace>/run.db orchestrator "done:<tag>") &
 
@@ -135,6 +135,13 @@ problems → propose solution → align with parent layer. This applies
 recursively from global proposal down to TODO blocks. Microstrategy/TODO
 extraction is not optional convenience — it is the lowest-layer instance
 of the same explore-propose-align pattern.
+
+**Zero risk tolerance: no stage is optional.** Every stage exists because
+skipping it introduces risk. Agents MUST NOT bypass stages, combine
+stages, or rationalize that the project is "simple enough" to skip
+exploration, proposal, or alignment steps. Shortcuts are permitted ONLY
+when the remaining work is so trivially small that no meaningful risk
+exists. This applies equally to greenfield and brownfield projects.
 
 1. **Section Decomposition** — Recursive decomposition into atomic section files
 2. **Demand-Driven Docstring Cache** — Ensure relevant source files have module docstrings
@@ -512,7 +519,7 @@ The UI orchestrator:
 1. Copies the task-agent prompt template
 2. Fills in `{{PLANSPACE}}`, `{{CODESPACE}}`, `{{TAG}}`, etc.
 3. Writes the filled prompt to `<planspace>/artifacts/task-agent-prompt.md`
-4. Launches via: `uv run agents --model claude-opus --file <planspace>/artifacts/task-agent-prompt.md`
+4. Launches via: `agents --model claude-opus --file <planspace>/artifacts/task-agent-prompt.md`
 5. Runs `recv` on its own mailbox to receive reports from the task agent
 
 The task agent then owns the section-loop lifecycle:
@@ -524,7 +531,7 @@ python3 "$WORKFLOW_HOME/scripts/section-loop.py" <planspace> <codespace> \
 ```
 
 The script runs as a **background task** under a **task agent**. The task
-agent is launched via `uv run agents` and is responsible for:
+agent is launched via `agents` and is responsible for:
 - Starting the section-loop script as a background subprocess
 - Monitoring status mail from the script via mailbox recv
 - Detecting stuck states (repeated alignment problems, stalled progress, crashes)
@@ -539,7 +546,7 @@ scripts. It spawns task agents and receives their reports.
 ```
 UI Orchestrator (talks to user, high-level decisions)
   ├─ recv on orchestrator queue (listens for task-agent reports)
-  └─ Task Agent (one per task, via uv run agents)
+  └─ Task Agent (one per task, via agents)
        ├─ launches section-loop + monitor
        ├─ recv on task-agent queue (section-loop messages + escalations)
        ├─ send to orchestrator queue (reports progress + problems)
@@ -558,7 +565,7 @@ UI Orchestrator (talks to user, high-level decisions)
             ├─ db.sh query lifecycle --tag pipeline-state (pause check)
             ├─ recv on section-loop queue (when paused by signals)
             └─ per agent dispatch:
-                 ├─ agent (uv run agents, sends narration via db.sh)
+                 ├─ agent (agents, sends narration via db.sh)
                  └─ Agent Monitor (GLM, per-dispatch loop detector)
                       ├─ reads agent's narration queue via db.sh
                       └─ db.sh log signal (NOT message send)
@@ -566,17 +573,17 @@ UI Orchestrator (talks to user, high-level decisions)
 
 All coordination goes through `db.sh` and a single `run.db` per pipeline
 run. No team/SendMessage infrastructure — agents are standalone processes
-launched via `uv run agents`, not Claude teammates. Every coordination
+launched via `agents`, not Claude teammates. Every coordination
 operation (send, recv, log) is automatically recorded in the database.
 Messages are claimed, not consumed — the database file is the complete
 audit trail.
 
-**UI Orchestrator**: Launches task agents via `uv run agents --file`,
+**UI Orchestrator**: Launches task agents via `agents --file`,
 runs `db.sh recv` on its own queue, receives reports, makes decisions,
 communicates with user. Does NOT directly launch or monitor section-loop
 scripts.
 
-**Task Agent**: Intelligent overseer launched via `uv run agents`. Launches
+**Task Agent**: Intelligent overseer launched via `agents`. Launches
 the section-loop script and monitor agent. Has full filesystem access to
 investigate issues when the monitor escalates. Reads logs, diagnoses root
 causes, fixes what it can autonomously, and escalates to the orchestrator
@@ -1001,7 +1008,7 @@ explores the codebase strategically:
 
 **Dispatch GLM sub-agents for targeted exploration:**
 ```bash
-uv run --frozen agents --model glm --project <codespace> "<instructions>"
+agents --model glm --project <codespace> "<instructions>"
 ```
 
 Use GLM to read files, find callers/callees, check existing interfaces,
@@ -1081,7 +1088,7 @@ at once, coordinated changes. NOT mechanical per-file execution.
 
 For cheap exploration (reading, checking, verifying):
 ```bash
-uv run --frozen agents --model glm --project <codespace> "<instructions>"
+agents --model glm --project <codespace> "<instructions>"
 ```
 
 For targeted implementation of specific areas, write a prompt file first
@@ -1091,7 +1098,7 @@ PROMPT="$(mktemp)"
 cat > "$PROMPT" <<'EOF'
 <instructions>
 EOF
-uv run --frozen agents --model gpt-5.3-codex-high --project <codespace> --file "$PROMPT"
+agents --model gpt-5.3-codex-high --project <codespace> --file "$PROMPT"
 ```
 
 GPT has authority to go beyond the integration proposal where necessary
@@ -1139,7 +1146,7 @@ external artifacts — no markers placed in source code.
 After the section queue is empty (all sections clean), verify in the
 task worktree:
 
-### 6a: Constraint Alignment Check (Codex-high2)
+### 6a: Constraint Alignment Check (Codex-high)
 Check against design principles. Fix violations.
 
 ### 6b: Lint Fix
@@ -1303,7 +1310,7 @@ conflicts after the initial pass.
 | 5: Impact Analysis | GLM | Semantic impact analysis for cross-section communication |
 | 5: Global Coordination | Codex (GPT) | Coordinated fixes for grouped cross-section problems |
 | 5: Coordination Alignment | Opus | Per-section re-verification after coordinated fixes |
-| 6a: Constraint Alignment Check | Codex-high2 | Design principle check |
+| 6a: Constraint Alignment Check | Codex-high | Design principle check |
 | 6d: Debug/RCA | Codex-high | Fix test failures |
 
 ## Anti-Patterns

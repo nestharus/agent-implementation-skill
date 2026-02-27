@@ -170,7 +170,9 @@ is PAUSE level.
 
 ### C. Strategic Behavior
 
-Detect inefficient or misguided agent behavior patterns:
+Detect inefficient or misguided agent behavior patterns. The pipeline
+has a zero risk tolerance policy — shortcuts and pipeline bypasses are
+violations, not optimizations:
 
 - **C1: Sub-agent dispatch count**: Query dispatches per section from the database:
   ```bash
@@ -217,8 +219,21 @@ Detect inefficient or misguided agent behavior patterns:
   repeatedly failing without adapting. Flag as WARN.
   _(Cross-reference summary stream alignment counts with model-choice signals.)_
 
+- **C9: Pipeline shortcut detection**: Check if agents bypassed pipeline
+  stages. Evidence of shortcuts:
+  - Implementation output exists for a section but no integration proposal
+    exists in `artifacts/proposals/section-NN-integration-proposal.md`
+  - Integration proposal exists but no alignment check output exists in
+    `artifacts/proposal-align-NN-output.md`
+  - Agent output shows no evidence of file reads before making changes
+    (no GLM exploration dispatches for sections with related files)
+  - Orchestrator produced content artifacts instead of dispatching agents
+    (check summary events for the orchestrator writing to codespace)
+  _(File read — check artifact file existence and summary events.)_
+
 **Escalation**: Strategic issues are LOG level for counts below 2x threshold,
-WARN level for counts above 2x threshold.
+WARN level for counts above 2x threshold. C9 (pipeline shortcuts) is always
+PAUSE level — shortcuts introduce unacceptable risk.
 
 ### D. Bug Detection
 

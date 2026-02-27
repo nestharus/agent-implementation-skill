@@ -37,23 +37,7 @@ $WORKFLOW_HOME/
     extract-docstring-py  # extract Python module docstrings
     extract-summary-md    # extract YAML frontmatter from markdown
     README.md             # tool interface spec (for Opus to write new tools)
-  agents/
-    orchestrator.md     # event-driven step dispatcher (model: claude-opus)
-    monitor.md          # task-level pipeline monitor — detects cycles/stuck (model: glm)
-    qa-monitor.md       # deep QA monitor — 26 rules, 5 categories, PAUSE authority (model: claude-opus)
-    agent-monitor.md    # per-agent loop detector — watches narration (model: glm)
-    state-detector.md   # workspace state reporter (model: claude-opus)
-    exception-handler.md # RCA on failed steps (model: claude-opus)
-    microstrategy-writer.md # tactical per-file breakdown (model: gpt-5.3-codex-high)
-    section-re-explorer.md  # re-explores sections with no related files (model: claude-opus)
-    setup-excerpter.md      # extracts section excerpts from globals (model: claude-opus)
-    bridge-agent.md         # resolves cross-section interface friction (model: gpt-5.3-codex-xhigh)
-    intent-triager.md       # intent triage: lightweight vs full intent cycle (model: glm)
-    intent-judge.md         # per-section alignment with surface discovery (model: claude-opus)
-    intent-pack-generator.md  # generates problem definition + rubric per section (model: gpt-5.3-codex-high)
-    philosophy-distiller.md   # distills operational philosophy from sources (model: claude-opus)
-    problem-expander.md       # integrates problem surfaces into definitions (model: claude-opus)
-    philosophy-expander.md    # integrates philosophy surfaces, gates tensions (model: claude-opus)
+  agents/              # agent role definitions (see individual files)
   templates/
     implement-proposal.md   # 10-step implementation schedule
     research-cycle.md       # 7-step research schedule
@@ -65,6 +49,12 @@ Workspaces live on native filesystem for performance, separate from project:
 - **Codespace**: project root or worktree — where source code lives
 
 Clean up planspace when workflow is fully complete (`rm -rf` the workspace dir).
+
+## Your Role
+
+**BEFORE DOING ANYTHING ELSE**: Determine your role in the pipeline,
+then read the corresponding file from `$WORKFLOW_HOME/agents/`. That
+file defines your rules. Do not proceed until you have read it.
 
 ## Phase Detection
 
@@ -119,6 +109,15 @@ failures.
    valid only if they solve the original problems. An optimization or
    complexity argument is an excuse. Do not introduce constraints the user
    did not specify.
+7. **Accuracy over shortcuts — zero risk tolerance** — Every shortcut or
+   bypass of the pipeline introduces risk. We do not accept any risk.
+   Agents must follow the full pipeline faithfully: explore before
+   proposing, propose before implementing, align before proceeding.
+   Shortcuts are permitted ONLY when the remaining work is so small that
+   no meaningful risk exists (e.g., a single trivial cleanup after
+   everything else is aligned and verified). "This is simple enough to
+   skip a step" is never valid reasoning — simplicity is not the same as
+   zero risk. When in doubt, follow the pipeline.
 
 ### Terminology Contract
 
@@ -165,32 +164,32 @@ issues requiring RCA.
 For multi-step workflows, use the orchestration system instead of running
 everything from memory.
 
-### Dispatch: All Agents via `uv run agents`
+### Dispatch: All Agents via `agents`
 
-**CRITICAL**: All step dispatch goes through `uv run agents` via Bash.
+**CRITICAL**: All step dispatch goes through `agents` via Bash.
 Never use Claude's Task tool to spawn sub-agents — it causes "sibling"
 errors and reliability issues. The agent runner automatically unsets
 `CLAUDECODE` so sibling Claude sessions can launch.
 
 ```bash
 # Sequential dispatch — model directly with prompt file
-uv run agents --model <model> --file <planspace>/artifacts/step-N-prompt.md \
+agents --model <model> --file <planspace>/artifacts/step-N-prompt.md \
   > <planspace>/artifacts/step-N-output.md 2>&1
 
 # Agent file dispatch — agent instructions prepended to prompt
-uv run agents --agent-file "$WORKFLOW_HOME/agents/exception-handler.md" \
+agents --agent-file "$WORKFLOW_HOME/agents/exception-handler.md" \
   --file <planspace>/artifacts/exception-prompt.md
 
 # Parallel dispatch with db.sh coordination
-(uv run agents --model gpt-5.3-codex-high --file <prompt-A.md> && \
+(agents --model gpt-5.3-codex-high --file <prompt-A.md> && \
   bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-A") &
-(uv run agents --model gpt-5.3-codex-high --file <prompt-B.md> && \
+(agents --model gpt-5.3-codex-high --file <prompt-B.md> && \
   bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-B") &
 bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator
 bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator
 
 # Codemap exploration dispatch (Opus explores the codespace)
-uv run agents --model claude-opus --project <codespace> \
+agents --model claude-opus --project <codespace> \
   --file <planspace>/artifacts/scan-logs/codemap-prompt.md \
   > <planspace>/artifacts/codemap.md 2>&1
 ```
@@ -226,8 +225,7 @@ Control and recovery:
 | Model | Used For |
 |-------|----------|
 | `claude-opus` | Section setup (excerpt extraction), alignment checks (shape/direction), decomposition, codemap exploration, per-section file identification |
-| `gpt-5.3-codex-high` | Integration proposals, strategic implementation, coordinated fixes, extraction, investigation |
-| `gpt-5.3-codex-high2` | Constraint alignment check (same capability, different quota) |
+| `gpt-5.3-codex-high` | Integration proposals, strategic implementation, coordinated fixes, extraction, investigation, constraint alignment check |
 | `gpt-5.3-codex-xhigh` | Deep architectural synthesis, proposal drafting |
 | `glm` | Test running, verification, quick commands, deep file analysis, semantic impact analysis, sub-agent exploration during integration proposals |
 

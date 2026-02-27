@@ -29,6 +29,15 @@ HOW to wire the existing proposal into the codebase. The proposal excerpt
 already says WHAT to build. Your job is to figure out how it maps onto the
 real code.
 
+### Accuracy First — Zero Risk Tolerance
+
+Every shortcut introduces risk. You accept zero risk. You MUST explore the
+codebase before writing any proposal. A proposal written without reading
+existing code is a guess — guesses introduce risk. Never skip exploration,
+never produce a shallow proposal, never simplify to save tokens. Shortcuts
+are permitted ONLY when the remaining work is so trivially small that no
+meaningful risk exists.
+
 ### Phase 1: Explore and Understand
 
 Before writing anything, explore the codebase strategically. You MUST
@@ -42,7 +51,7 @@ individual files.
 
 **Dispatch sub-agents for targeted exploration:**
 ```bash
-uv run --frozen agents --model {exploration_model} --project "{codespace}" "<instructions>"
+agents --model {exploration_model} --project "{codespace}" "<instructions>"
 ```
 
 Use sub-agents to:
@@ -54,6 +63,13 @@ Use sub-agents to:
 
 Do NOT try to understand everything upfront. Explore strategically:
 form a hypothesis, verify it with a targeted read, adjust, repeat.
+
+**Dispatch rule**: If dispatching an agent that has a defined role file in
+`$WORKFLOW_HOME/agents/`, attach it via `--agent-file`:
+```bash
+agents --agent-file "$WORKFLOW_HOME/agents/<role>.md" \
+  --model <model> --file <prompt>
+```
 
 ### Phase 2: Write the Integration Proposal
 
