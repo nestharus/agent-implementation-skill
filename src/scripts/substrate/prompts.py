@@ -29,6 +29,7 @@ def write_shard_prompt(
 
     output_path = artifacts / "substrate" / "shards" / f"shard-{section_num}.json"
     codemap_path = artifacts / "codemap.md"
+    codemap_corrections_path = artifacts / "signals" / "codemap-corrections.json"
     proposal_excerpt = artifacts / "sections" / f"section-{section_num}-proposal-excerpt.md"
     alignment_excerpt = artifacts / "sections" / f"section-{section_num}-alignment-excerpt.md"
     problem_frame = artifacts / "sections" / f"section-{section_num}-problem-frame.md"
@@ -49,6 +50,8 @@ def write_shard_prompt(
         refs.append(f"- **Problem frame**: `{problem_frame}`")
     if codemap_path.exists():
         refs.append(f"- **Codemap**: `{codemap_path}`")
+    if codemap_corrections_path.exists():
+        refs.append(f"- **Codemap corrections**: `{codemap_corrections_path}`")
     if intent_problem.exists():
         refs.append(f"- **Intent problem**: `{intent_problem}`")
     if intent_rubric.exists():
@@ -104,6 +107,7 @@ def write_pruner_prompt(
     shards_dir = artifacts / "substrate" / "shards"
     substrate_dir = artifacts / "substrate"
     codemap_path = artifacts / "codemap.md"
+    codemap_corrections_path = artifacts / "signals" / "codemap-corrections.json"
     proposal_path = artifacts / "proposal.md"
     alignment_path = artifacts / "alignment.md"
     philosophy_path = artifacts / "intent" / "global" / "philosophy.md"
@@ -119,6 +123,8 @@ def write_pruner_prompt(
         refs.append(f"- **Global alignment**: `{alignment_path}`")
     if codemap_path.exists():
         refs.append(f"- **Codemap**: `{codemap_path}`")
+    if codemap_corrections_path.exists():
+        refs.append(f"- **Codemap corrections**: `{codemap_corrections_path}`")
     if philosophy_path.exists():
         refs.append(f"- **Philosophy**: `{philosophy_path}`")
 
@@ -176,12 +182,15 @@ def write_seeder_prompt(
     seed_plan_path = substrate_dir / "seed-plan.json"
     substrate_md_path = substrate_dir / "substrate.md"
     codemap_path = artifacts / "codemap.md"
+    codemap_corrections_path = artifacts / "signals" / "codemap-corrections.json"
 
     refs: list[str] = []
     refs.append(f"- **Seed plan**: `{seed_plan_path}`")
     refs.append(f"- **Substrate document**: `{substrate_md_path}`")
     if codemap_path.exists():
         refs.append(f"- **Codemap**: `{codemap_path}`")
+    if codemap_corrections_path.exists():
+        refs.append(f"- **Codemap corrections**: `{codemap_corrections_path}`")
 
     refs_block = "\n".join(refs)
 

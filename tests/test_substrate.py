@@ -391,6 +391,26 @@ class TestTriggerDetection:
         mode = _read_project_mode(artifacts)
         assert mode == "greenfield"
 
+    def test_malformed_json_mode_renames_to_malformed(
+        self, substrate_planspace: Path,
+    ) -> None:
+        """_read_project_mode renames malformed JSON per corruption-preserving pattern."""
+        from substrate.runner import _read_project_mode
+
+        artifacts = substrate_planspace / "artifacts"
+        signals_dir = artifacts / "signals"
+        signals_dir.mkdir(parents=True, exist_ok=True)
+        json_path = signals_dir / "project-mode.json"
+        json_path.write_text("{bad json", encoding="utf-8")
+
+        # Also write txt fallback so we get a result
+        (artifacts / "project-mode.txt").write_text("brownfield", encoding="utf-8")
+
+        mode = _read_project_mode(artifacts)
+        assert mode == "brownfield"  # falls back to txt
+        assert not json_path.exists()  # original removed
+        assert (signals_dir / "project-mode.malformed.json").exists()
+
     def test_vacuum_with_no_related_files_block(
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
@@ -785,6 +805,61 @@ class TestPromptBuilding:
         assert "01" in content
         assert "02" in content
         assert "03" in content
+
+    def test_shard_prompt_includes_codemap_corrections(
+        self, substrate_planspace: Path, substrate_codespace: Path,
+    ) -> None:
+        from substrate.prompts import write_shard_prompt
+
+        artifacts = substrate_planspace / "artifacts"
+        section_path = artifacts / "sections" / "section-01.md"
+        section_path.write_text("# Section 01\n")
+
+        # Create codemap and corrections
+        (artifacts / "codemap.md").write_text("# Codemap\n")
+        corrections_path = artifacts / "signals" / "codemap-corrections.json"
+        corrections_path.parent.mkdir(parents=True, exist_ok=True)
+        corrections_path.write_text("{}", encoding="utf-8")
+
+        prompt_path = write_shard_prompt(
+            "01", section_path, substrate_planspace, substrate_codespace,
+        )
+        content = prompt_path.read_text()
+        assert "codemap-corrections.json" in content
+
+    def test_pruner_prompt_includes_codemap_corrections(
+        self, substrate_planspace: Path, substrate_codespace: Path,
+    ) -> None:
+        from substrate.prompts import write_pruner_prompt
+
+        artifacts = substrate_planspace / "artifacts"
+        (artifacts / "codemap.md").write_text("# Codemap\n")
+        corrections_path = artifacts / "signals" / "codemap-corrections.json"
+        corrections_path.parent.mkdir(parents=True, exist_ok=True)
+        corrections_path.write_text("{}", encoding="utf-8")
+
+        prompt_path = write_pruner_prompt(
+            substrate_planspace, substrate_codespace, ["01", "02"],
+        )
+        content = prompt_path.read_text()
+        assert "codemap-corrections.json" in content
+
+    def test_seeder_prompt_includes_codemap_corrections(
+        self, substrate_planspace: Path, substrate_codespace: Path,
+    ) -> None:
+        from substrate.prompts import write_seeder_prompt
+
+        artifacts = substrate_planspace / "artifacts"
+        (artifacts / "codemap.md").write_text("# Codemap\n")
+        corrections_path = artifacts / "signals" / "codemap-corrections.json"
+        corrections_path.parent.mkdir(parents=True, exist_ok=True)
+        corrections_path.write_text("{}", encoding="utf-8")
+
+        prompt_path = write_seeder_prompt(
+            substrate_planspace, substrate_codespace,
+        )
+        content = prompt_path.read_text()
+        assert "codemap-corrections.json" in content
 
     def test_seeder_prompt_written(
         self, substrate_planspace: Path, substrate_codespace: Path,

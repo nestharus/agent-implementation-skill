@@ -182,9 +182,14 @@ def _read_project_mode(artifacts_dir: Path) -> str | None:
             if mode in ("greenfield", "brownfield", "hybrid"):
                 return mode
         except (json.JSONDecodeError, OSError) as exc:
+            try:
+                json_path.rename(json_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass  # Best-effort preserve
             print(
                 f"[SUBSTRATE][WARN] project-mode.json malformed "
-                f"({exc}) -- trying text fallback"
+                f"({exc}) -- preserved as .malformed.json, "
+                f"trying text fallback"
             )
 
     if txt_path.is_file():
