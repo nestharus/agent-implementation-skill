@@ -696,7 +696,7 @@ Reply with a JSON block:
                 log(f"  coordinator: dispatching bridge agent for group "
                     f"{gidx} ({group_sections}) — reason: {bridge_reason}")
                 bridge_model = policy.get(
-                    "coordination_bridge", "gpt-5.3-codex-xhigh")
+                    "coordination_bridge", "gpt-codex-xhigh")
                 dispatch_agent(
                     bridge_model, bridge_prompt,
                     bridge_output, planspace, parent,

@@ -47,7 +47,7 @@ def _check_needs_microstrategy(
     proposal_path: Path, planspace: Path, section_number: str,
     parent: str = "", codespace: Path | None = None,
     model: str = "glm",
-    escalation_model: str = "gpt-5.3-codex-xhigh",
+    escalation_model: str = "gpt-codex-xhigh",
 ) -> bool:
     """Check if the integration proposal requests a microstrategy.
 

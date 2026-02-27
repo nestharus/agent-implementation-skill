@@ -1,6 +1,6 @@
 ---
 description: Implements changes strategically across multiple files. Reads the aligned integration proposal, understands the shape, and executes holistically with sub-agent dispatch for exploration and targeted work.
-model: gpt-5.3-codex-high
+model: gpt-codex-high
 ---
 
 # Implementation Strategist

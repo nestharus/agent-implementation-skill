@@ -1234,7 +1234,7 @@ WHY — you're capturing WHAT and WHERE at the file level.
         if ctrl == "alignment_changed":
             return None
         micro_result = dispatch_agent(
-            policy.get("implementation", "gpt-5.3-codex-high"),
+            policy.get("implementation", "gpt-codex-high"),
             micro_prompt_path, micro_output_path,
             planspace, parent, a_name, codespace=codespace,
             section_number=section.number,
@@ -1361,7 +1361,7 @@ WHY — you're capturing WHAT and WHERE at the file level.
         impl_output = artifacts / f"impl-{section.number}-output.md"
         impl_agent = f"impl-{section.number}"
         impl_result = dispatch_agent(
-            policy.get("implementation", "gpt-5.3-codex-high"),
+            policy.get("implementation", "gpt-codex-high"),
             impl_prompt, impl_output,
             planspace, parent, impl_agent, codespace=codespace,
             section_number=section.number,
@@ -1766,7 +1766,7 @@ with JSON:
                 tool_registry_path.read_bytes()).hexdigest()
 
         dispatch_agent(
-            policy.get("bridge_tools", "gpt-5.3-codex-high"),
+            policy.get("bridge_tools", "gpt-codex-high"),
             bridge_tools_prompt,
             bridge_tools_output,
             planspace, parent,

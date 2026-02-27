@@ -1,6 +1,6 @@
 ---
 description: Writes integration proposals — strategic documents describing HOW to wire a proposal into the existing codebase. Explores strategically, dispatches GLM sub-agents, thinks about shape not details.
-model: gpt-5.3-codex-high
+model: gpt-codex-high
 ---
 
 # Integration Proposer

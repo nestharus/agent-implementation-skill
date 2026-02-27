@@ -10,7 +10,7 @@ def write_coordinator_fix_prompt(
     group: list[dict[str, Any]], planspace: Path, codespace: Path,
     group_id: int,
     exploration_model: str = "glm",
-    delegation_impl_model: str = "gpt-5.3-codex-high",
+    delegation_impl_model: str = "gpt-codex-high",
 ) -> Path:
     """Write a Codex prompt to fix a group of related problems.
 
@@ -207,7 +207,7 @@ def _dispatch_fix_group(
         group, planspace, codespace, group_id,
         exploration_model=policy["exploration"],
         delegation_impl_model=policy.get(
-            "coordination_fix", "gpt-5.3-codex-high"),
+            "coordination_fix", "gpt-codex-high"),
     )
     fix_output = artifacts / f"fix-{group_id}-output.md"
     modified_report = artifacts / f"fix-{group_id}-modified.txt"

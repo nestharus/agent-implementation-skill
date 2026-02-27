@@ -37,7 +37,23 @@ $WORKFLOW_HOME/
     extract-docstring-py  # extract Python module docstrings
     extract-summary-md    # extract YAML frontmatter from markdown
     README.md             # tool interface spec (for Opus to write new tools)
-  agents/              # agent role definitions (see individual files)
+  agents/              # agent role definitions
+    alignment-judge.md          # checks alignment between layers
+    bridge-agent.md             # resolves cross-section interface friction
+    bridge-tools.md             # tool-aware bridge resolution
+    coordination-planner.md     # groups related cross-section problems
+    exception-handler.md        # RCA on failed steps
+    implementation-strategist.md # strategic multi-file implementation
+    integration-proposer.md     # writes integration proposals
+    intent-judge.md             # problem + philosophy alignment checking
+    intent-pack-generator.md    # generates intent packs for sections
+    intent-triager.md           # triages intent signals
+    microstrategy-writer.md     # tactical per-file breakdowns
+    monitor.md                  # pipeline cycle/stuck detection
+    orchestrator.md             # event-driven workflow dispatch
+    philosophy-distiller.md     # distills design philosophy
+    qa-monitor.md               # deep QA with PAUSE authority
+    state-detector.md           # workspace state reporting
   templates/
     implement-proposal.md   # 10-step implementation schedule
     research-cycle.md       # 7-step research schedule
@@ -181,9 +197,9 @@ agents --agent-file "$WORKFLOW_HOME/agents/exception-handler.md" \
   --file <planspace>/artifacts/exception-prompt.md
 
 # Parallel dispatch with db.sh coordination
-(agents --model gpt-5.3-codex-high --file <prompt-A.md> && \
+(agents --model gpt-codex-high --file <prompt-A.md> && \
   bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-A") &
-(agents --model gpt-5.3-codex-high --file <prompt-B.md> && \
+(agents --model gpt-codex-high --file <prompt-B.md> && \
   bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-B") &
 bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator
 bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator
@@ -225,8 +241,8 @@ Control and recovery:
 | Model | Used For |
 |-------|----------|
 | `claude-opus` | Section setup (excerpt extraction), alignment checks (shape/direction), decomposition, codemap exploration, per-section file identification |
-| `gpt-5.3-codex-high` | Integration proposals, strategic implementation, coordinated fixes, extraction, investigation, constraint alignment check |
-| `gpt-5.3-codex-xhigh` | Deep architectural synthesis, proposal drafting |
+| `gpt-codex-high` | Integration proposals, strategic implementation, coordinated fixes, extraction, investigation, constraint alignment check |
+| `gpt-codex-xhigh` | Deep architectural synthesis, proposal drafting |
 | `glm` | Test running, verification, quick commands, deep file analysis, semantic impact analysis, sub-agent exploration during integration proposals |
 
 ### Prompt Files

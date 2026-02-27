@@ -1,6 +1,6 @@
 ---
 description: Produces tactical per-file breakdowns from aligned integration proposals. Bridges the gap between high-level strategy and implementation by capturing what changes in each file, in what order, and why.
-model: gpt-5.3-codex-high
+model: gpt-codex-high
 ---
 
 # Microstrategy Writer

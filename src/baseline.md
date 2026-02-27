@@ -72,7 +72,7 @@ Codex-high2 checks that every proposal section is represented in at least
 one design document. Fix gaps. Re-check until clean.
 
 ```bash
-uv run agents --model gpt-5.3-codex-high2 --file "<audit-prompt-path>"
+uv run agents --model gpt-codex-high --file "<audit-prompt-path>"
 ```
 
 ## Anti-Patterns

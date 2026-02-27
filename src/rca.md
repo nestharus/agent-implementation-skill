@@ -78,7 +78,7 @@ Run from within the worktree:
 
 ```bash
 cd .worktrees/rca-<issue-slug>
-uv run agents --model gpt-5.3-codex-high --file .tmp/rca-wave-N.md
+uv run agents --model gpt-codex-high --file .tmp/rca-wave-N.md
 ```
 
 **Critical**: The prompt says "do NOT modify any files." Codex produces a

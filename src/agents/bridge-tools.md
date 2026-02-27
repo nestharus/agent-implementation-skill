@@ -1,6 +1,6 @@
 ---
 description: Bridges tool islands by proposing new tools or composition patterns when existing tools don't compose cleanly.
-model: gpt-5.3-codex-high
+model: gpt-codex-high
 ---
 
 # Bridge Tools Agent

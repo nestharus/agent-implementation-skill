@@ -1098,7 +1098,7 @@ PROMPT="$(mktemp)"
 cat > "$PROMPT" <<'EOF'
 <instructions>
 EOF
-agents --model gpt-5.3-codex-high --project <codespace> --file "$PROMPT"
+agents --model gpt-codex-high --project <codespace> --file "$PROMPT"
 ```
 
 GPT has authority to go beyond the integration proposal where necessary

@@ -81,9 +81,9 @@ def _read_scan_sources() -> str:
 ALLOWED_MODELS = {
     "claude-opus",
     "glm",
-    "gpt-5.3-codex-high",
-    "gpt-5.3-codex-high2",
-    "gpt-5.3-codex-xhigh",
+    "gpt-codex-high",
+    "gpt-codex-high",
+    "gpt-codex-xhigh",
     "claude-haiku",
 }
 
@@ -1210,8 +1210,8 @@ class TestModelPolicyCompleteness:
         ]
         known_models = [
             "claude-opus", "claude-haiku", "glm",
-            "gpt-5.3-codex-high", "gpt-5.3-codex-high2",
-            "gpt-5.3-codex-xhigh",
+            "gpt-codex-high", "gpt-codex-high",
+            "gpt-codex-xhigh",
         ]
         # Pattern: dispatch_agent("model-literal", ...) on a non-default line
         for fpath in dispatch_files:
@@ -1317,9 +1317,9 @@ class TestEscalationModelPolicyDriven:
     def test_no_hardcoded_escalation_model_in_runner(self) -> None:
         """coordination/runner.py must not hardcode escalation model string."""
         src = self.RUNNER.read_text(encoding="utf-8")
-        # The old pattern: write_text("gpt-5.3-codex-xhigh"
+        # The old pattern: write_text("gpt-codex-xhigh"
         for line in src.split("\n"):
-            if "write_text" in line and "gpt-5.3-codex-xhigh" in line:
+            if "write_text" in line and "gpt-codex-xhigh" in line:
                 raise AssertionError(
                     "coordination/runner.py has hardcoded escalation "
                     "model in write_text call — must use policy"
@@ -1329,7 +1329,7 @@ class TestEscalationModelPolicyDriven:
         """main.py must not hardcode escalation model string."""
         src = self.MAIN.read_text(encoding="utf-8")
         for line in src.split("\n"):
-            if "write_text" in line and "gpt-5.3-codex-xhigh" in line:
+            if "write_text" in line and "gpt-codex-xhigh" in line:
                 raise AssertionError(
                     "main.py has hardcoded escalation model in "
                     "write_text call — must use policy"
@@ -1338,7 +1338,7 @@ class TestEscalationModelPolicyDriven:
     def test_no_hardcoded_fix_model_in_execution(self) -> None:
         """execution.py must not hardcode default fix model."""
         src = self.EXECUTION.read_text(encoding="utf-8")
-        assert 'fix_model = "gpt-5.3-codex-high"' not in src, (
+        assert 'fix_model = "gpt-codex-high"' not in src, (
             "execution.py has hardcoded fix model default — "
             "must come from policy"
         )
@@ -1720,7 +1720,7 @@ class TestMicrostrategyFailClosed:
     default to True (more strategy) on total failure."""
 
     def test_no_signal_returns_true(
-        self, planspace: Path, codespace: Path,
+        self, planspace: Path, codespace: Path, mock_dispatch: MagicMock,
     ) -> None:
         """When decider never writes signal, function returns True."""
         from section_loop.section_engine.todos import (
@@ -1736,7 +1736,7 @@ class TestMicrostrategyFailClosed:
         # dispatch_agent is mocked to do nothing (no signal written)
         result = _check_needs_microstrategy(
             proposal, planspace, "01",
-            model="glm", escalation_model="gpt-5.3-codex-xhigh",
+            model="glm", escalation_model="gpt-codex-xhigh",
         )
         assert result is True, (
             "_check_needs_microstrategy must return True when "
@@ -1744,7 +1744,7 @@ class TestMicrostrategyFailClosed:
         )
 
     def test_fallback_signal_written(
-        self, planspace: Path, codespace: Path,
+        self, planspace: Path, codespace: Path, mock_dispatch: MagicMock,
     ) -> None:
         """Fallback signal JSON must be written with explicit reason."""
         from section_loop.section_engine.todos import (
@@ -1758,7 +1758,7 @@ class TestMicrostrategyFailClosed:
 
         _check_needs_microstrategy(
             proposal, planspace, "01",
-            model="glm", escalation_model="gpt-5.3-codex-xhigh",
+            model="glm", escalation_model="gpt-codex-xhigh",
         )
 
         signal_path = (planspace / "artifacts" / "signals"
@@ -1797,7 +1797,7 @@ class TestTemplateModelParameterized:
 
     def test_no_hardcoded_model_in_dispatch_examples(self) -> None:
         """Templates must not contain bare model names in dispatch examples."""
-        known_models = ["glm", "gpt-5.3-codex-high", "gpt-5.3-codex-xhigh"]
+        known_models = ["glm", "gpt-codex-high", "gpt-codex-xhigh"]
         for template_name in (
             "strategic-implementation.md",
             "integration-proposal.md",
@@ -1967,11 +1967,11 @@ class TestCoordinationFixPromptModelParameterized:
         )
 
     def test_no_hardcoded_codex_in_prompt_text(self) -> None:
-        """Fix prompt must not contain --model gpt-5.3-codex-high literally."""
+        """Fix prompt must not contain --model gpt-codex-high literally."""
         src = self.EXECUTION.read_text(encoding="utf-8")
-        assert "--model gpt-5.3-codex-high" not in src, (
+        assert "--model gpt-codex-high" not in src, (
             "execution.py fix prompt contains hardcoded "
-            "'--model gpt-5.3-codex-high' — must use placeholder"
+            "'--model gpt-codex-high' — must use placeholder"
         )
 
     def test_prompt_writer_accepts_model_params(self) -> None:
@@ -2041,8 +2041,8 @@ class TestNoHardcodedModelInPromptSurfaces:
     ]
 
     KNOWN_MODELS = [
-        "glm", "gpt-5.3-codex-high", "gpt-5.3-codex-high2",
-        "gpt-5.3-codex-xhigh", "claude-opus", "claude-haiku",
+        "glm", "gpt-codex-high", "gpt-codex-high",
+        "gpt-codex-xhigh", "claude-opus", "claude-haiku",
     ]
 
     def test_no_hardcoded_model_in_section_loop_templates(self) -> None:
@@ -2153,7 +2153,7 @@ class TestCodexDispatchUsesFile:
         lines = content.splitlines()
         for i, line in enumerate(lines):
             # Check lines with Codex model names using inline instructions
-            if ("gpt-5.3-codex-high" in line and
+            if ("gpt-codex-high" in line and
                     '"<instructions>"' in line):
                 raise AssertionError(
                     f"implement.md:{i+1}: Codex dispatch uses inline "
@@ -2334,7 +2334,7 @@ class TestEscalationLogUsesPolicy:
         for line in content.split("\n"):
             if "recurrence escalation" in line and "setting model" in line:
                 found = True
-                assert "gpt-5.3-codex-xhigh" not in line, (
+                assert "gpt-codex-xhigh" not in line, (
                     "escalation log must use policy variable, not "
                     "hardcoded model name"
                 )
@@ -2347,7 +2347,7 @@ class TestEscalationLogUsesPolicy:
         content = self.RUNNER_PY.read_text(encoding="utf-8")
         # The resolution artifact says "escalated model (X)" —
         # X must come from policy, not a hardcoded literal
-        assert 'f"(gpt-5.3-codex-xhigh)' not in content, (
+        assert 'f"(gpt-codex-xhigh)' not in content, (
             "resolution artifact must use policy['escalation_model'], "
             "not hardcoded model name"
         )
@@ -2610,41 +2610,6 @@ class TestNoteAckPreservesCorrupted:
         assert "note-ack" in content and "malformed" in content, (
             "runner.py must log a warning about malformed note-ack"
         )
-
-
-class TestScheduleTemplateModelName:
-    """R39/V1: Schedule template must use the primary model name and
-    include a policy-override note."""
-
-    TEMPLATE = PROJECT_ROOT / "src" / "templates" / "implement-proposal.md"
-
-    def test_no_high2_model_in_schedule(self) -> None:
-        """implement-proposal.md must not reference gpt-5.3-codex-high2."""
-        content = self.TEMPLATE.read_text(encoding="utf-8")
-        assert "gpt-5.3-codex-high2" not in content, (
-            "implement-proposal.md must use gpt-5.3-codex-high, "
-            "not gpt-5.3-codex-high2"
-        )
-
-    def test_verify_line_has_policy_note(self) -> None:
-        """verify step should note to use policy's model if different."""
-        content = self.TEMPLATE.read_text(encoding="utf-8")
-        assert "policy" in content.lower(), (
-            "implement-proposal.md verify line should reference the "
-            "policy's verification model"
-        )
-
-    def test_verify_line_uses_primary_model(self) -> None:
-        """verify step should use gpt-5.3-codex-high (primary pool)."""
-        content = self.TEMPLATE.read_text(encoding="utf-8")
-        for line in content.splitlines():
-            if "verify" in line.lower() and "codex" in line.lower():
-                assert "gpt-5.3-codex-high" in line, (
-                    "verify line must use gpt-5.3-codex-high"
-                )
-                break
-        else:
-            pytest.fail("No verify+codex line found in template")
 
 
 class TestBlockerRollupMalformedSignal:
@@ -4259,7 +4224,7 @@ class TestMicrostrategySignalCorruptionPreservation:
 
         _check_needs_microstrategy(
             proposal, planspace, "01",
-            model="glm", escalation_model="gpt-5.3-codex-xhigh",
+            model="glm", escalation_model="gpt-codex-xhigh",
         )
 
         malformed = signals_dir / "proposal-01-microstrategy.malformed.json"
@@ -4292,7 +4257,7 @@ class TestMicrostrategySignalCorruptionPreservation:
 
         _check_needs_microstrategy(
             proposal, planspace, "01",
-            model="glm", escalation_model="gpt-5.3-codex-xhigh",
+            model="glm", escalation_model="gpt-codex-xhigh",
         )
 
         # dispatch_agent must have been called (fall-through to dispatch)

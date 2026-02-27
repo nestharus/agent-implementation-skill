@@ -347,7 +347,7 @@ def write_strategic_impl_prompt(
         "micro_ref": impl_micro_ref,
         "exploration_model": _policy.get("exploration", "glm"),
         "delegated_impl_model": _policy.get(
-            "implementation", "gpt-5.3-codex-high"),
+            "implementation", "gpt-codex-high"),
         "signal_block": signal_instructions(
             artifacts / "signals" / f"impl-{sec}-signal.json",
         ),

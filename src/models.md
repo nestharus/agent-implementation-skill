@@ -14,19 +14,19 @@ UNDERSTANDING intent or FORMULATING questions?
   → Opus (current session)
 
 DESIGNING something new under constraints (primary synthesis)?
-  → gpt-5.3-codex-xhigh
+  → gpt-codex-xhigh
 
 ALIGNMENT CHECKING for coherence or divergence?
   → Opus (default for alignment-judge), codex-high as fallback
 
 WRITING detailed algorithms or IMPL notes from direction?
-  → gpt-5.3-codex-high / high2
+  → gpt-codex-high / high2
 
 DEBUGGING test failures or finding root causes?
-  → gpt-5.3-codex-high / high2
+  → gpt-codex-high / high2
 
 WRITING source code from detailed specs?
-  → gpt-5.3-codex-high2
+  → gpt-codex-high
 
 SCANNING codebase for relevant locations or SUMMARIZING block fit?
   → glm
@@ -45,13 +45,13 @@ Simple lookup or classification?
 - **Use for**: Directing workflow, integration stories, evaluating proposals, constraints
 - **Should NOT**: Synthesize proposals (bias risk), do mechanical tasks
 
-### gpt-5.3-codex-xhigh (Primary Proposer)
+### gpt-codex-xhigh (Primary Proposer)
 - **Strengths**: Highest reasoning effort, novel architectural synthesis
-- **Invocation**: `uv run agents --model gpt-5.3-codex-xhigh --file <prompt.md>`
+- **Invocation**: `uv run agents --model gpt-codex-xhigh --file <prompt.md>`
 - **Use for**: Primary research synthesis (proposer role)
 - **Does NOT**: Audit or implement
 
-### gpt-5.3-codex-high / high2 (Interchangeable)
+### gpt-codex-high / high2 (Interchangeable)
 - Same capability, different quota pools
 - **Strengths**: Constraint-aware design, systematic constraint evaluation
   (not feature coverage), algorithm writing, IMPL notes, debug/RCA
@@ -119,7 +119,7 @@ When section-loop selects a model for a dispatch, it writes:
 {
   "section": "03",
   "step": "integration-proposal",
-  "model": "gpt-5.3-codex-high",
+  "model": "gpt-codex-high",
   "reason": "first attempt, default model",
   "escalated_from": null
 }

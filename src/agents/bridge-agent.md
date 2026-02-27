@@ -1,6 +1,6 @@
 ---
 description: Resolves cross-section interface friction. When two sections disagree on a shared interface or contract, the bridge agent analyzes both proposals and writes a shared contract patch that both sections can adopt.
-model: gpt-5.3-codex-xhigh
+model: gpt-codex-xhigh
 ---
 
 # Bridge Agent

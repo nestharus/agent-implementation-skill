@@ -88,7 +88,7 @@ state, relevant code, prior responses, tradeoff docs.
 
 ### Step 4: Send to Research Agent
 ```bash
-uv run agents --model gpt-5.3-codex-xhigh --file "$research_dir/prompt.md"
+uv run agents --model gpt-codex-xhigh --file "$research_dir/prompt.md"
 ```
 Save response as `response.md`.
 
@@ -97,7 +97,7 @@ Save response as `response.md`.
 ### Step 5: Audit the Response
 1. Quick Opus analysis — identify 5-10 divergence signals
 2. Write `audit-prompt.md` with divergence signals
-3. Run audit: `uv run agents --model gpt-5.3-codex-high --file audit-prompt.md`
+3. Run audit: `uv run agents --model gpt-codex-high --file audit-prompt.md`
 4. Save as `audit-results.md`
 
 ### Step 6: Evaluate Audit Results
@@ -132,8 +132,8 @@ Present to user for approval. Do NOT proceed without approval.
 | Task | Model |
 |------|-------|
 | Direction + intent + alignment doc | Opus (current session) |
-| Deep architectural synthesis | gpt-5.3-codex-xhigh |
-| Constraint alignment checking | gpt-5.3-codex-high / high2 |
+| Deep architectural synthesis | gpt-codex-xhigh |
+| Constraint alignment checking | gpt-codex-high / high2 |
 | Quick fact-checking | Haiku |
 
 ## Anti-Patterns
