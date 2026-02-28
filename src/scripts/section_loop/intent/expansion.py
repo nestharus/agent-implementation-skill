@@ -184,55 +184,34 @@ def run_expansion_cycle(
         )
         if problem_delta:
             proposed_axes = problem_delta.get("new_axes", [])
-            # V5/R56: Enforce axis budget — if expander proposes more
-            # axes than the remaining budget, block as NEED_DECISION.
+            # V5/R68: Axis budget is advisory — log a warning when
+            # exceeded but accept the expander's output. The budget
+            # is a soft ceiling, not a hard gate. The expander prompt
+            # already includes the constraint for the agent to weigh.
             if len(proposed_axes) > remaining_axis_budget:
                 log(f"Section {section_number}: expander proposed "
-                    f"{len(proposed_axes)} new axes but budget allows "
-                    f"{remaining_axis_budget} — blocking as NEED_DECISION")
-                blocker = {
-                    "state": "NEED_DECISION",
-                    "detail": (
-                        f"Problem expander proposed {len(proposed_axes)} "
-                        f"new axes ({proposed_axes}) but axis budget "
-                        f"allows {remaining_axis_budget}. "
-                        f"Total so far: {axes_added}/{max_axes}."
-                    ),
-                    "needs": "Decide which axes to accept",
-                    "why_blocked": "Axis budget exceeded",
-                }
-                blocker_path = (
-                    artifacts / "signals"
-                    / f"intent-axis-budget-{section_number}-signal.json"
-                )
-                blocker_path.parent.mkdir(parents=True, exist_ok=True)
-                blocker_path.write_text(
-                    json.dumps(blocker, indent=2), encoding="utf-8")
-                delta["needs_user_input"] = True
-                delta["user_input_kind"] = "axis_budget"
-                delta["user_input_path"] = str(blocker_path)
+                    f"{len(proposed_axes)} new axes (budget advisory: "
+                    f"{remaining_axis_budget}) — accepting all")
+            delta["applied"]["problem_definition_updated"] = (
+                problem_delta.get("applied", {})
+                .get("problem_definition_updated", False)
+            )
+            delta["applied"]["problem_rubric_updated"] = (
+                problem_delta.get("applied", {})
+                .get("problem_rubric_updated", False)
+            )
+            delta["applied_surface_ids"].extend(
+                problem_delta.get("applied_surface_ids", []),
+            )
+            delta["discarded_surface_ids"].extend(
+                problem_delta.get("discarded_surface_ids", []),
+            )
+            delta["new_axes"].extend(proposed_axes)
+            if problem_delta.get("restart_required"):
                 delta["restart_required"] = True
-            else:
-                delta["applied"]["problem_definition_updated"] = (
-                    problem_delta.get("applied", {})
-                    .get("problem_definition_updated", False)
+                delta["restart_reason"] = problem_delta.get(
+                    "restart_reason", "Problem definition expanded",
                 )
-                delta["applied"]["problem_rubric_updated"] = (
-                    problem_delta.get("applied", {})
-                    .get("problem_rubric_updated", False)
-                )
-                delta["applied_surface_ids"].extend(
-                    problem_delta.get("applied_surface_ids", []),
-                )
-                delta["discarded_surface_ids"].extend(
-                    problem_delta.get("discarded_surface_ids", []),
-                )
-                delta["new_axes"].extend(proposed_axes)
-                if problem_delta.get("restart_required"):
-                    delta["restart_required"] = True
-                    delta["restart_reason"] = problem_delta.get(
-                        "restart_reason", "Problem definition expanded",
-                    )
 
     if philosophy_surfaces:
         philosophy_delta = _run_philosophy_expander(

@@ -579,38 +579,26 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                      f"missing after retry")
         return None
 
-    # Validate problem frame structure (required headings only, no semantics)
-    pf_content = problem_frame_path.read_text(encoding="utf-8")
-    required_headings = [
-        "Problem Statement",
-        "Evidence",
-        "Constraints",
-        "Success Criteria",
-        "Out of Scope",
-    ]
-    missing_headings = [
-        h for h in required_headings
-        if h.lower() not in pf_content.lower()
-    ]
-    if missing_headings:
-        log(f"Section {section.number}: problem frame missing required "
-            f"headings: {missing_headings}")
+    # V3/R68: Validate problem frame is non-empty — the agent chooses
+    # headings, the script only checks the artifact has content.
+    pf_content = problem_frame_path.read_text(encoding="utf-8").strip()
+    if not pf_content:
+        log(f"Section {section.number}: problem frame is empty")
         signal_dir = artifacts / "signals"
         signal_dir.mkdir(parents=True, exist_ok=True)
         pf_signal = {
             "state": "needs_parent",
             "detail": (
-                f"Problem frame for section {section.number} is missing "
-                f"required headings: {missing_headings}"
+                f"Problem frame for section {section.number} exists but "
+                f"is empty"
             ),
             "needs": (
-                "Parent must ensure the setup agent produces a complete "
-                "problem frame with all required sections."
+                "Parent must ensure the setup agent produces a non-empty "
+                "problem frame."
             ),
             "why_blocked": (
-                "Incomplete problem frame cannot validate problem "
-                "understanding — missing: "
-                + ", ".join(missing_headings)
+                "Empty problem frame cannot validate problem "
+                "understanding"
             ),
         }
         (signal_dir / f"setup-{section.number}-signal.json").write_text(
@@ -618,7 +606,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         _update_blocker_rollup(planspace)
         mailbox_send(planspace, parent,
                      f"pause:needs_parent:{section.number}:problem frame "
-                     f"incomplete — missing {missing_headings}")
+                     f"empty")
         return None
 
     log(f"Section {section.number}: problem frame present and validated")
@@ -726,14 +714,20 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         else:
             log(f"Section {section.number}: no TODOs found in related files")
 
-    if intent_mode == "full":
-        # Ensure global philosophy exists (fail-closed: returns None
-        # if no source found or distillation failed — P7/R52)
-        philosophy_result = ensure_global_philosophy(
-            planspace, codespace, parent)
-        if alignment_changed_pending(planspace):
-            return None
+    # V1/R68: Ensure global philosophy unconditionally — the user's
+    # execution philosophy is a project-level invariant, not a
+    # complexity-triggered feature. Per-section intent packs remain
+    # conditional on triage mode.
+    philosophy_result = ensure_global_philosophy(
+        planspace, codespace, parent)
+    if alignment_changed_pending(planspace):
+        return None
 
+    if philosophy_result is None:
+        log(f"Section {section.number}: philosophy sources unavailable "
+            f"— alignment will proceed without operational philosophy")
+
+    if intent_mode == "full":
         if philosophy_result is None:
             log(f"Section {section.number}: philosophy unavailable — "
                 f"downgrading to lightweight intent mode")

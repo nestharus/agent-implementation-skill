@@ -31,24 +31,25 @@ section's problem space.
 Write to: `{alignment_excerpt}`
 
 ### Output 3: Problem Frame (MANDATORY)
-Write a problem frame for this section — a pre-exploration gate
+Write a problem frame for this section — a pre-exploration brief
 that captures understanding BEFORE any integration work begins.
 
-**All fields are required.** The pipeline validates this artifact exists.
+**The pipeline validates this artifact exists and is non-empty.**
+Use whatever structure best captures the problem. The recommended
+headings below are a starting point, not a rigid template:
 
-1. **Problem Statement**: What problem is this section solving? (1-2 sentences,
-   must be specific and falsifiable — not "improve X" but "X currently does Y,
-   it needs to do Z because of constraint C")
-2. **Evidence**: What evidence from the proposal/alignment supports this
-   being the right problem to solve? (bullet points, each must cite a specific
-   passage or requirement from the global documents)
-3. **Constraints**: What constraints from the global alignment apply to
-   this section specifically? (bullet points, each must reference the source
-   constraint)
-4. **Success Criteria**: How will we know this section is done correctly?
-   (bullet points — concrete, checkable conditions)
-5. **Out of Scope**: What does this section explicitly NOT cover? (bullet
-   points — prevents scope creep during implementation)
+- **Problem Statement**: What problem is this section solving? (1-2 sentences,
+  must be specific and falsifiable — not "improve X" but "X currently does Y,
+  it needs to do Z because of constraint C")
+- **Evidence**: What evidence from the proposal/alignment supports this
+  being the right problem to solve?
+- **Constraints**: What constraints from the global alignment apply to
+  this section specifically?
+- **Success Criteria**: How will we know this section is done correctly?
+- **Out of Scope**: What does this section explicitly NOT cover?
+
+Adapt, merge, or rename sections as the problem demands. The goal
+is a clear, grounded brief — not heading compliance.
 
 Write to: `{problem_frame_path}`
 

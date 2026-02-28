@@ -74,6 +74,37 @@ def _read_model_policy(artifacts_dir: Path) -> dict[str, str]:
     return policy
 
 
+def _read_trigger_signals(artifacts_dir: Path) -> list[str]:
+    """Read signal-driven SIS trigger requests.
+
+    Sections can request SIS via
+    ``artifacts/signals/substrate-trigger-<NN>.json`` with at least
+    ``{"section": "NN"}``. Returns a list of section number strings
+    that requested SIS regardless of vacuum status.
+    """
+    signals_dir = artifacts_dir / "signals"
+    if not signals_dir.is_dir():
+        return []
+    triggered: list[str] = []
+    for p in sorted(signals_dir.iterdir()):
+        if not p.name.startswith("substrate-trigger-") or not p.name.endswith(".json"):
+            continue
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and "section" in data:
+                triggered.append(str(data["section"]))
+        except (json.JSONDecodeError, OSError) as exc:
+            print(
+                f"[SUBSTRATE][WARN] {p.name} malformed ({exc}) "
+                f"-- renaming to .malformed.json"
+            )
+            try:
+                p.rename(p.with_suffix(".malformed.json"))
+            except OSError:
+                pass
+    return triggered
+
+
 def _read_trigger_threshold(artifacts_dir: Path) -> int:
     """Read the vacuum section threshold from policy config.
 
@@ -362,6 +393,11 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
         if existing == 0:
             vacuum_sections.append(num)
 
+    # V6/R68: Collect signal-driven trigger requests. Sections can
+    # request SIS via a trigger signal even when they have related
+    # files (e.g. friction signals from failed integration attempts).
+    signal_triggered: list[str] = _read_trigger_signals(artifacts_dir)
+
     # ---- Step 4: Apply trigger rule ----
     trigger_threshold = _read_trigger_threshold(artifacts_dir)
 
@@ -373,20 +409,30 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
             f"greenfield project -- running for all "
             f"{total_sections} sections"
         )
-    elif len(vacuum_sections) >= trigger_threshold:
-        # Brownfield/hybrid with enough vacuum sections
-        target_sections = vacuum_sections
+    elif len(vacuum_sections) >= trigger_threshold or signal_triggered:
+        # Brownfield/hybrid with enough vacuum sections or signal-driven
+        combined = list(
+            dict.fromkeys(vacuum_sections + signal_triggered))
+        target_sections = combined
         target_paths = {
             _section_number(sf): sf
             for sf in section_files
-            if _section_number(sf) in vacuum_sections
+            if _section_number(sf) in combined
         }
+        parts = []
+        if vacuum_sections:
+            parts.append(f"{len(vacuum_sections)} vacuum section(s)")
+        if signal_triggered:
+            parts.append(
+                f"{len(signal_triggered)} signal-triggered section(s)"
+            )
         trigger_reason = (
-            f"{len(vacuum_sections)} vacuum sections detected "
-            f"(threshold={trigger_threshold}) -- running for vacuum sections only"
+            f"{' + '.join(parts)} "
+            f"(threshold={trigger_threshold}) -- "
+            f"running for {len(target_sections)} sections"
         )
     else:
-        # Not enough vacuum sections -- skip
+        # Not enough vacuum sections and no signals -- skip
         print(
             f"[SUBSTRATE] SKIPPED: {project_mode} project with "
             f"{len(vacuum_sections)} vacuum section(s) "

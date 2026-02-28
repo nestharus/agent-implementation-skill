@@ -36,9 +36,10 @@ it operates under, and what tradeoffs it faces.
 
 ### Phase 2: Select Axes
 
-Select 6-12 axes. Each axis represents an independent dimension of
-the problem — a direction where the solution could independently
-succeed or fail.
+Select axes — each represents an independent dimension of the
+problem, a direction where the solution could independently succeed
+or fail. Typical sections need 6-12; let the evidence determine the
+count.
 
 Axes come from evidence in the inputs, not from a fixed taxonomy.
 Read the section spec, excerpts, problem frame, and code context.
@@ -93,9 +94,11 @@ Success criterion: [checkable condition]
 
 ### Optional: philosophy-excerpt.md
 
-If the section spec or excerpts contain explicit execution philosophy
-statements (how work should be done, not what should be built),
-extract them into `philosophy-excerpt.md` for the philosophy distiller.
+If the global operational philosophy exists, produce a section-scoped
+filtered view: the subset of principles from `philosophy.md` that
+are most relevant to THIS section's problem space. This excerpt
+helps downstream agents (intent judge, expanders) focus on the
+principles that matter here without re-reading the full philosophy.
 Only create this file if philosophy content exists. Do not fabricate.
 
 ### Surface Registry (Required)
@@ -123,10 +126,9 @@ applied, discarded). Do NOT put axis metadata here — axes belong in
   true, not HOW to make it true. "Errors must propagate with context"
   is a problem axis. "Use Result types for error handling" is a
   solution — it belongs in a proposal, not here.
-- **Axis inflation**: More than 12 axes means you are splitting
-  concerns too finely. Merge related concerns. An axis should
-  represent a dimension where a solution could independently succeed
-  or fail.
+- **Axis inflation**: If axes are no longer independently testable,
+  merge related concerns. Each axis should represent a dimension
+  where a solution could independently succeed or fail.
 - **Copy-paste from spec**: The problem definition reframes the spec
   through the lens of concerns. It does not repeat the spec verbatim.
   If your axes read like a table of contents of the spec, you are

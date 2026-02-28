@@ -5288,9 +5288,8 @@ class TestR56AxisBudgetEnforcementGuard:
         content = exp.read_text(encoding="utf-8")
         assert "remaining_axis_budget" in content, (
             "expansion.py must compute remaining_axis_budget")
-        assert "NEED_DECISION" in content, (
-            "expansion.py must block with NEED_DECISION when "
-            "axis budget exceeded")
+        assert "budget advisory" in content, (
+            "expansion.py must treat axis budget as advisory")
 
     def test_axis_budget_in_expander_prompt(self):
         from pathlib import Path
@@ -5406,7 +5405,8 @@ class TestR57GateTypeGuard:
         assert "gate_kind" in fn_body or "gate_messages" in fn_body, (
             "handle_user_gate must dispatch on gate kind")
 
-    def test_axis_budget_gate_kind_set_in_expansion(self):
+    def test_axis_budget_advisory_in_expansion(self):
+        """R68/V5: axis budget is advisory — no hard block in expansion."""
         from pathlib import Path
         exp = (Path(__file__).resolve().parent.parent
                / "src" / "scripts" / "section_loop" / "intent"
@@ -5415,8 +5415,9 @@ class TestR57GateTypeGuard:
         fn_start = content.find("def run_expansion_cycle(")
         fn_end = content.find("\ndef ", fn_start + 1)
         fn_body = content[fn_start:fn_end] if fn_end != -1 else content[fn_start:]
-        assert '"axis_budget"' in fn_body, (
-            "Axis budget enforcement must set user_input_kind to 'axis_budget'")
+        # No axis_budget hard block in the main function
+        assert "NEED_DECISION" not in fn_body, (
+            "Axis budget must not hard-block with NEED_DECISION")
 
 
 class TestR57SurfacePersistenceGuard:
@@ -6207,3 +6208,126 @@ class TestR67IntentJudgeNoChecklistFraming:
         text = agent.read_text(encoding="utf-8")
         assert "Coverage Scan" not in text
         assert "Contact Scan" in text
+
+
+class TestR68PhilosophyUnconditional:
+    """R68/V1: Global philosophy runs unconditionally, not gated by triage."""
+
+    def test_philosophy_outside_full_block(self) -> None:
+        """ensure_global_philosophy must be called before the full-mode block."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        runner = (src / "scripts" / "section_loop" / "section_engine"
+                  / "runner.py")
+        text = runner.read_text(encoding="utf-8")
+        # Philosophy call must appear BEFORE the full-mode conditional
+        phil_idx = text.index("ensure_global_philosophy(")
+        full_idx = text.index('if intent_mode == "full":')
+        assert phil_idx < full_idx, (
+            "ensure_global_philosophy must be called before "
+            "intent_mode == 'full' block"
+        )
+
+
+class TestR68TriageReadsArtifacts:
+    """R68/V2: Triage prompt includes artifact paths for grounded assessment."""
+
+    def test_triage_prompt_includes_artifact_refs(self) -> None:
+        """triage.py must build artifact path references in prompt."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        triage = (src / "scripts" / "section_loop" / "intent"
+                  / "triage.py")
+        text = triage.read_text(encoding="utf-8")
+        assert "Section Artifacts" in text
+        assert "section_spec" in text
+        assert "proposal_excerpt" in text
+
+    def test_triager_no_anti_reading_pattern(self) -> None:
+        """intent-triager.md must not forbid reading file contents."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        agent = src / "agents" / "intent-triager.md"
+        text = agent.read_text(encoding="utf-8")
+        assert "You do NOT read file contents" not in text
+
+
+class TestR68ProblemFrameFlexible:
+    """R68/V3+V4: Problem frame validated as exists+non-empty, no heading gate."""
+
+    def test_no_required_headings_validation(self) -> None:
+        """runner.py must not enforce specific problem-frame headings."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        runner = (src / "scripts" / "section_loop" / "section_engine"
+                  / "runner.py")
+        text = runner.read_text(encoding="utf-8")
+        assert "required_headings" not in text
+
+    def test_section_setup_no_required_fields(self) -> None:
+        """section-setup.md must not say 'All fields are required'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        template = (src / "scripts" / "section_loop" / "prompts"
+                    / "templates" / "section-setup.md")
+        text = template.read_text(encoding="utf-8")
+        assert "All fields are required" not in text
+
+
+class TestR68SemanticCapsAdvisory:
+    """R68/V5: Semantic counts (6-12 axes/principles) are guidance, not hard."""
+
+    def test_distiller_no_hard_count(self) -> None:
+        """philosophy-distiller.md must not enforce exact count range."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        agent = src / "agents" / "philosophy-distiller.md"
+        text = agent.read_text(encoding="utf-8")
+        # Must not say "Aim for 6-12" or "Fewer than 6 means"
+        assert "Aim for 6-12" not in text
+        assert "Fewer than 6 means" not in text
+
+    def test_pack_generator_no_hard_axis_count(self) -> None:
+        """intent-pack-generator.md must not enforce Select 6-12."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        agent = src / "agents" / "intent-pack-generator.md"
+        text = agent.read_text(encoding="utf-8")
+        assert "Select 6-12" not in text
+
+    def test_expansion_axis_budget_advisory(self) -> None:
+        """expansion.py run_expansion_cycle must not hard-block on axis budget."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        expansion = (src / "scripts" / "section_loop" / "intent"
+                     / "expansion.py")
+        text = expansion.read_text(encoding="utf-8")
+        # Check only run_expansion_cycle, not handle_user_gate
+        fn_start = text.index("def run_expansion_cycle(")
+        fn_end = text.index("\ndef ", fn_start + 1)
+        fn_body = text[fn_start:fn_end]
+        assert "NEED_DECISION" not in fn_body
+        assert "budget advisory" in fn_body
+
+
+class TestR68SISSignalTrigger:
+    """R68/V6: SIS accepts signal-driven trigger beyond vacuum sections."""
+
+    def test_signal_trigger_reader_exists(self) -> None:
+        """substrate/runner.py must have _read_trigger_signals function."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        runner = src / "scripts" / "substrate" / "runner.py"
+        text = runner.read_text(encoding="utf-8")
+        assert "_read_trigger_signals" in text
+        assert "substrate-trigger-" in text
+
+    def test_implement_documents_signal_trigger(self) -> None:
+        """implement.md must document signal-driven SIS trigger."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        impl = src / "implement.md"
+        text = impl.read_text(encoding="utf-8")
+        assert "Signal-driven" in text or "signal-driven" in text
+
+
+class TestR68PhilosophyExcerptNormalized:
+    """R68/V7+V8: philosophy-excerpt.md is section-scoped view, not for distiller."""
+
+    def test_no_distiller_reference(self) -> None:
+        """intent-pack-generator.md must not say excerpt is for the distiller."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        agent = src / "agents" / "intent-pack-generator.md"
+        text = agent.read_text(encoding="utf-8")
+        assert "for the philosophy distiller" not in text
+        assert "section-scoped" in text.lower() or "section scoped" in text.lower()

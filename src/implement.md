@@ -985,6 +985,10 @@ invents project structure. SIS discovers shared integration seams
   files in codespace) meet the configured threshold (read from
   `model-policy.json` key `substrate_trigger_min_vacuum_sections`,
   default 2). Targets only vacuum sections.
+- **Signal-driven**: any section can request SIS by writing
+  `artifacts/signals/substrate-trigger-<NN>.json` with
+  `{"section": "NN", "reason": "..."}`. Signal-triggered sections
+  are included alongside vacuum sections regardless of threshold.
 
 ### Pipeline
 

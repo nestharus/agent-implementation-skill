@@ -1652,10 +1652,10 @@ class TestR56AxisBudgetEnforcement:
         assert reg.get("axes_added_so_far") == 2, (
             "Registry must track axes_added_so_far after expansion")
 
-    def test_axis_budget_exceeded_blocks(
+    def test_axis_budget_exceeded_advisory(
         self, planspace, codespace, section_01, mock_dispatch,
     ) -> None:
-        """Exceeding max_new_axes_total creates NEED_DECISION blocker."""
+        """R68/V5: Exceeding max_new_axes_total is advisory — axes accepted."""
         from section_loop.intent.expansion import run_expansion_cycle
 
         artifacts = planspace / "artifacts"
@@ -1683,7 +1683,7 @@ class TestR56AxisBudgetEnforcement:
         (signals / "intent-surfaces-01.json").write_text(
             json.dumps(surfaces))
 
-        # Expander tries to add 3 axes but budget allows only 1
+        # Expander proposes 3 axes but budget advisory is 1
         def write_delta(*args, **kwargs):
             delta = {
                 "section": "01",
@@ -1705,13 +1705,11 @@ class TestR56AxisBudgetEnforcement:
             budgets={"max_new_axes_total": 6},
         )
 
-        # Should create a NEED_DECISION blocker
-        assert result["needs_user_input"] is True, (
-            "Exceeding axis budget must trigger NEED_DECISION")
-        blocker_path = (
-            signals / "intent-axis-budget-01-signal.json")
-        assert blocker_path.exists(), (
-            "Axis budget blocker signal must be written")
+        # Budget is advisory — axes should be accepted, not blocked
+        assert result.get("needs_user_input") is not True, (
+            "Advisory axis budget must not block with NEED_DECISION")
+        assert result["expansion_applied"] is True, (
+            "Axes must be applied despite exceeding advisory budget")
 
 
 class TestR57DeepScanFeedbackPreservation:

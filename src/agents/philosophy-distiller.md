@@ -45,9 +45,10 @@ Assign each principle a sequential ID (P1, P2, ..., PN). For each:
 - **Test**: How an agent checks compliance. What does violation look
   like concretely?
 
-Aim for 6-12 principles. Fewer than 6 means you are being too
-abstract. More than 12 means you are capturing implementation details,
-not principles.
+Typical philosophies yield 6-12 principles. Fewer suggests
+over-abstraction; more suggests implementation details leaking in.
+Let the source material determine the count — do not pad or prune
+to hit a number.
 
 ### Phase 3: Map Interactions
 

@@ -140,39 +140,30 @@ class TestProblemFrameMissing:
                 assert "problem frame" not in data.get("detail", "").lower()
 
 
-class TestProblemFrameIncompleteHeadings:
-    """P1/R19: problem frame missing required headings → needs_parent."""
+class TestProblemFrameEmpty:
+    """R68/V3: empty problem frame → needs_parent (no heading gate)."""
 
-    def test_missing_headings_returns_none(
+    def test_empty_frame_returns_none(
         self, planspace: Path, codespace: Path, mock_dispatch: MagicMock,
     ) -> None:
         section = _make_section(planspace, codespace)
         mock_dispatch.return_value = ""
-        # Create a problem frame missing some required headings
+        # Create an empty problem frame
         pf_path = (planspace / "artifacts" / "sections"
                    / "section-01-problem-frame.md")
-        pf_path.write_text(
-            "# Problem Frame\n\n"
-            "## Problem Statement\nAuth is broken.\n\n"
-            "## Evidence\n- Missing auth module.\n"
-            # Missing: Constraints, Success Criteria, Out of Scope
-        )
+        pf_path.write_text("")
 
         result = run_section(planspace, codespace, section, "parent")
         assert result is None
 
-    def test_missing_headings_writes_signal(
+    def test_empty_frame_writes_signal(
         self, planspace: Path, codespace: Path, mock_dispatch: MagicMock,
     ) -> None:
         section = _make_section(planspace, codespace)
         mock_dispatch.return_value = ""
         pf_path = (planspace / "artifacts" / "sections"
                    / "section-01-problem-frame.md")
-        pf_path.write_text(
-            "# Problem Frame\n\n"
-            "## Problem Statement\nAuth is broken.\n\n"
-            "## Evidence\n- Missing.\n"
-        )
+        pf_path.write_text("   \n  \n  ")  # whitespace-only = empty
 
         run_section(planspace, codespace, section, "parent")
 
@@ -181,12 +172,12 @@ class TestProblemFrameIncompleteHeadings:
         assert signal_path.exists()
         data = json.loads(signal_path.read_text())
         assert data["state"] == "needs_parent"
-        assert "headings" in data["detail"].lower()
+        assert "empty" in data["detail"].lower()
 
-    def test_all_headings_present_passes(
+    def test_nonempty_frame_passes(
         self, planspace: Path, codespace: Path, mock_dispatch: MagicMock,
     ) -> None:
-        """A complete problem frame should pass the heading check.
+        """A non-empty problem frame should pass the non-empty check.
 
         The mock returns "" so the proposal loop exits fast at
         "integration proposal not written" — but the gate check is before
@@ -199,21 +190,15 @@ class TestProblemFrameIncompleteHeadings:
             "# Problem Frame\n\n"
             "## Problem Statement\nAuth is broken.\n\n"
             "## Evidence\n- From proposal: auth module missing.\n\n"
-            "## Constraints\n- Must use OAuth2.\n\n"
-            "## Success Criteria\n- Login works.\n\n"
-            "## Out of Scope\n- SSO integration.\n"
         )
         mock_dispatch.return_value = ""
-        # Do NOT pre-create integration proposal — let the proposal loop
-        # fail fast at "proposal not written" (returns None).
-        # The heading gate is checked before the proposal loop.
 
         result = run_section(planspace, codespace, section, "parent")
 
-        # result is None because proposal loop fails, but the heading
-        # gate should NOT have fired — check no signal about headings
+        # result is None because proposal loop fails, but the non-empty
+        # gate should NOT have fired
         signal_path = (planspace / "artifacts" / "signals"
                        / "setup-01-signal.json")
         if signal_path.exists():
             data = json.loads(signal_path.read_text())
-            assert "headings" not in data.get("detail", "").lower()
+            assert "empty" not in data.get("detail", "").lower()

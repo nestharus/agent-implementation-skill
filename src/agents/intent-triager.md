@@ -21,7 +21,8 @@ intent. You measure complexity, not value.
 
 ### Evaluate Decision Factors
 
-Read the section metadata and reason about these factors:
+Read the section artifacts listed in the prompt and reason about these
+factors:
 
 - **Integration breadth**: How many files and modules does this
   section touch? More files means more integration surfaces and more
@@ -57,15 +58,18 @@ with a stronger model to make the call.
 ### Budget Assignment
 
 Based on your assessment, assign cycle budgets that control how many
-proposal/implementation/expansion passes the pipeline is allowed:
+proposal/implementation/expansion passes the pipeline is allowed.
+Reference values (typical starting points — adjust based on section
+characteristics):
 
-| Intent Mode | proposal_max | implementation_max | intent_expansion_max | max_new_surfaces_per_cycle | max_new_axes_total |
-|-------------|-------------|-------------------|---------------------|---------------------------|-------------------|
-| lightweight | 5           | 5                 | 0                   | 0                         | 0                 |
-| full        | 5           | 5                 | 2                   | 8                         | 6                 |
+- `proposal_max`: 5 (both modes)
+- `implementation_max`: 5 (both modes)
+- `intent_expansion_max`: 0 for lightweight, 2 for full
+- `max_new_surfaces_per_cycle`: 0 for lightweight, 8 for full
+- `max_new_axes_total`: 0 for lightweight, 6 for full
 
-Adjust budgets if warranted by the section's characteristics. Document
-any adjustment and the reason.
+These are ceilings, not quotas. Document any adjustment and the
+reason.
 
 ## Output
 
@@ -96,14 +100,12 @@ TRIAGE: section-name → full (broad integration + greenfield) expansion=2
 
 ## Anti-Patterns
 
-- **Deep analysis instead of classification**: You read metadata and
-  reason about factors. You do not read the code, evaluate the spec
-  quality, or form opinions about the solution. That is the intent
-  judge's job.
+- **Deep analysis instead of classification**: You skim artifacts for
+  complexity signals — you do not evaluate the spec quality or form
+  opinions about the solution. That is the intent judge's job.
 - **Budget invention**: Budgets use the reference table as a starting
   point. Adjustments must be documented and justified by the section's
   characteristics.
-- **Reading file contents**: You read metadata (file count, note
-  count, section mode, summary). You do NOT read file contents, code,
-  or specs. If you find yourself understanding the code, you are doing
-  too much.
+- **Solving the problem**: You classify complexity, you do not
+  propose solutions. If you find yourself reasoning about how to
+  implement the section, you are doing too much.

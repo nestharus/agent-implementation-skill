@@ -33,12 +33,40 @@ def run_intent_triage(
     triage_prompt_path = artifacts / f"intent-triage-{section_number}-prompt.md"
     triage_output_path = artifacts / f"intent-triage-{section_number}-output.md"
 
+    # V2/R68: Build bounded triage surface with artifact paths so
+    # the triager can ground its decision in actual section content,
+    # not just proxy counts.
+    section_spec = (artifacts / "sections"
+                    / f"section-{section_number}.md")
+    proposal_excerpt = (artifacts / "sections"
+                        / f"section-{section_number}-proposal-excerpt.md")
+    alignment_excerpt = (artifacts / "sections"
+                         / f"section-{section_number}-alignment-excerpt.md")
+    problem_brief = (artifacts / "sections"
+                     / f"section-{section_number}-problem-frame.md")
+    codemap_path = artifacts / "codemap.md"
+
+    triage_refs = []
+    for label, path in [
+        ("Section spec", section_spec),
+        ("Proposal excerpt", proposal_excerpt),
+        ("Alignment excerpt", alignment_excerpt),
+        ("Problem brief", problem_brief),
+        ("Codemap summary", codemap_path),
+    ]:
+        if path.exists():
+            triage_refs.append(f"- {label}: `{path}`")
+    triage_refs_block = "\n".join(triage_refs) if triage_refs else "- (none)"
+
     triage_prompt_path.write_text(f"""# Task: Intent Triage for Section {section_number}
 
 ## Context
 Decide whether this section needs the full bidirectional intent cycle
 (problem + philosophy alignment with surface discovery and expansion)
 or lightweight alignment (existing alignment judge only).
+
+## Section Artifacts (read these for grounded assessment)
+{triage_refs_block}
 
 ## Section Characteristics
 - Related files: {related_files_count}
