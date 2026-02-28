@@ -462,6 +462,7 @@ def _run_philosophy_expander(
         else signals_dir / f"intent-surfaces-{section_number}.json"
     )
     philosophy_path = intent_global / "philosophy.md"
+    source_map_path = intent_global / "philosophy-source-map.json"
     decisions_path = intent_global / "philosophy-decisions.md"
     delta_path = signals_dir / f"intent-delta-{section_number}.json"
 
@@ -473,25 +474,29 @@ def _run_philosophy_expander(
 ## Files to Read
 1. Intent surfaces (philosophy portion): `{surfaces_path}`
 2. Current operational philosophy: `{philosophy_path}`
+3. Philosophy source map (provenance): `{source_map_path}`
 
 ## Instructions
 Validate each philosophy surface and classify it:
 
 1. **Absorbable clarification** — existing principle already implies this
    → Update philosophy.md with clarification. No user gate.
-2. **Compatible addition** — new principle that doesn't conflict
-   → Add provisionally to philosophy.md. Notify parent (non-blocking).
-3. **Tension** — two principles conflict in this context
-   → Write to decisions file. User gate required.
-4. **New axis** — philosophy is silent on this dimension
+2. **Source-grounded omission** — present in authorized source material
+   but missed during distillation. Must cite specific passage in source.
+   → Add to philosophy.md with source-map provenance entry.
+3. **New root candidate** — philosophy is genuinely silent AND not
+   traceable to authorized sources. This is a root-level scope change.
+   → Do NOT add. Write to decisions file. User gate required.
+4. **Tension** — two principles conflict in this context
    → Write to decisions file. User gate required.
 5. **Contradiction** — principles cannot coexist
    → Write to decisions file. User gate required.
 
 ## Output
-1. Update `{philosophy_path}` for absorbable and compatible additions
-2. Write `{decisions_path}` ONLY if user decisions are needed
-3. Write delta signal to `{delta_path}`:
+1. Update `{philosophy_path}` for absorbable and source-grounded omissions
+2. Update `{source_map_path}` with provenance for any new principles
+3. Write `{decisions_path}` ONLY if user decisions are needed
+4. Write delta signal to `{delta_path}`:
 ```json
 {{
   "section": "{section_number}",
@@ -521,7 +526,19 @@ Validate each philosophy surface and classify it:
     if result == "ALIGNMENT_CHANGED_PENDING":
         return None
 
-    return read_agent_signal(delta_path)
+    # V2/R69: Revalidate grounding after any philosophy expansion to
+    # close the traceability loop. Expansion must update source-map.
+    delta = read_agent_signal(delta_path)
+    if delta and delta.get("applied", {}).get("philosophy_updated"):
+        from .bootstrap import _validate_philosophy_grounding
+        grounding_ok = _validate_philosophy_grounding(
+            philosophy_path, source_map_path, artifacts)
+        if not grounding_ok:
+            log(f"Section {section_number}: philosophy expansion broke "
+                f"grounding — expansion accepted but grounding warning "
+                f"emitted (fail-closed)")
+
+    return delta
 
 
 def _adjudicate_recurrence(

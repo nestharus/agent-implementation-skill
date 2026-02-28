@@ -30,21 +30,31 @@ For each surface in `intent-surfaces-NN.json` with kind in
    a clarification, not a change. Example: "P3 says fail explicitly,
    but doesn't mention logging — logging on failure is implied."
 
-2. **Compatible** — The surface describes a new principle that does
-   not conflict with any existing one. It fills a genuine silence.
-   Example: "No principle addresses caching strategy; this context
-   needs one."
+2. **Source-grounded omission** — The surface describes a principle
+   that IS present in the authorized philosophy source material but
+   was missed during the initial distillation. You can verify this
+   by checking the source-map and source files. Only if you can cite
+   the specific passage in an already-authorized source is this safe
+   to add. Example: "Source file X says 'prefer composition over
+   inheritance' at line 47 but this was not distilled into a principle."
 
-3. **Tension** — The surface reveals that two existing principles
+3. **New root candidate** — The surface describes a concern that the
+   philosophy is genuinely silent on AND that cannot be traced to
+   existing authorized sources. This is a ROOT-LEVEL scope change.
+   Do NOT add it to philosophy.md. Route it to `philosophy-decisions.md`
+   as a decision the user must make. The user's philosophy prohibits
+   inventing constraints they did not specify.
+
+4. **Tension** — The surface reveals that two existing principles
    pull in opposite directions in this context. Neither is wrong;
    they need a priority decision. Example: "P2 (minimize dependencies)
    and P5 (use proven libraries) conflict for this component."
 
-4. **Contradiction** — The surface reveals that the work product
+5. **Contradiction** — The surface reveals that the work product
    cannot satisfy an existing principle. The principle may need
    revision. This is always a user gate.
 
-5. **Noise** — The surface is not actually about philosophy. Discard
+6. **Noise** — The surface is not actually about philosophy. Discard
    with reason.
 
 ### Phase 2: Integrate Safe Surfaces
@@ -53,15 +63,16 @@ For ABSORBABLE surfaces: Add a clarifying sub-point under the
 relevant principle in philosophy.md. Do not change the principle
 statement itself.
 
-For COMPATIBLE surfaces: Add a new numbered principle at the end of
-philosophy.md. Follow the existing format. Assign the next available
-principle number.
+For SOURCE-GROUNDED OMISSION surfaces: Add a new numbered principle
+at the end of philosophy.md with source-map provenance. The source-map
+entry must cite the authorized source file and section. Update
+`philosophy-source-map.json` with the new principle's provenance.
 
-### Phase 3: Gate for Tensions and Contradictions
+### Phase 3: Gate for Decisions
 
-For TENSION and CONTRADICTION surfaces: Do NOT integrate. Instead,
-produce a `philosophy-decisions.md` file that presents each one as
-a decision the user must make.
+For NEW ROOT CANDIDATE, TENSION, and CONTRADICTION surfaces: Do NOT
+integrate. Instead, produce a `philosophy-decisions.md` file that
+presents each one as a decision the user must make.
 
 Each decision entry includes:
 - The conflicting principles (by number)
@@ -73,11 +84,15 @@ Each decision entry includes:
 
 ### Updated Files
 
-1. **philosophy.md** — with absorbable clarifications and compatible
-   additions. Never modify existing principle statements.
+1. **philosophy.md** — with absorbable clarifications and source-grounded
+   omissions. Never modify existing principle statements.
 
-2. **philosophy-decisions.md** — only if tensions or contradictions
-   exist. Omit entirely if all surfaces are safe or noise.
+2. **philosophy-source-map.json** — updated with provenance for any
+   new principles added (source-grounded omissions only).
+
+3. **philosophy-decisions.md** — only if new root candidates, tensions,
+   or contradictions exist. Omit entirely if all surfaces are safe
+   or noise.
 
 ### Structured Signal (Required)
 
@@ -103,6 +118,9 @@ needed.
 
 ## Anti-Patterns
 
+- **Inventing principles from silence**: If the philosophy is silent
+  on a topic and no authorized source covers it, that silence is
+  information. Route it as a new root candidate — do not fill it.
 - **Resolving tensions yourself**: You present options; the user
   decides. Never pick a resolution and integrate it.
 - **Rewriting principles**: Existing principle statements are
@@ -115,6 +133,5 @@ needed.
   principles are valid but pull different directions. A contradiction
   means the work literally cannot satisfy a principle. The
   distinction matters for user decisions.
-- **Ignoring context**: A surface classified as "compatible" in one
-  section might be a tension in another. Classify based on THIS
-  section's philosophy and context, not in the abstract.
+- **Omitting source-map updates**: Every new principle must have a
+  source-map entry pointing to the authorized source passage.

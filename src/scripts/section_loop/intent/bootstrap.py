@@ -280,31 +280,61 @@ def ensure_global_philosophy(
     philosophy_path = intent_global / "philosophy.md"
 
     if philosophy_path.exists() and philosophy_path.stat().st_size > 0:
-        # V7/R67: Check source manifest — regenerate if sources changed
-        manifest_path = intent_global / "philosophy-source-manifest.json"
-        if manifest_path.exists():
-            try:
-                manifest = json.loads(
-                    manifest_path.read_text(encoding="utf-8"))
-                sources_changed = False
-                for entry in manifest.get("sources", []):
-                    src = Path(entry.get("path", ""))
-                    if not src.exists():
-                        sources_changed = True
-                        break
-                    if _sha256_file(src) != entry.get("hash", ""):
-                        sources_changed = True
-                        break
-                if sources_changed:
-                    log("Intent bootstrap: philosophy sources changed — "
-                        "regenerating")
-                else:
-                    return philosophy_path
-            except (json.JSONDecodeError, OSError, KeyError):
-                log("Intent bootstrap: source manifest malformed — "
-                    "regenerating philosophy")
+        # V2/R69: Require source-map alongside philosophy — without it
+        # grounding is unverifiable. Regenerate if missing.
+        source_map_path = intent_global / "philosophy-source-map.json"
+        if not source_map_path.exists():
+            log("Intent bootstrap: philosophy exists but source-map "
+                "missing — regenerating (fail-closed)")
         else:
-            return philosophy_path
+            # V7/R67: Check source manifest — regenerate if sources changed
+            manifest_path = intent_global / "philosophy-source-manifest.json"
+            if manifest_path.exists():
+                try:
+                    manifest = json.loads(
+                        manifest_path.read_text(encoding="utf-8"))
+                    sources_changed = False
+                    for entry in manifest.get("sources", []):
+                        src = Path(entry.get("path", ""))
+                        if not src.exists():
+                            sources_changed = True
+                            break
+                        if _sha256_file(src) != entry.get("hash", ""):
+                            sources_changed = True
+                            break
+
+                    # V3/R69: Check catalog fingerprint — regenerate if
+                    # the candidate universe changed (new files appeared
+                    # or existing candidates were modified).
+                    catalog_fp_path = (
+                        intent_global / "philosophy-catalog-fingerprint.txt")
+                    catalog_changed = False
+                    if catalog_fp_path.exists():
+                        prev_fp = catalog_fp_path.read_text(
+                            encoding="utf-8").strip()
+                        current_catalog = _build_philosophy_catalog(
+                            planspace, codespace)
+                        current_fp = hashlib.sha256(
+                            json.dumps(current_catalog, sort_keys=True)
+                            .encode()
+                        ).hexdigest()
+                        if prev_fp != current_fp:
+                            catalog_changed = True
+                            log("Intent bootstrap: philosophy candidate "
+                                "catalog changed — rerunning selector")
+
+                    if sources_changed:
+                        log("Intent bootstrap: philosophy sources "
+                            "changed — regenerating")
+                    elif catalog_changed:
+                        pass  # Fall through to regeneration
+                    else:
+                        return philosophy_path
+                except (json.JSONDecodeError, OSError, KeyError):
+                    log("Intent bootstrap: source manifest malformed — "
+                        "regenerating philosophy")
+            else:
+                return philosophy_path
 
     # V2/R56: Build mechanical catalog of candidate docs, then let an
     # agent select which ones are philosophy sources. No hardcoded
@@ -366,9 +396,18 @@ Write a JSON signal to: `{selected_signal}`
   "sources": [
     {{"path": "...", "reason": "Contains design constraints"}}
   ],
+  "ambiguous": [
+    {{"path": "...", "reason": "Preview inconclusive — title suggests principles"}}
+  ],
   "additional_extensions": [".txt", ".rst"]
 }}
 ```
+
+The ``ambiguous`` field is **optional**. Include it only when the
+10-line preview is genuinely insufficient to classify a candidate.
+Up to 5 ambiguous candidates will be sent for full-read verification
+by a stronger model. Do not nominate files you can classify from the
+preview alone.
 
 The ``additional_extensions`` field is **optional**. Include it only
 if you believe philosophy sources may exist in non-markdown formats
@@ -394,6 +433,89 @@ If NO files contain philosophy or constraints, write:
 
     # Read selected sources; fail-closed on malformed/missing
     selected = read_agent_signal(selected_signal)
+
+    # V4/R69: Bounded full-read verification for ambiguous candidates.
+    # The selector nominates up to 5 files whose 10-line preview was
+    # insufficient. We dispatch a stronger model to read each fully and
+    # reclassify, then merge verified sources into the selection.
+    _AMBIGUOUS_CAP = 5
+    if (selected and isinstance(selected.get("ambiguous"), list)
+            and selected["ambiguous"]):
+        ambiguous = selected["ambiguous"][:_AMBIGUOUS_CAP]
+        verifiable = [
+            a for a in ambiguous
+            if isinstance(a, dict) and Path(a.get("path", "")).exists()
+        ]
+        if verifiable:
+            log(f"Intent bootstrap: verifying {len(verifiable)} "
+                f"ambiguous philosophy candidate(s) (full-read)")
+            verify_prompt = artifacts / "philosophy-verify-prompt.md"
+            verify_output = artifacts / "philosophy-verify-output.md"
+            verify_signal = (
+                artifacts / "signals"
+                / "philosophy-verified-sources.json"
+            )
+            verify_signal.parent.mkdir(parents=True, exist_ok=True)
+
+            candidates_block = "\n".join(
+                f"- `{a['path']}` — {a.get('reason', 'ambiguous')}"
+                for a in verifiable
+            )
+            verify_prompt.write_text(f"""# Task: Verify Ambiguous Philosophy Candidates
+
+## Context
+The source selector could not classify these files from a 10-line
+preview. Read each file in full and decide whether it contains
+execution philosophy, design constraints, or operational principles.
+
+## Candidates
+{candidates_block}
+
+## Instructions
+For each candidate, read the FULL file and classify:
+- **philosophy_source**: Contains principles, constraints, design rules → include
+- **not_philosophy**: Specification, requirements, or irrelevant → exclude
+
+## Output
+Write a JSON signal to: `{verify_signal}`
+
+```json
+{{{{
+  "verified_sources": [
+    {{{{"path": "...", "reason": "Contains design constraints at ..."}}}}
+  ],
+  "rejected": [
+    {{{{"path": "...", "reason": "Specification file, not philosophy"}}}}
+  ]
+}}}}
+```
+""", encoding="utf-8")
+            _log_artifact(planspace, "prompt:philosophy-verify")
+
+            dispatch_agent(
+                policy.get("intent_philosophy_verifier", "claude-opus"),
+                verify_prompt,
+                verify_output,
+                planspace,
+                parent,
+                codespace=codespace,
+                agent_file="philosophy-source-selector.md",
+            )
+
+            verified = read_agent_signal(verify_signal)
+            if verified and isinstance(
+                    verified.get("verified_sources"), list):
+                existing_paths = {
+                    s["path"] for s in selected.get("sources", [])
+                }
+                for vs in verified["verified_sources"]:
+                    if (isinstance(vs, dict)
+                            and vs.get("path") not in existing_paths):
+                        selected.setdefault("sources", []).append(vs)
+                        existing_paths.add(vs["path"])
+                log(f"Intent bootstrap: verified "
+                    f"{len(verified['verified_sources'])} source(s) "
+                    f"from ambiguous candidates")
 
     # V4/R61: Agent-steerable expansion — if selector requests additional
     # extensions, rebuild catalog once with expanded extensions and re-invoke.
@@ -546,6 +668,14 @@ Format: JSON mapping principle ID to source file/section.
     }
     manifest_path.write_text(
         json.dumps(manifest, indent=2), encoding="utf-8")
+
+    # V3/R69: Write catalog fingerprint so the next run can detect
+    # changes in the candidate universe (new files, modified candidates).
+    catalog_fp_path = intent_global / "philosophy-catalog-fingerprint.txt"
+    catalog_fp = hashlib.sha256(
+        json.dumps(catalog, sort_keys=True).encode()
+    ).hexdigest()
+    catalog_fp_path.write_text(catalog_fp, encoding="utf-8")
 
     return philosophy_path
 

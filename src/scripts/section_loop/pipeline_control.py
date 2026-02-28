@@ -145,6 +145,12 @@ def _section_inputs_hash(
         artifacts / "intent" / "global" / "philosophy-source-manifest.json")
     if intent_global_manifest.exists():
         hasher.update(intent_global_manifest.read_bytes())
+    # V2/R69: Hash source map — philosophy mutations must update
+    # provenance, and provenance changes are alignment-relevant
+    intent_global_source_map = (
+        artifacts / "intent" / "global" / "philosophy-source-map.json")
+    if intent_global_source_map.exists():
+        hasher.update(intent_global_source_map.read_bytes())
     intent_sec_dir = artifacts / "intent" / "sections" / f"section-{sec_num}"
     for intent_file in (
         intent_sec_dir / "problem.md",

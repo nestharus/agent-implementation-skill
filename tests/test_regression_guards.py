@@ -6331,3 +6331,122 @@ class TestR68PhilosophyExcerptNormalized:
         text = agent.read_text(encoding="utf-8")
         assert "for the philosophy distiller" not in text
         assert "section-scoped" in text.lower() or "section scoped" in text.lower()
+
+
+# ── R69 Regression Guards ──────────────────────────────────────────────
+
+
+class TestR69PhilosophyExpanderSourceGrounded:
+    """R69/V1: Expander replaces 'Compatible' with source-grounded omission."""
+
+    def test_no_compatible_addition(self) -> None:
+        """philosophy-expander.md must not use 'Compatible' as a classification."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        agent = src / "agents" / "philosophy-expander.md"
+        text = agent.read_text(encoding="utf-8")
+        # The old "Compatible" classification must be replaced
+        assert "Compatible addition" not in text
+        assert "Compatible — " not in text
+
+    def test_source_grounded_omission_present(self) -> None:
+        """philosophy-expander.md must define source-grounded omission."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        agent = src / "agents" / "philosophy-expander.md"
+        text = agent.read_text(encoding="utf-8")
+        assert "Source-grounded omission" in text or "source-grounded omission" in text
+
+    def test_new_root_candidate_present(self) -> None:
+        """philosophy-expander.md must define new root candidate for silence."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        agent = src / "agents" / "philosophy-expander.md"
+        text = agent.read_text(encoding="utf-8")
+        assert "New root candidate" in text or "new root candidate" in text
+
+    def test_no_inventing_from_silence(self) -> None:
+        """philosophy-expander.md anti-patterns must forbid inventing principles."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        agent = src / "agents" / "philosophy-expander.md"
+        text = agent.read_text(encoding="utf-8")
+        assert "Inventing principles from silence" in text
+
+    def test_expansion_prompt_source_map(self) -> None:
+        """expansion.py philosophy-expander prompt includes source-map as input."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        expansion = src / "scripts" / "section_loop" / "intent" / "expansion.py"
+        text = expansion.read_text(encoding="utf-8")
+        assert "source_map_path" in text
+        assert "Source-grounded omission" in text or "source-grounded omission" in text
+
+
+class TestR69GroundingRevalidation:
+    """R69/V2: Post-expansion grounding revalidation closes traceability loop."""
+
+    def test_expansion_calls_grounding_validation(self) -> None:
+        """_run_philosophy_expander must revalidate grounding after expansion."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        expansion = src / "scripts" / "section_loop" / "intent" / "expansion.py"
+        text = expansion.read_text(encoding="utf-8")
+        assert "_validate_philosophy_grounding" in text
+
+    def test_source_map_in_change_detection(self) -> None:
+        """pipeline_control.py must hash philosophy-source-map.json."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        pc = src / "scripts" / "section_loop" / "pipeline_control.py"
+        text = pc.read_text(encoding="utf-8")
+        assert "philosophy-source-map.json" in text
+
+    def test_bootstrap_requires_source_map(self) -> None:
+        """bootstrap.py must regenerate philosophy when source-map missing."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        bs = src / "scripts" / "section_loop" / "intent" / "bootstrap.py"
+        text = bs.read_text(encoding="utf-8")
+        assert "source-map" in text.lower()
+        assert "missing" in text.lower()
+        assert "regenerating" in text.lower()
+
+
+class TestR69CatalogFingerprint:
+    """R69/V3: Catalog fingerprint detects new/changed candidate universe."""
+
+    def test_fingerprint_written_after_distillation(self) -> None:
+        """bootstrap.py must write catalog-fingerprint.txt after distillation."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        bs = src / "scripts" / "section_loop" / "intent" / "bootstrap.py"
+        text = bs.read_text(encoding="utf-8")
+        assert "philosophy-catalog-fingerprint.txt" in text
+
+    def test_fingerprint_checked_in_cache_path(self) -> None:
+        """bootstrap.py must compare catalog fingerprint when checking cache."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        bs = src / "scripts" / "section_loop" / "intent" / "bootstrap.py"
+        text = bs.read_text(encoding="utf-8")
+        assert "catalog_changed" in text
+        assert "catalog_fp" in text
+
+
+class TestR69AmbiguousVerification:
+    """R69/V4: Selector nominates ambiguous candidates for full-read verify."""
+
+    def test_selector_agent_has_ambiguous_classification(self) -> None:
+        """philosophy-source-selector.md must define Ambiguous classification."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        agent = src / "agents" / "philosophy-source-selector.md"
+        text = agent.read_text(encoding="utf-8")
+        assert "Ambiguous" in text
+        assert "full-read verification" in text.lower() or "full-read" in text.lower()
+
+    def test_selector_prompt_includes_ambiguous_field(self) -> None:
+        """bootstrap.py selector prompt must mention ambiguous output field."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        bs = src / "scripts" / "section_loop" / "intent" / "bootstrap.py"
+        text = bs.read_text(encoding="utf-8")
+        assert '"ambiguous"' in text
+
+    def test_verifier_dispatch_exists(self) -> None:
+        """bootstrap.py must dispatch a verifier for ambiguous candidates."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        bs = src / "scripts" / "section_loop" / "intent" / "bootstrap.py"
+        text = bs.read_text(encoding="utf-8")
+        assert "philosophy-verify-prompt.md" in text
+        assert "verified_sources" in text
+        assert "_AMBIGUOUS_CAP" in text
