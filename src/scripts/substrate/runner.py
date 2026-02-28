@@ -64,8 +64,13 @@ def _read_model_policy(artifacts_dir: Path) -> dict[str, str]:
         except (json.JSONDecodeError, OSError) as exc:
             print(
                 f"[SUBSTRATE][WARN] model-policy.json exists but is "
-                f"invalid ({exc}) -- using defaults"
+                f"invalid ({exc}) -- renaming to .malformed.json"
             )
+            try:
+                policy_path.rename(
+                    policy_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass
     return policy
 
 
@@ -83,8 +88,17 @@ def _read_trigger_threshold(artifacts_dir: Path) -> int:
                 val = data.get("substrate_trigger_min_vacuum_sections")
                 if isinstance(val, int) and val >= 1:
                     return val
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            print(
+                f"[SUBSTRATE][WARN] model-policy.json malformed while "
+                f"reading trigger threshold ({exc}) -- renaming to "
+                f".malformed.json"
+            )
+            try:
+                policy_path.rename(
+                    policy_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass
     return _DEFAULT_TRIGGER_THRESHOLD
 
 
@@ -511,7 +525,7 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
                 prune_signal_path.read_text(encoding="utf-8")
             )
             if isinstance(prune_signal, dict):
-                status_val = prune_signal.get("status", "").upper()
+                status_val = prune_signal.get("state", "").upper()
                 if status_val == "NEEDS_PARENT":
                     reason = prune_signal.get("reason", "no reason given")
                     print(
@@ -531,8 +545,13 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
         except (json.JSONDecodeError, OSError) as exc:
             print(
                 f"[SUBSTRATE][WARN] prune-signal.json malformed "
-                f"({exc}) -- continuing with seed plan"
+                f"({exc}) -- renaming to .malformed.json"
             )
+            try:
+                prune_signal_path.rename(
+                    prune_signal_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass
 
     # ---- Phase C: Seeding ----
     print("[SUBSTRATE] Phase C: Seeder (anchor creation + wiring)")
@@ -561,12 +580,18 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
             if isinstance(seed_signal, dict):
                 print(
                     f"[SUBSTRATE] Seed signal: "
-                    f"{seed_signal.get('status', 'unknown')}"
+                    f"{seed_signal.get('state', 'unknown')}"
                 )
         except (json.JSONDecodeError, OSError) as exc:
             print(
                 f"[SUBSTRATE][WARN] seed-signal.json malformed ({exc})"
+                f" -- renaming to .malformed.json"
             )
+            try:
+                seed_signal_path.rename(
+                    seed_signal_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass
 
     # Write substrate.ref for each target section (input-ref mechanism)
     for section_num in target_sections:

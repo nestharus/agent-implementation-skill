@@ -20,12 +20,12 @@ alignment asks "does this solve it in a way consistent with how we
 decided to work?" Both must hold. A solution that solves the right
 problem but violates operational principles is misaligned.
 
-### Phase 1: Coverage Scan
+### Phase 1: Contact Scan
 
 Read the problem alignment rubric (axis table). For each axis, confirm
 the work product touches it — not that it "completes" it, but that
 it is directionally coherent with the axis intent. An axis with zero
-contact is a coverage gap. Record it but do not stop.
+contact is a gap worth noting. Record it but do not stop.
 
 ### Phase 2: Per-Axis Alignment Check
 

@@ -81,9 +81,10 @@ The schema is strict — follow it exactly.
 }
 ```
 
-**kind** enum: `api|service|type|db|event|job|ui|config|lib|test`
+**kind** — common values: `api`, `service`, `type`, `db`, `event`,
+`job`, `ui`, `config`, `lib`, `test`. Use any label that fits; the
+pruner normalizes across shards.
 
-**topic** enum: `types|errors|config|auth|db|api|events|logging|routing|ui|cli|testing|build|deploy|docs`
-
-If your section's concern doesn't fit neatly into these enums, pick
-the closest match. The pruner will normalize across shards.
+**topic** — common values: `types`, `errors`, `config`, `auth`, `db`,
+`api`, `events`, `logging`, `routing`, `ui`, `cli`, `testing`,
+`build`, `deploy`, `docs`. Use any label that fits.

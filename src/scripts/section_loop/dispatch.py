@@ -559,5 +559,10 @@ def read_model_policy(planspace: Path) -> dict[str, Any]:
             }
         return merged
     except (json.JSONDecodeError, OSError):
-        log("  WARNING: model-policy.json exists but is invalid, using defaults")
+        log("  WARNING: model-policy.json exists but is invalid — "
+            "renaming to .malformed.json")
+        try:
+            policy_path.rename(policy_path.with_suffix(".malformed.json"))
+        except OSError:
+            pass
         return defaults

@@ -280,7 +280,31 @@ def ensure_global_philosophy(
     philosophy_path = intent_global / "philosophy.md"
 
     if philosophy_path.exists() and philosophy_path.stat().st_size > 0:
-        return philosophy_path
+        # V7/R67: Check source manifest — regenerate if sources changed
+        manifest_path = intent_global / "philosophy-source-manifest.json"
+        if manifest_path.exists():
+            try:
+                manifest = json.loads(
+                    manifest_path.read_text(encoding="utf-8"))
+                sources_changed = False
+                for entry in manifest.get("sources", []):
+                    src = Path(entry.get("path", ""))
+                    if not src.exists():
+                        sources_changed = True
+                        break
+                    if _sha256_file(src) != entry.get("hash", ""):
+                        sources_changed = True
+                        break
+                if sources_changed:
+                    log("Intent bootstrap: philosophy sources changed — "
+                        "regenerating")
+                else:
+                    return philosophy_path
+            except (json.JSONDecodeError, OSError, KeyError):
+                log("Intent bootstrap: source manifest malformed — "
+                    "regenerating philosophy")
+        else:
+            return philosophy_path
 
     # V2/R56: Build mechanical catalog of candidate docs, then let an
     # agent select which ones are philosophy sources. No hardcoded
@@ -512,6 +536,16 @@ Format: JSON mapping principle ID to source file/section.
         log("Intent bootstrap: philosophy grounding validation failed "
             "— downgrading to lightweight (fail-closed)")
         return None
+
+    # V7/R67: Write source manifest for invalidation on next run
+    manifest_path = intent_global / "philosophy-source-manifest.json"
+    manifest = {
+        "sources": [
+            {"path": str(s), "hash": _sha256_file(s)} for s in sources
+        ],
+    }
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2), encoding="utf-8")
 
     return philosophy_path
 

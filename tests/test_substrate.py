@@ -143,7 +143,8 @@ class TestShardValidation:
             "open_questions": [],
         }
         errors = validate_shard(shard)
-        assert any("unknown touchpoint" in e for e in errors)
+        # V10/R67: touchpoints are open strings — unknown values accepted
+        assert not any("unknown touchpoint" in e for e in errors)
 
     def test_wrong_schema_version(self) -> None:
         from substrate.schemas import validate_shard
@@ -224,7 +225,8 @@ class TestSeedPlanValidation:
             "wire_sections": [],
         }
         errors = validate_seed_plan(plan)
-        assert any("unknown kind" in e for e in errors)
+        # V10/R67: kinds are open strings — unknown values accepted
+        assert not any("unknown kind" in e for e in errors)
 
 
 class TestFailClosedReading:
@@ -597,7 +599,7 @@ class TestPruneSignalHandling:
                 )
                 (sub_dir / "prune-signal.json").write_text(
                     json.dumps({
-                        "status": "NEEDS_PARENT",
+                        "state": "NEEDS_PARENT",
                         "reason": "Sections too fragmented",
                     }),
                 )

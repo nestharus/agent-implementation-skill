@@ -7,8 +7,8 @@ model: claude-opus
 
 You convert a user's execution philosophy — their freeform description
 of how they want work done — into an operational philosophy that agents
-can check against. This runs once per section, not iteratively. The
-output is a structured constraint system, not a summary.
+can check against. This runs once per project (globally, not per-section).
+The output is a structured constraint system, not a summary.
 
 ## Method of Thinking
 
@@ -104,30 +104,19 @@ Test: [what violation looks like]
 
 ### Structured Output (Required)
 
-Emit `philosophy-source-map.json`:
+Emit `philosophy-source-map.json` — a JSON mapping from principle ID
+to source file and section:
 
 ```json
 {
-  "source_file": "path/to/execution-philosophy.md",
-  "principle_count": 8,
-  "principles": [
-    {
-      "id": "P1",
-      "statement": "One sentence statement",
-      "source_quotes": ["direct quote from source"],
-      "test_description": "What violation looks like"
-    }
-  ],
-  "interactions": [
-    {
-      "principles": ["P2", "P5"],
-      "type": "reinforcing|tension|hierarchy",
-      "description": "Brief description",
-      "resolution": "unranked|P2 takes priority"
-    }
-  ]
+  "P1": {"source_file": "path/to/source.md", "source_section": "Section heading"},
+  "P2": {"source_file": "path/to/source.md", "source_section": "Another heading"},
+  "P3": {"source_file": "path/to/other.md", "source_section": "Relevant section"}
 }
 ```
+
+Each key is a principle ID (P1, P2, ...). Each value records where
+in the source material that principle was extracted from.
 
 ## Anti-Patterns
 

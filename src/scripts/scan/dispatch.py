@@ -50,8 +50,13 @@ def read_scan_model_policy(artifacts_dir: Path) -> dict[str, str]:
         except (json.JSONDecodeError, OSError) as exc:
             print(
                 f"[SCAN] WARNING: model-policy.json exists but is "
-                f"invalid ({exc}) — using defaults",
+                f"invalid ({exc}) — renaming to .malformed.json",
             )
+            try:
+                policy_path.rename(
+                    policy_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass
     return policy
 
 

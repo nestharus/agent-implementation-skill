@@ -6095,3 +6095,115 @@ class TestR66NoInlineDispatchInTemplates:
         assert not violations, (
             f"Python prompt builders contain inline dispatch:\n"
             + "\n".join(violations))
+
+
+class TestR67IntentAgentArtifactRouting:
+    """R67/V3: Intent-judge used when intent artifacts exist, regardless of mode."""
+
+    def test_runner_uses_intent_artifacts_not_mode_for_agent_selection(
+        self,
+    ) -> None:
+        """runner.py must select alignment agent based on artifact existence."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        runner = (src / "scripts" / "section_loop" / "section_engine"
+                  / "runner.py")
+        text = runner.read_text(encoding="utf-8")
+        # Must check for intent artifact existence, not just intent_mode
+        assert "has_intent_artifacts" in text
+        assert '"intent-judge.md" if has_intent_artifacts' in text
+
+
+class TestR67ExpansionBudgetPause:
+    """R67/V4: Expansion budget exhaustion pauses for parent, not proceed."""
+
+    def test_expansion_budget_triggers_pause(self) -> None:
+        """runner.py must pause_for_parent when expansion budget exhausted."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        runner = (src / "scripts" / "section_loop" / "section_engine"
+                  / "runner.py")
+        text = runner.read_text(encoding="utf-8")
+        # The expansion budget code must call pause_for_parent
+        assert "pause:intent-stalled" in text
+        assert "pause_for_parent" in text
+
+
+class TestR67SubstrateSignalFieldNames:
+    """R67/V10b: Substrate signals use 'state' field, not 'status'."""
+
+    def test_runner_reads_state_not_status(self) -> None:
+        """runner.py must read 'state' from prune/seed signals."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        runner = src / "scripts" / "substrate" / "runner.py"
+        text = runner.read_text(encoding="utf-8")
+        # prune-signal and seed-signal readers should use .get("state", ...)
+        # and NOT .get("status", ...)
+        import re
+        state_reads = re.findall(r'\.get\(["\']state["\']', text)
+        status_reads = re.findall(
+            r'(?:prune|seed).*\.get\(["\']status["\']', text)
+        assert len(state_reads) >= 2, (
+            f"Expected >=2 .get('state') calls, found {len(state_reads)}")
+        assert len(status_reads) == 0, (
+            f"Found .get('status') in signal readers: {status_reads}")
+
+
+class TestR67ModelPolicyFailClosed:
+    """R67/V10d: All model-policy readers rename malformed files."""
+
+    def test_all_model_policy_readers_rename_malformed(self) -> None:
+        """Every model-policy reader must rename to .malformed.json."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        readers = [
+            src / "scripts" / "scan" / "dispatch.py",
+            src / "scripts" / "section_loop" / "dispatch.py",
+            src / "scripts" / "substrate" / "runner.py",
+        ]
+        for reader_path in readers:
+            text = reader_path.read_text(encoding="utf-8")
+            assert ".malformed.json" in text, (
+                f"{reader_path.name} missing .malformed.json rename"
+            )
+
+
+class TestR67PhilosophySourceInvalidation:
+    """R67/V7: Global philosophy cached with source manifest invalidation."""
+
+    def test_bootstrap_writes_source_manifest(self) -> None:
+        """bootstrap.py must write philosophy-source-manifest.json."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        bootstrap = (src / "scripts" / "section_loop" / "intent"
+                     / "bootstrap.py")
+        text = bootstrap.read_text(encoding="utf-8")
+        assert "philosophy-source-manifest.json" in text
+
+    def test_pipeline_control_hashes_manifest(self) -> None:
+        """pipeline_control.py must hash the source manifest."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        pc = (src / "scripts" / "section_loop" / "pipeline_control.py")
+        text = pc.read_text(encoding="utf-8")
+        assert "philosophy-source-manifest.json" in text
+
+
+class TestR67IntentPackGeneratorNoTaxonomy:
+    """R67/V8: Intent-pack-generator does not impose a fixed taxonomy."""
+
+    def test_no_category_weight_columns_in_rubric(self) -> None:
+        """intent-pack-generator.md rubric must not have Category/Weight."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        agent = src / "agents" / "intent-pack-generator.md"
+        text = agent.read_text(encoding="utf-8")
+        # Rubric table should not contain Category or Weight columns
+        assert "| Category |" not in text
+        assert "| Weight |" not in text
+
+
+class TestR67IntentJudgeNoChecklistFraming:
+    """R67/V9: Intent-judge uses Contact Scan, not Coverage Scan."""
+
+    def test_no_coverage_scan_heading(self) -> None:
+        """intent-judge.md must use Contact Scan, not Coverage Scan."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        agent = src / "agents" / "intent-judge.md"
+        text = agent.read_text(encoding="utf-8")
+        assert "Coverage Scan" not in text
+        assert "Contact Scan" in text

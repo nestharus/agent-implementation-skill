@@ -139,6 +139,12 @@ def _section_inputs_hash(
     intent_global_philosophy = artifacts / "intent" / "global" / "philosophy.md"
     if intent_global_philosophy.exists():
         hasher.update(intent_global_philosophy.read_bytes())
+    # V7/R67: Hash source manifest so changes to upstream philosophy
+    # sources trigger re-proposal even when distilled artifact is cached
+    intent_global_manifest = (
+        artifacts / "intent" / "global" / "philosophy-source-manifest.json")
+    if intent_global_manifest.exists():
+        hasher.update(intent_global_manifest.read_bytes())
     intent_sec_dir = artifacts / "intent" / "sections" / f"section-{sec_num}"
     for intent_file in (
         intent_sec_dir / "problem.md",

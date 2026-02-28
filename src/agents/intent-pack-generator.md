@@ -36,21 +36,14 @@ it operates under, and what tradeoffs it faces.
 
 ### Phase 2: Select Axes
 
-Select 6-12 axes from the concern taxonomy. Each axis represents an
-independent dimension of the problem:
+Select 6-12 axes. Each axis represents an independent dimension of
+the problem — a direction where the solution could independently
+succeed or fail.
 
-- **Correctness axes**: Does the solution produce correct results?
-  (e.g., data integrity, error handling, boundary conditions)
-- **Structural axes**: Does the solution fit the codebase? (e.g.,
-  interface coherence, dependency direction, modularity)
-- **Behavioral axes**: Does the solution behave correctly at runtime?
-  (e.g., concurrency, performance, failure modes)
-- **Evolution axes**: Can the solution adapt? (e.g., extensibility,
-  migration path, backward compatibility)
-
-Do not force all categories. A section about a simple utility may
-have 6 axes, all correctness and structural. A section about a
-distributed system may have 12 spanning all categories.
+Axes come from evidence in the inputs, not from a fixed taxonomy.
+Read the section spec, excerpts, problem frame, and code context.
+Each axis should be justified by something concrete you found in those
+inputs: a constraint, a tension, a risk, a dependency.
 
 ### Phase 3: Write Problem Definition
 
@@ -69,8 +62,6 @@ For each axis, write a section (A1, A2, ..., AN) containing:
 Produce the axis reference table — one row per axis with:
 - Axis ID (A1..AN)
 - Short title (3-5 words)
-- Category (correctness / structural / behavioral / evolution)
-- Weight (critical / important / informational)
 - One-line description
 
 ## Output
@@ -94,10 +85,10 @@ Success criterion: [checkable condition]
 ```markdown
 # Problem Alignment Rubric: [Section Name]
 
-| Axis | Title | Category | Weight | Description |
-|------|-------|----------|--------|-------------|
-| A1   | ...   | ...      | ...    | ...         |
-| A2   | ...   | ...      | ...    | ...         |
+| Axis | Title | Description |
+|------|-------|-------------|
+| A1   | ...   | ...         |
+| A2   | ...   | ...         |
 ```
 
 ### Optional: philosophy-excerpt.md
@@ -144,6 +135,3 @@ applied, discarded). Do NOT put axis metadata here — axes belong in
   "This is generally important" is not evidence. "File X has 4
   callers that assume non-null returns (lines 23, 45, 78, 112)" IS
   evidence.
-- **Uniform weights**: If every axis is "critical," the weighting is
-  meaningless. Be honest about which axes are informational versus
-  which ones, if violated, make the solution wrong.

@@ -66,16 +66,14 @@ def validate_shard(data: dict) -> list[str]:
             f"(expected 1)"
         )
 
-    if "mode" in data and data["mode"] not in ("greenfield", "brownfield", "hybrid"):
+    if "mode" in data and data["mode"] not in (
+        "greenfield", "brownfield", "hybrid", "unknown",
+    ):
         errors.append(f"invalid mode: {data['mode']}")
 
     if "touchpoints" in data:
         if not isinstance(data["touchpoints"], list):
             errors.append("touchpoints must be a list")
-        else:
-            for tp in data["touchpoints"]:
-                if tp not in TOUCHPOINTS_ENUM:
-                    errors.append(f"unknown touchpoint: {tp}")
 
     for list_field in ("provides", "needs", "shared_seams", "open_questions"):
         if list_field in data and not isinstance(data[list_field], list):
@@ -115,10 +113,6 @@ def validate_seed_plan(data: dict) -> list[str]:
                     continue
                 if "path" not in anchor:
                     errors.append(f"anchors[{i}] missing 'path'")
-                if "kind" in anchor and anchor["kind"] not in KIND_ENUM:
-                    errors.append(
-                        f"anchors[{i}] unknown kind: {anchor['kind']}"
-                    )
 
     if "wire_sections" in data and not isinstance(data["wire_sections"], list):
         errors.append("wire_sections must be a list")

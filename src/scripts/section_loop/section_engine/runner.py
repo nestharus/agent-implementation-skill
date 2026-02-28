@@ -737,6 +737,19 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         if philosophy_result is None:
             log(f"Section {section.number}: philosophy unavailable — "
                 f"downgrading to lightweight intent mode")
+            degradation_signal = {
+                "section": section.number,
+                "from_mode": "full",
+                "to_mode": "lightweight",
+                "reason": "philosophy source unavailable",
+            }
+            signal_dir = artifacts / "signals"
+            signal_dir.mkdir(parents=True, exist_ok=True)
+            (signal_dir
+             / f"intent-degraded-{section.number}.json"
+             ).write_text(
+                json.dumps(degradation_signal, indent=2),
+                encoding="utf-8")
             intent_mode = "lightweight"
         else:
             # Generate per-section intent pack
@@ -994,14 +1007,21 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         )
         align_output = (artifacts
                         / f"intg-align-{section.number}-output.md")
-        # Select agent file based on intent mode
+        # Select agent file: use intent-judge when intent artifacts
+        # exist (regardless of mode), else fall back to alignment-judge
+        intent_sec_dir = (artifacts / "intent" / "sections"
+                          / f"section-{section.number}")
+        has_intent_artifacts = (
+            intent_sec_dir.exists()
+            and (intent_sec_dir / "problem.md").exists()
+        )
         alignment_agent_file = (
-            "intent-judge.md" if intent_mode == "full"
+            "intent-judge.md" if has_intent_artifacts
             else "alignment-judge.md"
         )
         alignment_model = (
             policy.get("intent_judge", policy["alignment"])
-            if intent_mode == "full"
+            if has_intent_artifacts
             else policy["alignment"]
         )
         # No agent_name → no per-agent monitor for alignment checks
@@ -1067,7 +1087,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                     if expansion_count >= expansion_max:
                         log(f"Section {section.number}: intent expansion "
                             f"budget exhausted ({expansion_count}/"
-                            f"{expansion_max}) — proceeding without expansion")
+                            f"{expansion_max}) — pausing for decision")
                         stalled_signal = {
                             "section": section.number,
                             "reason": "expansion budget exhausted",
@@ -1078,6 +1098,14 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                          ).write_text(
                             json.dumps(stalled_signal, indent=2),
                             encoding="utf-8")
+                        response = pause_for_parent(
+                            planspace, parent,
+                            f"pause:intent-stalled:{section.number}:"
+                            f"expansion budget exhausted "
+                            f"({expansion_count}/{expansion_max})",
+                        )
+                        if not response.startswith("resume"):
+                            return None
                     else:
                         log(f"Section {section.number}: surfaces found — "
                             f"running expansion cycle")

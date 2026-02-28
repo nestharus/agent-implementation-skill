@@ -1132,8 +1132,10 @@ a full or lightweight intent cycle is needed:
      problem definition and philosophy. May trigger proposal restart if
      axes materially change.
 
-3. **Lightweight mode** — skips intent pack and expanders, uses the
-   standard alignment judge directly.
+3. **Lightweight mode** — skips intent pack generation and expanders.
+   Uses cached intent artifacts if they exist from a previous full cycle
+   (intent-judge for alignment); falls back to standard alignment judge
+   only when no intent artifacts are available.
 
 Artifacts: `artifacts/intent/global/philosophy.md`,
 `artifacts/intent/sections/section-NN/problem.md`,
