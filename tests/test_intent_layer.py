@@ -1321,18 +1321,6 @@ class TestIntentConventions:
         assert "intent pack" in text.lower(), (
             "implement.md must describe intent pack generation")
 
-    def test_skill_md_lists_intent_agents(self) -> None:
-        """SKILL.md must list intent layer agents (V7/R54)."""
-        skill = (Path(__file__).resolve().parent.parent / "src"
-                 / "SKILL.md")
-        if not skill.exists():
-            pytest.skip("SKILL.md not found")
-        text = skill.read_text(encoding="utf-8")
-        for agent_name in ("intent-triager.md", "intent-judge.md",
-                           "intent-pack-generator.md",
-                           "philosophy-distiller.md"):
-            assert agent_name in text, (
-                f"SKILL.md must list {agent_name}")
 
 
 class TestR55IntentPackCorrections:

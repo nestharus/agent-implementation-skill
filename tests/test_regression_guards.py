@@ -614,17 +614,6 @@ SKILL_MD_MANIFEST = [
     "src/tools/extract-docstring-py",
     "src/tools/extract-summary-md",
     "src/tools/README.md",
-    # Agents
-    "src/agents/orchestrator.md",
-    "src/agents/monitor.md",
-    "src/agents/qa-monitor.md",
-    "src/agents/agent-monitor.md",
-    "src/agents/state-detector.md",
-    "src/agents/exception-handler.md",
-    "src/agents/microstrategy-writer.md",
-    "src/agents/section-re-explorer.md",
-    "src/agents/setup-excerpter.md",
-    "src/agents/bridge-agent.md",
     # Templates
     "src/templates/implement-proposal.md",
     "src/templates/research-cycle.md",
@@ -6055,20 +6044,6 @@ class TestR61AgentSteerableExtensionsGuard:
 # --- R66 guards ---
 
 
-class TestR66SkillMdAgentInventory:
-    """SKILL.md must list every agent file in agents/ (V3/R66)."""
-
-    def test_all_agents_listed_in_skillmd(self) -> None:
-        src = Path(__file__).resolve().parent.parent / "src"
-        agents_dir = src / "agents"
-        skill_md = src / "SKILL.md"
-        if not skill_md.exists() or not agents_dir.is_dir():
-            pytest.skip("SKILL.md or agents/ not found")
-        skill_text = skill_md.read_text(encoding="utf-8")
-        disk_agents = sorted(f.name for f in agents_dir.glob("*.md"))
-        missing = [a for a in disk_agents if a not in skill_text]
-        assert not missing, (
-            f"SKILL.md is missing these agent files: {missing}")
 
 
 class TestR66NoInlineDispatchInTemplates:

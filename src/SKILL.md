@@ -39,34 +39,7 @@ $WORKFLOW_HOME/
     extract-docstring-py  # extract Python module docstrings
     extract-summary-md    # extract YAML frontmatter from markdown
     README.md             # tool interface spec (for Opus to write new tools)
-  agents/              # agent role definitions
-    agent-monitor.md            # per-agent monitor: watches narration mailbox for loops/repetition
-    alignment-judge.md          # checks alignment between layers
-    bridge-agent.md             # resolves cross-section interface friction
-    bridge-tools.md             # tool-aware bridge resolution
-    coordination-planner.md     # groups related cross-section problems
-    exception-handler.md        # RCA on failed steps
-    implementation-strategist.md # strategic multi-file implementation
-    integration-proposer.md     # writes integration proposals
-    intent-judge.md             # problem + philosophy alignment checking
-    intent-pack-generator.md    # generates intent packs for sections
-    intent-triager.md           # triages intent signals
-    microstrategy-writer.md     # tactical per-file breakdowns
-    monitor.md                  # pipeline cycle/stuck detection
-    orchestrator.md             # event-driven workflow dispatch
-    philosophy-distiller.md     # distills design philosophy
-    philosophy-expander.md      # validates + integrates philosophy surfaces, gates tensions
-    philosophy-source-selector.md # selects philosophy source files from mechanical catalog
-    problem-expander.md         # validates problem surfaces, integrates into section problem definition
-    qa-monitor.md               # deep QA with PAUSE authority
-    section-re-explorer.md      # re-explores sections with no related files
-    setup-excerpter.md          # extracts section-level excerpts from global proposal/alignment
-    state-adjudicator.md        # lightweight classifier for ambiguous agent output states
-    state-detector.md           # workspace state reporting
-    substrate-shard-explorer.md  # produces needs/provides/shared-seam JSON shards per section
-    substrate-pruner.md          # merges shards, prunes contradictions, produces substrate + seed plan
-    substrate-seeder.md          # creates minimal anchor files from seed plan, wires substrate refs
-    tool-registrar.md           # manages tool lifecycle: validates, catalogs, makes tools available
+  agents/              # agent role definitions (see agents/*.md for full inventory)
   templates/
     implement-proposal.md   # 10-step implementation schedule
     research-cycle.md       # 7-step research schedule
