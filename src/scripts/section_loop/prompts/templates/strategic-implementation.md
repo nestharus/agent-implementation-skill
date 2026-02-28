@@ -46,7 +46,9 @@ codemap corrections exist, treat them as authoritative fixes.
 
 For cheap exploration (reading, checking, verifying):
 ```bash
-agents --model {exploration_model} --project "{codespace}" "<instructions>"
+EXPLORE="$(mktemp)"
+echo '<your-instructions>' > "$EXPLORE"
+agents --model {exploration_model} --project "{codespace}" --file "$EXPLORE"
 ```
 
 For targeted implementation of specific areas, write a prompt file first

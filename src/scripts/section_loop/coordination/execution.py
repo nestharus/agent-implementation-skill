@@ -154,7 +154,9 @@ creates or re-triggers another.
    the broader project structure. Then dispatch sub-agents to read
    files and understand context:
    ```bash
-   uv run --frozen agents --model {exploration_model} --project "{codespace}" "<instructions>"
+   EXPLORE="$(mktemp)"
+   echo '<your-instructions>' > "$EXPLORE"
+   uv run --frozen agents --model {exploration_model} --project "{codespace}" --file "$EXPLORE"
    ```
 
 2. **Plan holistically.** Consider how all the problems interact. A single

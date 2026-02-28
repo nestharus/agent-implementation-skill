@@ -85,7 +85,7 @@ integration points that this section will interact with.
 Write your shard JSON to: `{output_path}`
 
 Create parent directories as needed. Follow the schema from your
-agent definition exactly (schema v1 with id/kind/summary fields).
+agent definition exactly.
 """, encoding="utf-8")
 
     return prompt_path

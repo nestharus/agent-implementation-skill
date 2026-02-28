@@ -2,7 +2,7 @@
 
 Models are configured in `.agents/models/` (TOML files). Invoke via:
 ```bash
-uv run agents --model <model-name> [--file <prompt.md>] ["<instructions>"]
+uv run agents --model <model-name> --file <prompt.md>
 ```
 
 All CLI models run from the ai-workflow repo root.
@@ -60,7 +60,7 @@ Simple lookup or classification?
 
 ### GLM
 - **Strengths**: Command execution, test running, codebase scanning, relevance summarization
-- **Prompt format**: Inline string `"<instructions>"`
+- **Prompt format**: `--file <prompt.md>` (preferred; inline `"<instructions>"` also accepted)
 - **Use for**: TODO scanning (section → code mapping), block fit summaries, test running
 - **Summary role**: GLM summaries are not authoritative — they capture reasoning
   to reduce re-analysis by downstream models. Preserves context for blocks that

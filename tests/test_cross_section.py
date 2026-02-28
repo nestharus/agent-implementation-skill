@@ -123,6 +123,38 @@ class TestNormalizeSectionNumber:
         assert normalize_section_number("abc", sec_map) == "abc"
 
 
+class TestImpactPrefilterSeamAwareness:
+    """Impact prefilter must consider structured seam artifacts (V13/R66)."""
+
+    def test_shared_input_refs_generate_candidates(self) -> None:
+        """Sections sharing .ref files should be impact candidates."""
+        src = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "scripts" / "section_loop" / "cross_section.py"
+        )
+        if not src.exists():
+            pytest.skip("cross_section.py not found")
+        text = src.read_text(encoding="utf-8")
+        # The prefilter must check inputs/ refs
+        assert ".ref" in text, (
+            "Impact prefilter must check shared .ref input artifacts")
+        assert "inputs" in text, (
+            "Impact prefilter must check artifacts/inputs/ directory")
+
+    def test_contract_artifacts_generate_candidates(self) -> None:
+        """Existing contract artifacts should be impact candidates."""
+        src = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "scripts" / "section_loop" / "cross_section.py"
+        )
+        if not src.exists():
+            pytest.skip("cross_section.py not found")
+        text = src.read_text(encoding="utf-8")
+        # The prefilter must check contract artifacts
+        assert "contracts" in text, (
+            "Impact prefilter must check existing contract artifacts")
+
+
 class TestBuildSectionNumberMap:
     def test_builds_correct_map(self, tmp_path: Path) -> None:
         sections = [

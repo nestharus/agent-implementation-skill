@@ -119,11 +119,17 @@ def post_section_completion(
         return
 
     # Stage A: Mechanical candidate generation (no agent call needed)
-    # Find sections with overlapping files, recent note mentions, or
-    # shared snapshot files
+    # Find sections with overlapping files, recent note mentions,
+    # shared snapshot files, shared input refs, or existing contracts
     notes_dir_path = artifacts / "notes"
     modified_set = set(modified_files)
     candidate_sections: list[Section] = []
+    # Pre-compute source section's input refs for Check 4
+    source_inputs = artifacts / "inputs" / f"section-{sec_num}"
+    source_refs = set()
+    if source_inputs.is_dir():
+        source_refs = {f.name for f in source_inputs.iterdir()
+                       if f.suffix == ".ref"}
     for other in other_sections:
         other_files = set(other.related_files)
         # Check 1: File overlap
@@ -137,12 +143,34 @@ def post_section_completion(
             continue
         # Check 3: Snapshot overlap (source section touched files
         # that the other section previously snapshotted)
+        snapshot_match = False
         other_snapshot = artifacts / "snapshots" / f"section-{other.number}"
         if other_snapshot.exists():
             for mod_file in modified_files:
                 if (other_snapshot / mod_file).exists():
                     candidate_sections.append(other)
+                    snapshot_match = True
                     break
+        if snapshot_match:
+            continue
+        # Check 4: Shared input refs (structured seam artifacts —
+        # both sections depend on the same substrate or contract ref)
+        if source_refs:
+            other_inputs = artifacts / "inputs" / f"section-{other.number}"
+            if other_inputs.is_dir():
+                other_refs = {f.name for f in other_inputs.iterdir()
+                              if f.suffix == ".ref"}
+                if source_refs & other_refs:
+                    candidate_sections.append(other)
+                    continue
+        # Check 5: Existing contract artifacts linking this pair
+        contracts_dir = artifacts / "contracts"
+        if contracts_dir.is_dir():
+            fwd = contracts_dir / f"contract-{sec_num}-{other.number}.md"
+            rev = contracts_dir / f"contract-{other.number}-{sec_num}.md"
+            if fwd.exists() or rev.exists():
+                candidate_sections.append(other)
+                continue
 
     if not candidate_sections:
         log(f"Section {sec_num}: no candidate sections for impact analysis")

@@ -51,7 +51,9 @@ individual files.
 
 **Dispatch sub-agents for targeted exploration:**
 ```bash
-agents --model {exploration_model} --project "{codespace}" "<instructions>"
+EXPLORE="$(mktemp)"
+echo '<your-instructions>' > "$EXPLORE"
+agents --model {exploration_model} --project "{codespace}" --file "$EXPLORE"
 ```
 
 Use sub-agents to:

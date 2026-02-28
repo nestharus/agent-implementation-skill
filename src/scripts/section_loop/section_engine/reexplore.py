@@ -64,7 +64,9 @@ Your job is to determine why and classify the situation.
    to this section's problem space
 4. Use sub-agents for quick file reads:
    ```bash
-   uv run --frozen agents --model {exploration_model} --project "{codespace}" "<instructions>"
+   EXPLORE="$(mktemp)"
+   echo '<your-instructions>' > "$EXPLORE"
+   uv run --frozen agents --model {exploration_model} --project "{codespace}" --file "$EXPLORE"
    ```
 
 ## Output

@@ -6050,3 +6050,73 @@ class TestR61AgentSteerableExtensionsGuard:
 
         assert "additional_extensions" in func_body, (
             "Must handle agent-requested extension expansion (V4/R61)")
+
+
+# --- R66 guards ---
+
+
+class TestR66SkillMdAgentInventory:
+    """SKILL.md must list every agent file in agents/ (V3/R66)."""
+
+    def test_all_agents_listed_in_skillmd(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        agents_dir = src / "agents"
+        skill_md = src / "SKILL.md"
+        if not skill_md.exists() or not agents_dir.is_dir():
+            pytest.skip("SKILL.md or agents/ not found")
+        skill_text = skill_md.read_text(encoding="utf-8")
+        disk_agents = sorted(f.name for f in agents_dir.glob("*.md"))
+        missing = [a for a in disk_agents if a not in skill_text]
+        assert not missing, (
+            f"SKILL.md is missing these agent files: {missing}")
+
+
+class TestR66NoInlineDispatchInTemplates:
+    """Runtime prompt templates must use --file, not inline dispatch (V4/R66)."""
+
+    def test_no_inline_dispatch_in_templates(self) -> None:
+        templates_dir = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "scripts" / "section_loop" / "prompts" / "templates"
+        )
+        if not templates_dir.is_dir():
+            pytest.skip("templates/ dir not found")
+        violations = []
+        for tmpl in templates_dir.glob("*.md"):
+            text = tmpl.read_text(encoding="utf-8")
+            for i, line in enumerate(text.splitlines(), 1):
+                stripped = line.strip()
+                if (
+                    "agents" in stripped
+                    and "--model" in stripped
+                    and '"<' in stripped
+                    and "--file" not in stripped
+                ):
+                    violations.append(f"{tmpl.name}:{i}: {stripped}")
+        assert not violations, (
+            f"Templates contain inline dispatch (use --file):\n"
+            + "\n".join(violations))
+
+    def test_no_inline_dispatch_in_python_prompts(self) -> None:
+        """Python prompt builders must not embed inline dispatch."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        py_files = [
+            src / "scripts" / "section_loop" / "coordination" / "execution.py",
+            src / "scripts" / "section_loop" / "section_engine" / "reexplore.py",
+        ]
+        violations = []
+        for py_path in py_files:
+            if not py_path.exists():
+                continue
+            text = py_path.read_text(encoding="utf-8")
+            for i, line in enumerate(text.splitlines(), 1):
+                if (
+                    "agents" in line
+                    and "--model" in line
+                    and '"<' in line
+                    and "--file" not in line
+                ):
+                    violations.append(f"{py_path.name}:{i}: {line.strip()}")
+        assert not violations, (
+            f"Python prompt builders contain inline dispatch:\n"
+            + "\n".join(violations))

@@ -1069,3 +1069,31 @@ class TestCLI:
         planspace.mkdir()
         rc = main([str(planspace), str(tmp_path / "nonexistent")])
         assert rc == 1
+
+
+# ---- Contract-boundary regression guards ----
+
+
+class TestShardPromptNoSchemaRedefinition:
+    """Shard prompt must NOT redefine schema — agent file owns it (R66)."""
+
+    def test_no_schema_fields_in_shard_prompt(
+        self, substrate_planspace: Path, substrate_codespace: Path,
+    ) -> None:
+        from substrate.prompts import write_shard_prompt
+
+        artifacts = substrate_planspace / "artifacts"
+        section_path = artifacts / "sections" / "section-01.md"
+        section_path.write_text("# Section 01\n")
+
+        prompt_path = write_shard_prompt(
+            "01", section_path, substrate_planspace, substrate_codespace,
+        )
+        content = prompt_path.read_text()
+
+        # Prompt must NOT list schema field names — those belong in agent file
+        for field in ("from_section", "touchpoint", '"name"', '"sections"'):
+            assert field not in content, (
+                f"Shard prompt redefines schema field '{field}' — "
+                f"agent file owns the schema"
+            )

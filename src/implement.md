@@ -1083,9 +1083,13 @@ GPT reads the section proposal excerpt, alignment excerpt, section
 specification, and related source files. Before writing anything, GPT
 explores the codebase strategically:
 
-**Dispatch GLM sub-agents for targeted exploration:**
+**Dispatch sub-agents for targeted exploration:**
 ```bash
-agents --model glm --project <codespace> "<instructions>"
+EXPLORE="$(mktemp)"
+cat > "$EXPLORE" <<'PROMPT'
+<instructions>
+PROMPT
+agents --model glm --project <codespace> --file "$EXPLORE"
 ```
 
 Use GLM to read files, find callers/callees, check existing interfaces,
@@ -1165,11 +1169,14 @@ at once, coordinated changes. NOT mechanical per-file execution.
 
 For cheap exploration (reading, checking, verifying):
 ```bash
-agents --model glm --project <codespace> "<instructions>"
+EXPLORE="$(mktemp)"
+cat > "$EXPLORE" <<'PROMPT'
+<instructions>
+PROMPT
+agents --model glm --project <codespace> --file "$EXPLORE"
 ```
 
-For targeted implementation of specific areas, write a prompt file first
-(Codex models require `--file`, not inline instructions):
+For targeted implementation of specific areas:
 ```bash
 PROMPT="$(mktemp)"
 cat > "$PROMPT" <<'EOF'
