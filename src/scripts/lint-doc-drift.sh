@@ -80,6 +80,18 @@ done < <(grep -rn \
   "$WH/scripts/section_loop/coordination" \
   2>/dev/null || true)
 
+# --- Group 5: stale invocation style (R77) ---
+# "uv run agents" is the wrong binary invocation; the correct form is "agents".
+while IFS= read -r match; do
+  echo "[LINT] Stale invocation style (uv run agents → agents): $match"
+  EXIT_CODE=1
+done < <(grep -rn \
+  -e "uv run agents" \
+  --include="*.md" --include="*.py" \
+  "$WH/models.md" "$WH/research.md" "$WH/baseline.md" \
+  "$WH/rca.md" "$WH/implement.md" "$WH/SKILL.md" \
+  2>/dev/null || true)
+
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "[LINT] No superseded behavior claims found."
 fi

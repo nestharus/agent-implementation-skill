@@ -88,7 +88,6 @@ ALLOWED_MODELS = {
     "gpt-codex-high",
     "gpt-codex-high",
     "gpt-codex-xhigh",
-    "claude-haiku",
 }
 
 
@@ -1200,7 +1199,7 @@ class TestModelPolicyCompleteness:
             SECTION_LOOP_PKG / "main.py",
         ]
         known_models = [
-            "claude-opus", "claude-haiku", "glm",
+            "claude-opus", "glm",
             "gpt-codex-high", "gpt-codex-high",
             "gpt-codex-xhigh",
         ]
@@ -2021,7 +2020,7 @@ class TestNoHardcodedModelInPromptSurfaces:
 
     KNOWN_MODELS = [
         "glm", "gpt-codex-high", "gpt-codex-high",
-        "gpt-codex-xhigh", "claude-opus", "claude-haiku",
+        "gpt-codex-xhigh", "claude-opus",
     ]
 
     def test_no_hardcoded_model_in_section_loop_templates(self) -> None:
@@ -7904,4 +7903,111 @@ class TestR77V6TaskSubmissionSemantics:
         ).read_text(encoding="utf-8")
         assert "delegate/summarize" in text, (
             "lint-doc-drift.sh must ban stale delegation language"
+        )
+
+
+class TestR77InvocationStyle:
+    """R77: docs must use 'agents' binary, not 'uv run agents'."""
+
+    CANONICAL_DOCS = [
+        "models.md",
+        "research.md",
+        "baseline.md",
+        "rca.md",
+    ]
+
+    def test_no_uv_run_agents_in_docs(self) -> None:
+        """Canonical docs must not contain 'uv run agents'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        for doc in self.CANONICAL_DOCS:
+            path = src / doc
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8")
+            assert "uv run agents" not in text, (
+                f"{doc} still contains 'uv run agents' — must use "
+                f"'agents' binary directly"
+            )
+
+    def test_dispatch_docstring_no_uv_run(self) -> None:
+        """dispatch.py docstring must not reference 'uv run agents'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "dispatch.py"
+        ).read_text(encoding="utf-8")
+        assert "uv run agents" not in text, (
+            "dispatch.py still references 'uv run agents'"
+        )
+
+    def test_lint_drift_catches_uv_run_agents(self) -> None:
+        """lint-doc-drift.sh must catch 'uv run agents' in docs."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "lint-doc-drift.sh"
+        ).read_text(encoding="utf-8")
+        assert "uv run agents" in text, (
+            "lint-doc-drift.sh must ban stale 'uv run agents' invocations"
+        )
+
+    def test_agent_templates_prohibits_agents_binary(self) -> None:
+        """agent_templates.py must prohibit 'agents --model' in dynamic content."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "agent_templates.py"
+        ).read_text(encoding="utf-8")
+        assert r"agents\s+--model" in text, (
+            "agent_templates.py must prohibit agents binary spawning "
+            "in dynamic content"
+        )
+
+
+class TestR77ModelInventory:
+    """R77: only Opus, GLM, gpt-codex-high/high2, gpt-codex-xhigh in inventory."""
+
+    CANONICAL_DOCS = [
+        "models.md",
+        "research.md",
+        "implement.md",
+        "SKILL.md",
+        "baseline.md",
+    ]
+
+    def test_no_haiku_in_docs(self) -> None:
+        """Canonical docs must not reference haiku model."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        import re
+        for doc in self.CANONICAL_DOCS:
+            path = src / doc
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8")
+            assert not re.search(r"\bhaiku\b", text, re.IGNORECASE), (
+                f"{doc} still references haiku — not in model inventory"
+            )
+
+    def test_no_haiku_in_model_sets(self) -> None:
+        """Test file ALLOWED_MODELS and KNOWN_MODELS must not include haiku."""
+        import re
+        src_text = Path(__file__).read_text(encoding="utf-8")
+        # Find model set/list definitions and check for haiku
+        # Pattern: lines like "claude-haiku" inside set/list literals
+        needle = "claude-" + "haiku"  # split to avoid self-match
+        model_defs = re.findall(
+            r"(?:ALLOWED_MODELS|KNOWN_MODELS|known_models)\s*=\s*[\[{]([^}\]]+)",
+            src_text,
+        )
+        for defn in model_defs:
+            assert needle not in defn, (
+                "test_regression_guards.py model constant still lists "
+                f"{needle}"
+            )
+
+    def test_lint_catches_haiku_references(self) -> None:
+        """lint-audit-language.sh must catch haiku references."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "lint-audit-language.sh"
+        ).read_text(encoding="utf-8")
+        assert "haiku" in text, (
+            "lint-audit-language.sh must ban haiku model references"
         )

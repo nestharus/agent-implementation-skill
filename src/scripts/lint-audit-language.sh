@@ -62,6 +62,18 @@ done < <(grep -rn \
   --include="*.md" \
   "$WH/models.md" 2>/dev/null || true)
 
+# --- Phrase group 4: stale model references (R77) ---
+# Haiku is not in the model inventory; references should not appear.
+while IFS= read -r match; do
+  echo "[LINT] Stale model reference (haiku not in inventory): $match"
+  EXIT_CODE=1
+done < <(grep -rn -i \
+  -e "\bhaiku\b" \
+  --include="*.md" \
+  --exclude-dir="archive" \
+  "$WH/models.md" "$WH/implement.md" "$WH/SKILL.md" \
+  "$WH/research.md" "$WH/baseline.md" 2>/dev/null || true)
+
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "[LINT] No prohibited audit-framing language found."
 fi

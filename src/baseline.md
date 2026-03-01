@@ -73,7 +73,7 @@ the proposal is traceable through the design documents. Fix gaps.
 Re-check until clean.
 
 ```bash
-uv run agents --model gpt-codex-high --file "<review-prompt-path>"
+agents --model gpt-codex-high --file "<review-prompt-path>"
 ```
 
 ## Anti-Patterns

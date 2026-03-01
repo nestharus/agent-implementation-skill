@@ -2,7 +2,7 @@
 
 Models are configured in `.agents/models/` (TOML files). Invoke via:
 ```bash
-uv run agents --model <model-name> --file <prompt.md>
+agents --model <model-name> --file <prompt.md>
 ```
 
 All CLI models run from the ai-workflow repo root.
@@ -35,7 +35,7 @@ RUNNING commands (tests, shell operations)?
   → glm (or run pytest directly)
 
 Simple lookup or classification?
-  → Haiku
+  → GLM
 ```
 
 ## Model Details
@@ -47,7 +47,7 @@ Simple lookup or classification?
 
 ### gpt-codex-xhigh (Primary Proposer)
 - **Strengths**: Highest reasoning effort, novel architectural synthesis
-- **Invocation**: `uv run agents --model gpt-codex-xhigh --file <prompt.md>`
+- **Invocation**: `agents --model gpt-codex-xhigh --file <prompt.md>`
 - **Use for**: Primary research synthesis (proposer role)
 - **Does NOT**: Audit or implement
 
@@ -66,10 +66,6 @@ Simple lookup or classification?
   to reduce re-analysis by downstream models. Preserves context for blocks that
   may be refactored, moved, or removed.
 - **Fallback**: Run pytest directly if GLM unreliable
-
-### Haiku
-- **Strengths**: Fastest, cheapest, simple classification
-- **Invocation**: `uv run agents --model haiku --file <prompt.md>`
 
 ## Stage 3.5 Model Policy Keys
 
@@ -119,7 +115,6 @@ rather than hurts.
 | codex-xhigh | Highest reasoning, moderate controllability. Needs clear problem framing. |
 | codex-high | Good reasoning, high controllability. Best for structured constraint evaluation (not feature coverage). |
 | GLM | Low reasoning, highest controllability. Follows instructions precisely. |
-| Haiku | Minimal reasoning, highest controllability. Classification only. |
 
 **Escalation rule**: Only escalate when a lower model has demonstrably
 failed on the same task (e.g., 2+ alignment failures at codex-high before

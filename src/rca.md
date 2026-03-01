@@ -78,7 +78,7 @@ Run from within the worktree:
 
 ```bash
 cd .worktrees/rca-<issue-slug>
-uv run agents --model gpt-codex-high --file .tmp/rca-wave-N.md
+agents --model gpt-codex-high --file .tmp/rca-wave-N.md
 ```
 
 **Critical**: The prompt says "do NOT modify any files." Codex produces a
@@ -133,7 +133,7 @@ Edit files on the working branch at: <working-branch-path>
 Dispatch from the repo root:
 
 ```bash
-uv run agents --model claude-opus --file .worktrees/rca-<issue-slug>/.tmp/fix-wave-N.md
+agents --model claude-opus --file .worktrees/rca-<issue-slug>/.tmp/fix-wave-N.md
 ```
 
 **Why a separate agent?** The fix agent reads the report, reads the source,

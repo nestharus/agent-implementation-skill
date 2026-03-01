@@ -31,7 +31,7 @@ dynamic content section that follows.
 
 1. **No sub-agent spawning.** You must not launch, invoke, or request the
    creation of other agents. You are the only agent working on this task.
-   Do not use `uv run agents`, do not ask for helpers, do not delegate.
+   Do not use the `agents` binary, do not ask for helpers, do not delegate.
 
 2. **Structured output only.** Your response must be either:
    - A JSON signal block (for state/status), or
@@ -81,6 +81,10 @@ _PROHIBITED_PATTERNS: list[tuple[str, str]] = [
     (
         r"\buv\s+run\s+agents?\b",
         "Dynamic content must not instruct agent spawning (uv run agents)",
+    ),
+    (
+        r"\bagents\s+--model\b",
+        "Dynamic content must not instruct agent spawning (agents binary)",
     ),
     (
         r"\b(?:spawn|launch|create|invoke)\s+(?:an?\s+)?(?:sub-?)?agent",

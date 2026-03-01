@@ -23,7 +23,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
                    section_number: str | None = None,
                    *,
                    agent_file: str) -> str:
-    """Run an agent via uv run agents and return the output text.
+    """Run an agent via the agents binary and return the output text.
 
     If planspace and parent are provided, checks pipeline state before
     dispatching and waits if paused.
