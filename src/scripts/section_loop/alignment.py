@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from .agent_templates import render_template
 from .communication import log
 from .dispatch import dispatch_agent
 from .pipeline_control import poll_control_messages
@@ -134,7 +135,7 @@ def _extract_problems(
         artifacts.mkdir(parents=True, exist_ok=True)
         adj_prompt = artifacts / "alignment-adjudicate-prompt.md"
         adj_output = artifacts / "alignment-adjudicate-output.md"
-        adj_prompt.write_text(f"""# Task: Classify Alignment Check Output
+        dynamic_body = f"""# Classify Alignment Check Output
 
 Read the alignment check output and determine whether the section is aligned.
 
@@ -161,11 +162,19 @@ Reply with a JSON block:
   with the problems listed
 - If you cannot determine the state → `"aligned": false` with a single
   problem: "Unable to determine alignment state from judge output"
-""", encoding="utf-8")
+"""
+        adj_prompt.write_text(
+            render_template(
+                "alignment-adjudicate", dynamic_body,
+                file_paths=[str(output_path)],
+            ),
+            encoding="utf-8",
+        )
 
         adj_result = dispatch_agent(
             adjudicator_model, adj_prompt, adj_output,
             planspace, parent, codespace=codespace,
+            agent_file="alignment-output-adjudicator.md",
         )
         if adj_result and adj_result != "ALIGNMENT_CHANGED_PENDING":
             try:

@@ -22,12 +22,28 @@ section trying to solve? What kind of code would it touch if it existed?
 
 ### Phase 2: Targeted Exploration
 
-Use GLM sub-agents to investigate (using the `--project` path provided
-in your dispatch prompt):
+Investigate the codebase directly using your available tools:
 
 - Search for files that might relate to the section's problem space
 - Check if imports, interfaces, or data structures connect to this concern
 - Look for files the codemap didn't surface (edge cases, utility modules)
+
+If you need specialized analysis (e.g., deep file analysis, codemap
+verification), submit a task by writing a JSON signal to the
+task-submission path in your dispatch prompt:
+
+```json
+{
+    "task_type": "scan_explore",
+    "problem_id": "<problem-id>",
+    "concern_scope": "<section-id>",
+    "payload_path": "<path-to-exploration-prompt>",
+    "priority": "normal"
+}
+```
+
+The dispatcher resolves task types to the correct agent and model.
+You declare WHAT exploration you need, not HOW it runs.
 
 ### Phase 3: Classify and Report
 

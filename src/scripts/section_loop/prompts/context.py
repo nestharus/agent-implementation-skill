@@ -30,13 +30,27 @@ def build_prompt_context(
 
     # --- decisions ---
     decisions_file = artifacts / "decisions" / f"section-{sec}.md"
+    decisions_json = artifacts / "decisions" / f"section-{sec}.json"
     decisions_block = ""
     if decisions_file.exists():
+        json_ref = ""
+        if decisions_json.exists():
+            json_ref = (
+                f"\n   - Structured decisions (JSON): `{decisions_json}`"
+            )
         decisions_block = (
             f"\n## Parent Decisions (from prior pause/resume cycles)\n"
-            f"Read decisions file: `{decisions_file}`\n\n"
+            f"Read decisions file: `{decisions_file}`{json_ref}\n\n"
             f"Use this context to inform your excerpt extraction — the parent has\n"
             f"provided additional guidance about this section.\n"
+        )
+
+    # --- strategic state ---
+    strategic_state_path = artifacts / "strategic-state.json"
+    strategic_state_ref = ""
+    if strategic_state_path.exists():
+        strategic_state_ref = (
+            f"\n   - Strategic state snapshot: `{strategic_state_path}`"
         )
 
     # --- codemap ---
@@ -239,6 +253,7 @@ def build_prompt_context(
         "artifacts": artifacts,
         "summary": summary,
         "decisions_block": decisions_block,
+        "strategic_state_ref": strategic_state_ref,
         "codemap_ref": codemap_ref,
         "corrections_ref": corrections_ref,
         "substrate_ref": substrate_ref,

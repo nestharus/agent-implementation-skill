@@ -5,18 +5,24 @@
 # Uses Python's built-in sqlite3 module for SQL execution (no sqlite3 CLI needed).
 #
 # Usage:
-#   db.sh init       <db>                                    # create/initialize database
-#   db.sh send       <db> <target> [--from <agent>] [msg...] # send message (stdin if no args)
-#   db.sh recv       <db> <name>   [timeout]                 # block until message (0=forever)
-#   db.sh check      <db> <name>                             # non-blocking pending count
-#   db.sh drain      <db> <name>                             # read all pending, non-blocking
-#   db.sh register   <db> <name>   [pid]                     # register agent
-#   db.sh unregister <db> <name>                             # mark agent exited
-#   db.sh agents     <db>                                    # list registered agents
-#   db.sh cleanup    <db> [name]                             # mark agents cleaned up
-#   db.sh log        <db> <kind> [tag] [body] [--agent <a>]  # record event
-#   db.sh tail       <db> [kind] [--since <id>] [--limit <n>]# cursor-based event stream
-#   db.sh query      <db> <kind> [--tag <t>] [--agent <a>] [--since <id>] [--limit <n>] # flexible filter
+#   db.sh init          <db>                                    # create/initialize database
+#   db.sh send          <db> <target> [--from <agent>] [msg...] # send message (stdin if no args)
+#   db.sh recv          <db> <name>   [timeout]                 # block until message (0=forever)
+#   db.sh check         <db> <name>                             # non-blocking pending count
+#   db.sh drain         <db> <name>                             # read all pending, non-blocking
+#   db.sh register      <db> <name>   [pid]                     # register agent
+#   db.sh unregister    <db> <name>                             # mark agent exited
+#   db.sh agents        <db>                                    # list registered agents
+#   db.sh cleanup       <db> [name]                             # mark agents cleaned up
+#   db.sh log           <db> <kind> [tag] [body] [--agent <a>]  # record event
+#   db.sh tail          <db> [kind] [--since <id>] [--limit <n>]# cursor-based event stream
+#   db.sh query         <db> <kind> [--tag <t>] [--agent <a>] [--since <id>] [--limit <n>] # flexible filter
+#   db.sh submit-task   <db> <submitted_by> <task_type> [opts]  # submit task, print ID
+#   db.sh claim-task    <db> <dispatcher> <task_id>             # claim task for execution
+#   db.sh complete-task <db> <task_id> [--output <path>]        # mark task complete
+#   db.sh fail-task     <db> <task_id> [--error <msg>]          # mark task failed
+#   db.sh list-tasks    <db> [--status <s>] [--type <t>]        # list matching tasks
+#   db.sh next-task     <db>                                    # next runnable task (pending, deps met)
 
 set -euo pipefail
 
@@ -116,6 +122,29 @@ CREATE INDEX IF NOT EXISTS idx_events_kind ON events(kind);
 CREATE INDEX IF NOT EXISTS idx_events_kind_tag ON events(kind, tag);
 CREATE INDEX IF NOT EXISTS idx_events_kind_id ON events(kind, id);
 CREATE INDEX IF NOT EXISTS idx_agents_name ON agents(name);
+
+CREATE TABLE IF NOT EXISTS tasks (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    submitted_by   TEXT    NOT NULL,
+    task_type      TEXT    NOT NULL,
+    problem_id     TEXT,
+    concern_scope  TEXT,
+    payload_path   TEXT,
+    priority       TEXT    DEFAULT \'normal\',
+    depends_on     TEXT,
+    status         TEXT    DEFAULT \'pending\',
+    claimed_by     TEXT,
+    agent_file     TEXT,
+    model          TEXT,
+    output_path    TEXT,
+    created_at     TEXT    DEFAULT (datetime(\'now\')),
+    claimed_at     TEXT,
+    completed_at   TEXT,
+    error          TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_type   ON tasks(task_type);
 ''')
 conn.close()
 " "$db"
@@ -147,22 +176,43 @@ conn.close()
 }
 
 # Parse optional flags from remaining args.
-# Sets variables: FLAG_FROM, FLAG_AGENT, FLAG_SINCE, FLAG_LIMIT, FLAG_TAG, POSITIONAL
+# Sets variables: FLAG_FROM, FLAG_AGENT, FLAG_SINCE, FLAG_LIMIT, FLAG_TAG,
+#                 FLAG_PROBLEM, FLAG_SCOPE, FLAG_PAYLOAD, FLAG_PRIORITY,
+#                 FLAG_DEPENDS_ON, FLAG_STATUS, FLAG_TYPE, FLAG_OUTPUT,
+#                 FLAG_ERROR, POSITIONAL
 _parse_flags() {
   FLAG_FROM=""
   FLAG_AGENT=""
   FLAG_SINCE=""
   FLAG_LIMIT=""
   FLAG_TAG=""
+  FLAG_PROBLEM=""
+  FLAG_SCOPE=""
+  FLAG_PAYLOAD=""
+  FLAG_PRIORITY=""
+  FLAG_DEPENDS_ON=""
+  FLAG_STATUS=""
+  FLAG_TYPE=""
+  FLAG_OUTPUT=""
+  FLAG_ERROR=""
   POSITIONAL=()
   while [ $# -gt 0 ]; do
     case "$1" in
-      --from)  FLAG_FROM="${2:?--from requires a value}"; shift 2 ;;
-      --agent) FLAG_AGENT="${2:?--agent requires a value}"; shift 2 ;;
-      --since) FLAG_SINCE="${2:?--since requires a value}"; shift 2 ;;
-      --limit) FLAG_LIMIT="${2:?--limit requires a value}"; shift 2 ;;
-      --tag)   FLAG_TAG="${2:?--tag requires a value}"; shift 2 ;;
-      *)       POSITIONAL+=("$1"); shift ;;
+      --from)       FLAG_FROM="${2:?--from requires a value}"; shift 2 ;;
+      --agent)      FLAG_AGENT="${2:?--agent requires a value}"; shift 2 ;;
+      --since)      FLAG_SINCE="${2:?--since requires a value}"; shift 2 ;;
+      --limit)      FLAG_LIMIT="${2:?--limit requires a value}"; shift 2 ;;
+      --tag)        FLAG_TAG="${2:?--tag requires a value}"; shift 2 ;;
+      --problem)    FLAG_PROBLEM="${2:?--problem requires a value}"; shift 2 ;;
+      --scope)      FLAG_SCOPE="${2:?--scope requires a value}"; shift 2 ;;
+      --payload)    FLAG_PAYLOAD="${2:?--payload requires a value}"; shift 2 ;;
+      --priority)   FLAG_PRIORITY="${2:?--priority requires a value}"; shift 2 ;;
+      --depends-on) FLAG_DEPENDS_ON="${2:?--depends-on requires a value}"; shift 2 ;;
+      --status)     FLAG_STATUS="${2:?--status requires a value}"; shift 2 ;;
+      --type)       FLAG_TYPE="${2:?--type requires a value}"; shift 2 ;;
+      --output)     FLAG_OUTPUT="${2:?--output requires a value}"; shift 2 ;;
+      --error)      FLAG_ERROR="${2:?--error requires a value}"; shift 2 ;;
+      *)            POSITIONAL+=("$1"); shift ;;
     esac
   done
 }
@@ -583,10 +633,244 @@ conn.close()
 " "$db" "$kind" "$tag" "$agent" "$since" "$limit"
     ;;
 
+  # ── submit-task ────────────────────────────────────────────────────
+  submit-task)
+    _parse_flags "$@"
+    submitted_by="${POSITIONAL[0]:?Missing submitted_by}"
+    task_type="${POSITIONAL[1]:?Missing task_type}"
+
+    result=$(python3 -c "
+import sqlite3, sys
+
+db_path = sys.argv[1]
+submitted_by = sys.argv[2]
+task_type = sys.argv[3]
+problem_id = sys.argv[4] or None
+concern_scope = sys.argv[5] or None
+payload_path = sys.argv[6] or None
+priority = sys.argv[7] or 'normal'
+depends_on = sys.argv[8] or None
+
+conn = sqlite3.connect(db_path, timeout=5.0)
+conn.execute('PRAGMA journal_mode=WAL')
+conn.execute('PRAGMA busy_timeout=5000')
+cur = conn.cursor()
+cur.execute('''INSERT INTO tasks(submitted_by, task_type, problem_id, concern_scope,
+               payload_path, priority, depends_on)
+               VALUES(?, ?, ?, ?, ?, ?, ?)''',
+            (submitted_by, task_type, problem_id, concern_scope,
+             payload_path, priority, depends_on))
+conn.commit()
+task_id = cur.lastrowid
+conn.close()
+print(task_id)
+" "$db" "$submitted_by" "$task_type" "$FLAG_PROBLEM" "$FLAG_SCOPE" "$FLAG_PAYLOAD" "$FLAG_PRIORITY" "$FLAG_DEPENDS_ON")
+    echo "task:${result}"
+    ;;
+
+  # ── claim-task ─────────────────────────────────────────────────────
+  claim-task)
+    dispatcher="${1:?Missing dispatcher name}"
+    task_id="${2:?Missing task ID}"
+
+    python3 -c "
+import sqlite3, sys
+
+db_path = sys.argv[1]
+dispatcher = sys.argv[2]
+task_id = int(sys.argv[3])
+
+conn = sqlite3.connect(db_path, timeout=5.0)
+conn.execute('PRAGMA journal_mode=WAL')
+conn.execute('PRAGMA busy_timeout=5000')
+cur = conn.cursor()
+cur.execute('''UPDATE tasks
+               SET status='running', claimed_by=?, claimed_at=datetime('now')
+               WHERE id=? AND status='pending' ''',
+            (dispatcher, task_id))
+if cur.rowcount == 0:
+    conn.close()
+    print('ERROR: task not claimable (not pending or not found)', file=sys.stderr)
+    sys.exit(1)
+conn.commit()
+conn.close()
+print(f'claimed:{task_id}')
+" "$db" "$dispatcher" "$task_id"
+    ;;
+
+  # ── complete-task ──────────────────────────────────────────────────
+  complete-task)
+    _parse_flags "$@"
+    task_id="${POSITIONAL[0]:?Missing task ID}"
+
+    python3 -c "
+import sqlite3, sys
+
+db_path = sys.argv[1]
+task_id = int(sys.argv[2])
+output_path = sys.argv[3] or None
+
+conn = sqlite3.connect(db_path, timeout=5.0)
+conn.execute('PRAGMA journal_mode=WAL')
+conn.execute('PRAGMA busy_timeout=5000')
+cur = conn.cursor()
+cur.execute('''UPDATE tasks
+               SET status='complete', output_path=?, completed_at=datetime('now')
+               WHERE id=? AND status='running' ''',
+            (output_path, task_id))
+if cur.rowcount == 0:
+    conn.close()
+    print('ERROR: task not completable (not running or not found)', file=sys.stderr)
+    sys.exit(1)
+conn.commit()
+conn.close()
+print(f'completed:{task_id}')
+" "$db" "$task_id" "$FLAG_OUTPUT"
+    ;;
+
+  # ── fail-task ──────────────────────────────────────────────────────
+  fail-task)
+    _parse_flags "$@"
+    task_id="${POSITIONAL[0]:?Missing task ID}"
+
+    python3 -c "
+import sqlite3, sys
+
+db_path = sys.argv[1]
+task_id = int(sys.argv[2])
+error = sys.argv[3] or None
+
+conn = sqlite3.connect(db_path, timeout=5.0)
+conn.execute('PRAGMA journal_mode=WAL')
+conn.execute('PRAGMA busy_timeout=5000')
+cur = conn.cursor()
+cur.execute('''UPDATE tasks
+               SET status='failed', error=?, completed_at=datetime('now')
+               WHERE id=? AND status='running' ''',
+            (error, task_id))
+if cur.rowcount == 0:
+    conn.close()
+    print('ERROR: task not failable (not running or not found)', file=sys.stderr)
+    sys.exit(1)
+conn.commit()
+conn.close()
+print(f'failed:{task_id}')
+" "$db" "$task_id" "$FLAG_ERROR"
+    ;;
+
+  # ── list-tasks ─────────────────────────────────────────────────────
+  list-tasks)
+    _parse_flags "$@"
+
+    python3 -c "
+import sqlite3, sys
+
+db_path = sys.argv[1]
+status_filter = sys.argv[2]
+type_filter = sys.argv[3]
+
+conn = sqlite3.connect(db_path, timeout=5.0)
+conn.execute('PRAGMA journal_mode=WAL')
+conn.execute('PRAGMA busy_timeout=5000')
+cur = conn.cursor()
+
+clauses = []
+params = []
+if status_filter:
+    clauses.append('status = ?')
+    params.append(status_filter)
+if type_filter:
+    clauses.append('task_type = ?')
+    params.append(type_filter)
+
+where = ('WHERE ' + ' AND '.join(clauses)) if clauses else ''
+
+cur.execute(f'''SELECT id, submitted_by, task_type, problem_id, concern_scope,
+                       status, claimed_by, priority, depends_on, created_at
+                FROM tasks {where}
+                ORDER BY id ASC''', params)
+rows = cur.fetchall()
+conn.close()
+
+if not rows:
+    print('NO_TASKS')
+else:
+    for row in rows:
+        tid, by, ttype, pid, scope, st, claimed, prio, deps, created = row
+        parts = [f'id={tid}', f'type={ttype}', f'status={st}', f'by={by}', f'prio={prio}']
+        if pid:
+            parts.append(f'problem={pid}')
+        if scope:
+            parts.append(f'scope={scope}')
+        if claimed:
+            parts.append(f'claimed_by={claimed}')
+        if deps:
+            parts.append(f'depends_on={deps}')
+        parts.append(f'created={created}')
+        print(' | '.join(parts))
+" "$db" "$FLAG_STATUS" "$FLAG_TYPE"
+    ;;
+
+  # ── next-task ──────────────────────────────────────────────────────
+  next-task)
+    python3 -c "
+import sqlite3, sys
+
+db_path = sys.argv[1]
+
+conn = sqlite3.connect(db_path, timeout=5.0)
+conn.execute('PRAGMA journal_mode=WAL')
+conn.execute('PRAGMA busy_timeout=5000')
+cur = conn.cursor()
+
+# Find pending tasks ordered by priority then id.
+# Priority ordering: high > normal > low.
+cur.execute('''SELECT id, task_type, problem_id, concern_scope, payload_path,
+                      priority, depends_on, submitted_by
+               FROM tasks
+               WHERE status = 'pending'
+               ORDER BY
+                 CASE priority
+                   WHEN 'high'   THEN 0
+                   WHEN 'normal' THEN 1
+                   WHEN 'low'    THEN 2
+                   ELSE 3
+                 END,
+                 id ASC''')
+rows = cur.fetchall()
+
+for tid, ttype, pid, scope, payload, prio, deps, by in rows:
+    # Check dependency: depends_on is a task ID that must be complete.
+    if deps:
+        dep_id = int(deps)
+        cur.execute('SELECT status FROM tasks WHERE id = ?', (dep_id,))
+        dep_row = cur.fetchone()
+        if not dep_row or dep_row[0] != 'complete':
+            continue  # dependency not met, skip
+
+    # This task is runnable.
+    parts = [f'id={tid}', f'type={ttype}', f'by={by}', f'prio={prio}']
+    if pid:
+        parts.append(f'problem={pid}')
+    if scope:
+        parts.append(f'scope={scope}')
+    if payload:
+        parts.append(f'payload={payload}')
+    if deps:
+        parts.append(f'depends_on={deps}')
+    conn.close()
+    print(' | '.join(parts))
+    sys.exit(0)
+
+conn.close()
+print('NO_RUNNABLE_TASKS')
+" "$db"
+    ;;
+
   # ── unknown ───────────────────────────────────────────────────────
   *)
     echo "Unknown command: $cmd" >&2
-    echo "Usage: db.sh init|send|recv|check|drain|register|unregister|agents|cleanup|log|tail|query <db> ..." >&2
+    echo "Usage: db.sh init|send|recv|check|drain|register|unregister|agents|cleanup|log|tail|query|submit-task|claim-task|complete-task|fail-task|list-tasks|next-task <db> ..." >&2
     exit 1
     ;;
 esac

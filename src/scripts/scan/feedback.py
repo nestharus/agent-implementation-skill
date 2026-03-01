@@ -356,6 +356,7 @@ def _apply_feedback(
             model=updater_model,
             project=codespace,
             prompt_file=updater_prompt,
+            agent_file="scan-related-files-adjudicator.md",
             stdout_file=updater_output,
         )
 
@@ -374,6 +375,7 @@ def _apply_feedback(
                 model=escalation_model,
                 project=codespace,
                 prompt_file=updater_prompt,
+                agent_file="scan-related-files-adjudicator.md",
                 stdout_file=updater_output,
             )
             valid_signal = (

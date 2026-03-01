@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48, R49, R50).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48, R49, R50, R71/V2, R71/V3, R71/V4, R71/V5, R71/V6, R71/V7).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -52,6 +52,10 @@ R46/V1: Completion gate must check outstanding cross-section problems.
 R46/V2: Tool surface must be rebuilt after registry repair.
 R46/V3: read_signal_tuple preserves corrupted files as .malformed.json.
 R47/V1: Lint scripts use WORKFLOW_HOME for layout portability (no hardcoded src/ paths).
+R71/V7a: integration-proposer.md description does not contain "dispatches" or "sub-agents".
+R71/V7b: implementation-strategist.md description does not contain "sub-agent dispatch".
+R71/V7c: coordination-fixer.md contains "Task Submission" section.
+R71/V7d: runner.py microstrategy task-submission section does not contain "per line".
 """
 
 import hashlib
@@ -297,13 +301,11 @@ class TestAgentFileNoRuntimePlaceholders:
             )
 
 
-# Operational agent files dispatched by scripts (monitor, qa-monitor, etc.)
+# Operational agent files dispatched by scripts (state-detector, etc.)
 OPERATIONAL_AGENT_FILES = {
-    "monitor.md",
-    "qa-monitor.md",
-    "orchestrator.md",
     "state-detector.md",
     "exception-handler.md",
+    "agent-monitor.md",
 }
 
 # Angle-bracket placeholders are banned in ALL agent files (pipeline +
@@ -323,8 +325,8 @@ class TestOperationalAgentNoAngleBrackets:
     runtime placeholders.
 
     Round 20 enforced this for pipeline agents. Round 21 extends the
-    guard to operational agents (monitor, qa-monitor) that are dispatched
-    by scripts and receive runtime paths via prompt variables.
+    guard to operational agents (orchestrator, agent-monitor, etc.) that
+    are dispatched by scripts and receive runtime paths via prompt variables.
     """
 
     def test_no_angle_bracket_placeholders(self) -> None:
@@ -1801,31 +1803,31 @@ class TestTemplateModelParameterized:
                         f"'--model {model}' — must use placeholder"
                     )
 
-    def test_templates_use_model_placeholders(self) -> None:
-        """Templates must use {exploration_model} or {delegated_impl_model}."""
+    def test_templates_use_task_submission(self) -> None:
+        """Templates must use task submission, not direct agent dispatch."""
         impl_content = (
             self.TEMPLATES_DIR / "strategic-implementation.md"
         ).read_text(encoding="utf-8")
-        assert "{exploration_model}" in impl_content, (
+        assert "{task_submission_path}" in impl_content, (
             "strategic-implementation.md must use "
-            "{exploration_model} placeholder"
+            "{task_submission_path} placeholder"
         )
-        assert "{delegated_impl_model}" in impl_content, (
+        assert "{allowed_tasks}" in impl_content, (
             "strategic-implementation.md must use "
-            "{delegated_impl_model} placeholder"
+            "{allowed_tasks} placeholder"
         )
         proposal_content = (
             self.TEMPLATES_DIR / "integration-proposal.md"
         ).read_text(encoding="utf-8")
-        assert "{exploration_model}" in proposal_content, (
+        assert "{task_submission_path}" in proposal_content, (
             "integration-proposal.md must use "
-            "{exploration_model} placeholder"
+            "{task_submission_path} placeholder"
         )
 
-    def test_writers_inject_model_from_policy(
+    def test_writers_inject_task_submission_path(
         self, planspace: Path, codespace: Path,
     ) -> None:
-        """Writers must inject model names from model_policy dict."""
+        """Writers must inject task_submission_path and allowed_tasks."""
         from section_loop.prompts.writers import (
             write_integration_proposal_prompt,
             write_strategic_impl_prompt,
@@ -1844,31 +1846,26 @@ class TestTemplateModelParameterized:
         (sections_dir / "section-01-proposal-excerpt.md").write_text("P")
         (sections_dir / "section-01-alignment-excerpt.md").write_text("A")
 
-        custom_policy = {
-            "exploration": "custom-explore-model",
-            "implementation": "custom-impl-model",
-        }
-
         intg_path = write_integration_proposal_prompt(
             section, planspace, codespace,
-            model_policy=custom_policy,
         )
         intg_content = intg_path.read_text(encoding="utf-8")
-        assert "custom-explore-model" in intg_content, (
-            "Integration proposal must render exploration model "
-            "from policy"
+        assert "task-requests-proposal-01.json" in intg_content, (
+            "Integration proposal must include task submission path"
+        )
+        assert "scan_explore" in intg_content, (
+            "Integration proposal must list allowed task types"
         )
 
         impl_path = write_strategic_impl_prompt(
             section, planspace, codespace,
-            model_policy=custom_policy,
         )
         impl_content = impl_path.read_text(encoding="utf-8")
-        assert "custom-explore-model" in impl_content, (
-            "Strategic impl must render exploration model from policy"
+        assert "task-requests-impl-01.json" in impl_content, (
+            "Strategic impl must include task submission path"
         )
-        assert "custom-impl-model" in impl_content, (
-            "Strategic impl must render delegated impl model from policy"
+        assert "strategic_implementation" in impl_content, (
+            "Strategic impl must list allowed task types"
         )
 
     def test_friction_signal_path_in_impl_prompt(
@@ -1914,7 +1911,7 @@ class TestReexploreModelParameterized:
         src = self.REEXPLORE.read_text(encoding="utf-8")
         assert "--model glm" not in src, (
             "reexplore.py prompt text contains hardcoded '--model glm' "
-            "— must use {exploration_model} placeholder"
+            "— must use task submission, not direct dispatch"
         )
 
     def test_exploration_model_parameter_exists(self) -> None:
@@ -1952,7 +1949,7 @@ class TestCoordinationFixPromptModelParameterized:
         src = self.EXECUTION.read_text(encoding="utf-8")
         assert "--model glm" not in src, (
             "execution.py fix prompt contains hardcoded '--model glm' "
-            "— must use {exploration_model} placeholder"
+            "— must use task submission, not direct dispatch"
         )
 
     def test_no_hardcoded_codex_in_prompt_text(self) -> None:
@@ -1960,29 +1957,22 @@ class TestCoordinationFixPromptModelParameterized:
         src = self.EXECUTION.read_text(encoding="utf-8")
         assert "--model gpt-codex-high" not in src, (
             "execution.py fix prompt contains hardcoded "
-            "'--model gpt-codex-high' — must use placeholder"
+            "'--model gpt-codex-high' — must use task submission"
         )
 
-    def test_prompt_writer_accepts_model_params(self) -> None:
-        """write_coordinator_fix_prompt must accept model parameters."""
-        import inspect
-        from section_loop.coordination.execution import (
-            write_coordinator_fix_prompt,
-        )
-        sig = inspect.signature(write_coordinator_fix_prompt)
-        assert "exploration_model" in sig.parameters, (
-            "write_coordinator_fix_prompt must accept exploration_model"
-        )
-        assert "delegation_impl_model" in sig.parameters, (
-            "write_coordinator_fix_prompt must accept "
-            "delegation_impl_model"
-        )
-
-    def test_dispatch_passes_policy_models(self) -> None:
-        """_dispatch_fix_group must pass policy models to prompt writer."""
+    def test_prompt_writer_no_direct_dispatch(self) -> None:
+        """write_coordinator_fix_prompt must not reference direct dispatch."""
         src = self.EXECUTION.read_text(encoding="utf-8")
-        assert 'exploration_model=policy["exploration"]' in src, (
-            "_dispatch_fix_group must pass exploration_model from policy"
+        assert "agents --model" not in src, (
+            "write_coordinator_fix_prompt must use task submission, "
+            "not direct agent dispatch"
+        )
+
+    def test_dispatch_uses_task_submission(self) -> None:
+        """write_coordinator_fix_prompt must use task_submission_path."""
+        src = self.EXECUTION.read_text(encoding="utf-8")
+        assert "task_submission_path" in src, (
+            "write_coordinator_fix_prompt must define a task_submission_path"
         )
 
 
@@ -2096,44 +2086,26 @@ class TestCodexDispatchUsesFile:
     )
     IMPLEMENT_MD = PROJECT_ROOT / "src" / "implement.md"
 
-    def test_strategic_impl_template_uses_file(self) -> None:
-        """strategic-implementation.md delegated impl recipe uses --file."""
+    def test_strategic_impl_template_uses_task_submission(self) -> None:
+        """strategic-implementation.md must use task submission, not dispatch."""
         content = self.STRATEGIC_IMPL_TEMPLATE.read_text(encoding="utf-8")
-        # Find the delegated_impl_model dispatch block
-        assert "--file" in content, (
-            "strategic-implementation.md must use --file for "
-            "delegated impl model dispatch"
+        assert "{task_submission_path}" in content, (
+            "strategic-implementation.md must use task submission path"
         )
-        # Ensure delegated impl model line does NOT use inline instructions
-        for line in content.splitlines():
-            if "{delegated_impl_model}" in line and '"<instructions>"' in line:
-                raise AssertionError(
-                    "strategic-implementation.md: delegated impl model "
-                    "dispatch must not use inline \"<instructions>\" — "
-                    "use --file with a prompt file"
-                )
+        assert "agents --model" not in content, (
+            "strategic-implementation.md must not contain direct "
+            "agent dispatch instructions"
+        )
 
-    def test_coordination_fix_prompt_uses_file(self) -> None:
-        """coordination/execution.py delegated impl recipe uses --file."""
+    def test_coordination_fix_prompt_uses_task_submission(self) -> None:
+        """coordination/execution.py must use task submission, not dispatch."""
         content = self.COORDINATION_EXECUTION.read_text(encoding="utf-8")
-        # Find the delegation_impl_model dispatch block in the prompt f-string
-        in_prompt = False
-        for line in content.splitlines():
-            if 'prompt_path.write_text(f"""' in line or 'prompt_path.write_text(f"' in line:
-                in_prompt = True
-            if in_prompt and "{delegation_impl_model}" in line:
-                if '"<instructions>"' in line:
-                    raise AssertionError(
-                        "coordination/execution.py: delegation_impl_model "
-                        "dispatch must not use inline \"<instructions>\" "
-                        "— use --file with a prompt file"
-                    )
-            if in_prompt and '""", encoding=' in line:
-                in_prompt = False
-        # Also verify --file appears in the prompt text
-        assert "--file" in content, (
-            "coordination/execution.py must contain --file for "
-            "delegated impl model dispatch"
+        assert "task_submission_path" in content, (
+            "coordination/execution.py must define task_submission_path"
+        )
+        assert "agents --model" not in content, (
+            "coordination/execution.py must not contain direct "
+            "agent dispatch instructions"
         )
 
     def test_implement_md_codex_uses_file(self) -> None:
@@ -6450,3 +6422,228 @@ class TestR69AmbiguousVerification:
         assert "philosophy-verify-prompt.md" in text
         assert "verified_sources" in text
         assert "_AMBIGUOUS_CAP" in text
+
+
+class TestR71V7ContractSurfaceDrift:
+    """R71/V7: Per-surface migration is atomic — no split contracts within a surface."""
+
+    def test_integration_proposer_no_dispatch_language(self) -> None:
+        """R71/V7a: integration-proposer.md description must not say 'dispatches' or 'sub-agents'."""
+        agent = AGENTS_DIR / "integration-proposer.md"
+        text = agent.read_text(encoding="utf-8")
+        # Extract frontmatter description (line 2)
+        lines = text.splitlines()
+        desc_line = ""
+        for line in lines:
+            if line.startswith("description:"):
+                desc_line = line
+                break
+        assert "dispatches" not in desc_line.lower(), (
+            "integration-proposer.md description still references 'dispatches'"
+        )
+        assert "sub-agents" not in desc_line.lower(), (
+            "integration-proposer.md description still references 'sub-agents'"
+        )
+
+    def test_implementation_strategist_no_subagent_dispatch(self) -> None:
+        """R71/V7b: implementation-strategist.md description must not say 'sub-agent dispatch'."""
+        agent = AGENTS_DIR / "implementation-strategist.md"
+        text = agent.read_text(encoding="utf-8")
+        lines = text.splitlines()
+        desc_line = ""
+        for line in lines:
+            if line.startswith("description:"):
+                desc_line = line
+                break
+        assert "sub-agent dispatch" not in desc_line.lower(), (
+            "implementation-strategist.md description still references 'sub-agent dispatch'"
+        )
+
+    def test_coordination_fixer_has_task_submission(self) -> None:
+        """R71/V7c: coordination-fixer.md must contain a Task Submission section."""
+        agent = AGENTS_DIR / "coordination-fixer.md"
+        text = agent.read_text(encoding="utf-8")
+        assert "Task Submission" in text, (
+            "coordination-fixer.md is missing 'Task Submission' section"
+        )
+
+    def test_microstrategy_prompt_no_per_line(self) -> None:
+        """R71/V7d: runner.py microstrategy task-submission must not say 'per line'."""
+        runner = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "scripts" / "section_loop" / "section_engine" / "runner.py"
+        )
+        text = runner.read_text(encoding="utf-8")
+        # Find the microstrategy task-submission block (near "## Task Submission" in the prompt)
+        idx = text.find("## Task Submission")
+        assert idx != -1, "runner.py must contain a '## Task Submission' section"
+        # Check the next ~200 chars for the "per line" phrase
+        block = text[idx:idx + 300]
+        assert "per line" not in block.lower(), (
+            "runner.py microstrategy task-submission still says 'per line'"
+        )
+
+
+class TestR71V2ImplementNoSubAgentDispatch:
+    """R71/V2: implement.md does not contain direct sub-agent dispatch examples."""
+
+    def test_no_agents_model_glm_in_implementation_sections(self) -> None:
+        """implement.md must not contain 'agents --model glm --project' dispatch blocks."""
+        impl = PROJECT_ROOT / "src" / "implement.md"
+        text = impl.read_text(encoding="utf-8")
+        assert "agents --model glm --project" not in text, (
+            "implement.md still contains direct 'agents --model glm --project' "
+            "dispatch — should use task submission instead"
+        )
+
+    def test_no_sub_agent_dispatch_phrase(self) -> None:
+        """implement.md must not use 'sub-agent dispatch' phrasing."""
+        impl = PROJECT_ROOT / "src" / "implement.md"
+        text = impl.read_text(encoding="utf-8")
+        assert "sub-agent dispatch" not in text.lower(), (
+            "implement.md still contains 'sub-agent dispatch' — "
+            "should say 'task submission'"
+        )
+
+
+class TestR71V3SkillNoSubAgentGLM:
+    """R71/V3: SKILL.md model roles table does not reference 'sub-agent' for GLM."""
+
+    def test_glm_row_no_sub_agent(self) -> None:
+        """SKILL.md GLM model role must not mention 'sub-agent'."""
+        skill = PROJECT_ROOT / "src" / "SKILL.md"
+        text = skill.read_text(encoding="utf-8")
+        # Find the GLM row in the Model Roles table
+        for line in text.splitlines():
+            if line.strip().startswith("| `glm`"):
+                assert "sub-agent" not in line.lower(), (
+                    "SKILL.md GLM model role still references 'sub-agent'"
+                )
+                break
+        else:
+            pytest.fail("SKILL.md does not contain a GLM row in Model Roles table")
+
+
+class TestR71V4OrchestratorArchived:
+    """R71/V4: orchestrator.md is archived, not in active agents/ directory."""
+
+    def test_orchestrator_not_in_agents(self) -> None:
+        """orchestrator.md must not exist in src/agents/ (only in archive)."""
+        active = AGENTS_DIR / "orchestrator.md"
+        assert not active.exists(), (
+            "orchestrator.md still exists in src/agents/ — "
+            "should be in src/agents/archive/"
+        )
+
+    def test_orchestrator_in_archive(self) -> None:
+        """orchestrator.md must exist in src/agents/archive/."""
+        archived = AGENTS_DIR / "archive" / "orchestrator.md"
+        assert archived.exists(), (
+            "orchestrator.md not found in src/agents/archive/"
+        )
+
+
+class TestR71V5TaskIngestion:
+    """R71/V5: task_ingestion.py exists and closes the task-request loop."""
+
+    def test_task_ingestion_module_exists(self) -> None:
+        """task_ingestion.py must exist in section_loop package."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        ingestion = (
+            src / "scripts" / "section_loop" / "task_ingestion.py"
+        )
+        assert ingestion.exists(), (
+            "task_ingestion.py not found in section_loop"
+        )
+
+    def test_ingest_task_requests_function(self) -> None:
+        """task_ingestion.py must define ingest_task_requests."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "task_ingestion.py"
+        ).read_text(encoding="utf-8")
+        assert "def ingest_task_requests(" in text
+
+    def test_dispatch_ingested_tasks_function(self) -> None:
+        """task_ingestion.py must define dispatch_ingested_tasks."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "task_ingestion.py"
+        ).read_text(encoding="utf-8")
+        assert "def dispatch_ingested_tasks(" in text
+
+
+class TestR71V5bIngestionWired:
+    """R71/V5b: At least 3 dispatch sites call ingest_and_dispatch."""
+
+    def test_runner_calls_ingest_and_dispatch(self) -> None:
+        """runner.py must call ingest_and_dispatch at least once."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "section_engine"
+            / "runner.py"
+        ).read_text(encoding="utf-8")
+        assert "ingest_and_dispatch(" in text
+
+    def test_reexplore_calls_ingest_and_dispatch(self) -> None:
+        """reexplore.py must call ingest_and_dispatch."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "section_engine"
+            / "reexplore.py"
+        ).read_text(encoding="utf-8")
+        assert "ingest_and_dispatch(" in text
+
+    def test_execution_calls_ingest_and_dispatch(self) -> None:
+        """coordination/execution.py must call ingest_and_dispatch."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "coordination"
+            / "execution.py"
+        ).read_text(encoding="utf-8")
+        assert "ingest_and_dispatch(" in text
+
+    def test_at_least_3_sites_total(self) -> None:
+        """At least 3 files must call ingest_and_dispatch or ingest_task_requests."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        sl = src / "scripts" / "section_loop"
+        call_count = 0
+        for py_file in sl.rglob("*.py"):
+            text = py_file.read_text(encoding="utf-8")
+            if ("ingest_and_dispatch(" in text
+                    or "ingest_task_requests(" in text):
+                # Exclude the definition site (task_ingestion.py itself)
+                if py_file.name != "task_ingestion.py":
+                    call_count += 1
+        assert call_count >= 3, (
+            f"Expected at least 3 callsites for ingest_and_dispatch, "
+            f"found {call_count}"
+        )
+
+
+class TestR71V6DispatchAgentInTaskDispatcher:
+    """R71/V6: task_dispatcher.py uses dispatch_agent, not raw subprocess."""
+
+    def test_imports_dispatch_agent(self) -> None:
+        """task_dispatcher.py must import dispatch_agent from section_loop.dispatch."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "task_dispatcher.py"
+        ).read_text(encoding="utf-8")
+        assert "from section_loop.dispatch import dispatch_agent" in text
+
+    def test_no_raw_subprocess_dispatch(self) -> None:
+        """task_dispatcher.py must not use subprocess.run for agent dispatch.
+
+        The subprocess.run calls for db.sh are fine — only the agent
+        dispatch (the 'uv run agents' call) must go through dispatch_agent.
+        """
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "task_dispatcher.py"
+        ).read_text(encoding="utf-8")
+        # The old pattern was subprocess.run with 'uv', 'run', 'agents'
+        assert '"uv", "run"' not in text, (
+            "task_dispatcher.py still dispatches agents via raw subprocess — "
+            "should use dispatch_agent from section_loop.dispatch"
+        )

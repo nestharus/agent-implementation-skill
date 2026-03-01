@@ -71,9 +71,7 @@ behavioral rules, constraints, and output contract.
 |-------|-----------|-------|----------|
 | exception-handler | `agents/exception-handler.md` | claude-opus | RCA on failed steps |
 | state-detector | `agents/state-detector.md` | claude-opus | Workspace state reporting |
-| monitor | `agents/monitor.md` | glm | Pipeline cycle/stuck detection |
-| qa-monitor | `agents/qa-monitor.md` | claude-opus | Deep QA (26 rules, PAUSE authority) |
-| agent-monitor | `agents/agent-monitor.md` | glm | Per-agent loop detection |
+| agent-monitor | `agents/agent-monitor.md` | glm | Per-dispatch loop detection |
 
 ## Main Loop
 

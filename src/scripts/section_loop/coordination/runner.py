@@ -408,6 +408,42 @@ Reply with a JSON block:
                         f"{action}:{reason}",
                     )
 
+                # Record each scope-delta adjudication as a
+                # structured Decision sidecar for machine readability.
+                from ..decisions import (
+                    Decision,
+                    load_decisions,
+                    record_decision,
+                )
+                decisions_dir = (
+                    planspace / "artifacts" / "decisions"
+                )
+                for adj_decision in all_decisions:
+                    adj_sec = str(adj_decision.get("section", ""))
+                    adj_sec = _normalize_section_id(
+                        adj_sec, scope_deltas_dir)
+                    adj_action = adj_decision.get("action", "")
+                    adj_reason = adj_decision.get("reason", "")
+                    existing = load_decisions(
+                        decisions_dir, section=adj_sec)
+                    next_num = len(existing) + 1
+                    record_decision(
+                        decisions_dir,
+                        Decision(
+                            id=f"d-{adj_sec}-{next_num:03d}",
+                            scope="section",
+                            section=adj_sec,
+                            problem_id=None,
+                            parent_problem_id=None,
+                            concern_scope="scope-delta",
+                            proposal_summary=(
+                                f"{adj_action}: {adj_reason}"
+                            ),
+                            alignment_to_parent=None,
+                            status="decided",
+                        ),
+                    )
+
     # -----------------------------------------------------------------
     # Step 2: Dispatch coordination-planner agent to group problems
     # -----------------------------------------------------------------

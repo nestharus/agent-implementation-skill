@@ -4,13 +4,12 @@ from typing import Any
 
 from ..communication import _log_artifact, log
 from ..dispatch import dispatch_agent, write_model_choice_signal
+from ..task_ingestion import ingest_and_dispatch
 
 
 def write_coordinator_fix_prompt(
     group: list[dict[str, Any]], planspace: Path, codespace: Path,
     group_id: int,
-    exploration_model: str = "glm",
-    delegation_impl_model: str = "gpt-codex-high",
 ) -> Path:
     """Write a Codex prompt to fix a group of related problems.
 
@@ -127,6 +126,8 @@ def write_coordinator_fix_prompt(
                 f"relying on tool context.\n"
             )
 
+    task_submission_path = artifacts / f"signals/task-requests-coord-{group_id}.json"
+
     prompt_path.write_text(f"""# Task: Coordinated Fix for Problem Group {group_id}
 
 ## Problems to Fix
@@ -151,30 +152,28 @@ creates or re-triggers another.
 
 1. **Explore first.** Before making changes, understand the full picture.
    Read the codemap if available to understand how these files fit into
-   the broader project structure. Then dispatch sub-agents to read
-   files and understand context:
-   ```bash
-   EXPLORE="$(mktemp)"
-   echo '<your-instructions>' > "$EXPLORE"
-   uv run --frozen agents --model {exploration_model} --project "{codespace}" --file "$EXPLORE"
+   the broader project structure. If you need deeper exploration, submit
+   a task request to `{task_submission_path}`:
+   ```json
+   {{"task_type": "scan_explore", "concern_scope": "coord-group-{group_id}", "payload_path": "<path-to-exploration-prompt>", "priority": "normal"}}
    ```
 
 2. **Plan holistically.** Consider how all the problems interact. A single
    coordinated change may fix multiple problems at once.
 
-3. **Implement.** Make the changes. For targeted sub-tasks, write a
-   prompt file first (Codex models require `--file`, not inline):
-   ```bash
-   PROMPT="$(mktemp)"
-   cat > "$PROMPT" <<'EOF'
-   <instructions>
-   EOF
-   uv run --frozen agents --model {delegation_impl_model} \\
-     --project "{codespace}" --file "$PROMPT"
+3. **Implement.** Make the changes. For targeted sub-tasks, submit a
+   task request:
+   ```json
+   {{"task_type": "coordination_fix", "concern_scope": "coord-group-{group_id}", "payload_path": "<path-to-fix-prompt>", "priority": "normal"}}
    ```
 
-4. **Verify.** After implementation, dispatch sub-agents to verify the fixes
-   address all listed problems without introducing new issues.
+4. **Verify.** After implementation, submit a scan task to verify
+   the fixes address all listed problems without introducing new issues.
+
+Available task types: scan_explore, coordination_fix
+
+The dispatcher handles agent selection and model choice. You declare
+WHAT work you need, not which agent or model runs it.
 
 ### Report Modified Files
 
@@ -207,9 +206,6 @@ def _dispatch_fix_group(
     policy = read_model_policy(planspace)
     fix_prompt = write_coordinator_fix_prompt(
         group, planspace, codespace, group_id,
-        exploration_model=policy["exploration"],
-        delegation_impl_model=policy.get(
-            "coordination_fix", "gpt-codex-high"),
     )
     fix_output = artifacts / f"fix-{group_id}-output.md"
     modified_report = artifacts / f"fix-{group_id}-modified.txt"
@@ -238,9 +234,17 @@ def _dispatch_fix_group(
     result = dispatch_agent(
         fix_model, fix_prompt, fix_output,
         planspace, parent, codespace=codespace,
+        agent_file="coordination-fixer.md",
     )
     if result == "ALIGNMENT_CHANGED_PENDING":
         return group_id, None  # Sentinel — caller must check
+
+    # V5: Ingest any task requests the coordination fixer submitted
+    ingest_and_dispatch(
+        planspace,
+        artifacts / f"signals/task-requests-coord-{group_id}.json",
+        str(group_id), parent, codespace,
+    )
 
     # Collect modified files from the report (validated to be safe
     # relative paths under codespace — same logic as collect_modified_files)

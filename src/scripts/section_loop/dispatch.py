@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from .agent_templates import render_template, validate_dynamic_content
 from .communication import (
     AGENT_NAME,
     DB_SH,
@@ -10,6 +11,7 @@ from .communication import (
     _log_artifact,
     log,
 )
+from .context_assembly import resolve_context
 from .pipeline_control import alignment_changed_pending, wait_if_paused
 
 
@@ -19,7 +21,8 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
                    agent_name: str | None = None,
                    codespace: Path | None = None,
                    section_number: str | None = None,
-                   agent_file: str | None = None) -> str:
+                   *,
+                   agent_file: str) -> str:
     """Run an agent via uv run agents and return the output text.
 
     If planspace and parent are provided, checks pipeline state before
@@ -32,10 +35,18 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
     If codespace is provided, passes --project to the agent so it runs
     with the correct working directory and model config lookup.
 
-    If agent_file is provided (basename like "alignment-judge.md"), the
-    agent definition is prepended to the prompt via --agent-file. The
-    agent file encodes the "method of thinking" for the role.
+    ``agent_file`` is REQUIRED — every dispatch must have behavioral
+    constraints. Pass a basename like ``"alignment-judge.md"``; the
+    agent definition is prepended to the prompt via ``--agent-file``.
     """
+    if not agent_file:
+        raise ValueError(
+            "agent_file is required — every dispatch must have "
+            "behavioral constraints"
+        )
+    agent_path = Path(WORKFLOW_HOME) / "agents" / agent_file
+    if not agent_path.exists():
+        raise FileNotFoundError(f"Agent file not found: {agent_path}")
     if planspace and parent:
         wait_if_paused(planspace, parent)
         # If alignment_changed was received during the pause (or was
@@ -43,6 +54,23 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
         if alignment_changed_pending(planspace):
             log("  dispatch_agent: alignment_changed pending — skipping")
             return "ALIGNMENT_CHANGED_PENDING"
+
+    # --- Resolve agent-scoped context (S1) ---
+    # Reads the agent file's context: field and produces a JSON sidecar
+    # so callers can opt in to using scoped context over time.
+    if planspace:
+        agent_context = resolve_context(
+            str(agent_path), planspace, section=section_number,
+        )
+        if agent_context:
+            ctx_dir = planspace / "artifacts"
+            ctx_dir.mkdir(parents=True, exist_ok=True)
+            agent_stem = agent_file.removesuffix(".md")
+            ctx_path = ctx_dir / f"context-{agent_stem}.json"
+            ctx_path.write_text(
+                json.dumps(agent_context, indent=2) + "\n",
+                encoding="utf-8",
+            )
 
     monitor_name = f"{agent_name}-monitor" if agent_name else None
     monitor_proc = None
@@ -92,10 +120,8 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
             capture_output=True, text=True,
         )
     cmd = ["uv", "run", "--frozen", "agents", "--model", model,
-           "--file", str(prompt_path)]
-    if agent_file:
-        cmd.extend(["--agent-file",
-                     str(WORKFLOW_HOME / "agents" / agent_file)])
+           "--file", str(prompt_path),
+           "--agent-file", str(WORKFLOW_HOME / "agents" / agent_file)]
     if codespace:
         cmd.extend(["--project", str(codespace)])
     try:
@@ -193,7 +219,8 @@ def _write_agent_monitor_prompt(
     """Write the prompt file for a per-agent GLM monitor."""
     db_path = planspace / "run.db"
     prompt_path = planspace / "artifacts" / f"{monitor_name}-prompt.md"
-    prompt_path.write_text(f"""# Agent Monitor: {agent_name}
+
+    dynamic_body = f"""# Agent Monitor: {agent_name}
 
 ## Your Job
 Watch mailbox `{agent_name}` for messages from a running agent.
@@ -241,7 +268,11 @@ Do NOT send loop signals via mailbox — only log signal events as above.
   ```bash
   bash "{DB_SH}" log "{db_path}" signal {agent_name} "STALLED:{agent_name}:no messages for 5 minutes" --agent {monitor_name}
   ```
-""", encoding="utf-8")
+"""
+    prompt_path.write_text(
+        render_template("monitor", dynamic_body),
+        encoding="utf-8",
+    )
     _log_artifact(planspace, f"prompt:agent-monitor-{agent_name}")
     return prompt_path
 
@@ -340,7 +371,7 @@ def adjudicate_agent_output(
     adj_prompt = artifacts / "adjudicate-prompt.md"
     adj_output = artifacts / "adjudicate-output.md"
 
-    adj_prompt.write_text(f"""# Task: Classify Agent Output
+    dynamic_body = f"""# Classify Agent Output
 
 Read the agent output file and determine its state.
 
@@ -360,11 +391,19 @@ Classify the output into exactly one state. Reply with a JSON block:
 
 States: ALIGNED, PROBLEMS, UNDERSPECIFIED, NEED_DECISION, DEPENDENCY,
 LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
-""", encoding="utf-8")
+"""
+    adj_prompt.write_text(
+        render_template(
+            "adjudicate", dynamic_body,
+            file_paths=[str(output_path)],
+        ),
+        encoding="utf-8",
+    )
 
     result = dispatch_agent(
         model, adj_prompt, adj_output,
         planspace, parent, codespace=codespace,
+        agent_file="state-adjudicator.md",
     )
     if result == "ALIGNMENT_CHANGED_PENDING":
         return None, "ALIGNMENT_CHANGED_PENDING"

@@ -35,6 +35,7 @@ from ..dispatch import (
     summarize_output,
     write_model_choice_signal,
 )
+from ..task_ingestion import ingest_and_dispatch
 from ..pipeline_control import (
     alignment_changed_pending,
     handle_pending_messages,
@@ -224,6 +225,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             triage_prompt_path, triage_output_path,
             planspace, parent, codespace=codespace,
             section_number=section.number,
+            agent_file="consequence-note-triager.md",
         )
 
         # Read triage signal
@@ -384,6 +386,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                 repair_prompt, repair_output,
                 planspace, parent, codespace=codespace,
                 section_number=section.number,
+                agent_file="tool-registrar.md",
             )
             # Re-check after repair
             try:
@@ -926,6 +929,14 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                          f"agent timed out")
             return None
 
+        # V5: Ingest any task requests the proposal agent submitted
+        ingest_and_dispatch(
+            planspace,
+            artifacts / "signals"
+            / f"task-requests-proposal-{section.number}.json",
+            section.number, parent, codespace,
+        )
+
         signal_dir = artifacts / "signals"
         signal_dir.mkdir(parents=True, exist_ok=True)
         signal, detail = check_agent_signals(
@@ -1247,6 +1258,15 @@ Write the microstrategy to: `{microstrategy_path}`
 
 Keep it tactical and concrete. The integration proposal already justified
 WHY — you're capturing WHAT and WHERE at the file level.
+
+## Task Submission
+
+If you need deeper analysis, submit a task request to:
+`{artifacts}/signals/task-requests-micro-{section.number}.json`
+
+Available task types: scan_deep_analyze, scan_explore
+
+Write a single JSON object. The dispatcher handles agent/model selection.
 {agent_mail_instructions(planspace, a_name, m_name)}
 """, encoding="utf-8")
         _log_artifact(planspace, f"prompt:microstrategy-{section.number}")
@@ -1264,6 +1284,14 @@ WHY — you're capturing WHAT and WHERE at the file level.
         )
         if micro_result == "ALIGNMENT_CHANGED_PENDING":
             return None
+
+        # V5: Ingest any task requests the microstrategy agent submitted
+        ingest_and_dispatch(
+            planspace,
+            artifacts / "signals"
+            / f"task-requests-micro-{section.number}.json",
+            section.number, parent, codespace,
+        )
 
         # -- V2/R43: Verify microstrategy output exists --
         if not microstrategy_path.exists() or microstrategy_path.stat().st_size == 0:
@@ -1402,6 +1430,14 @@ WHY — you're capturing WHAT and WHERE at the file level.
                          f"fail:{section.number}:implementation agent "
                          f"timed out")
             return None
+
+        # V5: Ingest any task requests the implementation agent submitted
+        ingest_and_dispatch(
+            planspace,
+            artifacts / "signals"
+            / f"task-requests-impl-{section.number}.json",
+            section.number, parent, codespace,
+        )
 
         signal_dir = artifacts / "signals"
         signal_dir.mkdir(parents=True, exist_ok=True)
@@ -1675,6 +1711,7 @@ WHY — you're capturing WHAT and WHERE at the file level.
                 repair_prompt, repair_output,
                 planspace, parent, codespace=codespace,
                 section_number=section.number,
+                agent_file="tool-registrar.md",
             )
             # Verify repair succeeded
             try:
@@ -1932,6 +1969,7 @@ with JSON:
                     f"tool-digest-regen-{section.number}",
                     codespace=codespace,
                     section_number=section.number,
+                    agent_file="tool-registrar.md",
                 )
         else:
             # Part 3: Bridge failed after escalation — write blocker

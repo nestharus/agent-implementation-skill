@@ -31,16 +31,22 @@ codebase will cause implementation agents to produce incorrect code.
    the codebase that your microstrategy must align with or explicitly
    supersede
 4. For each related file, verify your assumptions with targeted reads
-5. Use GLM sub-agents for quick file reads when checking many files,
-   using the `--project` path provided in your dispatch prompt
+5. If you need deeper analysis across many files, submit a task by
+   writing a JSON signal to the task-submission path in your dispatch
+   prompt:
 
-**Dispatch rule**: When dispatching a sub-agent that has a role file in
-`$WORKFLOW_HOME/agents/`, always use `--agent-file`:
-```bash
-agents --agent-file "$WORKFLOW_HOME/agents/<role>.md" \
-  --model <model> --file <prompt>
+```json
+{
+    "task_type": "scan_deep_analyze",
+    "problem_id": "<problem-id>",
+    "concern_scope": "<section-id>",
+    "payload_path": "<path-to-exploration-prompt>",
+    "priority": "normal"
+}
 ```
-For ad-hoc exploration sub-agents (no role file), inline dispatch is fine.
+
+The dispatcher handles agent selection and execution. You declare
+WHAT analysis you need, not which agent or model runs it.
 
 ### What to Produce
 

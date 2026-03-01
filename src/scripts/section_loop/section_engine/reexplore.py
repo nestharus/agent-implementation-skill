@@ -3,6 +3,7 @@ from pathlib import Path
 from ..communication import _log_artifact, log
 from ..cross_section import extract_section_summary
 from ..dispatch import dispatch_agent
+from ..task_ingestion import ingest_and_dispatch
 from ..types import Section
 
 
@@ -62,12 +63,13 @@ Your job is to determine why and classify the situation.
    If codemap corrections exist, treat them as authoritative over codemap.md.
 3. Explore the codespace strategically — search for files that relate
    to this section's problem space
-4. Use sub-agents for quick file reads:
-   ```bash
-   EXPLORE="$(mktemp)"
-   echo '<your-instructions>' > "$EXPLORE"
-   uv run --frozen agents --model {exploration_model} --project "{codespace}" --file "$EXPLORE"
+4. If you need deeper exploration, submit a task request to
+   `{planspace}/artifacts/signals/task-requests-reexplore-{section.number}.json`:
+   ```json
+   {{"task_type": "scan_explore", "concern_scope": "section-{section.number}", "payload_path": "<path-to-exploration-prompt>", "priority": "normal"}}
    ```
+   Available task types: scan_explore
+   The dispatcher handles agent/model selection.
 
 ## Output
 
@@ -102,6 +104,16 @@ the JSON, not unstructured text.
         codespace=codespace, section_number=section.number,
         agent_file="section-re-explorer.md",
     )
+
+    # V5: Ingest any task requests the reexplore agent submitted
+    if result != "ALIGNMENT_CHANGED_PENDING":
+        ingest_and_dispatch(
+            planspace,
+            planspace / "artifacts" / "signals"
+            / f"task-requests-reexplore-{section.number}.json",
+            section.number, parent, codespace,
+        )
+
     return result
 
 

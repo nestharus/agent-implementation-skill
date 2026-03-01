@@ -229,6 +229,7 @@ def _validate_existing_related_files(
         model=model_policy.get("validation", "claude-opus"),
         project=codespace,
         prompt_file=validate_prompt,
+        agent_file="scan-related-files-adjudicator.md",
         stdout_file=validate_output,
     )
 
@@ -354,6 +355,7 @@ def _explore_section(
         model=model_policy.get("exploration", "claude-opus"),
         project=codespace,
         prompt_file=prompt_file,
+        agent_file="scan-related-files-explorer.md",
         stdout_file=response_file,
         stderr_file=stderr_file,
     )

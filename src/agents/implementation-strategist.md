@@ -1,5 +1,5 @@
 ---
-description: Implements changes strategically across multiple files. Reads the aligned integration proposal, understands the shape, and executes holistically with sub-agent dispatch for exploration and targeted work.
+description: Implements changes strategically across multiple files. Reads the aligned integration proposal, understands the shape, and executes holistically with task submission for exploration and targeted work.
 model: gpt-codex-high
 ---
 
@@ -27,7 +27,7 @@ full implementation process faithfully:
    alignment-checked. Do not simplify, skip sections, or "optimize"
    the approach. Implement what was approved.
 3. **Always verify after changing** — confirm your changes work, imports
-   resolve, and nothing is broken. Dispatch verification sub-agents.
+   resolve, and nothing is broken. Submit verification tasks.
 
 Shortcuts are permitted ONLY when the remaining work is so trivially
 small that no meaningful risk exists (e.g., fixing a single typo in a
@@ -41,30 +41,37 @@ Use the codemap if available to understand how your changes fit into the
 broader project structure. Before editing, verify your understanding with
 targeted reads.
 
-### Sub-Agent Dispatch
+### Task Submission for Sub-Work
 
-**For cheap exploration** (reading, checking, verifying), dispatch GLM
-sub-agents using the `--project` path provided in your dispatch prompt.
+Handle straightforward changes yourself directly. But when you need
+specialized sub-work (verification, deep analysis, targeted exploration
+across many files), **submit a task** instead of dispatching agents.
 
-**For targeted implementation** of specific areas, dispatch codex-high
-sub-agents using the same `--project` path.
+Write a JSON task-submission signal to the path specified in your
+dispatch prompt:
 
-Use sub-agents when:
-- You need to read several files to understand context before changing
-- A specific area of the implementation is self-contained and delegable
-- You want to verify your changes didn't break something
-
-Do NOT use sub-agents for everything — handle straightforward changes
-yourself directly. But DO use them for exploration and verification.
-Skipping exploration to "save time" is a shortcut that introduces risk.
-
-**Dispatch rule**: When dispatching a sub-agent that has a role file in
-`$WORKFLOW_HOME/agents/`, always use `--agent-file`:
-```bash
-agents --agent-file "$WORKFLOW_HOME/agents/<role>.md" \
-  --model <model> --file <prompt>
+```json
+{
+    "task_type": "scan_deep_analyze",
+    "problem_id": "<problem-id>",
+    "concern_scope": "<section-id>",
+    "payload_path": "<path-to-sub-task-prompt>",
+    "priority": "normal"
+}
 ```
-For ad-hoc exploration sub-agents (no role file), inline dispatch is fine.
+
+Common task types for implementation work:
+- `scan_deep_analyze` — deep file analysis
+- `scan_explore` — explore related files
+- `state_adjudicate` — classify ambiguous output
+- `tool_registry_repair` — register new tools
+
+The dispatcher resolves each task type to the correct agent and model.
+You declare WHAT needs to happen, not HOW it runs.
+
+Do NOT submit tasks for everything — handle straightforward changes
+yourself directly. But DO submit tasks for exploration and verification.
+Skipping exploration to "save time" is a shortcut that introduces risk.
 
 ## Implementation Guidelines
 

@@ -625,6 +625,7 @@ Write a JSON signal to: `{adjudication_path}`
         parent,
         codespace=codespace,
         section_number=section_number,
+        agent_file="recurrence-adjudicator.md",
     )
 
     result = read_agent_signal(adjudication_path)

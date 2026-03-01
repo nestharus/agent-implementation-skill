@@ -42,40 +42,42 @@ multiple files at once, coordinated changes. Use the codemap if available
 to understand how your changes fit into the broader project structure. If
 codemap corrections exist, treat them as authoritative fixes.
 
-**Dispatch sub-agents for exploration and targeted work:**
+**Request exploration or targeted sub-work when needed:**
 
-For cheap exploration (reading, checking, verifying):
-```bash
-EXPLORE="$(mktemp)"
-echo '<your-instructions>' > "$EXPLORE"
-agents --model {exploration_model} --project "{codespace}" --file "$EXPLORE"
+If you need files read, analyzed, or a self-contained sub-task executed,
+write a task request to `{task_submission_path}`:
+
+```json
+{{
+    "task_type": "scan_explore",
+    "concern_scope": "section-{section_number}",
+    "payload_path": "<path-to-prompt-file>",
+    "priority": "normal"
+}}
 ```
 
-For targeted implementation of specific areas, write a prompt file first
-(Codex models require `--file`, not inline instructions):
-```bash
-PROMPT="$(mktemp)"
-cat > "$PROMPT" <<'EOF'
-<instructions>
-EOF
-agents --model {delegated_impl_model} \
-  --project "{codespace}" --file "$PROMPT"
+For targeted implementation of a self-contained area:
+```json
+{{
+    "task_type": "strategic_implementation",
+    "concern_scope": "section-{section_number}",
+    "payload_path": "<path-to-implementation-prompt>",
+    "priority": "normal"
+}}
 ```
 
-Use sub-agents when:
+Available task types for this role: {allowed_tasks}
+
+The dispatcher handles agent selection and model choice. You declare
+WHAT work you need, not which agent or model runs it.
+
+Submit task requests when:
 - You need to read several files to understand context before changing them
 - A specific area of the implementation is self-contained and can be delegated
 - You want to verify your changes didn't break something
 
-Do NOT use sub-agents for everything — handle straightforward changes
+Do NOT submit task requests for everything — handle straightforward changes
 yourself directly.
-
-**Dispatch rule**: If dispatching an agent that has a defined role file in
-`$WORKFLOW_HOME/agents/`, attach it via `--agent-file`:
-```bash
-agents --agent-file "$WORKFLOW_HOME/agents/<role>.md" \
-  --model <model> --file <prompt>
-```
 
 ### Implementation Guidelines
 

@@ -196,6 +196,12 @@ agents --model claude-opus --project <codespace> \
   > <planspace>/artifacts/codemap.md 2>&1
 ```
 
+**Note**: The examples above show **script-level** dispatch — the orchestrator
+launching step agents. **Nested strategic work** within step agents (e.g.,
+exploration during integration proposals) uses **task submission**: agents write
+structured task-request files, and the dispatcher resolves agent file + model.
+See `implement.md` Stage 4-5 for task submission details.
+
 ### Schedule Templates
 
 Pre-built schedules in `$WORKFLOW_HOME/templates/`. Each step specifies its model:
@@ -229,7 +235,7 @@ Control and recovery:
 | `claude-opus` | Section setup (excerpt extraction), alignment checks (shape/direction), decomposition, codemap exploration, per-section file identification |
 | `gpt-codex-high` | Integration proposals, strategic implementation, coordinated fixes, extraction, investigation, constraint alignment check |
 | `gpt-codex-xhigh` | Deep architectural synthesis, proposal drafting |
-| `glm` | Test running, verification, quick commands, deep file analysis, semantic impact analysis, sub-agent exploration during integration proposals |
+| `glm` | Test running, verification, quick commands, deep file analysis, semantic impact analysis |
 
 ### Prompt Files
 

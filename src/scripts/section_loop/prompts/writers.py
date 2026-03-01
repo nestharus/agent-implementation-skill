@@ -6,6 +6,7 @@ render → write file → log artifact.
 
 from pathlib import Path
 
+from ..agent_templates import validate_dynamic_content
 from ..alignment import collect_modified_files
 from ..communication import DB_SH, _log_artifact, log
 from ..cross_section import extract_section_summary
@@ -145,7 +146,6 @@ def write_integration_proposal_prompt(
             f"`{notes_file}`\n"
         )
 
-    _policy = model_policy or {}
     ctx = build_prompt_context(section, planspace, codespace)
     ctx.update({
         "proposal_excerpt": proposal_excerpt,
@@ -154,7 +154,9 @@ def write_integration_proposal_prompt(
         "problems_block": problems_block,
         "existing_note": existing_note,
         "notes_block": notes_block,
-        "exploration_model": _policy.get("exploration", "glm"),
+        "task_submission_path": str(
+            artifacts / "signals" / f"task-requests-proposal-{sec}.json"),
+        "allowed_tasks": "scan_explore, impact_analysis",
         "signal_block": signal_instructions(
             artifacts / "signals" / f"proposal-{sec}-signal.json",
         ),
@@ -163,7 +165,25 @@ def write_integration_proposal_prompt(
 
     prompt_path = artifacts / f"intg-proposal-{sec}-prompt.md"
     tpl = load_template("integration-proposal.md")
-    prompt_path.write_text(render(tpl, ctx), encoding="utf-8")
+    rendered = render(tpl, ctx)
+
+    # V6: Validate dynamic content for prohibited patterns
+    violations = validate_dynamic_content(rendered)
+    if violations:
+        log(f"  WARNING: prompt {prompt_path.name} has template violations: {violations}")
+
+    prompt_path.write_text(rendered, encoding="utf-8")
+
+    # V7: Append context sidecar reference if it exists
+    context_sidecar = artifacts / "context-integration-proposer.json"
+    if context_sidecar.exists():
+        with prompt_path.open("a", encoding="utf-8") as f:
+            f.write(
+                f"\n## Scoped Context\n"
+                f"Agent context sidecar with resolved inputs: "
+                f"`{context_sidecar}`\n"
+            )
+
     _log_artifact(planspace, f"prompt:proposal-{sec}")
     return prompt_path
 
@@ -330,7 +350,6 @@ def write_strategic_impl_prompt(
             f"`{microstrategy_path}`"
         )
 
-    _policy = model_policy or {}
     ctx = build_prompt_context(section, planspace, codespace)
     ctx.update({
         "proposal_excerpt": proposal_excerpt,
@@ -345,9 +364,9 @@ def write_strategic_impl_prompt(
         "impl_tools_ref": impl_tools_ref,
         "tooling_block": tooling_block,
         "micro_ref": impl_micro_ref,
-        "exploration_model": _policy.get("exploration", "glm"),
-        "delegated_impl_model": _policy.get(
-            "implementation", "gpt-codex-high"),
+        "task_submission_path": str(
+            artifacts / "signals" / f"task-requests-impl-{sec}.json"),
+        "allowed_tasks": "scan_explore, scan_deep_analyze, strategic_implementation",
         "signal_block": signal_instructions(
             artifacts / "signals" / f"impl-{sec}-signal.json",
         ),
@@ -356,7 +375,25 @@ def write_strategic_impl_prompt(
 
     prompt_path = artifacts / f"impl-{sec}-prompt.md"
     tpl = load_template("strategic-implementation.md")
-    prompt_path.write_text(render(tpl, ctx), encoding="utf-8")
+    rendered = render(tpl, ctx)
+
+    # V6: Validate dynamic content for prohibited patterns
+    violations = validate_dynamic_content(rendered)
+    if violations:
+        log(f"  WARNING: prompt {prompt_path.name} has template violations: {violations}")
+
+    prompt_path.write_text(rendered, encoding="utf-8")
+
+    # V7: Append context sidecar reference if it exists
+    context_sidecar = artifacts / "context-implementation-strategist.json"
+    if context_sidecar.exists():
+        with prompt_path.open("a", encoding="utf-8") as f:
+            f.write(
+                f"\n## Scoped Context\n"
+                f"Agent context sidecar with resolved inputs: "
+                f"`{context_sidecar}`\n"
+            )
+
     _log_artifact(planspace, f"prompt:impl-{sec}")
     return prompt_path
 

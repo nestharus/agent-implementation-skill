@@ -153,8 +153,8 @@ exists. This applies equally to greenfield and brownfield projects.
 4. **Section Setup + Integration Proposal** — Extract proposal/alignment excerpts from
    global documents, then GPT writes integration proposal (how to wire proposal into
    codebase), Opus checks alignment on shape/direction, iterate until aligned
-5. **Strategic Implementation + Global Coordination** — GPT implements holistically with
-   sub-agents (GLM for exploration, Codex for targeted areas), Opus checks alignment
+5. **Strategic Implementation + Global Coordination** — GPT implements holistically,
+   submitting task requests for exploration and targeted sub-work, Opus checks alignment
 → After all sections: cross-section alignment re-check, global coordinator collects
   problems, groups related ones, dispatches coordinated fixes, re-verifies per-section
 
@@ -196,7 +196,7 @@ required by its stage contract.
 | 1: Decomposition | **Parallel** — writes to planspace only |
 | 2: Docstrings | **Sequential** — one GLM per target file, edits source |
 | 3: Scan | **Shell script** — quick: Opus agent explores codespace and builds codemap, then per-section Opus agents identify related files using the codemap; deep: GLM agents reason about specific file relevance in context |
-| 4–5: Section Loop | **Sequential** — one section at a time, strategic agent-driven implementation with sub-agent dispatch; global coordination after initial pass |
+| 4–5: Section Loop | **Sequential** — one section at a time, strategic agent-driven implementation with task submission; global coordination after initial pass |
 | 6: Verification | **Sequential** — lint, test, fix cycles |
 | 7: Post-Verify | **Single run** — full suite + commit |
 
@@ -511,163 +511,89 @@ A file can appear in multiple section files.
 | File | Purpose |
 |------|---------|
 | `$WORKFLOW_HOME/scripts/section-loop.py` | Strategic section-loop orchestrator (integration proposals, implementation, cross-section communication, global coordination) |
-| `$WORKFLOW_HOME/scripts/task-agent-prompt.md` | Task agent prompt template |
+| `$WORKFLOW_HOME/scripts/task_dispatcher.py` | Task queue — polls for task submissions, dispatches under script control |
 | `$WORKFLOW_HOME/scripts/db.sh` | SQLite-backed coordination database |
 
-### Launching task agents
+### Control plane
 
-The UI orchestrator:
-1. Copies the task-agent prompt template
-2. Fills in `{{PLANSPACE}}`, `{{CODESPACE}}`, `{{TAG}}`, etc.
-3. Writes the filled prompt to `<planspace>/artifacts/task-agent-prompt.md`
-4. Launches via: `agents --model claude-opus --file <planspace>/artifacts/task-agent-prompt.md`
-5. Runs `recv` on its own mailbox to receive reports from the task agent
+The control plane is script-owned:
 
-The task agent then owns the section-loop lifecycle:
+1. **Section-loop script** (`scripts/section-loop.py`): Strategic orchestrator.
+   Runs sections sequentially through the integration proposal + implementation
+   flow. Dispatches agents, manages cross-section communication (snapshots,
+   impact analysis, consequence notes), and runs the global coordination phase
+   after the initial pass. Sends messages via `db.sh send` and logs summary
+   events via `db.sh log summary` for each lifecycle transition. Queries
+   pipeline state before each agent dispatch via
+   `db.sh query <planspace>/run.db lifecycle --tag pipeline-state --limit 1`
+   -- if paused, waits until resumed. For each per-section Codex/GPT agent
+   dispatch (setup, proposal, implementation), registers a narration queue
+   and launches a per-agent GLM monitor alongside the agent. Two categories
+   of dispatch are exempt from per-agent monitoring: (1) Opus alignment
+   checks -- alignment prompts do not include narration instructions, and a
+   monitor would false-positive STALLED after 5 minutes of expected silence;
+   (2) Coordinator fix agents -- fix prompts use strategic GLM sub-agents
+   internally for verification, and cross-section stuck states are detected
+   at the coordination round level. Cleans up agent registrations via
+   `db.sh cleanup` after each per-section dispatch.
 
-```bash
-python3 "$WORKFLOW_HOME/scripts/section-loop.py" <planspace> <codespace> \
-  --global-proposal <proposal-path> --global-alignment <alignment-path> \
-  --parent <agent-name>
+2. **Per-dispatch agent monitor** (`agents/agent-monitor.md`, GLM): One per
+   agent dispatch. Launched from `dispatch.py` alongside each strategic agent.
+   Reads the agent's narration messages via `db.sh drain` on the agent's
+   named queue, tracks `plan:` messages, detects repetition patterns indicating
+   the agent has entered an infinite loop (typically from context compaction).
+   Reports `LOOP_DETECTED` by logging a signal event:
+   `db.sh log <planspace>/run.db signal <agent-name> "LOOP_DETECTED:..." --agent <monitor-name>`.
+   One monitor per agent dispatch, exits when agent finishes.
+
+3. **Task queue**: `scripts/task_dispatcher.py` polls for task-request
+   artifacts emitted by strategic agents and dispatches them through the
+   standard dispatch boundary. Resolves via `task_router.py` under script
+   control — the mechanism that closes the task-submission loop.
+
+The workflow schedule is managed by `scripts/workflow.sh` and the
+section-loop script, not by an orchestrator agent. All coordination goes
+through `db.sh` and a single `run.db` per pipeline run. No
+team/SendMessage infrastructure -- agents are standalone processes launched
+via `agents`, not Claude teammates. Every coordination operation (send,
+recv, log) is automatically recorded in the database. Messages are claimed,
+not consumed -- the database file is the complete audit trail.
+
+### Communication model (all db.sh)
+
 ```
-
-The script runs as a **background task** under a **task agent**. The task
-agent is launched via `agents` and is responsible for:
-- Starting the section-loop script as a background subprocess
-- Monitoring status mail from the script via mailbox recv
-- Detecting stuck states (repeated alignment problems, stalled progress, crashes)
-- Reporting progress and problems to the UI orchestrator
-- Fixing issues autonomously when possible
-
-The UI orchestrator does NOT directly launch or monitor section-loop
-scripts. It spawns task agents and receives their reports.
-
-### Communication model (3 layers, all db.sh)
-
+Orchestrator (manages workflow schedule, dispatches steps)
+  └─ section-loop.py (script-owned pipeline)
+       ├─ db.sh send (messages) + db.sh log summary (events)
+       ├─ db.sh query lifecycle --tag pipeline-state (pause check)
+       ├─ recv on section-loop queue (when paused by signals)
+       └─ per agent dispatch (dispatch.py):
+            ├─ agent (agents, sends narration via db.sh)
+            └─ Agent Monitor (GLM, per-dispatch loop detector)
+                 ├─ reads agent's narration queue via db.sh
+                 └─ db.sh log signal (NOT message send)
 ```
-UI Orchestrator (talks to user, high-level decisions)
-  ├─ recv on orchestrator queue (listens for task-agent reports)
-  └─ Task Agent (one per task, via agents)
-       ├─ launches section-loop + monitor
-       ├─ recv on task-agent queue (section-loop messages + escalations)
-       ├─ send to orchestrator queue (reports progress + problems)
-       ├─ Task Monitor (GLM, section-level pattern matcher)
-       │    ├─ db.sh tail summary --since <cursor> (cursor-based event query)
-       │    ├─ db.sh log lifecycle pipeline-state "paused" (pause/resume)
-       │    └─ send to task-agent queue (escalations)
-       ├─ QA Monitor (Opus, deep QA detection)
-       │    ├─ db.sh tail summary + signal (cursor-based event queries)
-       │    ├─ reads artifact files for content analysis
-       │    ├─ db.sh log qa-finding (structured findings)
-       │    ├─ db.sh log lifecycle pipeline-state "paused" (PAUSE authority)
-       │    └─ send to task-agent queue (qa:warning, qa:paused, qa:abort-recommended)
-       └─ section-loop.py (background subprocess)
-            ├─ db.sh send (messages) + db.sh log summary (events)
-            ├─ db.sh query lifecycle --tag pipeline-state (pause check)
-            ├─ recv on section-loop queue (when paused by signals)
-            └─ per agent dispatch:
-                 ├─ agent (agents, sends narration via db.sh)
-                 └─ Agent Monitor (GLM, per-dispatch loop detector)
-                      ├─ reads agent's narration queue via db.sh
-                      └─ db.sh log signal (NOT message send)
-```
-
-All coordination goes through `db.sh` and a single `run.db` per pipeline
-run. No team/SendMessage infrastructure — agents are standalone processes
-launched via `agents`, not Claude teammates. Every coordination
-operation (send, recv, log) is automatically recorded in the database.
-Messages are claimed, not consumed — the database file is the complete
-audit trail.
-
-**UI Orchestrator**: Launches task agents via `agents --file`,
-runs `db.sh recv` on its own queue, receives reports, makes decisions,
-communicates with user. Does NOT directly launch or monitor section-loop
-scripts.
-
-**Task Agent**: Intelligent overseer launched via `agents`. Launches
-the section-loop script and monitor agent. Has full filesystem access to
-investigate issues when the monitor escalates. Reads logs, diagnoses root
-causes, fixes what it can autonomously, and escalates to the orchestrator
-what it can't.
-
-**Task Monitor** (GLM): Section-level pattern matcher. Queries summary
-events from the coordination database via
-`db.sh tail <planspace>/run.db summary --since <cursor>`, using cursor-based
-pagination (tracks last-seen event ID). Tracks counters (alignment
-attempts, coordination rounds), detects stuck states and cycles. Can pause
-the pipeline by logging a lifecycle event:
-`db.sh log <planspace>/run.db lifecycle pipeline-state "paused" --agent monitor`.
-Escalates to task agent with diagnosis. Does NOT read files, fix issues,
-or make judgment calls beyond pattern detection. Does NOT use `recv` for
-summary data — queries events instead, avoiding message consumption
-conflicts with the task agent.
-
-**QA Monitor** (Opus): Deep QA detection agent with 26 rules across 5
-categories: cycle detection (A1-A6), workflow compliance (B1-B6), strategic
-behavior (C1-C6), bug detection (D1-D4), and big-picture friction (E1-E4).
-Runs alongside section-loop for the duration of the pipeline. Unlike the
-lightweight task monitor, the QA monitor actively reads artifact files,
-compares outputs for similarity, and performs content analysis. Uses
-graduated escalation levels: LOG (record only), WARN (notify task agent),
-PAUSE (pause pipeline + notify), ABORT-RECOMMEND (recommend abort, does
-not abort autonomously). Writes findings to
-`<planspace>/artifacts/qa-report.md` and logs them as `qa-finding` events
-in the database. Has authority to PAUSE the pipeline — if both the task
-monitor and QA monitor detect the same issue, the QA monitor's PAUSE takes
-priority over the task monitor's escalation.
-
-**Agent Monitor** (GLM): Per-dispatch loop detector. Launched by
-section-loop alongside each agent dispatch. Reads the agent's narration
-messages via `db.sh drain` on the agent's named queue, tracks `plan:`
-messages, detects repetition patterns indicating the agent has entered an
-infinite loop (typically from context compaction). Reports `LOOP_DETECTED`
-by logging a signal event:
-`db.sh log <planspace>/run.db signal <agent-name> "LOOP_DETECTED:..." --agent <monitor-name>`.
-One monitor per agent dispatch, exits when agent finishes.
-
-**Section-loop script**: Strategic orchestrator. Runs sections sequentially
-through the integration proposal + implementation flow, dispatches agents,
-manages cross-section communication (snapshots, impact analysis, consequence
-notes), and runs the global coordination phase after the initial pass.
-Sends messages to the task agent via `db.sh send` and logs summary events
-via `db.sh log summary` for each lifecycle transition. Queries pipeline
-state before each agent dispatch via
-`db.sh query <planspace>/run.db lifecycle --tag pipeline-state --limit 1`
-— if paused, waits until resumed. For each per-section Codex/GPT agent
-dispatch (setup, proposal, implementation), registers a narration queue
-and launches a per-agent GLM monitor alongside the agent. Two categories
-of dispatch are exempt from per-agent monitoring: (1) Opus alignment
-checks — alignment prompts do not include narration instructions, and a
-monitor would false-positive STALLED after 5 minutes of expected silence;
-(2) Coordinator fix agents — fix prompts use strategic GLM sub-agents
-internally for verification, and the task-level monitor detects
-cross-section stuck states at the coordination round level. Cleans up
-agent registrations via `db.sh cleanup` after each per-section dispatch.
 
 **Pipeline state** (lifecycle events in `run.db`): Controls the pipeline.
 The latest `lifecycle` event with `tag='pipeline-state'` determines current
-state (`running` or `paused`). The task monitor logs a `paused` event to
-pause; the task agent logs a `running` event to resume after investigating.
-State changes are append-only — the full history of pause/resume transitions
-is preserved in the database.
+state (`running` or `paused`). State changes are append-only -- the full
+history of pause/resume transitions is preserved in the database.
 
 **Summary events** (events table in `run.db`): All summary, status, done,
 complete, fail, and pause messages are recorded as `kind='summary'` events
-via `db.sh log`. The task monitor queries these events via cursor-based
-`db.sh tail summary --since <cursor>`. The task agent reads messages via
-`db.sh recv` on its own queue.
+via `db.sh log`.
 
 **Agent narration**: Each dispatched agent (setup, integration proposal,
 strategic implementation) is instructed to send messages about what it's
 planning before each action. Messages go to the agent's own named queue
 (e.g., `intg-proposal-01`) via `db.sh send`, which the per-agent monitor
-watches. The agent narrates instead of maintaining state files — agents are
+watches. The agent narrates instead of maintaining state files -- agents are
 reliable narrators but unreliable at file management. If an agent detects
 it's repeating work, it sends `LOOP_DETECTED` to its own queue and stops.
 
 ### Mail protocols
 
-**Section-loop → Task Agent** (via db.sh send + db.sh log summary):
+**Section-loop summary events** (via db.sh log summary):
 
 | Message | Meaning |
 |---------|---------|
@@ -683,90 +609,60 @@ it's repeating work, it sends `LOOP_DETECTED` to its own queue and stops.
 | `fail:<num>:<error>` | Section failed (includes `fail:<num>:aborted`, `fail:<num>:coordination_exhausted:<summary>`) |
 | `fail:aborted` | Global abort (may occur at any time when no specific section context is available) |
 | `complete` | All sections aligned and coordination done |
-| `pause:underspec:<num>:<detail>` | Script paused — needs information |
-| `pause:needs_parent:<num>:<detail>` | Script paused — needs parent decision |
-| `pause:need_decision:<num>:<question>` | Script paused — needs human answer |
-| `pause:dependency:<num>:<needed_section>` | Script paused — needs other section first |
-| `pause:loop_detected:<num>:<detail>` | Script paused — agent entered infinite loop |
+| `pause:underspec:<num>:<detail>` | Script paused -- needs information |
+| `pause:needs_parent:<num>:<detail>` | Script paused -- needs parent decision |
+| `pause:need_decision:<num>:<question>` | Script paused -- needs human answer |
+| `pause:dependency:<num>:<needed_section>` | Script paused -- needs other section first |
+| `pause:loop_detected:<num>:<detail>` | Script paused -- agent entered infinite loop |
 
-All messages above are sent to the task agent's queue via `db.sh send`
-AND recorded as summary events via `db.sh log summary <tag> <body>`. Both
-writes go to `run.db`. The task monitor queries summary events via
-`db.sh tail`; the task agent reads messages via `db.sh recv`.
+All messages above are recorded as summary events via
+`db.sh log summary <tag> <body>` in `run.db`. Messages to the parent
+(if a `--parent` is set) are also sent via `db.sh send`.
 
-**Task Agent → Section-loop** (control):
+**Parent → Section-loop** (control):
 
 | Message | Meaning |
 |---------|---------|
-| `resume:<payload>` | Continue after pause — payload contains answer/context |
+| `resume:<payload>` | Continue after pause -- payload contains answer/context |
 | `abort` | Clean shutdown |
-| `alignment_changed` | User input changed alignment docs, re-evaluate |
+| `alignment_changed` | Alignment docs changed, re-evaluate |
 
-**Task Agent → UI Orchestrator** (progress reports + escalations):
+**Agent Monitor signals** (via db.sh log signal):
 
-| Message | Meaning |
-|---------|---------|
-| `progress:<task>:<num>:ALIGNED` | Section completed successfully |
-| `progress:<task>:complete` | All sections done |
-| `problem:stuck:<task>:<num>:<diagnosis>` | Stuck state detected |
-| `problem:crash:<task>:<detail>` | Script crashed |
-| `problem:escalate:<task>:<detail>` | Issue needs human input |
-
-**Task Monitor → Task Agent** (escalations):
-
-| Message | Meaning |
-|---------|---------|
-| `problem:stuck:<section>:<diagnosis>` | Alignment stuck for section |
-| `problem:coordination:<round>:<diagnosis>` | Coordination not converging |
-| `problem:loop:<section>:<agent-detail>` | Agent loop detected |
-| `problem:stalled` | No activity detected |
-
-**QA Monitor → Task Agent** (findings):
-
-| Message | Meaning |
-|---------|---------|
-| `qa:warning:<category>:<detail>` | Compliance or strategic issue detected |
-| `qa:paused:<category>:<detail>` | Critical issue — pipeline PAUSED |
-| `qa:abort-recommended:<category>:<detail>` | Abort recommended (not autonomous) |
-
-**Two signal routes per background task:**
-1. Task completion — the background process exits (done or error)
-2. Mailbox message — the process sends a signal while still running
-
-The task agent always has a `recv` running as a background task so it is
-always listening. When `recv` completes (message arrived), process it,
-then immediately start another `recv`.
+| Signal | Meaning |
+|--------|---------|
+| `LOOP_DETECTED:<detail>` | Agent entered infinite loop (repetition in narration) |
 
 ### Signal protocol
 
-**section-loop → task agent (parent):**
-- `pause:underspec:<section>:<description>` — needs research/proposal
-- `pause:need_decision:<section>:<question>` — needs human answer
-- `pause:dependency:<section>:<needed_section>` — needs another section first
-- `done:<num>:<count> files modified` — section completed
-- `fail:<num>:<error>` — section failed
-- `complete` — all sections done
+**section-loop → parent:**
+- `pause:underspec:<section>:<description>` -- needs research/proposal
+- `pause:need_decision:<section>:<question>` -- needs human answer
+- `pause:dependency:<section>:<needed_section>` -- needs another section first
+- `done:<num>:<count> files modified` -- section completed
+- `fail:<num>:<error>` -- section failed
+- `complete` -- all sections done
 
-**task agent → section-loop:**
-- `resume:<payload>` — continue (answer or context attached; payload
+**parent → section-loop:**
+- `resume:<payload>` -- continue (answer or context attached; payload
   is persisted to `artifacts/decisions/section-NN.md` and included in
   subsequent prompts)
-- `abort` — clean shutdown
-- `alignment_changed` — user input changed alignment docs; section-loop
+- `abort` -- clean shutdown
+- `alignment_changed` -- alignment docs changed; section-loop
   invalidates all excerpt files and re-queues completed sections
 
 ### Pause/resume flow
 
 When an agent signals underspecification, dependency, or needs a decision:
 
-1. section-loop sends `pause:*` to task agent's mailbox
+1. section-loop sends `pause:*` to the parent's mailbox
 2. section-loop blocks on its own `recv` (waiting for response)
-3. Task agent's `recv` fires, task agent reads the signal
-4. Task agent handles it:
-   - `underspec` → trigger research/evaluate cycle, or ask user
-   - `need_decision` → present question to user, collect answer
-   - `dependency` → resolve the dependency, then resume
-5. Task agent sends `resume:<answer>` to section-loop's mailbox
+3. Parent reads the signal
+4. Parent handles it:
+   - `underspec` -- trigger research/evaluate cycle, or ask user
+   - `need_decision` -- present question to user, collect answer
+   - `dependency` -- resolve the dependency, then resume
+5. Parent sends `resume:<answer>` to section-loop's mailbox
 6. section-loop's `recv` fires, reads answer, persists to decisions
    file, and **retries the current step** (not continues forward)
 
@@ -776,17 +672,13 @@ After resume, section-loop:
   decision context included in the prompt
 - The decisions file accumulates across multiple pause/resume cycles
 
-If the task agent is not the top-level orchestrator, it may need
-to bubble the signal up further — send its own `pause` to the
-orchestrator and block on its own `recv`.
-
 ### User input cascade
 
 When the user answers a tradeoff/constraint question, their answer may
 change alignment documentation or design constraints. This cascades:
 
-1. User provides answer → alignment docs updated
-2. Task agent sends `alignment_changed` to section-loop's mailbox
+1. User provides answer -- alignment docs updated
+2. Parent sends `alignment_changed` to section-loop's mailbox
 3. section-loop invalidates ALL excerpt files (deletes them) and marks
    ALL completed sections dirty (back in queue)
 4. When dirty sections re-run, setup re-extracts excerpts from the
@@ -812,7 +704,7 @@ Phase 1 — Initial pass (per-section):
       → if excerpts already exist: skip (idempotent)
 
     Step 2: Integration proposal loop
-      GPT (Codex) reads excerpts + source files, explores codebase (GLM sub-agents)
+      GPT (Codex) reads excerpts + source files, explores codebase (submits exploration tasks)
       Writes integration proposal: how to wire proposal into codebase
         → if agent signals: pause, wait for parent, resume
       Opus checks alignment (shape and direction, NOT tiny details)
@@ -821,8 +713,8 @@ Phase 1 — Initial pass (per-section):
         → UNDERSPECIFIED: pause, wait for parent, resume
 
     Step 3: Strategic implementation
-      GPT (Codex) implements holistically with sub-agents
-        (GLM for exploration, Codex for targeted areas)
+      GPT (Codex) implements holistically with task submission
+        (exploration and targeted tasks dispatched under script control)
         → if agent signals: pause, wait for parent, resume
       Opus checks implementation alignment (still solving right problem?)
         → ALIGNED: section done
@@ -1087,18 +979,15 @@ GPT reads the section proposal excerpt, alignment excerpt, section
 specification, and related source files. Before writing anything, GPT
 explores the codebase strategically:
 
-**Dispatch sub-agents for targeted exploration:**
-```bash
-EXPLORE="$(mktemp)"
-cat > "$EXPLORE" <<'PROMPT'
-<instructions>
-PROMPT
-agents --model glm --project <codespace> --file "$EXPLORE"
-```
+**Submit task requests for targeted exploration:**
 
-Use GLM to read files, find callers/callees, check existing interfaces,
-understand module organization, and verify assumptions. Explore
-strategically: form a hypothesis, verify with a targeted read, adjust.
+If you need deeper analysis, submit a task request to the path specified
+in your dispatch prompt. The dispatcher handles agent and model selection.
+
+Use exploration tasks to read files, find callers/callees, check existing
+interfaces, understand module organization, and verify assumptions.
+Explore strategically: form a hypothesis, verify with a targeted read,
+adjust.
 
 After exploring, GPT writes an integration proposal to
 `<planspace>/artifacts/proposals/section-NN-integration-proposal.md`:
@@ -1171,25 +1060,12 @@ GPT reads the aligned integration proposal, section excerpts, and
 source files. Implements the changes **holistically** — multiple files
 at once, coordinated changes. NOT mechanical per-file execution.
 
-**Dispatch sub-agents as needed:**
+**Submit task requests for exploration and targeted sub-work:**
 
-For cheap exploration (reading, checking, verifying):
-```bash
-EXPLORE="$(mktemp)"
-cat > "$EXPLORE" <<'PROMPT'
-<instructions>
-PROMPT
-agents --model glm --project <codespace> --file "$EXPLORE"
-```
-
-For targeted implementation of specific areas:
-```bash
-PROMPT="$(mktemp)"
-cat > "$PROMPT" <<'EOF'
-<instructions>
-EOF
-agents --model gpt-codex-high --project <codespace> --file "$PROMPT"
-```
+For exploration and targeted sub-work, submit task requests to the
+task-submission path provided in your dispatch prompt. Available task
+types include scan_explore, scan_deep_analyze, and strategic_implementation.
+The dispatcher handles agent file and model selection.
 
 GPT has authority to go beyond the integration proposal where necessary
 (e.g., a file that needs changing but was not in the proposal, an
@@ -1393,9 +1269,9 @@ conflicts after the initial pass.
 | 3: Section File Identification | Opus | Per-section agent: reason over codemap + section goals, identify related files |
 | 3: Deep Scan | GLM | Per-file analysis: reason about specific relevance in section context |
 | 4: Section Setup | Opus | Extract proposal/alignment excerpts from global documents |
-| 4: Integration Proposal | Codex (GPT) | Write integration proposal with GLM sub-agent exploration |
+| 4: Integration Proposal | Codex (GPT) | Write integration proposal (submits exploration tasks) |
 | 4: Integration Alignment | Opus | Shape/direction check on integration proposal |
-| 5: Strategic Implementation | Codex (GPT) | Holistic implementation with sub-agents (GLM + Codex) |
+| 5: Strategic Implementation | Codex (GPT) | Holistic implementation (submits sub-work tasks) |
 | 5: Implementation Alignment | Opus | Shape/direction check on implemented code |
 | 5: Impact Analysis | GLM | Semantic impact analysis for cross-section communication |
 | 5: Global Coordination | Codex (GPT) | Coordinated fixes for grouped cross-section problems |

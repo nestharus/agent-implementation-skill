@@ -260,6 +260,7 @@ def _run_tier_ranking(
         model=tier_model,
         project=codespace,
         prompt_file=tier_prompt,
+        agent_file="scan-tier-ranker.md",
         stdout_file=tier_output,
     )
 
@@ -274,6 +275,7 @@ def _run_tier_ranking(
             model=escalation_model,
             project=codespace,
             prompt_file=tier_prompt,
+            agent_file="scan-tier-ranker.md",
             stdout_file=tier_output,
         )
         if result.returncode == 0:
@@ -455,6 +457,7 @@ def _analyze_file(
         model=model_policy.get("deep_analysis", "glm"),
         project=codespace,
         prompt_file=prompt_file,
+        agent_file="scan-file-analyzer.md",
         stdout_file=response_file,
         stderr_file=stderr_file,
     )

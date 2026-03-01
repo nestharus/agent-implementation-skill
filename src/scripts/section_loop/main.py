@@ -23,6 +23,7 @@ from .coordination import (
     run_global_coordination,
 )
 from .coordination.problems import _collect_outstanding_problems
+from .decisions import build_strategic_state
 from .cross_section import read_incoming_notes
 from .dispatch import (
     check_agent_signals,
@@ -490,6 +491,10 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
         log(f"=== Phase 1 complete: {len(completed)} sections "
             f"processed ===")
 
+        # Write strategic state snapshot after Phase 1
+        decisions_dir = planspace / "artifacts" / "decisions"
+        build_strategic_state(decisions_dir, section_results)
+
         # -------------------------------------------------------------
         # Phase 2: Global coordination loop
         # -------------------------------------------------------------
@@ -657,6 +662,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                         "restarting from Phase 1")
                     continue  # outer while True → restart Phase 1
                 log("=== All sections ALIGNED after initial pass ===")
+                build_strategic_state(decisions_dir, section_results)
                 mailbox_send(planspace, parent, "complete")
                 return
 
@@ -714,6 +720,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                     break
                 log(f"=== All sections ALIGNED after coordination "
                     f"round {round_num} ===")
+                build_strategic_state(decisions_dir, section_results)
                 mailbox_send(planspace, parent, "complete")
                 return
 
@@ -772,6 +779,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             if remaining:
                 log(f"=== Coordination finished after {round_num} rounds, "
                     f"{len(remaining)} sections still unresolved ===")
+                build_strategic_state(decisions_dir, section_results)
                 for r in remaining:
                     summary = (r.problems or "unknown")[:120]
                     log(f"  - Section {r.section_number}: {summary}")
@@ -792,6 +800,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 log(f"=== Coordination exhausted after {round_num} rounds: "
                     f"all sections aligned but {len(outstanding)} "
                     f"outstanding problems remain ===")
+                build_strategic_state(decisions_dir, section_results)
                 # Write structured rollup artifact for parent visibility
                 rollup_dir = planspace / "artifacts" / "coordination"
                 rollup_dir.mkdir(parents=True, exist_ok=True)

@@ -65,6 +65,7 @@ def dispatch_agent(
     model: str,
     project: Path,
     prompt_file: Path,
+    agent_file: str,
     stdout_file: Path | None = None,
     stderr_file: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
@@ -78,6 +79,11 @@ def dispatch_agent(
         ``--project`` directory (typically the codespace).
     prompt_file:
         ``--file`` path containing the agent prompt.
+    agent_file:
+        REQUIRED basename of the agent definition file (e.g.
+        ``"scan-codemap-builder.md"``).  Every dispatch must have
+        behavioral constraints.  The file is resolved relative to
+        ``src/agents/``.
     stdout_file:
         If given, stdout is written to this path.
     stderr_file:
@@ -88,11 +94,23 @@ def dispatch_agent(
     subprocess.CompletedProcess
         The finished process.  Caller decides how to handle non-zero rc.
     """
+    if not agent_file:
+        raise ValueError(
+            "agent_file is required — every dispatch must have "
+            "behavioral constraints"
+        )
+    # WORKFLOW_HOME: scripts/scan -> scripts -> src
+    workflow_home = Path(__file__).resolve().parent.parent.parent
+    agent_path = workflow_home / "agents" / agent_file
+    if not agent_path.exists():
+        raise FileNotFoundError(f"Agent file not found: {agent_path}")
+
     cmd = [
         "uv", "run", "--frozen", "agents",
         "--model", model,
         "--project", str(project),
         "--file", str(prompt_file),
+        "--agent-file", str(agent_path),
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603

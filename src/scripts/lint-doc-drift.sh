@@ -24,7 +24,7 @@ for phrase in "${BANNED_PHRASES[@]}"; do
     -e "$phrase" \
     --include="*.md" \
     "$WH/implement.md" "$WH/SKILL.md" \
-    "$WH/scripts/task-agent-prompt.md" 2>/dev/null || true)
+    2>/dev/null || true)
 done
 
 if [ "$EXIT_CODE" -eq 0 ]; then

@@ -49,14 +49,26 @@ treat them as authoritative fixes (wrong paths, missing entries,
 misclassified files). Use it to orient yourself before diving into
 individual files.
 
-**Dispatch sub-agents for targeted exploration:**
-```bash
-EXPLORE="$(mktemp)"
-echo '<your-instructions>' > "$EXPLORE"
-agents --model {exploration_model} --project "{codespace}" --file "$EXPLORE"
+**Request deeper exploration when needed:**
+
+If you need files read or analyzed beyond what you can do directly, write
+a task request to `{task_submission_path}`:
+
+```json
+{{
+    "task_type": "scan_explore",
+    "concern_scope": "section-{section_number}",
+    "payload_path": "<path-to-exploration-prompt>",
+    "priority": "normal"
+}}
 ```
 
-Use sub-agents to:
+Available task types for this role: {allowed_tasks}
+
+The dispatcher handles agent selection and model choice. You declare
+WHAT analysis you need, not which agent or model runs it.
+
+Use task requests to:
 - Read files related to this section and understand their structure
 - Find callers/callees of functions you need to modify
 - Check what interfaces or contracts currently exist
@@ -65,13 +77,6 @@ Use sub-agents to:
 
 Do NOT try to understand everything upfront. Explore strategically:
 form a hypothesis, verify it with a targeted read, adjust, repeat.
-
-**Dispatch rule**: If dispatching an agent that has a defined role file in
-`$WORKFLOW_HOME/agents/`, attach it via `--agent-file`:
-```bash
-agents --agent-file "$WORKFLOW_HOME/agents/<role>.md" \
-  --model <model> --file <prompt>
-```
 
 ### Phase 2: Write the Integration Proposal
 

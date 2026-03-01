@@ -1,5 +1,5 @@
 ---
-description: Writes integration proposals — strategic documents describing HOW to wire a proposal into the existing codebase. Explores strategically, dispatches GLM sub-agents, thinks about shape not details.
+description: Writes integration proposals — strategic documents describing HOW to wire a proposal into the existing codebase. Explores strategically, submits task requests for deeper analysis, thinks about shape not details.
 model: gpt-codex-high
 ---
 
@@ -43,25 +43,30 @@ hypotheses about where things connect, verify with targeted reads, adjust.
 **Start with the codemap** if available — it captures the project's
 structure, key files, and how parts relate.
 
-**Dispatch GLM sub-agents for targeted exploration** using the
-`--project` path provided in your dispatch prompt.
+**For targeted exploration**, read files directly using your available
+tools. Form hypotheses about where things connect, verify with targeted
+reads, adjust.
 
-Use GLM to:
-- Read files and understand their structure
-- Find callers/callees of functions you need to modify
-- Check what interfaces or contracts currently exist
-- Verify assumptions about how the code works
+If you need deeper analysis that requires a separate agent (e.g., a
+scan or deep file analysis), **submit a task** by writing a JSON signal
+to the task-submission path specified in your dispatch prompt:
+
+```json
+{
+    "task_type": "scan_deep_analyze",
+    "problem_id": "<problem-id>",
+    "concern_scope": "<section-id>",
+    "payload_path": "<path-to-sub-task-prompt>",
+    "priority": "normal"
+}
+```
+
+The dispatcher will resolve the task type to the correct agent and model
+and handle execution. You do NOT choose which agent file or model runs
+the sub-task — that is the dispatcher's job.
 
 Do NOT try to understand everything upfront. Explore strategically:
 form a hypothesis, verify with a targeted read, adjust, repeat.
-
-**Dispatch rule**: When dispatching a sub-agent that has a role file in
-`$WORKFLOW_HOME/agents/`, always use `--agent-file`:
-```bash
-agents --agent-file "$WORKFLOW_HOME/agents/<role>.md" \
-  --model <model> --file <prompt>
-```
-For ad-hoc exploration sub-agents (no role file), inline dispatch is fine.
 
 ### Phase 2: Write the Integration Proposal
 

@@ -140,7 +140,8 @@ def _dispatch_agent(
     prompt_path: Path,
     output_path: Path,
     codespace: Path | None = None,
-    agent_file: str | None = None,
+    *,
+    agent_file: str,
 ) -> bool:
     """Run an agent via ``uv run --frozen agents`` and capture output.
 
@@ -156,24 +157,30 @@ def _dispatch_agent(
         If given, passed as ``--project`` so the agent runs with the
         correct working directory.
     agent_file:
-        If given (basename like ``"substrate-shard-explorer.md"``),
-        passed as ``--agent-file`` for role-specific behavior.
+        REQUIRED basename of the agent definition file (e.g.
+        ``"substrate-shard-explorer.md"``).  Every dispatch must have
+        behavioral constraints.
 
     Returns
     -------
     bool
         ``True`` if the agent exited with return code 0.
     """
+    if not agent_file:
+        raise ValueError(
+            "agent_file is required — every dispatch must have "
+            "behavioral constraints"
+        )
+    agent_path = WORKFLOW_HOME / "agents" / agent_file
+    if not agent_path.exists():
+        raise FileNotFoundError(f"Agent file not found: {agent_path}")
+
     cmd = [
         "uv", "run", "--frozen", "agents",
         "--model", model,
         "--file", str(prompt_path),
+        "--agent-file", str(agent_path),
     ]
-    if agent_file:
-        cmd.extend([
-            "--agent-file",
-            str(WORKFLOW_HOME / "agents" / agent_file),
-        ])
     if codespace:
         cmd.extend(["--project", str(codespace)])
 

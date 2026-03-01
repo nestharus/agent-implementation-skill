@@ -259,6 +259,7 @@ This is the primary content of the consequence note the target receives.
         impact_model, impact_prompt_path, impact_output_path,
         planspace, parent, codespace=codespace,
         section_number=sec_num,
+        agent_file="impact-analyzer.md",
     )
 
     # -----------------------------------------------------------------
@@ -364,6 +365,7 @@ If no material impacts can be extracted, reply:
             normalizer_model, normalize_prompt_path, normalize_output_path,
             planspace, parent, codespace=codespace,
             section_number=sec_num,
+            agent_file="impact-analyzer.md",
         )
         # Parse the normalizer's JSON output
         try:
@@ -667,12 +669,37 @@ def read_decisions(planspace: Path, section_number: str) -> str:
 
 def persist_decision(planspace: Path, section_number: str,
                      payload: str) -> None:
-    """Persist a resume payload as a decision for a section."""
+    """Persist a resume payload as a decision for a section.
+
+    Writes both the existing prose appendix **and** a structured JSON
+    sidecar via :func:`decisions.record_decision` so the two formats
+    stay in sync from a single write path.
+    """
+    from .decisions import Decision, load_decisions, record_decision
+
     decisions_dir = planspace / "artifacts" / "decisions"
     decisions_dir.mkdir(parents=True, exist_ok=True)
-    decision_file = decisions_dir / f"section-{section_number}.md"
-    with decision_file.open("a", encoding="utf-8") as f:
-        f.write(f"\n## Decision (from parent)\n{payload}\n")
+
+    # Generate a sequential decision ID based on existing count
+    existing = load_decisions(decisions_dir, section=section_number)
+    next_num = len(existing) + 1
+    decision_id = f"d-{section_number}-{next_num:03d}"
+
+    decision = Decision(
+        id=decision_id,
+        scope="section",
+        section=section_number,
+        problem_id=None,
+        parent_problem_id=None,
+        concern_scope="parent-resume",
+        proposal_summary=payload,
+        alignment_to_parent=None,
+        status="decided",
+    )
+
+    # Single write path: record_decision writes both JSON sidecar
+    # and prose appendix from the same Decision object.
+    record_decision(decisions_dir, decision)
     _log_artifact(planspace, f"decision:section-{section_number}")
 
 

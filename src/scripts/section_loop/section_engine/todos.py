@@ -112,6 +112,7 @@ Write a JSON signal to: `{signal_path}`
         model, decider_prompt, decider_output,
         planspace, parent, codespace=codespace,
         section_number=section_number,
+        agent_file="microstrategy-decider.md",
     )
     if signal_path.exists():
         try:
@@ -133,6 +134,7 @@ Write a JSON signal to: `{signal_path}`
         escalation_model, decider_prompt, escalation_output,
         planspace, parent, codespace=codespace,
         section_number=section_number,
+        agent_file="microstrategy-decider.md",
     )
     if signal_path.exists():
         try:

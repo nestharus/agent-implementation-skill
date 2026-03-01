@@ -112,6 +112,7 @@ def run_codemap_build(
         model=model_policy["codemap_build"],
         project=codespace,
         prompt_file=prompt_file,
+        agent_file="scan-codemap-builder.md",
         stdout_file=codemap_path,
         stderr_file=stderr_file,
     )
@@ -214,6 +215,7 @@ def _run_freshness_check(
         model=model_policy["codemap_freshness"],
         project=codespace,
         prompt_file=freshness_prompt,
+        agent_file="scan-codemap-freshness-judge.md",
         stdout_file=freshness_output,
     )
 
@@ -287,6 +289,7 @@ def _run_verification(
         model=model_policy.get("validation", "glm"),
         project=codespace,
         prompt_file=verifier_prompt,
+        agent_file="scan-codemap-verifier.md",
         stdout_file=verifier_output,
     )
 
