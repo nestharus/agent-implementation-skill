@@ -7122,8 +7122,10 @@ class TestR74V1aTaskIngestionTemplateSafety:
         text = (
             src / "scripts" / "section_loop" / "task_ingestion.py"
         ).read_text(encoding="utf-8")
-        idx = text.find("Generate a minimal prompt from task metadata")
-        assert idx >= 0
+        idx = text.find("No payload supplied")
+        assert idx >= 0, (
+            "task_ingestion.py must have a no-payload fallback section"
+        )
         block = text[idx:idx + 800]
         assert "validate_dynamic_content" in block, (
             "Raw-prompt fallback must validate content before writing"
@@ -7716,4 +7718,190 @@ class TestR76V5LintGuardrailBroadening:
         ).read_text(encoding="utf-8")
         assert "Audit proposal" in text, (
             "lint-doc-drift.sh must ban stale 'Audit proposal' role language"
+        )
+
+
+class TestR77V1NormalizerAgentFile:
+    """V1/R77: Impact output normalizer dispatch must include agent_file."""
+
+    def test_cross_section_normalizer_has_agent_file(self) -> None:
+        """cross_section.py normalizer dispatch must pass agent_file kwarg."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "cross_section.py"
+        ).read_text(encoding="utf-8")
+        assert 'agent_file="impact-output-normalizer.md"' in text, (
+            "Normalizer dispatch must include agent_file"
+        )
+
+    def test_normalizer_agent_file_exists(self) -> None:
+        """impact-output-normalizer.md agent file must exist."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        agent_file = src / "agents" / "impact-output-normalizer.md"
+        assert agent_file.exists(), (
+            "impact-output-normalizer.md must exist in agents/"
+        )
+
+
+class TestR77V2TemplateSafetyEnforced:
+    """V2/R77: Template safety blocks dispatch, not just warns."""
+
+    def test_validate_dynamic_content_docstring_blocks(self) -> None:
+        """validate_dynamic_content docstring must say violations block."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "agent_templates.py"
+        ).read_text(encoding="utf-8")
+        assert "block dispatch" in text.lower(), (
+            "validate_dynamic_content must document that violations block dispatch"
+        )
+
+    def test_writers_proposal_blocks_on_violation(self) -> None:
+        """Integration proposal writer must return None on violation."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "prompts" / "writers.py"
+        ).read_text(encoding="utf-8")
+        assert "return None" in text, (
+            "Prompt writers must return None on template violation"
+        )
+        assert "ERROR" in text, (
+            "Template violations must be logged as ERROR, not WARNING"
+        )
+
+    def test_reexplore_blocks_on_violation(self) -> None:
+        """Reexplore prompt must block dispatch on violation."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "section_engine" / "reexplore.py"
+        ).read_text(encoding="utf-8")
+        assert "return None" in text, (
+            "Reexplore must return None on template violation"
+        )
+
+    def test_microstrategy_blocks_on_violation(self) -> None:
+        """Microstrategy prompt must block dispatch on violation."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "section_engine" / "runner.py"
+        ).read_text(encoding="utf-8")
+        # The microstrategy validation section should block
+        assert "blocked" in text.lower(), (
+            "Runner must block dispatch when template violations found"
+        )
+
+
+class TestR77V3V4PayloadValidation:
+    """V3+V4/R77: Payload prompts validated before dispatch."""
+
+    def test_task_ingestion_validates_payload(self) -> None:
+        """task_ingestion.py must validate payload prompt content."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "task_ingestion.py"
+        ).read_text(encoding="utf-8")
+        # Must validate the payload content, not just the generated fallback
+        assert "payload_content" in text or "validate_dynamic_content(payload" in text or "validate_dynamic_content(resolved" in text, (
+            "task_ingestion.py must validate payload prompt content"
+        )
+
+    def test_task_dispatcher_validates_payload(self) -> None:
+        """task_dispatcher.py must validate payload prompt content."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "task_dispatcher.py"
+        ).read_text(encoding="utf-8")
+        # Must validate payload path prompt, not just generated fallback
+        lines = text.split("\n")
+        payload_validation_found = False
+        in_payload_block = False
+        for line in lines:
+            if "if payload_path:" in line:
+                in_payload_block = True
+            if in_payload_block and "validate_dynamic_content" in line:
+                payload_validation_found = True
+                break
+            if in_payload_block and line.strip().startswith("else:"):
+                break
+        assert payload_validation_found, (
+            "task_dispatcher.py must validate payload prompts, not just fallback"
+        )
+
+
+class TestR77V5RelativePathResolution:
+    """V5/R77: task_ingestion.py resolves relative payload paths."""
+
+    def test_ingestion_resolves_relative_paths(self) -> None:
+        """task_ingestion.py must resolve relative paths against planspace."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "task_ingestion.py"
+        ).read_text(encoding="utf-8")
+        assert "planspace / resolved" in text or "planspace / payload" in text, (
+            "task_ingestion.py must resolve relative paths against planspace"
+        )
+
+    def test_ingestion_fails_closed_on_missing_payload(self) -> None:
+        """task_ingestion.py must fail closed when declared payload is missing."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "task_ingestion.py"
+        ).read_text(encoding="utf-8")
+        assert "payload declared but" in text.lower() or "not found" in text.lower(), (
+            "task_ingestion.py must log error when declared payload is missing"
+        )
+
+
+class TestR77V6TaskSubmissionSemantics:
+    """V6/R77: Task submission language normalized across prompt surfaces."""
+
+    def test_no_delegate_summarize_in_templates(self) -> None:
+        """integration-proposal.md must not contain 'delegate/summarize'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "prompts" / "templates"
+            / "integration-proposal.md"
+        ).read_text(encoding="utf-8")
+        assert "delegate/summarize" not in text, (
+            "integration-proposal.md must not use old delegation language"
+        )
+
+    def test_task_submission_semantics_constant_exists(self) -> None:
+        """TASK_SUBMISSION_SEMANTICS constant must exist in agent_templates."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "agent_templates.py"
+        ).read_text(encoding="utf-8")
+        assert "TASK_SUBMISSION_SEMANTICS" in text, (
+            "agent_templates.py must define TASK_SUBMISSION_SEMANTICS"
+        )
+
+    def test_reexplore_uses_shared_semantics(self) -> None:
+        """reexplore.py must use TASK_SUBMISSION_SEMANTICS."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "section_engine" / "reexplore.py"
+        ).read_text(encoding="utf-8")
+        assert "TASK_SUBMISSION_SEMANTICS" in text, (
+            "reexplore.py must use shared task submission semantics"
+        )
+
+    def test_coordination_uses_shared_semantics(self) -> None:
+        """coordination/execution.py must use TASK_SUBMISSION_SEMANTICS."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "coordination" / "execution.py"
+        ).read_text(encoding="utf-8")
+        assert "TASK_SUBMISSION_SEMANTICS" in text, (
+            "coordination/execution.py must use shared task submission semantics"
+        )
+
+    def test_lint_drift_catches_delegate_summarize(self) -> None:
+        """lint-doc-drift.sh must catch 'delegate/summarize' in templates."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "lint-doc-drift.sh"
+        ).read_text(encoding="utf-8")
+        assert "delegate/summarize" in text, (
+            "lint-doc-drift.sh must ban stale delegation language"
         )

@@ -385,6 +385,7 @@ If no material impacts can be extracted, reply:
             normalizer_model, normalize_prompt_path, normalize_output_path,
             planspace, parent, codespace=codespace,
             section_number=sec_num,
+            agent_file="impact-output-normalizer.md",
         )
         # Parse the normalizer's JSON output
         try:

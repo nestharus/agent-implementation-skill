@@ -174,10 +174,12 @@ def write_integration_proposal_prompt(
     tpl = load_template("integration-proposal.md")
     rendered = render(tpl, ctx)
 
-    # V6: Validate dynamic content for prohibited patterns
+    # V6: Validate dynamic content — violations block dispatch
     violations = validate_dynamic_content(rendered)
     if violations:
-        log(f"  WARNING: prompt {prompt_path.name} has template violations: {violations}")
+        log(f"  ERROR: prompt {prompt_path.name} blocked — template "
+            f"violations: {violations}")
+        return None
 
     prompt_path.write_text(rendered, encoding="utf-8")
 
@@ -389,10 +391,12 @@ def write_strategic_impl_prompt(
     tpl = load_template("strategic-implementation.md")
     rendered = render(tpl, ctx)
 
-    # V6: Validate dynamic content for prohibited patterns
+    # V6: Validate dynamic content — violations block dispatch
     violations = validate_dynamic_content(rendered)
     if violations:
-        log(f"  WARNING: prompt {prompt_path.name} has template violations: {violations}")
+        log(f"  ERROR: prompt {prompt_path.name} blocked — template "
+            f"violations: {violations}")
+        return None
 
     prompt_path.write_text(rendered, encoding="utf-8")
 

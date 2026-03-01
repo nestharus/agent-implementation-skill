@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..agent_templates import validate_dynamic_content
+from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
 from ..communication import WORKFLOW_HOME, _log_artifact, log
 from ..context_assembly import materialize_context_sidecar
 from ..dispatch import dispatch_agent, write_model_choice_signal
@@ -174,8 +174,7 @@ creates or re-triggers another.
 
 Available task types: scan_explore, coordination_fix
 
-The dispatcher handles agent selection and model choice. You declare
-WHAT work you need, not which agent or model runs it.
+{TASK_SUBMISSION_SEMANTICS}
 
 ### Report Modified Files
 
@@ -185,10 +184,12 @@ After implementation, write a list of ALL files you modified to:
 One file path per line (relative to codespace root `{codespace}`).
 Include all files modified during this implementation.
 """
-    # V3: Validate dynamic content for prohibited patterns
+    # V3: Validate dynamic content — violations block dispatch
     violations = validate_dynamic_content(rendered)
     if violations:
-        log(f"  WARNING: prompt {prompt_path.name} has template violations: {violations}")
+        log(f"  ERROR: prompt {prompt_path.name} blocked — template "
+            f"violations: {violations}")
+        return None
 
     # Materialize sidecar BEFORE writing prompt so it exists at prompt-write time
     sidecar_path = materialize_context_sidecar(
@@ -229,6 +230,10 @@ def _dispatch_fix_group(
     fix_prompt = write_coordinator_fix_prompt(
         group, planspace, codespace, group_id,
     )
+    if fix_prompt is None:
+        log(f"  coordinator: fix group {group_id} prompt blocked "
+            f"by template safety — skipping dispatch")
+        return group_id, None
     fix_output = artifacts / f"fix-{group_id}-output.md"
     modified_report = artifacts / f"fix-{group_id}-modified.txt"
 

@@ -105,12 +105,20 @@ _PROHIBITED_PATTERNS: list[tuple[str, str]] = [
 ]
 
 
+TASK_SUBMISSION_SEMANTICS = (
+    "Task requests commission follow-up work that runs AFTER your current "
+    "session completes. Use them for follow-up analysis, verification, or "
+    "targeted sub-tasks — not for work you can do in your current session. "
+    "The dispatcher handles agent selection and model choice."
+)
+
+
 def validate_dynamic_content(content: str) -> list[str]:
     """Check dynamic content for prohibited patterns.
 
     Returns a list of violation descriptions. An empty list means the
-    content is valid. Violations are warnings -- they do not block
-    dispatch but are logged for observability.
+    content is valid. Violations block dispatch — callers must not
+    proceed when this returns a non-empty list.
     """
     violations: list[str] = []
     content_lower = content.lower()

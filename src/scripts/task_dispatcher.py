@@ -131,6 +131,22 @@ def dispatch_task(
         prompt_path = Path(payload_path)
         if not prompt_path.is_absolute():
             prompt_path = planspace / prompt_path
+        if not prompt_path.exists():
+            err = f"payload declared but not found: {prompt_path}"
+            log(f"ERROR: {err} — failing task {task_id}")
+            _db_cmd(db_path, "fail-task", task_id, "--error", err)
+            _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+            return
+        # V4/R77: validate agent-provided payload prompt
+        violations = validate_dynamic_content(
+            prompt_path.read_text(encoding="utf-8"),
+        )
+        if violations:
+            err = f"payload prompt blocked — template violations: {violations}"
+            log(f"ERROR: task {task_id}: {err}")
+            _db_cmd(db_path, "fail-task", task_id, "--error", err)
+            _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+            return
     else:
         prompt_path = artifacts_dir / f"task-{task_id}-prompt.md"
         _write_task_prompt(prompt_path, task)
@@ -139,8 +155,11 @@ def dispatch_task(
             prompt_path.read_text(encoding="utf-8"),
         )
         if violations:
-            log(f"WARNING: Dynamic prompt violations for task {task_id}: "
-                f"{violations}")
+            err = f"generated prompt blocked — template violations: {violations}"
+            log(f"ERROR: task {task_id}: {err}")
+            _db_cmd(db_path, "fail-task", task_id, "--error", err)
+            _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+            return
 
     output_path = artifacts_dir / f"task-{task_id}-output.md"
 

@@ -130,11 +130,28 @@ def dispatch_ingested_tasks(
             artifacts / f"task-{task_type}-{section_number}-prompt.md"
         )
         payload_path = task.get("payload_path")
-        if payload_path and Path(payload_path).exists():
-            # Use the agent-provided payload as the prompt
-            prompt_path = Path(payload_path)
+        if payload_path:
+            # Resolve relative paths against planspace (V5/R77)
+            resolved = Path(payload_path)
+            if not resolved.is_absolute():
+                resolved = planspace / resolved
+            if resolved.exists():
+                # Validate agent-provided payload prompt (V3/R77)
+                payload_content = resolved.read_text(encoding="utf-8")
+                violations = validate_dynamic_content(payload_content)
+                if violations:
+                    log(f"  task_ingestion: ERROR — payload prompt "
+                        f"{resolved} blocked — template violations: "
+                        f"{violations}")
+                    continue
+                prompt_path = resolved
+            else:
+                # Payload declared but missing — fail closed (V5/R77)
+                log(f"  task_ingestion: ERROR — payload declared but "
+                    f"not found: {resolved} — skipping task")
+                continue
         else:
-            # Generate a minimal prompt from task metadata
+            # No payload supplied — generate a minimal prompt
             scope = task.get("concern_scope", section_number)
             priority = task.get("priority", "normal")
             content = (
@@ -146,8 +163,9 @@ def dispatch_ingested_tasks(
             )
             violations = validate_dynamic_content(content)
             if violations:
-                log(f"  task_ingestion: WARNING — raw prompt has "
-                    f"template violations: {violations}")
+                log(f"  task_ingestion: ERROR — generated prompt "
+                    f"blocked — template violations: {violations}")
+                continue
             prompt_path.write_text(content, encoding="utf-8")
 
         output_path = (

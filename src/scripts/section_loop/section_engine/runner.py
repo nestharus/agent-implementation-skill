@@ -35,7 +35,7 @@ from ..dispatch import (
     summarize_output,
     write_model_choice_signal,
 )
-from ..agent_templates import validate_dynamic_content
+from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
 from ..task_ingestion import ingest_and_dispatch
 from ..pipeline_control import (
     alignment_changed_pending,
@@ -908,6 +908,10 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             incoming_notes=incoming_notes,
             model_policy=policy,
         )
+        if intg_prompt is None:
+            log(f"Section {section.number}: integration proposal prompt "
+                f"blocked by template safety — skipping dispatch")
+            return None
         intg_output = artifacts / f"intg-proposal-{section.number}-output.md"
         intg_agent = f"intg-proposal-{section.number}"
         intg_result = dispatch_agent(
@@ -1268,13 +1272,15 @@ If you need deeper analysis, submit a task request to:
 
 Available task types: scan_deep_analyze, scan_explore
 
-Write a single JSON object. The dispatcher handles agent/model selection.
+Write a single JSON object. {TASK_SUBMISSION_SEMANTICS}
 {agent_mail_instructions(planspace, a_name, m_name)}
 """
-        # V3: Validate dynamic content for prohibited patterns
+        # V3: Validate dynamic content — violations block dispatch
         violations = validate_dynamic_content(rendered)
         if violations:
-            log(f"  WARNING: prompt {micro_prompt_path.name} has template violations: {violations}")
+            log(f"  ERROR: prompt {micro_prompt_path.name} blocked — "
+                f"template violations: {violations}")
+            return None
         micro_prompt_path.write_text(rendered, encoding="utf-8")
         _log_artifact(planspace, f"prompt:microstrategy-{section.number}")
 
@@ -1415,6 +1421,10 @@ Write a single JSON object. The dispatcher handles agent/model selection.
             section, planspace, codespace, impl_problems,
             model_policy=policy,
         )
+        if impl_prompt is None:
+            log(f"Section {section.number}: strategic impl prompt "
+                f"blocked by template safety — skipping dispatch")
+            return None
         impl_output = artifacts / f"impl-{section.number}-output.md"
         impl_agent = f"impl-{section.number}"
         impl_result = dispatch_agent(

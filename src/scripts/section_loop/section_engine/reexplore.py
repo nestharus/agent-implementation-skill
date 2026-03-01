@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ..agent_templates import validate_dynamic_content
+from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
 from ..communication import _log_artifact, log
 from ..cross_section import extract_section_summary
 from ..dispatch import dispatch_agent
@@ -70,7 +70,7 @@ Your job is to determine why and classify the situation.
    {{"task_type": "scan_explore", "concern_scope": "section-{section.number}", "payload_path": "<path-to-exploration-prompt>", "priority": "normal"}}
    ```
    Available task types: scan_explore
-   The dispatcher handles agent/model selection.
+   {TASK_SUBMISSION_SEMANTICS}
 
 ## Output
 
@@ -97,10 +97,12 @@ Then write a brief classification to `{output_path}`:
 This is how the pipeline reads your classification — the script reads
 the JSON, not unstructured text.
 """
-    # V3: Validate dynamic content for prohibited patterns
+    # V3: Validate dynamic content — violations block dispatch
     violations = validate_dynamic_content(rendered)
     if violations:
-        log(f"  WARNING: prompt {prompt_path.name} has template violations: {violations}")
+        log(f"  ERROR: prompt {prompt_path.name} blocked — template "
+            f"violations: {violations}")
+        return None
     prompt_path.write_text(rendered, encoding="utf-8")
     _log_artifact(planspace, f"prompt:reexplore-{section.number}")
 

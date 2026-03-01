@@ -67,6 +67,19 @@ done < <(grep -rn \
   "$WH/models.md" "$WH/research.md" \
   2>/dev/null || true)
 
+# --- Group 4: stale delegation language in prompt templates (R77) ---
+# "delegate/summarize" implies old-model direct delegation, not task submission.
+while IFS= read -r match; do
+  echo "[LINT] Stale delegation language in prompt template: $match"
+  EXIT_CODE=1
+done < <(grep -rn \
+  -e "delegate/summarize" \
+  --include="*.md" --include="*.py" \
+  "$WH/scripts/section_loop/prompts/templates" \
+  "$WH/scripts/section_loop/section_engine" \
+  "$WH/scripts/section_loop/coordination" \
+  2>/dev/null || true)
+
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "[LINT] No superseded behavior claims found."
 fi
