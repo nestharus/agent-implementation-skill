@@ -138,4 +138,4 @@ regular source files, test files, or config files.
 
 After implementation, write a list of ALL files you modified to the
 path specified in your prompt. One file path per line (relative to
-codespace root). Include files modified by sub-agents.
+codespace root). Include all files modified during this implementation.

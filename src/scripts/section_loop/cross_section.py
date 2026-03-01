@@ -198,7 +198,8 @@ def post_section_completion(
     skipped_note = ""
     if skipped_nums:
         skipped_note = (
-            f"\n\n**Not evaluated** (no file overlap or prior notes): "
+            f"\n\n**Not evaluated** (no seam signals — file overlap, prior notes, "
+            f"snapshots, shared refs, or contract artifacts): "
             f"sections {', '.join(skipped_nums)}"
         )
 
@@ -213,15 +214,18 @@ def post_section_completion(
 ## Files Modified by Section {sec_num}
 {changes_text}
 
-## Candidate Sections (pre-filtered by file overlap)
+## Candidate Sections (pre-filtered by seam signals)
 {candidate_text}
 {skipped_note}
 
 ## Instructions
 
-These sections were pre-selected because they share files with section
-{sec_num}'s modifications, have existing cross-section notes, or have
-overlapping snapshots. For each candidate, determine MATERIAL vs NO_IMPACT.
+These sections were pre-selected because they share modified files, have
+existing cross-section notes, have overlapping snapshots, share input refs,
+or have contract artifacts linking them to section {sec_num}.
+Candidate selection is a routing hypothesis — the seam signals identify
+sections that MAY be affected, not sections that definitely are.
+For each candidate, determine MATERIAL vs NO_IMPACT.
 
 A change is MATERIAL if:
 - It modifies an interface, contract, or API that the other section depends on
@@ -365,7 +369,6 @@ If no material impacts can be extracted, reply:
             normalizer_model, normalize_prompt_path, normalize_output_path,
             planspace, parent, codespace=codespace,
             section_number=sec_num,
-            agent_file="impact-analyzer.md",
         )
         # Parse the normalizer's JSON output
         try:

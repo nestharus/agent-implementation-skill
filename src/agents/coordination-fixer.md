@@ -62,22 +62,28 @@ you need, not which agent runs it.
 
 ## Output
 
-After making changes, emit a structured signal:
+The runtime consumes two output artifacts:
 
-```json
-{
-  "fixes_applied": [
-    {
-      "section": "section-03",
-      "file": "events/validator.py",
-      "change": "added schema_version parameter to validate_event()",
-      "reason": "coordinator analysis: interface mismatch with section-07"
-    }
-  ],
-  "dependency_order": ["section-03", "section-07"],
-  "verification_hint": "run validate_event() callers to confirm signature match"
-}
+### 1. Modified-File Report (required)
+
+Write a plain-text file to the path specified in the prompt (the
+`modified_report` path). List every file you modified, one relative
+path per line (relative to the codespace root). Include files modified
+by any sub-agents you dispatched.
+
 ```
+events/validator.py
+models/event_schema.py
+```
+
+This report is how the pipeline tracks which files were touched by
+coordinated fixes and routes downstream verification.
+
+### 2. Task Requests (optional)
+
+If you need sub-work (exploration, deeper analysis, or delegated fixes),
+submit task requests to the task-submission path provided in the prompt.
+The format is documented in the Task Submission section above.
 
 ## Anti-Patterns
 

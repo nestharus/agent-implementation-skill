@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48, R49, R50, R71/V2, R71/V3, R71/V4, R71/V5, R71/V6, R71/V7).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48, R49, R50, R71/V2, R71/V3, R71/V4, R71/V5, R71/V6, R71/V7, R72/V1, R72/V2, R72/V3, R72/V4, R72/V5, R72/V6, R72/V7, R72/V8, R72/V9).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -6646,4 +6646,259 @@ class TestR71V6DispatchAgentInTaskDispatcher:
         assert '"uv", "run"' not in text, (
             "task_dispatcher.py still dispatches agents via raw subprocess — "
             "should use dispatch_agent from section_loop.dispatch"
+        )
+
+
+class TestR72V8NoTestCountGate:
+    """R72/V8: implement.md must not contain test-count quantity gates."""
+
+    def test_no_test_count_check(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "implement.md").read_text(encoding="utf-8")
+        assert "test count check" not in text.lower(), (
+            "implement.md still contains 'Test count check' quantity gate"
+        )
+
+    def test_no_test_baseline_section(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "implement.md").read_text(encoding="utf-8")
+        assert "## Test Baseline" not in text, (
+            "implement.md still contains 'Test Baseline' section"
+        )
+
+
+class TestR72V9CrossSectionSeamFraming:
+    """R72/V9: Cross-section impact prompt uses seam framing, not file-overlap."""
+
+    def test_heading_says_seam_signals(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "section_loop" / "cross_section.py").read_text(encoding="utf-8")
+        assert "pre-filtered by file overlap" not in text, (
+            "cross_section.py heading still says 'pre-filtered by file overlap'"
+        )
+
+    def test_skipped_note_mentions_seam(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "section_loop" / "cross_section.py").read_text(encoding="utf-8")
+        # The "Not evaluated" note should mention more than just file overlap
+        assert "no file overlap or prior notes" not in text, (
+            "cross_section.py skipped note still uses 'file overlap or prior notes' framing"
+        )
+
+
+# ---------------------------------------------------------------------------
+# R72 / V6 – rca.md must not contain Task-tool spawning instructions
+# ---------------------------------------------------------------------------
+
+class TestR72V6RcaNoTaskTool:
+    """R72/V6: rca.md must not contain Task-tool spawning instructions."""
+
+    def test_no_task_tool_block(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "rca.md").read_text(encoding="utf-8")
+        assert "Task(" not in text, "rca.md still contains Task(...) block"
+
+    def test_no_spawn_sub_agent(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "rca.md").read_text(encoding="utf-8")
+        assert "sub-agent" not in text.lower(), "rca.md still uses 'sub-agent' language"
+
+
+# ---------------------------------------------------------------------------
+# R72 / V7 – No "sub-agent" language on active surfaces
+# ---------------------------------------------------------------------------
+
+class TestR72V7NoSubAgentLanguage:
+    """R72/V7: Active surfaces must not use 'sub-agent' language."""
+
+    _ACTIVE_SURFACES = [
+        "implement.md",
+        "audit.md",
+        "agents/implementation-strategist.md",
+        "scripts/section_loop/prompts/templates/strategic-implementation.md",
+        "scripts/section_loop/coordination/execution.py",
+    ]
+
+    def test_no_sub_agent_in_active_surfaces(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        for rel in self._ACTIVE_SURFACES:
+            path = src / rel
+            text = path.read_text(encoding="utf-8")
+            assert "sub-agent" not in text.lower(), (
+                f"{rel} still uses 'sub-agent' language"
+            )
+
+
+# ---------------------------------------------------------------------------
+# R72 / V1 – impact-analyzer.md matches runtime impacts[] contract
+# ---------------------------------------------------------------------------
+
+
+class TestR72V1ImpactAnalyzerContract:
+    """R72/V1: impact-analyzer.md matches runtime impacts[] contract."""
+
+    def test_agent_file_has_impacts_schema(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "impact-analyzer.md").read_text(
+            encoding="utf-8")
+        assert '"impacts"' in text
+        assert "contract_risk" in text
+        assert "note_markdown" in text
+
+    def test_agent_file_no_old_affected_schema(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "impact-analyzer.md").read_text(
+            encoding="utf-8")
+        # Check the Output section only — "affected" may appear naturally
+        # in the description prose, but the old JSON key must not be
+        # present in the output contract.
+        output_section = text[text.find("## Output"):]
+        assert '"affected"' not in output_section, (
+            "impact-analyzer.md Output still uses the old affected[] schema"
+        )
+        assert '"severity"' not in output_section, (
+            "impact-analyzer.md Output still uses the old severity field"
+        )
+
+    def test_normalizer_dispatch_no_agent_file(self) -> None:
+        """The normalization fallback must NOT reuse impact-analyzer.md."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "cross_section.py"
+        ).read_text(encoding="utf-8")
+        # Find the normalizer dispatch block — it follows "impact-normalize"
+        idx = text.find("impact-normalize")
+        assert idx >= 0, "Expected impact-normalize block in cross_section.py"
+        # The normalizer dispatch_agent call should NOT have agent_file=
+        block = text[idx:idx + 1500]
+        dispatch_idx = block.find("dispatch_agent(")
+        assert dispatch_idx >= 0
+        dispatch_block = block[dispatch_idx:dispatch_idx + 400]
+        assert 'agent_file="impact-analyzer.md"' not in dispatch_block, (
+            "Normalizer dispatch still reuses impact-analyzer.md agent file"
+        )
+
+
+# ---------------------------------------------------------------------------
+# R72 / V2 – consequence-note-triager.md matches runtime contract
+# ---------------------------------------------------------------------------
+
+
+class TestR72V2ConsequenceNoteTriagerContract:
+    """R72/V2: consequence-note-triager.md matches runtime contract."""
+
+    def test_agent_file_has_needs_replan(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "consequence-note-triager.md").read_text(
+            encoding="utf-8")
+        assert "needs_replan" in text
+        assert "needs_code_change" in text
+        assert "acknowledge" in text
+
+    def test_agent_file_no_old_notes_schema(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "consequence-note-triager.md").read_text(
+            encoding="utf-8")
+        # The old schema had a top-level "notes" array in the Output section.
+        output_section = text[text.find("## Output"):]
+        assert '"notes"' not in output_section, (
+            "consequence-note-triager.md Output still uses the old notes[] schema"
+        )
+
+
+# ---------------------------------------------------------------------------
+# R72 / V3 – coordination-fixer.md describes actual output contract
+# ---------------------------------------------------------------------------
+
+
+class TestR72V3CoordinationFixerContract:
+    """R72/V3: coordination-fixer.md describes modified-file report."""
+
+    def test_agent_file_has_modified_report(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "coordination-fixer.md").read_text(
+            encoding="utf-8")
+        assert "modified" in text.lower()
+        assert "per line" in text.lower()
+
+    def test_agent_file_no_old_fixes_applied(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "coordination-fixer.md").read_text(
+            encoding="utf-8")
+        assert "fixes_applied" not in text, (
+            "coordination-fixer.md still has dead fixes_applied signal"
+        )
+        assert "dependency_order" not in text, (
+            "coordination-fixer.md still has dead dependency_order signal"
+        )
+        assert "verification_hint" not in text, (
+            "coordination-fixer.md still has dead verification_hint signal"
+        )
+
+
+# ---------------------------------------------------------------------------
+# R72 / V4 – bridge-tools.md documents bridge-signal contract
+# ---------------------------------------------------------------------------
+
+
+class TestR72V4BridgeToolsSignalContract:
+    """R72/V4: bridge-tools.md documents the bridge-signal JSON contract."""
+
+    def test_agent_file_has_bridge_signal(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "bridge-tools.md").read_text(
+            encoding="utf-8")
+        assert '"status"' in text
+        assert "bridged" in text
+        assert "no_action" in text
+        assert "needs_parent" in text
+        assert "proposal_path" in text
+        assert "note_markdown" in text
+
+
+# ---------------------------------------------------------------------------
+# R72 / V5 – philosophy-source-verifier.md exists and is referenced
+# ---------------------------------------------------------------------------
+
+
+class TestR72V5PhilosophySourceVerifier:
+    """R72/V5: philosophy-source-verifier.md exists, bootstrap.py references it."""
+
+    def test_verifier_agent_file_exists(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        agent = src / "agents" / "philosophy-source-verifier.md"
+        assert agent.exists(), "philosophy-source-verifier.md must exist"
+
+    def test_verifier_uses_claude_opus(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "philosophy-source-verifier.md").read_text(
+            encoding="utf-8")
+        assert "model: claude-opus" in text
+
+    def test_verifier_output_has_verified_sources(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "philosophy-source-verifier.md").read_text(
+            encoding="utf-8")
+        assert "verified_sources" in text
+        assert "rejected" in text
+
+    def test_bootstrap_references_verifier(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "intent" / "bootstrap.py"
+        ).read_text(encoding="utf-8")
+        assert 'agent_file="philosophy-source-verifier.md"' in text
+
+    def test_bootstrap_does_not_reuse_selector_for_verification(self) -> None:
+        """The verification dispatch must not use philosophy-source-selector.md."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "intent" / "bootstrap.py"
+        ).read_text(encoding="utf-8")
+        # Find the verification block (near "philosophy-verify" prompt)
+        idx = text.find("prompt:philosophy-verify")
+        assert idx >= 0
+        block = text[idx:idx + 500]
+        assert 'agent_file="philosophy-source-selector.md"' not in block, (
+            "Verification dispatch still reuses philosophy-source-selector.md"
         )

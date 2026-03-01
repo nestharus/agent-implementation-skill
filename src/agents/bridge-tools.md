@@ -39,12 +39,33 @@ One of:
 
 ### Output
 
-Write your proposal to the specified output path. Include:
-1. Which option you chose and why
-2. The concrete proposal
-3. Updated tool registry entries (new or modified)
+**1. Proposal file.** Write your proposal to the specified output path.
+Include which option you chose and why, the concrete proposal, and
+updated tool registry entries (new or modified). Also update the tool
+registry JSON directly if you create new tools.
 
-Also update the tool registry JSON directly if you create new tools.
+**2. Bridge signal (required).** Write a structured JSON signal to the
+bridge-signal path specified in the prompt:
+
+```json
+{
+  "status": "bridged",
+  "proposal_path": "artifacts/proposals/section-03-bridge-tool.md",
+  "notes": "Created thin adapter between event-validator and schema-resolver",
+  "targets": ["03", "07"],
+  "broadcast": false,
+  "note_markdown": "## Bridge Tool Added\nA new adapter connects event-validator output to schema-resolver input."
+}
+```
+
+- `status`: `"bridged"` (gap resolved), `"no_action"` (no gap found),
+  or `"needs_parent"` (cannot resolve without human guidance).
+- `proposal_path`: path to the proposal file you wrote.
+- `notes`: brief internal note about what was done.
+- `targets` (optional): section numbers that need this bridge info.
+- `broadcast` (optional): if `true`, all sections receive a
+  consequence note.
+- `note_markdown` (optional): markdown summary for target sections.
 
 ## Anti-Patterns
 

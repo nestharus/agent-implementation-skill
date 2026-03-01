@@ -47,8 +47,8 @@ Use for most large tasks needing structured execution — not just code review.
    - Track incomplete items; if an agent is blocked, route it separately
      before final synthesis.
 
-6. **Synthesize with a separate final agent.**
-   - After all section agents finish, create one additional sub-agent:
+6. **Synthesize with a separate synthesis agent.**
+   - After all section agents finish, dispatch one additional synthesis agent:
      - Read all section files
      - Verify complete coverage — every part of the original input is
        represented in some section file

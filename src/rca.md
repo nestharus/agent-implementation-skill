@@ -3,8 +3,8 @@
 Fix test failures using sequential investigate → plan → fix → verify waves
 until all tests pass.
 
-**Key principle**: Codex investigates and reports. An Opus sub-agent
-independently plans the correct fix (which may differ from Codex's
+**Key principle**: Codex investigates and reports. A dispatched Opus fix
+agent independently plans the correct fix (which may differ from Codex's
 suggestion). Tests get rerun. Repeat for remaining failures.
 
 ## Prerequisites
@@ -84,9 +84,9 @@ uv run agents --model gpt-codex-high --file .tmp/rca-wave-N.md
 **Critical**: The prompt says "do NOT modify any files." Codex produces a
 report only.
 
-### Step 2: Plan + Apply Fix (Opus sub-agent)
+### Step 2: Plan + Apply Fix (Opus fix agent)
 
-Spawn an Opus sub-agent per wave. The sub-agent:
+Dispatch an Opus fix agent per wave. The fix agent:
 
 1. **Reads Codex's RCA report** to understand what Codex found
 2. **Reads the source code independently** — does NOT trust Codex's
@@ -96,12 +96,10 @@ Spawn an Opus sub-agent per wave. The sub-agent:
 4. **Explains its reasoning** before applying (brief plan summary)
 5. **Applies the fix to the working branch** (not the worktree)
 
-```python
-Task(
-    subagent_type="general-purpose",
-    model="opus",
-    mode="bypassPermissions",
-    prompt="""You are an architect fixing test failures on the working branch.
+Write a prompt at `.worktrees/rca-<issue-slug>/.tmp/fix-wave-N.md`:
+
+```markdown
+You are an architect fixing test failures on the working branch.
 
 ## Context
 A Codex agent investigated failures and wrote an RCA report at:
@@ -130,12 +128,16 @@ Write your plan as a brief summary before applying.
 
 ### 3. Apply Your Planned Fix
 Edit files on the working branch at: <working-branch-path>
-"""
-)
 ```
 
-**Why a sub-agent?** The sub-agent reads the report, reads the source, and
-makes an independent judgment. This prevents the orchestrator from
+Dispatch from the repo root:
+
+```bash
+uv run agents --model claude-opus --file .worktrees/rca-<issue-slug>/.tmp/fix-wave-N.md
+```
+
+**Why a separate agent?** The fix agent reads the report, reads the source,
+and makes an independent judgment. This prevents the orchestrator from
 rubber-stamping Codex's work or taking shortcuts.
 
 **Why Opus?** Planning requires architectural judgment — understanding
@@ -175,14 +177,14 @@ git branch -D rca/<issue-slug>
 | Step | Model | Role |
 |------|-------|------|
 | 1: RCA | Codex-high | Investigate + report (no code changes) |
-| 2: Plan + Fix | Opus sub-agent | Read report, plan correct fix, apply to working branch |
+| 2: Plan + Fix | Opus fix agent | Read report, plan correct fix, apply to working branch |
 | 3: Verify | (automated) | pytest on working branch |
 
 ## Anti-Patterns
 
 - **DO NOT let Codex modify files** — it reports, Opus fixes
 - **DO NOT diagnose in the prompt** — describe symptoms, let Codex investigate
-- **DO NOT rubber-stamp Codex** — the Opus sub-agent must read source independently
+- **DO NOT rubber-stamp Codex** — the Opus fix agent must read source independently
 - **DO NOT apply fixes in the worktree** — fixes go on the working branch
 - **DO NOT batch all failures into one agent call** — one test file per wave
 - **DO NOT skip verification between waves** — fixes can introduce regressions

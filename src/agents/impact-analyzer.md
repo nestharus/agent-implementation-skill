@@ -53,22 +53,34 @@ is not affected unless it uses the changed interface.
 
 ## Output
 
-Emit a structured JSON assessment:
+Emit a structured JSON assessment listing every candidate section with
+its impact classification:
 
 ```json
 {
-  "source_section": "section-NN",
-  "affected": [
+  "impacts": [
     {
-      "section": "section-MM",
-      "severity": "breaking",
+      "to": "04",
+      "impact": "MATERIAL",
       "reason": "calls validate_event() which now requires schema_version param",
-      "changed_interface": "events/validator.py::validate_event"
+      "contract_risk": true,
+      "note_markdown": "## Contract Delta\nThe validate_event() signature changed — section 04 must pass the new schema_version parameter."
+    },
+    {
+      "to": "07",
+      "impact": "NO_IMPACT"
     }
-  ],
-  "unaffected_note": "sections 01, 04, 07 share no interfaces with changed files"
+  ]
 }
 ```
+
+- Every candidate section must appear in the `impacts` array.
+- `impact`: `"MATERIAL"` or `"NO_IMPACT"`.
+- `contract_risk`: `true` if the impact involves a shared interface or
+  contract change. Omit for `NO_IMPACT` entries.
+- `note_markdown`: Required for every `MATERIAL` entry — a brief markdown
+  description of what changed and what the target section must accommodate.
+  This becomes the consequence note the target section receives.
 
 ## Anti-Patterns
 

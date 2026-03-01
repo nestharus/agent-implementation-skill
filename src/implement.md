@@ -532,7 +532,7 @@ The control plane is script-owned:
    of dispatch are exempt from per-agent monitoring: (1) Opus alignment
    checks -- alignment prompts do not include narration instructions, and a
    monitor would false-positive STALLED after 5 minutes of expected silence;
-   (2) Coordinator fix agents -- fix prompts use strategic GLM sub-agents
+   (2) Coordinator fix agents -- fix prompts use strategic task requests
    internally for verification, and cross-section stuck states are detected
    at the coordination round level. Cleans up agent registrations via
    `db.sh cleanup` after each per-section dispatch.
@@ -1136,17 +1136,12 @@ Persistent after one round → escalate.
 
 ## Stage 7: Post-Task Verification
 
-1. Full test suite in the task worktree
-2. Test count check (compare against baseline)
-3. Cross-file import check
-4. Commit
-
-## Test Baseline
-
-Capture before Stages 4-5 (in the task worktree):
-```bash
-uv run pytest <test-dir> -v -p no:randomly > <planspace>/artifacts/baseline-failures.log 2>&1
-```
+1. Run relevant tests for touched surfaces
+2. Run broader test suite when change radius warrants it
+3. Check failure deltas (new failures vs previous run)
+4. Run import/lint/static checks relevant to touched contracts
+5. Verify structured artifacts/signals the change introduced or updated
+6. Commit
 
 ## Handling Underspecified / Missing Information
 

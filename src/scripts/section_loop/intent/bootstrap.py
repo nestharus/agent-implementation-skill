@@ -499,7 +499,7 @@ Write a JSON signal to: `{verify_signal}`
                 planspace,
                 parent,
                 codespace=codespace,
-                agent_file="philosophy-source-selector.md",
+                agent_file="philosophy-source-verifier.md",
             )
 
             verified = read_agent_signal(verify_signal)

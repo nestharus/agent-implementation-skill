@@ -181,7 +181,7 @@ After implementation, write a list of ALL files you modified to:
 `{modified_report}`
 
 One file path per line (relative to codespace root `{codespace}`).
-Include files modified by sub-agents.
+Include all files modified during this implementation.
 """, encoding="utf-8")
     _log_artifact(planspace, f"prompt:coordinator-fix-{group_id}")
     return prompt_path

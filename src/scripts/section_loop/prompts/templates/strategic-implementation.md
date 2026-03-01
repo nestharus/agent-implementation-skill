@@ -112,7 +112,7 @@ After implementation, write a list of ALL files you modified to:
 `{modified_report}`
 
 One file path per line (relative to codespace root `{codespace}`).
-Include files modified by sub-agents. Include ALL files — both directly
+Include all files modified during this implementation — both directly
 modified and indirectly affected.
 {signal_block}
 {mail_block}

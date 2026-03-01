@@ -38,34 +38,29 @@ Read each incoming note and evaluate:
 
 ## Output
 
-Emit one JSON block with a triage decision per note:
+Write a JSON signal to the path specified in the prompt:
 
 ```json
 {
-  "section": "section-NN",
-  "notes": [
-    {
-      "from": "section-03",
-      "note_id": "cn-042",
-      "action": "accept",
-      "reason": "we call validate_event() directly — new required param breaks us",
-      "impact": "must add schema_version to our validate_event() calls"
-    },
-    {
-      "from": "section-05",
-      "note_id": "cn-044",
-      "action": "defer",
-      "reason": "their config format change is still in draft — wait for merge",
-      "impact": "config parsing will need update once their change is stable"
-    }
-  ]
+  "needs_replan": false,
+  "needs_code_change": false,
+  "acknowledge": [
+    {"note_id": "cn-042", "action": "accepted", "reason": "informational; no action required"},
+    {"note_id": "cn-044", "action": "deferred", "reason": "their config format change is still in draft — wait for merge"}
+  ],
+  "reasons": ["notes are informational"]
 }
 ```
 
-- `action`: "accept" (act now), "reject" (not applicable), or
-  "defer" (act later).
-- `reason`: why this classification.
-- `impact`: what this section needs to do (empty string if rejected).
+- `needs_replan`: `true` if the notes change the problem or strategy
+  enough to require re-planning.
+- `needs_code_change`: `true` if the notes require implementation changes.
+- `acknowledge`: one entry per incoming note. Each note contains a
+  **Note ID** field — use that ID.
+  - `action`: `"accepted"` (resolved/no-op), `"rejected"` (disagree
+    with note), or `"deferred"` (will address later).
+  - `reason`: why this classification.
+- `reasons`: top-level summary of the triage decision.
 
 ## Anti-Patterns
 
