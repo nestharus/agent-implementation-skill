@@ -46,10 +46,11 @@ factors:
 
 ### Decision
 
-Use judgment. Be conservative about going full — lightweight is
-cheaper and often sufficient. Choose full when multiple factors
-suggest the section has enough complexity that a problem definition
-and rubric would meaningfully improve alignment quality.
+Use judgment. Uncertainty about complexity should push toward full,
+not lightweight — solving with less strategy when the situation is
+unclear increases repeat cycles. Choose lightweight only when you can
+affirmatively establish that the section is narrow, well-understood,
+and has no failure history or cross-section coupling.
 
 If you are genuinely uncertain whether full or lightweight is
 appropriate, set `escalate: true` and the pipeline will re-dispatch

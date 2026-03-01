@@ -1,6 +1,6 @@
 ---
 description: Analyzes cross-section impact of changes. Reads modified files and consequence context to determine which other sections are materially affected and why.
-model: claude-opus
+model: glm
 context:
   - section_spec
   - codemap

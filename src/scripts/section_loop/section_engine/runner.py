@@ -727,39 +727,40 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
     if alignment_changed_pending(planspace):
         return None
 
+    # V1/R75: Philosophy is a project-level invariant. Its absence
+    # blocks section execution rather than degrading strategic mode.
+    # Solving locally without the root frame increases cycles.
     if philosophy_result is None:
-        log(f"Section {section.number}: philosophy sources unavailable "
-            f"— alignment will proceed without operational philosophy")
+        log(f"Section {section.number}: philosophy unavailable — "
+            f"blocking section (project-level invariant)")
+        signal_dir = artifacts / "signals"
+        signal_dir.mkdir(parents=True, exist_ok=True)
+        blocker = {
+            "section": section.number,
+            "blocker": "philosophy_unavailable",
+            "reason": (
+                "Global philosophy could not be established. "
+                "Section execution blocked until resolved."
+            ),
+        }
+        (signal_dir
+         / f"philosophy-blocker-{section.number}.json"
+         ).write_text(
+            json.dumps(blocker, indent=2),
+            encoding="utf-8")
+        return None
 
     if intent_mode == "full":
-        if philosophy_result is None:
-            log(f"Section {section.number}: philosophy unavailable — "
-                f"downgrading to lightweight intent mode")
-            degradation_signal = {
-                "section": section.number,
-                "from_mode": "full",
-                "to_mode": "lightweight",
-                "reason": "philosophy source unavailable",
-            }
-            signal_dir = artifacts / "signals"
-            signal_dir.mkdir(parents=True, exist_ok=True)
-            (signal_dir
-             / f"intent-degraded-{section.number}.json"
-             ).write_text(
-                json.dumps(degradation_signal, indent=2),
-                encoding="utf-8")
-            intent_mode = "lightweight"
-        else:
-            # Generate per-section intent pack
-            generate_intent_pack(
-                section, planspace, codespace, parent,
-                incoming_notes=incoming_notes or "",
-            )
-            if alignment_changed_pending(planspace):
-                return None
+        # Generate per-section intent pack
+        generate_intent_pack(
+            section, planspace, codespace, parent,
+            incoming_notes=incoming_notes or "",
+        )
+        if alignment_changed_pending(planspace):
+            return None
 
-            log(f"Section {section.number}: intent bootstrap complete "
-                f"(full mode)")
+        log(f"Section {section.number}: intent bootstrap complete "
+            f"(full mode)")
 
     if intent_mode == "lightweight":
         log(f"Section {section.number}: lightweight intent mode")

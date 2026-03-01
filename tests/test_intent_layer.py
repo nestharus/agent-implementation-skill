@@ -22,7 +22,7 @@ from section_loop.intent.surfaces import (
     mark_surfaces_applied,
     mark_surfaces_discarded,
 )
-from section_loop.intent.triage import _lightweight_default
+from section_loop.intent.triage import _full_default
 from section_loop.types import Section
 
 
@@ -198,10 +198,11 @@ class TestSurfaceRegistry:
 class TestIntentTriage:
     """Intent triage dispatches GLM and returns mode + budgets."""
 
-    def test_lightweight_default(self) -> None:
-        result = _lightweight_default("01")
-        assert result["intent_mode"] == "lightweight"
-        assert result["budgets"]["intent_expansion_max"] == 0
+    def test_full_default(self) -> None:
+        """V2/R75: Triage failure defaults to full, not lightweight."""
+        result = _full_default("01")
+        assert result["intent_mode"] == "full"
+        assert result["budgets"]["intent_expansion_max"] == 2
 
     def test_triage_returns_full_mode_from_signal(
         self, intent_planspace: Path, mock_dispatch: MagicMock,
@@ -238,17 +239,17 @@ class TestIntentTriage:
         assert result["intent_mode"] == "full"
         assert result["budgets"]["intent_expansion_max"] == 2
 
-    def test_triage_falls_back_to_lightweight(
+    def test_triage_falls_back_to_full(
         self, intent_planspace: Path, mock_dispatch: MagicMock,
     ) -> None:
-        """When GLM fails to write signal, fallback to lightweight."""
+        """V2/R75: When GLM fails to write signal, fallback to full."""
         mock_dispatch.return_value = ""
 
         from section_loop.intent.triage import run_intent_triage
         result = run_intent_triage(
             "01", intent_planspace, intent_planspace, "parent",
         )
-        assert result["intent_mode"] == "lightweight"
+        assert result["intent_mode"] == "full"
 
 
 # ---------------------------------------------------------------------------
@@ -1065,9 +1066,13 @@ class TestIntentConventions:
 
     def test_triage_budgets_applied_to_cycle_budget(
         self, intent_planspace: Path, codespace: Path,
-        mock_dispatch: MagicMock,
+        mock_dispatch: MagicMock, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """proposal_max and implementation_max from triage reach cycle budget (V7/R53)."""
+        # V1/R75: philosophy is now a gate — mock it as available
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.ensure_global_philosophy",
+            MagicMock(return_value=intent_planspace / "artifacts" / "philosophy.md"))
         section = _make_intent_section(intent_planspace, codespace)
 
         # Pre-create a cycle budget file
@@ -1125,9 +1130,13 @@ class TestIntentConventions:
 
     def test_cycle_budget_malformed_preserved(
         self, intent_planspace: Path, codespace: Path,
-        mock_dispatch: MagicMock,
+        mock_dispatch: MagicMock, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Malformed cycle budget → renamed + proceeds (V6/R53)."""
+        # V1/R75: philosophy is now a gate — mock it as available
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.ensure_global_philosophy",
+            MagicMock(return_value=intent_planspace / "artifacts" / "philosophy.md"))
         section = _make_intent_section(intent_planspace, codespace)
 
         # Write malformed cycle budget

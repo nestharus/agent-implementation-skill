@@ -3547,6 +3547,10 @@ class TestBridgeToolsDownstreamWiring:
         monkeypatch.setattr(
             "section_loop.section_engine.runner._check_needs_microstrategy",
             MagicMock(return_value=False))
+        # V1/R75: philosophy is now a gate — mock it as available
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.ensure_global_philosophy",
+            MagicMock(return_value=planspace / "artifacts" / "philosophy.md"))
 
         run_section(planspace, planspace / "codespace", section, "parent")
 
@@ -3644,6 +3648,10 @@ class TestBridgeToolsDownstreamWiring:
         monkeypatch.setattr(
             "section_loop.section_engine.runner._check_needs_microstrategy",
             MagicMock(return_value=False))
+        # V1/R75: philosophy is now a gate — mock it as available
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.ensure_global_philosophy",
+            MagicMock(return_value=planspace / "artifacts" / "philosophy.md"))
 
         run_section(planspace, planspace / "codespace", section, "parent")
 
@@ -7274,4 +7282,222 @@ class TestR74V3SidecarOrdering:
         ).read_text(encoding="utf-8")
         assert 'context-impact-analyzer.json"' not in text, (
             "Should use materialize return, not hardcoded path"
+        )
+
+
+# ---- Round 75 ----
+
+
+class TestR75V1PhilosophyBlocker:
+    """V1/R75: Philosophy absence blocks section execution, not degrades."""
+
+    def test_runner_blocks_on_philosophy_none(self) -> None:
+        """runner.py emits a blocker signal and returns None."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "section_engine"
+            / "runner.py"
+        ).read_text(encoding="utf-8")
+        assert "philosophy-blocker-" in text, (
+            "runner.py must emit philosophy-blocker signal"
+        )
+        assert '"blocker": "philosophy_unavailable"' in text, (
+            "Blocker signal must use philosophy_unavailable key"
+        )
+
+    def test_runner_no_downgrade_to_lightweight(self) -> None:
+        """runner.py must not downgrade full→lightweight on philosophy miss."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "section_engine"
+            / "runner.py"
+        ).read_text(encoding="utf-8")
+        assert "downgrading to lightweight intent mode" not in text, (
+            "Should block, not downgrade to lightweight"
+        )
+        assert "intent-degraded-" not in text, (
+            "Should emit philosophy-blocker, not intent-degraded signal"
+        )
+
+    def test_runner_no_proceed_without_philosophy(self) -> None:
+        """runner.py must not continue alignment without philosophy."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "section_engine"
+            / "runner.py"
+        ).read_text(encoding="utf-8")
+        assert "proceed without operational philosophy" not in text, (
+            "Should block, not proceed without philosophy"
+        )
+
+    def test_bootstrap_signals_say_blocked(self) -> None:
+        """bootstrap.py failure signals must say 'blocked', not 'downgrade'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "intent"
+            / "bootstrap.py"
+        ).read_text(encoding="utf-8")
+        assert "downgrade to lightweight" not in text, (
+            "bootstrap.py should say 'blocked', not 'downgrade'"
+        )
+
+    def test_bootstrap_logs_say_blocking(self) -> None:
+        """bootstrap.py log messages say 'blocking section'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "intent"
+            / "bootstrap.py"
+        ).read_text(encoding="utf-8")
+        assert "blocking section" in text, (
+            "bootstrap.py should log 'blocking section' on failure"
+        )
+
+
+class TestR75V2TriageDefaultFull:
+    """V2/R75: Triage failure defaults to full mode, not lightweight."""
+
+    def test_triage_fallback_is_full(self) -> None:
+        """triage.py fallback function returns full mode."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "intent"
+            / "triage.py"
+        ).read_text(encoding="utf-8")
+        assert "_full_default" in text, (
+            "triage.py must use _full_default, not _lightweight_default"
+        )
+        assert "_lightweight_default" not in text, (
+            "triage.py must not have _lightweight_default"
+        )
+
+    def test_triage_full_has_expansion_budgets(self) -> None:
+        """_full_default returns non-zero expansion budgets."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "intent"
+            / "triage.py"
+        ).read_text(encoding="utf-8")
+        assert '"intent_expansion_max": 2' in text, (
+            "Full default must allow expansion (2)"
+        )
+        assert '"max_new_surfaces_per_cycle": 8' in text, (
+            "Full default must allow new surfaces (8)"
+        )
+
+    def test_triage_full_returns_full_mode(self) -> None:
+        """_full_default returns intent_mode='full'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "intent"
+            / "triage.py"
+        ).read_text(encoding="utf-8")
+        assert '"intent_mode": "full"' in text, (
+            "Full default must return intent_mode=full"
+        )
+
+    def test_triager_agent_no_cheaper_bias(self) -> None:
+        """intent-triager.md must not bias toward lightweight as 'cheaper'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "agents" / "intent-triager.md"
+        ).read_text(encoding="utf-8")
+        assert "cheaper" not in text.lower(), (
+            "Triager should not frame lightweight as 'cheaper'"
+        )
+        assert "conservative about going full" not in text.lower(), (
+            "Triager should not be conservative about full mode"
+        )
+
+    def test_triager_uncertainty_favors_full(self) -> None:
+        """intent-triager.md guides uncertainty toward full mode."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "agents" / "intent-triager.md"
+        ).read_text(encoding="utf-8")
+        assert "uncertainty" in text.lower(), (
+            "Triager should mention uncertainty favoring full"
+        )
+
+
+class TestR75V3TaskRouterPolicyKey:
+    """V3/R75: Task router has policy_key and consistent model defaults."""
+
+    def test_task_routes_have_policy_key(self) -> None:
+        """TASK_ROUTES entries are 3-tuples with policy_key."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "task_router.py"
+        ).read_text(encoding="utf-8")
+        assert "policy_key" in text, (
+            "TASK_ROUTES must include policy_key field"
+        )
+
+    def test_resolve_task_uses_policy_key(self) -> None:
+        """resolve_task() uses policy_key for model-policy lookup."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "task_router.py"
+        ).read_text(encoding="utf-8")
+        assert "lookup_key = policy_key or task_type" in text, (
+            "resolve_task must use policy_key when available"
+        )
+
+    def test_substrate_shard_default_matches_canonical(self) -> None:
+        """substrate_shard default must be gpt-codex-high."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "task_router.py"
+        ).read_text(encoding="utf-8")
+        assert '"substrate_shard": ("substrate-shard-explorer.md", "gpt-codex-high"' in text, (
+            "substrate_shard default must be gpt-codex-high (not claude-opus)"
+        )
+
+    def test_substrate_prune_default_matches_canonical(self) -> None:
+        """substrate_prune default must be gpt-codex-xhigh."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "task_router.py"
+        ).read_text(encoding="utf-8")
+        assert '"substrate_prune": ("substrate-pruner.md", "gpt-codex-xhigh"' in text, (
+            "substrate_prune default must be gpt-codex-xhigh (not glm)"
+        )
+
+    def test_substrate_prune_has_policy_key(self) -> None:
+        """substrate_prune maps to substrate_pruner policy key."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "task_router.py"
+        ).read_text(encoding="utf-8")
+        assert '"substrate_pruner")' in text, (
+            "substrate_prune must have policy_key='substrate_pruner'"
+        )
+
+    def test_substrate_seed_has_policy_key(self) -> None:
+        """substrate_seed maps to substrate_seeder policy key."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "task_router.py"
+        ).read_text(encoding="utf-8")
+        assert '"substrate_seeder")' in text, (
+            "substrate_seed must have policy_key='substrate_seeder'"
+        )
+
+    def test_impact_analysis_default_is_glm(self) -> None:
+        """impact_analysis default must be glm (cheap classification)."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "task_router.py"
+        ).read_text(encoding="utf-8")
+        assert '"impact_analysis": ("impact-analyzer.md", "glm"' in text, (
+            "impact_analysis default must be glm (not claude-opus)"
+        )
+
+    def test_impact_analyzer_frontmatter_matches_canonical(self) -> None:
+        """impact-analyzer.md frontmatter model must match canonical default."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "agents" / "impact-analyzer.md"
+        ).read_text(encoding="utf-8")
+        assert "model: glm" in text, (
+            "impact-analyzer.md model must be glm (not claude-opus)"
         )

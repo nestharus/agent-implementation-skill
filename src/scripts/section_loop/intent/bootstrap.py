@@ -148,7 +148,7 @@ def _validate_philosophy_grounding(
             "detail": (
                 "Philosophy source map is missing or empty. "
                 "Distilled philosophy cannot be verified as grounded. "
-                "Intent mode will downgrade to lightweight."
+                "Section execution will be blocked until philosophy is available."
             ),
         }
         fail_signal.write_text(
@@ -171,7 +171,7 @@ def _validate_philosophy_grounding(
             "state": "philosophy_grounding_failed",
             "detail": (
                 f"Philosophy source map is malformed ({exc}). "
-                "Intent mode will downgrade to lightweight."
+                "Section execution will be blocked until philosophy is available."
             ),
         }
         fail_signal.write_text(
@@ -183,7 +183,7 @@ def _validate_philosophy_grounding(
             "state": "philosophy_grounding_failed",
             "detail": (
                 "Philosophy source map is not a JSON object. "
-                "Intent mode will downgrade to lightweight."
+                "Section execution will be blocked until philosophy is available."
             ),
         }
         fail_signal.write_text(
@@ -210,7 +210,7 @@ def _validate_philosophy_grounding(
             "detail": (
                 f"Principle IDs missing from source map: "
                 f"{sorted(unmapped)}. Distilled philosophy may contain "
-                f"invented principles. Intent mode will downgrade."
+                f"invented principles. Section execution will be blocked."
             ),
             "unmapped_principles": sorted(unmapped),
             "total_principles": len(principle_ids),
@@ -342,14 +342,15 @@ def ensure_global_philosophy(
     catalog = _build_philosophy_catalog(planspace, codespace)
     if not catalog:
         log("Intent bootstrap: no markdown files found for philosophy "
-            "catalog — skipping distillation (fail-closed)")
+            "catalog — blocking section (fail-closed)")
         signal_dir = artifacts / "signals"
         signal_dir.mkdir(parents=True, exist_ok=True)
         signal = {
             "state": "philosophy_source_missing",
             "detail": (
                 "No markdown files found in planspace or codespace. "
-                "Intent mode will downgrade to lightweight."
+                "Section execution will be blocked until philosophy "
+                "is available."
             ),
         }
         (signal_dir / "philosophy-source-missing.json").write_text(
@@ -554,15 +555,15 @@ Write a JSON signal to: `{verify_signal}`
                 selected = expanded
     if not selected or not selected.get("sources"):
         log("Intent bootstrap: source selector found no philosophy "
-            "files — skipping distillation (fail-closed)")
+            "files — blocking section (fail-closed)")
         signal_dir = artifacts / "signals"
         signal_dir.mkdir(parents=True, exist_ok=True)
         signal = {
             "state": "philosophy_source_missing",
             "detail": (
                 "Source selector found no philosophy files in the "
-                "candidate catalog. Intent mode will downgrade to "
-                "lightweight."
+                "candidate catalog. Section execution will be blocked "
+                "until philosophy is available."
             ),
         }
         (signal_dir / "philosophy-source-missing.json").write_text(
@@ -633,15 +634,15 @@ Format: JSON mapping principle ID to source file/section.
 
     if not philosophy_path.exists() or philosophy_path.stat().st_size == 0:
         log("Intent bootstrap: philosophy distillation failed — "
-            "no output (fail-closed, downgrading to lightweight)")
+            "no output (fail-closed, blocking section)")
         signal_dir = artifacts / "signals"
         signal_dir.mkdir(parents=True, exist_ok=True)
         signal = {
             "state": "philosophy_distillation_failed",
             "detail": (
                 "Philosophy distiller did not produce output despite "
-                "source files being available. Intent mode will "
-                "downgrade to lightweight."
+                "source files being available. Section execution will "
+                "be blocked until philosophy is available."
             ),
             "sources": [str(s) for s in sources],
         }
@@ -656,7 +657,7 @@ Format: JSON mapping principle ID to source file/section.
         philosophy_path, source_map_path, artifacts)
     if not grounding_ok:
         log("Intent bootstrap: philosophy grounding validation failed "
-            "— downgrading to lightweight (fail-closed)")
+            "— blocking section (fail-closed)")
         return None
 
     # V7/R67: Write source manifest for invalidation on next run

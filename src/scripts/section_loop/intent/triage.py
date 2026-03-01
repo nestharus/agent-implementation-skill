@@ -123,7 +123,7 @@ Write a JSON signal to: `{triage_signal_path}`
     )
 
     if result == "ALIGNMENT_CHANGED_PENDING":
-        return _lightweight_default(section_number)
+        return _full_default(section_number)
 
     # Read the triage signal
     triage = read_agent_signal(
@@ -161,10 +161,12 @@ Write a JSON signal to: `{triage_signal_path}`
             f"{triage.get('intent_mode', 'unknown')}")
         return triage
 
-    # Fallback: lightweight
+    # V2/R75: Fallback to full — uncertainty about complexity should
+    # push toward more strategy, not less.  Solving with less strategy
+    # when classification fails increases repeat cycles.
     log(f"Section {section_number}: intent triage signal missing or "
-        f"malformed — defaulting to lightweight")
-    return _lightweight_default(section_number)
+        f"malformed — defaulting to full (uncertainty → more strategy)")
+    return _full_default(section_number)
 
 
 def load_triage_result(
@@ -178,16 +180,22 @@ def load_triage_result(
     )
 
 
-def _lightweight_default(section_number: str) -> dict:
+def _full_default(section_number: str) -> dict:
+    """V2/R75: Default to full mode on triage failure.
+
+    Uncertainty about complexity should push toward more strategy, not
+    less.  Lightweight is only appropriate when the agent affirmatively
+    establishes that the section is narrow and well-understood.
+    """
     return {
         "section": section_number,
-        "intent_mode": "lightweight",
+        "intent_mode": "full",
         "budgets": {
             "proposal_max": 5,
             "implementation_max": 5,
-            "intent_expansion_max": 0,
-            "max_new_surfaces_per_cycle": 0,
-            "max_new_axes_total": 0,
+            "intent_expansion_max": 2,
+            "max_new_surfaces_per_cycle": 8,
+            "max_new_axes_total": 6,
         },
-        "reason": "default lightweight (triage unavailable)",
+        "reason": "default full (triage unavailable — uncertainty favors strategy)",
     }
