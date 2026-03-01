@@ -35,6 +35,7 @@ from ..dispatch import (
     summarize_output,
     write_model_choice_signal,
 )
+from ..agent_templates import validate_dynamic_content
 from ..task_ingestion import ingest_and_dispatch
 from ..pipeline_control import (
     alignment_changed_pending,
@@ -1233,7 +1234,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         if section_todos.exists():
             todos_ref = f"\nRead the TODO extraction: `{section_todos}`"
 
-        micro_prompt_path.write_text(f"""# Task: Microstrategy for Section {section.number}
+        rendered = f"""# Task: Microstrategy for Section {section.number}
 
 ## Context
 Read the integration proposal: `{integration_proposal}`
@@ -1268,7 +1269,12 @@ Available task types: scan_deep_analyze, scan_explore
 
 Write a single JSON object. The dispatcher handles agent/model selection.
 {agent_mail_instructions(planspace, a_name, m_name)}
-""", encoding="utf-8")
+"""
+        # V3: Validate dynamic content for prohibited patterns
+        violations = validate_dynamic_content(rendered)
+        if violations:
+            log(f"  WARNING: prompt {micro_prompt_path.name} has template violations: {violations}")
+        micro_prompt_path.write_text(rendered, encoding="utf-8")
         _log_artifact(planspace, f"prompt:microstrategy-{section.number}")
 
         ctrl = poll_control_messages(planspace, parent,

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from ..agent_templates import validate_dynamic_content
 from ..communication import _log_artifact, log
 from ..cross_section import extract_section_summary
 from ..dispatch import dispatch_agent
@@ -42,7 +43,7 @@ def _reexplore_section(
             f"`{corrections_path}`"
         )
 
-    prompt_path.write_text(f"""# Task: Re-Explore Section {section.number}
+    rendered = f"""# Task: Re-Explore Section {section.number}
 
 ## Summary
 {summary}
@@ -95,7 +96,12 @@ Then write a brief classification to `{output_path}`:
 ```
 This is how the pipeline reads your classification — the script reads
 the JSON, not unstructured text.
-""", encoding="utf-8")
+"""
+    # V3: Validate dynamic content for prohibited patterns
+    violations = validate_dynamic_content(rendered)
+    if violations:
+        log(f"  WARNING: prompt {prompt_path.name} has template violations: {violations}")
+    prompt_path.write_text(rendered, encoding="utf-8")
     _log_artifact(planspace, f"prompt:reexplore-{section.number}")
 
     result = dispatch_agent(

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ..agent_templates import validate_dynamic_content
 from ..communication import _log_artifact, log
 from ..dispatch import dispatch_agent, write_model_choice_signal
 from ..task_ingestion import ingest_and_dispatch
@@ -128,7 +129,7 @@ def write_coordinator_fix_prompt(
 
     task_submission_path = artifacts / f"signals/task-requests-coord-{group_id}.json"
 
-    prompt_path.write_text(f"""# Task: Coordinated Fix for Problem Group {group_id}
+    rendered = f"""# Task: Coordinated Fix for Problem Group {group_id}
 
 ## Problems to Fix
 
@@ -182,7 +183,21 @@ After implementation, write a list of ALL files you modified to:
 
 One file path per line (relative to codespace root `{codespace}`).
 Include all files modified during this implementation.
-""", encoding="utf-8")
+"""
+    # V3: Validate dynamic content for prohibited patterns
+    violations = validate_dynamic_content(rendered)
+    if violations:
+        log(f"  WARNING: prompt {prompt_path.name} has template violations: {violations}")
+    prompt_path.write_text(rendered, encoding="utf-8")
+    # V4: Append context sidecar reference if it exists
+    context_sidecar = planspace / "artifacts" / "context-coordination-fixer.json"
+    if context_sidecar.exists():
+        with prompt_path.open("a", encoding="utf-8") as f:
+            f.write(
+                f"\n## Scoped Context\n"
+                f"Agent context sidecar with resolved inputs: "
+                f"`{context_sidecar}`\n"
+            )
     _log_artifact(planspace, f"prompt:coordinator-fix-{group_id}")
     return prompt_path
 

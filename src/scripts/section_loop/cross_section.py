@@ -112,8 +112,7 @@ def post_section_completion(
     # -----------------------------------------------------------------
     # (b) Two-stage impact analysis: candidate generation + semantic check
     # -----------------------------------------------------------------
-    other_sections = [s for s in all_sections if s.number != sec_num
-                      and s.related_files]
+    other_sections = [s for s in all_sections if s.number != sec_num]
     if not other_sections:
         log(f"Section {sec_num}: no other sections to check for impact")
         return
@@ -182,9 +181,12 @@ def post_section_completion(
     # Stage B: Semantic impact analysis on candidates only (policy-controlled)
     candidate_lines = []
     for other in candidate_sections:
-        files_str = ", ".join(f"`{f}`" for f in other.related_files[:10])
-        if len(other.related_files) > 10:
-            files_str += f" (+{len(other.related_files) - 10} more)"
+        if other.related_files:
+            files_str = ", ".join(f"`{f}`" for f in other.related_files[:10])
+            if len(other.related_files) > 10:
+                files_str += f" (+{len(other.related_files) - 10} more)"
+        else:
+            files_str = "(no current file hypothesis)"
         summary = extract_section_summary(other.path)
         candidate_lines.append(
             f"- SECTION-{other.number}: {summary}\n"
@@ -248,6 +250,15 @@ For each MATERIAL impact, `note_markdown` is REQUIRED — a brief markdown
 description of what changed and what the target section must accommodate.
 This is the primary content of the consequence note the target receives.
 """, encoding="utf-8")
+    # V4: Append context sidecar reference if it exists
+    context_sidecar = artifacts / "context-impact-analyzer.json"
+    if context_sidecar.exists():
+        with impact_prompt_path.open("a", encoding="utf-8") as f:
+            f.write(
+                f"\n## Scoped Context\n"
+                f"Agent context sidecar with resolved inputs: "
+                f"`{context_sidecar}`\n"
+            )
     _log_artifact(planspace, f"prompt:impact-{sec_num}")
 
     log(f"Section {sec_num}: running impact analysis")

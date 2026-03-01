@@ -55,7 +55,7 @@ request to the task-submission path provided in your dispatch prompt:
 }
 ```
 
-Available task types: scan_explore, scan_deep_analyze
+Available task types: scan_explore, coordination_fix
 
 The dispatcher handles agent and model selection. You declare WHAT analysis
 you need, not which agent runs it.
@@ -68,8 +68,8 @@ The runtime consumes two output artifacts:
 
 Write a plain-text file to the path specified in the prompt (the
 `modified_report` path). List every file you modified, one relative
-path per line (relative to the codespace root). Include files modified
-by any sub-agents you dispatched.
+path per line (relative to the codespace root). Include all files
+modified during this implementation.
 
 ```
 events/validator.py

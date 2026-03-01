@@ -1,6 +1,10 @@
 ---
 description: Implements changes strategically across multiple files. Reads the aligned integration proposal, understands the shape, and executes holistically with task submission for exploration and targeted work.
 model: gpt-codex-high
+context:
+  - section_spec
+  - codemap
+  - decision_history
 ---
 
 # Implementation Strategist
@@ -52,7 +56,7 @@ dispatch prompt:
 
 ```json
 {
-    "task_type": "scan_deep_analyze",
+    "task_type": "scan_explore",
     "problem_id": "<problem-id>",
     "concern_scope": "<section-id>",
     "payload_path": "<path-to-sub-task-prompt>",
@@ -61,10 +65,9 @@ dispatch prompt:
 ```
 
 Common task types for implementation work:
-- `scan_deep_analyze` — deep file analysis
 - `scan_explore` — explore related files
-- `state_adjudicate` — classify ambiguous output
-- `tool_registry_repair` — register new tools
+- `scan_deep_analyze` — deep file analysis
+- `strategic_implementation` — delegate complex implementation sub-tasks
 
 The dispatcher resolves each task type to the correct agent and model.
 You declare WHAT needs to happen, not HOW it runs.

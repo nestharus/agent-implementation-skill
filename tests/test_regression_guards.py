@@ -6902,3 +6902,194 @@ class TestR72V5PhilosophySourceVerifier:
         assert 'agent_file="philosophy-source-selector.md"' not in block, (
             "Verification dispatch still reuses philosophy-source-selector.md"
         )
+
+
+# ---------------------------------------------------------------------------
+# R73 / V1 – coordination-fixer task types and language
+# ---------------------------------------------------------------------------
+
+
+class TestR73V1CoordinationFixerTaskVocab:
+    """R73/V1: coordination-fixer.md task types match runtime prompt."""
+
+    def test_task_types_match_runtime(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "coordination-fixer.md").read_text(
+            encoding="utf-8")
+        assert "coordination_fix" in text, (
+            "coordination-fixer.md must list coordination_fix as a task type"
+        )
+
+    def test_no_scan_deep_analyze_task_type(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "coordination-fixer.md").read_text(
+            encoding="utf-8")
+        # scan_deep_analyze is not in the runtime allowed list
+        assert "scan_deep_analyze" not in text, (
+            "coordination-fixer.md must not advertise scan_deep_analyze"
+        )
+
+    def test_no_sub_agents_language(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "coordination-fixer.md").read_text(
+            encoding="utf-8")
+        assert "sub-agents" not in text.lower(), (
+            "coordination-fixer.md must not use 'sub-agents' language"
+        )
+
+
+# ---------------------------------------------------------------------------
+# R73 / V2 – integration-proposer and implementation-strategist task vocab
+# ---------------------------------------------------------------------------
+
+
+class TestR73V2TaskVocabularySync:
+    """R73/V2: agent file task examples match runtime allowed_tasks."""
+
+    def test_integration_proposer_uses_scan_explore(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "integration-proposer.md").read_text(
+            encoding="utf-8")
+        # The example JSON should use scan_explore, not scan_deep_analyze
+        assert '"scan_explore"' in text or "'scan_explore'" in text
+
+    def test_integration_proposer_no_scan_deep_analyze(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "integration-proposer.md").read_text(
+            encoding="utf-8")
+        assert "scan_deep_analyze" not in text, (
+            "integration-proposer.md must not use scan_deep_analyze"
+        )
+
+    def test_impl_strategist_task_types_match_runtime(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "implementation-strategist.md").read_text(
+            encoding="utf-8")
+        # Runtime (writers.py) provides: scan_explore, scan_deep_analyze,
+        # strategic_implementation
+        assert "strategic_implementation" in text, (
+            "implementation-strategist.md must list strategic_implementation"
+        )
+
+    def test_impl_strategist_no_unlisted_task_types(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "implementation-strategist.md").read_text(
+            encoding="utf-8")
+        # state_adjudicate and tool_registry_repair are not in the runtime
+        # allowed list for implementation
+        assert "state_adjudicate" not in text, (
+            "implementation-strategist.md must not list state_adjudicate"
+        )
+        assert "tool_registry_repair" not in text, (
+            "implementation-strategist.md must not list tool_registry_repair"
+        )
+
+
+# ---------------------------------------------------------------------------
+# R73 / V3 – template safety on active dynamic prompt builders
+# ---------------------------------------------------------------------------
+
+
+class TestR73V3TemplateSafety:
+    """R73/V3: active prompt builders call validate_dynamic_content."""
+
+    def test_reexplore_validates(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "section_engine" / "reexplore.py"
+        ).read_text(encoding="utf-8")
+        assert "validate_dynamic_content" in text
+
+    def test_runner_microstrategy_validates(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "section_engine" / "runner.py"
+        ).read_text(encoding="utf-8")
+        # Must import validate_dynamic_content
+        assert "validate_dynamic_content" in text
+        # Must call it near the microstrategy prompt builder
+        idx = text.find("# Task: Microstrategy")
+        assert idx >= 0
+        block = text[idx:idx + 1500]
+        assert "validate_dynamic_content" in block
+
+    def test_coordination_execution_validates(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "coordination" / "execution.py"
+        ).read_text(encoding="utf-8")
+        assert "validate_dynamic_content" in text
+        idx = text.find("# Task: Coordinated Fix")
+        assert idx >= 0
+        block = text[idx:idx + 2500]
+        assert "validate_dynamic_content" in block
+
+
+# ---------------------------------------------------------------------------
+# R73 / V4 – context sidecar wiring
+# ---------------------------------------------------------------------------
+
+
+class TestR73V4ContextSidecarWiring:
+    """R73/V4: context: declared on agents that have sidecar appends,
+    sidecar references wired for agents that declare context:."""
+
+    def test_integration_proposer_has_context(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "integration-proposer.md").read_text(
+            encoding="utf-8")
+        assert "context:" in text
+        assert "section_spec" in text
+
+    def test_implementation_strategist_has_context(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "implementation-strategist.md").read_text(
+            encoding="utf-8")
+        assert "context:" in text
+        assert "section_spec" in text
+
+    def test_coordination_fix_prompt_has_sidecar_ref(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "coordination" / "execution.py"
+        ).read_text(encoding="utf-8")
+        assert "context-coordination-fixer.json" in text
+
+    def test_impact_prompt_has_sidecar_ref(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "cross_section.py"
+        ).read_text(encoding="utf-8")
+        assert "context-impact-analyzer.json" in text
+
+
+# ---------------------------------------------------------------------------
+# R73 / V5 – concern-only sections reachable in impact routing
+# ---------------------------------------------------------------------------
+
+
+class TestR73V5ConcernOnlyRouting:
+    """R73/V5: impact routing does not exclude concern-only sections."""
+
+    def test_no_related_files_gate(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "cross_section.py"
+        ).read_text(encoding="utf-8")
+        # The old filter was: "and s.related_files"
+        # Find the other_sections list comprehension
+        idx = text.find("other_sections = [s for s in all_sections")
+        assert idx >= 0
+        line = text[idx:text.index("\n", idx)]
+        assert "s.related_files" not in line, (
+            "Impact routing must not gate on s.related_files"
+        )
+
+    def test_no_file_hypothesis_rendering(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "cross_section.py"
+        ).read_text(encoding="utf-8")
+        assert "(no current file hypothesis)" in text, (
+            "Candidate rendering must handle sections with no related files"
+        )

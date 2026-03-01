@@ -1,6 +1,10 @@
 ---
 description: Writes integration proposals — strategic documents describing HOW to wire a proposal into the existing codebase. Explores strategically, submits task requests for deeper analysis, thinks about shape not details.
 model: gpt-codex-high
+context:
+  - section_spec
+  - codemap
+  - decision_history
 ---
 
 # Integration Proposer
@@ -53,7 +57,7 @@ to the task-submission path specified in your dispatch prompt:
 
 ```json
 {
-    "task_type": "scan_deep_analyze",
+    "task_type": "scan_explore",
     "problem_id": "<problem-id>",
     "concern_scope": "<section-id>",
     "payload_path": "<path-to-sub-task-prompt>",
