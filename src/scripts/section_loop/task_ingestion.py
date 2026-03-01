@@ -17,6 +17,7 @@ import json
 import sys
 from pathlib import Path
 
+from .agent_templates import validate_dynamic_content
 from .communication import log
 from .dispatch import dispatch_agent, read_model_policy
 
@@ -136,14 +137,18 @@ def dispatch_ingested_tasks(
             # Generate a minimal prompt from task metadata
             scope = task.get("concern_scope", section_number)
             priority = task.get("priority", "normal")
-            prompt_path.write_text(
+            content = (
                 f"# Task: {task_type}\n\n"
                 f"## Scope\n{scope}\n\n"
                 f"## Priority\n{priority}\n\n"
                 f"## Context\n"
-                f"Dispatched from section {section_number} task ingestion.\n",
-                encoding="utf-8",
+                f"Dispatched from section {section_number} task ingestion.\n"
             )
+            violations = validate_dynamic_content(content)
+            if violations:
+                log(f"  task_ingestion: WARNING — raw prompt has "
+                    f"template violations: {violations}")
+            prompt_path.write_text(content, encoding="utf-8")
 
         output_path = (
             artifacts / f"task-{task_type}-{section_number}-output.md"

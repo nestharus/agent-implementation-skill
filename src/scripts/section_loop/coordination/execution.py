@@ -3,7 +3,8 @@ from pathlib import Path
 from typing import Any
 
 from ..agent_templates import validate_dynamic_content
-from ..communication import _log_artifact, log
+from ..communication import WORKFLOW_HOME, _log_artifact, log
+from ..context_assembly import materialize_context_sidecar
 from ..dispatch import dispatch_agent, write_model_choice_signal
 from ..task_ingestion import ingest_and_dispatch
 
@@ -188,15 +189,21 @@ Include all files modified during this implementation.
     violations = validate_dynamic_content(rendered)
     if violations:
         log(f"  WARNING: prompt {prompt_path.name} has template violations: {violations}")
+
+    # Materialize sidecar BEFORE writing prompt so it exists at prompt-write time
+    sidecar_path = materialize_context_sidecar(
+        str(Path(WORKFLOW_HOME) / "agents" / "coordination-fixer.md"),
+        planspace,
+    )
+
     prompt_path.write_text(rendered, encoding="utf-8")
-    # V4: Append context sidecar reference if it exists
-    context_sidecar = planspace / "artifacts" / "context-coordination-fixer.json"
-    if context_sidecar.exists():
+    # Append context sidecar reference (materialized before rendering)
+    if sidecar_path:
         with prompt_path.open("a", encoding="utf-8") as f:
             f.write(
                 f"\n## Scoped Context\n"
                 f"Agent context sidecar with resolved inputs: "
-                f"`{context_sidecar}`\n"
+                f"`{sidecar_path}`\n"
             )
     _log_artifact(planspace, f"prompt:coordinator-fix-{group_id}")
     return prompt_path

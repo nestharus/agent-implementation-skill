@@ -49,10 +49,14 @@ treat them as authoritative fixes (wrong paths, missing entries,
 misclassified files). Use it to orient yourself before diving into
 individual files.
 
-**Request deeper exploration when needed:**
+**Commission follow-up work when needed:**
 
-If you need files read or analyzed beyond what you can do directly, write
-a task request to `{task_submission_path}`:
+You have direct codebase access for exploration during your current
+session. Task requests commission additional work that runs AFTER you
+complete — use them for follow-up analysis, verification, or targeted
+sub-tasks that should inform the next strategic iteration.
+
+To submit a task request, write to `{task_submission_path}`:
 
 ```json
 {{
@@ -68,14 +72,13 @@ Available task types for this role: {allowed_tasks}
 The dispatcher handles agent selection and model choice. You declare
 WHAT analysis you need, not which agent or model runs it.
 
-Use task requests to:
-- Read files related to this section and understand their structure
-- Find callers/callees of functions you need to modify
-- Check what interfaces or contracts currently exist
-- Understand the module organization and import patterns
-- Verify assumptions about how the code works
+Use task requests for follow-up work like:
+- Deeper file analysis beyond your current exploration
+- Verification of your proposal's assumptions
+- Investigation of callers/callees in distant modules
+- Cross-section dependency checks
 
-Do NOT try to understand everything upfront. Explore strategically:
+For your current exploration, read files directly. Explore strategically:
 form a hypothesis, verify it with a targeted read, adjust, repeat.
 
 ### Phase 2: Write the Integration Proposal

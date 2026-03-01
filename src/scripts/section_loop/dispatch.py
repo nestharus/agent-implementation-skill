@@ -11,7 +11,7 @@ from .communication import (
     _log_artifact,
     log,
 )
-from .context_assembly import resolve_context
+from .context_assembly import materialize_context_sidecar
 from .pipeline_control import alignment_changed_pending, wait_if_paused
 
 
@@ -56,21 +56,13 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
             return "ALIGNMENT_CHANGED_PENDING"
 
     # --- Resolve agent-scoped context (S1) ---
-    # Reads the agent file's context: field and produces a JSON sidecar
-    # so callers can opt in to using scoped context over time.
+    # Creates/refreshes the JSON sidecar so the agent has scoped context.
+    # Prompt writers also call materialize_context_sidecar() before
+    # rendering to ensure the sidecar exists at prompt-write time.
     if planspace:
-        agent_context = resolve_context(
+        materialize_context_sidecar(
             str(agent_path), planspace, section=section_number,
         )
-        if agent_context:
-            ctx_dir = planspace / "artifacts"
-            ctx_dir.mkdir(parents=True, exist_ok=True)
-            agent_stem = agent_file.removesuffix(".md")
-            ctx_path = ctx_dir / f"context-{agent_stem}.json"
-            ctx_path.write_text(
-                json.dumps(agent_context, indent=2) + "\n",
-                encoding="utf-8",
-            )
 
     monitor_name = f"{agent_name}-monitor" if agent_name else None
     monitor_proc = None

@@ -14,6 +14,7 @@ from .communication import (
     _log_artifact,
     log,
 )
+from .context_assembly import materialize_context_sidecar
 from .dispatch import dispatch_agent
 from .pipeline_control import _set_alignment_changed_flag
 from .types import Section
@@ -250,14 +251,18 @@ For each MATERIAL impact, `note_markdown` is REQUIRED — a brief markdown
 description of what changed and what the target section must accommodate.
 This is the primary content of the consequence note the target receives.
 """, encoding="utf-8")
-    # V4: Append context sidecar reference if it exists
-    context_sidecar = artifacts / "context-impact-analyzer.json"
-    if context_sidecar.exists():
+    # Materialize sidecar BEFORE prompt-write so it exists at render time
+    sidecar_path = materialize_context_sidecar(
+        str(Path(WORKFLOW_HOME) / "agents" / "impact-analyzer.md"),
+        planspace, section=sec_num,
+    )
+    # Append context sidecar reference (materialized before rendering)
+    if sidecar_path:
         with impact_prompt_path.open("a", encoding="utf-8") as f:
             f.write(
                 f"\n## Scoped Context\n"
                 f"Agent context sidecar with resolved inputs: "
-                f"`{context_sidecar}`\n"
+                f"`{sidecar_path}`\n"
             )
     _log_artifact(planspace, f"prompt:impact-{sec_num}")
 

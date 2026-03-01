@@ -8,7 +8,8 @@ from pathlib import Path
 
 from ..agent_templates import validate_dynamic_content
 from ..alignment import collect_modified_files
-from ..communication import DB_SH, _log_artifact, log
+from ..communication import DB_SH, WORKFLOW_HOME, _log_artifact, log
+from ..context_assembly import materialize_context_sidecar
 from ..cross_section import extract_section_summary
 from ..types import Section
 from .context import build_prompt_context
@@ -163,6 +164,12 @@ def write_integration_proposal_prompt(
         "mail_block": agent_mail_instructions(planspace, a_name, m_name),
     })
 
+    # Materialize sidecar BEFORE rendering so it exists at prompt-write time
+    sidecar_path = materialize_context_sidecar(
+        str(Path(WORKFLOW_HOME) / "agents" / "integration-proposer.md"),
+        planspace, section=section.number,
+    )
+
     prompt_path = artifacts / f"intg-proposal-{sec}-prompt.md"
     tpl = load_template("integration-proposal.md")
     rendered = render(tpl, ctx)
@@ -174,14 +181,13 @@ def write_integration_proposal_prompt(
 
     prompt_path.write_text(rendered, encoding="utf-8")
 
-    # V7: Append context sidecar reference if it exists
-    context_sidecar = artifacts / "context-integration-proposer.json"
-    if context_sidecar.exists():
+    # Append context sidecar reference (materialized before rendering)
+    if sidecar_path:
         with prompt_path.open("a", encoding="utf-8") as f:
             f.write(
                 f"\n## Scoped Context\n"
                 f"Agent context sidecar with resolved inputs: "
-                f"`{context_sidecar}`\n"
+                f"`{sidecar_path}`\n"
             )
 
     _log_artifact(planspace, f"prompt:proposal-{sec}")
@@ -373,6 +379,12 @@ def write_strategic_impl_prompt(
         "mail_block": agent_mail_instructions(planspace, a_name, m_name),
     })
 
+    # Materialize sidecar BEFORE rendering so it exists at prompt-write time
+    sidecar_path = materialize_context_sidecar(
+        str(Path(WORKFLOW_HOME) / "agents" / "implementation-strategist.md"),
+        planspace, section=section.number,
+    )
+
     prompt_path = artifacts / f"impl-{sec}-prompt.md"
     tpl = load_template("strategic-implementation.md")
     rendered = render(tpl, ctx)
@@ -384,14 +396,13 @@ def write_strategic_impl_prompt(
 
     prompt_path.write_text(rendered, encoding="utf-8")
 
-    # V7: Append context sidecar reference if it exists
-    context_sidecar = artifacts / "context-implementation-strategist.json"
-    if context_sidecar.exists():
+    # Append context sidecar reference (materialized before rendering)
+    if sidecar_path:
         with prompt_path.open("a", encoding="utf-8") as f:
             f.write(
                 f"\n## Scoped Context\n"
                 f"Agent context sidecar with resolved inputs: "
-                f"`{context_sidecar}`\n"
+                f"`{sidecar_path}`\n"
             )
 
     _log_artifact(planspace, f"prompt:impl-{sec}")

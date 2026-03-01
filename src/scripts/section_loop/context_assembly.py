@@ -317,3 +317,32 @@ def resolve_context(
             result[cat] = resolver(planspace, section)  # type: ignore[operator]
 
     return result
+
+
+def materialize_context_sidecar(
+    agent_file_path: str,
+    planspace: Path,
+    section: str | None = None,
+) -> Path | None:
+    """Resolve and write the scoped-context sidecar JSON.
+
+    Call this BEFORE prompt rendering so the sidecar exists when the
+    prompt writer references it.  ``dispatch_agent`` also calls this
+    during dispatch, which refreshes the sidecar with any state changes
+    that occurred between prompt writing and agent launch.
+
+    Returns the sidecar path if created, None if the agent file has no
+    ``context:`` field.
+    """
+    agent_context = resolve_context(agent_file_path, planspace, section=section)
+    if not agent_context:
+        return None
+    ctx_dir = planspace / "artifacts"
+    ctx_dir.mkdir(parents=True, exist_ok=True)
+    agent_stem = Path(agent_file_path).stem
+    ctx_path = ctx_dir / f"context-{agent_stem}.json"
+    ctx_path.write_text(
+        json.dumps(agent_context, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return ctx_path

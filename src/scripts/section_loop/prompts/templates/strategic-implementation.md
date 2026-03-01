@@ -42,10 +42,14 @@ multiple files at once, coordinated changes. Use the codemap if available
 to understand how your changes fit into the broader project structure. If
 codemap corrections exist, treat them as authoritative fixes.
 
-**Request exploration or targeted sub-work when needed:**
+**Commission follow-up work when needed:**
 
-If you need files read, analyzed, or a self-contained sub-task executed,
-write a task request to `{task_submission_path}`:
+You have direct codebase access for exploration and implementation during
+your current session. Task requests commission additional work that runs
+AFTER you complete — use them for follow-up analysis, verification, or
+self-contained sub-tasks that should run as separate dispatches.
+
+To submit a task request, write to `{task_submission_path}`:
 
 ```json
 {{
@@ -71,13 +75,13 @@ Available task types for this role: {allowed_tasks}
 The dispatcher handles agent selection and model choice. You declare
 WHAT work you need, not which agent or model runs it.
 
-Submit task requests when:
-- You need to read several files to understand context before changing them
-- A specific area of the implementation is self-contained and can be delegated
-- You want to verify your changes didn't break something
+Submit task requests for follow-up work like:
+- Self-contained sub-tasks that can be delegated to a separate dispatch
+- Post-implementation verification
+- Deeper analysis of distant modules
 
-Do NOT submit task requests for everything — handle straightforward changes
-yourself directly.
+Handle straightforward changes yourself directly — do NOT submit task
+requests for work you can do in your current session.
 
 ### Implementation Guidelines
 

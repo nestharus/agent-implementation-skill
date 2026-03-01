@@ -546,10 +546,12 @@ The control plane is script-owned:
    `db.sh log <planspace>/run.db signal <agent-name> "LOOP_DETECTED:..." --agent <monitor-name>`.
    One monitor per agent dispatch, exits when agent finishes.
 
-3. **Task queue**: `scripts/task_dispatcher.py` polls for task-request
-   artifacts emitted by strategic agents and dispatches them through the
-   standard dispatch boundary. Resolves via `task_router.py` under script
-   control — the mechanism that closes the task-submission loop.
+3. **Task ingestion**: After each strategic agent completes,
+   `scripts/section_loop/task_ingestion.py` reads any task-request
+   artifact files the agent emitted and dispatches them through the
+   standard dispatch boundary via `task_router.py`. Separately,
+   `scripts/task_dispatcher.py` polls the DB task queue (`db.sh
+   next-task`) for tasks submitted programmatically.
 
 The workflow schedule is managed by `scripts/workflow.sh` and the
 section-loop script, not by an orchestrator agent. All coordination goes

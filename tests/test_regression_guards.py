@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48, R49, R50, R71/V2, R71/V3, R71/V4, R71/V5, R71/V6, R71/V7, R72/V1, R72/V2, R72/V3, R72/V4, R72/V5, R72/V6, R72/V7, R72/V8, R72/V9).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48, R49, R50, R71/V2, R71/V3, R71/V4, R71/V5, R71/V6, R71/V7, R72/V1, R72/V2, R72/V3, R72/V4, R72/V5, R72/V6, R72/V7, R72/V8, R72/V9, R74/V1a, R74/V1b, R74/V2, R74/V3).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -7053,14 +7053,18 @@ class TestR73V4ContextSidecarWiring:
         text = (
             src / "scripts" / "section_loop" / "coordination" / "execution.py"
         ).read_text(encoding="utf-8")
-        assert "context-coordination-fixer.json" in text
+        # R74 replaced hardcoded path with materialize_context_sidecar
+        assert "materialize_context_sidecar" in text
+        assert "coordination-fixer.md" in text
 
     def test_impact_prompt_has_sidecar_ref(self) -> None:
         src = Path(__file__).resolve().parent.parent / "src"
         text = (
             src / "scripts" / "section_loop" / "cross_section.py"
         ).read_text(encoding="utf-8")
-        assert "context-impact-analyzer.json" in text
+        # R74 replaced hardcoded path with materialize_context_sidecar
+        assert "materialize_context_sidecar" in text
+        assert "impact-analyzer.md" in text
 
 
 # ---------------------------------------------------------------------------
@@ -7092,4 +7096,182 @@ class TestR73V5ConcernOnlyRouting:
         ).read_text(encoding="utf-8")
         assert "(no current file hypothesis)" in text, (
             "Candidate rendering must handle sections with no related files"
+        )
+
+
+class TestR74V1aTaskIngestionTemplateSafety:
+    """R74/V1a: raw-prompt fallback in task_ingestion validates content."""
+
+    def test_validate_import(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "task_ingestion.py"
+        ).read_text(encoding="utf-8")
+        assert "validate_dynamic_content" in text
+
+    def test_raw_prompt_validates(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "task_ingestion.py"
+        ).read_text(encoding="utf-8")
+        idx = text.find("Generate a minimal prompt from task metadata")
+        assert idx >= 0
+        block = text[idx:idx + 800]
+        assert "validate_dynamic_content" in block, (
+            "Raw-prompt fallback must validate content before writing"
+        )
+
+
+class TestR74V1bTaskRequestTiming:
+    """R74/V1b: prompt templates clarify task requests run post-completion."""
+
+    def test_proposal_after_complete(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "prompts" / "templates"
+            / "integration-proposal.md"
+        ).read_text(encoding="utf-8")
+        assert "runs AFTER you" in text
+
+    def test_proposal_no_inline_framing(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "prompts" / "templates"
+            / "integration-proposal.md"
+        ).read_text(encoding="utf-8")
+        assert "Request deeper exploration when needed" not in text, (
+            "Old framing implied inline results"
+        )
+
+    def test_impl_after_complete(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "prompts" / "templates"
+            / "strategic-implementation.md"
+        ).read_text(encoding="utf-8")
+        assert "AFTER you complete" in text
+
+    def test_impl_no_inline_framing(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "prompts" / "templates"
+            / "strategic-implementation.md"
+        ).read_text(encoding="utf-8")
+        assert "Request exploration or targeted sub-work when needed" not in text, (
+            "Old framing implied inline results"
+        )
+
+
+class TestR74V2ImplementMdTaskIngestion:
+    """R74/V2: implement.md accurately describes task mechanisms."""
+
+    def test_task_ingestion_referenced(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "implement.md").read_text(encoding="utf-8")
+        assert "task_ingestion.py" in text
+
+    def test_no_polls_for_artifacts(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "implement.md").read_text(encoding="utf-8")
+        assert "polls for task-request" not in text, (
+            "Old text said task_dispatcher polls for artifacts — it polls DB"
+        )
+
+
+class TestR74V3SidecarOrdering:
+    """R74/V3: sidecar materialized BEFORE prompt rendering."""
+
+    def test_materialize_helper_exists(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "context_assembly.py"
+        ).read_text(encoding="utf-8")
+        assert "def materialize_context_sidecar(" in text
+
+    def test_dispatch_uses_helper(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "dispatch.py"
+        ).read_text(encoding="utf-8")
+        assert "materialize_context_sidecar" in text
+
+    def test_writers_proposer_before_render(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "prompts" / "writers.py"
+        ).read_text(encoding="utf-8")
+        mat_idx = text.find('"integration-proposer.md"')
+        render_idx = text.find('load_template("integration-proposal.md")')
+        assert mat_idx >= 0 and render_idx >= 0
+        assert mat_idx < render_idx, (
+            "Sidecar must be materialized BEFORE template rendering"
+        )
+
+    def test_writers_strategist_before_render(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "prompts" / "writers.py"
+        ).read_text(encoding="utf-8")
+        mat_idx = text.find('"implementation-strategist.md"')
+        render_idx = text.find('load_template("strategic-implementation.md")')
+        assert mat_idx >= 0 and render_idx >= 0
+        assert mat_idx < render_idx, (
+            "Sidecar must be materialized BEFORE template rendering"
+        )
+
+    def test_coordination_before_write(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "coordination"
+            / "execution.py"
+        ).read_text(encoding="utf-8")
+        mat_idx = text.find("materialize_context_sidecar")
+        write_idx = text.find("prompt_path.write_text(rendered")
+        assert mat_idx >= 0 and write_idx >= 0
+        assert mat_idx < write_idx, (
+            "Coordination sidecar must be materialized before prompt write"
+        )
+
+    def test_cross_section_before_append(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "cross_section.py"
+        ).read_text(encoding="utf-8")
+        assert "materialize_context_sidecar" in text
+
+    def test_no_hardcoded_sidecar_path_proposer(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "prompts" / "writers.py"
+        ).read_text(encoding="utf-8")
+        assert 'context-integration-proposer.json"' not in text, (
+            "Should use materialize return, not hardcoded path"
+        )
+
+    def test_no_hardcoded_sidecar_path_strategist(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "prompts" / "writers.py"
+        ).read_text(encoding="utf-8")
+        assert 'context-implementation-strategist.json"' not in text, (
+            "Should use materialize return, not hardcoded path"
+        )
+
+    def test_no_hardcoded_sidecar_path_coordinator(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "coordination"
+            / "execution.py"
+        ).read_text(encoding="utf-8")
+        assert 'context-coordination-fixer.json"' not in text, (
+            "Should use materialize return, not hardcoded path"
+        )
+
+    def test_no_hardcoded_sidecar_path_impact(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "cross_section.py"
+        ).read_text(encoding="utf-8")
+        assert 'context-impact-analyzer.json"' not in text, (
+            "Should use materialize return, not hardcoded path"
         )
