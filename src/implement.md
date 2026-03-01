@@ -37,24 +37,23 @@ Schedule step → Skill section mapping:
 - `verify` → Stage 6: Verification
 - `post-verify` → Stage 7: Post-Task Verification
 
-## Orchestrator Role
+## Your Role in the Pipeline
 
-**CRITICAL**: The orchestrator (you) coordinates the pipeline. You do NOT
-edit source files directly.
+The control plane is script-owned (`section-loop.py`, `workflow.sh`,
+`task_dispatcher.py`). You **start** the pipeline, **monitor** its
+progress, **respond** to blockers, and **read** artifacts. You do NOT
+build prompts, launch agents directly, or manage dispatch loops — scripts
+handle all mechanical coordination.
 
-- **Read** proposals, source files, agent outputs, test results
-- **Write** prompt files for agents (in `<planspace>/artifacts/`)
-- **Delegate** all source file editing to agents
-- **Manage** section queue, dynamic scheduling
-- **Verify** agent outputs match expectations
+- **Start** the pipeline via `workflow.sh`
+- **Monitor** progress via `db.sh tail` / `db.sh query`
+- **Respond** to blockers (pause/resume signals, `ask:` messages)
+- **Read** proposals, agent outputs, alignment verdicts, test results
+- **Approve** decisions that require human judgment (alignment docs, major tradeoffs)
 
-**You NEVER**: edit `.py` files, place markers yourself, fix code yourself.
-
-**Strategic agents handle multiple files holistically.** When dispatching
-implementation agents (GPT/Codex), they tackle coordinated changes across
-files. This is intentional — strategic implementation requires understanding
-the shape of changes, not file-by-file mechanical edits. The orchestrator
-dispatches the agent once per section; the agent handles file scope.
+**You NEVER**: edit `.py` files, write prompt files, dispatch agents
+manually, or manage section queues. Scripts absorb all mechanical
+coordination so you spend attention only on strategic decisions.
 
 ## Prompt Construction Rules
 
@@ -88,16 +87,15 @@ Prompt template pattern:
     Read all files listed above, then <task description>.
     Write output to: `<absolute filepath>`
 
-## Parallel Dispatch Pattern
+## Parallel Dispatch (Script Internals)
 
-All parallel agent dispatch uses Bash with fire-and-forget `&` plus
-db.sh coordination. **Never** use MCP background-job tools or Bash
-`wait` for parallel agents — both block the orchestrator.
+Scripts use Bash fire-and-forget `&` plus `db.sh` coordination for
+parallel agent dispatch. This section documents the pattern for
+script-level reference — the user does not run these commands directly.
 
-**Key rule**: Always have exactly ONE `recv` running as a background
-task. It waits for the next message. When it completes, process the
-result and immediately start another `recv` if more messages are
-expected. This ensures you are always listening.
+**Key pattern**: One `recv` running at a time. When it completes,
+process the result and start another `recv` if more messages are
+expected.
 
 ```bash
 DB="$WORKFLOW_HOME/scripts/db.sh"
@@ -105,25 +103,23 @@ DB="$WORKFLOW_HOME/scripts/db.sh"
 # 0. Initialize coordination database (idempotent)
 bash "$DB" init <planspace>/run.db
 
-# 1. Register orchestrator
-bash "$DB" register <planspace>/run.db orchestrator
+# 1. Register the script
+bash "$DB" register <planspace>/run.db section-loop
 
-# 2. Start recv FIRST — always be listening before dispatching
-bash "$DB" recv <planspace>/run.db orchestrator 600  # run_in_background: true
+# 2. Start recv FIRST — listen before dispatching
+bash "$DB" recv <planspace>/run.db section-loop 600
 
 # 3. Fire-and-forget: each agent sends message on completion
 (agents --model <model> --file <prompt.md> \
   > <planspace>/artifacts/<output.md> 2>&1 && \
-  bash "$DB" send <planspace>/run.db orchestrator "done:<tag>") &
+  bash "$DB" send <planspace>/run.db section-loop "done:<tag>") &
 
-# 4. When recv notifies you of completion:
-#    - Process the result
-#    - Start another recv if more messages expected:
-bash "$DB" recv <planspace>/run.db orchestrator 600  # run_in_background: true
+# 4. recv returns when a message arrives — process, then recv again
+bash "$DB" recv <planspace>/run.db section-loop 600
 
-# 5. Clean up when ALL messages received (no more agents outstanding)
-bash "$DB" cleanup <planspace>/run.db orchestrator
-bash "$DB" unregister <planspace>/run.db orchestrator
+# 5. Clean up when all agents have reported
+bash "$DB" cleanup <planspace>/run.db section-loop
+bash "$DB" unregister <planspace>/run.db section-loop
 ```
 
 The recv → process → recv loop continues until all agents have reported.

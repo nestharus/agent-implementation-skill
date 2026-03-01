@@ -69,7 +69,7 @@ Simple lookup or classification?
 
 ### Haiku
 - **Strengths**: Fastest, cheapest, simple classification
-- **Use via**: Task tool with `model: "haiku"`
+- **Invocation**: `uv run agents --model haiku --file <prompt.md>`
 
 ## Stage 3.5 Model Policy Keys
 
@@ -101,7 +101,7 @@ codex-high2    → Constraint alignment check
 ```
 Opus           → Research prompt + context package
 codex-xhigh   → Synthesize proposal
-codex-high     → Audit proposal
+codex-high     → Divergence review
 Opus           → Evaluate, refine if needed
 (repeat)
 ```
@@ -206,8 +206,8 @@ mechanical classification needs controllability.
 
 ## Anti-Patterns
 
-- **DO NOT use Opus for mechanical auditing** — Codex is better
-- **DO NOT use codex-high for primary synthesis** — it audits, codex-xhigh synthesizes
+- **DO NOT use Opus for mechanical review** — Codex is better
+- **DO NOT use codex-high for primary synthesis** — it reviews alignment, codex-xhigh synthesizes
 - **DO NOT synthesize proposals yourself** — use codex-xhigh
 - **DO NOT send inline instructions to Codex** — use `--file` with prompt file
 - **DO NOT pre-escalate models** — start with the default and escalate on failure

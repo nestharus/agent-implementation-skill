@@ -9,7 +9,7 @@ proposal generation, and iterative review.
 Phase A: Exploration     — understand the problem landscape
 Phase B: Alignment       — create the intent standard
 Phase C: Proposal        — generate concrete architecture from alignment
-Phase D: Review + Refine — audit and iterate until convergence
+Phase D: Review + Refine — divergence review and iterate until convergence
 ```
 
 We do NOT jump to solutions. Understand the problem first (A-B), generate
@@ -47,7 +47,7 @@ Create the intent standard against which all proposals are measured.
 4. Opus rebuilds with deeper understanding
 5. Iterate until shared understanding is rich enough
 6. Synthesize into the alignment document
-7. User audits for completeness
+7. User verifies problem/constraint coherence
 
 **Lives at**: `.tasks/plans/<project>/.research/<topic-slug>/alignment.md`
 
@@ -94,13 +94,13 @@ Save response as `response.md`.
 
 ## Phase D: Review + Refine
 
-### Step 5: Audit the Response
+### Step 5: Divergence Review
 1. Quick Opus analysis — identify 5-10 divergence signals
-2. Write `audit-prompt.md` with divergence signals
-3. Run audit: `uv run agents --model gpt-codex-high --file audit-prompt.md`
-4. Save as `audit-results.md`
+2. Write `review-prompt.md` with divergence signals
+3. Run review: `uv run agents --model gpt-codex-high --file review-prompt.md`
+4. Save as `review-results.md`
 
-### Step 6: Evaluate Audit Results
+### Step 6: Evaluate Review Results
 - **CRITICAL divergences** → Write refinement prompt (Step 7)
 - **MINOR only** → Proceed to Step 8
 - **None** → Proceed to Step 8
@@ -114,12 +114,12 @@ Save response as `response.md`.
 ## What the Previous Response Got Wrong
 ## Redirected Questions
 ```
-Send to codex-xhigh. Save as `response2.md`. Audit again.
+Send to codex-xhigh. Save as `response2.md`. Review again.
 Repeat until convergence (typically 2-3 rounds).
 
 ### Step 8: Final Validation
 1. Drift check — does final proposal still solve original problem?
-2. Constraint check — run final audit against ALL constraints
+2. Constraint check — verify alignment against ALL constraints
 3. Tradeoff check — what are we giving up? Acceptable?
 4. Actionability check — concrete enough to implement?
 
@@ -140,7 +140,7 @@ Present to user for approval. Do NOT proceed without approval.
 
 - **DO NOT skip Phase A-B** — jumping to proposals without exploration produces wrong solutions
 - **DO NOT synthesize the proposal yourself** — Opus formulates questions, codex-xhigh synthesizes
-- **DO NOT accept first response** — always audit against alignment document
+- **DO NOT accept first response** — always check alignment against the alignment document
 - **DO NOT add requirements during audit** — audit checks existing constraints only
 - **DO NOT retry the same prompt** — write a refinement prompt explaining WHY it diverged
-- **DO NOT send synthesis prompts to codex-high** — codex-high audits; codex-xhigh synthesizes
+- **DO NOT send synthesis prompts to codex-high** — codex-high reviews alignment; codex-xhigh synthesizes

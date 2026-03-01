@@ -7501,3 +7501,219 @@ class TestR75V3TaskRouterPolicyKey:
         assert "model: glm" in text, (
             "impact-analyzer.md model must be glm (not claude-opus)"
         )
+
+
+class TestR76V1ResearchFrameRepair:
+    """V1/R76: research.md uses divergence review, not flat audit frame."""
+
+    def test_no_audit_and_iterate(self) -> None:
+        """Phase D label must not say 'audit and iterate'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "research.md").read_text(encoding="utf-8")
+        assert "audit and iterate" not in text, (
+            "research.md must not teach flat 'audit and iterate' frame"
+        )
+
+    def test_no_user_audits_for_completeness(self) -> None:
+        """Alignment doc step must not say 'User audits for completeness'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "research.md").read_text(encoding="utf-8")
+        assert "audits for completeness" not in text, (
+            "research.md must not use 'audits for completeness'"
+        )
+
+    def test_no_audit_the_response(self) -> None:
+        """Phase D must not say 'Audit the Response'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "research.md").read_text(encoding="utf-8")
+        assert "Audit the Response" not in text, (
+            "research.md must use 'Divergence Review', not 'Audit the Response'"
+        )
+
+    def test_no_evaluate_audit_results(self) -> None:
+        """Phase D must not say 'Evaluate Audit Results'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "research.md").read_text(encoding="utf-8")
+        assert "Evaluate Audit Results" not in text, (
+            "research.md must use 'Evaluate Review Results'"
+        )
+
+    def test_divergence_review_present(self) -> None:
+        """Phase D must use divergence review language."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "research.md").read_text(encoding="utf-8")
+        assert "Divergence Review" in text, (
+            "research.md Phase D must use 'Divergence Review'"
+        )
+
+    def test_no_final_audit_against_all(self) -> None:
+        """Final validation must not say 'run final audit against ALL'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "research.md").read_text(encoding="utf-8")
+        assert "final audit against ALL" not in text, (
+            "research.md must use 'verify alignment' not 'final audit'"
+        )
+
+
+class TestR76V2BaselineFrameRepair:
+    """V2/R76: baseline.md uses constraint traceability, not coverage."""
+
+    def test_no_audit_against_directly(self) -> None:
+        """Key insight must not say 'too large to audit against directly'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "baseline.md").read_text(encoding="utf-8")
+        assert "audit against directly" not in text, (
+            "baseline.md must not frame baseline as 'audit against'"
+        )
+
+    def test_no_every_section_represented(self) -> None:
+        """Step 8 must not ask for section representation coverage."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "baseline.md").read_text(encoding="utf-8")
+        assert "every proposal section is represented" not in text, (
+            "baseline.md must use constraint traceability, not section coverage"
+        )
+
+    def test_constraint_traceability_present(self) -> None:
+        """Step 8 must use constraint traceability language."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "baseline.md").read_text(encoding="utf-8")
+        assert "Constraint Traceability" in text, (
+            "baseline.md Step 8 must use 'Verify Constraint Traceability'"
+        )
+
+
+class TestR76V3ModelsStaleLanguage:
+    """V3/R76: models.md has no stale mechanics or role language."""
+
+    def test_no_task_tool_invocation(self) -> None:
+        """Haiku must not reference 'Task tool'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "models.md").read_text(encoding="utf-8")
+        assert "Task tool" not in text, (
+            "models.md must not reference stale 'Task tool' invocation"
+        )
+
+    def test_no_audit_proposal_in_pipeline(self) -> None:
+        """Research Pipeline must not say 'Audit proposal'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "models.md").read_text(encoding="utf-8")
+        assert "Audit proposal" not in text, (
+            "models.md Research Pipeline must use 'Divergence review'"
+        )
+
+    def test_no_it_audits(self) -> None:
+        """Anti-patterns must not say 'it audits'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "models.md").read_text(encoding="utf-8")
+        assert "it audits" not in text, (
+            "models.md must not use stale 'it audits' role language"
+        )
+
+    def test_divergence_review_in_pipeline(self) -> None:
+        """Research Pipeline diagram must say 'Divergence review'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "models.md").read_text(encoding="utf-8")
+        assert "Divergence review" in text, (
+            "models.md Research Pipeline must use 'Divergence review'"
+        )
+
+
+class TestR76V4ImplementSplitBrainRepair:
+    """V4/R76: implement.md tells one execution story — script-owned."""
+
+    def test_no_orchestrator_you(self) -> None:
+        """Must not frame reader as 'The orchestrator (you)'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "implement.md").read_text(encoding="utf-8")
+        assert "orchestrator (you)" not in text.lower(), (
+            "implement.md must not address reader as manual orchestrator"
+        )
+
+    def test_no_write_prompt_files_instruction(self) -> None:
+        """Must not tell user to 'Write prompt files for agents'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "implement.md").read_text(encoding="utf-8")
+        assert "Write prompt files for agents" not in text, (
+            "implement.md must not instruct user to build prompts manually"
+        )
+
+    def test_script_owned_control_plane(self) -> None:
+        """Must declare control plane as script-owned."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "implement.md").read_text(encoding="utf-8")
+        assert "control plane is script-owned" in text, (
+            "implement.md must declare script-owned control plane"
+        )
+
+    def test_parallel_dispatch_script_internal(self) -> None:
+        """Parallel dispatch section must be labeled as script internals."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "implement.md").read_text(encoding="utf-8")
+        assert "Script Internals" in text, (
+            "Parallel dispatch section must be labeled 'Script Internals'"
+        )
+
+
+class TestR76V5LintGuardrailBroadening:
+    """V5/R76: Lint guardrails cover actual drift surfaces."""
+
+    def test_lint_audit_scans_research(self) -> None:
+        """lint-audit-language.sh must scan research.md."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "lint-audit-language.sh"
+        ).read_text(encoding="utf-8")
+        assert "research.md" in text, (
+            "lint-audit-language.sh must scan research.md"
+        )
+
+    def test_lint_audit_scans_baseline(self) -> None:
+        """lint-audit-language.sh must scan baseline.md."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "lint-audit-language.sh"
+        ).read_text(encoding="utf-8")
+        assert "baseline.md" in text, (
+            "lint-audit-language.sh must scan baseline.md"
+        )
+
+    def test_lint_audit_catches_completeness_frame(self) -> None:
+        """lint-audit-language.sh must ban 'audits for completeness'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "lint-audit-language.sh"
+        ).read_text(encoding="utf-8")
+        assert "audits for completeness" in text, (
+            "lint-audit-language.sh must ban 'audits for completeness'"
+        )
+
+    def test_lint_audit_catches_task_tool(self) -> None:
+        """lint-audit-language.sh must ban 'Task tool' invocation."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "lint-audit-language.sh"
+        ).read_text(encoding="utf-8")
+        assert "Task tool" in text, (
+            "lint-audit-language.sh must ban stale 'Task tool' references"
+        )
+
+    def test_lint_drift_catches_orchestrator_you(self) -> None:
+        """lint-doc-drift.sh must ban 'orchestrator (you)' framing."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "lint-doc-drift.sh"
+        ).read_text(encoding="utf-8")
+        assert "orchestrator (you)" in text.lower(), (
+            "lint-doc-drift.sh must ban old manual orchestrator framing"
+        )
+
+    def test_lint_drift_catches_audit_proposal(self) -> None:
+        """lint-doc-drift.sh must ban 'Audit proposal' pipeline language."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "lint-doc-drift.sh"
+        ).read_text(encoding="utf-8")
+        assert "Audit proposal" in text, (
+            "lint-doc-drift.sh must ban stale 'Audit proposal' role language"
+        )

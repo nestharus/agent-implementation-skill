@@ -3,9 +3,9 @@
 Transform an approved proposal into a structured `design/` folder containing
 atomized documents that serve as alignment references throughout implementation.
 
-**Key insight**: A proposal is too large to audit against directly. By
-decomposing it into atomic constraints and tradeoffs, every piece
-of implemented code can be checked against the specific principle it should follow.
+**Key insight**: A proposal is a single large surface. By decomposing it
+into atomic constraints and tradeoffs, every piece of implemented code
+can be traced back to the specific principle it should follow.
 
 ## Prerequisites
 
@@ -66,13 +66,14 @@ consumers). Plus `INDEX.md` and `DEPENDENCIES.md`.
 
 Directory layout, what goes where, reading order, authoritative sources.
 
-## Step 8: Verify Coverage Alignment
+## Step 8: Verify Constraint Traceability
 
-Codex-high2 checks that every proposal section is represented in at least
-one design document. Fix gaps. Re-check until clean.
+Codex-high2 checks that every problem, constraint, and tradeoff from
+the proposal is traceable through the design documents. Fix gaps.
+Re-check until clean.
 
 ```bash
-uv run agents --model gpt-codex-high --file "<audit-prompt-path>"
+uv run agents --model gpt-codex-high --file "<review-prompt-path>"
 ```
 
 ## Anti-Patterns
