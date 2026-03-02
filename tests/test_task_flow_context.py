@@ -20,6 +20,7 @@ import pytest
 
 from flow_schema import TaskSpec
 from task_flow import (
+    FlowCorruptionError,
     build_flow_context,
     submit_chain,
     submit_fanout,
@@ -110,15 +111,15 @@ class TestBuildFlowContext:
         result = build_flow_context(planspace, 1, flow_context_path=None)
         assert result is None
 
-    def test_returns_none_for_missing_file(
+    def test_raises_on_missing_file(
         self, planspace: Path,
     ) -> None:
-        """Missing flow context file returns None."""
-        result = build_flow_context(
-            planspace, 1,
-            flow_context_path="artifacts/flows/task-999-context.json",
-        )
-        assert result is None
+        """Missing flow context file raises FlowCorruptionError."""
+        with pytest.raises(FlowCorruptionError, match="missing"):
+            build_flow_context(
+                planspace, 1,
+                flow_context_path="artifacts/flows/task-999-context.json",
+            )
 
     def test_reads_existing_flow_context(
         self, db_path: Path, planspace: Path,
@@ -222,19 +223,22 @@ class TestBuildFlowContext:
         assert result is not None
         assert result["gate_aggregate_manifest"] == agg_relpath
 
-    def test_returns_none_for_malformed_json(
+    def test_raises_on_malformed_json(
         self, planspace: Path,
     ) -> None:
-        """Malformed JSON in the context file returns None."""
+        """Malformed JSON in the context file raises FlowCorruptionError."""
         ctx_relpath = "artifacts/flows/task-99-context.json"
         ctx_file = planspace / ctx_relpath
         ctx_file.write_text("{broken json not valid")
 
-        result = build_flow_context(
-            planspace, 99,
-            flow_context_path=ctx_relpath,
-        )
-        assert result is None
+        with pytest.raises(FlowCorruptionError, match="corrupt"):
+            build_flow_context(
+                planspace, 99,
+                flow_context_path=ctx_relpath,
+            )
+        # Original file should be renamed to .malformed.json
+        assert not ctx_file.exists()
+        assert ctx_file.with_suffix(".malformed.json").exists()
 
 
 # ---------------------------------------------------------------------------

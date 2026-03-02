@@ -946,10 +946,14 @@ class TestEdgeCases:
             "complete", "artifacts/output.md",
         )
 
-    def test_malformed_continuation_is_ignored(
+    def test_malformed_continuation_fails_closed(
         self, db_path: Path, planspace: Path,
     ) -> None:
-        """A malformed continuation file is treated as no continuation."""
+        """A malformed continuation file fails the chain closed.
+
+        The corrupt file is renamed to .malformed.json, pending
+        descendants are cancelled, and no new tasks are created.
+        """
         ids = submit_chain(
             db_path, "test-agent",
             [TaskSpec(task_type="alignment_check")],
@@ -971,3 +975,7 @@ class TestEdgeCases:
         # Should have exactly 1 task (no new tasks created)
         all_tasks = _query_all_tasks(db_path)
         assert len(all_tasks) == 1
+
+        # Corrupt file should be renamed
+        assert not cont_path.exists()
+        assert cont_path.with_suffix(".malformed.json").exists()

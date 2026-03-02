@@ -8258,3 +8258,331 @@ class TestFlowSystemGuards:
         assert "ingest_and_dispatch" in text, (
             "lint-doc-drift.sh must check for stale ingest_and_dispatch usage"
         )
+
+
+# ---------------------------------------------------------------------------
+# Flow-vocabulary structural contract (Proposal 5 regression guard)
+# ---------------------------------------------------------------------------
+
+
+class TestFlowVocabularyContract:
+    """Structural contract: flow-task vocabulary is consistent across surfaces.
+
+    Each agent surface has three (or more) places that mention task types:
+    1. The writer-injected ``allowed_tasks`` string in writers.py
+    2. The runtime template examples (JSON ``task_type`` fields)
+    3. The agent file examples (JSON ``task_type`` fields)
+    4. The flow_catalog package definitions (task_type in TaskSpec)
+
+    These must stay synchronized. A split-brain contract causes agents to
+    emit task types the dispatcher silently rejects.
+    """
+
+    _TASK_TYPE_RE = re.compile(r'"task_type"\s*:\s*"([^"]+)"')
+
+    @staticmethod
+    def _extract_task_types_from_text(text: str) -> set[str]:
+        """Extract all task_type values from JSON examples in *text*."""
+        return set(re.findall(r'"task_type"\s*:\s*"([^"]+)"', text))
+
+    @staticmethod
+    def _parse_allowed_tasks(line: str) -> set[str]:
+        """Parse a comma-separated allowed_tasks value string."""
+        # Strip surrounding quotes and split on commas
+        cleaned = line.strip().strip('"').strip("'")
+        return {t.strip() for t in cleaned.split(",") if t.strip()}
+
+    def _load_task_routes(self) -> set[str]:
+        """Import TASK_ROUTES and return the set of known task types."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        scripts_dir = src / "scripts"
+        if str(scripts_dir) not in sys.path:
+            sys.path.insert(0, str(scripts_dir))
+        # Import fresh to avoid stale cache
+        import importlib
+        mod = importlib.import_module("task_router")
+        importlib.reload(mod)
+        return set(mod.TASK_ROUTES.keys())
+
+    # -- Integration proposer surface ----------------------------------------
+
+    def test_integration_proposer_vocabulary_consistent(self) -> None:
+        """Template & agent-file task types are in allowed_tasks or TASK_ROUTES."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        task_routes = self._load_task_routes()
+
+        # 1. Extract allowed_tasks from writers.py (integration proposer writer)
+        writers_text = (
+            src / "scripts" / "section_loop" / "prompts" / "writers.py"
+        ).read_text(encoding="utf-8")
+        # Find the allowed_tasks line inside write_integration_proposal_prompt
+        match = re.search(
+            r'def write_integration_proposal_prompt.*?'
+            r'"allowed_tasks"\s*:\s*"([^"]+)"',
+            writers_text,
+            re.DOTALL,
+        )
+        assert match, "Could not find allowed_tasks in write_integration_proposal_prompt"
+        allowed = self._parse_allowed_tasks(match.group(1))
+
+        # 2. Extract task types from runtime template
+        template_text = (
+            src / "scripts" / "section_loop" / "prompts" / "templates"
+            / "integration-proposal.md"
+        ).read_text(encoding="utf-8")
+        template_types = self._extract_task_types_from_text(template_text)
+
+        # 3. Extract task types from agent file
+        agent_text = (
+            src / "agents" / "integration-proposer.md"
+        ).read_text(encoding="utf-8")
+        agent_types = self._extract_task_types_from_text(agent_text)
+
+        # Assert: every task type in template examples is allowed or routable
+        for tt in template_types:
+            assert tt in allowed or tt in task_routes, (
+                f"integration-proposal.md template uses task_type '{tt}' "
+                f"but it is not in allowed_tasks {sorted(allowed)} "
+                f"or TASK_ROUTES"
+            )
+
+        # Assert: every task type in agent file examples is allowed or routable
+        for tt in agent_types:
+            assert tt in allowed or tt in task_routes, (
+                f"integration-proposer.md agent file uses task_type '{tt}' "
+                f"but it is not in allowed_tasks {sorted(allowed)} "
+                f"or TASK_ROUTES"
+            )
+
+    # -- Implementation strategist surface -----------------------------------
+
+    def test_implementation_strategist_vocabulary_consistent(self) -> None:
+        """Template, agent-file, and flow_catalog task types are consistent."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        task_routes = self._load_task_routes()
+
+        # 1. Extract allowed_tasks from writers.py (strategic impl writer)
+        writers_text = (
+            src / "scripts" / "section_loop" / "prompts" / "writers.py"
+        ).read_text(encoding="utf-8")
+        match = re.search(
+            r'def write_strategic_impl_prompt.*?'
+            r'"allowed_tasks"\s*:\s*"([^"]+)"',
+            writers_text,
+            re.DOTALL,
+        )
+        assert match, "Could not find allowed_tasks in write_strategic_impl_prompt"
+        allowed = self._parse_allowed_tasks(match.group(1))
+
+        # 2. Extract task types from runtime template
+        template_text = (
+            src / "scripts" / "section_loop" / "prompts" / "templates"
+            / "strategic-implementation.md"
+        ).read_text(encoding="utf-8")
+        template_types = self._extract_task_types_from_text(template_text)
+
+        # 3. Extract task types from agent file
+        agent_text = (
+            src / "agents" / "implementation-strategist.md"
+        ).read_text(encoding="utf-8")
+        agent_types = self._extract_task_types_from_text(agent_text)
+
+        # 4. Extract task types from flow_catalog packages
+        catalog_text = (
+            src / "scripts" / "flow_catalog.py"
+        ).read_text(encoding="utf-8")
+        catalog_types = self._extract_task_types_from_text(catalog_text)
+        # Filter to types relevant to implementation strategist surface
+        impl_catalog_types = catalog_types & (
+            allowed | {"alignment_check", "strategic_implementation"}
+        )
+
+        # Assert: template task types are in allowed or routable
+        for tt in template_types:
+            assert tt in allowed or tt in task_routes, (
+                f"strategic-implementation.md template uses task_type '{tt}' "
+                f"but it is not in allowed_tasks {sorted(allowed)} "
+                f"or TASK_ROUTES"
+            )
+
+        # Assert: agent file task types are in allowed or routable
+        for tt in agent_types:
+            assert tt in allowed or tt in task_routes, (
+                f"implementation-strategist.md agent file uses task_type "
+                f"'{tt}' but it is not in allowed_tasks {sorted(allowed)} "
+                f"or TASK_ROUTES"
+            )
+
+        # Assert: flow_catalog impl-related types are in allowed or routable
+        for tt in impl_catalog_types:
+            assert tt in allowed or tt in task_routes, (
+                f"flow_catalog.py uses task_type '{tt}' in impl-related "
+                f"package but it is not in allowed_tasks "
+                f"{sorted(allowed)} or TASK_ROUTES"
+            )
+
+    # -- Cross-surface routability -------------------------------------------
+
+    def test_all_allowed_tasks_are_routable(self) -> None:
+        """Every task type in any allowed_tasks string exists in TASK_ROUTES."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        task_routes = self._load_task_routes()
+
+        writers_text = (
+            src / "scripts" / "section_loop" / "prompts" / "writers.py"
+        ).read_text(encoding="utf-8")
+
+        # Find ALL allowed_tasks values in writers.py
+        all_allowed: set[str] = set()
+        for match in re.finditer(
+            r'"allowed_tasks"\s*:\s*"([^"]+)"', writers_text
+        ):
+            all_allowed |= self._parse_allowed_tasks(match.group(1))
+
+        for tt in sorted(all_allowed):
+            assert tt in task_routes, (
+                f"allowed_tasks contains '{tt}' but it is not in "
+                f"TASK_ROUTES ({sorted(task_routes)})"
+            )
+
+
+# ====================================================================
+# R79: Flow-layer fail-closed, dispatch truthfulness, section identity,
+#      freshness gate, vocabulary synchronization
+# ====================================================================
+
+class TestR79FlowLayerGuards:
+    """Regression guards for R79 audit proposals P1-P5."""
+
+    # -- P1: Fail-closed flow artifacts ------------------------------------
+
+    def test_flow_corruption_error_exists(self) -> None:
+        """FlowCorruptionError must be importable from task_flow."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_flow.py").read_text(encoding="utf-8")
+        assert "class FlowCorruptionError" in text
+
+    def test_build_flow_context_raises_on_malformed(self) -> None:
+        """build_flow_context must raise, not return None, for corrupt files."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_flow.py").read_text(encoding="utf-8")
+        # Must use _read_flow_json or raise FlowCorruptionError
+        assert "FlowCorruptionError" in text
+        # Must NOT silently return None on JSONDecodeError in build_flow_context
+        # Check that the old silent except pattern is gone
+        assert "except (json.JSONDecodeError, OSError):\n        return None" not in text
+
+    def test_read_origin_refs_renames_malformed(self) -> None:
+        """_read_origin_refs must rename corrupt files to .malformed.json."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_flow.py").read_text(encoding="utf-8")
+        # Find _read_origin_refs function — it should use _read_flow_json
+        assert "_read_flow_json" in text
+
+    def test_dispatcher_catches_flow_corruption(self) -> None:
+        """task_dispatcher must catch FlowCorruptionError and fail the task."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_dispatcher.py").read_text(encoding="utf-8")
+        assert "FlowCorruptionError" in text
+        assert "flow context corrupt" in text.lower() or "flow context" in text.lower()
+
+    # -- P2: Dispatch status truthfulness ----------------------------------
+
+    def test_dispatch_writes_meta_sidecar(self) -> None:
+        """dispatch.py must write a .meta.json sidecar after dispatch."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "section_loop" / "dispatch.py").read_text(
+            encoding="utf-8")
+        assert ".meta.json" in text
+        assert "returncode" in text
+        assert "timed_out" in text
+
+    def test_dispatcher_reads_meta_sidecar(self) -> None:
+        """task_dispatcher must read .meta.json and fail on nonzero rc."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_dispatcher.py").read_text(encoding="utf-8")
+        assert ".meta.json" in text
+        assert "agent_failed" in text or "returncode" in text
+
+    # -- P3: Section identity from scope -----------------------------------
+
+    def test_dispatcher_parses_section_scope(self) -> None:
+        """task_dispatcher must parse section-NN from scope field."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_dispatcher.py").read_text(encoding="utf-8")
+        assert re.search(r"section-\(\\d\+\)", text) or \
+               re.search(r"r.*section-.*\\d", text), \
+            "task_dispatcher must regex-parse section-NN from scope"
+
+    def test_dispatcher_passes_section_number(self) -> None:
+        """dispatch_agent call must use parsed section_number, not None."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_dispatcher.py").read_text(encoding="utf-8")
+        # Find the dispatch_agent call — section_number should reference the
+        # parsed variable, not be hardcoded to None
+        assert "section_number=section_number" in text
+
+    # -- P4: Freshness gate ------------------------------------------------
+
+    def test_compute_section_freshness_exists(self) -> None:
+        """compute_section_freshness must be importable from task_flow."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_flow.py").read_text(encoding="utf-8")
+        assert "def compute_section_freshness" in text
+
+    def test_db_has_freshness_token_column(self) -> None:
+        """tasks table must include freshness_token column."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "db.sh").read_text(encoding="utf-8")
+        assert "freshness_token" in text
+
+    def test_dispatcher_checks_freshness(self) -> None:
+        """task_dispatcher must check freshness_token before dispatch."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_dispatcher.py").read_text(encoding="utf-8")
+        assert "freshness" in text.lower()
+        assert "stale" in text.lower()
+
+    # -- P5: Vocabulary synchronization ------------------------------------
+
+    def test_integration_proposer_allowed_tasks_includes_integration_proposal(
+        self,
+    ) -> None:
+        """integration_proposal must be in the integration proposer's allowed_tasks."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "prompts" / "writers.py"
+        ).read_text(encoding="utf-8")
+        # Find the integration-proposer's allowed_tasks line
+        m = re.search(
+            r'"allowed_tasks"\s*:\s*"([^"]*integration_proposal[^"]*)"', text
+        )
+        assert m is not None, (
+            "writers.py must include integration_proposal in the "
+            "integration-proposer's allowed_tasks"
+        )
+
+    def test_impl_strategist_allowed_tasks_includes_alignment_check(
+        self,
+    ) -> None:
+        """alignment_check must be in the impl strategist's allowed_tasks."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "prompts" / "writers.py"
+        ).read_text(encoding="utf-8")
+        # Find the impl-strategist's allowed_tasks line (contains strategic_implementation)
+        m = re.search(
+            r'"allowed_tasks"\s*:\s*"([^"]*strategic_implementation[^"]*alignment_check[^"]*)"',
+            text,
+        )
+        assert m is not None, (
+            "writers.py must include alignment_check in the "
+            "implementation-strategist's allowed_tasks"
+        )
+
+    def test_impl_strategist_agent_lists_alignment_check(self) -> None:
+        """implementation-strategist.md must list alignment_check in common task types."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "implementation-strategist.md").read_text(
+            encoding="utf-8")
+        assert "alignment_check" in text

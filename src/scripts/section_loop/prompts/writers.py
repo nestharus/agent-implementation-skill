@@ -157,7 +157,7 @@ def write_integration_proposal_prompt(
         "notes_block": notes_block,
         "task_submission_path": str(
             artifacts / "signals" / f"task-requests-proposal-{sec}.json"),
-        "allowed_tasks": "scan_explore, impact_analysis",
+        "allowed_tasks": "scan_explore, impact_analysis, integration_proposal",
         "signal_block": signal_instructions(
             artifacts / "signals" / f"proposal-{sec}-signal.json",
         ),
@@ -374,7 +374,7 @@ def write_strategic_impl_prompt(
         "micro_ref": impl_micro_ref,
         "task_submission_path": str(
             artifacts / "signals" / f"task-requests-impl-{sec}.json"),
-        "allowed_tasks": "scan_explore, scan_deep_analyze, strategic_implementation",
+        "allowed_tasks": "scan_explore, scan_deep_analyze, strategic_implementation, alignment_check",
         "signal_block": signal_instructions(
             artifacts / "signals" / f"impl-{sec}-signal.json",
         ),

@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -35,7 +36,9 @@ DB_SH = SCRIPTS_DIR / "db.sh"
 # Import task_router and task_flow from the same directory.
 sys.path.insert(0, str(SCRIPTS_DIR))
 from task_flow import (  # noqa: E402
+    FlowCorruptionError,
     build_flow_context,
+    compute_section_freshness,
     reconcile_task_completion,
     write_dispatch_prompt,
 )
@@ -173,12 +176,20 @@ def dispatch_task(
     continuation_relpath = task.get("continuation")
     trigger_gate_id = task.get("trigger_gate")
     if flow_context_relpath:
-        flow_ctx = build_flow_context(
-            planspace, int(task_id),
-            flow_context_path=flow_context_relpath,
-            continuation_path=continuation_relpath,
-            trigger_gate_id=trigger_gate_id,
-        )
+        try:
+            flow_ctx = build_flow_context(
+                planspace, int(task_id),
+                flow_context_path=flow_context_relpath,
+                continuation_path=continuation_relpath,
+                trigger_gate_id=trigger_gate_id,
+            )
+        except FlowCorruptionError as exc:
+            err = f"flow context corrupt: {exc}"
+            log(f"ERROR: task {task_id}: {err}")
+            _db_cmd(db_path, "fail-task", task_id, "--error", err)
+            _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+            return
+
         if flow_ctx is not None:
             prompt_path = write_dispatch_prompt(
                 planspace, int(task_id), prompt_path,
@@ -189,17 +200,63 @@ def dispatch_task(
 
     output_path = artifacts_dir / f"task-{task_id}-output.md"
 
+    # P3: Recover section identity from queued task scope
+    section_number = None
+    scope = task.get("scope")
+    if scope:
+        m = re.match(r'^section-(\d+)$', scope)
+        if m:
+            section_number = m.group(1)
+
+    # P4: Freshness gate for section-scoped queued tasks
+    freshness_token = task.get("freshness")
+    if freshness_token and section_number:
+        current_token = compute_section_freshness(planspace, section_number)
+        if current_token != freshness_token:
+            err = (
+                f"stale alignment — section-{section_number} inputs changed "
+                f"(submitted={freshness_token[:8]}, "
+                f"current={current_token[:8]})"
+            )
+            log(f"Task {task_id} stale: {err}")
+            _db_cmd(db_path, "fail-task", task_id, "--error", err)
+            _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+            reconcile_task_completion(
+                Path(db_path), planspace, int(task_id),
+                "failed", None, error=err,
+            )
+            return
+
     # V6: Dispatch through section_loop.dispatch for pause/alignment
     # handling, context sidecars, and per-dispatch monitoring.
     output = dispatch_agent(
         model, prompt_path, output_path,
         planspace, None,  # parent=None outside section-loop context
-        section_number=None,
+        section_number=section_number,
         codespace=codespace,
         agent_file=agent_file,
     )
 
-    if output.startswith("TIMEOUT:"):
+    # Read dispatch metadata sidecar for return-code visibility
+    meta_path = output_path.with_suffix(".meta.json")
+    timed_out = False
+    agent_failed = False
+    rc = None
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            timed_out = meta.get("timed_out", False)
+            rc = meta.get("returncode")
+            if rc is not None and rc != 0:
+                agent_failed = True
+        except (json.JSONDecodeError, OSError):
+            pass  # Fall back to old behavior if sidecar is unreadable
+
+    # Fallback: detect timeout from output prefix when sidecar is absent
+    if not timed_out and output.startswith("TIMEOUT:"):
+        timed_out = True
+
+    if timed_out:
         log(f"Task {task_id} timed out")
         _db_cmd(
             db_path, "fail-task", task_id,
@@ -212,6 +269,15 @@ def dispatch_task(
         reconcile_task_completion(
             Path(db_path), planspace, int(task_id),
             "failed", None, error="Agent timeout (600s)",
+        )
+    elif agent_failed:
+        err = f"Agent exited with return code {rc}"
+        log(f"Task {task_id} failed: {err}")
+        _db_cmd(db_path, "fail-task", task_id, "--error", err)
+        _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+        reconcile_task_completion(
+            Path(db_path), planspace, int(task_id),
+            "failed", str(output_path), error=err,
         )
     else:
         _db_cmd(

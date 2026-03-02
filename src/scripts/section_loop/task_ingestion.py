@@ -19,6 +19,7 @@ are fully processed (chains and fanouts).
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -37,7 +38,11 @@ from flow_schema import (  # noqa: E402
     parse_flow_signal,
     validate_flow_declaration,
 )
-from task_flow import submit_chain, submit_fanout  # noqa: E402
+from task_flow import (  # noqa: E402
+    compute_section_freshness,
+    submit_chain,
+    submit_fanout,
+)
 from task_router import resolve_task  # noqa: E402
 
 
@@ -307,6 +312,16 @@ def ingest_and_submit(
         if isinstance(action, ChainAction):
             if not action.steps:
                 continue
+            # P4: compute freshness token for section-scoped tasks
+            token: str | None = None
+            for step in action.steps:
+                if step.concern_scope:
+                    m = re.match(r'^section-(\d+)$', step.concern_scope)
+                    if m:
+                        token = compute_section_freshness(
+                            planspace, m.group(1),
+                        )
+                        break  # one token per chain is sufficient
             task_ids = submit_chain(
                 db_path,
                 submitted_by,
@@ -316,6 +331,7 @@ def ingest_and_submit(
                 declared_by_task_id=declared_by_task_id,
                 origin_refs=refs,
                 planspace=planspace,
+                freshness_token=token,
             )
             all_task_ids.extend(task_ids)
         elif isinstance(action, FanoutAction):

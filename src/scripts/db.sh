@@ -150,7 +150,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     trigger_gate_id      TEXT,
     flow_context_path    TEXT,
     continuation_path    TEXT,
-    result_manifest_path TEXT
+    result_manifest_path TEXT,
+    freshness_token      TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
@@ -222,7 +223,8 @@ conn.close()
 #                 FLAG_DEPENDS_ON, FLAG_STATUS, FLAG_TYPE, FLAG_OUTPUT,
 #                 FLAG_ERROR, FLAG_INSTANCE, FLAG_FLOW, FLAG_CHAIN,
 #                 FLAG_DECLARED_BY_TASK, FLAG_TRIGGER_GATE, FLAG_FLOW_CONTEXT,
-#                 FLAG_CONTINUATION, FLAG_RESULT_MANIFEST, POSITIONAL
+#                 FLAG_CONTINUATION, FLAG_RESULT_MANIFEST,
+#                 FLAG_FRESHNESS_TOKEN, POSITIONAL
 _parse_flags() {
   FLAG_FROM=""
   FLAG_AGENT=""
@@ -246,6 +248,7 @@ _parse_flags() {
   FLAG_FLOW_CONTEXT=""
   FLAG_CONTINUATION=""
   FLAG_RESULT_MANIFEST=""
+  FLAG_FRESHNESS_TOKEN=""
   POSITIONAL=()
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -271,6 +274,7 @@ _parse_flags() {
       --flow-context)     FLAG_FLOW_CONTEXT="${2:?--flow-context requires a value}"; shift 2 ;;
       --continuation)     FLAG_CONTINUATION="${2:?--continuation requires a value}"; shift 2 ;;
       --result-manifest)  FLAG_RESULT_MANIFEST="${2:?--result-manifest requires a value}"; shift 2 ;;
+      --freshness-token)  FLAG_FRESHNESS_TOKEN="${2:?--freshness-token requires a value}"; shift 2 ;;
       *)                  POSITIONAL+=("$1"); shift ;;
     esac
   done
@@ -716,6 +720,7 @@ declared_by_task_id = int(sys.argv[12]) if sys.argv[12] else None
 trigger_gate_id = sys.argv[13] or None
 flow_context_path = sys.argv[14] or None
 continuation_path = sys.argv[15] or None
+freshness_token = sys.argv[16] or None
 
 conn = sqlite3.connect(db_path, timeout=5.0)
 conn.execute('PRAGMA journal_mode=WAL')
@@ -724,17 +729,19 @@ cur = conn.cursor()
 cur.execute('''INSERT INTO tasks(submitted_by, task_type, problem_id, concern_scope,
                payload_path, priority, depends_on,
                instance_id, flow_id, chain_id, declared_by_task_id,
-               trigger_gate_id, flow_context_path, continuation_path)
-               VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+               trigger_gate_id, flow_context_path, continuation_path,
+               freshness_token)
+               VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (submitted_by, task_type, problem_id, concern_scope,
              payload_path, priority, depends_on,
              instance_id, flow_id, chain_id, declared_by_task_id,
-             trigger_gate_id, flow_context_path, continuation_path))
+             trigger_gate_id, flow_context_path, continuation_path,
+             freshness_token))
 conn.commit()
 task_id = cur.lastrowid
 conn.close()
 print(task_id)
-" "$db" "$submitted_by" "$task_type" "$FLAG_PROBLEM" "$FLAG_SCOPE" "$FLAG_PAYLOAD" "$FLAG_PRIORITY" "$FLAG_DEPENDS_ON" "$FLAG_INSTANCE" "$FLAG_FLOW" "$FLAG_CHAIN" "$FLAG_DECLARED_BY_TASK" "$FLAG_TRIGGER_GATE" "$FLAG_FLOW_CONTEXT" "$FLAG_CONTINUATION")
+" "$db" "$submitted_by" "$task_type" "$FLAG_PROBLEM" "$FLAG_SCOPE" "$FLAG_PAYLOAD" "$FLAG_PRIORITY" "$FLAG_DEPENDS_ON" "$FLAG_INSTANCE" "$FLAG_FLOW" "$FLAG_CHAIN" "$FLAG_DECLARED_BY_TASK" "$FLAG_TRIGGER_GATE" "$FLAG_FLOW_CONTEXT" "$FLAG_CONTINUATION" "$FLAG_FRESHNESS_TOKEN")
     echo "task:${result}"
     ;;
 
@@ -923,7 +930,8 @@ cur = conn.cursor()
 cur.execute('''SELECT id, task_type, problem_id, concern_scope, payload_path,
                       priority, depends_on, submitted_by,
                       instance_id, flow_id, chain_id, declared_by_task_id,
-                      trigger_gate_id, flow_context_path, continuation_path
+                      trigger_gate_id, flow_context_path, continuation_path,
+                      freshness_token
                FROM tasks
                WHERE status = 'pending'
                ORDER BY
@@ -937,7 +945,8 @@ cur.execute('''SELECT id, task_type, problem_id, concern_scope, payload_path,
 rows = cur.fetchall()
 
 for (tid, ttype, pid, scope, payload, prio, deps, by,
-     inst, flow, chain, declared_by, trig_gate, flow_ctx, cont) in rows:
+     inst, flow, chain, declared_by, trig_gate, flow_ctx, cont,
+     freshness) in rows:
     # Check dependency: depends_on is a task ID that must be complete.
     if deps:
         dep_id = int(deps)
@@ -970,6 +979,8 @@ for (tid, ttype, pid, scope, payload, prio, deps, by,
         parts.append(f'flow_context={flow_ctx}')
     if cont:
         parts.append(f'continuation={cont}')
+    if freshness:
+        parts.append(f'freshness={freshness}')
     conn.close()
     print(' | '.join(parts))
     sys.exit(0)

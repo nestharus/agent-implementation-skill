@@ -85,11 +85,16 @@ def submit_task(
     flow_context_path: str | None = None,
     continuation_path: str | None = None,
     result_manifest_path: str | None = None,
+    freshness_token: str | None = None,
 ) -> int:
     """Submit a task to the queue. Returns the task ID.
 
     This is a Python-native alternative to shelling out to
     ``db.sh submit-task``. Uses the same SQLite schema.
+
+    ``freshness_token`` (P4): lightweight hash of alignment artifacts
+    at submission time.  The dispatcher compares this against the
+    current hash before dispatch and rejects stale tasks.
     """
     conn = sqlite3.connect(str(db_path), timeout=5.0)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -100,8 +105,8 @@ def submit_task(
            payload_path, priority, depends_on,
            instance_id, flow_id, chain_id, declared_by_task_id,
            trigger_gate_id, flow_context_path, continuation_path,
-           result_manifest_path)
-           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           result_manifest_path, freshness_token)
+           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             submitted_by,
             task_type,
@@ -118,6 +123,7 @@ def submit_task(
             flow_context_path,
             continuation_path,
             result_manifest_path,
+            freshness_token,
         ),
     )
     conn.commit()

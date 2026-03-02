@@ -90,6 +90,7 @@ Common task types for implementation work:
 - `scan_explore` — explore related files
 - `scan_deep_analyze` — deep file analysis
 - `strategic_implementation` — delegate complex implementation sub-tasks
+- `alignment_check` — verify implementation against alignment constraints
 
 The dispatcher resolves each task type to the correct agent and model.
 You declare WHAT needs to happen, not HOW it runs.

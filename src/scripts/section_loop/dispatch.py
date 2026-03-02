@@ -116,6 +116,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
            "--agent-file", str(WORKFLOW_HOME / "agents" / agent_file)]
     if codespace:
         cmd.extend(["--project", str(codespace)])
+    timed_out = False
     try:
         result = subprocess.run(  # noqa: S603
             cmd,
@@ -127,6 +128,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
         if result.returncode != 0:
             log(f"  WARNING: agent returned {result.returncode}")
     except subprocess.TimeoutExpired:
+        timed_out = True
         output = "TIMEOUT: Agent exceeded 600s time limit"
         log("  WARNING: agent timed out after 600s")
 
@@ -175,6 +177,14 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
     output_path.write_text(output, encoding="utf-8")
     if planspace is not None:
         _log_artifact(planspace, f"output:{output_path.stem}")
+
+    # Write dispatch metadata sidecar for callers that need return-code visibility
+    meta_path = output_path.with_suffix(".meta.json")
+    meta = {
+        "returncode": result.returncode if not timed_out else None,
+        "timed_out": timed_out,
+    }
+    meta_path.write_text(json.dumps(meta) + "\n", encoding="utf-8")
 
     if monitor_proc:
         assert monitor_name is not None  # set when monitor_proc created  # noqa: S101

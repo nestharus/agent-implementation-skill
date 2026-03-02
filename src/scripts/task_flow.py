@@ -1,5 +1,9 @@
 """Flow submission engine — submits chains and fanouts to the task queue.
 
+Also provides ``compute_section_freshness`` — a lightweight, model-free
+hash of a section's alignment artifacts used as a freshness token for
+the dispatcher's staleness gate (P4).
+
 Uses the data structures from flow_schema.py and the DB functions from
 task_router.py.  Writes flow context JSON files so agents can discover
 their position in a chain or fanout.
@@ -11,6 +15,7 @@ gate firing.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import sys
@@ -34,6 +39,15 @@ from task_router import submit_task  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
+# Flow corruption error
+# ---------------------------------------------------------------------------
+
+class FlowCorruptionError(Exception):
+    """Raised when a flow artifact is corrupt (malformed JSON)."""
+    pass
+
+
+# ---------------------------------------------------------------------------
 # ID allocation
 # ---------------------------------------------------------------------------
 
@@ -51,6 +65,38 @@ def _new_chain_id() -> str:
 
 def _new_gate_id() -> str:
     return f"gate_{uuid.uuid4()}"
+
+
+# ---------------------------------------------------------------------------
+# Section freshness (P4)
+# ---------------------------------------------------------------------------
+
+def compute_section_freshness(planspace: Path, section_number: str) -> str:
+    """Compute a lightweight freshness token for a section.
+
+    Uses the alignment surface + traceability files as the fingerprint.
+    This must be fast (just file hashing, no model loading).
+
+    The token is a truncated SHA-256 of the key alignment artifacts
+    that influence section-scoped task execution.  When any of these
+    artifacts change between task submission and dispatch, the token
+    will differ and the dispatcher should reject the task as stale.
+    """
+    hasher = hashlib.sha256()
+    artifacts = planspace / "artifacts"
+
+    # Key alignment artifacts for this section
+    for suffix in (
+        f"sections/section-{section_number}-alignment-excerpt.md",
+        f"sections/section-{section_number}-proposal-excerpt.md",
+        f"sections/section-{section_number}.md",
+        f"proposals/section-{section_number}-integration-proposal.md",
+    ):
+        p = artifacts / suffix
+        if p.exists():
+            hasher.update(p.read_bytes())
+
+    return hasher.hexdigest()[:16]  # Truncated for readability
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +120,38 @@ def _dispatch_prompt_relpath(task_id: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Fail-closed JSON reader
+# ---------------------------------------------------------------------------
+
+def _read_flow_json(path: Path) -> tuple[str, dict | list | None]:
+    """Read a flow artifact JSON file with fail-closed semantics.
+
+    Returns (status, data) where status is one of:
+    - "ok" — valid JSON, data is the parsed content
+    - "missing" — file does not exist, data is None
+    - "malformed" — file exists but is corrupt, data is None
+      (file is renamed to .malformed.json and a warning is logged)
+    """
+    if not path.exists():
+        return ("missing", None)
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        print(
+            f"[FLOW][WARN] Malformed JSON in {path} ({exc}) "
+            f"— renaming to .malformed.json",
+        )
+        try:
+            path.rename(path.with_suffix(".malformed.json"))
+        except OSError:
+            pass
+        return ("malformed", None)
+
+    return ("ok", data)
+
+
+# ---------------------------------------------------------------------------
 # Flow context reading (for dispatch)
 # ---------------------------------------------------------------------------
 
@@ -86,10 +164,15 @@ def build_flow_context(
 ) -> dict | None:
     """Read and return the flow context for a task, enriched for dispatch.
 
-    Returns None if the task has no flow context file.  When a
-    trigger_gate_id is present, looks up the gate's aggregate manifest
-    path from the DB-written flow context or from the gate aggregate
-    file on disk and includes it in the returned dict.
+    Returns None if the task has no flow context path declared.
+
+    Raises ``FlowCorruptionError`` when the flow_context_path IS
+    declared but the file is missing or contains malformed JSON.
+    The dispatcher should catch this and fail the task.
+
+    When a trigger_gate_id is present, looks up the gate's aggregate
+    manifest path from the DB-written flow context or from the gate
+    aggregate file on disk and includes it in the returned dict.
 
     The returned dict is what the dispatched agent should read to
     discover predecessor results and gate aggregates.
@@ -98,13 +181,17 @@ def build_flow_context(
         return None
 
     ctx_file = planspace / flow_context_path
-    if not ctx_file.exists():
-        return None
+    status, context = _read_flow_json(ctx_file)
 
-    try:
-        context = json.loads(ctx_file.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
+    if status == "missing":
+        raise FlowCorruptionError(
+            f"flow context declared but file missing: {ctx_file}"
+        )
+
+    if status == "malformed":
+        raise FlowCorruptionError(
+            f"flow context declared but file corrupt: {ctx_file}"
+        )
 
     # Enrich: if this is a synthesis task triggered by a gate,
     # fill in gate_aggregate_manifest from the known path convention.
@@ -229,6 +316,7 @@ def submit_chain(
     declared_by_task_id: int | None = None,
     origin_refs: list[str] | None = None,
     planspace: Path | None = None,
+    freshness_token: str | None = None,
 ) -> list[int]:
     """Submit a linear chain of tasks.
 
@@ -239,6 +327,7 @@ def submit_chain(
     - Writes flow_context JSON for each task at planspace/artifacts/flows/
     - Sets continuation_path for each task
     - Sets result_manifest_path for each task
+    - ``freshness_token`` (P4): propagated to each submitted task
     - Returns list of task IDs
     """
     if not steps:
@@ -276,6 +365,7 @@ def submit_chain(
             flow_context_path=None,  # set below
             continuation_path=None,  # set below
             result_manifest_path=None,  # set below
+            freshness_token=freshness_token,
         )
 
         # Now compute the real paths and update the row.
@@ -557,15 +647,39 @@ def reconcile_task_completion(
 
     # 4. Success path
     if status == "complete":
-        # Read continuation file
+        # Read continuation file — fail closed on corruption
         continuation = None
         if continuation_path:
             cont_file = planspace / continuation_path
             if cont_file.exists():
                 try:
                     continuation = parse_flow_signal(cont_file)
-                except (ValueError, json.JSONDecodeError):
-                    continuation = None
+                except (ValueError, json.JSONDecodeError) as exc:
+                    # Malformed continuation — preserve + fail closed
+                    print(
+                        f"[FLOW][WARN] Malformed continuation at {cont_file} "
+                        f"({exc}) — renaming to .malformed.json",
+                    )
+                    try:
+                        cont_file.rename(
+                            cont_file.with_suffix(".malformed.json")
+                        )
+                    except OSError:
+                        pass
+                    # Treat as task failure: cancel descendants, update gate
+                    if chain_id:
+                        _cancel_chain_descendants(db_path, chain_id, task_id)
+                        gate_id = _find_gate_for_chain(db_path, chain_id)
+                        if gate_id:
+                            _update_gate_member(
+                                db_path, gate_id, chain_id,
+                                "failed", result_manifest_path,
+                            )
+                            _check_and_fire_gate(
+                                db_path, planspace, gate_id, flow_id,
+                                origin_refs,
+                            )
+                    return
 
         if continuation is not None:
             # Process continuation actions
@@ -639,14 +753,16 @@ def reconcile_task_completion(
 # ---------------------------------------------------------------------------
 
 def _read_origin_refs(planspace: Path, task_id: int) -> list[str]:
-    """Read origin_refs from a task's flow context file."""
+    """Read origin_refs from a task's flow context file.
+
+    Returns [] on missing or malformed files.  On malformed, the file
+    is renamed to .malformed.json and a warning is logged (corruption
+    preservation), but origin_refs degradation is not task-fatal.
+    """
     ctx_file = planspace / _flow_context_relpath(task_id)
-    if ctx_file.exists():
-        try:
-            ctx = json.loads(ctx_file.read_text())
-            return ctx.get("origin_refs", [])
-        except (json.JSONDecodeError, KeyError):
-            pass
+    status, data = _read_flow_json(ctx_file)
+    if status == "ok" and isinstance(data, dict):
+        return data.get("origin_refs", [])
     return []
 
 
