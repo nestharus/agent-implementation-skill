@@ -35,6 +35,7 @@ codebase will cause implementation agents to produce incorrect code.
    writing a JSON signal to the task-submission path in your dispatch
    prompt:
 
+Legacy single-task format (still accepted):
 ```json
 {
     "task_type": "scan_deep_analyze",
@@ -44,6 +45,27 @@ codebase will cause implementation agents to produce incorrect code.
     "priority": "normal"
 }
 ```
+
+Chain format (v2) — declare sequential follow-up steps:
+```json
+{
+    "version": 2,
+    "actions": [
+        {
+            "kind": "chain",
+            "steps": [
+                {"task_type": "scan_deep_analyze", "concern_scope": "<section-id>", "payload_path": "<path-to-analysis-prompt>"},
+                {"task_type": "scan_explore", "concern_scope": "<section-id>", "payload_path": "<path-to-followup-prompt>"}
+            ]
+        }
+    ]
+}
+```
+
+If dispatched as part of a flow chain, your prompt will include a
+`<flow-context>` block pointing to flow context and continuation paths.
+Read the flow context to understand what previous steps produced. Write
+follow-up declarations to the continuation path.
 
 The dispatcher handles agent selection and execution. You declare
 WHAT analysis you need, not which agent or model runs it.

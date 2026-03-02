@@ -32,8 +32,13 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 WORKFLOW_HOME = Path(os.environ.get("WORKFLOW_HOME", SCRIPTS_DIR.parent))
 DB_SH = SCRIPTS_DIR / "db.sh"
 
-# Import task_router from the same directory.
+# Import task_router and task_flow from the same directory.
 sys.path.insert(0, str(SCRIPTS_DIR))
+from task_flow import (  # noqa: E402
+    build_flow_context,
+    reconcile_task_completion,
+    write_dispatch_prompt,
+)
 from task_router import resolve_task  # noqa: E402
 
 from section_loop.agent_templates import (  # noqa: E402
@@ -161,6 +166,27 @@ def dispatch_task(
             _notify(db_path, submitted_by, task_id, task_type, "failed", err)
             return
 
+    # --- Flow context wrapping (Task 5) ---
+    # If the task has flow metadata, create a wrapper prompt that
+    # prepends flow context paths.  The original prompt is NOT mutated.
+    flow_context_relpath = task.get("flow_context")
+    continuation_relpath = task.get("continuation")
+    trigger_gate_id = task.get("trigger_gate")
+    if flow_context_relpath:
+        flow_ctx = build_flow_context(
+            planspace, int(task_id),
+            flow_context_path=flow_context_relpath,
+            continuation_path=continuation_relpath,
+            trigger_gate_id=trigger_gate_id,
+        )
+        if flow_ctx is not None:
+            prompt_path = write_dispatch_prompt(
+                planspace, int(task_id), prompt_path,
+                flow_context_path=flow_context_relpath,
+                continuation_path=continuation_relpath,
+            )
+            log(f"  flow context wrapped -> {prompt_path.name}")
+
     output_path = artifacts_dir / f"task-{task_id}-output.md"
 
     # V6: Dispatch through section_loop.dispatch for pause/alignment
@@ -183,6 +209,10 @@ def dispatch_task(
             db_path, submitted_by, task_id, task_type, "failed",
             "Agent timeout (600s)",
         )
+        reconcile_task_completion(
+            Path(db_path), planspace, int(task_id),
+            "failed", None, error="Agent timeout (600s)",
+        )
     else:
         _db_cmd(
             db_path, "complete-task", task_id,
@@ -193,6 +223,10 @@ def dispatch_task(
             str(output_path),
         )
         log(f"Task {task_id} complete -> {output_path}")
+        reconcile_task_completion(
+            Path(db_path), planspace, int(task_id),
+            "complete", str(output_path),
+        )
 
 
 def _write_task_prompt(prompt_path: Path, task: dict[str, str]) -> None:

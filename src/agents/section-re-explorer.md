@@ -32,6 +32,7 @@ If you need specialized analysis (e.g., deep file analysis, codemap
 verification), submit a task by writing a JSON signal to the
 task-submission path in your dispatch prompt:
 
+Legacy single-task format (still accepted):
 ```json
 {
     "task_type": "scan_explore",
@@ -41,6 +42,27 @@ task-submission path in your dispatch prompt:
     "priority": "normal"
 }
 ```
+
+Chain format (v2) — declare sequential follow-up steps:
+```json
+{
+    "version": 2,
+    "actions": [
+        {
+            "kind": "chain",
+            "steps": [
+                {"task_type": "scan_explore", "concern_scope": "<section-id>", "payload_path": "<path-to-explore-prompt>"},
+                {"task_type": "integration_proposal", "concern_scope": "<section-id>", "payload_path": "<path-to-proposal-prompt>"}
+            ]
+        }
+    ]
+}
+```
+
+If dispatched as part of a flow chain, your prompt will include a
+`<flow-context>` block pointing to flow context and continuation paths.
+Read the flow context to understand what previous steps produced. Write
+follow-up declarations to the continuation path.
 
 The dispatcher resolves task types to the correct agent and model.
 You declare WHAT exploration you need, not HOW it runs.

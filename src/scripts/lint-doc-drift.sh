@@ -98,6 +98,23 @@ done < <(grep -rn \
   "$WH/scripts/substrate/runner.py" \
   2>/dev/null || true)
 
+# --- Group 6: stale direct dispatch in ingestion callers (flow system) ---
+# Runtime callers must use ingest_and_submit (queue-based), not
+# ingest_and_dispatch (legacy direct dispatch).
+while IFS= read -r match; do
+  # Skip the definition itself and deprecation docs in task_ingestion.py
+  if echo "$match" | grep -qi "def ingest_and_dispatch\|Deprecated\|Use.*ingest_and_submit\|Legacy.*ingest_and_dispatch"; then
+    continue
+  fi
+  echo "[LINT] Stale direct dispatch (ingest_and_dispatch → ingest_and_submit): $match"
+  EXIT_CODE=1
+done < <(grep -rn \
+  -e "ingest_and_dispatch" \
+  --include="*.py" \
+  "$WH/scripts/section_loop/section_engine" \
+  "$WH/scripts/section_loop/coordination" \
+  2>/dev/null || true)
+
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "[LINT] No superseded behavior claims found."
 fi

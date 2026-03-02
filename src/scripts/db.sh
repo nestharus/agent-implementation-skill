@@ -21,8 +21,10 @@
 #   db.sh claim-task    <db> <dispatcher> <task_id>             # claim task for execution
 #   db.sh complete-task <db> <task_id> [--output <path>]        # mark task complete
 #   db.sh fail-task     <db> <task_id> [--error <msg>]          # mark task failed
+#   db.sh cancel-task   <db> <task_id> [--error <reason>]       # cancel pending task
 #   db.sh list-tasks    <db> [--status <s>] [--type <t>]        # list matching tasks
 #   db.sh next-task     <db>                                    # next runnable task (pending, deps met)
+#   db.sh gate-status   <db> <gate_id>                          # query gate + member state
 
 set -euo pipefail
 
@@ -140,11 +142,50 @@ CREATE TABLE IF NOT EXISTS tasks (
     created_at     TEXT    DEFAULT (datetime(\'now\')),
     claimed_at     TEXT,
     completed_at   TEXT,
-    error          TEXT
+    error          TEXT,
+    instance_id          TEXT,
+    flow_id              TEXT,
+    chain_id             TEXT,
+    declared_by_task_id  INTEGER,
+    trigger_gate_id      TEXT,
+    flow_context_path    TEXT,
+    continuation_path    TEXT,
+    result_manifest_path TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_type   ON tasks(task_type);
+
+CREATE TABLE IF NOT EXISTS gates (
+    gate_id                TEXT PRIMARY KEY,
+    flow_id                TEXT NOT NULL,
+    created_by_task_id     INTEGER,
+    parent_gate_id         TEXT,
+    mode                   TEXT NOT NULL DEFAULT \'all\',
+    failure_policy         TEXT NOT NULL DEFAULT \'include\',
+    status                 TEXT NOT NULL DEFAULT \'open\',
+    expected_count         INTEGER NOT NULL,
+    synthesis_task_type    TEXT,
+    synthesis_problem_id   TEXT,
+    synthesis_concern_scope TEXT,
+    synthesis_payload_path TEXT,
+    synthesis_priority     TEXT,
+    aggregate_manifest_path TEXT,
+    fired_task_id          INTEGER,
+    created_at             TEXT DEFAULT (datetime(\'now\')),
+    fired_at               TEXT
+);
+
+CREATE TABLE IF NOT EXISTS gate_members (
+    gate_id              TEXT NOT NULL,
+    chain_id             TEXT NOT NULL,
+    slot_label           TEXT,
+    leaf_task_id         INTEGER NOT NULL,
+    status               TEXT NOT NULL DEFAULT \'pending\',
+    result_manifest_path TEXT,
+    completed_at         TEXT,
+    PRIMARY KEY (gate_id, chain_id)
+);
 ''')
 conn.close()
 " "$db"
@@ -179,7 +220,9 @@ conn.close()
 # Sets variables: FLAG_FROM, FLAG_AGENT, FLAG_SINCE, FLAG_LIMIT, FLAG_TAG,
 #                 FLAG_PROBLEM, FLAG_SCOPE, FLAG_PAYLOAD, FLAG_PRIORITY,
 #                 FLAG_DEPENDS_ON, FLAG_STATUS, FLAG_TYPE, FLAG_OUTPUT,
-#                 FLAG_ERROR, POSITIONAL
+#                 FLAG_ERROR, FLAG_INSTANCE, FLAG_FLOW, FLAG_CHAIN,
+#                 FLAG_DECLARED_BY_TASK, FLAG_TRIGGER_GATE, FLAG_FLOW_CONTEXT,
+#                 FLAG_CONTINUATION, FLAG_RESULT_MANIFEST, POSITIONAL
 _parse_flags() {
   FLAG_FROM=""
   FLAG_AGENT=""
@@ -195,24 +238,40 @@ _parse_flags() {
   FLAG_TYPE=""
   FLAG_OUTPUT=""
   FLAG_ERROR=""
+  FLAG_INSTANCE=""
+  FLAG_FLOW=""
+  FLAG_CHAIN=""
+  FLAG_DECLARED_BY_TASK=""
+  FLAG_TRIGGER_GATE=""
+  FLAG_FLOW_CONTEXT=""
+  FLAG_CONTINUATION=""
+  FLAG_RESULT_MANIFEST=""
   POSITIONAL=()
   while [ $# -gt 0 ]; do
     case "$1" in
-      --from)       FLAG_FROM="${2:?--from requires a value}"; shift 2 ;;
-      --agent)      FLAG_AGENT="${2:?--agent requires a value}"; shift 2 ;;
-      --since)      FLAG_SINCE="${2:?--since requires a value}"; shift 2 ;;
-      --limit)      FLAG_LIMIT="${2:?--limit requires a value}"; shift 2 ;;
-      --tag)        FLAG_TAG="${2:?--tag requires a value}"; shift 2 ;;
-      --problem)    FLAG_PROBLEM="${2:?--problem requires a value}"; shift 2 ;;
-      --scope)      FLAG_SCOPE="${2:?--scope requires a value}"; shift 2 ;;
-      --payload)    FLAG_PAYLOAD="${2:?--payload requires a value}"; shift 2 ;;
-      --priority)   FLAG_PRIORITY="${2:?--priority requires a value}"; shift 2 ;;
-      --depends-on) FLAG_DEPENDS_ON="${2:?--depends-on requires a value}"; shift 2 ;;
-      --status)     FLAG_STATUS="${2:?--status requires a value}"; shift 2 ;;
-      --type)       FLAG_TYPE="${2:?--type requires a value}"; shift 2 ;;
-      --output)     FLAG_OUTPUT="${2:?--output requires a value}"; shift 2 ;;
-      --error)      FLAG_ERROR="${2:?--error requires a value}"; shift 2 ;;
-      *)            POSITIONAL+=("$1"); shift ;;
+      --from)             FLAG_FROM="${2:?--from requires a value}"; shift 2 ;;
+      --agent)            FLAG_AGENT="${2:?--agent requires a value}"; shift 2 ;;
+      --since)            FLAG_SINCE="${2:?--since requires a value}"; shift 2 ;;
+      --limit)            FLAG_LIMIT="${2:?--limit requires a value}"; shift 2 ;;
+      --tag)              FLAG_TAG="${2:?--tag requires a value}"; shift 2 ;;
+      --problem)          FLAG_PROBLEM="${2:?--problem requires a value}"; shift 2 ;;
+      --scope)            FLAG_SCOPE="${2:?--scope requires a value}"; shift 2 ;;
+      --payload)          FLAG_PAYLOAD="${2:?--payload requires a value}"; shift 2 ;;
+      --priority)         FLAG_PRIORITY="${2:?--priority requires a value}"; shift 2 ;;
+      --depends-on)       FLAG_DEPENDS_ON="${2:?--depends-on requires a value}"; shift 2 ;;
+      --status)           FLAG_STATUS="${2:?--status requires a value}"; shift 2 ;;
+      --type)             FLAG_TYPE="${2:?--type requires a value}"; shift 2 ;;
+      --output)           FLAG_OUTPUT="${2:?--output requires a value}"; shift 2 ;;
+      --error)            FLAG_ERROR="${2:?--error requires a value}"; shift 2 ;;
+      --instance)         FLAG_INSTANCE="${2:?--instance requires a value}"; shift 2 ;;
+      --flow)             FLAG_FLOW="${2:?--flow requires a value}"; shift 2 ;;
+      --chain)            FLAG_CHAIN="${2:?--chain requires a value}"; shift 2 ;;
+      --declared-by-task) FLAG_DECLARED_BY_TASK="${2:?--declared-by-task requires a value}"; shift 2 ;;
+      --trigger-gate)     FLAG_TRIGGER_GATE="${2:?--trigger-gate requires a value}"; shift 2 ;;
+      --flow-context)     FLAG_FLOW_CONTEXT="${2:?--flow-context requires a value}"; shift 2 ;;
+      --continuation)     FLAG_CONTINUATION="${2:?--continuation requires a value}"; shift 2 ;;
+      --result-manifest)  FLAG_RESULT_MANIFEST="${2:?--result-manifest requires a value}"; shift 2 ;;
+      *)                  POSITIONAL+=("$1"); shift ;;
     esac
   done
 }
@@ -650,21 +709,32 @@ concern_scope = sys.argv[5] or None
 payload_path = sys.argv[6] or None
 priority = sys.argv[7] or 'normal'
 depends_on = sys.argv[8] or None
+instance_id = sys.argv[9] or None
+flow_id = sys.argv[10] or None
+chain_id = sys.argv[11] or None
+declared_by_task_id = int(sys.argv[12]) if sys.argv[12] else None
+trigger_gate_id = sys.argv[13] or None
+flow_context_path = sys.argv[14] or None
+continuation_path = sys.argv[15] or None
 
 conn = sqlite3.connect(db_path, timeout=5.0)
 conn.execute('PRAGMA journal_mode=WAL')
 conn.execute('PRAGMA busy_timeout=5000')
 cur = conn.cursor()
 cur.execute('''INSERT INTO tasks(submitted_by, task_type, problem_id, concern_scope,
-               payload_path, priority, depends_on)
-               VALUES(?, ?, ?, ?, ?, ?, ?)''',
+               payload_path, priority, depends_on,
+               instance_id, flow_id, chain_id, declared_by_task_id,
+               trigger_gate_id, flow_context_path, continuation_path)
+               VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (submitted_by, task_type, problem_id, concern_scope,
-             payload_path, priority, depends_on))
+             payload_path, priority, depends_on,
+             instance_id, flow_id, chain_id, declared_by_task_id,
+             trigger_gate_id, flow_context_path, continuation_path))
 conn.commit()
 task_id = cur.lastrowid
 conn.close()
 print(task_id)
-" "$db" "$submitted_by" "$task_type" "$FLAG_PROBLEM" "$FLAG_SCOPE" "$FLAG_PAYLOAD" "$FLAG_PRIORITY" "$FLAG_DEPENDS_ON")
+" "$db" "$submitted_by" "$task_type" "$FLAG_PROBLEM" "$FLAG_SCOPE" "$FLAG_PAYLOAD" "$FLAG_PRIORITY" "$FLAG_DEPENDS_ON" "$FLAG_INSTANCE" "$FLAG_FLOW" "$FLAG_CHAIN" "$FLAG_DECLARED_BY_TASK" "$FLAG_TRIGGER_GATE" "$FLAG_FLOW_CONTEXT" "$FLAG_CONTINUATION")
     echo "task:${result}"
     ;;
 
@@ -709,15 +779,17 @@ import sqlite3, sys
 db_path = sys.argv[1]
 task_id = int(sys.argv[2])
 output_path = sys.argv[3] or None
+result_manifest = sys.argv[4] or None
 
 conn = sqlite3.connect(db_path, timeout=5.0)
 conn.execute('PRAGMA journal_mode=WAL')
 conn.execute('PRAGMA busy_timeout=5000')
 cur = conn.cursor()
 cur.execute('''UPDATE tasks
-               SET status='complete', output_path=?, completed_at=datetime('now')
+               SET status='complete', output_path=?, result_manifest_path=?,
+                   completed_at=datetime('now')
                WHERE id=? AND status='running' ''',
-            (output_path, task_id))
+            (output_path, result_manifest, task_id))
 if cur.rowcount == 0:
     conn.close()
     print('ERROR: task not completable (not running or not found)', file=sys.stderr)
@@ -725,7 +797,7 @@ if cur.rowcount == 0:
 conn.commit()
 conn.close()
 print(f'completed:{task_id}')
-" "$db" "$task_id" "$FLAG_OUTPUT"
+" "$db" "$task_id" "$FLAG_OUTPUT" "$FLAG_RESULT_MANIFEST"
     ;;
 
   # ── fail-task ──────────────────────────────────────────────────────
@@ -739,15 +811,17 @@ import sqlite3, sys
 db_path = sys.argv[1]
 task_id = int(sys.argv[2])
 error = sys.argv[3] or None
+result_manifest = sys.argv[4] or None
 
 conn = sqlite3.connect(db_path, timeout=5.0)
 conn.execute('PRAGMA journal_mode=WAL')
 conn.execute('PRAGMA busy_timeout=5000')
 cur = conn.cursor()
 cur.execute('''UPDATE tasks
-               SET status='failed', error=?, completed_at=datetime('now')
+               SET status='failed', error=?, result_manifest_path=?,
+                   completed_at=datetime('now')
                WHERE id=? AND status='running' ''',
-            (error, task_id))
+            (error, result_manifest, task_id))
 if cur.rowcount == 0:
     conn.close()
     print('ERROR: task not failable (not running or not found)', file=sys.stderr)
@@ -755,7 +829,7 @@ if cur.rowcount == 0:
 conn.commit()
 conn.close()
 print(f'failed:{task_id}')
-" "$db" "$task_id" "$FLAG_ERROR"
+" "$db" "$task_id" "$FLAG_ERROR" "$FLAG_RESULT_MANIFEST"
     ;;
 
   # ── list-tasks ─────────────────────────────────────────────────────
@@ -786,7 +860,10 @@ if type_filter:
 where = ('WHERE ' + ' AND '.join(clauses)) if clauses else ''
 
 cur.execute(f'''SELECT id, submitted_by, task_type, problem_id, concern_scope,
-                       status, claimed_by, priority, depends_on, created_at
+                       status, claimed_by, priority, depends_on, created_at,
+                       instance_id, flow_id, chain_id, declared_by_task_id,
+                       trigger_gate_id, flow_context_path, continuation_path,
+                       result_manifest_path
                 FROM tasks {where}
                 ORDER BY id ASC''', params)
 rows = cur.fetchall()
@@ -796,7 +873,9 @@ if not rows:
     print('NO_TASKS')
 else:
     for row in rows:
-        tid, by, ttype, pid, scope, st, claimed, prio, deps, created = row
+        (tid, by, ttype, pid, scope, st, claimed, prio, deps, created,
+         inst, flow, chain, declared_by, trig_gate, flow_ctx, cont,
+         res_manifest) = row
         parts = [f'id={tid}', f'type={ttype}', f'status={st}', f'by={by}', f'prio={prio}']
         if pid:
             parts.append(f'problem={pid}')
@@ -806,6 +885,22 @@ else:
             parts.append(f'claimed_by={claimed}')
         if deps:
             parts.append(f'depends_on={deps}')
+        if inst:
+            parts.append(f'instance={inst}')
+        if flow:
+            parts.append(f'flow={flow}')
+        if chain:
+            parts.append(f'chain={chain}')
+        if declared_by:
+            parts.append(f'declared_by_task={declared_by}')
+        if trig_gate:
+            parts.append(f'trigger_gate={trig_gate}')
+        if flow_ctx:
+            parts.append(f'flow_context={flow_ctx}')
+        if cont:
+            parts.append(f'continuation={cont}')
+        if res_manifest:
+            parts.append(f'result_manifest={res_manifest}')
         parts.append(f'created={created}')
         print(' | '.join(parts))
 " "$db" "$FLAG_STATUS" "$FLAG_TYPE"
@@ -826,7 +921,9 @@ cur = conn.cursor()
 # Find pending tasks ordered by priority then id.
 # Priority ordering: high > normal > low.
 cur.execute('''SELECT id, task_type, problem_id, concern_scope, payload_path,
-                      priority, depends_on, submitted_by
+                      priority, depends_on, submitted_by,
+                      instance_id, flow_id, chain_id, declared_by_task_id,
+                      trigger_gate_id, flow_context_path, continuation_path
                FROM tasks
                WHERE status = 'pending'
                ORDER BY
@@ -839,7 +936,8 @@ cur.execute('''SELECT id, task_type, problem_id, concern_scope, payload_path,
                  id ASC''')
 rows = cur.fetchall()
 
-for tid, ttype, pid, scope, payload, prio, deps, by in rows:
+for (tid, ttype, pid, scope, payload, prio, deps, by,
+     inst, flow, chain, declared_by, trig_gate, flow_ctx, cont) in rows:
     # Check dependency: depends_on is a task ID that must be complete.
     if deps:
         dep_id = int(deps)
@@ -858,6 +956,20 @@ for tid, ttype, pid, scope, payload, prio, deps, by in rows:
         parts.append(f'payload={payload}')
     if deps:
         parts.append(f'depends_on={deps}')
+    if inst:
+        parts.append(f'instance={inst}')
+    if flow:
+        parts.append(f'flow={flow}')
+    if chain:
+        parts.append(f'chain={chain}')
+    if declared_by:
+        parts.append(f'declared_by_task={declared_by}')
+    if trig_gate:
+        parts.append(f'trigger_gate={trig_gate}')
+    if flow_ctx:
+        parts.append(f'flow_context={flow_ctx}')
+    if cont:
+        parts.append(f'continuation={cont}')
     conn.close()
     print(' | '.join(parts))
     sys.exit(0)
@@ -867,10 +979,117 @@ print('NO_RUNNABLE_TASKS')
 " "$db"
     ;;
 
+  # ── cancel-task ─────────────────────────────────────────────────────
+  cancel-task)
+    _parse_flags "$@"
+    task_id="${POSITIONAL[0]:?Missing task ID}"
+
+    python3 -c "
+import sqlite3, sys
+
+db_path = sys.argv[1]
+task_id = int(sys.argv[2])
+error = sys.argv[3] or None
+
+conn = sqlite3.connect(db_path, timeout=5.0)
+conn.execute('PRAGMA journal_mode=WAL')
+conn.execute('PRAGMA busy_timeout=5000')
+cur = conn.cursor()
+cur.execute('''UPDATE tasks
+               SET status='cancelled', error=?, completed_at=datetime('now')
+               WHERE id=? AND status='pending' ''',
+            (error, task_id))
+if cur.rowcount == 0:
+    conn.close()
+    print('ERROR: task not cancellable (not pending or not found)', file=sys.stderr)
+    sys.exit(1)
+conn.commit()
+conn.close()
+print(f'cancelled:{task_id}')
+" "$db" "$task_id" "$FLAG_ERROR"
+    ;;
+
+  # ── gate-status ────────────────────────────────────────────────────
+  gate-status)
+    gate_id="${1:?Missing gate ID}"
+
+    python3 -c "
+import sqlite3, sys
+
+db_path = sys.argv[1]
+gate_id = sys.argv[2]
+
+conn = sqlite3.connect(db_path, timeout=5.0)
+conn.execute('PRAGMA journal_mode=WAL')
+conn.execute('PRAGMA busy_timeout=5000')
+cur = conn.cursor()
+
+cur.execute('''SELECT gate_id, flow_id, created_by_task_id, parent_gate_id,
+                      mode, failure_policy, status, expected_count,
+                      synthesis_task_type, synthesis_problem_id,
+                      synthesis_concern_scope, synthesis_payload_path,
+                      synthesis_priority, aggregate_manifest_path,
+                      fired_task_id, created_at, fired_at
+               FROM gates WHERE gate_id = ?''', (gate_id,))
+gate = cur.fetchone()
+if not gate:
+    conn.close()
+    print(f'ERROR: gate not found: {gate_id}', file=sys.stderr)
+    sys.exit(1)
+
+(gid, flow, created_by, parent, mode, fail_pol, status, expected,
+ syn_type, syn_pid, syn_scope, syn_payload, syn_prio,
+ agg_manifest, fired_tid, created_at, fired_at) = gate
+
+parts = [f'gate={gid}', f'flow={flow}', f'mode={mode}', f'status={status}',
+         f'expected={expected}', f'failure_policy={fail_pol}']
+if created_by is not None:
+    parts.append(f'created_by_task={created_by}')
+if parent:
+    parts.append(f'parent_gate={parent}')
+if syn_type:
+    parts.append(f'synthesis_type={syn_type}')
+if syn_pid:
+    parts.append(f'synthesis_problem={syn_pid}')
+if syn_scope:
+    parts.append(f'synthesis_scope={syn_scope}')
+if syn_payload:
+    parts.append(f'synthesis_payload={syn_payload}')
+if syn_prio:
+    parts.append(f'synthesis_priority={syn_prio}')
+if agg_manifest:
+    parts.append(f'aggregate_manifest={agg_manifest}')
+if fired_tid is not None:
+    parts.append(f'fired_task={fired_tid}')
+parts.append(f'created={created_at}')
+if fired_at:
+    parts.append(f'fired_at={fired_at}')
+print(' | '.join(parts))
+
+# Print members
+cur.execute('''SELECT gate_id, chain_id, slot_label, leaf_task_id, status,
+                      result_manifest_path, completed_at
+               FROM gate_members WHERE gate_id = ?
+               ORDER BY chain_id ASC''', (gate_id,))
+members = cur.fetchall()
+for gid, cid, slot, leaf_tid, mstatus, res_manifest, completed in members:
+    mparts = [f'  chain={cid}', f'leaf_task={leaf_tid}', f'status={mstatus}']
+    if slot:
+        mparts.append(f'slot={slot}')
+    if res_manifest:
+        mparts.append(f'result_manifest={res_manifest}')
+    if completed:
+        mparts.append(f'completed={completed}')
+    print(' | '.join(mparts))
+
+conn.close()
+" "$db" "$gate_id"
+    ;;
+
   # ── unknown ───────────────────────────────────────────────────────
   *)
     echo "Unknown command: $cmd" >&2
-    echo "Usage: db.sh init|send|recv|check|drain|register|unregister|agents|cleanup|log|tail|query|submit-task|claim-task|complete-task|fail-task|list-tasks|next-task <db> ..." >&2
+    echo "Usage: db.sh init|send|recv|check|drain|register|unregister|agents|cleanup|log|tail|query|submit-task|claim-task|complete-task|fail-task|list-tasks|next-task|cancel-task|gate-status <db> ..." >&2
     exit 1
     ;;
 esac

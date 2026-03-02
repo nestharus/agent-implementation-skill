@@ -77,6 +77,14 @@ def submit_task(
     payload_path: str | None = None,
     priority: str = "normal",
     depends_on: int | None = None,
+    instance_id: str | None = None,
+    flow_id: str | None = None,
+    chain_id: str | None = None,
+    declared_by_task_id: int | None = None,
+    trigger_gate_id: str | None = None,
+    flow_context_path: str | None = None,
+    continuation_path: str | None = None,
+    result_manifest_path: str | None = None,
 ) -> int:
     """Submit a task to the queue. Returns the task ID.
 
@@ -89,8 +97,11 @@ def submit_task(
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO tasks(submitted_by, task_type, problem_id, concern_scope,
-           payload_path, priority, depends_on)
-           VALUES(?, ?, ?, ?, ?, ?, ?)""",
+           payload_path, priority, depends_on,
+           instance_id, flow_id, chain_id, declared_by_task_id,
+           trigger_gate_id, flow_context_path, continuation_path,
+           result_manifest_path)
+           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             submitted_by,
             task_type,
@@ -99,6 +110,14 @@ def submit_task(
             payload_path,
             priority,
             str(depends_on) if depends_on is not None else None,
+            instance_id,
+            flow_id,
+            chain_id,
+            declared_by_task_id,
+            trigger_gate_id,
+            flow_context_path,
+            continuation_path,
+            result_manifest_path,
         ),
     )
     conn.commit()

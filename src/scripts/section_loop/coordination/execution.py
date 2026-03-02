@@ -6,7 +6,7 @@ from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_conten
 from ..communication import WORKFLOW_HOME, _log_artifact, log
 from ..context_assembly import materialize_context_sidecar
 from ..dispatch import dispatch_agent, write_model_choice_signal
-from ..task_ingestion import ingest_and_dispatch
+from ..task_ingestion import ingest_and_submit
 
 
 def write_coordinator_fix_prompt(
@@ -174,6 +174,15 @@ creates or re-triggers another.
 
 Available task types: scan_explore, coordination_fix
 
+The examples above use the legacy single-task format. You may also use
+the v2 envelope format with chain or fanout actions — see your agent
+file for the full v2 format reference.
+
+If dispatched as part of a flow chain, your prompt will include a
+`<flow-context>` block pointing to flow context and continuation paths.
+Read the flow context to understand what previous steps produced. Write
+follow-up declarations to the continuation path.
+
 {TASK_SUBMISSION_SEMANTICS}
 
 ### Report Modified Files
@@ -266,11 +275,13 @@ def _dispatch_fix_group(
     if result == "ALIGNMENT_CHANGED_PENDING":
         return group_id, None  # Sentinel — caller must check
 
-    # V5: Ingest any task requests the coordination fixer submitted
-    ingest_and_dispatch(
+    # V6: Submit agent-emitted follow-up work into the queue
+    ingest_and_submit(
         planspace,
-        artifacts / f"signals/task-requests-coord-{group_id}.json",
-        str(group_id), parent, codespace,
+        db_path=planspace / "run.db",
+        submitted_by=f"coordination-fix-{group_id}",
+        signal_path=artifacts / f"signals/task-requests-coord-{group_id}.json",
+        origin_refs=[str(fix_prompt)],
     )
 
     # Collect modified files from the report (validated to be safe

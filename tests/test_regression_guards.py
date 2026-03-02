@@ -6581,49 +6581,48 @@ class TestR71V5TaskIngestion:
 
 
 class TestR71V5bIngestionWired:
-    """R71/V5b: At least 3 dispatch sites call ingest_and_dispatch."""
+    """R71/V5b: At least 3 dispatch sites call ingest_and_submit."""
 
-    def test_runner_calls_ingest_and_dispatch(self) -> None:
-        """runner.py must call ingest_and_dispatch at least once."""
+    def test_runner_calls_ingest_and_submit(self) -> None:
+        """runner.py must call ingest_and_submit at least once."""
         src = Path(__file__).resolve().parent.parent / "src"
         text = (
             src / "scripts" / "section_loop" / "section_engine"
             / "runner.py"
         ).read_text(encoding="utf-8")
-        assert "ingest_and_dispatch(" in text
+        assert "ingest_and_submit(" in text
 
-    def test_reexplore_calls_ingest_and_dispatch(self) -> None:
-        """reexplore.py must call ingest_and_dispatch."""
+    def test_reexplore_calls_ingest_and_submit(self) -> None:
+        """reexplore.py must call ingest_and_submit."""
         src = Path(__file__).resolve().parent.parent / "src"
         text = (
             src / "scripts" / "section_loop" / "section_engine"
             / "reexplore.py"
         ).read_text(encoding="utf-8")
-        assert "ingest_and_dispatch(" in text
+        assert "ingest_and_submit(" in text
 
-    def test_execution_calls_ingest_and_dispatch(self) -> None:
-        """coordination/execution.py must call ingest_and_dispatch."""
+    def test_execution_calls_ingest_and_submit(self) -> None:
+        """coordination/execution.py must call ingest_and_submit."""
         src = Path(__file__).resolve().parent.parent / "src"
         text = (
             src / "scripts" / "section_loop" / "coordination"
             / "execution.py"
         ).read_text(encoding="utf-8")
-        assert "ingest_and_dispatch(" in text
+        assert "ingest_and_submit(" in text
 
     def test_at_least_3_sites_total(self) -> None:
-        """At least 3 files must call ingest_and_dispatch or ingest_task_requests."""
+        """At least 3 files must call ingest_and_submit."""
         src = Path(__file__).resolve().parent.parent / "src"
         sl = src / "scripts" / "section_loop"
         call_count = 0
         for py_file in sl.rglob("*.py"):
             text = py_file.read_text(encoding="utf-8")
-            if ("ingest_and_dispatch(" in text
-                    or "ingest_task_requests(" in text):
+            if "ingest_and_submit(" in text:
                 # Exclude the definition site (task_ingestion.py itself)
                 if py_file.name != "task_ingestion.py":
                     call_count += 1
         assert call_count >= 3, (
-            f"Expected at least 3 callsites for ingest_and_dispatch, "
+            f"Expected at least 3 callsites for ingest_and_submit, "
             f"found {call_count}"
         )
 
@@ -7017,7 +7016,7 @@ class TestR73V3TemplateSafety:
         # Must call it near the microstrategy prompt builder
         idx = text.find("# Task: Microstrategy")
         assert idx >= 0
-        block = text[idx:idx + 1500]
+        block = text[idx:idx + 1600]
         assert "validate_dynamic_content" in block
 
     def test_coordination_execution_validates(self) -> None:
@@ -8134,4 +8133,128 @@ class TestR78RuntimeInvocation:
         )
         assert "runner.py" in text, (
             "lint-doc-drift.sh must scan runner.py for stale invocation"
+        )
+
+
+class TestFlowSystemGuards:
+    """Flow system guards: queue-based submission, flow primitives,
+    no direct dispatch for agent-emitted follow-up work."""
+
+    def test_no_ingest_and_dispatch_in_callers(self) -> None:
+        """Runtime callers must use ingest_and_submit, not ingest_and_dispatch."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        callers = [
+            "scripts/section_loop/section_engine/runner.py",
+            "scripts/section_loop/section_engine/reexplore.py",
+            "scripts/section_loop/coordination/execution.py",
+        ]
+        for relpath in callers:
+            path = src / relpath
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8")
+            assert "ingest_and_dispatch" not in text, (
+                f"{relpath} still uses ingest_and_dispatch — "
+                f"must use ingest_and_submit (queue-based)"
+            )
+
+    def test_callers_use_ingest_and_submit(self) -> None:
+        """All ingestion callers must import and call ingest_and_submit."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        callers = [
+            "scripts/section_loop/section_engine/runner.py",
+            "scripts/section_loop/section_engine/reexplore.py",
+            "scripts/section_loop/coordination/execution.py",
+        ]
+        for relpath in callers:
+            path = src / relpath
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8")
+            assert "ingest_and_submit" in text, (
+                f"{relpath} must call ingest_and_submit"
+            )
+
+    def test_flow_schema_exists(self) -> None:
+        """flow_schema.py must exist with v2 parsing."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        path = src / "scripts" / "flow_schema.py"
+        assert path.exists(), "flow_schema.py must exist"
+        text = path.read_text(encoding="utf-8")
+        assert "FlowDeclaration" in text
+        assert "ChainAction" in text
+        assert "FanoutAction" in text
+
+    def test_task_flow_exists(self) -> None:
+        """task_flow.py must exist with submission and reconciliation."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        path = src / "scripts" / "task_flow.py"
+        assert path.exists(), "task_flow.py must exist"
+        text = path.read_text(encoding="utf-8")
+        assert "submit_chain" in text
+        assert "submit_fanout" in text
+        assert "reconcile_task_completion" in text
+
+    def test_flow_catalog_exists(self) -> None:
+        """flow_catalog.py must exist with package resolution."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        path = src / "scripts" / "flow_catalog.py"
+        assert path.exists(), "flow_catalog.py must exist"
+        text = path.read_text(encoding="utf-8")
+        assert "resolve_chain_ref" in text
+        assert "KNOWN_PACKAGES" in text
+
+    def test_db_has_gates_table(self) -> None:
+        """db.sh must define gates and gate_members tables."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "db.sh").read_text(encoding="utf-8")
+        assert "CREATE TABLE IF NOT EXISTS gates" in text
+        assert "CREATE TABLE IF NOT EXISTS gate_members" in text
+
+    def test_db_has_flow_columns(self) -> None:
+        """db.sh tasks table must include flow lineage columns."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "db.sh").read_text(encoding="utf-8")
+        for col in ["instance_id", "flow_id", "chain_id",
+                     "declared_by_task_id", "trigger_gate_id"]:
+            assert col in text, (
+                f"db.sh tasks table missing flow column: {col}"
+            )
+
+    def test_dispatcher_calls_reconcile(self) -> None:
+        """task_dispatcher.py must call reconcile_task_completion."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "task_dispatcher.py"
+        ).read_text(encoding="utf-8")
+        assert "reconcile_task_completion" in text, (
+            "task_dispatcher.py must call reconcile_task_completion "
+            "after task completion"
+        )
+
+    def test_agent_files_document_v2_format(self) -> None:
+        """Agent files that emit tasks must document the v2 flow format."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        agents_with_tasks = [
+            "agents/coordination-fixer.md",
+            "agents/integration-proposer.md",
+            "agents/implementation-strategist.md",
+        ]
+        for relpath in agents_with_tasks:
+            path = src / relpath
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8")
+            assert "version" in text and "chain" in text, (
+                f"{relpath} must document v2 flow declaration format"
+            )
+
+    def test_lint_catches_stale_direct_dispatch(self) -> None:
+        """lint-doc-drift.sh must scan for ingest_and_dispatch in callers."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "lint-doc-drift.sh"
+        ).read_text(encoding="utf-8")
+        assert "ingest_and_dispatch" in text, (
+            "lint-doc-drift.sh must check for stale ingest_and_dispatch usage"
         )

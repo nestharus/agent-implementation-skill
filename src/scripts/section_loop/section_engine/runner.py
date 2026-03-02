@@ -36,7 +36,7 @@ from ..dispatch import (
     write_model_choice_signal,
 )
 from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
-from ..task_ingestion import ingest_and_dispatch
+from ..task_ingestion import ingest_and_submit
 from ..pipeline_control import (
     alignment_changed_pending,
     handle_pending_messages,
@@ -935,12 +935,17 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                          f"agent timed out")
             return None
 
-        # V5: Ingest any task requests the proposal agent submitted
-        ingest_and_dispatch(
+        # V6: Submit agent-emitted follow-up work into the queue
+        ingest_and_submit(
             planspace,
-            artifacts / "signals"
+            db_path=planspace / "run.db",
+            submitted_by=f"proposal-{section.number}",
+            signal_path=artifacts / "signals"
             / f"task-requests-proposal-{section.number}.json",
-            section.number, parent, codespace,
+            origin_refs=[
+                str(artifacts / "proposals"
+                    / f"section-{section.number}-integration-proposal.md"),
+            ],
         )
 
         signal_dir = artifacts / "signals"
@@ -1272,7 +1277,9 @@ If you need deeper analysis, submit a task request to:
 
 Available task types: scan_deep_analyze, scan_explore
 
-Write a single JSON object. {TASK_SUBMISSION_SEMANTICS}
+Write a single JSON object (legacy format), or use the v2 envelope
+format with chain or fanout actions — see your agent file for the full
+v2 format reference. {TASK_SUBMISSION_SEMANTICS}
 {agent_mail_instructions(planspace, a_name, m_name)}
 """
         # V3: Validate dynamic content — violations block dispatch
@@ -1298,12 +1305,17 @@ Write a single JSON object. {TASK_SUBMISSION_SEMANTICS}
         if micro_result == "ALIGNMENT_CHANGED_PENDING":
             return None
 
-        # V5: Ingest any task requests the microstrategy agent submitted
-        ingest_and_dispatch(
+        # V6: Submit agent-emitted follow-up work into the queue
+        ingest_and_submit(
             planspace,
-            artifacts / "signals"
+            db_path=planspace / "run.db",
+            submitted_by=f"microstrategy-{section.number}",
+            signal_path=artifacts / "signals"
             / f"task-requests-micro-{section.number}.json",
-            section.number, parent, codespace,
+            origin_refs=[
+                str(artifacts / "proposals"
+                    / f"section-{section.number}-microstrategy.md"),
+            ],
         )
 
         # -- V2/R43: Verify microstrategy output exists --
@@ -1448,12 +1460,16 @@ Write a single JSON object. {TASK_SUBMISSION_SEMANTICS}
                          f"timed out")
             return None
 
-        # V5: Ingest any task requests the implementation agent submitted
-        ingest_and_dispatch(
+        # V6: Submit agent-emitted follow-up work into the queue
+        ingest_and_submit(
             planspace,
-            artifacts / "signals"
+            db_path=planspace / "run.db",
+            submitted_by=f"implementation-{section.number}",
+            signal_path=artifacts / "signals"
             / f"task-requests-impl-{section.number}.json",
-            section.number, parent, codespace,
+            origin_refs=[
+                str(artifacts / f"impl-{section.number}-output.md"),
+            ],
         )
 
         signal_dir = artifacts / "signals"

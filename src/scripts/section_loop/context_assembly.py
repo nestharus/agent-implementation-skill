@@ -95,6 +95,7 @@ VALID_CATEGORIES = frozenset({
     "allowed_tasks",
     "section_output",
     "model_policy",
+    "flow_context",
 })
 
 
@@ -261,6 +262,35 @@ def _resolve_model_policy(
     return ""
 
 
+def _resolve_flow_context(
+    planspace: Path, _section: str | None,
+) -> str:
+    """Read flow context for the current task.
+
+    Flow context is task-scoped rather than section-scoped.  When
+    included in an agent's ``context:`` list, this returns the most
+    recently written flow context JSON from the artifacts/flows/
+    directory.  In practice, the task dispatcher creates a wrapper
+    prompt with inline flow context paths, so this resolver is a
+    fallback for agents that use the context_assembly mechanism
+    instead of (or in addition to) the wrapper prompt.
+
+    Returns the JSON content of the flow context file if exactly one
+    exists, or an empty string if none or multiple are found (agents
+    should use the wrapper prompt in ambiguous cases).
+    """
+    flows_dir = planspace / "artifacts" / "flows"
+    if not flows_dir.is_dir():
+        return ""
+    # Look for flow context files.  In the task dispatcher flow, the
+    # specific task's context file path is known; this resolver returns
+    # the content of whatever context files exist.
+    context_files = sorted(flows_dir.glob("task-*-context.json"))
+    if len(context_files) == 1:
+        return context_files[0].read_text(encoding="utf-8")
+    return ""
+
+
 # Map category name -> resolver function
 _RESOLVERS: dict[str, object] = {
     "section_spec": _resolve_section_spec,
@@ -272,6 +302,7 @@ _RESOLVERS: dict[str, object] = {
     "allowed_tasks": _resolve_allowed_tasks,
     "section_output": _resolve_section_output,
     "model_policy": _resolve_model_policy,
+    "flow_context": _resolve_flow_context,
 }
 
 

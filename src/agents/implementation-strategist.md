@@ -54,6 +54,7 @@ across many files), **submit a task** instead of dispatching agents.
 Write a JSON task-submission signal to the path specified in your
 dispatch prompt:
 
+Legacy single-task format (still accepted):
 ```json
 {
     "task_type": "scan_explore",
@@ -63,6 +64,27 @@ dispatch prompt:
     "priority": "normal"
 }
 ```
+
+Chain format (v2) — declare sequential follow-up steps:
+```json
+{
+    "version": 2,
+    "actions": [
+        {
+            "kind": "chain",
+            "steps": [
+                {"task_type": "strategic_implementation", "concern_scope": "<section-id>", "payload_path": "<path-to-impl-prompt>"},
+                {"task_type": "scan_explore", "concern_scope": "<section-id>", "payload_path": "<path-to-verify-prompt>"}
+            ]
+        }
+    ]
+}
+```
+
+If dispatched as part of a flow chain, your prompt will include a
+`<flow-context>` block pointing to flow context and continuation paths.
+Read the flow context to understand what previous steps produced. Write
+follow-up declarations to the continuation path.
 
 Common task types for implementation work:
 - `scan_explore` — explore related files

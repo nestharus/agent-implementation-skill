@@ -4,7 +4,7 @@ from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_conten
 from ..communication import _log_artifact, log
 from ..cross_section import extract_section_summary
 from ..dispatch import dispatch_agent
-from ..task_ingestion import ingest_and_dispatch
+from ..task_ingestion import ingest_and_submit
 from ..types import Section
 
 
@@ -69,6 +69,14 @@ Your job is to determine why and classify the situation.
    ```json
    {{"task_type": "scan_explore", "concern_scope": "section-{section.number}", "payload_path": "<path-to-exploration-prompt>", "priority": "normal"}}
    ```
+   The above is the legacy single-task format (still accepted). You may
+   also use the v2 envelope format with chain or fanout actions — see
+   your agent file for the full v2 format reference.
+
+   If dispatched as part of a flow chain, your prompt will include a
+   `<flow-context>` block. Read the flow context to understand what
+   previous steps produced.
+
    Available task types: scan_explore
    {TASK_SUBMISSION_SEMANTICS}
 
@@ -113,13 +121,15 @@ the JSON, not unstructured text.
         agent_file="section-re-explorer.md",
     )
 
-    # V5: Ingest any task requests the reexplore agent submitted
+    # V6: Submit agent-emitted follow-up work into the queue
     if result != "ALIGNMENT_CHANGED_PENDING":
-        ingest_and_dispatch(
+        ingest_and_submit(
             planspace,
-            planspace / "artifacts" / "signals"
+            db_path=planspace / "run.db",
+            submitted_by=f"reexplore-{section.number}",
+            signal_path=planspace / "artifacts" / "signals"
             / f"task-requests-reexplore-{section.number}.json",
-            section.number, parent, codespace,
+            origin_refs=[str(output_path)],
         )
 
     return result
