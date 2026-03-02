@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48, R49, R50, R71/V2, R71/V3, R71/V4, R71/V5, R71/V6, R71/V7, R72/V1, R72/V2, R72/V3, R72/V4, R72/V5, R72/V6, R72/V7, R72/V8, R72/V9, R74/V1a, R74/V1b, R74/V2, R74/V3).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48, R49, R50, R71/V2, R71/V3, R71/V4, R71/V5, R71/V6, R71/V7, R72/V1, R72/V2, R72/V3, R72/V4, R72/V5, R72/V6, R72/V7, R72/V8, R72/V9, R74/V1a, R74/V1b, R74/V2, R74/V3, R80).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -7115,18 +7115,17 @@ class TestR74V1aTaskIngestionTemplateSafety:
         ).read_text(encoding="utf-8")
         assert "validate_dynamic_content" in text
 
-    def test_raw_prompt_validates(self) -> None:
+    def test_no_payload_rejected(self) -> None:
+        """R80/P1: task_ingestion.py rejects tasks without payload_path."""
         src = Path(__file__).resolve().parent.parent / "src"
         text = (
             src / "scripts" / "section_loop" / "task_ingestion.py"
         ).read_text(encoding="utf-8")
-        idx = text.find("No payload supplied")
-        assert idx >= 0, (
-            "task_ingestion.py must have a no-payload fallback section"
+        assert "payload-backed context is mandatory" in text, (
+            "task_ingestion.py must reject tasks without payload_path (R80/P1)"
         )
-        block = text[idx:idx + 800]
-        assert "validate_dynamic_content" in block, (
-            "Raw-prompt fallback must validate content before writing"
+        assert "agents require concrete context" in text, (
+            "task_ingestion.py must log about missing payload_path"
         )
 
 
@@ -8586,3 +8585,106 @@ class TestR79FlowLayerGuards:
         text = (src / "agents" / "implementation-strategist.md").read_text(
             encoding="utf-8")
         assert "alignment_check" in text
+
+
+class TestR80Guards:
+    """Regression guards for R80 audit proposals P1-P3."""
+
+    # -- P1: Mandatory payload-backed context --------------------------------
+
+    def test_dispatcher_no_metadata_only_fallback(self) -> None:
+        """task_dispatcher must not generate prompts from task metadata alone."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_dispatcher.py").read_text(encoding="utf-8")
+        # The old _write_task_prompt function must be gone
+        assert "_write_task_prompt" not in text
+        # The render_template import (used only by dead _write_task_prompt) must be gone
+        assert "render_template" not in text
+
+    def test_dispatcher_fails_closed_without_payload(self) -> None:
+        """task_dispatcher must fail tasks that have no payload_path."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_dispatcher.py").read_text(encoding="utf-8")
+        assert "payload-backed runtime context" in text
+
+    def test_ingestion_rejects_no_payload(self) -> None:
+        """task_ingestion must skip tasks without payload_path."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "section_loop" / "task_ingestion.py").read_text(
+            encoding="utf-8")
+        assert "agents require concrete context" in text
+
+    def test_flow_validation_requires_payload_path(self) -> None:
+        """flow_schema validation must reject TaskSpec with empty payload_path."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "flow_schema.py").read_text(encoding="utf-8")
+        assert "missing payload_path" in text
+
+    # -- P2: Dispatch meta fail-closed ---------------------------------------
+
+    def test_dispatch_meta_helper_exists(self) -> None:
+        """_read_dispatch_meta helper must exist in task_dispatcher."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_dispatcher.py").read_text(encoding="utf-8")
+        assert "def _read_dispatch_meta" in text
+
+    def test_dispatch_meta_no_bare_pass(self) -> None:
+        """task_dispatcher must not silently pass on malformed .meta.json."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_dispatcher.py").read_text(encoding="utf-8")
+        # The old bare except-pass pattern must be gone
+        assert "except (json.JSONDecodeError, OSError):\n            pass" not in text
+
+    def test_dispatch_meta_renames_malformed(self) -> None:
+        """_read_dispatch_meta must rename corrupt files to .malformed.json."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_dispatcher.py").read_text(encoding="utf-8")
+        assert ".malformed.json" in text
+
+    # -- P3: Doc/contract sync -----------------------------------------------
+
+    def test_models_md_no_inline_normative(self) -> None:
+        """models.md must not teach inline prompting as an accepted mode."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "models.md").read_text(encoding="utf-8")
+        assert "inline" in text.lower()  # technical fact preserved
+        assert "not the pipeline-standard" in text.lower() or \
+               "not.*pipeline" in text.lower()
+
+    def test_implement_md_concern_based_coordination(self) -> None:
+        """implement.md must describe coordination as problem-interaction groups."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "implement.md").read_text(encoding="utf-8")
+        # Old file-only phrasing must be gone
+        assert "Problems sharing files are candidate" not in text
+        assert "relationships via shared files" not in text
+        # New concern-based phrasing must be present
+        assert "problem-interaction groups" in text or \
+               "interaction signals" in text
+
+    def test_strategist_submit_not_delegate(self) -> None:
+        """implementation-strategist.md must say 'submit' not 'delegate' for tasks."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "implementation-strategist.md").read_text(
+            encoding="utf-8")
+        # Find the description line (markdown list item), not JSON examples
+        for line in text.splitlines():
+            if "strategic_implementation" in line and line.strip().startswith("-"):
+                assert "submit" in line, \
+                    f"strategic_implementation should say 'submit', got: {line}"
+                assert "delegate" not in line, \
+                    f"strategic_implementation should not say 'delegate', got: {line}"
+                break
+
+    def test_lint_catches_inline_normative(self) -> None:
+        """lint-doc-drift.sh must have a group catching inline-prompt drift."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "lint-doc-drift.sh").read_text(encoding="utf-8")
+        assert "inline.*accepted" in text or "inline-prompt" in text.lower()
+
+    def test_lint_catches_shared_file_only(self) -> None:
+        """lint-doc-drift.sh must catch shared-file-only coordination phrasing."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "lint-doc-drift.sh").read_text(encoding="utf-8")
+        assert "Problems sharing files" in text or \
+               "shared-file-only" in text.lower()

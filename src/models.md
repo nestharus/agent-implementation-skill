@@ -60,7 +60,7 @@ Simple lookup or classification?
 
 ### GLM
 - **Strengths**: Command execution, test running, codebase scanning, relevance summarization
-- **Prompt format**: `--file <prompt.md>` (preferred; inline `"<instructions>"` also accepted)
+- **Prompt format**: `--file <prompt.md>` (pipeline contract requires `--file`; the binary also accepts inline text, but that is not the pipeline-standard invocation)
 - **Use for**: TODO scanning (section → code mapping), block fit summaries, test running
 - **Summary role**: GLM summaries are not authoritative — they capture reasoning
   to reduce re-analysis by downstream models. Preserves context for blocks that

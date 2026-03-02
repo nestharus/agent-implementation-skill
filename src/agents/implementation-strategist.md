@@ -89,7 +89,7 @@ follow-up declarations to the continuation path.
 Common task types for implementation work:
 - `scan_explore` — explore related files
 - `scan_deep_analyze` — deep file analysis
-- `strategic_implementation` — delegate complex implementation sub-tasks
+- `strategic_implementation` — submit complex implementation sub-tasks
 - `alignment_check` — verify implementation against alignment constraints
 
 The dispatcher resolves each task type to the correct agent and model.

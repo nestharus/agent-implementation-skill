@@ -308,6 +308,11 @@ def validate_flow_declaration(decl: FlowDeclaration) -> list[str]:
                         f"actions[{i}].steps[{j}]: unknown task_type "
                         f"{step.task_type!r}"
                     )
+                if not step.payload_path:
+                    errors.append(
+                        f"actions[{i}].steps[{j}]: missing payload_path "
+                        f"(queued tasks require payload-backed context)"
+                    )
         elif isinstance(action, FanoutAction):
             if not action.branches:
                 errors.append(f"actions[{i}]: fanout has no branches")
@@ -335,6 +340,12 @@ def validate_flow_declaration(decl: FlowDeclaration) -> list[str]:
                         errors.append(
                             f"actions[{i}].branches[{k}].steps[{j}]: "
                             f"unknown task_type {step.task_type!r}"
+                        )
+                    if not step.payload_path:
+                        errors.append(
+                            f"actions[{i}].branches[{k}].steps[{j}]: "
+                            f"missing payload_path (queued tasks require "
+                            f"payload-backed context)"
                         )
                 # Validate chain_ref if present — check against catalog.
                 if has_ref:

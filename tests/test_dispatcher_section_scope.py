@@ -105,8 +105,13 @@ def _dispatch_with_captured_kwargs(
     task_id = _submit_task(db_path, task.get("type", "test-task"), task.get("scope"))
     task["id"] = task_id
 
-    # Pre-create output + meta sidecar so the post-dispatch path succeeds
+    # R80/P1: All dispatched tasks require a payload_path.
     artifacts = ps / "artifacts"
+    payload = artifacts / "test-payload.md"
+    payload.write_text("# Test payload\n", encoding="utf-8")
+    task["payload"] = str(payload)
+
+    # Pre-create output + meta sidecar so the post-dispatch path succeeds
     output_path = artifacts / f"task-{task_id}-output.md"
     output_path.write_text("ok\n", encoding="utf-8")
     meta_path = output_path.with_suffix(".meta.json")
@@ -129,7 +134,6 @@ def _dispatch_with_captured_kwargs(
         patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
         patch.object(task_dispatcher, "reconcile_task_completion"),
         patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
-        patch.object(task_dispatcher, "render_template", side_effect=lambda name, body, **kw: body),
     ):
         task_dispatcher.dispatch_task(db_path, ps, task)
 

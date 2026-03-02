@@ -218,22 +218,10 @@ def dispatch_ingested_tasks(
                     f"not found: {resolved} — skipping task")
                 continue
         else:
-            # No payload supplied — generate a minimal prompt
-            scope = task.get("concern_scope", section_number)
-            priority = task.get("priority", "normal")
-            content = (
-                f"# Task: {task_type}\n\n"
-                f"## Scope\n{scope}\n\n"
-                f"## Priority\n{priority}\n\n"
-                f"## Context\n"
-                f"Dispatched from section {section_number} task ingestion.\n"
-            )
-            violations = validate_dynamic_content(content)
-            if violations:
-                log(f"  task_ingestion: ERROR — generated prompt "
-                    f"blocked — template violations: {violations}")
-                continue
-            prompt_path.write_text(content, encoding="utf-8")
+            # R80/P1: payload-backed context is mandatory.
+            log(f"  task_ingestion: ERROR — task {task_type} has no "
+                f"payload_path — skipping (agents require concrete context)")
+            continue
 
         output_path = (
             artifacts / f"task-{task_type}-{section_number}-output.md"

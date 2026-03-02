@@ -827,9 +827,10 @@ problems that were not visible during each section's individual pass.
 **Step 2**: Collect all outstanding problems (MISALIGNED sections,
 unresolved signals, consequence conflicts).
 
-**Step 3**: Group related problems. Problems sharing files are candidate
-groups. GLM confirms whether shared-file groups are truly related (same
-root cause) or independent (different issues on the same files).
+**Step 3**: Group related problems into problem-interaction groups.
+Candidate seam signals include shared files, shared contracts, shared
+root cause, and consequence-note references. GLM confirms whether
+candidate groups are truly related or independent.
 
 **Step 4**: Size the work and dispatch fixes:
 - Few related problems → single Codex agent
@@ -1097,7 +1098,8 @@ After all sections complete their initial pass:
 1. Re-check alignment across ALL sections (cross-section changes may
    have broken previously-aligned sections)
 2. Global coordinator collects outstanding problems across all sections
-3. Groups related problems (GLM confirms relationships via shared files)
+3. Groups problems by interaction signals (shared files, shared contracts,
+   root cause, consequence notes — GLM confirms relationships)
 4. Dispatches coordinated fixes (Codex agents, sized by problem count)
 5. Re-runs per-section alignment to verify fixes
 6. Repeats until all sections ALIGNED or max coordination rounds reached

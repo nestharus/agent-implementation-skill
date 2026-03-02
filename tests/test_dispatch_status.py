@@ -190,8 +190,12 @@ class TestDispatcherReadsMetaSidecar:
         db_path = str(ps / "run.db")
         task_id = self._submit_task(db_path)
 
-        # Write output artifact and sidecar as dispatch_agent would
+        # R80/P1: create a payload file for the task
         artifacts = ps / "artifacts"
+        payload = artifacts / "test-payload.md"
+        payload.write_text("# Test\n", encoding="utf-8")
+
+        # Write output artifact and sidecar as dispatch_agent would
         output_path = artifacts / f"task-{task_id}-output.md"
         output_path.write_text("error output from agent\n", encoding="utf-8")
         meta_path = output_path.with_suffix(".meta.json")
@@ -211,9 +215,8 @@ class TestDispatcherReadsMetaSidecar:
             patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
-            patch.object(task_dispatcher, "render_template", side_effect=lambda name, body, **kw: body),
         ):
-            task = {"id": task_id, "type": "test-task", "by": "test-submitter"}
+            task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)
 
         # Verify the task is now failed in the DB
@@ -235,8 +238,12 @@ class TestDispatcherReadsMetaSidecar:
         db_path = str(ps / "run.db")
         task_id = self._submit_task(db_path)
 
-        # Write output artifact and sidecar as dispatch_agent would
+        # R80/P1: create a payload file for the task
         artifacts = ps / "artifacts"
+        payload = artifacts / "test-payload.md"
+        payload.write_text("# Test\n", encoding="utf-8")
+
+        # Write output artifact and sidecar as dispatch_agent would
         output_path = artifacts / f"task-{task_id}-output.md"
         output_path.write_text("success output\n", encoding="utf-8")
         meta_path = output_path.with_suffix(".meta.json")
@@ -255,9 +262,8 @@ class TestDispatcherReadsMetaSidecar:
             patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
-            patch.object(task_dispatcher, "render_template", side_effect=lambda name, body, **kw: body),
         ):
-            task = {"id": task_id, "type": "test-task", "by": "test-submitter"}
+            task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)
 
         # Verify the task is complete
@@ -278,7 +284,11 @@ class TestDispatcherReadsMetaSidecar:
         db_path = str(ps / "run.db")
         task_id = self._submit_task(db_path)
 
+        # R80/P1: create a payload file for the task
         artifacts = ps / "artifacts"
+        payload = artifacts / "test-payload.md"
+        payload.write_text("# Test\n", encoding="utf-8")
+
         output_path = artifacts / f"task-{task_id}-output.md"
         output_path.write_text("error output preserved\n", encoding="utf-8")
         meta_path = output_path.with_suffix(".meta.json")
@@ -297,9 +307,8 @@ class TestDispatcherReadsMetaSidecar:
             patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
-            patch.object(task_dispatcher, "render_template", side_effect=lambda name, body, **kw: body),
         ):
-            task = {"id": task_id, "type": "test-task", "by": "test-submitter"}
+            task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)
 
         # Output artifact must still exist for forensics

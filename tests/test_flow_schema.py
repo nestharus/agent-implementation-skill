@@ -304,7 +304,7 @@ class TestValidateFlowDeclaration:
         decl = FlowDeclaration(
             version=1,
             actions=[ChainAction(steps=[
-                TaskSpec(task_type="alignment_check"),
+                TaskSpec(task_type="alignment_check", payload_path="artifacts/prompt.md"),
             ])],
         )
         errors = validate_flow_declaration(decl)
@@ -314,8 +314,8 @@ class TestValidateFlowDeclaration:
         decl = FlowDeclaration(
             version=2,
             actions=[ChainAction(steps=[
-                TaskSpec(task_type="alignment_check"),
-                TaskSpec(task_type="impact_analysis"),
+                TaskSpec(task_type="alignment_check", payload_path="artifacts/p1.md"),
+                TaskSpec(task_type="impact_analysis", payload_path="artifacts/p2.md"),
             ])],
         )
         errors = validate_flow_declaration(decl)
@@ -452,8 +452,8 @@ class TestValidateFlowDeclaration:
             version=2,
             actions=[FanoutAction(
                 branches=[
-                    BranchSpec(steps=[TaskSpec(task_type="alignment_check")]),
-                    BranchSpec(steps=[TaskSpec(task_type="impact_analysis")]),
+                    BranchSpec(steps=[TaskSpec(task_type="alignment_check", payload_path="p1.md")]),
+                    BranchSpec(steps=[TaskSpec(task_type="impact_analysis", payload_path="p2.md")]),
                 ],
                 gate=GateSpec(mode="all"),
             )],
@@ -466,9 +466,9 @@ class TestValidateFlowDeclaration:
         decl = FlowDeclaration(
             version=2,
             actions=[
-                ChainAction(steps=[TaskSpec(task_type="alignment_check")]),
+                ChainAction(steps=[TaskSpec(task_type="alignment_check", payload_path="p1.md")]),
                 FanoutAction(branches=[
-                    BranchSpec(steps=[TaskSpec(task_type="impact_analysis")]),
+                    BranchSpec(steps=[TaskSpec(task_type="impact_analysis", payload_path="p2.md")]),
                 ]),
             ],
         )
@@ -534,7 +534,7 @@ class TestTaskIngestionIntegration:
             "actions": [
                 {
                     "kind": "chain",
-                    "steps": [{"task_type": "alignment_check"}],
+                    "steps": [{"task_type": "alignment_check", "payload_path": "artifacts/p.md"}],
                 },
             ],
         }))

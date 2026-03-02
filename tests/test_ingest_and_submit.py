@@ -332,8 +332,8 @@ class TestV2Chain:
                 {
                     "kind": "chain",
                     "steps": [
-                        {"task_type": "alignment_check"},
-                        {"task_type": "impact_analysis"},
+                        {"task_type": "alignment_check", "payload_path": "artifacts/p1.md"},
+                        {"task_type": "impact_analysis", "payload_path": "artifacts/p2.md"},
                     ],
                 },
             ],
@@ -357,7 +357,7 @@ class TestV2Chain:
             "actions": [
                 {
                     "kind": "chain",
-                    "steps": [{"task_type": "alignment_check"}],
+                    "steps": [{"task_type": "alignment_check", "payload_path": "artifacts/p.md"}],
                 },
             ],
         }))
@@ -390,13 +390,13 @@ class TestV2Fanout:
                         {
                             "label": "branch-a",
                             "steps": [
-                                {"task_type": "alignment_check"},
+                                {"task_type": "alignment_check", "payload_path": "artifacts/p1.md"},
                             ],
                         },
                         {
                             "label": "branch-b",
                             "steps": [
-                                {"task_type": "impact_analysis"},
+                                {"task_type": "impact_analysis", "payload_path": "artifacts/p2.md"},
                             ],
                         },
                     ],
@@ -431,13 +431,13 @@ class TestV2Fanout:
                         {
                             "label": "a",
                             "steps": [
-                                {"task_type": "alignment_check"},
+                                {"task_type": "alignment_check", "payload_path": "artifacts/p1.md"},
                             ],
                         },
                         {
                             "label": "b",
                             "steps": [
-                                {"task_type": "impact_analysis"},
+                                {"task_type": "impact_analysis", "payload_path": "artifacts/p2.md"},
                             ],
                         },
                     ],
@@ -475,7 +475,7 @@ class TestV2Mixed:
                 {
                     "kind": "chain",
                     "steps": [
-                        {"task_type": "alignment_check"},
+                        {"task_type": "alignment_check", "payload_path": "artifacts/p1.md"},
                     ],
                 },
                 {
@@ -484,7 +484,7 @@ class TestV2Mixed:
                         {
                             "label": "a",
                             "steps": [
-                                {"task_type": "impact_analysis"},
+                                {"task_type": "impact_analysis", "payload_path": "artifacts/p2.md"},
                             ],
                         },
                     ],

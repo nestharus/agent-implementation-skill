@@ -45,12 +45,16 @@ from task_flow import (  # noqa: E402
 from task_router import resolve_task  # noqa: E402
 
 from section_loop.agent_templates import (  # noqa: E402
-    render_template,
     validate_dynamic_content,
 )
 from section_loop.dispatch import dispatch_agent, read_model_policy  # noqa: E402
 
 DISPATCHER_NAME = "task-dispatcher"
+
+# Sentinel returned by _read_dispatch_meta when the sidecar file exists
+# but contains malformed JSON.  Distinct from None (file absent) and
+# dict (valid parse).
+_DISPATCH_META_CORRUPT = object()
 
 
 def _db(db_path: str, *args: str) -> subprocess.CompletedProcess[str]:
@@ -95,6 +99,37 @@ def parse_next_task(output: str) -> dict[str, str] | None:
     return result if "id" in result else None
 
 
+def _read_dispatch_meta(meta_path: Path) -> dict | None | object:
+    """Read the dispatch metadata sidecar with fail-closed semantics.
+
+    Returns:
+    - ``None`` when the file does not exist (allows timeout-prefix
+      fallback to work).
+    - A ``dict`` when the file exists and contains valid JSON.
+    - ``_DISPATCH_META_CORRUPT`` when the file exists but is malformed
+      or unreadable.  The corrupt file is renamed to
+      ``.malformed.json`` for forensic preservation and a warning is
+      logged (same pattern as ``_read_flow_json`` in task_flow.py).
+    """
+    if not meta_path.exists():
+        return None
+
+    try:
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        log(
+            f"WARNING: Malformed dispatch meta at {meta_path} ({exc}) "
+            f"— renaming to .malformed.json"
+        )
+        try:
+            meta_path.rename(meta_path.with_suffix(".malformed.json"))
+        except OSError:
+            pass
+        return _DISPATCH_META_CORRUPT
+
+    return data
+
+
 def dispatch_task(
     db_path: str,
     planspace: Path,
@@ -130,8 +165,8 @@ def dispatch_task(
 
     log(f"Dispatching task {task_id}: {task_type} -> {agent_file} ({model})")
 
-    # Build the prompt path. If payload_path is provided, use it.
-    # Otherwise, create a minimal dispatch prompt from the task metadata.
+    # Build the prompt path. payload_path is required for all queued tasks
+    # (R80/P1). Fail closed if absent.
     artifacts_dir = planspace / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -156,18 +191,13 @@ def dispatch_task(
             _notify(db_path, submitted_by, task_id, task_type, "failed", err)
             return
     else:
-        prompt_path = artifacts_dir / f"task-{task_id}-prompt.md"
-        _write_task_prompt(prompt_path, task)
-        # S5: validate dynamically generated prompt content
-        violations = validate_dynamic_content(
-            prompt_path.read_text(encoding="utf-8"),
-        )
-        if violations:
-            err = f"generated prompt blocked — template violations: {violations}"
-            log(f"ERROR: task {task_id}: {err}")
-            _db_cmd(db_path, "fail-task", task_id, "--error", err)
-            _notify(db_path, submitted_by, task_id, task_type, "failed", err)
-            return
+        # R80/P1: payload-backed context is mandatory for all queued tasks.
+        # Metadata-only dispatch produces under-specified agents.
+        err = "no payload_path — queued tasks require payload-backed runtime context"
+        log(f"ERROR: task {task_id}: {err}")
+        _db_cmd(db_path, "fail-task", task_id, "--error", err)
+        _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+        return
 
     # --- Flow context wrapping (Task 5) ---
     # If the task has flow metadata, create a wrapper prompt that
@@ -239,18 +269,30 @@ def dispatch_task(
 
     # Read dispatch metadata sidecar for return-code visibility
     meta_path = output_path.with_suffix(".meta.json")
+    meta_result = _read_dispatch_meta(meta_path)
+
+    if meta_result is _DISPATCH_META_CORRUPT:
+        err = (
+            "dispatch meta sidecar corrupt — "
+            f"renamed to {meta_path.with_suffix('.malformed.json').name}"
+        )
+        log(f"ERROR: task {task_id}: {err}")
+        _db_cmd(db_path, "fail-task", task_id, "--error", err)
+        _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+        reconcile_task_completion(
+            Path(db_path), planspace, int(task_id),
+            "failed", str(output_path), error=err,
+        )
+        return
+
     timed_out = False
     agent_failed = False
     rc = None
-    if meta_path.exists():
-        try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            timed_out = meta.get("timed_out", False)
-            rc = meta.get("returncode")
-            if rc is not None and rc != 0:
-                agent_failed = True
-        except (json.JSONDecodeError, OSError):
-            pass  # Fall back to old behavior if sidecar is unreadable
+    if isinstance(meta_result, dict):
+        timed_out = meta_result.get("timed_out", False)
+        rc = meta_result.get("returncode")
+        if rc is not None and rc != 0:
+            agent_failed = True
 
     # Fallback: detect timeout from output prefix when sidecar is absent
     if not timed_out and output.startswith("TIMEOUT:"):
@@ -293,28 +335,6 @@ def dispatch_task(
             Path(db_path), planspace, int(task_id),
             "complete", str(output_path),
         )
-
-
-def _write_task_prompt(prompt_path: Path, task: dict[str, str]) -> None:
-    """Write a minimal prompt from task metadata when no payload exists.
-
-    Dynamic prompts are wrapped through the agent template system to
-    enforce immutable system constraints (S5).
-    """
-    lines = [f"# Task: {task['type']}\n"]
-    if task.get("problem"):
-        lines.append(f"Problem: {task['problem']}\n")
-    if task.get("scope"):
-        lines.append(f"Scope: {task['scope']}\n")
-    lines.append(
-        "\nComplete this task and write your output. "
-        "Refer to task metadata above for context.\n"
-    )
-    dynamic_body = "\n".join(lines)
-    prompt_path.write_text(
-        render_template(f"task-dispatch:{task['type']}", dynamic_body),
-        encoding="utf-8",
-    )
 
 
 def _record_task_routing(

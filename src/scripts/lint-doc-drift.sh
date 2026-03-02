@@ -115,6 +115,34 @@ done < <(grep -rn \
   "$WH/scripts/section_loop/coordination" \
   2>/dev/null || true)
 
+# --- Group 7: inline prompt as normative invocation (R80) ---
+# GLM section should not teach inline prompts as the standard mode.
+while IFS= read -r match; do
+  # Skip lines that explicitly say "not the pipeline-standard" or similar
+  if echo "$match" | grep -qi "not.*pipeline\|non-normative\|not.*standard"; then
+    continue
+  fi
+  echo "[LINT] Inline-prompt normative drift: $match"
+  EXIT_CODE=1
+done < <(grep -rn -i \
+  -e "inline.*also accepted" \
+  -e "inline.*instructions.*accepted" \
+  --include="*.md" \
+  "$WH/models.md" \
+  2>/dev/null || true)
+
+# --- Group 8: shared-file-only coordination framing (R80) ---
+# Coordination grouping must be concern-based, not file-overlap only.
+while IFS= read -r match; do
+  echo "[LINT] Shared-file-only coordination framing: $match"
+  EXIT_CODE=1
+done < <(grep -rn \
+  -e "Problems sharing files" \
+  -e "relationships via shared files" \
+  --include="*.md" \
+  "$WH/implement.md" \
+  2>/dev/null || true)
+
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "[LINT] No superseded behavior claims found."
 fi
