@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Lint: detect "feature coverage audit" and stale verification-frame language
-# in docs/prompts. Exits non-zero if prohibited patterns found outside
+# Lint: detect "feature coverage audit" and stale verification-frame language (secondary migration guard).
+# Primary verification: lint-doc-contracts.sh checks required contract statements.
+# Exits non-zero if prohibited patterns found outside
 # anti-pattern sections or terminology contract definitions.
 #
 # Layout-portable: uses WORKFLOW_HOME env var to locate skill content root.

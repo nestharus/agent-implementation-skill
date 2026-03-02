@@ -51,8 +51,8 @@ Chain format (v2) — declare sequential follow-up steps:
         {
             "kind": "chain",
             "steps": [
-                {"task_type": "scan_explore", "concern_scope": "<section-id>", "payload_path": "<path-to-explore-prompt>"},
-                {"task_type": "integration_proposal", "concern_scope": "<section-id>", "payload_path": "<path-to-proposal-prompt>"}
+                {"task_type": "scan_explore", "concern_scope": "<section-id>", "payload_path": "<path-to-broad-explore-prompt>"},
+                {"task_type": "scan_explore", "concern_scope": "<section-id>", "payload_path": "<path-to-refined-explore-prompt>"}
             ]
         }
     ]
@@ -95,7 +95,7 @@ What research questions or design decisions need answers before
 implementation can begin? What new files need to be created and where?
 
 ### Next Steps
-What should happen next for this section:
-- If brownfield: proceed to integration proposal
-- If greenfield: create new file scaffolding, then proceed
-- If hybrid: address both existing integration and new creation
+What the pipeline does next based on your classification:
+- If brownfield: classify and return — the pipeline continues to integration proposal
+- If hybrid: classify, list open problems and new-file candidates, return — the pipeline and parent decide next steps
+- If greenfield: emit open problems and explicit research obligations — do NOT scaffold files or imply automatic continuation; the parent must decide how to proceed

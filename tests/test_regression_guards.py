@@ -8688,3 +8688,149 @@ class TestR80Guards:
         text = (src / "scripts" / "lint-doc-drift.sh").read_text(encoding="utf-8")
         assert "Problems sharing files" in text or \
                "shared-file-only" in text.lower()
+
+
+class TestR81Guards:
+    """R81 regression guards: re-explorer classification-only, microstrategy
+    single-method, contract-first lint, live scenario eval harness."""
+
+    # --- P1: Re-explorer classification-only surface ---
+
+    def test_reexplorer_no_integration_proposal_in_chain(self) -> None:
+        """section-re-explorer.md chain example must not include integration_proposal."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "section-re-explorer.md").read_text(encoding="utf-8")
+        # The chain example should only contain scan_explore steps
+        in_chain = False
+        for line in text.splitlines():
+            if '"kind": "chain"' in line:
+                in_chain = True
+            if in_chain and "integration_proposal" in line:
+                raise AssertionError(
+                    "chain example still contains integration_proposal"
+                )
+            if in_chain and line.strip() == "}":
+                in_chain = False
+
+    def test_reexplorer_no_scaffold_greenfield(self) -> None:
+        """section-re-explorer.md must not tell greenfield to scaffold."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "section-re-explorer.md").read_text(encoding="utf-8")
+        assert "create new file scaffolding" not in text
+        assert "then proceed" not in text.lower() or \
+               "do not" in text.lower()
+
+    def test_reexplorer_greenfield_defers_to_parent(self) -> None:
+        """section-re-explorer.md greenfield must say parent decides."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "agents" / "section-re-explorer.md").read_text(encoding="utf-8")
+        lower = text.lower()
+        assert "parent must decide" in lower or "do not scaffold" in lower
+
+    # --- P2: Microstrategy single decision method ---
+
+    def test_microstrategy_fallback_no_competing_criteria(self) -> None:
+        """Microstrategy fallback prompt must not define its own decision rules."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "section_loop" / "section_engine" / "todos.py"
+                ).read_text(encoding="utf-8")
+        # Old competing criteria must be gone from the prompt heredoc
+        assert "5+ files" not in text
+        assert "ordering matters" not in text.lower()
+        assert "order of changes matters" not in text
+
+    def test_microstrategy_fallback_passes_signals(self) -> None:
+        """Microstrategy fallback prompt must include complexity signals block."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "section_loop" / "section_engine" / "todos.py"
+                ).read_text(encoding="utf-8")
+        assert "Complexity Signals" in text
+        assert "Apply your" in text  # defers to agent's decision method
+
+    def test_gather_complexity_signals_exists(self) -> None:
+        """_gather_complexity_signals helper must exist in todos.py."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "section_loop" / "section_engine" / "todos.py"
+                ).read_text(encoding="utf-8")
+        assert "def _gather_complexity_signals" in text
+
+    # --- P3: Contract-first doc verification ---
+
+    def test_lint_doc_contracts_exists(self) -> None:
+        """lint-doc-contracts.sh must exist as the primary verification layer."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        assert (src / "scripts" / "lint-doc-contracts.sh").exists()
+
+    def test_lint_doc_contracts_is_primary(self) -> None:
+        """lint-doc-contracts.sh must describe itself as primary verification."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "lint-doc-contracts.sh").read_text(encoding="utf-8")
+        assert "Primary verification" in text or "primary verification" in text
+
+    def test_existing_lints_demoted_to_secondary(self) -> None:
+        """Existing lints must reference 'secondary migration guard'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        drift = (src / "scripts" / "lint-doc-drift.sh").read_text(encoding="utf-8")
+        audit = (src / "scripts" / "lint-audit-language.sh").read_text(encoding="utf-8")
+        assert "secondary" in drift.lower()
+        assert "secondary" in audit.lower()
+
+    def test_lint_doc_contracts_checks_skill_md(self) -> None:
+        """lint-doc-contracts.sh must verify SKILL.md contract statements."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "lint-doc-contracts.sh").read_text(encoding="utf-8")
+        assert "SKILL.md" in text
+        assert "concern-based problem decomposition" in text
+
+    def test_lint_doc_contracts_passes(self) -> None:
+        """lint-doc-contracts.sh must currently pass clean."""
+        import subprocess
+        src = Path(__file__).resolve().parent.parent / "src"
+        result = subprocess.run(
+            ["bash", str(src / "scripts" / "lint-doc-contracts.sh")],
+            capture_output=True, text=True,
+            env={"PATH": "/usr/bin:/bin", "WORKFLOW_HOME": str(src)},
+            timeout=30,
+        )
+        assert result.returncode == 0, \
+            f"lint-doc-contracts.sh failed:\n{result.stdout}\n{result.stderr}"
+
+    # --- P4: Live scenario eval harness ---
+
+    def test_eval_harness_exists(self) -> None:
+        """evals/harness.py must exist."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        assert (src / "evals" / "harness.py").exists()
+
+    def test_eval_scenarios_exist(self) -> None:
+        """evals/scenarios/ must contain at least 4 scenario modules."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        scenarios_dir = src / "evals" / "scenarios"
+        py_files = [f for f in scenarios_dir.glob("*.py")
+                    if f.name != "__init__.py"]
+        assert len(py_files) >= 4, \
+            f"Expected 4+ scenario modules, found {len(py_files)}"
+
+    def test_eval_harness_list(self) -> None:
+        """evals harness --list must work without LLM access."""
+        import subprocess
+        src = Path(__file__).resolve().parent.parent / "src"
+        result = subprocess.run(
+            ["python3", "-m", "evals.harness", "--list"],
+            capture_output=True, text=True,
+            cwd=str(src),
+            timeout=30,
+        )
+        assert result.returncode == 0, \
+            f"--list failed:\n{result.stdout}\n{result.stderr}"
+        assert "scenario" in result.stdout.lower()
+
+    def test_eval_not_imported_by_tests(self) -> None:
+        """tests/ must not import from evals/ (separation of concerns)."""
+        import re
+        tests_dir = Path(__file__).resolve().parent
+        import_re = re.compile(r"^\s*(?:from evals|import evals)\b")
+        for py_file in tests_dir.glob("*.py"):
+            for line in py_file.read_text(encoding="utf-8").splitlines():
+                assert not import_re.match(line), \
+                    f"{py_file.name} imports evals — eval harness must be standalone"

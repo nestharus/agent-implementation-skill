@@ -4,6 +4,64 @@ from pathlib import Path
 from ..dispatch import dispatch_agent
 
 
+def _gather_complexity_signals(
+    planspace: Path, section_number: str,
+) -> dict[str, str]:
+    """Mechanically gather complexity signals from the planspace.
+
+    Returns a dict of signal names to string values suitable for
+    embedding in a prompt. No interpretation — just existence checks
+    and counts.
+    """
+    signals: dict[str, str] = {}
+    artifacts = planspace / "artifacts"
+
+    # 1. Section mode signal
+    mode_signal = artifacts / "signals" / f"section-{section_number}-mode.json"
+    if mode_signal.exists():
+        try:
+            mode_data = json.loads(mode_signal.read_text(encoding="utf-8"))
+            signals["section_mode"] = mode_data.get("mode", "unknown")
+        except (json.JSONDecodeError, OSError):
+            signals["section_mode"] = "unreadable"
+    else:
+        signals["section_mode"] = "unknown"
+
+    # 2. Related file count from mode signal (if it contains file info)
+    if mode_signal.exists():
+        try:
+            mode_data = json.loads(mode_signal.read_text(encoding="utf-8"))
+            file_count = len(mode_data.get("related_files", []))
+            signals["related_file_count"] = str(file_count) if file_count else "unknown"
+        except (json.JSONDecodeError, OSError):
+            signals["related_file_count"] = "unknown"
+    else:
+        signals["related_file_count"] = "unknown"
+
+    # 3. Cross-section notes (from other sections to this one, or this to others)
+    notes_dir = artifacts / "notes"
+    cross_notes_inbound = sorted(notes_dir.glob(f"from-*-to-{section_number}.md")) if notes_dir.is_dir() else []
+    cross_notes_outbound = sorted(notes_dir.glob(f"from-{section_number}-to-*.md")) if notes_dir.is_dir() else []
+    total_notes = len(cross_notes_inbound) + len(cross_notes_outbound)
+    signals["cross_section_notes"] = f"yes ({total_notes})" if total_notes else "no"
+
+    # 4. Cross-section decisions
+    decisions_dir = artifacts / "decisions"
+    decisions = sorted(decisions_dir.glob(f"section-{section_number}*.md")) if decisions_dir.is_dir() else []
+    signals["cross_section_decisions"] = f"yes ({len(decisions)})" if decisions else "no"
+
+    # 5. TODO extraction
+    todos_path = artifacts / "todos" / f"section-{section_number}-todos.md"
+    signals["todo_extraction_exists"] = "yes" if todos_path.exists() else "no"
+
+    # 6. Previous proposal attempts (proposal signals for this section)
+    signals_dir = artifacts / "signals"
+    prev_proposals = sorted(signals_dir.glob(f"proposal-{section_number}-*.json")) if signals_dir.is_dir() else []
+    signals["previous_proposal_attempts"] = str(len(prev_proposals))
+
+    return signals
+
+
 def _extract_todos_from_files(
     codespace: Path, related_files: list[str],
 ) -> str:
@@ -85,20 +143,23 @@ def _check_needs_microstrategy(
     artifacts = planspace / "artifacts"
     decider_prompt = artifacts / f"microstrategy-decider-{section_number}-prompt.md"
     decider_output = artifacts / f"microstrategy-decider-{section_number}-output.md"
+    complexity = _gather_complexity_signals(planspace, section_number)
     decider_prompt.write_text(f"""# Task: Microstrategy Decision for Section {section_number}
 
 ## Files to Read
 1. Integration proposal: `{proposal_path}`
 
-## Instructions
-Read the integration proposal and determine whether this section needs a
-microstrategy (a tactical per-file breakdown between the proposal and
-implementation).
+## Complexity Signals (mechanically gathered)
+- Related file count: {complexity["related_file_count"]}
+- Cross-section notes: {complexity["cross_section_notes"]}
+- Cross-section decisions: {complexity["cross_section_decisions"]}
+- TODO extraction exists: {complexity["todo_extraction_exists"]}
+- Previous proposal attempts: {complexity["previous_proposal_attempts"]}
+- Section mode: {complexity["section_mode"]}
 
-A microstrategy is needed when:
-- The proposal touches 5+ files
-- The changes involve complex cross-file dependencies
-- The order of changes matters
+## Instructions
+Read the integration proposal and the complexity signals above. Apply your
+decision method to determine whether this section needs a microstrategy.
 
 Write a JSON signal to: `{signal_path}`
 ```json

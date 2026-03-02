@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Lint: detect superseded behavior claims in docs/templates.
+# Lint: detect superseded behavior claims in docs/templates (secondary migration guard).
+# Primary verification: lint-doc-contracts.sh checks required contract statements.
 # Exits non-zero if known-wrong phrases reappear.
 #
 # Layout-portable: uses WORKFLOW_HOME env var to locate skill content root.
