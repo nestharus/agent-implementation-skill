@@ -26,10 +26,9 @@ done < <(grep -rn -i \
   --include="*.md" --include="*.py" \
   --exclude="alignment-judge.md" \
   --exclude="qa-monitor.md" \
-  --exclude="audit.md" \
   "$WH/agents" "$WH/scripts" "$WH/models.md" \
   "$WH/implement.md" "$WH/SKILL.md" \
-  "$WH/research.md" "$WH/baseline.md" 2>/dev/null || true)
+  "$WH/research.md" "$WH/baseline.md" "$WH/audit.md" 2>/dev/null || true)
 
 # --- Phrase group 2: stale verification-frame language (R76) ---
 while IFS= read -r match; do
@@ -48,10 +47,9 @@ done < <(grep -rn -i \
   --include="*.md" --include="*.py" \
   --exclude="alignment-judge.md" \
   --exclude="qa-monitor.md" \
-  --exclude="audit.md" \
   "$WH/agents" "$WH/scripts" "$WH/models.md" \
   "$WH/implement.md" "$WH/SKILL.md" \
-  "$WH/research.md" "$WH/baseline.md" 2>/dev/null || true)
+  "$WH/research.md" "$WH/baseline.md" "$WH/audit.md" 2>/dev/null || true)
 
 # --- Phrase group 3: stale model invocation (R76) ---
 while IFS= read -r match; do

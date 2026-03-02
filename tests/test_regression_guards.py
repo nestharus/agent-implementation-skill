@@ -1710,7 +1710,7 @@ class TestMicrostrategyFailClosed:
     default to True (more strategy) on total failure."""
 
     def test_no_signal_returns_true(
-        self, planspace: Path, codespace: Path, mock_dispatch: MagicMock,
+        self, planspace: Path, codespace: Path, mock_dispatch: "MagicMock",
     ) -> None:
         """When decider never writes signal, function returns True."""
         from section_loop.section_engine.todos import (
@@ -1734,7 +1734,7 @@ class TestMicrostrategyFailClosed:
         )
 
     def test_fallback_signal_written(
-        self, planspace: Path, codespace: Path, mock_dispatch: MagicMock,
+        self, planspace: Path, codespace: Path, mock_dispatch: "MagicMock",
     ) -> None:
         """Fallback signal JSON must be written with explicit reason."""
         from section_loop.section_engine.todos import (
@@ -8010,4 +8010,128 @@ class TestR77ModelInventory:
         ).read_text(encoding="utf-8")
         assert "haiku" in text, (
             "lint-audit-language.sh must ban haiku model references"
+        )
+
+
+# ── R78: Concern-based audit methodology ────────────────────────────
+
+
+class TestR78AuditMethodology:
+    """R78/V1: audit.md must teach concern-based decomposition, not
+    natural-section decomposition or complete-coverage exit criteria."""
+
+    def test_no_natural_section_decomposition(self) -> None:
+        """audit.md must not teach input-structural decomposition."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "audit.md").read_text(encoding="utf-8")
+        # The old methodology told users to follow the input's structure
+        assert "natural section" not in text.lower(), (
+            "audit.md still teaches 'natural section' decomposition"
+        )
+        assert "input's structure IS the decomposition" not in text, (
+            "audit.md still tells users to follow input structure as decomposition"
+        )
+
+    def test_no_complete_coverage_exit_criteria(self) -> None:
+        """audit.md exit criteria must not require complete coverage."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "audit.md").read_text(encoding="utf-8")
+        assert "complete coverage" not in text.lower(), (
+            "audit.md still uses 'complete coverage' as exit criteria"
+        )
+
+    def test_uses_concern_based_language(self) -> None:
+        """audit.md must use problem/concern decomposition language."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "audit.md").read_text(encoding="utf-8")
+        assert "problem region" in text.lower(), (
+            "audit.md does not mention 'problem region' decomposition"
+        )
+        assert "alignment chain" in text.lower(), (
+            "audit.md does not mention 'alignment chain' tracing"
+        )
+        assert "cross-concern friction" in text.lower(), (
+            "audit.md does not surface cross-concern friction"
+        )
+
+    def test_no_one_agent_per_section(self) -> None:
+        """audit.md must not teach one-agent-per-section delegation."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "audit.md").read_text(encoding="utf-8")
+        assert "one agent per" not in text.lower(), (
+            "audit.md still teaches one-agent-per-section delegation"
+        )
+        assert "delegate one agent per" not in text.lower(), (
+            "audit.md still teaches delegation per natural section"
+        )
+
+    def test_skill_md_references_updated(self) -> None:
+        """SKILL.md must describe audit.md with concern-based language."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "SKILL.md").read_text(encoding="utf-8")
+        assert "structured task decomposition" not in text.lower(), (
+            "SKILL.md still describes audit.md as "
+            "'structured task decomposition'"
+        )
+
+    def test_lint_does_not_exclude_audit_md(self) -> None:
+        """lint-audit-language.sh must NOT exclude audit.md."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "lint-audit-language.sh"
+        ).read_text(encoding="utf-8")
+        assert '--exclude="audit.md"' not in text, (
+            "lint-audit-language.sh still exempts audit.md from drift checks"
+        )
+
+
+class TestR78RuntimeInvocation:
+    """R78/V6: runtime dispatch must use 'agents' binary, not
+    'uv run --frozen agents'."""
+
+    DISPATCH_FILES = [
+        "scripts/section_loop/dispatch.py",
+        "scripts/scan/dispatch.py",
+        "scripts/substrate/runner.py",
+    ]
+
+    def test_no_uv_run_in_dispatch_commands(self) -> None:
+        """Runtime subprocess calls must use 'agents' not 'uv run agents'."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        for relpath in self.DISPATCH_FILES:
+            path = src / relpath
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8")
+            # Check for the subprocess command list pattern
+            assert '"uv", "run"' not in text, (
+                f"{relpath} still constructs subprocess cmd with "
+                f"'uv run' — must use 'agents' binary directly"
+            )
+
+    def test_no_uv_run_in_dispatch_docstrings(self) -> None:
+        """Dispatch function docstrings must not reference uv run."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        for relpath in self.DISPATCH_FILES:
+            path = src / relpath
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8")
+            assert "uv run --frozen agents" not in text, (
+                f"{relpath} docstring still references "
+                f"'uv run --frozen agents'"
+            )
+
+    def test_lint_catches_runtime_uv_run(self) -> None:
+        """lint-doc-drift.sh must scan dispatch Python files for uv run."""
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "lint-doc-drift.sh"
+        ).read_text(encoding="utf-8")
+        # Must include runtime dispatch files in scan targets
+        assert "dispatch.py" in text, (
+            "lint-doc-drift.sh must scan dispatch.py for stale invocation"
+        )
+        assert "runner.py" in text, (
+            "lint-doc-drift.sh must scan runner.py for stale invocation"
         )

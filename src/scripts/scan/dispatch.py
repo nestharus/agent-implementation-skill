@@ -1,4 +1,4 @@
-"""Thin subprocess wrapper for ``uv run --frozen agents ...`` dispatch.
+"""Thin subprocess wrapper for ``agents`` binary dispatch.
 
 This is intentionally separate from ``section_loop.dispatch``.
 Stage 3 scan is a different execution stage with simpler needs:
@@ -69,7 +69,7 @@ def dispatch_agent(
     stdout_file: Path | None = None,
     stderr_file: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Dispatch an agent via ``uv run --frozen agents``.
+    """Dispatch an agent via the ``agents`` binary.
 
     Parameters
     ----------
@@ -106,7 +106,7 @@ def dispatch_agent(
         raise FileNotFoundError(f"Agent file not found: {agent_path}")
 
     cmd = [
-        "uv", "run", "--frozen", "agents",
+        "agents",
         "--model", model,
         "--project", str(project),
         "--file", str(prompt_file),

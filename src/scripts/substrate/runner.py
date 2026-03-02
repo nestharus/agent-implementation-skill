@@ -143,7 +143,7 @@ def _dispatch_agent(
     *,
     agent_file: str,
 ) -> bool:
-    """Run an agent via ``uv run --frozen agents`` and capture output.
+    """Run an agent via the ``agents`` binary and capture output.
 
     Parameters
     ----------
@@ -176,7 +176,7 @@ def _dispatch_agent(
         raise FileNotFoundError(f"Agent file not found: {agent_path}")
 
     cmd = [
-        "uv", "run", "--frozen", "agents",
+        "agents",
         "--model", model,
         "--file", str(prompt_path),
         "--agent-file", str(agent_path),

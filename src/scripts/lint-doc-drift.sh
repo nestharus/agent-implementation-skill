@@ -80,16 +80,22 @@ done < <(grep -rn \
   "$WH/scripts/section_loop/coordination" \
   2>/dev/null || true)
 
-# --- Group 5: stale invocation style (R77) ---
+# --- Group 5: stale invocation style (R77, extended R78) ---
 # "uv run agents" is the wrong binary invocation; the correct form is "agents".
+# R78: also scan runtime dispatch Python files for subprocess invocations.
 while IFS= read -r match; do
   echo "[LINT] Stale invocation style (uv run agents → agents): $match"
   EXIT_CODE=1
 done < <(grep -rn \
   -e "uv run agents" \
+  -e '"uv", "run".*"agents"' \
+  -e "'uv', 'run'.*'agents'" \
   --include="*.md" --include="*.py" \
   "$WH/models.md" "$WH/research.md" "$WH/baseline.md" \
-  "$WH/rca.md" "$WH/implement.md" "$WH/SKILL.md" \
+  "$WH/rca.md" "$WH/implement.md" "$WH/SKILL.md" "$WH/audit.md" \
+  "$WH/scripts/section_loop/dispatch.py" \
+  "$WH/scripts/scan/dispatch.py" \
+  "$WH/scripts/substrate/runner.py" \
   2>/dev/null || true)
 
 if [ "$EXIT_CODE" -eq 0 ]; then

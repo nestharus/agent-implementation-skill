@@ -25,7 +25,7 @@ $WORKFLOW_HOME/
   rca.md                # root cause analysis
   evaluate.md           # proposal review
   baseline.md           # constraint extraction
-  audit.md              # structured task decomposition
+  audit.md              # concern-based problem decomposition
   constraints.md        # constraint discovery
   models.md             # model selection guide
   scripts/
@@ -70,7 +70,7 @@ Check these in order:
 6. **No proposal exists** → `research.md`
 7. **Something feels wrong about a change** → `constraints.md`
 8. **Need to pick a model** → `models.md`
-9. **Need structured task decomposition** → `audit.md`
+9. **Need concern-based problem decomposition** → `audit.md`
 
 ## Files
 
@@ -81,7 +81,7 @@ Check these in order:
 | `baseline.md` | Atomize proposal into constraints / patterns / tradeoffs |
 | `implement.md` | Multi-model implementation with worktrees + dynamic scheduling |
 | `rca.md` | Root cause analysis + architectural fix for test failures |
-| `audit.md` | General structured task decomposition + delegation |
+| `audit.md` | Concern-based problem decomposition + alignment tracing |
 | `constraints.md` | Surface implicit constraints, validate design principles |
 | `models.md` | Model selection guide for multi-model workflows |
 
@@ -312,6 +312,6 @@ bash "$WORKFLOW_HOME/scripts/db.sh" query <planspace>/run.db <kind> [--tag <t>] 
 
 ## Cross-Cutting Tools
 
-- **audit.md** — Structured decomposition + delegation for any large task
+- **audit.md** — Concern-based problem decomposition + alignment tracing
 - **constraints.md** — Before implementation or when something feels wrong
 - **models.md** — Which external model to use for any given task

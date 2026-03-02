@@ -93,7 +93,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
             planspace, agent_name, monitor_name,
         )
         monitor_proc = subprocess.Popen(  # noqa: S603
-            ["uv", "run", "--frozen", "agents", "--agent-file",  # noqa: S607
+            ["agents", "--agent-file",  # noqa: S607
              str(WORKFLOW_HOME / "agents" / "agent-monitor.md"),
              "--file", str(monitor_prompt)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -111,7 +111,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
              "--agent", AGENT_NAME],
             capture_output=True, text=True,
         )
-    cmd = ["uv", "run", "--frozen", "agents", "--model", model,
+    cmd = ["agents", "--model", model,
            "--file", str(prompt_path),
            "--agent-file", str(WORKFLOW_HOME / "agents" / agent_file)]
     if codespace:
