@@ -9,6 +9,8 @@ import json
 import re
 from pathlib import Path
 
+from prompt_safety import validate_dynamic_content
+
 from .dispatch import dispatch_agent, read_scan_model_policy
 from .exploration import apply_related_files_update
 
@@ -348,6 +350,13 @@ def _apply_feedback(
             irrelevant_section=irrelevant_section,
             updater_signal=updater_signal,
         )
+        violations = validate_dynamic_content(prompt)
+        if violations:
+            print(
+                f"[FEEDBACK] {sec_name}: updater prompt blocked — "
+                f"safety violations: {violations}",
+            )
+            continue
         updater_prompt.write_text(prompt)
 
         updater_model = model_policy.get("feedback_updater", "glm")

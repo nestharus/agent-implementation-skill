@@ -11,6 +11,8 @@ import re
 import sys
 from pathlib import Path
 
+from prompt_safety import validate_dynamic_content
+
 from .cache import strip_scan_summaries
 from .dispatch import dispatch_agent, read_scan_model_policy
 
@@ -223,6 +225,13 @@ def _validate_existing_related_files(
         corrections_ref=corrections_ref,
         update_signal=update_signal,
     )
+    violations = validate_dynamic_content(prompt)
+    if violations:
+        print(
+            f"[EXPLORE] {section_name}: validate prompt blocked — "
+            f"safety violations: {violations}",
+        )
+        return
     validate_prompt.write_text(prompt)
 
     result = dispatch_agent(
@@ -349,6 +358,13 @@ def _explore_section(
         section_file=section_file,
         corrections_signal=corrections_signal,
     )
+    violations = validate_dynamic_content(prompt)
+    if violations:
+        _log_phase_failure(
+            scan_log_dir, "quick-explore", section_name,
+            f"prompt blocked — safety violations: {violations}",
+        )
+        return
     prompt_file.write_text(prompt)
 
     result = dispatch_agent(

@@ -45,6 +45,9 @@ def run_intent_triage(
     problem_brief = (artifacts / "sections"
                      / f"section-{section_number}-problem-frame.md")
     codemap_path = artifacts / "codemap.md"
+    codemap_corrections_path = (
+        artifacts / "signals" / "codemap-corrections.json"
+    )
 
     triage_refs = []
     for label, path in [
@@ -53,6 +56,7 @@ def run_intent_triage(
         ("Alignment excerpt", alignment_excerpt),
         ("Problem brief", problem_brief),
         ("Codemap summary", codemap_path),
+        ("Codemap corrections (authoritative)", codemap_corrections_path),
     ]:
         if path.exists():
             triage_refs.append(f"- {label}: `{path}`")

@@ -13,7 +13,7 @@ Read the codemap first — it tells you where things are and how they relate.
 If codemap corrections exist, read them and treat as authoritative fixes to
 the codemap (wrong paths, missing entries, misclassified files). Then read
 the section specification. Explore specific files or directories to confirm
-relevance. Use GLM agents for quick file reads.
+relevance. Read strategically — use the codemap and targeted reads.
 
 Think strategically:
 - Which parts of the codebase does this section need to modify?

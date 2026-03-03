@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48, R49, R50, R71/V2, R71/V3, R71/V4, R71/V5, R71/V6, R71/V7, R72/V1, R72/V2, R72/V3, R72/V4, R72/V5, R72/V6, R72/V7, R72/V8, R72/V9, R74/V1a, R74/V1b, R74/V2, R74/V3, R80, R82).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48, R49, R50, R71/V2, R71/V3, R71/V4, R71/V5, R71/V6, R71/V7, R72/V1, R72/V2, R72/V3, R72/V4, R72/V5, R72/V6, R72/V7, R72/V8, R72/V9, R74/V1a, R74/V1b, R74/V2, R74/V3, R80, R82, R83).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -7747,7 +7747,7 @@ class TestR77V2TemplateSafetyEnforced:
         """validate_dynamic_content docstring must say violations block."""
         src = Path(__file__).resolve().parent.parent / "src"
         text = (
-            src / "scripts" / "section_loop" / "agent_templates.py"
+            src / "scripts" / "prompt_safety.py"
         ).read_text(encoding="utf-8")
         assert "block dispatch" in text.lower(), (
             "validate_dynamic_content must document that violations block dispatch"
@@ -7947,14 +7947,14 @@ class TestR77InvocationStyle:
             "lint-doc-drift.sh must ban stale 'uv run agents' invocations"
         )
 
-    def test_agent_templates_prohibits_agents_binary(self) -> None:
-        """agent_templates.py must prohibit 'agents --model' in dynamic content."""
+    def test_prompt_safety_prohibits_agents_binary(self) -> None:
+        """prompt_safety.py must prohibit 'agents --model' in dynamic content."""
         src = Path(__file__).resolve().parent.parent / "src"
         text = (
-            src / "scripts" / "section_loop" / "agent_templates.py"
+            src / "scripts" / "prompt_safety.py"
         ).read_text(encoding="utf-8")
         assert r"agents\s+--model" in text, (
-            "agent_templates.py must prohibit agents binary spawning "
+            "prompt_safety.py must prohibit agents binary spawning "
             "in dynamic content"
         )
 
@@ -9015,3 +9015,137 @@ class TestR82Guards:
                 decisions_dir, {}, planspace)
             assert "warnings" in snapshot
             assert len(snapshot["warnings"]) >= 1
+
+
+# ===================================================================
+# R83 Guards: Scan prompt normalization, shared safety, codemap
+#             authority bundling
+# ===================================================================
+
+
+class TestR83P1ScanPromptNormalization:
+    """P1/R83: Scan templates must not instruct helper-agent spawning."""
+
+    SRC = Path(__file__).resolve().parent.parent / "src"
+    TEMPLATES = SRC / "scripts" / "scan" / "templates"
+
+    def test_codemap_build_no_glm_agents(self) -> None:
+        """codemap_build.md must not instruct 'Use GLM agents'."""
+        text = (self.TEMPLATES / "codemap_build.md").read_text()
+        assert "use glm agents" not in text.lower(), (
+            "codemap_build.md must not instruct helper-agent spawning"
+        )
+
+    def test_explore_section_no_glm_agents(self) -> None:
+        """explore_section.md must not instruct 'Use GLM agents'."""
+        text = (self.TEMPLATES / "explore_section.md").read_text()
+        assert "use glm agents" not in text.lower(), (
+            "explore_section.md must not instruct helper-agent spawning"
+        )
+
+    def test_no_scan_template_instructs_agent_spawning(self) -> None:
+        """No scan template should instruct agent spawning."""
+        for tmpl in self.TEMPLATES.glob("*.md"):
+            text = tmpl.read_text().lower()
+            assert "use glm agents" not in text, (
+                f"{tmpl.name} must not instruct helper-agent spawning"
+            )
+            assert "spawn" not in text or "must not" in text, (
+                f"{tmpl.name} must not instruct agent spawning"
+            )
+
+
+class TestR83P2SharedPromptSafety:
+    """P2/R83: Shared prompt safety module covers scan builders."""
+
+    SRC = Path(__file__).resolve().parent.parent / "src"
+
+    def test_prompt_safety_module_exists(self) -> None:
+        """prompt_safety.py shared module must exist."""
+        assert (self.SRC / "scripts" / "prompt_safety.py").exists(), (
+            "prompt_safety.py must exist as shared validator"
+        )
+
+    def test_agent_templates_imports_from_prompt_safety(self) -> None:
+        """agent_templates.py must import validate_dynamic_content from prompt_safety."""
+        text = (
+            self.SRC / "scripts" / "section_loop" / "agent_templates.py"
+        ).read_text()
+        assert "from prompt_safety import validate_dynamic_content" in text, (
+            "agent_templates.py must delegate to shared prompt_safety module"
+        )
+
+    def test_scan_codemap_imports_prompt_safety(self) -> None:
+        """scan/codemap.py must import validate_dynamic_content."""
+        text = (self.SRC / "scripts" / "scan" / "codemap.py").read_text()
+        assert "validate_dynamic_content" in text, (
+            "scan/codemap.py must validate prompts before dispatch"
+        )
+
+    def test_scan_exploration_imports_prompt_safety(self) -> None:
+        """scan/exploration.py must import validate_dynamic_content."""
+        text = (self.SRC / "scripts" / "scan" / "exploration.py").read_text()
+        assert "validate_dynamic_content" in text, (
+            "scan/exploration.py must validate prompts before dispatch"
+        )
+
+    def test_scan_deep_scan_imports_prompt_safety(self) -> None:
+        """scan/deep_scan.py must import validate_dynamic_content."""
+        text = (self.SRC / "scripts" / "scan" / "deep_scan.py").read_text()
+        assert "validate_dynamic_content" in text, (
+            "scan/deep_scan.py must validate prompts before dispatch"
+        )
+
+    def test_scan_feedback_imports_prompt_safety(self) -> None:
+        """scan/feedback.py must import validate_dynamic_content."""
+        text = (self.SRC / "scripts" / "scan" / "feedback.py").read_text()
+        assert "validate_dynamic_content" in text, (
+            "scan/feedback.py must validate prompts before dispatch"
+        )
+
+    def test_all_scan_builders_validate_before_dispatch(self) -> None:
+        """Every scan module that renders prompts must call validate_dynamic_content."""
+        scan_dir = self.SRC / "scripts" / "scan"
+        prompt_builders = ["codemap.py", "exploration.py", "deep_scan.py", "feedback.py"]
+        for name in prompt_builders:
+            text = (scan_dir / name).read_text()
+            assert "validate_dynamic_content" in text, (
+                f"scan/{name} must validate dynamic prompts before dispatch"
+            )
+
+
+class TestR83P3CodemapAuthorityBundling:
+    """P3/R83: Codemap corrections inseparable from codemap consumption."""
+
+    SRC = Path(__file__).resolve().parent.parent / "src"
+
+    def test_context_assembly_codemap_includes_corrections(self) -> None:
+        """_resolve_codemap must bundle corrections with base codemap."""
+        text = (
+            self.SRC / "scripts" / "section_loop" / "context_assembly.py"
+        ).read_text()
+        assert "codemap-corrections.json" in text, (
+            "_resolve_codemap must read codemap-corrections.json"
+        )
+        assert "Codemap Corrections" in text, (
+            "_resolve_codemap must label corrections section"
+        )
+
+    def test_triage_includes_codemap_corrections(self) -> None:
+        """Intent triage must include codemap corrections in refs."""
+        text = (
+            self.SRC / "scripts" / "section_loop" / "intent" / "triage.py"
+        ).read_text()
+        assert "codemap-corrections" in text, (
+            "triage must reference codemap corrections"
+        )
+
+    def test_codemap_resolver_reads_corrections_path(self) -> None:
+        """_resolve_codemap must read from signals/codemap-corrections.json."""
+        text = (
+            self.SRC / "scripts" / "section_loop" / "context_assembly.py"
+        ).read_text()
+        # Must construct the corrections path from planspace
+        assert "signals" in text and "codemap-corrections" in text, (
+            "_resolve_codemap must read corrections from signals dir"
+        )

@@ -11,6 +11,8 @@ import re
 import sys
 from pathlib import Path
 
+from prompt_safety import validate_dynamic_content
+
 from .cache import FileCardCache, is_valid_cached_feedback, strip_scan_summaries
 from .dispatch import dispatch_agent, read_scan_model_policy
 from .exploration import list_section_files
@@ -251,6 +253,13 @@ def _run_tier_ranking(
         file_list_text=file_list_text,
         tier_file=tier_file,
     )
+    violations = validate_dynamic_content(prompt)
+    if violations:
+        print(
+            f"[TIER] {section_name}: prompt blocked — "
+            f"safety violations: {violations}",
+        )
+        return None
     tier_prompt.write_text(prompt)
 
     # Try primary model first, escalate to exploration model on failure
@@ -451,6 +460,14 @@ def _analyze_file(
         feedback_file=feedback_file,
         source_file=source_file,
     )
+    violations = validate_dynamic_content(prompt)
+    if violations:
+        _log_phase_failure(
+            scan_log_dir, "deep-scan",
+            f"{section_name}:{source_file}",
+            f"prompt blocked — safety violations: {violations}",
+        )
+        return False
     prompt_file.write_text(prompt)
 
     result = dispatch_agent(

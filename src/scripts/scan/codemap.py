@@ -9,6 +9,8 @@ import json
 import sys
 from pathlib import Path
 
+from prompt_safety import validate_dynamic_content
+
 from .dispatch import dispatch_agent, read_scan_model_policy
 from .fingerprint import NON_GIT_SENTINEL, compute_codespace_fingerprint
 
@@ -106,6 +108,13 @@ def run_codemap_build(
         project_mode_path=artifacts_dir / "project-mode.txt",
         project_mode_signal=signals_dir / "project-mode.json",
     )
+    violations = validate_dynamic_content(prompt)
+    if violations:
+        _log_phase_failure(
+            scan_log_dir, "quick-codemap", codemap_path.name,
+            f"prompt blocked — safety violations: {violations}",
+        )
+        return False
     prompt_file.write_text(prompt)
 
     result = dispatch_agent(
@@ -209,6 +218,13 @@ def _run_freshness_check(
         freshness_signal=freshness_signal,
         corrections_ref=corrections_ref,
     )
+    violations = validate_dynamic_content(prompt)
+    if violations:
+        print(
+            f"[CODEMAP] Freshness prompt blocked — safety violations: "
+            f"{violations}",
+        )
+        return False
     freshness_prompt.write_text(prompt)
 
     result = dispatch_agent(
@@ -283,6 +299,13 @@ def _run_verification(
         codemap_path=codemap_path,
         corrections_signal=corrections_signal,
     )
+    violations = validate_dynamic_content(prompt)
+    if violations:
+        print(
+            f"[CODEMAP] Verify prompt blocked — safety violations: "
+            f"{violations}",
+        )
+        return
     verifier_prompt.write_text(prompt)
 
     result = dispatch_agent(

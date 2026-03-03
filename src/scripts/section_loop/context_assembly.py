@@ -142,11 +142,29 @@ def _resolve_strategic_state(
 def _resolve_codemap(
     planspace: Path, _section: str | None,
 ) -> str:
-    """Read the codemap markdown."""
+    """Read the codemap markdown bundled with authoritative corrections.
+
+    R83/P3: Codemap corrections are inseparable from codemap content.
+    Any consumer requesting ``codemap`` context receives both the base
+    map and its corrections as a single authority surface.
+    """
     codemap_path = planspace / "artifacts" / "codemap.md"
-    if codemap_path.exists():
-        return codemap_path.read_text(encoding="utf-8")
-    return ""
+    if not codemap_path.exists():
+        return ""
+    content = codemap_path.read_text(encoding="utf-8")
+    corrections_path = (
+        planspace / "artifacts" / "signals" / "codemap-corrections.json"
+    )
+    if corrections_path.exists():
+        corrections_text = corrections_path.read_text(encoding="utf-8")
+        content += (
+            "\n\n## Codemap Corrections (authoritative)\n\n"
+            "The following corrections override the routing claims above. "
+            "Treat these as the ground truth where they conflict with the "
+            "codemap body.\n\n"
+            f"```json\n{corrections_text}\n```\n"
+        )
+    return content
 
 
 def _resolve_related_files(

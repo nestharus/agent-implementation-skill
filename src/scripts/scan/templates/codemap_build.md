@@ -7,7 +7,7 @@ You are an exploration agent. Your job is to understand this codebase by explori
 1. Start with the root: list the top-level directory to see what's there
 2. Read key files that help you understand purpose: README, configuration files, entry points
 3. Explore directories that seem important — read files, understand relationships
-4. Use GLM agents for quick file reads when you need to check many files
+4. Read files strategically — use the codemap and targeted reads to build understanding
 5. Follow your curiosity — if something looks important, investigate it
 
 ## What to Write
