@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 import sys
 import uuid
@@ -72,31 +73,99 @@ def _new_gate_id() -> str:
 # ---------------------------------------------------------------------------
 
 def compute_section_freshness(planspace: Path, section_number: str) -> str:
-    """Compute a lightweight freshness token for a section.
+    """Compute a canonical alignment fingerprint for a section.
 
-    Uses the alignment surface + traceability files as the fingerprint.
-    This must be fast (just file hashing, no model loading).
-
-    The token is a truncated SHA-256 of the key alignment artifacts
-    that influence section-scoped task execution.  When any of these
-    artifacts change between task submission and dispatch, the token
-    will differ and the dispatcher should reject the task as stale.
+    R82/P3: Hashes the same load-bearing artifacts recognized by the
+    section-loop's ``_section_inputs_hash`` to prevent queued tasks
+    from surviving alignment-relevant changes.  Must stay fast
+    (file-level hashing only, no model loading).
     """
     hasher = hashlib.sha256()
     artifacts = planspace / "artifacts"
+    sec = section_number
 
-    # Key alignment artifacts for this section
+    # Excerpts + section spec + integration proposal
     for suffix in (
-        f"sections/section-{section_number}-alignment-excerpt.md",
-        f"sections/section-{section_number}-proposal-excerpt.md",
-        f"sections/section-{section_number}.md",
-        f"proposals/section-{section_number}-integration-proposal.md",
+        f"sections/section-{sec}-alignment-excerpt.md",
+        f"sections/section-{sec}-proposal-excerpt.md",
+        f"sections/section-{sec}.md",
+        f"proposals/section-{sec}-integration-proposal.md",
     ):
         p = artifacts / suffix
         if p.exists():
             hasher.update(p.read_bytes())
 
-    return hasher.hexdigest()[:16]  # Truncated for readability
+    # Notes targeting this section
+    notes_dir = artifacts / "notes"
+    if notes_dir.exists():
+        for note in sorted(notes_dir.glob(f"from-*-to-{sec}.md")):
+            hasher.update(note.read_bytes())
+
+    # Tool registry
+    tools_path = artifacts / "tool-registry.json"
+    if tools_path.exists():
+        hasher.update(tools_path.read_bytes())
+
+    # Decisions
+    decisions_path = artifacts / "decisions" / f"section-{sec}.md"
+    if decisions_path.exists():
+        hasher.update(decisions_path.read_bytes())
+
+    # Microstrategy
+    microstrategy_path = (
+        artifacts / "proposals" / f"section-{sec}-microstrategy.md"
+    )
+    if microstrategy_path.exists():
+        hasher.update(microstrategy_path.read_bytes())
+
+    # TODOs
+    todos_path = artifacts / "todos" / f"section-{sec}-todos.md"
+    if todos_path.exists():
+        hasher.update(todos_path.read_bytes())
+
+    # Codemap + corrections
+    codemap_path = artifacts / "codemap.md"
+    if codemap_path.exists():
+        hasher.update(codemap_path.read_bytes())
+    corrections_path = artifacts / "signals" / "codemap-corrections.json"
+    if corrections_path.exists():
+        hasher.update(corrections_path.read_bytes())
+
+    # Mode files
+    for mode_file in (
+        artifacts / "project-mode.txt",
+        artifacts / "signals" / "project-mode.json",
+        artifacts / "sections" / f"section-{sec}-mode.txt",
+    ):
+        if mode_file.exists():
+            hasher.update(mode_file.read_bytes())
+
+    # Problem frame
+    problem_frame = (
+        artifacts / "sections" / f"section-{sec}-problem-frame.md"
+    )
+    if problem_frame.exists():
+        hasher.update(problem_frame.read_bytes())
+
+    # Intent artifacts
+    intent_global = artifacts / "intent" / "global"
+    for intent_file in (
+        intent_global / "philosophy.md",
+        intent_global / "philosophy-source-manifest.json",
+        intent_global / "philosophy-source-map.json",
+    ):
+        if intent_file.exists():
+            hasher.update(intent_file.read_bytes())
+    intent_sec_dir = artifacts / "intent" / "sections" / f"section-{sec}"
+    for intent_file in (
+        intent_sec_dir / "problem.md",
+        intent_sec_dir / "problem-alignment.md",
+        intent_sec_dir / "philosophy-excerpt.md",
+    ):
+        if intent_file.exists():
+            hasher.update(intent_file.read_bytes())
+
+    return hasher.hexdigest()[:16]
 
 
 # ---------------------------------------------------------------------------
@@ -451,6 +520,18 @@ def submit_fanout(
         else:
             steps = branch.steps
 
+        # R82/P3: Compute per-branch freshness from first section-scoped step
+        branch_freshness: str | None = None
+        if planspace is not None:
+            for step in steps:
+                if step.concern_scope:
+                    m = re.match(r'^section-(\d+)$', step.concern_scope)
+                    if m:
+                        branch_freshness = compute_section_freshness(
+                            planspace, m.group(1),
+                        )
+                        break
+
         # Submit the branch as a chain
         task_ids = submit_chain(
             db_path,
@@ -461,6 +542,7 @@ def submit_fanout(
             declared_by_task_id=declared_by_task_id,
             origin_refs=refs,
             planspace=planspace,
+            freshness_token=branch_freshness,
         )
 
         if task_ids:

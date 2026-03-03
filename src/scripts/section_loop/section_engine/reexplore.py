@@ -11,7 +11,6 @@ from ..types import Section
 def _reexplore_section(
     section: Section, planspace: Path, codespace: Path, parent: str,
     model: str = "claude-opus",
-    exploration_model: str = "glm",
 ) -> str | None:
     """Dispatch a re-explorer when a section has no related files.
 
@@ -24,6 +23,10 @@ def _reexplore_section(
 
     The ``model`` parameter defaults to ``"claude-opus"`` but callers
     should pass ``policy["setup"]`` for policy-driven selection.
+
+    Exploration model selection is delegated to ``task_router`` via the
+    ``scan.exploration`` policy key when queued ``scan_explore`` tasks
+    are dispatched — no ``exploration_model`` parameter is needed here.
     """
     artifacts = planspace / "artifacts"
     codemap_path = artifacts / "codemap.md"

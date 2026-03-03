@@ -65,7 +65,16 @@ def record_decision(decisions_dir: Path, decision: Decision) -> None:
     if json_path.exists():
         try:
             existing = json.loads(json_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            # R82/P4: corruption preservation — rename, don't overwrite
+            print(
+                f"[DECISIONS][WARN] Malformed decision JSON at {json_path} "
+                f"({exc}) — renaming to .malformed.json"
+            )
+            try:
+                json_path.rename(json_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass
             existing = []
     existing.append(dataclasses.asdict(decision))
     json_path.write_text(
@@ -116,6 +125,7 @@ def record_decision(decisions_dir: Path, decision: Decision) -> None:
 def load_decisions(
     decisions_dir: Path,
     section: str | None = None,
+    warnings: list[str] | None = None,
 ) -> list[Decision]:
     """Load decisions from JSON sidecars.
 
@@ -123,6 +133,10 @@ def load_decisions(
     Otherwise loads all decision files found in ``decisions_dir``.
 
     Returns an empty list if the directory or files do not exist.
+
+    R82/P4: Malformed JSON files are renamed to ``.malformed.json``
+    for forensic preservation and a warning is appended to ``warnings``
+    (if provided).
     """
     if not decisions_dir.exists():
         return []
@@ -139,9 +153,31 @@ def load_decisions(
             continue
         try:
             raw = json.loads(json_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            msg = (
+                f"Malformed decision JSON at {json_path} ({exc}) "
+                f"— renaming to .malformed.json"
+            )
+            print(f"[DECISIONS][WARN] {msg}")
+            if warnings is not None:
+                warnings.append(msg)
+            try:
+                json_path.rename(json_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass
             continue
         if not isinstance(raw, list):
+            msg = (
+                f"Decision JSON at {json_path} is not a list "
+                f"— renaming to .malformed.json"
+            )
+            print(f"[DECISIONS][WARN] {msg}")
+            if warnings is not None:
+                warnings.append(msg)
+            try:
+                json_path.rename(json_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass
             continue
         for entry in raw:
             if not isinstance(entry, dict):
@@ -173,6 +209,7 @@ def load_decisions(
 def build_strategic_state(
     decisions_dir: Path,
     section_results: dict[str, Any],
+    planspace: Path | None = None,
 ) -> dict[str, Any]:
     """Derive the current strategic-state snapshot.
 
@@ -182,8 +219,14 @@ def build_strategic_state(
     ``section_results`` maps section numbers to objects with at least
     ``.aligned`` (bool) and ``.problems`` (str | None) attributes, or
     plain dicts with those keys.
+
+    ``planspace`` is used to read structured blocker signals. When
+    provided, blocked sections are determined from
+    ``artifacts/signals/section-NN-blocker.json`` (authoritative),
+    NOT from prose parsing of the ``problems`` field.
     """
-    decisions = load_decisions(decisions_dir)
+    decision_warnings: list[str] = []
+    decisions = load_decisions(decisions_dir, warnings=decision_warnings)
 
     completed: list[str] = []
     in_progress: str | None = None
@@ -201,29 +244,45 @@ def build_strategic_state(
 
         if aligned:
             completed.append(sec_num)
-        elif problems and "needs_parent" in str(problems):
-            # Extract problem ID if present in the problems string
-            problem_id = ""
-            if ":" in str(problems):
-                parts = str(problems).split(":")
-                for part in parts:
-                    part = part.strip()
-                    if part.startswith("p-"):
-                        problem_id = part
-                        break
-            blocked[sec_num] = {
-                "problem_id": problem_id,
-                "reason": str(problems)[:200],
-            }
-        elif not aligned:
-            if in_progress is None:
-                in_progress = sec_num
-            open_problems.append({
-                "id": f"p-{sec_num}",
-                "scope": f"section-{sec_num}",
-                "summary": (str(problems)[:200] if problems
-                            else "unresolved"),
-            })
+            continue
+
+        # R82/P2: Check structured blocker signal — authoritative for
+        # blocked status.  Replaces prose-parsing of "needs_parent".
+        if planspace is not None:
+            blocker_path = (planspace / "artifacts" / "signals"
+                            / f"section-{sec_num}-blocker.json")
+            if blocker_path.exists():
+                try:
+                    blocker = json.loads(
+                        blocker_path.read_text(encoding="utf-8"))
+                    if blocker.get("state") == "needs_parent":
+                        blocked[sec_num] = {
+                            "problem_id": blocker.get("problem_id", ""),
+                            "reason": blocker.get("detail", "")[:200],
+                        }
+                        continue
+                except (json.JSONDecodeError, OSError) as exc:
+                    # Fail-closed: malformed blocker → route as blocked
+                    blocked[sec_num] = {
+                        "problem_id": "",
+                        "reason": f"blocker signal malformed ({exc})",
+                    }
+                    try:
+                        blocker_path.rename(
+                            blocker_path.with_suffix(".malformed.json"))
+                    except OSError:
+                        pass
+                    continue
+
+        # Not aligned, not blocked — in progress or open problem
+        if in_progress is None:
+            in_progress = sec_num
+        open_problems.append({
+            "id": f"p-{sec_num}",
+            "scope": f"section-{sec_num}",
+            "summary": (str(problems)[:200] if problems
+                        else "unresolved"),
+        })
 
     # Collect key decision IDs and open child problems from decisions
     key_decision_ids = [
@@ -255,6 +314,8 @@ def build_strategic_state(
         "next_action": _derive_next_action(
             completed, in_progress, blocked, open_problems),
     }
+    if decision_warnings:
+        snapshot["warnings"] = decision_warnings
 
     # Write to artifacts/strategic-state.json (parent of decisions_dir)
     artifacts_dir = decisions_dir.parent

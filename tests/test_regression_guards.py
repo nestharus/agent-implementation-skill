@@ -1,4 +1,4 @@
-"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48, R49, R50, R71/V2, R71/V3, R71/V4, R71/V5, R71/V6, R71/V7, R72/V1, R72/V2, R72/V3, R72/V4, R72/V5, R72/V6, R72/V7, R72/V8, R72/V9, R74/V1a, R74/V1b, R74/V2, R74/V3, R80).
+"""Regression guard tests (P2, P4, P8, P9, R20/P3, R21/P4, R21/P5, R21/P6C, R24/P9, R30, R31, R32, R33, R34, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R45, R46, R47, R48, R49, R50, R71/V2, R71/V3, R71/V4, R71/V5, R71/V6, R71/V7, R72/V1, R72/V2, R72/V3, R72/V4, R72/V5, R72/V6, R72/V7, R72/V8, R72/V9, R74/V1a, R74/V1b, R74/V2, R74/V3, R80, R82).
 
 P2: No brute-force scan patterns in scan package.
 P4: Codemap fingerprint mismatch triggers verifier.
@@ -1913,23 +1913,23 @@ class TestReexploreModelParameterized:
             "— must use task submission, not direct dispatch"
         )
 
-    def test_exploration_model_parameter_exists(self) -> None:
-        """_reexplore_section must accept exploration_model parameter."""
+    def test_no_exploration_model_parameter(self) -> None:
+        """R82/P1: exploration_model removed — scan model via task_router."""
         import inspect
         from section_loop.section_engine.reexplore import _reexplore_section
         sig = inspect.signature(_reexplore_section)
-        assert "exploration_model" in sig.parameters, (
-            "_reexplore_section must accept exploration_model parameter "
-            "for policy-driven delegation"
+        assert "exploration_model" not in sig.parameters, (
+            "_reexplore_section must NOT accept exploration_model — "
+            "scan model selection flows through task_router scan policy"
         )
 
-    def test_caller_passes_exploration_model(self) -> None:
-        """main.py must pass exploration_model from policy."""
+    def test_caller_no_exploration_model(self) -> None:
+        """R82/P1: main.py must not pass dead exploration_model arg."""
         main_path = PROJECT_ROOT / "src" / "scripts" / "section_loop" / "main.py"
         src = main_path.read_text(encoding="utf-8")
-        assert 'exploration_model=policy["exploration"]' in src, (
-            "main.py must pass exploration_model from policy to "
-            "_reexplore_section"
+        assert "exploration_model=" not in src, (
+            "main.py must not pass exploration_model — "
+            "scan model flows through task_router scan policy"
         )
 
 
@@ -8834,3 +8834,184 @@ class TestR81Guards:
             for line in py_file.read_text(encoding="utf-8").splitlines():
                 assert not import_re.match(line), \
                     f"{py_file.name} imports evals — eval harness must be standalone"
+
+
+# ---------------------------------------------------------------
+# R82: Boundary hardening — policy routing, structured state,
+#       freshness unification, corruption preservation
+# ---------------------------------------------------------------
+
+class TestR82Guards:
+    """R82 regression guards across all 4 proposals."""
+
+    TASK_ROUTER = (PROJECT_ROOT / "src" / "scripts" / "task_router.py")
+    TASK_FLOW = (PROJECT_ROOT / "src" / "scripts" / "task_flow.py")
+    DECISIONS = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
+                 / "decisions.py")
+    PIPELINE_CONTROL = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
+                        / "pipeline_control.py")
+
+    # --- P1: Canonical policy_key routing ---
+
+    def test_policy_key_alignment_check(self) -> None:
+        """alignment_check must map to policy key 'alignment'."""
+        from task_router import TASK_ROUTES
+        _, _, pk = TASK_ROUTES["alignment_check"]
+        assert pk == "alignment"
+
+    def test_policy_key_integration_proposal(self) -> None:
+        """integration_proposal must map to policy key 'proposal'."""
+        from task_router import TASK_ROUTES
+        _, _, pk = TASK_ROUTES["integration_proposal"]
+        assert pk == "proposal"
+
+    def test_policy_key_strategic_implementation(self) -> None:
+        """strategic_implementation must map to policy key 'implementation'."""
+        from task_router import TASK_ROUTES
+        _, _, pk = TASK_ROUTES["strategic_implementation"]
+        assert pk == "implementation"
+
+    def test_policy_key_section_setup(self) -> None:
+        """section_setup must map to policy key 'setup'."""
+        from task_router import TASK_ROUTES
+        _, _, pk = TASK_ROUTES["section_setup"]
+        assert pk == "setup"
+
+    def test_scan_tasks_use_scan_namespace(self) -> None:
+        """All scan_* tasks must use 'scan.' policy_key prefix."""
+        from task_router import TASK_ROUTES
+        for task_type, (_, _, pk) in TASK_ROUTES.items():
+            if task_type.startswith("scan_"):
+                assert pk is not None and pk.startswith("scan."), (
+                    f"{task_type} must have 'scan.' policy_key, got {pk!r}"
+                )
+
+    def test_scan_namespace_resolution(self) -> None:
+        """resolve_task must resolve scan.* keys through scan policy."""
+        from task_router import resolve_task
+        policy = {"scan": {"exploration": "test-model-override"}}
+        _, model = resolve_task("scan_explore", policy)
+        assert model == "test-model-override", (
+            "scan_explore must resolve through scan policy namespace"
+        )
+
+    # --- P2: Structured blocker signals ---
+
+    def test_no_needs_parent_prose_parsing(self) -> None:
+        """build_strategic_state must not parse 'needs_parent' from prose."""
+        src = self.DECISIONS.read_text(encoding="utf-8")
+        # The old heuristic: if "needs_parent" in str(problems)
+        assert '"needs_parent" in str(problems)' not in src, (
+            "build_strategic_state must not use prose-parsing heuristic "
+            "for blocked detection — use structured blocker signals"
+        )
+
+    def test_build_strategic_state_accepts_planspace(self) -> None:
+        """build_strategic_state must accept planspace parameter."""
+        import inspect
+        from section_loop.decisions import build_strategic_state
+        sig = inspect.signature(build_strategic_state)
+        assert "planspace" in sig.parameters, (
+            "build_strategic_state must accept planspace for "
+            "structured blocker signal reading"
+        )
+
+    def test_blocker_signal_reading(self) -> None:
+        """build_strategic_state reads blocker JSON, not problems prose."""
+        import json
+        import tempfile
+        from section_loop.decisions import build_strategic_state
+        with tempfile.TemporaryDirectory() as tmp:
+            planspace = Path(tmp)
+            decisions_dir = planspace / "artifacts" / "decisions"
+            decisions_dir.mkdir(parents=True)
+            signals_dir = planspace / "artifacts" / "signals"
+            signals_dir.mkdir(parents=True)
+            # Write a blocker signal
+            blocker = {"state": "needs_parent", "problem_id": "p-99",
+                        "detail": "test blocker"}
+            (signals_dir / "section-03-blocker.json").write_text(
+                json.dumps(blocker))
+            # Section with problems text but blocker signal present
+            results = {"03": {"aligned": False,
+                              "problems": "some unrelated text"}}
+            snapshot = build_strategic_state(
+                decisions_dir, results, planspace)
+            assert "03" in snapshot["blocked"]
+            assert snapshot["blocked"]["03"]["problem_id"] == "p-99"
+
+    # --- P3: Unified freshness fingerprint ---
+
+    def test_freshness_hashes_notes(self) -> None:
+        """compute_section_freshness must include cross-section notes."""
+        src = self.TASK_FLOW.read_text(encoding="utf-8")
+        assert "from-*-to-" in src, (
+            "compute_section_freshness must hash cross-section notes"
+        )
+
+    def test_freshness_hashes_tool_registry(self) -> None:
+        """compute_section_freshness must include tool registry."""
+        src = self.TASK_FLOW.read_text(encoding="utf-8")
+        assert "tool-registry.json" in src, (
+            "compute_section_freshness must hash tool registry"
+        )
+
+    def test_freshness_hashes_intent_artifacts(self) -> None:
+        """compute_section_freshness must include intent artifacts."""
+        src = self.TASK_FLOW.read_text(encoding="utf-8")
+        assert "philosophy.md" in src, (
+            "compute_section_freshness must hash intent artifacts"
+        )
+
+    def test_fanout_gets_freshness_tokens(self) -> None:
+        """submit_fanout must compute per-branch freshness tokens."""
+        src = self.TASK_FLOW.read_text(encoding="utf-8")
+        assert "branch_freshness" in src, (
+            "submit_fanout must compute per-branch freshness tokens"
+        )
+
+    # --- P4: Corruption preservation in decisions ---
+
+    def test_record_decision_preserves_corrupt(self) -> None:
+        """record_decision must rename malformed JSON, not silently overwrite."""
+        src = self.DECISIONS.read_text(encoding="utf-8")
+        assert ".malformed.json" in src, (
+            "decisions.py must use .malformed.json rename pattern"
+        )
+
+    def test_load_decisions_warns_on_corrupt(self) -> None:
+        """load_decisions must accept warnings parameter."""
+        import inspect
+        from section_loop.decisions import load_decisions
+        sig = inspect.signature(load_decisions)
+        assert "warnings" in sig.parameters, (
+            "load_decisions must accept warnings parameter for "
+            "corruption visibility"
+        )
+
+    def test_load_decisions_renames_malformed(self) -> None:
+        """load_decisions must rename malformed files, not silently skip."""
+        import tempfile
+        from section_loop.decisions import load_decisions
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "section-01.json").write_text("NOT VALID JSON")
+            warns: list[str] = []
+            load_decisions(d, warnings=warns)
+            assert len(warns) == 1
+            assert (d / "section-01.malformed.json").exists()
+            assert not (d / "section-01.json").exists()
+
+    def test_strategic_state_surfaces_warnings(self) -> None:
+        """build_strategic_state must include warnings from corrupted decisions."""
+        import tempfile
+        from section_loop.decisions import build_strategic_state
+        with tempfile.TemporaryDirectory() as tmp:
+            planspace = Path(tmp)
+            decisions_dir = planspace / "artifacts" / "decisions"
+            decisions_dir.mkdir(parents=True)
+            (decisions_dir / "section-01.json").write_text("{bad")
+            snapshot = build_strategic_state(
+                decisions_dir, {}, planspace)
+            assert "warnings" in snapshot
+            assert len(snapshot["warnings"]) >= 1
