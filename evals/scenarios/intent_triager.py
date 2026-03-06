@@ -219,7 +219,9 @@ def _setup_full_triage(planspace: Path, codespace: Path) -> Path:
         ## Context
         Decide whether this section needs the full bidirectional intent cycle
         (problem + philosophy alignment with surface discovery and expansion)
-        or lightweight alignment (existing alignment judge only).
+        or lightweight alignment (no fresh intent expansion this cycle; if valid
+        intent artifacts already exist, alignment may still use intent-judge,
+        otherwise it falls back to alignment-judge).
 
         ## Section Artifacts (read these for grounded assessment)
         - Section spec: `{section_path}`

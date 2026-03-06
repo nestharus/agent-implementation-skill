@@ -54,8 +54,8 @@ downstream agents.
 
 A markdown codemap whose body reflects the project's natural structure,
 ending with a structured Routing Table section. Also emit a project mode
-classification (greenfield vs brownfield) based on whether substantive
-source code exists.
+classification (greenfield, brownfield, or hybrid) based on the mix of
+existing and new source code.
 
 ## Anti-Patterns
 

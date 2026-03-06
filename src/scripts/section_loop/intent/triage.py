@@ -21,7 +21,8 @@ def run_intent_triage(
     """Dispatch intent-triager (GLM) and return the triage result.
 
     Returns a dict with at least ``intent_mode`` ("full" or "lightweight")
-    and ``budgets``.  Falls back to lightweight on failure.
+    and ``budgets``.  Falls back to full on failure (R75: uncertainty
+    about complexity pushes toward more strategy, not less).
     """
     policy = read_model_policy(planspace)
     artifacts = planspace / "artifacts"
@@ -66,7 +67,9 @@ def run_intent_triage(
 ## Context
 Decide whether this section needs the full bidirectional intent cycle
 (problem + philosophy alignment with surface discovery and expansion)
-or lightweight alignment (existing alignment judge only).
+or lightweight alignment (no fresh intent expansion this cycle; if valid
+intent artifacts already exist, alignment may still use intent-judge,
+otherwise it falls back to alignment-judge).
 
 ## Section Artifacts (read these for grounded assessment)
 {triage_refs_block}

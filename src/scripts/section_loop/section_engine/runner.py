@@ -1074,6 +1074,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                             f"malformed proposal signal ({exc}), "
                             f"scope-delta will lack payload enrichment")
                 scope_delta = {
+                    "delta_id": f"delta-{section.number}-proposal-oos",
                     "section": section.number,
                     "signal": "out_of_scope",
                     "detail": detail,
@@ -1117,8 +1118,9 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         )
         align_output = (artifacts
                         / f"intg-align-{section.number}-output.md")
-        # Select agent file: use intent-judge when intent artifacts
-        # exist (regardless of mode), else fall back to alignment-judge
+        # Select agent file: lightweight skips expansion, not
+        # judgment — use intent-judge when intent artifacts exist
+        # (regardless of mode), else fall back to alignment-judge
         intent_sec_dir = (artifacts / "intent" / "sections"
                           / f"section-{section.number}")
         has_intent_artifacts = (

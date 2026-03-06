@@ -62,17 +62,18 @@ not understand every line.
 
 ## Project Mode Classification
 
-After writing the codemap, determine whether this is a **greenfield** or
-**brownfield** project:
+After writing the codemap, classify the project mode:
 - **greenfield**: Empty or near-empty project (only config/scaffold files,
   no substantive source code yet)
 - **brownfield**: Existing source code that new work must integrate with
+- **hybrid**: Some existing source code, but significant new functionality
+  will also be created from scratch
 
 Write your classification to: `{project_mode_path}`
-The file should contain EXACTLY one word: `greenfield` or `brownfield`.
+The file should contain EXACTLY one word: `greenfield`, `brownfield`, or `hybrid`.
 
 **Also write a structured JSON signal** to
 `{project_mode_signal}`:
 ```json
-{{"mode": "greenfield|brownfield", "confidence": "high|medium|low", "reason": "..."}}
+{{"mode": "greenfield|brownfield|hybrid", "confidence": "high|medium|low", "reason": "..."}}
 ```

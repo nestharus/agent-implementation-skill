@@ -42,7 +42,7 @@ def _parse_scope_delta_adjudication(output_text: str) -> dict | None:
 
     Supports code-fenced JSON blocks, raw JSON objects, and JSON
     surrounded by prose. Validates schema: top-level object with
-    ``decisions`` list where each decision has ``section``, ``action``,
+    ``decisions`` list where each decision has ``delta_id``, ``action``,
     ``reason`` and action is one of accept/reject/absorb.
 
     Returns parsed dict or None if parsing/validation fails.
@@ -84,7 +84,12 @@ def _parse_scope_delta_adjudication(output_text: str) -> dict | None:
             if not isinstance(d, dict):
                 valid = False
                 break
-            if not all(k in d for k in ("section", "action", "reason")):
+            # delta_id is the primary key; section accepted for
+            # backwards-compatible agent output
+            if not all(k in d for k in ("action", "reason")):
+                valid = False
+                break
+            if "delta_id" not in d and "section" not in d:
                 valid = False
                 break
             if d["action"] not in _VALID_ACTIONS:
@@ -238,6 +243,10 @@ def run_global_coordination(
 
 Read the pending scope deltas from: `{pending_deltas_path}`
 
+Each delta has a unique `delta_id`. Use it as the primary key in your
+decisions so the system can apply each decision back to the exact
+originating artifact.
+
 ## Instructions
 
 Each scope delta represents a section discovering work outside its
@@ -251,14 +260,14 @@ Reply with a JSON block:
 
 ```json
 {{"decisions": [
-  {{"section": "03", "action": "accept", "reason": "New section needed for auth module", "new_sections": [{{"title": "Authentication Middleware", "scope": "Authentication middleware setup and integration"}}]}},
-  {{"section": "05", "action": "reject", "reason": "Optimization can be deferred to next round"}},
-  {{"section": "07", "action": "absorb", "reason": "Small addition fits existing scope", "absorb_into_section": "02", "scope_addition": "Include config validation"}}
+  {{"delta_id": "delta-03-proposal-oos", "action": "accept", "reason": "New section needed for auth module", "new_sections": [{{"title": "Authentication Middleware", "scope": "Authentication middleware setup and integration"}}]}},
+  {{"delta_id": "delta-05-scan-deep", "action": "reject", "reason": "Optimization can be deferred to next round"}},
+  {{"delta_id": "delta-07-candidate-a1b2c3d4", "action": "absorb", "reason": "Small addition fits existing scope", "absorb_into_section": "02", "scope_addition": "Include config validation"}}
 ]}}
 ```
 
 **Required fields by action:**
-- ALL: `section`, `action`, `reason`
+- ALL: `delta_id`, `action`, `reason`
 - accept: `new_sections` (array of `{{title, scope}}`)
 - absorb: `absorb_into_section`, `scope_addition`
 """, encoding="utf-8")
@@ -323,21 +332,34 @@ Reply with a JSON block:
                     )
                     return False
 
-                # Apply adjudicated decisions with section ID
-                # normalization (maps "3" → "03" etc.)
+                # Build delta_id → file path map from pending
+                # deltas so we can apply decisions to exact files.
+                delta_id_to_path: dict[str, Path] = {}
+                for df in delta_files:
+                    try:
+                        d = json.loads(
+                            df.read_text(encoding="utf-8"))
+                        did = d.get("delta_id")
+                        if did:
+                            delta_id_to_path[did] = df
+                    except (json.JSONDecodeError, OSError):
+                        pass  # Already handled above
+
                 all_decisions = adj_data.get("decisions", [])
                 for decision in all_decisions:
-                    sec = str(decision.get("section", ""))
-                    sec = _normalize_section_id(
-                        sec, scope_deltas_dir)
+                    did = decision.get("delta_id", "")
                     action = decision.get("action", "")
-                    # Mark delta as adjudicated — preserve the
-                    # ENTIRE decision object (including
-                    # new_sections, absorb_into_section,
-                    # scope_addition, and any extra fields the
-                    # agent provides).
-                    delta_path = (scope_deltas_dir
-                                  / f"section-{sec}-scope-delta.json")
+                    # Resolve target file: prefer delta_id map,
+                    # fall back to section-based path for compat.
+                    if did and did in delta_id_to_path:
+                        delta_path = delta_id_to_path[did]
+                    else:
+                        sec = str(decision.get("section", ""))
+                        sec = _normalize_section_id(
+                            sec, scope_deltas_dir)
+                        delta_path = (
+                            scope_deltas_dir
+                            / f"section-{sec}-scope-delta.json")
                     if delta_path.exists():
                         try:
                             delta = json.loads(
@@ -355,10 +377,9 @@ Reply with a JSON block:
                                 delta_path.rename(malformed)
                             except OSError:
                                 pass  # Best-effort preserve
-                            # Write a valid replacement so downstream
-                            # code doesn't re-crash on this section.
                             delta = {
-                                "section": sec,
+                                "delta_id": did,
+                                "section": decision.get("section", ""),
                                 "origin": "unknown",
                                 "adjudicated": True,
                                 "adjudication": decision,
@@ -379,8 +400,8 @@ Reply with a JSON block:
                             json.dumps(delta, indent=2),
                             encoding="utf-8",
                         )
-                    log(f"  coordinator: scope delta for section "
-                        f"{sec} → {action}")
+                    log(f"  coordinator: scope delta "
+                        f"{did or delta_path.name} → {action}")
 
                 # Write a rollup artifact of all adjudicated
                 # scope-delta decisions for parent visibility.
@@ -401,15 +422,17 @@ Reply with a JSON block:
 
                 # Notify parent of each adjudicated delta
                 for decision in all_decisions:
+                    did = decision.get("delta_id", "")
                     sec = str(decision.get("section", ""))
                     sec = _normalize_section_id(
                         sec, scope_deltas_dir)
                     action = decision.get("action", "")
                     reason = decision.get(
                         "reason", "")[:150]
+                    label = did or sec
                     mailbox_send(
                         planspace, parent,
-                        f"summary:scope-delta:{sec}:"
+                        f"summary:scope-delta:{label}:"
                         f"{action}:{reason}",
                     )
 
@@ -424,6 +447,7 @@ Reply with a JSON block:
                     planspace / "artifacts" / "decisions"
                 )
                 for adj_decision in all_decisions:
+                    adj_did = adj_decision.get("delta_id", "")
                     adj_sec = str(adj_decision.get("section", ""))
                     adj_sec = _normalize_section_id(
                         adj_sec, scope_deltas_dir)
@@ -435,7 +459,7 @@ Reply with a JSON block:
                     record_decision(
                         decisions_dir,
                         Decision(
-                            id=f"d-{adj_sec}-{next_num:03d}",
+                            id=f"d-{adj_did or adj_sec}-{next_num:03d}",
                             scope="section",
                             section=adj_sec,
                             problem_id=None,
