@@ -29,7 +29,7 @@ from typing import Callable
 # ---------------------------------------------------------------------------
 # Import dispatch infrastructure from section_loop
 # ---------------------------------------------------------------------------
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src" / "scripts"))
 
 from section_loop.dispatch import dispatch_agent, read_model_policy  # noqa: E402
 

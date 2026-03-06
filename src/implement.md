@@ -13,9 +13,7 @@ Stage 3 dispatches agents to explore and understand the codebase.
 Agents reason about what they find — the script only coordinates dispatch,
 checks outputs, and logs failures.
 
-**Terminology enforcement**: `scripts/lint-audit-language.sh` prevents
-drift away from alignment terminology. If feature-coverage checklist framing
-appears, the lint rejects it. The alignment-judge agent also rejects invalid
+**Terminology enforcement**: The alignment-judge agent rejects invalid
 frames (`frame_ok=false`) — see `agents/alignment-judge.md`.
 
 ## Workflow Orchestration
