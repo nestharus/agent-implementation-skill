@@ -31,7 +31,7 @@ R34/V4: Prompt templates use policy-driven model placeholders.
 R35/V1: reexplore.py prompt uses policy-driven exploration model.
 R35/V2: coordination/execution.py prompt uses policy-driven model params.
 R35/P11: Sweep guard — no hardcoded --model literals in any prompt surface.
-R36/V1: Codex delegated impl dispatch uses --file, not inline instructions.
+R36/V1: GPT delegated impl dispatch uses --file, not inline instructions.
 R36/V2: Signal taxonomy in loop-contract.md and blockers.py matches reality.
 R37/V1: Scope-delta adjudication parsing is robust with retry + fail-closed.
 R37/V2: Recurrence escalation log/artifacts use policy model, not hardcoded.
@@ -85,9 +85,9 @@ def _read_scan_sources() -> str:
 ALLOWED_MODELS = {
     "claude-opus",
     "glm",
-    "gpt-codex-high",
-    "gpt-codex-high",
-    "gpt-codex-xhigh",
+    "gpt-5.4-high",
+    "gpt-5.4-high",
+    "gpt-5.4-xhigh",
 }
 
 
@@ -349,22 +349,21 @@ class TestGreenfieldPauseLabel:
     """
 
     def test_greenfield_blocker_and_pause_consistent(self) -> None:
-        """main.py greenfield path: blocker signal and mailbox message
+        """runner.py readiness gate: blocker signal and mailbox message
         must both use needs_parent."""
-        main_path = PROJECT_ROOT / "src" / "scripts" / "section_loop" / "main.py"
-        content = main_path.read_text()
+        runner_path = (PROJECT_ROOT / "src" / "scripts" / "section_loop"
+                       / "section_engine" / "runner.py")
+        content = runner_path.read_text()
 
         # Blocker signal uses needs_parent
         assert '"state": "needs_parent"' in content or \
                "'state': 'needs_parent'" in content or \
                '"needs_parent"' in content, \
-            "Greenfield blocker signal must use state=needs_parent"
+            "Runner blocker signal must use state=needs_parent"
 
         # Mailbox pause uses needs_parent (not underspec)
         assert "pause:needs_parent:" in content, \
-            "Greenfield mailbox pause must use pause:needs_parent:"
-        assert "pause:underspec:" not in content, \
-            "Old pause:underspec: label found — should be pause:needs_parent:"
+            "Runner mailbox pause must use pause:needs_parent:"
 
 
 class TestTargetedRequeue:
@@ -1200,8 +1199,8 @@ class TestModelPolicyCompleteness:
         ]
         known_models = [
             "claude-opus", "glm",
-            "gpt-codex-high", "gpt-codex-high",
-            "gpt-codex-xhigh",
+            "gpt-5.4-high", "gpt-5.4-high",
+            "gpt-5.4-xhigh",
         ]
         # Pattern: dispatch_agent("model-literal", ...) on a non-default line
         for fpath in dispatch_files:
@@ -1307,9 +1306,9 @@ class TestEscalationModelPolicyDriven:
     def test_no_hardcoded_escalation_model_in_runner(self) -> None:
         """coordination/runner.py must not hardcode escalation model string."""
         src = self.RUNNER.read_text(encoding="utf-8")
-        # The old pattern: write_text("gpt-codex-xhigh"
+        # The old pattern: write_text("gpt-5.4-xhigh"
         for line in src.split("\n"):
-            if "write_text" in line and "gpt-codex-xhigh" in line:
+            if "write_text" in line and "gpt-5.4-xhigh" in line:
                 raise AssertionError(
                     "coordination/runner.py has hardcoded escalation "
                     "model in write_text call — must use policy"
@@ -1319,7 +1318,7 @@ class TestEscalationModelPolicyDriven:
         """main.py must not hardcode escalation model string."""
         src = self.MAIN.read_text(encoding="utf-8")
         for line in src.split("\n"):
-            if "write_text" in line and "gpt-codex-xhigh" in line:
+            if "write_text" in line and "gpt-5.4-xhigh" in line:
                 raise AssertionError(
                     "main.py has hardcoded escalation model in "
                     "write_text call — must use policy"
@@ -1328,7 +1327,7 @@ class TestEscalationModelPolicyDriven:
     def test_no_hardcoded_fix_model_in_execution(self) -> None:
         """execution.py must not hardcode default fix model."""
         src = self.EXECUTION.read_text(encoding="utf-8")
-        assert 'fix_model = "gpt-codex-high"' not in src, (
+        assert 'fix_model = "gpt-5.4-high"' not in src, (
             "execution.py has hardcoded fix model default — "
             "must come from policy"
         )
@@ -1726,7 +1725,7 @@ class TestMicrostrategyFailClosed:
         # dispatch_agent is mocked to do nothing (no signal written)
         result = _check_needs_microstrategy(
             proposal, planspace, "01",
-            model="glm", escalation_model="gpt-codex-xhigh",
+            model="glm", escalation_model="gpt-5.4-xhigh",
         )
         assert result is True, (
             "_check_needs_microstrategy must return True when "
@@ -1748,7 +1747,7 @@ class TestMicrostrategyFailClosed:
 
         _check_needs_microstrategy(
             proposal, planspace, "01",
-            model="glm", escalation_model="gpt-codex-xhigh",
+            model="glm", escalation_model="gpt-5.4-xhigh",
         )
 
         signal_path = (planspace / "artifacts" / "signals"
@@ -1787,7 +1786,7 @@ class TestTemplateModelParameterized:
 
     def test_no_hardcoded_model_in_dispatch_examples(self) -> None:
         """Templates must not contain bare model names in dispatch examples."""
-        known_models = ["glm", "gpt-codex-high", "gpt-codex-xhigh"]
+        known_models = ["glm", "gpt-5.4-high", "gpt-5.4-xhigh"]
         for template_name in (
             "strategic-implementation.md",
             "integration-proposal.md",
@@ -1952,11 +1951,11 @@ class TestCoordinationFixPromptModelParameterized:
         )
 
     def test_no_hardcoded_codex_in_prompt_text(self) -> None:
-        """Fix prompt must not contain --model gpt-codex-high literally."""
+        """Fix prompt must not contain --model gpt-5.4-high literally."""
         src = self.EXECUTION.read_text(encoding="utf-8")
-        assert "--model gpt-codex-high" not in src, (
+        assert "--model gpt-5.4-high" not in src, (
             "execution.py fix prompt contains hardcoded "
-            "'--model gpt-codex-high' — must use task submission"
+            "'--model gpt-5.4-high' — must use task submission"
         )
 
     def test_prompt_writer_no_direct_dispatch(self) -> None:
@@ -2019,8 +2018,8 @@ class TestNoHardcodedModelInPromptSurfaces:
     ]
 
     KNOWN_MODELS = [
-        "glm", "gpt-codex-high", "gpt-codex-high",
-        "gpt-codex-xhigh", "claude-opus",
+        "glm", "gpt-5.4-high", "gpt-5.4-high",
+        "gpt-5.4-xhigh", "claude-opus",
     ]
 
     def test_no_hardcoded_model_in_section_loop_templates(self) -> None:
@@ -2065,11 +2064,11 @@ class TestNoHardcodedModelInPromptSurfaces:
 
 
 # ---------------------------------------------------------------
-# R36/V1: Codex delegated impl dispatch uses --file, not inline
+# R36/V1: GPT delegated impl dispatch uses --file, not inline
 # ---------------------------------------------------------------
 
-class TestCodexDispatchUsesFile:
-    """Delegated implementation recipes (Codex) must use --file,
+class TestGPTDispatchUsesFile:
+    """Delegated implementation recipes (GPT) must use --file,
     not inline "<instructions>". Exploration recipes (GLM) may
     use inline — only the delegated_impl/delegation_impl surface
     is checked.
@@ -2108,15 +2107,15 @@ class TestCodexDispatchUsesFile:
         )
 
     def test_implement_md_codex_uses_file(self) -> None:
-        """implement.md Codex dispatch examples use --file."""
+        """implement.md GPT dispatch examples use --file."""
         content = self.IMPLEMENT_MD.read_text(encoding="utf-8")
         lines = content.splitlines()
         for i, line in enumerate(lines):
-            # Check lines with Codex model names using inline instructions
-            if ("gpt-codex-high" in line and
+            # Check lines with GPT model names using inline instructions
+            if ("gpt-5.4-high" in line and
                     '"<instructions>"' in line):
                 raise AssertionError(
-                    f"implement.md:{i+1}: Codex dispatch uses inline "
+                    f"implement.md:{i+1}: GPT dispatch uses inline "
                     f"\"<instructions>\" — must use --file per models.md"
                 )
 
@@ -2294,7 +2293,7 @@ class TestEscalationLogUsesPolicy:
         for line in content.split("\n"):
             if "recurrence escalation" in line and "setting model" in line:
                 found = True
-                assert "gpt-codex-xhigh" not in line, (
+                assert "gpt-5.4-xhigh" not in line, (
                     "escalation log must use policy variable, not "
                     "hardcoded model name"
                 )
@@ -2307,7 +2306,7 @@ class TestEscalationLogUsesPolicy:
         content = self.RUNNER_PY.read_text(encoding="utf-8")
         # The resolution artifact says "escalated model (X)" —
         # X must come from policy, not a hardcoded literal
-        assert 'f"(gpt-codex-xhigh)' not in content, (
+        assert 'f"(gpt-5.4-xhigh)' not in content, (
             "resolution artifact must use policy['escalation_model'], "
             "not hardcoded model name"
         )
@@ -3299,25 +3298,24 @@ class TestMicrostrategyOutputEnforcement:
             "microstrategy retry traceability"
         )
 
-    def test_failed_escalation_writes_stub(self) -> None:
-        """Failed escalation must write a stub microstrategy file."""
+    def test_failed_escalation_emits_blocker(self) -> None:
+        """Failed escalation must emit a blocker signal, not a stub."""
         src = self.RUNNER.read_text(encoding="utf-8")
-        assert "GENERATION FAILED" in src, (
-            "runner.py must write a stub with GENERATION FAILED "
+        assert "microstrategy-blocker-" in src, (
+            "runner.py must write a microstrategy-blocker signal "
             "when both primary and escalation fail"
         )
-        assert "stub written" in src, (
-            "runner.py must log 'stub written' when microstrategy "
-            "generation fails completely"
+        assert "NEEDS_PARENT" in src, (
+            "runner.py microstrategy blocker must use NEEDS_PARENT state"
         )
 
-    def test_stub_contains_failure_indication(self) -> None:
-        """Stub file must contain clear failure indication text
-        directing the implementer to derive a microstrategy."""
+    def test_no_stub_on_failure(self) -> None:
+        """Microstrategy failure must NOT write a stub pushing work
+        into implementation — must block instead."""
         src = self.RUNNER.read_text(encoding="utf-8")
-        assert "must derive a microstrategy" in src, (
-            "Stub microstrategy must instruct the implementer to "
-            "derive a microstrategy as first step of implementation"
+        assert "derive a microstrategy as the first step" not in src, (
+            "runner.py must NOT tell implementer to derive a "
+            "microstrategy — must emit blocker instead"
         )
 
 
@@ -3550,6 +3548,14 @@ class TestBridgeToolsDownstreamWiring:
         monkeypatch.setattr(
             "section_loop.section_engine.runner.ensure_global_philosophy",
             MagicMock(return_value=planspace / "artifacts" / "philosophy.md"))
+        # Bypass readiness gate so we reach bridge-tools
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.resolve_readiness",
+            MagicMock(return_value={
+                "ready": True, "blockers": [],
+                "rationale": "test bypass",
+                "artifact_path": planspace / "artifacts" / "readiness" / "test.json",
+            }))
 
         run_section(planspace, planspace / "codespace", section, "parent")
 
@@ -3651,6 +3657,14 @@ class TestBridgeToolsDownstreamWiring:
         monkeypatch.setattr(
             "section_loop.section_engine.runner.ensure_global_philosophy",
             MagicMock(return_value=planspace / "artifacts" / "philosophy.md"))
+        # Bypass readiness gate so we reach bridge-tools
+        monkeypatch.setattr(
+            "section_loop.section_engine.runner.resolve_readiness",
+            MagicMock(return_value={
+                "ready": True, "blockers": [],
+                "rationale": "test bypass",
+                "artifact_path": planspace / "artifacts" / "readiness" / "test.json",
+            }))
 
         run_section(planspace, planspace / "codespace", section, "parent")
 
@@ -4192,7 +4206,7 @@ class TestMicrostrategySignalCorruptionPreservation:
 
         _check_needs_microstrategy(
             proposal, planspace, "01",
-            model="glm", escalation_model="gpt-codex-xhigh",
+            model="glm", escalation_model="gpt-5.4-xhigh",
         )
 
         malformed = signals_dir / "proposal-01-microstrategy.malformed.json"
@@ -4225,7 +4239,7 @@ class TestMicrostrategySignalCorruptionPreservation:
 
         _check_needs_microstrategy(
             proposal, planspace, "01",
-            model="glm", escalation_model="gpt-codex-xhigh",
+            model="glm", escalation_model="gpt-5.4-xhigh",
         )
 
         # dispatch_agent must have been called (fall-through to dispatch)
@@ -5034,7 +5048,7 @@ class TestR55BlockerPreservation:
         content = bl.read_text(encoding="utf-8")
         idx = content.find("malformed_signal")
         assert idx != -1
-        region = content[idx:idx + 500]
+        region = content[idx:idx + 800]
         assert ".malformed.json" in region, (
             "blockers.py must rename malformed signals to .malformed.json")
 
@@ -5448,8 +5462,8 @@ class TestR57DocSignalTaxonomyGuard:
         impl = (Path(__file__).resolve().parent.parent
                 / "src" / "implement.md")
         content = impl.read_text(encoding="utf-8")
-        # Check that "codex-xhigh generates" pattern is gone
-        assert "codex-xhigh generates" not in content, (
+        # Check that "5.4-xhigh generates" pattern is gone
+        assert "5.4-xhigh generates" not in content, (
             "implement.md must not hardcode model names in prescriptive text")
 
 
@@ -7442,23 +7456,23 @@ class TestR75V3TaskRouterPolicyKey:
         )
 
     def test_substrate_shard_default_matches_canonical(self) -> None:
-        """substrate_shard default must be gpt-codex-high."""
+        """substrate_shard default must be gpt-5.4-high."""
         src = Path(__file__).resolve().parent.parent / "src"
         text = (
             src / "scripts" / "task_router.py"
         ).read_text(encoding="utf-8")
-        assert '"substrate_shard": ("substrate-shard-explorer.md", "gpt-codex-high"' in text, (
-            "substrate_shard default must be gpt-codex-high (not claude-opus)"
+        assert '"substrate_shard": ("substrate-shard-explorer.md", "gpt-5.4-high"' in text, (
+            "substrate_shard default must be gpt-5.4-high (not claude-opus)"
         )
 
     def test_substrate_prune_default_matches_canonical(self) -> None:
-        """substrate_prune default must be gpt-codex-xhigh."""
+        """substrate_prune default must be gpt-5.4-xhigh."""
         src = Path(__file__).resolve().parent.parent / "src"
         text = (
             src / "scripts" / "task_router.py"
         ).read_text(encoding="utf-8")
-        assert '"substrate_prune": ("substrate-pruner.md", "gpt-codex-xhigh"' in text, (
-            "substrate_prune default must be gpt-codex-xhigh (not glm)"
+        assert '"substrate_prune": ("substrate-pruner.md", "gpt-5.4-xhigh"' in text, (
+            "substrate_prune default must be gpt-5.4-xhigh (not glm)"
         )
 
     def test_substrate_prune_has_policy_key(self) -> None:
@@ -7960,7 +7974,7 @@ class TestR77InvocationStyle:
 
 
 class TestR77ModelInventory:
-    """R77: only Opus, GLM, gpt-codex-high/high2, gpt-codex-xhigh in inventory."""
+    """R77: only Opus, GLM, gpt-5.4-high, gpt-5.4-xhigh in inventory."""
 
     CANONICAL_DOCS = [
         "models.md",
@@ -9148,4 +9162,253 @@ class TestR83P3CodemapAuthorityBundling:
         # Must construct the corrections path from planspace
         assert "signals" in text and "codemap-corrections" in text, (
             "_resolve_codemap must read corrections from signals dir"
+        )
+
+
+class TestImplementMdProposalState:
+    """Audit V2: implement.md Stage 4 uses problem-state proposal language."""
+
+    IMPL = Path(__file__).resolve().parent.parent / "src" / "implement.md"
+
+    def test_contains_proposal_state_language(self) -> None:
+        """Stage 4 must reference proposal-state or problem-state concepts."""
+        text = self.IMPL.read_text(encoding="utf-8")
+        # Find the Stage 4 section
+        idx = text.find("## Stage 4:")
+        assert idx != -1, "implement.md must contain '## Stage 4:'"
+        stage5_idx = text.find("## Stage 5:", idx)
+        stage4_text = text[idx:stage5_idx] if stage5_idx != -1 else text[idx:]
+        assert (
+            "proposal-state" in stage4_text or "problem-state" in stage4_text
+        ), (
+            "implement.md Stage 4 must use proposal-state or problem-state "
+            "language to describe the integration proposal"
+        )
+
+    def test_no_stale_change_strategy_language(self) -> None:
+        """Stage 4 must NOT contain old 'which files change' language."""
+        text = self.IMPL.read_text(encoding="utf-8")
+        idx = text.find("## Stage 4:")
+        assert idx != -1
+        stage5_idx = text.find("## Stage 5:", idx)
+        stage4_text = text[idx:stage5_idx] if stage5_idx != -1 else text[idx:]
+        assert "which files change" not in stage4_text.lower(), (
+            "implement.md Stage 4 still contains stale 'which files change' language"
+        )
+        assert "what kind of changes" not in stage4_text.lower(), (
+            "implement.md Stage 4 still contains stale 'what kind of changes' language"
+        )
+        assert "in what order" not in stage4_text.lower(), (
+            "implement.md Stage 4 still contains stale 'in what order' language"
+        )
+
+
+class TestImplementMdNoGoBeyond:
+    """Audit V3: implement.md Stage 5 must NOT grant 'go beyond' authority."""
+
+    IMPL = Path(__file__).resolve().parent.parent / "src" / "implement.md"
+
+    def test_no_go_beyond_language(self) -> None:
+        """Stage 5 must not contain 'go beyond the integration proposal' or 'authority to go beyond'."""
+        text = self.IMPL.read_text(encoding="utf-8")
+        idx = text.find("## Stage 5:")
+        assert idx != -1, "implement.md must contain '## Stage 5:'"
+        stage6_idx = text.find("## Stage 6:", idx)
+        stage5_text = text[idx:stage6_idx] if stage6_idx != -1 else text[idx:]
+        assert "go beyond the integration proposal" not in stage5_text.lower(), (
+            "implement.md Stage 5 still contains 'go beyond the integration proposal'"
+        )
+        assert "authority to go beyond" not in stage5_text.lower(), (
+            "implement.md Stage 5 still contains 'authority to go beyond'"
+        )
+
+
+class TestMicrostrategyFailClosed:
+    """Audit V4: Microstrategy failure must emit blocker, not push to implementation."""
+
+    RUNNER = (
+        Path(__file__).resolve().parent.parent
+        / "src" / "scripts" / "section_loop" / "section_engine" / "runner.py"
+    )
+
+    def test_no_derive_microstrategy_stub(self) -> None:
+        """runner.py must NOT tell the implementer to derive a microstrategy."""
+        text = self.RUNNER.read_text(encoding="utf-8")
+        assert "derive a microstrategy as the first step" not in text, (
+            "runner.py still contains stub telling implementer to "
+            "'derive a microstrategy as the first step of implementation'"
+        )
+
+    def test_no_generation_failed_stub(self) -> None:
+        """runner.py must NOT write a GENERATION FAILED stub for microstrategy."""
+        text = self.RUNNER.read_text(encoding="utf-8")
+        assert "STATUS: GENERATION FAILED" not in text, (
+            "runner.py still contains 'STATUS: GENERATION FAILED' stub text"
+        )
+
+    def test_emits_blocker_signal(self) -> None:
+        """runner.py must write a microstrategy-blocker signal on failure."""
+        text = self.RUNNER.read_text(encoding="utf-8")
+        assert "microstrategy-blocker-" in text, (
+            "runner.py must write a microstrategy-blocker signal file "
+            "when microstrategy generation fails"
+        )
+        assert "NEEDS_PARENT" in text, (
+            "runner.py microstrategy blocker must use NEEDS_PARENT state"
+        )
+
+
+class TestReconciliationDocstringAccuracy:
+    """Audit docstring fix: reconciliation.py must not overstate matching."""
+
+    RECON = (
+        Path(__file__).resolve().parent.parent
+        / "src" / "scripts" / "section_loop" / "reconciliation.py"
+    )
+
+    def test_no_substring_overlap_claim(self) -> None:
+        """Docstring must NOT claim 'substring overlap' matching."""
+        text = self.RECON.read_text(encoding="utf-8")
+        # Find the _consolidate_new_section_candidates docstring region
+        idx = text.find("_consolidate_new_section_candidates")
+        assert idx != -1, (
+            "reconciliation.py must contain _consolidate_new_section_candidates"
+        )
+        # Check the next ~400 chars (docstring region)
+        block = text[idx:idx + 400]
+        assert "substring overlap" not in block, (
+            "reconciliation.py docstring still claims 'substring overlap' "
+            "matching — should say 'exact normalized title'"
+        )
+
+
+class TestReconciliationAdjudicatorAgentExists:
+    """Agent file for reconciliation adjudication must exist."""
+
+    def test_agent_file_exists(self) -> None:
+        agent = AGENTS_DIR / "reconciliation-adjudicator.md"
+        assert agent.exists(), (
+            "src/agents/reconciliation-adjudicator.md must exist"
+        )
+
+    def test_agent_file_has_frontmatter(self) -> None:
+        agent = AGENTS_DIR / "reconciliation-adjudicator.md"
+        text = agent.read_text(encoding="utf-8")
+        assert text.startswith("---"), (
+            "reconciliation-adjudicator.md must have YAML frontmatter"
+        )
+        assert "model:" in text, (
+            "reconciliation-adjudicator.md must declare a model"
+        )
+        assert "merged_groups" in text, (
+            "reconciliation-adjudicator.md must describe merged_groups output"
+        )
+
+
+class TestReconciliationAdjudicationWiring:
+    """reconciliation.py must wire adjudication for ungrouped candidates."""
+
+    RECON = (
+        Path(__file__).resolve().parent.parent
+        / "src" / "scripts" / "section_loop" / "reconciliation.py"
+    )
+
+    def test_adjudicate_function_exists(self) -> None:
+        text = self.RECON.read_text(encoding="utf-8")
+        assert "_adjudicate_ungrouped_candidates" in text, (
+            "reconciliation.py must define _adjudicate_ungrouped_candidates"
+        )
+
+    def test_dispatch_agent_imported(self) -> None:
+        text = self.RECON.read_text(encoding="utf-8")
+        assert "dispatch_agent" in text, (
+            "reconciliation.py must import dispatch_agent for adjudication"
+        )
+
+    def test_consolidate_calls_adjudication(self) -> None:
+        text = self.RECON.read_text(encoding="utf-8")
+        idx = text.find("_consolidate_new_section_candidates")
+        assert idx != -1
+        block = text[idx:idx + 3000]
+        assert "_adjudicate_ungrouped_candidates" in block, (
+            "_consolidate_new_section_candidates must call adjudication "
+            "on ungrouped candidates"
+        )
+
+    def test_aggregate_seams_calls_adjudication(self) -> None:
+        text = self.RECON.read_text(encoding="utf-8")
+        idx = text.find("_aggregate_shared_seams")
+        assert idx != -1
+        block = text[idx:idx + 3000]
+        assert "_adjudicate_ungrouped_candidates" in block, (
+            "_aggregate_shared_seams must call adjudication "
+            "on singleton seams"
+        )
+
+
+class TestLintDocDriftCatchesProposalDrift:
+    """lint-doc-drift.sh must catch Stage 4/5 drift phrases."""
+
+    LINT = (
+        Path(__file__).resolve().parent.parent
+        / "src" / "scripts" / "lint-doc-drift.sh"
+    )
+
+    def test_catches_which_files_change(self) -> None:
+        text = self.LINT.read_text(encoding="utf-8")
+        assert "which files change" in text, (
+            "lint-doc-drift.sh must detect 'which files change' drift"
+        )
+
+    def test_catches_go_beyond(self) -> None:
+        text = self.LINT.read_text(encoding="utf-8")
+        assert "go beyond the integration proposal" in text, (
+            "lint-doc-drift.sh must detect 'go beyond the integration proposal' drift"
+        )
+
+    def test_catches_authority_to_go_beyond(self) -> None:
+        text = self.LINT.read_text(encoding="utf-8")
+        assert "authority to go beyond" in text, (
+            "lint-doc-drift.sh must detect 'authority to go beyond' drift"
+        )
+
+    def test_catches_derive_microstrategy(self) -> None:
+        text = self.LINT.read_text(encoding="utf-8")
+        assert "derive a microstrategy" in text, (
+            "lint-doc-drift.sh must detect 'derive a microstrategy' stub"
+        )
+
+    def test_catches_what_kind_of_changes(self) -> None:
+        text = self.LINT.read_text(encoding="utf-8")
+        assert "what kind of changes" in text, (
+            "lint-doc-drift.sh must detect 'what kind of changes' drift"
+        )
+
+
+class TestReconciliationPolicyKey:
+    """task_router.py must have reconciliation_adjudicate route."""
+
+    def test_route_exists(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_router.py").read_text(encoding="utf-8")
+        assert "reconciliation_adjudicate" in text, (
+            "task_router.py must define a reconciliation_adjudicate route"
+        )
+
+    def test_route_points_to_agent_file(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (src / "scripts" / "task_router.py").read_text(encoding="utf-8")
+        assert "reconciliation-adjudicator.md" in text, (
+            "reconciliation_adjudicate route must point to "
+            "reconciliation-adjudicator.md"
+        )
+
+    def test_model_policy_default(self) -> None:
+        src = Path(__file__).resolve().parent.parent / "src"
+        text = (
+            src / "scripts" / "section_loop" / "dispatch.py"
+        ).read_text(encoding="utf-8")
+        assert "reconciliation_adjudicate" in text, (
+            "dispatch.py read_model_policy defaults must include "
+            "reconciliation_adjudicate"
         )

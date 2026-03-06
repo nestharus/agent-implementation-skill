@@ -3,8 +3,8 @@
 Fix test failures using sequential investigate → plan → fix → verify waves
 until all tests pass.
 
-**Key principle**: Codex investigates and reports. A dispatched Opus fix
-agent independently plans the correct fix (which may differ from Codex's
+**Key principle**: GPT investigates and reports. A dispatched Opus fix
+agent independently plans the correct fix (which may differ from GPT's
 suggestion). Tests get rerun. Repeat for remaining failures.
 
 ## Prerequisites
@@ -16,7 +16,7 @@ suggestion). Tests get rerun. Repeat for remaining failures.
 
 ### Create RCA Worktree
 
-A single worktree for Codex to investigate in. Codex only reads and
+A single worktree for GPT to investigate in. GPT only reads and
 reports — it does not modify files. Fixes are applied to the working
 branch, not the worktree.
 
@@ -38,7 +38,7 @@ Record which tests fail. This is wave 0.
 
 Repeat until all tests pass. Each wave targets one failing test file.
 
-### Step 1: RCA Report (Codex — report only, no code changes)
+### Step 1: RCA Report (GPT — report only, no code changes)
 
 Write a prompt at `.worktrees/rca-<issue-slug>/.tmp/rca-wave-N.md`:
 
@@ -78,21 +78,21 @@ Run from within the worktree:
 
 ```bash
 cd .worktrees/rca-<issue-slug>
-agents --model gpt-codex-high --file .tmp/rca-wave-N.md
+agents --model gpt-5.4-high --file .tmp/rca-wave-N.md
 ```
 
-**Critical**: The prompt says "do NOT modify any files." Codex produces a
+**Critical**: The prompt says "do NOT modify any files." GPT produces a
 report only.
 
 ### Step 2: Plan + Apply Fix (Opus fix agent)
 
 Dispatch an Opus fix agent per wave. The fix agent:
 
-1. **Reads Codex's RCA report** to understand what Codex found
-2. **Reads the source code independently** — does NOT trust Codex's
+1. **Reads GPT's RCA report** to understand what GPT found
+2. **Reads the source code independently** — does NOT trust GPT's
    suggestion blindly
-3. **Plans the correct fix** — considers whether Codex's suggestion is a
-   band-aid or the right approach. May reject Codex's suggestion entirely.
+3. **Plans the correct fix** — considers whether GPT's suggestion is a
+   band-aid or the right approach. May reject GPT's suggestion entirely.
 4. **Explains its reasoning** before applying (brief plan summary)
 5. **Applies the fix to the working branch** (not the worktree)
 
@@ -102,10 +102,10 @@ Write a prompt at `.worktrees/rca-<issue-slug>/.tmp/fix-wave-N.md`:
 You are an architect fixing test failures on the working branch.
 
 ## Context
-A Codex agent investigated failures and wrote an RCA report at:
+A GPT agent investigated failures and wrote an RCA report at:
 `.worktrees/rca-<slug>/.tmp/rca-report-wave-N.md`
 
-The report describes what Codex found. Your job is to understand the
+The report describes what GPT found. Your job is to understand the
 problem independently and plan the correct fix.
 
 ## Failing Test
@@ -114,13 +114,13 @@ problem independently and plan the correct fix.
 ## Your Process
 
 ### 1. Understand the Problem
-- Read Codex's RCA report
+- Read GPT's RCA report
 - Read the test file ON THE WORKING BRANCH (not the worktree)
 - Read the source code the test depends on
 
 ### 2. Plan the Correct Fix
 Think about:
-- Is Codex's diagnosis correct?
+- Is GPT's diagnosis correct?
 - Is the test stale or is the source wrong?
 - What is the architecturally correct fix?
 - Should the test be updated, deleted, or should source be fixed?
@@ -138,10 +138,10 @@ agents --model claude-opus --file .worktrees/rca-<issue-slug>/.tmp/fix-wave-N.md
 
 **Why a separate agent?** The fix agent reads the report, reads the source,
 and makes an independent judgment. This prevents the orchestrator from
-rubber-stamping Codex's work or taking shortcuts.
+rubber-stamping GPT's work or taking shortcuts.
 
 **Why Opus?** Planning requires architectural judgment — understanding
-whether a fix is a band-aid or the correct approach. Codex finds facts;
+whether a fix is a band-aid or the correct approach. GPT finds facts;
 Opus makes design decisions.
 
 ### Step 3: Verify (Rerun Tests)
@@ -176,15 +176,15 @@ git branch -D rca/<issue-slug>
 
 | Step | Model | Role |
 |------|-------|------|
-| 1: RCA | Codex-high | Investigate + report (no code changes) |
+| 1: RCA | GPT-5.4-high | Investigate + report (no code changes) |
 | 2: Plan + Fix | Opus fix agent | Read report, plan correct fix, apply to working branch |
 | 3: Verify | (automated) | pytest on working branch |
 
 ## Anti-Patterns
 
-- **DO NOT let Codex modify files** — it reports, Opus fixes
-- **DO NOT diagnose in the prompt** — describe symptoms, let Codex investigate
-- **DO NOT rubber-stamp Codex** — the Opus fix agent must read source independently
+- **DO NOT let GPT modify files** — it reports, Opus fixes
+- **DO NOT diagnose in the prompt** — describe symptoms, let GPT investigate
+- **DO NOT rubber-stamp GPT** — the Opus fix agent must read source independently
 - **DO NOT apply fixes in the worktree** — fixes go on the working branch
 - **DO NOT batch all failures into one agent call** — one test file per wave
 - **DO NOT skip verification between waves** — fixes can introduce regressions

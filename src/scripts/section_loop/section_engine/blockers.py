@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 from pathlib import Path
 
@@ -40,56 +42,97 @@ def _update_blocker_rollup(planspace: Path) -> None:
     needs_parent.
     """
     signals_dir = planspace / "artifacts" / "signals"
-    if not signals_dir.exists():
-        return
 
     blockers: list[dict] = []
-    for sig_path in sorted(signals_dir.glob("*-signal.json")):
-        try:
-            data = json.loads(sig_path.read_text(encoding="utf-8"))
-            state = data.get("state", "").lower()
-            if state in ("underspecified", "underspec", "need_decision",
-                         "dependency", "out_of_scope", "out-of-scope",
-                         "needs_parent"):
-                # Map state to category
-                if state in ("underspecified", "underspec"):
-                    category = "missing_info"
-                elif state == "need_decision":
-                    category = "decision_required"
-                elif state in ("out_of_scope", "out-of-scope"):
-                    category = "scope_expansion"
-                elif state == "needs_parent":
-                    category = "needs_parent"
-                else:
-                    category = "dependency"
+    if signals_dir.exists():
+        for sig_path in sorted(signals_dir.glob("*-signal.json")):
+            try:
+                data = json.loads(sig_path.read_text(encoding="utf-8"))
+                state = data.get("state", "").lower()
+                if state in ("underspecified", "underspec", "need_decision",
+                             "dependency", "out_of_scope", "out-of-scope",
+                             "needs_parent"):
+                    # Map state to category
+                    if state in ("underspecified", "underspec"):
+                        category = "missing_info"
+                    elif state == "need_decision":
+                        category = "decision_required"
+                    elif state in ("out_of_scope", "out-of-scope"):
+                        category = "scope_expansion"
+                    elif state == "needs_parent":
+                        category = "needs_parent"
+                    else:
+                        category = "dependency"
+                    blockers.append({
+                        "signal_file": sig_path.name,
+                        "state": state,
+                        "category": category,
+                        "section": data.get("section", "unknown"),
+                        "detail": data.get("detail", ""),
+                        "needs": data.get("needs", ""),
+                        "why_blocked": data.get("why_blocked", ""),
+                    })
+            except (json.JSONDecodeError, OSError) as exc:
                 blockers.append({
                     "signal_file": sig_path.name,
-                    "state": state,
-                    "category": category,
-                    "section": data.get("section", "unknown"),
-                    "detail": data.get("detail", ""),
-                    "needs": data.get("needs", ""),
-                    "why_blocked": data.get("why_blocked", ""),
+                    "state": "malformed",
+                    "category": "malformed_signal",
+                    "section": "unknown",
+                    "detail": (
+                        f"Signal file {sig_path.name} could not be parsed "
+                        f"({exc}); fix or regenerate this signal."
+                    ),
+                    "needs": "Valid signal JSON",
+                    "why_blocked": str(exc),
                 })
-        except (json.JSONDecodeError, OSError) as exc:
-            blockers.append({
-                "signal_file": sig_path.name,
-                "state": "malformed",
-                "category": "malformed_signal",
-                "section": "unknown",
-                "detail": (
-                    f"Signal file {sig_path.name} could not be parsed "
-                    f"({exc}); fix or regenerate this signal."
-                ),
-                "needs": "Valid signal JSON",
-                "why_blocked": str(exc),
-            })
-            # Preserve corrupted signal for diagnosis (V5/R55)
+                # Preserve corrupted signal for diagnosis (V5/R55)
+                try:
+                    sig_path.rename(sig_path.with_suffix(".malformed.json"))
+                except OSError:
+                    pass  # Best-effort preserve
+                continue
+
+    # Collect proposal-state blockers from readiness artifacts
+    readiness_dir = planspace / "artifacts" / "readiness"
+    if readiness_dir and readiness_dir.exists():
+        for rdy_path in sorted(readiness_dir.glob(
+                "section-*-execution-ready.json")):
             try:
-                sig_path.rename(sig_path.with_suffix(".malformed.json"))
-            except OSError:
-                pass  # Best-effort preserve
-            continue
+                rdy = json.loads(rdy_path.read_text(encoding="utf-8"))
+                if rdy.get("ready"):
+                    continue
+                for b in rdy.get("blockers", []):
+                    btype = b.get("type", "unknown")
+                    desc = b.get("description", "")
+                    # Map proposal-state blocker types to categories
+                    if btype == "user_root_questions":
+                        category = "decision_required"
+                    elif btype == "unresolved_contracts":
+                        category = "dependency"
+                    elif btype == "unresolved_anchors":
+                        category = "dependency"
+                    elif btype == "shared_seam_candidates":
+                        category = "scope_expansion"
+                    else:
+                        category = "missing_info"
+                    # Extract section number from filename
+                    sec_match = rdy_path.stem.replace(
+                        "section-", "").replace(
+                        "-execution-ready", "")
+                    blockers.append({
+                        "signal_file": rdy_path.name,
+                        "state": f"proposal-state:{btype}",
+                        "category": category,
+                        "section": sec_match,
+                        "detail": desc,
+                        "needs": "",
+                        "why_blocked": (
+                            f"Proposal-state field '{btype}' has "
+                            f"unresolved items"
+                        ),
+                    })
+            except (json.JSONDecodeError, OSError):
+                continue
 
     if not blockers:
         return

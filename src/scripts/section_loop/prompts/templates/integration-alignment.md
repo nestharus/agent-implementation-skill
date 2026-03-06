@@ -7,7 +7,7 @@
 1. Section alignment excerpt: `{alignment_excerpt}`
 2. Section proposal excerpt: `{proposal_excerpt}`
 3. Section specification: `{section_path}`
-4. Integration proposal to review: `{integration_proposal}`{surface_line}{codemap_line}{corrections_line}{intent_problem_ref}{intent_rubric_ref}{intent_philosophy_ref}{intent_registry_ref}
+4. Integration proposal to review: `{integration_proposal}`{proposal_state_line}{surface_line}{codemap_line}{corrections_line}{intent_problem_ref}{intent_rubric_ref}{intent_philosophy_ref}{intent_registry_ref}
 {intent_surfaces_block}
 ## Instructions
 
@@ -20,6 +20,11 @@ Check SHAPE AND DIRECTION only:
 - Has the intent drifted from what the proposal/alignment describe?
 - Does the integration strategy make sense given the actual codebase?
 - Are there any fundamental misunderstandings about what's needed?
+- If a proposal-state artifact exists, is it coherent with the proposal?
+- Is `execution_ready` truthful? If blocking fields (unresolved_anchors,
+  unresolved_contracts, user_root_questions, shared_seam_candidates)
+  contain items, `execution_ready` MUST be `false`. A proposal with
+  `execution_ready: true` and non-empty blocking fields cannot be ALIGNED.
 
 Do NOT check:
 - Tiny implementation details (those get resolved during implementation)

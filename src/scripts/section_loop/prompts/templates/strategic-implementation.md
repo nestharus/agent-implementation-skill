@@ -9,7 +9,7 @@
 3. Section alignment excerpt: `{alignment_excerpt}`
 4. Section specification: `{section_path}`
 5. Related source files:
-{files_block}{problem_frame_ref}{micro_ref}{codemap_ref}{impl_corrections_ref}{substrate_ref}{todos_ref}{impl_tools_ref}{intent_problem_ref}{intent_rubric_ref}{intent_philosophy_ref}{intent_registry_ref}
+{files_block}{problem_frame_ref}{micro_ref}{codemap_ref}{impl_corrections_ref}{substrate_ref}{todos_ref}{impl_tools_ref}{intent_problem_ref}{intent_rubric_ref}{intent_philosophy_ref}{intent_registry_ref}{proposal_state_ref}{reconciliation_ref}{readiness_ref}
 {problems_block}{decisions_block}{tooling_block}{additional_inputs_block}
 ## Instructions
 
@@ -109,11 +109,33 @@ requests for work you can do in your current session.
 
 1. Follow the integration proposal's strategy
 2. Make coordinated changes across files — don't treat each file in isolation
-3. If you discover the proposal missed something (a file that needs changing,
-   an interface that doesn't work as expected), handle it — you have authority
-   to go beyond the proposal where necessary
-4. Update docstrings and comments to reflect changes
-5. Ensure imports and references are consistent across modified files
+3. If you discover the proposal missed something structural — an unresolved
+   anchor, an undefined contract, a section-boundary gap, or an architectural
+   decision that was never made — you MUST emit a blocker signal
+   (UNDERSPECIFIED or DEPENDENCY). Do NOT invent missing structure yourself.
+4. Local mechanical necessities are still your responsibility: imports, obvious
+   glue code, comment/doc updates, minor formatting. These do not require a
+   blocker signal.
+5. Update docstrings and comments to reflect changes
+6. Ensure imports and references are consistent across modified files
+
+### Structural Omission Handling
+
+Your prompt includes references to the proposal-state artifact,
+reconciliation result, and execution-readiness artifact (when they exist).
+These tell you what the proposal resolved, what cross-section conflicts
+were detected, and what blockers remain.
+
+**If you encounter a structural gap** (missing anchor, undefined contract,
+unclear section boundary, missing architectural decision):
+- Do NOT absorb it by inventing structure. That reinforces collapse.
+- Emit a blocker signal with state UNDERSPECIFIED or DEPENDENCY.
+- Include `why_blocked` explaining what the proposal omitted.
+- Continue implementing unblocked parts of the proposal.
+
+**Mechanical necessities** (imports, glue code, docstrings, formatting)
+are still your job — they have exactly one correct answer given the
+surrounding code and do not require a blocker signal.
 
 ### TODO Handling
 

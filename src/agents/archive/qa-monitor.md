@@ -127,7 +127,7 @@ finding with evidence, and send a mailbox message to the task agent.
 
 Check that agents are used according to their designated roles:
 
-- **B1: Model assignment**: Opus handles setup and alignment. Codex handles proposal
+- **B1: Model assignment**: Opus handles setup and alignment. GPT handles proposal
   and implementation. GLM handles exploration and monitoring. Check the agent
   registry and summary events:
   ```bash

@@ -9,7 +9,7 @@
 3. Section specification: `{section_path}`
 4. Related source files (prioritize; read selectively if long):
 {files_block}{problem_frame_ref}{codemap_ref}{corrections_ref}{substrate_ref}{tools_ref}{todos_ref}{intent_problem_ref}{intent_rubric_ref}{intent_philosophy_ref}{intent_registry_ref}
-{existing_note}{problems_block}{notes_block}{decisions_block}{mode_block}{additional_inputs_block}
+{existing_note}{problems_block}{notes_block}{decisions_block}{additional_inputs_block}
 ## Instructions
 
 A section is a **problem region / concern**, not a file bundle. Related
@@ -24,10 +24,15 @@ Treat TODO extraction (if listed in "Files to Read" above) as the
 canonical in-scope microstrategy surface. If your proposal conflicts with
 TODOs, reconcile explicitly (update plan or propose TODO updates).
 
-You are writing an INTEGRATION PROPOSAL — a strategic document describing
-HOW to wire the existing proposal into the codebase. The proposal excerpt
-already says WHAT to build. Your job is to figure out how it maps onto the
-real code.
+You are writing an INTEGRATION PROPOSAL — a **problem-state diagnostic**
+describing the current integration landscape for this section. The
+proposal excerpt says WHAT to build. Your job is to explore the codebase,
+determine what integration surfaces are resolved vs. unresolved, and
+record your findings in both a human-readable markdown document and a
+machine-readable `proposal-state.json` sidecar.
+
+You are NOT deciding which files to create or where new modules belong.
+You are diagnosing the integration problem and recording what you find.
 
 ### Accuracy First — Zero Risk Tolerance
 
@@ -48,6 +53,25 @@ structure, key files, and how parts relate. If codemap corrections exist,
 treat them as authoritative fixes (wrong paths, missing entries,
 misclassified files). Use it to orient yourself before diving into
 individual files.
+
+Your goal in exploration is to **populate the problem-state fields**:
+
+- For each integration surface the section needs, determine whether an
+  anchor exists in the current code (resolved) or not (unresolved).
+- For each interface the section will cross, determine whether the
+  contract is known and verified (resolved) or unknown/ambiguous
+  (unresolved).
+- Record questions that arise — distinguish between questions you can
+  answer with more exploration (research_questions) and questions only
+  the user can answer (user_root_questions).
+- Note any cross-section coordination needs (shared_seam_candidates)
+  and any problem regions that may need their own section
+  (new_section_candidates).
+
+**Do NOT invent architecture for unresolved items.** If an anchor is
+unresolved, record it as unresolved. Do not fabricate file paths, module
+structures, or scaffolding to make it look resolved. The downstream
+pipeline handles unresolved items through re-exploration or escalation.
 
 **Commission follow-up work when needed:**
 
@@ -103,24 +127,66 @@ Use task requests for follow-up work like:
 For your current exploration, read files directly. Explore strategically:
 form a hypothesis, verify it with a targeted read, adjust, repeat.
 
-### Phase 2: Write the Integration Proposal
+### Phase 2: Write the Problem-State Proposal
 
-After exploring, write a high-level integration strategy covering:
+After exploring, write your proposal as a **problem-state diagnostic**
+covering:
 
-1. **Problem mapping** — How does the section proposal map onto what
-   currently exists in the code? What's the gap between current and target?
-2. **Integration points** — Where does the new functionality connect to
-   existing code? Which interfaces, call sites, or data flows are affected?
-3. **Change strategy** — High-level approach: which files change, what kind
-   of changes (new functions, modified control flow, new modules, etc.),
-   and in what order?
-4. **Risks and dependencies** — What could go wrong? What assumptions are
-   we making? What depends on other sections?
+1. **Exploration summary** — What did you examine? What did you learn
+   about the current state of the code relevant to this section?
+2. **Resolved anchors** — For each integration point where you found
+   concrete existing code, describe what exists and how the section
+   connects to it. Cite specific files and functions you verified.
+3. **Unresolved anchors** — For each integration point where no existing
+   code was found or the connection is ambiguous, describe what is
+   needed and why it is unresolved. Do NOT propose what to create —
+   state what is missing.
+4. **Contract status** — Which interface contracts (function signatures,
+   data shapes, protocols) are confirmed vs. unknown? For resolved
+   contracts, cite where you verified them.
+5. **Open questions** — Research questions (answerable with more
+   exploration) and user root questions (only the user can answer).
+6. **Cross-section concerns** — Shared seams that need coordination with
+   other sections, and any new section candidates discovered.
+7. **Readiness assessment** — Is the section ready for implementation?
+   Why or why not? Be honest. If blocking fields are non-empty,
+   `execution_ready` MUST be `false`.
 
-This is STRATEGIC — not line-by-line changes. Think about the shape of
-the solution, not the exact code.
+Write your human-readable integration proposal to: `{integration_proposal}`
 
-Write your integration proposal to: `{integration_proposal}`
+### Machine Artifact: Proposal State
+
+Write a structured `proposal-state.json` sidecar to:
+`{proposal_state_path}`
+
+This file MUST conform to the canonical proposal-state schema:
+
+```json
+{{
+    "resolved_anchors": ["<anchor description with file:function citations>"],
+    "unresolved_anchors": ["<what is needed and why it is unresolved>"],
+    "resolved_contracts": ["<confirmed interface contract with citation>"],
+    "unresolved_contracts": ["<needed but undefined/unverified contract>"],
+    "research_questions": ["<question answerable with more exploration>"],
+    "user_root_questions": ["<question only the user can answer>"],
+    "new_section_candidates": ["<problem region that may need its own section>"],
+    "shared_seam_candidates": ["<integration surface shared with other sections>"],
+    "execution_ready": false,
+    "readiness_rationale": "<honest explanation of readiness status>"
+}}
+```
+
+**Blocking fields** (any non-empty list forces `execution_ready` to `false`):
+`unresolved_anchors`, `unresolved_contracts`, `user_root_questions`,
+`shared_seam_candidates`.
+
+**`execution_ready` is fail-closed.** When in doubt, set it to `false`.
+A premature `true` causes downstream implementation failures. An honest
+`false` causes a re-exploration cycle, which is the correct outcome.
+
+Every item in the JSON must correspond to something discussed in the
+markdown proposal. The JSON is the machine-readable truth; the markdown
+is the human-readable explanation.
 
 ### Microstrategy Decision
 

@@ -553,26 +553,6 @@ def _scan_sections(
         section_log = scan_log_dir / section_name
         section_log.mkdir(parents=True, exist_ok=True)
 
-        # Skip greenfield sections
-        sec_num = _extract_section_number(section_name)
-        sec_mode_file = (
-            artifacts_dir / "sections" / f"section-{sec_num}-mode.txt"
-        )
-        if sec_mode_file.is_file() and sec_mode_file.read_text().strip() == "greenfield":
-            print(f"  {section_name}: skipped (greenfield section)")
-            research_dir = artifacts_dir / "research"
-            research_dir.mkdir(parents=True, exist_ok=True)
-            research_file = research_dir / f"section-{sec_num}.md"
-            if not research_file.is_file():
-                research_file.write_text(
-                    f"# Research: Section {sec_num} (Greenfield)\n\n"
-                    "This section was classified as greenfield. "
-                    "No existing code to analyze.\n"
-                    "Research questions and design decisions should be "
-                    "captured here.\n",
-                )
-            continue
-
         related_files = deep_scan_related_files(section_file)
         if not related_files:
             continue
@@ -661,12 +641,6 @@ def run_deep_scan(
     if model_policy is None:
         model_policy = read_scan_model_policy(artifacts_dir)
 
-    # Skip for greenfield projects
-    mode_file = artifacts_dir / "project-mode.txt"
-    if mode_file.is_file() and mode_file.read_text().strip() == "greenfield":
-        print("=== Deep Scan: skipped (greenfield project) ===")
-        return True
-
     print("=== Deep Scan: agent-driven analysis of confirmed related files ===")
 
     section_files = list_section_files(sections_dir)
@@ -733,12 +707,6 @@ def run_deep_scan(
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
-
-
-def _extract_section_number(section_name: str) -> str:
-    """Extract the numeric part from a section name like 'section-01'."""
-    m = re.search(r"\d+", section_name)
-    return m.group(0) if m else ""
 
 
 def _log_phase_failure(

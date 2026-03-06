@@ -160,6 +160,31 @@ def _section_inputs_hash(
         if intent_file.exists():
             hasher.update(intent_file.read_bytes())
 
+    # Proposal state — captures resolved/unresolved anchors, contracts,
+    # research questions, and execution_ready flag
+    proposal_state_path = (
+        artifacts / "proposals"
+        / f"section-{sec_num}-proposal-state.json"
+    )
+    if proposal_state_path.exists():
+        hasher.update(proposal_state_path.read_bytes())
+
+    # Reconciliation result — cross-section overlap/conflict findings
+    reconciliation_path = (
+        artifacts / "reconciliation"
+        / f"section-{sec_num}-reconciliation-result.json"
+    )
+    if reconciliation_path.exists():
+        hasher.update(reconciliation_path.read_bytes())
+
+    # Execution readiness — fail-closed gate artifact
+    readiness_path = (
+        artifacts / "readiness"
+        / f"section-{sec_num}-execution-ready.json"
+    )
+    if readiness_path.exists():
+        hasher.update(readiness_path.read_bytes())
+
     # Input refs — contract deltas and other registered inputs
     inputs_dir = artifacts / "inputs" / f"section-{sec_num}"
     if inputs_dir.exists():

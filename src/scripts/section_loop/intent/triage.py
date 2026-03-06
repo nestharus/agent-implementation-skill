@@ -15,7 +15,6 @@ def run_intent_triage(
     *,
     related_files_count: int = 0,
     incoming_notes_count: int = 0,
-    mode: str = "brownfield",
     solve_count: int = 0,
     section_summary: str = "",
 ) -> dict:
@@ -75,7 +74,6 @@ or lightweight alignment (existing alignment judge only).
 ## Section Characteristics
 - Related files: {related_files_count}
 - Incoming cross-section notes: {incoming_notes_count}
-- Mode: {mode}
 - Previous solve attempts: {solve_count}
 - Summary: {section_summary[:500] if section_summary else "(none)"}
 
@@ -85,7 +83,8 @@ Consider these factors when choosing intent mode:
 
 - **Integration breadth**: How many files and modules does this section touch?
 - **Cross-section coupling**: Are there incoming notes or dependencies from other sections?
-- **Environment uncertainty**: Is this greenfield, hybrid, or pure modification?
+- **Environment uncertainty**: Are there unresolved related files or missing code references?
+  Sections with zero related files have more unknowns to resolve than sections with many.
 - **Failure history**: Have prior attempts at this section failed?
 - **Risk of hidden constraints**: Does the summary suggest architectural complexity?
 

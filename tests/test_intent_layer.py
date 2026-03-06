@@ -234,7 +234,7 @@ class TestIntentTriage:
         from section_loop.intent.triage import run_intent_triage
         result = run_intent_triage(
             "01", intent_planspace, intent_planspace, "parent",
-            related_files_count=6, mode="brownfield",
+            related_files_count=6,
         )
         assert result["intent_mode"] == "full"
         assert result["budgets"]["intent_expansion_max"] == 2

@@ -8,8 +8,8 @@ When the user says **"New response up. Assess, implement, commit, push, update a
 
 Read both files in parallel:
 
-- `/tmp/execution-philosophy/response.md` — the new audit response
-- `/tmp/execution-philosophy/audit-history.md` — full cycle history for cycle detection
+- `~/work/tmp/execution-philosophy/response.md` — the new audit response
+- `~/work/tmp/execution-philosophy/audit-history.md` — full cycle history for cycle detection
 
 ---
 
@@ -66,7 +66,7 @@ Note the commit SHA for the audit history entry.
 
 ## Step 6: Update Audit History
 
-Edit `/tmp/execution-philosophy/audit-history.md`:
+Edit `~/work/tmp/execution-philosophy/audit-history.md`:
 
 1. **Per-round index table** — add a row: `| N | <sha7> | <test count> | <violation count> | <one-line summary> |`
 2. **Active Concern Threads** — update any threads that this round progressed (add a "What was done in RN" entry)
@@ -80,8 +80,8 @@ Delete the old zip and recreate from `src/`:
 
 ```bash
 cd /home/nes/projects/agent-implementation-skill
-rm -f /tmp/execution-philosophy/codebase.zip
-cd src && zip -r /tmp/execution-philosophy/codebase.zip . && cd ..
+rm -f ~/work/tmp/execution-philosophy/codebase.zip
+cd src && zip -r ~/work/tmp/execution-philosophy/codebase.zip . && cd ..
 ```
 
 Verify the zip contains the expected file count and no dev artifacts (`pyproject.toml`, `tests/`, `lint-*.sh` are excluded — they live outside `src/`).
@@ -93,7 +93,7 @@ Verify the zip contains the expected file count and no dev artifacts (`pyproject
 Common dismissal patterns from history:
 
 - **Tests / pyproject.toml absent from zip** — settled in R46/R47: audit bundle = deployed layout (`src/`), tests in dev repo. Not a violation.
-- **Model names in `models.md`** — `gpt-5.3-codex-high` and `high2` are documented as interchangeable quota pools. Listing both is correct.
+- **Model names in `models.md`** — `gpt-5.4-high` and `gpt-5.4-xhigh` are the current GPT model names (consolidated from prior codex quota pools).
 - **Any violation in a "Settled Concerns" section** of audit-history.md — already guarded by tests; re-raising is a cycle.
 
 ---
@@ -102,8 +102,8 @@ Common dismissal patterns from history:
 
 | Path | Purpose |
 |------|---------|
-| `/tmp/execution-philosophy/response.md` | Current round's audit response (written by external model) |
-| `/tmp/execution-philosophy/audit-history.md` | Cumulative cycle history — use for cycle detection and updating |
-| `/tmp/execution-philosophy/codebase.zip` | Deployed skill snapshot sent to external model for auditing |
+| `~/work/tmp/execution-philosophy/response.md` | Current round's audit response (written by external model) |
+| `~/work/tmp/execution-philosophy/audit-history.md` | Cumulative cycle history — use for cycle detection and updating |
+| `~/work/tmp/execution-philosophy/codebase.zip` | Deployed skill snapshot sent to external model for auditing |
 | `tests/test_regression_guards.py` | All regression guard tests — append new tests here |
 | `src/` | Deployed skill content — the only thing that goes in the zip |

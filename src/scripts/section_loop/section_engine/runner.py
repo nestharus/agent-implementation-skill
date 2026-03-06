@@ -52,7 +52,7 @@ from ..prompts import (
     write_section_setup_prompt,
     write_strategic_impl_prompt,
 )
-from ..types import Section
+from ..types import ProposalPassResult, Section
 from ..intent import (
     ensure_global_philosophy,
     generate_intent_pack,
@@ -67,6 +67,10 @@ from ..intent.surfaces import (
     save_surface_registry,
 )
 from ..intent.triage import load_triage_result
+from ..proposal_state import load_proposal_state
+from ..readiness import resolve_readiness
+from ..reconciliation import load_reconciliation_result
+from ..reconciliation_queue import queue_reconciliation_request
 from .blockers import _append_open_problem, _update_blocker_rollup
 from .reexplore import _write_alignment_surface
 from .todos import _check_needs_microstrategy, _extract_todos_from_files
@@ -109,10 +113,59 @@ def _write_tool_surface(
     return len(relevant_tools)
 
 
+def _run_implementation_pass(
+    planspace: Path, codespace: Path, section: Section, parent: str,
+    *,
+    all_sections: list[Section] | None = None,
+    artifacts: Path,
+    policy: dict,
+) -> list[str] | None:
+    """Execute implementation for a section whose proposal is already aligned.
+
+    Validates the readiness artifact, then runs microstrategy through
+    post-completion.  Returns ``None`` if the section is not execution-ready
+    (the caller should not have dispatched implementation in that case, but
+    the gate is enforced here as a fail-closed safeguard).
+
+    Also checks whether upstream artifacts (reconciliation result,
+    proposal state) have changed since the readiness artifact was last
+    written.  If they have, the readiness artifact is stale and the
+    section must be re-resolved before implementation can proceed.
+
+    This is the second half of ``run_section`` — extracted so that the
+    two-pass orchestrator can call proposal and implementation independently.
+    """
+    # Fail-closed: if a reconciliation result exists and marks this
+    # section as affected, block implementation — the section must go
+    # through re-proposal to incorporate reconciliation findings.
+    recon_result = load_reconciliation_result(artifacts, section.number)
+    if recon_result and recon_result.get("affected"):
+        log(f"Section {section.number}: implementation pass blocked — "
+            f"reconciliation result marks section as affected")
+        return None
+
+    readiness = resolve_readiness(artifacts, section.number)
+    if not readiness.get("ready"):
+        log(f"Section {section.number}: implementation pass skipped — "
+            f"execution_ready is false")
+        return None
+
+    # Delegate to run_section in full mode starting from the
+    # microstrategy step.  We use a private sentinel to skip re-running
+    # the proposal steps.
+    return _run_section_implementation_steps(
+        planspace, codespace, section, parent,
+        all_sections=all_sections,
+        artifacts=artifacts, policy=policy,
+    )
+
+
 def run_section(
     planspace: Path, codespace: Path, section: Section, parent: str,
     all_sections: list[Section] | None = None,
-) -> list[str] | None:
+    *,
+    pass_mode: str = "full",
+) -> list[str] | ProposalPassResult | None:
     """Run a section through the strategic flow.
 
     0. Read incoming notes from other sections (pre-section)
@@ -121,11 +174,35 @@ def run_section(
     3. Strategic implementation — GPT implements, Opus checks alignment
     4. Post-completion — snapshot, impact analysis, consequence notes
 
-    Returns modified files on success, or None if paused (waiting for
-    parent to handle underspec/decision/dependency and send resume).
+    Parameters
+    ----------
+    pass_mode:
+        ``"full"`` (default) — run the complete pipeline (legacy behavior).
+        ``"proposal"`` — run exploration through readiness resolution, then
+        stop.  Returns a ``ProposalPassResult``.  No code files are modified.
+        ``"implementation"`` — assume proposal is aligned and ready.  Pick
+        up from the readiness artifact and run microstrategy through
+        post-completion.  Only proceeds if ``execution_ready == true``.
+
+    Returns
+    -------
+    - ``list[str]`` of modified files on successful implementation
+      (``"full"`` or ``"implementation"`` mode).
+    - ``ProposalPassResult`` when ``pass_mode="proposal"`` completes.
+    - ``None`` if paused/aborted (waiting for parent).
     """
     artifacts = planspace / "artifacts"
     policy = read_model_policy(planspace)
+
+    # -----------------------------------------------------------------
+    # Implementation-only mode: skip proposal steps, jump to execution
+    # -----------------------------------------------------------------
+    if pass_mode == "implementation":
+        return _run_implementation_pass(
+            planspace, codespace, section, parent,
+            all_sections=all_sections,
+            artifacts=artifacts, policy=policy,
+        )
 
     # -----------------------------------------------------------------
     # Recurrence signal: notify coordinator when a section loops
@@ -657,16 +734,6 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
     # -----------------------------------------------------------------
     intent_mode = "lightweight"
     intent_budgets: dict = {}
-    section_mode_file = (artifacts / "sections"
-                         / f"section-{section.number}-mode.txt")
-    project_mode_file = artifacts / "project-mode.txt"
-    effective_mode = "brownfield"
-    if section_mode_file.exists():
-        effective_mode = section_mode_file.read_text(
-            encoding="utf-8").strip() or "brownfield"
-    elif project_mode_file.exists():
-        effective_mode = project_mode_file.read_text(
-            encoding="utf-8").strip() or "brownfield"
 
     notes_count = 0
     notes_dir_check = artifacts / "notes"
@@ -678,7 +745,6 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         section.number, planspace, codespace, parent,
         related_files_count=len(section.related_files),
         incoming_notes_count=notes_count,
-        mode=effective_mode,
         solve_count=section.solve_count,
         section_summary=pf_content[:500] if pf_content else "",
     )
@@ -912,6 +978,33 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             log(f"Section {section.number}: integration proposal prompt "
                 f"blocked by template safety — skipping dispatch")
             return None
+
+        # If a reconciliation result artifact exists for this section,
+        # append it to the prompt so the proposer can see overlaps,
+        # conflicts, and shared seam decisions from Phase 1b.
+        recon_result = load_reconciliation_result(
+            artifacts, section.number,
+        )
+        if recon_result and recon_result.get("affected"):
+            recon_path = (
+                artifacts / "reconciliation"
+                / f"section-{section.number}-reconciliation-result.json"
+            )
+            with intg_prompt.open("a", encoding="utf-8") as f:
+                f.write(
+                    f"\n## Reconciliation Context\n\n"
+                    f"This section was affected by cross-section "
+                    f"reconciliation during Phase 1b. The reconciliation "
+                    f"analysis found overlapping anchors, contract "
+                    f"conflicts, or shared seams involving this section.\n\n"
+                    f"Read the reconciliation result and adjust your "
+                    f"proposal to account for shared anchors, resolved "
+                    f"conflicts, and seam decisions:\n"
+                    f"`{recon_path}`\n"
+                )
+            log(f"Section {section.number}: appended reconciliation "
+                f"context to proposal prompt")
+
         intg_output = artifacts / f"intg-proposal-{section.number}-output.md"
         intg_agent = f"intg-proposal-{section.number}"
         intg_result = dispatch_agent(
@@ -1203,13 +1296,262 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                      f"PROBLEMS-attempt-{proposal_attempt}:{short}")
 
     # -----------------------------------------------------------------
+    # Readiness gate — fail-closed check before implementation dispatch
+    # -----------------------------------------------------------------
+    proposal_state_path = (
+        artifacts / "proposals"
+        / f"section-{section.number}-proposal-state.json"
+    )
+    readiness = resolve_readiness(artifacts, section.number)
+    if not readiness.get("ready"):
+        blockers = readiness.get("blockers", [])
+        rationale = readiness.get("rationale", "unknown")
+        log(f"Section {section.number}: execution blocked — "
+            f"readiness=false, rationale={rationale}, "
+            f"blockers={len(blockers)}")
+        for b in blockers:
+            log(f"  blocker: {b.get('type')}: {b.get('description')}")
+        mailbox_send(planspace, parent,
+                     f"fail:{section.number}:readiness gate blocked "
+                     f"({rationale})")
+
+        # ---------------------------------------------------------------
+        # Route every unresolved field to its mechanical consumer so that
+        # downstream stages discover blocked work from artifacts — not by
+        # re-reading prose.
+        # ---------------------------------------------------------------
+        ps = load_proposal_state(proposal_state_path)
+        signal_dir = artifacts / "signals"
+        signal_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1. user_root_questions → NEED_DECISION / NEEDS_PARENT signals
+        for i, question in enumerate(ps.get("user_root_questions", [])):
+            q_signal = {
+                "state": "need_decision",
+                "section": section.number,
+                "detail": str(question),
+                "needs": "User/parent decision on this question",
+                "why_blocked": (
+                    "Proposal has an unresolved user-root question "
+                    "that must be answered before implementation"
+                ),
+                "source": "proposal-state:user_root_questions",
+            }
+            sig_path = (signal_dir
+                        / f"section-{section.number}"
+                          f"-proposal-q{i}-signal.json")
+            sig_path.write_text(
+                json.dumps(q_signal, indent=2), encoding="utf-8")
+            log(f"Section {section.number}: emitted NEED_DECISION "
+                f"signal for user_root_question[{i}]")
+
+        # 2. new_section_candidates → scope-delta artifacts
+        scope_delta_dir = planspace / "artifacts" / "scope-deltas"
+        for candidate in ps.get("new_section_candidates", []):
+            scope_delta_dir.mkdir(parents=True, exist_ok=True)
+            # Produce a stable suffix from candidate text
+            cand_text = str(candidate)
+            cand_hash = hashlib.sha256(
+                cand_text.encode()).hexdigest()[:8]
+            scope_delta = {
+                "section": section.number,
+                "signal": "new_section_candidate",
+                "detail": cand_text,
+                "requires_root_reframing": False,
+                "source": "proposal-state:new_section_candidates",
+            }
+            delta_path = (scope_delta_dir
+                          / f"section-{section.number}"
+                            f"-candidate-{cand_hash}-scope-delta.json")
+            delta_path.write_text(
+                json.dumps(scope_delta, indent=2), encoding="utf-8")
+            log(f"Section {section.number}: wrote scope-delta for "
+                f"new_section_candidate ({cand_hash})")
+
+        # 3. shared_seam_candidates → substrate-trigger artifacts
+        substrate_dir = artifacts / "substrate-triggers"
+        for i, seam in enumerate(ps.get("shared_seam_candidates", [])):
+            substrate_dir.mkdir(parents=True, exist_ok=True)
+            trigger = {
+                "section": section.number,
+                "seam": str(seam),
+                "source": "proposal-state:shared_seam_candidates",
+                "trigger_type": "shared_seam",
+            }
+            trigger_path = (substrate_dir
+                            / f"substrate-trigger-{section.number}"
+                              f"-{i:02d}.json")
+            trigger_path.write_text(
+                json.dumps(trigger, indent=2), encoding="utf-8")
+            log(f"Section {section.number}: wrote substrate-trigger "
+                f"for shared_seam_candidate[{i}]")
+
+        # Also emit NEEDS_PARENT signals for shared seam candidates
+        # so they appear in the blocker rollup
+        for i, seam in enumerate(ps.get("shared_seam_candidates", [])):
+            seam_signal = {
+                "state": "needs_parent",
+                "section": section.number,
+                "detail": (
+                    f"Shared seam candidate requires cross-section "
+                    f"substrate work: {str(seam)}"
+                ),
+                "needs": (
+                    "SIS/substrate coordination for shared seam"
+                ),
+                "why_blocked": (
+                    "Shared seam cannot be resolved within a single "
+                    "section — requires substrate-level coordination"
+                ),
+                "source": "proposal-state:shared_seam_candidates",
+            }
+            sig_path = (signal_dir
+                        / f"section-{section.number}"
+                          f"-seam-{i}-signal.json")
+            sig_path.write_text(
+                json.dumps(seam_signal, indent=2), encoding="utf-8")
+
+        # 4. research_questions → durable open-problem artifacts
+        for question in ps.get("research_questions", []):
+            _append_open_problem(
+                planspace, section.number,
+                str(question), "proposal-state:research_question",
+            )
+        # Also write machine-readable research-questions artifact
+        rq_list = ps.get("research_questions", [])
+        if rq_list:
+            open_problems_dir = artifacts / "open-problems"
+            open_problems_dir.mkdir(parents=True, exist_ok=True)
+            rq_artifact = {
+                "section": section.number,
+                "research_questions": [str(q) for q in rq_list],
+                "source": "proposal-state",
+            }
+            rq_path = (open_problems_dir
+                        / f"section-{section.number}"
+                          f"-research-questions.json")
+            rq_path.write_text(
+                json.dumps(rq_artifact, indent=2), encoding="utf-8")
+            log(f"Section {section.number}: wrote {len(rq_list)} "
+                f"research questions to open-problems artifact")
+
+        # 5. unresolved_contracts + unresolved_anchors →
+        #    reconciliation queue
+        uc = [str(c) for c in ps.get("unresolved_contracts", [])]
+        ua = [str(a) for a in ps.get("unresolved_anchors", [])]
+        if uc or ua:
+            queue_reconciliation_request(
+                artifacts, section.number, uc, ua,
+            )
+            log(f"Section {section.number}: queued reconciliation "
+                f"request ({len(uc)} contracts, {len(ua)} anchors)")
+
+        # Update the blocker rollup so all routed items appear in
+        # the consolidated needs-input.md
+        _update_blocker_rollup(planspace)
+
+        if pass_mode == "proposal":
+            return ProposalPassResult(
+                section_number=section.number,
+                proposal_aligned=True,
+                execution_ready=False,
+                blockers=blockers,
+                needs_reconciliation=bool(uc or ua),
+                proposal_state_path=str(proposal_state_path),
+            )
+        return None
+
+    # -----------------------------------------------------------------
+    # Proposal-mode exit: proposal aligned, execution ready — stop here
+    # -----------------------------------------------------------------
+    if pass_mode == "proposal":
+        log(f"Section {section.number}: proposal pass complete — "
+            f"execution_ready=true, deferring implementation")
+        return ProposalPassResult(
+            section_number=section.number,
+            proposal_aligned=True,
+            execution_ready=True,
+            blockers=[],
+            needs_reconciliation=False,
+            proposal_state_path=str(proposal_state_path),
+        )
+
+    return _run_section_implementation_steps(
+        planspace, codespace, section, parent,
+        all_sections=all_sections,
+        artifacts=artifacts, policy=policy,
+    )
+
+
+def _run_section_implementation_steps(
+    planspace: Path, codespace: Path, section: Section, parent: str,
+    *,
+    all_sections: list[Section] | None = None,
+    artifacts: Path,
+    policy: dict,
+) -> list[str] | None:
+    """Execute microstrategy through post-completion for a section.
+
+    This is the implementation half of the section pipeline, extracted so
+    it can be called independently by ``_run_implementation_pass`` (two-pass
+    mode) or inline from ``run_section`` (full mode).
+    """
+    # -----------------------------------------------------------------
+    # Upstream freshness gate — prevent stale implementation dispatch
+    # -----------------------------------------------------------------
+    # If a reconciliation result or readiness artifact has changed
+    # since this implementation was queued, the section may have been
+    # reopened.  Re-resolve readiness and block if no longer ready.
+    readiness = resolve_readiness(artifacts, section.number)
+    if not readiness.get("ready"):
+        log(f"Section {section.number}: implementation steps blocked — "
+            f"upstream freshness check failed (execution_ready is false)")
+        return None
+
+    # A reconciliation result marking this section as affected means
+    # cross-section conflicts exist that haven't been incorporated
+    # into the proposal.  Block implementation to prevent stale work.
+    recon_result = load_reconciliation_result(artifacts, section.number)
+    if recon_result and recon_result.get("affected"):
+        log(f"Section {section.number}: implementation steps blocked — "
+            f"reconciliation result marks section as affected")
+        return None
+
+    # -----------------------------------------------------------------
     # Step 2.5: Generate microstrategy (agent-driven decision)
     # -----------------------------------------------------------------
     # The integration proposer decides whether a microstrategy is needed
     # by including "needs_microstrategy: true" in its output. The script
     # checks mechanically — no hardcoded file-count thresholds.
+    integration_proposal = (artifacts / "proposals"
+                            / f"section-{section.number}-integration-proposal.md")
     microstrategy_path = (artifacts / "proposals"
                           / f"section-{section.number}-microstrategy.md")
+
+    # Cycle budget: read per-section budget or use defaults
+    cycle_budget_path = (artifacts / "signals"
+                         / f"section-{section.number}-cycle-budget.json")
+    cycle_budget = {"proposal_max": 5, "implementation_max": 5}
+    if cycle_budget_path.exists():
+        try:
+            cycle_budget.update(
+                json.loads(cycle_budget_path.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, OSError) as exc:
+            log(f"Section {section.number}: cycle budget signal "
+                f"malformed ({exc}) — using defaults")
+
+    # Tool registry state for post-impl validation
+    tool_registry_path = artifacts / "tool-registry.json"
+    pre_tool_total = 0
+    if tool_registry_path.exists():
+        try:
+            registry = json.loads(
+                tool_registry_path.read_text(encoding="utf-8"))
+            all_tools = (registry if isinstance(registry, list)
+                         else registry.get("tools", []))
+            pre_tool_total = len(all_tools)
+        except (json.JSONDecodeError, ValueError):
+            pass
     needs_microstrategy = (
         _check_needs_microstrategy(
             integration_proposal, planspace, section.number, parent,
@@ -1296,7 +1638,7 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
         if ctrl == "alignment_changed":
             return None
         micro_result = dispatch_agent(
-            policy.get("implementation", "gpt-codex-high"),
+            policy.get("implementation", "gpt-5.4-high"),
             micro_prompt_path, micro_output_path,
             planspace, parent, a_name, codespace=codespace,
             section_number=section.number,
@@ -1339,17 +1681,36 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
             log(f"Section {section.number}: microstrategy generated")
         else:
             log(f"Section {section.number}: microstrategy generation "
-                f"failed — stub written")
-            microstrategy_path.write_text(
-                f"# Microstrategy for Section {section.number}\n\n"
-                f"**STATUS: GENERATION FAILED**\n\n"
-                f"The microstrategy agent did not produce output after "
-                f"two attempts (primary + escalation). The implementer "
-                f"must derive a microstrategy as the first step of "
-                f"implementation by reading the integration proposal "
-                f"and producing a per-file tactical breakdown.\n",
+                f"failed — emitting blocker signal")
+            signal_dir = artifacts / "signals"
+            signal_dir.mkdir(parents=True, exist_ok=True)
+            blocker = {
+                "state": "NEEDS_PARENT",
+                "section": str(section.number),
+                "detail": (
+                    "Microstrategy generation failed after primary "
+                    "+ escalation attempts"
+                ),
+                "needs": (
+                    "Tactical breakdown from upstream or decision "
+                    "to proceed without microstrategy"
+                ),
+            }
+            (signal_dir
+             / f"microstrategy-blocker-{section.number}.json"
+             ).write_text(
+                json.dumps(blocker, indent=2) + "\n",
                 encoding="utf-8",
             )
+            _record_traceability(
+                planspace, section.number,
+                f"microstrategy-blocker-{section.number}.json",
+                f"section-{section.number}-integration-proposal.md",
+                "microstrategy generation failed — blocker emitted",
+            )
+            mailbox_send(planspace, parent,
+                         f"summary:microstrategy:{section.number}:blocked")
+            return None
         _record_traceability(
             planspace, section.number,
             f"section-{section.number}-microstrategy.md",
@@ -1440,7 +1801,7 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
         impl_output = artifacts / f"impl-{section.number}-output.md"
         impl_agent = f"impl-{section.number}"
         impl_result = dispatch_agent(
-            policy.get("implementation", "gpt-codex-high"),
+            policy.get("implementation", "gpt-5.4-high"),
             impl_prompt, impl_output,
             planspace, parent, impl_agent, codespace=codespace,
             section_number=section.number,
@@ -1858,7 +2219,7 @@ with JSON:
                 tool_registry_path.read_bytes()).hexdigest()
 
         dispatch_agent(
-            policy.get("bridge_tools", "gpt-codex-high"),
+            policy.get("bridge_tools", "gpt-5.4-high"),
             bridge_tools_prompt,
             bridge_tools_output,
             planspace, parent,

@@ -80,6 +80,9 @@ _SCENARIO_MODULES = [
     "evals.scenarios.microstrategy",
     "evals.scenarios.intent_triager",
     "evals.scenarios.coordination_fixer",
+    "evals.scenarios.proposal_state",
+    "evals.scenarios.reconciliation",
+    "evals.scenarios.readiness_gate",
 ]
 
 

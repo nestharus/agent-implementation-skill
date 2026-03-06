@@ -31,9 +31,9 @@ WORKFLOW_HOME = Path(__file__).resolve().parent.parent.parent
 # ---- Default model assignments ----
 
 _DEFAULT_MODELS: dict[str, str] = {
-    "substrate_shard": "gpt-codex-high",
-    "substrate_pruner": "gpt-codex-xhigh",
-    "substrate_seeder": "gpt-codex-high",
+    "substrate_shard": "gpt-5.4-high",
+    "substrate_pruner": "gpt-5.4-xhigh",
+    "substrate_seeder": "gpt-5.4-high",
 }
 
 
@@ -93,6 +93,10 @@ def _read_trigger_signals(artifacts_dir: Path) -> list[str]:
             data = json.loads(p.read_text(encoding="utf-8"))
             if isinstance(data, dict) and "section" in data:
                 triggered.append(str(data["section"]))
+            elif isinstance(data, dict) and "sections" in data:
+                # Reconciliation-generated triggers list multiple sections
+                for sec in data["sections"]:
+                    triggered.append(str(sec))
         except (json.JSONDecodeError, OSError) as exc:
             print(
                 f"[SUBSTRATE][WARN] {p.name} malformed ({exc}) "
@@ -148,7 +152,7 @@ def _dispatch_agent(
     Parameters
     ----------
     model:
-        Model name (e.g. ``"gpt-codex-high"``).
+        Model name (e.g. ``"gpt-5.4-high"``).
     prompt_path:
         ``--file`` path containing the agent prompt.
     output_path:

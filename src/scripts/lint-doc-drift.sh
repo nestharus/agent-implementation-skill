@@ -144,6 +144,51 @@ done < <(grep -rn \
   "$WH/implement.md" \
   2>/dev/null || true)
 
+# --- Group 9: Stage 4/5 proposal drift (V2/V3 violations) ---
+# Stale change-strategy and go-beyond language in implement.md.
+PROPOSAL_DRIFT_PHRASES=(
+  "which files change"
+  "what kind of changes"
+  "go beyond the integration proposal"
+  "authority to go beyond"
+)
+
+for phrase in "${PROPOSAL_DRIFT_PHRASES[@]}"; do
+  while IFS= read -r match; do
+    echo "[LINT] Proposal drift (Stage 4/5): $match"
+    EXIT_CODE=1
+  done < <(grep -rn -i \
+    -e "$phrase" \
+    --include="*.md" \
+    "$WH/implement.md" \
+    2>/dev/null || true)
+done
+
+# "in what order" near changes context in implement.md
+while IFS= read -r match; do
+  # Only flag if the surrounding context relates to changes/files
+  if echo "$match" | grep -qi "change\|file\|modif"; then
+    echo "[LINT] Proposal drift (Stage 4/5): $match"
+    EXIT_CODE=1
+  fi
+done < <(grep -rn -i \
+  -e "in what order" \
+  --include="*.md" \
+  "$WH/implement.md" \
+  2>/dev/null || true)
+
+# --- Group 10: Stale microstrategy derivation stubs (V4 violation) ---
+# runner.py (or any .py) must not tell the implementer to derive a microstrategy.
+while IFS= read -r match; do
+  echo "[LINT] Stale microstrategy derivation stub: $match"
+  EXIT_CODE=1
+done < <(grep -rn \
+  -e "derive a microstrategy" \
+  -e "derive the microstrategy" \
+  --include="*.py" \
+  "$WH/scripts/section_loop/section_engine" \
+  2>/dev/null || true)
+
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "[LINT] No superseded behavior claims found."
 fi

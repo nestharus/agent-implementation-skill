@@ -32,9 +32,9 @@ factors:
   signals, or consequence notes from other sections? Coupling means
   the section's intent must account for external constraints.
 
-- **Environment uncertainty**: Is this greenfield (new code), hybrid
-  (new + existing), or pure modification? Greenfield and hybrid
-  sections have more unknowns to resolve.
+- **Environment uncertainty**: Are there unresolved related files or
+  missing code references? Sections with zero related files have more
+  unknowns to resolve than sections with many established references.
 
 - **Failure history**: Has a previous attempt at this section failed
   alignment or been rejected? Failed sections need more careful
@@ -89,14 +89,14 @@ Emit `intent-triage-NN.json`:
     "max_new_surfaces_per_cycle": 8,
     "max_new_axes_total": 6
   },
-  "reason": "5 related files across 3 modules + greenfield mode: broad integration surface warrants full intent cycle"
+  "reason": "5 related files across 3 modules with cross-section dependencies: broad integration surface warrants full intent cycle"
 }
 ```
 
 Also print a one-line summary to stdout:
 
 ```
-TRIAGE: section-name → full (broad integration + greenfield) expansion=2
+TRIAGE: section-name → full (broad integration + cross-section deps) expansion=2
 ```
 
 ## Anti-Patterns

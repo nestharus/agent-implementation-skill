@@ -121,17 +121,6 @@ def build_prompt_context(
             f"`{codemap_corrections_path}`"
         )
 
-    # --- section mode ---
-    section_mode_file = sections_dir / f"section-{sec}-mode.txt"
-    project_mode_file = artifacts / "project-mode.txt"
-    section_mode = None
-    if section_mode_file.exists():
-        section_mode = section_mode_file.read_text(encoding="utf-8").strip()
-    project_mode = "brownfield"
-    if project_mode_file.exists():
-        project_mode = project_mode_file.read_text(encoding="utf-8").strip()
-    effective_mode = section_mode or project_mode
-
     # --- substrate awareness ---
     substrate_path = artifacts / "substrate" / "substrate.md"
     substrate_ref = ""
@@ -140,37 +129,11 @@ def build_prompt_context(
             f"\n   - Shared integration substrate: `{substrate_path}`"
         )
 
+    # Mode is recorded as telemetry but does NOT shape proposer instructions
+    # or output format. The proposal-state schema is mode-agnostic: brownfield
+    # sections will have more resolved fields, greenfield sections will have
+    # more unresolved fields — the shape does not change.
     mode_block = ""
-    if effective_mode == "greenfield":
-        if substrate_path.exists():
-            mode_block = (
-                "\n## Section Mode: GREENFIELD (Substrate Available)\n\n"
-                "This section has no pre-existing code, but a shared integration\n"
-                "substrate has been established. Your integration proposal should:\n"
-                "- Integrate against SIS anchor files listed in your related files\n"
-                "- Reference substrate.md for shared seam decisions and conventions\n"
-                "- Extend shared types/interfaces, do not redefine them\n"
-                "- Propose NEW files that connect to the established anchors\n"
-            )
-        else:
-            mode_block = (
-                "\n## Section Mode: GREENFIELD\n\n"
-                "This section has no existing code to modify. Your integration proposal\n"
-                "should focus on:\n"
-                "- What NEW files and modules to create\n"
-                "- Where in the project structure they belong\n"
-                "- How they connect to existing architecture (imports, interfaces)\n"
-                "- What scaffolding is needed before implementation\n"
-            )
-    elif effective_mode == "hybrid":
-        mode_block = (
-            "\n## Section Mode: HYBRID\n\n"
-            "This section has some existing code but also needs new files. Your\n"
-            "integration proposal should cover both:\n"
-            "- How to modify existing files (brownfield integration)\n"
-            "- What new files to create and where they fit\n"
-            "- How new and existing code connect\n"
-        )
 
     # --- intent layer artifacts ---
     intent_sec_dir = (
@@ -241,8 +204,7 @@ def build_prompt_context(
     file_list = []
     for rel_path in section.related_files:
         full_path = codespace / rel_path
-        status = "" if full_path.exists() else " (to be created)"
-        file_list.append(f"   - `{full_path}`{status}")
+        file_list.append(f"   - `{full_path}`")
     files_block = "\n".join(file_list) if file_list else "   (none)"
 
     ctx = {

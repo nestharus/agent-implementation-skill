@@ -1,6 +1,6 @@
 ---
 description: Implements coordinated fixes across sections based on cross-section problem analysis. Reads the coordinator's diagnosis and applies strategic fixes, producing code changes and structured change signals.
-model: gpt-codex-high
+model: gpt-5.4-high
 context:
   - section_spec
   - coordination_state

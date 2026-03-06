@@ -42,6 +42,12 @@ For each axis that has contact:
 A violation is specific: cite the axis ID, the principle number, and
 the concrete mismatch.
 
+If a `proposal-state.json` artifact is present, use it as supplementary
+evidence during your per-axis check. The machine-readable state should
+be coherent with the work product's claims — a contradiction between
+the two (e.g., the state lists unresolved anchors but the work product
+claims full resolution) is worth noting as a problem surface.
+
 ### Phase 3: Surface Discovery (Passive)
 
 While doing phases 1-2, you will notice things that are not alignment

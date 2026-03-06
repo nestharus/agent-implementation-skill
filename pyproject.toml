@@ -9,6 +9,9 @@ dev = [
     "pytest>=8.0",
 ]
 
+[project.scripts]
+logex = "log_extract.cli:run"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["scripts", "src/scripts"]

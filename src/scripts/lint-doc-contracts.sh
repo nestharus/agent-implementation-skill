@@ -61,6 +61,13 @@ if ! grep -qi "concern-based\|problem decomposition" "$WH/audit.md" 2>/dev/null;
   EXIT_CODE=1
 fi
 
+# --- Group 6: Stage 4/5 problem-state contracts (implement.md) ---
+
+if ! grep -q "proposal-state\|problem-state\|execution.readiness\|execution_ready" "$WH/implement.md" 2>/dev/null; then
+  echo "[CONTRACT] Missing required statement in implement.md: Stage 4/5 must reference 'proposal-state', 'problem-state', or 'execution readiness' language"
+  EXIT_CODE=1
+fi
+
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "[CONTRACT] All required contract statements verified."
 fi

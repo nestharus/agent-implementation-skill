@@ -165,6 +165,31 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
         if intent_file.exists():
             hasher.update(intent_file.read_bytes())
 
+    # Proposal state — captures resolved/unresolved anchors, contracts,
+    # research questions, and execution_ready flag
+    proposal_state_path = (
+        artifacts / "proposals"
+        / f"section-{sec}-proposal-state.json"
+    )
+    if proposal_state_path.exists():
+        hasher.update(proposal_state_path.read_bytes())
+
+    # Reconciliation result — cross-section overlap/conflict findings
+    reconciliation_path = (
+        artifacts / "reconciliation"
+        / f"section-{sec}-reconciliation-result.json"
+    )
+    if reconciliation_path.exists():
+        hasher.update(reconciliation_path.read_bytes())
+
+    # Execution readiness — fail-closed gate artifact
+    readiness_path = (
+        artifacts / "readiness"
+        / f"section-{sec}-execution-ready.json"
+    )
+    if readiness_path.exists():
+        hasher.update(readiness_path.read_bytes())
+
     return hasher.hexdigest()[:16]
 
 

@@ -199,6 +199,37 @@ def dispatch_task(
         _notify(db_path, submitted_by, task_id, task_type, "failed", err)
         return
 
+    # --- QA dispatch interceptor (optional) ---
+    # Lazy-import inside conditional to avoid hard dependency.
+    try:
+        from qa_interceptor import intercept_task, read_qa_parameters
+        qa_params = read_qa_parameters(planspace)
+    except Exception:
+        qa_params = {}
+
+    if qa_params.get("qa_mode"):
+        log(f"QA intercept: evaluating task {task_id} ({task_type})")
+        try:
+            passed, rationale_path = intercept_task(task, agent_file, planspace)
+        except Exception as exc:
+            # Fail-OPEN: QA errors must not block dispatch.
+            log(f"QA ERROR for task {task_id}: {exc} — failing open")
+            passed = True
+            rationale_path = None
+
+        _record_qa_intercept(
+            db_path, planspace, task_id,
+            "passed" if passed else "rejected", rationale_path,
+        )
+
+        if not passed:
+            err = f"QA interceptor rejected: see {rationale_path}"
+            log(f"QA REJECT: task {task_id}: {err}")
+            _db_cmd(db_path, "fail-task", task_id, "--error", err)
+            _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+            return
+        log(f"QA PASS: task {task_id}")
+
     # --- Flow context wrapping (Task 5) ---
     # If the task has flow metadata, create a wrapper prompt that
     # prepends flow context paths.  The original prompt is NOT mutated.
@@ -352,6 +383,29 @@ def _record_task_routing(
     )
     conn.commit()
     conn.close()
+
+
+def _record_qa_intercept(
+    db_path: str,
+    planspace: Path,
+    task_id: str,
+    verdict: str,
+    rationale_path: str | None,
+) -> None:
+    """Log a QA intercept event to the DB for observability."""
+    body = f"qa:{verdict}:{task_id}"
+    if rationale_path:
+        body += f":{rationale_path}"
+    try:
+        subprocess.run(  # noqa: S603
+            ["bash", str(DB_SH), "log", db_path,  # noqa: S607
+             "lifecycle", f"qa-intercept:{task_id}", body,
+             "--agent", DISPATCHER_NAME],
+            capture_output=True, text=True, timeout=10,
+        )
+    except Exception:
+        # Non-critical — logging failure must not block dispatch.
+        pass
 
 
 def _notify(

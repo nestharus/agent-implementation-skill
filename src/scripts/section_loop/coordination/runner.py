@@ -194,7 +194,12 @@ def run_global_coordination(
     # -----------------------------------------------------------------
     scope_deltas_dir = planspace / "artifacts" / "scope-deltas"
     if scope_deltas_dir.exists():
-        delta_files = sorted(scope_deltas_dir.glob("section-*-scope-delta.json"))
+        # Pick up both per-section deltas and reconciliation-generated
+        # consolidated deltas (written by Phase 1b reconciliation).
+        delta_files = sorted(
+            f for f in scope_deltas_dir.iterdir()
+            if f.suffix == ".json" and not f.name.endswith(".malformed.json")
+        )
         if delta_files:
             pending_deltas = []
             for df in delta_files:
@@ -732,7 +737,7 @@ Reply with a JSON block:
                 log(f"  coordinator: dispatching bridge agent for group "
                     f"{gidx} ({group_sections}) — reason: {bridge_reason}")
                 bridge_model = policy.get(
-                    "coordination_bridge", "gpt-codex-xhigh")
+                    "coordination_bridge", "gpt-5.4-xhigh")
                 dispatch_agent(
                     bridge_model, bridge_prompt,
                     bridge_output, planspace, parent,

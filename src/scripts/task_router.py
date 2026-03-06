@@ -17,13 +17,13 @@ TASK_ROUTES: dict[str, tuple[str, str, str | None]] = {
     "alignment_check": ("alignment-judge.md", "claude-opus", "alignment"),
     "alignment_adjudicate": ("alignment-output-adjudicator.md", "glm", "adjudicator"),
     "impact_analysis": ("impact-analyzer.md", "glm", None),
-    "coordination_fix": ("coordination-fixer.md", "gpt-codex-high", None),
+    "coordination_fix": ("coordination-fixer.md", "gpt-5.4-high", None),
     "consequence_triage": ("consequence-note-triager.md", "glm", "triage"),
     "microstrategy_decision": ("microstrategy-decider.md", "glm", "microstrategy_decider"),
     "recurrence_adjudication": ("recurrence-adjudicator.md", "glm", None),
     "tool_registry_repair": ("tool-registrar.md", "glm", "tool_registrar"),
-    "integration_proposal": ("integration-proposer.md", "gpt-codex-high", "proposal"),
-    "strategic_implementation": ("implementation-strategist.md", "gpt-codex-high", "implementation"),
+    "integration_proposal": ("integration-proposer.md", "gpt-5.4-high", "proposal"),
+    "strategic_implementation": ("implementation-strategist.md", "gpt-5.4-high", "implementation"),
     "section_setup": ("setup-excerpter.md", "claude-opus", "setup"),
     # Scan tasks: "scan." prefix resolves through scan policy namespace
     "scan_codemap_build": ("scan-codemap-builder.md", "claude-opus", "scan.codemap_build"),
@@ -35,9 +35,10 @@ TASK_ROUTES: dict[str, tuple[str, str, str | None]] = {
     "scan_deep_analyze": ("scan-file-analyzer.md", "glm", "scan.deep_analysis"),
     "state_adjudicate": ("state-adjudicator.md", "glm", None),
     "exception_handling": ("exception-handler.md", "claude-opus", None),
-    "substrate_shard": ("substrate-shard-explorer.md", "gpt-codex-high", None),
-    "substrate_prune": ("substrate-pruner.md", "gpt-codex-xhigh", "substrate_pruner"),
-    "substrate_seed": ("substrate-seeder.md", "gpt-codex-high", "substrate_seeder"),
+    "substrate_shard": ("substrate-shard-explorer.md", "gpt-5.4-high", None),
+    "substrate_prune": ("substrate-pruner.md", "gpt-5.4-xhigh", "substrate_pruner"),
+    "substrate_seed": ("substrate-seeder.md", "gpt-5.4-high", "substrate_seeder"),
+    "reconciliation_adjudicate": ("reconciliation-adjudicator.md", "claude-opus", None),
 }
 
 

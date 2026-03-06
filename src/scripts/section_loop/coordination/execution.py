@@ -13,7 +13,7 @@ def write_coordinator_fix_prompt(
     group: list[dict[str, Any]], planspace: Path, codespace: Path,
     group_id: int,
 ) -> Path:
-    """Write a Codex prompt to fix a group of related problems.
+    """Write a GPT prompt to fix a group of related problems.
 
     The prompt lists the grouped problems with section context, the
     affected files, and instructs the agent to fix ALL listed problems
@@ -224,7 +224,7 @@ def _dispatch_fix_group(
     planspace: Path, codespace: Path, parent: str,
     default_fix_model: str = "",
 ) -> tuple[int, list[str] | None]:
-    """Dispatch a Codex agent to fix a single problem group.
+    """Dispatch a GPT agent to fix a single problem group.
 
     Returns (group_id, list_of_modified_files) on success.
     Returns (group_id, None) if ALIGNMENT_CHANGED_PENDING sentinel received.

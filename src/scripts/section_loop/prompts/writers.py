@@ -112,6 +112,9 @@ def write_integration_proposal_prompt(
     integration_proposal = (
         proposals_dir / f"section-{sec}-integration-proposal.md"
     )
+    proposal_state_path = (
+        proposals_dir / f"section-{sec}-proposal-state.json"
+    )
 
     # Write alignment problems to file if present
     problems_block = ""
@@ -152,6 +155,7 @@ def write_integration_proposal_prompt(
         "proposal_excerpt": proposal_excerpt,
         "alignment_excerpt": alignment_excerpt,
         "integration_proposal": integration_proposal,
+        "proposal_state_path": proposal_state_path,
         "problems_block": problems_block,
         "existing_note": existing_note,
         "notes_block": notes_block,
@@ -221,6 +225,17 @@ def write_integration_alignment_prompt(
             f"write them to:\n`{surfaces_path}`\n"
         )
 
+    # Proposal-state artifact (machine-readable problem state)
+    proposal_state_path = (
+        artifacts / "proposals" / f"section-{sec}-proposal-state.json"
+    )
+    proposal_state_line = ""
+    if proposal_state_path.exists():
+        proposal_state_line = (
+            f"\n5. Proposal-state artifact (machine-readable problem state): "
+            f"`{proposal_state_path}`"
+        )
+
     ctx.update({
         "proposal_excerpt": (
             artifacts / "sections" / f"section-{sec}-proposal-excerpt.md"
@@ -232,6 +247,7 @@ def write_integration_alignment_prompt(
             artifacts / "proposals"
             / f"section-{sec}-integration-proposal.md"
         ),
+        "proposal_state_line": proposal_state_line,
         "intent_surfaces_block": intent_surfaces_block,
     })
 
@@ -358,6 +374,41 @@ def write_strategic_impl_prompt(
             f"`{microstrategy_path}`"
         )
 
+    # Proposal-state artifact (what the proposal resolved / left unresolved)
+    proposal_state_path = (
+        artifacts / "proposals" / f"section-{sec}-proposal-state.json"
+    )
+    proposal_state_ref = ""
+    if proposal_state_path.exists():
+        proposal_state_ref = (
+            f"\n   - Proposal-state (resolved vs unresolved): "
+            f"`{proposal_state_path}`"
+        )
+
+    # Reconciliation result (cross-section conflict detection)
+    reconciliation_path = (
+        artifacts / "reconciliation"
+        / f"section-{sec}-reconciliation-result.json"
+    )
+    reconciliation_ref = ""
+    if reconciliation_path.exists():
+        reconciliation_ref = (
+            f"\n   - Reconciliation result (cross-section conflicts): "
+            f"`{reconciliation_path}`"
+        )
+
+    # Execution-readiness artifact (blocker summary)
+    readiness_path = (
+        artifacts / "readiness"
+        / f"section-{sec}-execution-ready.json"
+    )
+    readiness_ref = ""
+    if readiness_path.exists():
+        readiness_ref = (
+            f"\n   - Execution readiness (blocker summary): "
+            f"`{readiness_path}`"
+        )
+
     ctx = build_prompt_context(section, planspace, codespace)
     ctx.update({
         "proposal_excerpt": proposal_excerpt,
@@ -372,6 +423,9 @@ def write_strategic_impl_prompt(
         "impl_tools_ref": impl_tools_ref,
         "tooling_block": tooling_block,
         "micro_ref": impl_micro_ref,
+        "proposal_state_ref": proposal_state_ref,
+        "reconciliation_ref": reconciliation_ref,
+        "readiness_ref": readiness_ref,
         "task_submission_path": str(
             artifacts / "signals" / f"task-requests-impl-{sec}.json"),
         "allowed_tasks": "scan_explore, scan_deep_analyze, strategic_implementation, alignment_check",

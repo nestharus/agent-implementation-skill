@@ -175,6 +175,14 @@ def _write_alignment_surface(
         lines.append(
             f"- **Integration proposal**: `{integration_proposal}`")
 
+    # Proposal-state artifact (machine-readable problem state)
+    proposal_state_path = (
+        artifacts / "proposals" / f"section-{sec}-proposal-state.json"
+    )
+    if proposal_state_path.exists():
+        lines.append(
+            f"- **Proposal-state artifact**: `{proposal_state_path}`")
+
     # TODO extraction
     todos_path = artifacts / "todos" / f"section-{sec}-todos.md"
     if todos_path.exists():

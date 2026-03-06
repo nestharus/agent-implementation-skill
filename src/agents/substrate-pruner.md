@@ -1,6 +1,6 @@
 ---
 description: Strategic agent that reads all substrate shards, identifies convergence patterns and contradictions, prunes to a minimal set of shared seams, and produces the substrate artifact and seed plan. This is graph exploration with pruning — not architecture invention.
-model: gpt-codex-xhigh
+model: gpt-5.4-xhigh
 ---
 
 # Substrate Pruner

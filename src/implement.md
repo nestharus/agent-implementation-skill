@@ -522,7 +522,7 @@ The control plane is script-owned:
    events via `db.sh log summary` for each lifecycle transition. Queries
    pipeline state before each agent dispatch via
    `db.sh query <planspace>/run.db lifecycle --tag pipeline-state --limit 1`
-   -- if paused, waits until resumed. For each per-section Codex/GPT agent
+   -- if paused, waits until resumed. For each per-section GPT agent
    dispatch (setup, proposal, implementation), registers a narration queue
    and launches a per-agent GLM monitor alongside the agent. Two categories
    of dispatch are exempt from per-agent monitoring: (1) Opus alignment
@@ -702,7 +702,7 @@ Phase 1 — Initial pass (per-section):
       → if excerpts already exist: skip (idempotent)
 
     Step 2: Integration proposal loop
-      GPT (Codex) reads excerpts + source files, explores codebase (submits exploration tasks)
+      GPT reads excerpts + source files, explores codebase (submits exploration tasks)
       Writes integration proposal: how to wire proposal into codebase
         → if agent signals: pause, wait for parent, resume
       Opus checks alignment (shape and direction, NOT tiny details)
@@ -711,7 +711,7 @@ Phase 1 — Initial pass (per-section):
         → UNDERSPECIFIED: pause, wait for parent, resume
 
     Step 3: Strategic implementation
-      GPT (Codex) implements holistically with task submission
+      GPT implements holistically with task submission
         (exploration and targeted tasks dispatched under script control)
         → if agent signals: pause, wait for parent, resume
       Opus checks implementation alignment (still solving right problem?)
@@ -735,8 +735,8 @@ Phase 2 — Global coordination (after all sections complete):
     Collect outstanding problems across all sections
     Group related problems (GLM confirms file-overlap relationships)
     Size work and dispatch:
-      Few related → single Codex agent
-      Many unrelated → fan out to multiple Codex agents
+      Few related → single GPT agent
+      Many unrelated → fan out to multiple GPT agents
     Re-run per-section alignment to verify fixes
     Repeat until all sections ALIGNED or max rounds reached
 ```
@@ -833,9 +833,9 @@ root cause, and consequence-note references. GLM confirms whether
 candidate groups are truly related or independent.
 
 **Step 4**: Size the work and dispatch fixes:
-- Few related problems → single Codex agent
+- Few related problems → single GPT agent
 - Few independent groups → one agent per group, sequential
-- Many groups → fan out to multiple Codex agents in parallel
+- Many groups → fan out to multiple GPT agents in parallel
 
 **Step 5**: Re-run per-section alignment on affected sections to verify
 fixes actually resolved the problems.
@@ -926,9 +926,9 @@ invents project structure. SIS discovers shared integration seams
 
 | Key | Default | Role |
 |-----|---------|------|
-| `substrate_shard` | `gpt-codex-high` | Per-section dependency exploration |
-| `substrate_pruner` | `gpt-codex-xhigh` | Strategic cross-section convergence |
-| `substrate_seeder` | `gpt-codex-high` | Anchor creation from seed plan |
+| `substrate_shard` | `gpt-5.4-high` | Per-section dependency exploration |
+| `substrate_pruner` | `gpt-5.4-xhigh` | Strategic cross-section convergence |
+| `substrate_seeder` | `gpt-5.4-high` | Anchor creation from seed plan |
 
 ### CLI
 
@@ -988,15 +988,33 @@ interfaces, understand module organization, and verify assumptions.
 Explore strategically: form a hypothesis, verify with a targeted read,
 adjust.
 
-After exploring, GPT writes an integration proposal to
-`<planspace>/artifacts/proposals/section-NN-integration-proposal.md`:
-1. **Problem mapping** — how the section proposal maps onto existing code
-2. **Integration points** — where new functionality connects to existing code
-3. **Change strategy** — which files change, what kind of changes, in what order
-4. **Risks and dependencies** — what could go wrong, what depends on other sections
+After exploring, GPT writes a **problem-state diagnostic** — not an
+implementation plan — to
+`<planspace>/artifacts/proposals/section-NN-integration-proposal.md`
+with a machine-readable `proposal-state.json` sidecar alongside it.
 
-This is STRATEGIC — not line-by-line changes. The shape of the solution,
-not the exact code.
+The proposal maps section concerns onto the codebase and records what
+is resolved, what is unresolved, and whether the section is ready for
+implementation:
+1. **Anchors** — resolved anchors (concrete existing code to connect to)
+   and unresolved anchors (integration points where no code was found or
+   the connection is ambiguous)
+2. **Contracts** — resolved contracts (verified interface signatures,
+   data shapes, protocols) and unresolved contracts (needed but not yet
+   defined or verified)
+3. **Open questions** — research questions (answerable with more
+   exploration) and user/root questions (only the user can answer,
+   escalation signals)
+4. **Cross-section surfaces** — shared seam candidates (integration
+   surfaces shared with other sections) and new-section candidates
+   (problem regions that may warrant their own section)
+5. **Execution readiness** — fail-closed: `execution_ready` is `true`
+   only when all blocking fields (unresolved anchors, unresolved
+   contracts, user root questions, shared seam candidates) are empty
+
+The shape is the same regardless of whether the section is greenfield,
+brownfield, or hybrid — only the fill level changes. This is STRATEGIC
+problem-state diagnosis, not line-by-line changes.
 
 ### Intent layer (conditional, per-section)
 
@@ -1012,7 +1030,7 @@ a full or lightweight intent cycle is needed:
    - **Philosophy distillation** (Opus) — distills operational philosophy
      from source files into numbered principles with expansion guidance.
      Runs once globally, not per-section.
-   - **Intent pack generation** (Codex-high) — produces per-section
+   - **Intent pack generation** (GPT-5.4-high) — produces per-section
      `problem.md` (seed problem definition with axes) and
      `problem-alignment.md` (rubric) from section spec, excerpts, code
      context, and TODOs.
@@ -1066,9 +1084,13 @@ task-submission path provided in your dispatch prompt. Available task
 types include scan_explore, scan_deep_analyze, and strategic_implementation.
 The dispatcher handles agent file and model selection.
 
-GPT has authority to go beyond the integration proposal where necessary
-(e.g., a file that needs changing but was not in the proposal, an
-interface that does not work as expected).
+Implementation refines within the resolved proposal shape. Mechanical
+necessities (imports, glue code, docstrings, formatting) are the
+implementer's responsibility. Structural omissions — missing anchors,
+unresolved contracts, absent interfaces, or architectural decisions
+the proposal did not make — must emit a blocker signal (UNDERSPECIFIED
+or DEPENDENCY) or reopen the proposal layer. They are not
+implementation freedom.
 
 After implementation, GPT writes a list of all modified files to
 `<planspace>/artifacts/impl-NN-modified.txt`.
@@ -1100,7 +1122,7 @@ After all sections complete their initial pass:
 2. Global coordinator collects outstanding problems across all sections
 3. Groups problems by interaction signals (shared files, shared contracts,
    root cause, consequence notes — GLM confirms relationships)
-4. Dispatches coordinated fixes (Codex agents, sized by problem count)
+4. Dispatches coordinated fixes (GPT agents, sized by problem count)
 5. Re-runs per-section alignment to verify fixes
 6. Repeats until all sections ALIGNED or max coordination rounds reached
 
@@ -1112,7 +1134,7 @@ external artifacts — no markers placed in source code.
 After the section queue is empty (all sections clean), verify in the
 task worktree:
 
-### 6a: Constraint Alignment Check (Codex-high)
+### 6a: Constraint Alignment Check (GPT-5.4-high)
 Check against design principles. Fix violations.
 
 ### 6b: Lint Fix
@@ -1131,7 +1153,7 @@ uv run pytest <test-dir> -k "<relevant-tests>" -x -v -p no:randomly
 ```
 
 ### 6d: Debug/RCA
-If tests fail: Codex-high reads failures, fixes root cause, re-runs.
+If tests fail: GPT-5.4-high reads failures, fixes root cause, re-runs.
 Persistent after one round → escalate.
 
 ## Stage 7: Post-Task Verification
@@ -1264,15 +1286,15 @@ conflicts after the initial pass.
 | 3: Section File Identification | Opus | Per-section agent: reason over codemap + section goals, identify related files |
 | 3: Deep Scan | GLM | Per-file analysis: reason about specific relevance in section context |
 | 4: Section Setup | Opus | Extract proposal/alignment excerpts from global documents |
-| 4: Integration Proposal | Codex (GPT) | Write integration proposal (submits exploration tasks) |
+| 4: Integration Proposal | GPT | Write integration proposal (submits exploration tasks) |
 | 4: Integration Alignment | Opus | Shape/direction check on integration proposal |
-| 5: Strategic Implementation | Codex (GPT) | Holistic implementation (submits sub-work tasks) |
+| 5: Strategic Implementation | GPT | Holistic implementation (submits sub-work tasks) |
 | 5: Implementation Alignment | Opus | Shape/direction check on implemented code |
 | 5: Impact Analysis | GLM | Semantic impact analysis for cross-section communication |
-| 5: Global Coordination | Codex (GPT) | Coordinated fixes for grouped cross-section problems |
+| 5: Global Coordination | GPT | Coordinated fixes for grouped cross-section problems |
 | 5: Coordination Alignment | Opus | Per-section re-verification after coordinated fixes |
-| 6a: Constraint Alignment Check | Codex-high | Design principle check |
-| 6d: Debug/RCA | Codex-high | Fix test failures |
+| 6a: Constraint Alignment Check | GPT-5.4-high | Design principle check |
+| 6d: Debug/RCA | GPT-5.4-high | Fix test failures |
 
 ## Anti-Patterns
 

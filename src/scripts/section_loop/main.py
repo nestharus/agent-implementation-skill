@@ -28,7 +28,6 @@ from .cross_section import read_incoming_notes
 from .dispatch import (
     check_agent_signals,
     dispatch_agent,
-    read_agent_signal,
     read_model_policy,
 )
 from .pipeline_control import (
@@ -40,8 +39,9 @@ from .pipeline_control import (
     poll_control_messages,
     requeue_changed_sections,
 )
+from .reconciliation import run_reconciliation
 from .section_engine import _reexplore_section, run_section
-from .types import Section, SectionResult
+from .types import ProposalPassResult, Section, SectionResult
 
 
 def parse_related_files(section_path: Path) -> list[str]:
@@ -200,20 +200,15 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             mode_source = "text (post-resume)"
     log(f"Project mode: {project_mode} (from {mode_source})")
 
-    # Write formalized mode contract
+    # Write formalized mode contract (telemetry only — mode does NOT
+    # choose planning paths or output shapes).
     mode_contract_path = planspace / "artifacts" / "mode-contract.json"
     mode_contract = {
         "mode": project_mode,
-        "constraints": mode_constraints or (
-            ["no code exists, research only"]
-            if project_mode == "greenfield"
-            else ["integrate with existing code"]
-        ),
-        "expected_outputs": (
-            ["research memo", "prototype plan", "new sections"]
-            if project_mode == "greenfield"
-            else ["integration proposals", "code changes", "alignment checks"]
-        ),
+        "constraints": mode_constraints or ["integrate with existing code"],
+        "expected_outputs": [
+            "integration proposals", "code changes", "alignment checks",
+        ],
     }
     mode_contract_path.write_text(
         json.dumps(mode_contract, indent=2) + "\n", encoding="utf-8")
@@ -228,16 +223,6 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
 
     sections_by_num = {s.number: s for s in all_sections}
 
-    # Route sections based on project mode
-    if project_mode == "greenfield":
-        log("Greenfield mode: sections without related files will use "
-            "research-first template")
-        # In greenfield mode, sections without files go directly to research
-        # rather than being treated as anomalies.
-        # Additionally, greenfield sections require a seed-code decision
-        # before dispatching to the implementation strategist (see guard
-        # inside the per-section loop below).
-
     log(f"Loaded {len(all_sections)} sections")
 
     # Read model policy once — used for re-exploration dispatch.
@@ -249,9 +234,13 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
     while True:
 
         # -----------------------------------------------------------------
-        # Phase 1: Initial pass through all sections
+        # Phase 1a: Proposal pass — all sections
         # -----------------------------------------------------------------
+        # Run every section through exploration, proposal, alignment, and
+        # readiness resolution.  No code files are modified.  Each section
+        # yields a ProposalPassResult with readiness disposition.
         section_results: dict[str, SectionResult] = {}
+        proposal_results: dict[str, ProposalPassResult] = {}
         queue = [s.number for s in all_sections]
         completed: set[str] = set()
 
@@ -282,7 +271,8 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
 
             section = sections_by_num[sec_num]
             section.solve_count += 1
-            log(f"=== Section {sec_num} ({len(queue)} remaining) "
+            log(f"=== Section {sec_num} proposal pass "
+                f"({len(queue)} remaining) "
                 f"[round {section.solve_count}] ===")
             # Emit section lifecycle start event for QA monitor rule A6
             subprocess.run(  # noqa: S603
@@ -294,134 +284,38 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             )
 
             if not section.related_files:
-                if project_mode == "greenfield":
-                    # In greenfield mode, missing files is expected — skip
-                    # the re-explorer overhead and go directly to research.
-                    log(f"Section {sec_num}: no related files in greenfield "
-                        f"mode — skipping re-explorer, marking NEEDS_RESEARCH")
-                    section_mode = "greenfield"
-                    mode_path = (planspace / "artifacts" / "sections"
-                                 / f"section-{section.number}-mode.txt")
-                    mode_path.parent.mkdir(parents=True, exist_ok=True)
-                    mode_path.write_text(section_mode, encoding="utf-8")
-                else:
-                    # Agent-driven re-exploration: dispatch an Opus agent to
-                    # investigate why the section has no files and determine
-                    # whether it's greenfield, brownfield-missed, or hybrid.
-                    log(f"Section {sec_num}: no related files — dispatching "
-                        f"re-explorer agent")
-                    reexplore_result = _reexplore_section(
-                        section, planspace, codespace, parent,
-                        model=policy["setup"],
-                    )
-                    if reexplore_result == "ALIGNMENT_CHANGED_PENDING":
-                        if _check_and_clear_alignment_changed(planspace):
-                            requeue_changed_sections(
-                                completed, queue, sections_by_num,
-                                planspace, codespace,
-                                current_section=sec_num)
-                        continue
-                    # Read section mode from structured JSON signal (not
-                    # substring matching). The re-explorer agent writes
-                    # signals/section-mode.json per the signal protocol.
-                    signal_dir = (planspace / "artifacts" / "signals")
-                    signal_dir.mkdir(parents=True, exist_ok=True)
-                    mode_signal_path = (
-                        signal_dir
-                        / f"section-{section.number}-mode.json")
-                    mode_signal = read_agent_signal(
-                        mode_signal_path,
-                        expected_fields=["mode"])
-                    if mode_signal:
-                        section_mode = mode_signal["mode"]
-                    else:
-                        # Fail closed: agent didn't write structured
-                        # signal. Pause for parent rather than guessing.
-                        log(f"Section {sec_num}: no structured mode signal "
-                            f"found — pausing for parent (fail-closed)")
-                        pause_for_parent(
-                            planspace, parent,
-                            f"pause:needs_parent:{sec_num}:missing mode "
-                            f"signal — re-explorer did not write "
-                            f"section-{sec_num}-mode.json")
-                        section_mode = "brownfield"
-                    mode_path = (planspace / "artifacts" / "sections"
-                                 / f"section-{section.number}-mode.txt")
-                    mode_path.parent.mkdir(parents=True, exist_ok=True)
-                    mode_path.write_text(section_mode, encoding="utf-8")
-                    log(f"Section {sec_num}: mode = {section_mode}")
-
-                    # Re-parse related files (agent may have appended them)
-                    section.related_files = parse_related_files(section.path)
-                if not section.related_files:
-                    # Still no files — agent declared greenfield or
-                    # couldn't find matches. Greenfield is NOT aligned:
-                    # it implies research obligations, not completion.
-                    # Emit NEEDS_RESEARCH signal and mark as non-aligned
-                    # so the coordinator treats it as a top-priority
-                    # open problem.
-                    log(f"Section {sec_num}: re-explorer found no files "
-                        f"(greenfield — NEEDS_RESEARCH)")
-                    completed.add(sec_num)
-
-                    # Emit standard structured blocker signal (5-state
-                    # protocol) so coordination can route mechanically.
-                    signal_dir = planspace / "artifacts" / "signals"
-                    signal_dir.mkdir(parents=True, exist_ok=True)
-                    blocker_signal = {
-                        "state": "needs_parent",
-                        "section": sec_num,
-                        "detail": (
-                            f"Greenfield/no related files: section "
-                            f"{sec_num} has no existing code to integrate "
-                            f"with. Requires research/seed decision and "
-                            f"possibly new sections."
-                        ),
-                        "needs": (
-                            "Parent must decide: (a) provide seed code "
-                            "and related files, (b) reframe as research "
-                            "section, or (c) add new sections."
-                        ),
-                        "why_blocked": (
-                            "No existing code to integrate with — cannot "
-                            "produce integration proposal or implementation "
-                            "without research or seed decision."
-                        ),
-                    }
-                    (signal_dir
-                     / f"section-{sec_num}-blocker.json"
-                     ).write_text(
-                        json.dumps(blocker_signal, indent=2),
-                        encoding="utf-8")
-
-                    section_results[sec_num] = SectionResult(
-                        section_number=sec_num, aligned=False,
-                        problems=(
-                            f"needs_parent:greenfield — section "
-                            f"{sec_num} requires research/seed decision"
-                        ),
-                    )
-                    mailbox_send(
-                        planspace, parent,
-                        f"pause:needs_parent:{sec_num}:greenfield section "
-                        f"needs research — no existing code to "
-                        f"integrate with")
-                    subprocess.run(  # noqa: S603
-                        ["bash", str(DB_SH), "log",  # noqa: S607
-                         str(planspace / "run.db"),
-                         "lifecycle", f"end:section:{sec_num}",
-                         "needs_parent (greenfield)",
-                         "--agent", AGENT_NAME],
-                        capture_output=True, text=True,
-                    )
+                # No related files — dispatch re-explorer to investigate
+                # regardless of project mode.  The re-explorer determines
+                # whether files were missed and may append them to the
+                # section spec.
+                log(f"Section {sec_num}: no related files — dispatching "
+                    f"re-explorer agent")
+                reexplore_result = _reexplore_section(
+                    section, planspace, codespace, parent,
+                    model=policy["setup"],
+                )
+                if reexplore_result == "ALIGNMENT_CHANGED_PENDING":
+                    if _check_and_clear_alignment_changed(planspace):
+                        requeue_changed_sections(
+                            completed, queue, sections_by_num,
+                            planspace, codespace,
+                            current_section=sec_num)
                     continue
-                log(f"Section {sec_num}: re-explorer found "
-                    f"{len(section.related_files)} files — continuing")
 
-            # Run the section
-            modified_files = run_section(
+                # Re-parse related files (agent may have appended them)
+                section.related_files = parse_related_files(section.path)
+                if section.related_files:
+                    log(f"Section {sec_num}: re-explorer found "
+                        f"{len(section.related_files)} files — continuing")
+                else:
+                    log(f"Section {sec_num}: re-explorer found no files "
+                        f"— continuing with unresolved related_files")
+
+            # Run proposal pass only — no code modification
+            proposal_result = run_section(
                 planspace, codespace, section, parent,
                 all_sections=all_sections,
+                pass_mode="proposal",
             )
 
             # Check if alignment_changed arrived during run_section
@@ -433,9 +327,9 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                     current_section=sec_num)
                 continue
 
-            if modified_files is None:
+            if proposal_result is None:
                 # Section was paused and parent told us to stop
-                log(f"Section {sec_num}: paused, exiting")
+                log(f"Section {sec_num}: paused during proposal, exiting")
                 subprocess.run(  # noqa: S603
                     ["bash", str(DB_SH), "log",  # noqa: S607
                      str(planspace / "run.db"),
@@ -446,6 +340,240 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 return
 
             completed.add(sec_num)
+            if isinstance(proposal_result, ProposalPassResult):
+                proposal_results[sec_num] = proposal_result
+                status = ("ready" if proposal_result.execution_ready
+                          else f"blocked ({len(proposal_result.blockers)} "
+                               f"blockers)")
+                mailbox_send(planspace, parent,
+                             f"proposal-done:{sec_num}:{status}")
+                log(f"Section {sec_num}: proposal pass complete — "
+                    f"{status}")
+            else:
+                # Defensive: run_section in proposal mode should always
+                # return ProposalPassResult or None, but handle gracefully
+                log(f"Section {sec_num}: unexpected proposal result type "
+                    f"— treating as failed")
+
+            subprocess.run(  # noqa: S603
+                ["bash", str(DB_SH), "log",  # noqa: S607
+                 str(planspace / "run.db"),
+                 "lifecycle", f"end:section:{sec_num}",
+                 "proposal-done",
+                 "--agent", AGENT_NAME],
+                capture_output=True, text=True,
+            )
+
+        log(f"=== Phase 1a complete: {len(completed)} sections "
+            f"proposed ===")
+
+        ready_sections = sorted(
+            num for num, pr in proposal_results.items()
+            if pr.execution_ready
+        )
+        blocked_sections = sorted(
+            num for num, pr in proposal_results.items()
+            if not pr.execution_ready
+        )
+        log(f"Proposal summary: {len(ready_sections)} ready, "
+            f"{len(blocked_sections)} blocked")
+        if blocked_sections:
+            log(f"Blocked sections: {blocked_sections}")
+
+        # -----------------------------------------------------------------
+        # Phase 1b: Universal reconciliation
+        # -----------------------------------------------------------------
+        # Run cross-section reconciliation over all proposal-state
+        # artifacts.  Detects overlapping anchors, conflicting contracts,
+        # redundant new-section candidates, and shared seams that need
+        # substrate work.  Writes per-section result artifacts and, when
+        # needed, consolidated scope-delta and substrate-trigger signals.
+        recon_summary = run_reconciliation(
+            planspace,
+            list(proposal_results.values()),
+        )
+        log(f"Phase 1b reconciliation: "
+            f"{recon_summary['conflicts_found']} conflicts, "
+            f"{recon_summary['new_sections_proposed']} new-section "
+            f"proposals, "
+            f"substrate_needed={recon_summary['substrate_needed']}, "
+            f"affected sections={recon_summary['sections_affected']}")
+
+        # Sections affected by reconciliation conflicts should not
+        # proceed to implementation until the conflicts are addressed.
+        # Mark them as not execution-ready so they are excluded from
+        # Phase 1c and reported to the parent as blocked.
+        reconciliation_blocked: set[str] = set()
+        for sec_num in recon_summary.get("sections_affected", []):
+            if sec_num in proposal_results:
+                pr = proposal_results[sec_num]
+                if pr.execution_ready:
+                    pr.execution_ready = False
+                    pr.needs_reconciliation = True
+                    pr.blockers.append({
+                        "type": "reconciliation",
+                        "description": (
+                            f"Section affected by cross-section "
+                            f"reconciliation — "
+                            f"{recon_summary['conflicts_found']} "
+                            f"conflict(s) found"
+                        ),
+                    })
+                    reconciliation_blocked.add(sec_num)
+                    log(f"Section {sec_num}: blocked by reconciliation")
+
+        # Recompute ready/blocked lists after reconciliation
+        ready_sections = sorted(
+            num for num, pr in proposal_results.items()
+            if pr.execution_ready
+        )
+        blocked_sections = sorted(
+            num for num, pr in proposal_results.items()
+            if not pr.execution_ready
+        )
+        if reconciliation_blocked:
+            log(f"Reconciliation blocked {len(reconciliation_blocked)} "
+                f"additional sections: {sorted(reconciliation_blocked)}")
+            log(f"Updated proposal summary: {len(ready_sections)} ready, "
+                f"{len(blocked_sections)} blocked")
+
+        # -----------------------------------------------------------------
+        # Phase 1b.2: Re-proposal pass for reconciliation-affected sections
+        # -----------------------------------------------------------------
+        # Sections that were affected by reconciliation (marked
+        # needs_reconciliation=True) must re-run through the proposal
+        # pass so the proposer can incorporate reconciliation findings
+        # (overlapping anchors, contract conflicts, shared seams).
+        # The reconciliation result artifact is already on disk; the
+        # runner will detect it and append it to the proposer's context.
+        reproposal_sections = sorted(reconciliation_blocked)
+        reproposal_restart_phase1 = False
+        if reproposal_sections:
+            log(f"=== Phase 1b.2: re-proposal pass for "
+                f"{len(reproposal_sections)} reconciliation-affected "
+                f"sections ===")
+
+            for sec_num in reproposal_sections:
+                # Check for abort or alignment changes before each section
+                if handle_pending_messages(planspace, [], set()):
+                    log("Aborted by parent during re-proposal pass")
+                    mailbox_send(planspace, parent, "fail:aborted")
+                    return
+
+                if alignment_changed_pending(planspace):
+                    if _check_and_clear_alignment_changed(planspace):
+                        log("Alignment changed during re-proposal pass "
+                            "— restarting from Phase 1")
+                        reproposal_restart_phase1 = True
+                        break
+
+                section = sections_by_num[sec_num]
+                log(f"=== Section {sec_num} re-proposal pass "
+                    f"(reconciliation-affected) ===")
+
+                reproposal_result = run_section(
+                    planspace, codespace, section, parent,
+                    all_sections=all_sections,
+                    pass_mode="proposal",
+                )
+
+                # Check if alignment_changed arrived during re-proposal
+                if _check_and_clear_alignment_changed(planspace):
+                    log("Alignment changed during re-proposal — "
+                        "restarting from Phase 1")
+                    reproposal_restart_phase1 = True
+                    break
+
+                if reproposal_result is None:
+                    log(f"Section {sec_num}: paused during re-proposal")
+                    continue
+
+                if isinstance(reproposal_result, ProposalPassResult):
+                    proposal_results[sec_num] = reproposal_result
+                    status = ("ready" if reproposal_result.execution_ready
+                              else f"still blocked "
+                                   f"({len(reproposal_result.blockers)} "
+                                   f"blockers)")
+                    log(f"Section {sec_num}: re-proposal complete — "
+                        f"{status}")
+                    mailbox_send(planspace, parent,
+                                 f"reproposal-done:{sec_num}:{status}")
+
+        if reproposal_restart_phase1:
+            continue  # outer while True → restart Phase 1
+
+        if reproposal_sections:
+            # Recompute ready/blocked after re-proposal
+            ready_sections = sorted(
+                num for num, pr in proposal_results.items()
+                if pr.execution_ready
+            )
+            blocked_sections = sorted(
+                num for num, pr in proposal_results.items()
+                if not pr.execution_ready
+            )
+            log(f"Post-reproposal summary: {len(ready_sections)} ready, "
+                f"{len(blocked_sections)} blocked")
+            if blocked_sections:
+                log(f"Still blocked after re-proposal: {blocked_sections}")
+
+        # -----------------------------------------------------------------
+        # Phase 1c: Implementation pass — execution-ready sections only
+        # -----------------------------------------------------------------
+        impl_completed: set[str] = set()
+        impl_restart_phase1 = False
+
+        for sec_num in ready_sections:
+            # Check for abort or alignment changes before each section
+            if handle_pending_messages(planspace, [], impl_completed):
+                log("Aborted by parent during implementation pass")
+                mailbox_send(planspace, parent, "fail:aborted")
+                return
+
+            if alignment_changed_pending(planspace):
+                if _check_and_clear_alignment_changed(planspace):
+                    log("Alignment changed during implementation pass "
+                        "— restarting from Phase 1")
+                    impl_restart_phase1 = True
+                    break
+
+            section = sections_by_num[sec_num]
+            log(f"=== Section {sec_num} implementation pass ===")
+            subprocess.run(  # noqa: S603
+                ["bash", str(DB_SH), "log", str(planspace / "run.db"),  # noqa: S607
+                 "lifecycle", f"start:section:{sec_num}:impl",
+                 f"round {section.solve_count}",
+                 "--agent", AGENT_NAME],
+                capture_output=True, text=True,
+            )
+
+            modified_files = run_section(
+                planspace, codespace, section, parent,
+                all_sections=all_sections,
+                pass_mode="implementation",
+            )
+
+            # Check if alignment_changed arrived during implementation
+            if _check_and_clear_alignment_changed(planspace):
+                log("Alignment changed during implementation — "
+                    "restarting from Phase 1")
+                impl_restart_phase1 = True
+                break
+
+            if modified_files is None:
+                # Section was paused or not ready
+                log(f"Section {sec_num}: implementation returned None")
+                subprocess.run(  # noqa: S603
+                    ["bash", str(DB_SH), "log",  # noqa: S607
+                     str(planspace / "run.db"),
+                     "lifecycle", f"end:section:{sec_num}:impl",
+                     "failed",
+                     "--agent", AGENT_NAME],
+                    capture_output=True, text=True,
+                )
+                continue
+
+            impl_completed.add(sec_num)
             mailbox_send(planspace, parent,
                          f"done:{sec_num}:{len(modified_files)} files "
                          f"modified")
@@ -460,8 +588,6 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             )
 
             # Persist baseline hash for targeted requeue (P5).
-            # Without this, the first alignment-change triggers
-            # requeue-all because prev="" for every section.
             baseline_hash_dir = (planspace / "artifacts"
                                  / "section-inputs-hashes")
             baseline_hash_dir.mkdir(parents=True, exist_ok=True)
@@ -478,17 +604,34 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                     sec_num, planspace, codespace, sections_by_num),
                 encoding="utf-8")
 
-            log(f"Section {sec_num}: done")
+            log(f"Section {sec_num}: implementation done")
             subprocess.run(  # noqa: S603
                 ["bash", str(DB_SH), "log",  # noqa: S607
                  str(planspace / "run.db"),
-                 "lifecycle", f"end:section:{sec_num}", "done",
+                 "lifecycle", f"end:section:{sec_num}:impl", "done",
                  "--agent", AGENT_NAME],
                 capture_output=True, text=True,
             )
 
-        log(f"=== Phase 1 complete: {len(completed)} sections "
-            f"processed ===")
+        if impl_restart_phase1:
+            continue  # outer while True → restart Phase 1
+
+        # Record blocked sections (proposal aligned but not
+        # execution-ready) as non-aligned results for Phase 2 to handle
+        for sec_num in blocked_sections:
+            pr = proposal_results[sec_num]
+            blocker_summary = "; ".join(
+                b.get("description", "unknown")[:80]
+                for b in pr.blockers[:3]
+            ) or "execution not ready"
+            section_results.setdefault(sec_num, SectionResult(
+                section_number=sec_num,
+                aligned=False,
+                problems=f"readiness blocked: {blocker_summary}",
+            ))
+
+        log(f"=== Phase 1 complete: {len(impl_completed)} sections "
+            f"implemented, {len(blocked_sections)} blocked ===")
 
         # Write strategic state snapshot after Phase 1
         decisions_dir = planspace / "artifacts" / "decisions"

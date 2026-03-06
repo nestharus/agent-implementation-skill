@@ -183,9 +183,9 @@ agents --agent-file "$WORKFLOW_HOME/agents/exception-handler.md" \
   --file <planspace>/artifacts/exception-prompt.md
 
 # Parallel dispatch with db.sh coordination
-(agents --model gpt-codex-high --file <prompt-A.md> && \
+(agents --model gpt-5.4-high --file <prompt-A.md> && \
   bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-A") &
-(agents --model gpt-codex-high --file <prompt-B.md> && \
+(agents --model gpt-5.4-high --file <prompt-B.md> && \
   bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-B") &
 bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator
 bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator
@@ -233,8 +233,8 @@ Control and recovery:
 | Model | Used For |
 |-------|----------|
 | `claude-opus` | Section setup (excerpt extraction), alignment checks (shape/direction), decomposition, codemap exploration, per-section file identification |
-| `gpt-codex-high` | Integration proposals, strategic implementation, coordinated fixes, extraction, investigation, constraint alignment check |
-| `gpt-codex-xhigh` | Deep architectural synthesis, proposal drafting |
+| `gpt-5.4-high` | Integration proposals, strategic implementation, coordinated fixes, extraction, investigation, constraint alignment check |
+| `gpt-5.4-xhigh` | Deep architectural synthesis, proposal drafting |
 | `glm` | Test running, verification, quick commands, deep file analysis, semantic impact analysis |
 
 ### Prompt Files
@@ -262,6 +262,8 @@ Each workflow gets a planspace at `~/.claude/workspaces/<task-slug>/`:
   - `artifacts/notes/` — cross-section consequence notes
   - `artifacts/coordination/` — global coordinator state and fix prompts
   - `artifacts/decisions/` — accumulated parent decisions per section (from pause/resume)
+  - `artifacts/parameters.json` — runtime parameters (e.g., `{"qa_mode": true}` to enable QA dispatch interception)
+  - `artifacts/qa-intercepts/` — QA interceptor prompts, outputs, and rationale files (created when qa_mode is enabled)
 - `run.db` — coordination database (messages, events, agent registry)
 - `constraints/` — discovered constraints (promote later)
 - `tradeoffs/` — discovered tradeoffs (promote later)

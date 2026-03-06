@@ -16,6 +16,7 @@ list, read it first. It lists all authoritative alignment inputs:
 - Proposal excerpt
 - Alignment excerpt
 - Integration proposal
+- Proposal-state artifact (machine-readable problem state)
 - TODO extraction / microstrategies
 - Consequence notes
 - Decisions
@@ -40,6 +41,8 @@ or implementation).
 - Are there fundamental misunderstandings about what's needed?
 - Has anything drifted from the original problem definition?
 - Are changes internally consistent across files?
+- If a proposal-state artifact exists, is it coherent with the proposal?
+- Is `execution_ready` truthful given the blocking fields?
 
 ### What NOT to Check
 
@@ -120,6 +123,37 @@ And set the JSON verdict:
 ```json
 {"frame_ok": false, "aligned": false, "problems": ["Invalid frame: feature-coverage audit request (not alignment)"]}
 ```
+
+### Proposal-State Coherence Check
+
+If a `proposal-state.json` artifact is listed in the alignment surface or
+Files to Read, verify the following:
+
+1. **Presence**: The proposal-state artifact exists and is well-formed
+   (contains the expected fields: resolved_anchors, unresolved_anchors,
+   resolved_contracts, unresolved_contracts, research_questions,
+   user_root_questions, new_section_candidates, shared_seam_candidates,
+   execution_ready, readiness_rationale).
+2. **Coherence with markdown proposal**: The proposal-state fields should
+   reflect the same picture as the markdown proposal. If the markdown
+   describes unresolved integration points but the state says
+   `unresolved_anchors: []`, that is a coherence failure.
+3. **Readiness truthfulness**: If `execution_ready` is `true`, then ALL
+   blocking fields must be empty:
+   - `unresolved_anchors` must be `[]`
+   - `unresolved_contracts` must be `[]`
+   - `user_root_questions` must be `[]`
+   - `shared_seam_candidates` must be `[]`
+   If ANY of these contain items while `execution_ready` is `true`, that
+   is a PROBLEMS finding — the proposal cannot receive ALIGNED.
+4. **Readiness rationale**: The `readiness_rationale` field should be
+   consistent with the actual state. A rationale claiming "all anchors
+   resolved" when `unresolved_anchors` is non-empty is a coherence
+   failure.
+
+This check is about structural honesty — the machine-readable state
+must not contradict the human-readable proposal. It is NOT about
+nitpicking individual anchor descriptions or contract wording.
 
 ### TODO/Microstrategy Layer Check
 
