@@ -79,7 +79,7 @@ Delete the old zip and recreate from `src/` and `evals/`:
 ```bash
 cd /home/nes/projects/agent-implementation-skill
 rm -f ~/work/tmp/execution-philosophy/codebase.zip
-zip -r ~/work/tmp/execution-philosophy/codebase.zip src/ evals/
+zip -r ~/work/tmp/execution-philosophy/codebase.zip src/ evals/ -x '*__pycache__*'
 ```
 
 Verify the zip contains the expected file count and no dev artifacts (`pyproject.toml`, `tests/` are excluded — they live outside the bundled directories).
