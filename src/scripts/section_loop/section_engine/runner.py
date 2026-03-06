@@ -568,6 +568,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                             f"malformed setup signal ({exc}), scope-delta "
                             f"will lack payload enrichment")
                 scope_delta = {
+                    "delta_id": f"delta-{section.number}-setup-oos",
                     "section": section.number,
                     "signal": "out_of_scope",
                     "detail": detail,
@@ -1302,6 +1303,63 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         artifacts / "proposals"
         / f"section-{section.number}-proposal-state.json"
     )
+    ps = load_proposal_state(proposal_state_path)
+
+    # ---------------------------------------------------------------
+    # Publish discoveries unconditionally — readiness decides descent,
+    # not whether a discovery becomes durable.
+    # ---------------------------------------------------------------
+
+    # new_section_candidates → scope-delta artifacts
+    scope_delta_dir = planspace / "artifacts" / "scope-deltas"
+    for candidate in ps.get("new_section_candidates", []):
+        scope_delta_dir.mkdir(parents=True, exist_ok=True)
+        cand_text = str(candidate)
+        cand_hash = hashlib.sha256(
+            cand_text.encode()).hexdigest()[:8]
+        delta_id = f"delta-{section.number}-candidate-{cand_hash}"
+        scope_delta = {
+            "delta_id": delta_id,
+            "section": section.number,
+            "signal": "new_section_candidate",
+            "detail": cand_text,
+            "requires_root_reframing": False,
+            "source": "proposal-state:new_section_candidates",
+        }
+        delta_path = (scope_delta_dir
+                      / f"section-{section.number}"
+                        f"-candidate-{cand_hash}-scope-delta.json")
+        delta_path.write_text(
+            json.dumps(scope_delta, indent=2), encoding="utf-8")
+        log(f"Section {section.number}: wrote scope-delta for "
+            f"new_section_candidate ({cand_hash})")
+
+    # research_questions → durable open-problem artifacts
+    for question in ps.get("research_questions", []):
+        _append_open_problem(
+            planspace, section.number,
+            str(question), "proposal-state:research_question",
+        )
+    rq_list = ps.get("research_questions", [])
+    if rq_list:
+        open_problems_dir = artifacts / "open-problems"
+        open_problems_dir.mkdir(parents=True, exist_ok=True)
+        rq_artifact = {
+            "section": section.number,
+            "research_questions": [str(q) for q in rq_list],
+            "source": "proposal-state",
+        }
+        rq_path = (open_problems_dir
+                    / f"section-{section.number}"
+                      f"-research-questions.json")
+        rq_path.write_text(
+            json.dumps(rq_artifact, indent=2), encoding="utf-8")
+        log(f"Section {section.number}: wrote {len(rq_list)} "
+            f"research questions to open-problems artifact")
+
+    # ---------------------------------------------------------------
+    # Readiness check
+    # ---------------------------------------------------------------
     readiness = resolve_readiness(artifacts, section.number)
     if not readiness.get("ready"):
         blockers = readiness.get("blockers", [])
@@ -1316,11 +1374,8 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                      f"({rationale})")
 
         # ---------------------------------------------------------------
-        # Route every unresolved field to its mechanical consumer so that
-        # downstream stages discover blocked work from artifacts — not by
-        # re-reading prose.
+        # Route blocker-specific fields to their mechanical consumers.
         # ---------------------------------------------------------------
-        ps = load_proposal_state(proposal_state_path)
         signal_dir = artifacts / "signals"
         signal_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1345,40 +1400,16 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             log(f"Section {section.number}: emitted NEED_DECISION "
                 f"signal for user_root_question[{i}]")
 
-        # 2. new_section_candidates → scope-delta artifacts
-        scope_delta_dir = planspace / "artifacts" / "scope-deltas"
-        for candidate in ps.get("new_section_candidates", []):
-            scope_delta_dir.mkdir(parents=True, exist_ok=True)
-            # Produce a stable suffix from candidate text
-            cand_text = str(candidate)
-            cand_hash = hashlib.sha256(
-                cand_text.encode()).hexdigest()[:8]
-            scope_delta = {
-                "section": section.number,
-                "signal": "new_section_candidate",
-                "detail": cand_text,
-                "requires_root_reframing": False,
-                "source": "proposal-state:new_section_candidates",
-            }
-            delta_path = (scope_delta_dir
-                          / f"section-{section.number}"
-                            f"-candidate-{cand_hash}-scope-delta.json")
-            delta_path.write_text(
-                json.dumps(scope_delta, indent=2), encoding="utf-8")
-            log(f"Section {section.number}: wrote scope-delta for "
-                f"new_section_candidate ({cand_hash})")
-
-        # 3. shared_seam_candidates → substrate-trigger artifacts
-        substrate_dir = artifacts / "substrate-triggers"
+        # 2. shared_seam_candidates → substrate-trigger signals
         for i, seam in enumerate(ps.get("shared_seam_candidates", [])):
-            substrate_dir.mkdir(parents=True, exist_ok=True)
+            signal_dir.mkdir(parents=True, exist_ok=True)
             trigger = {
                 "section": section.number,
                 "seam": str(seam),
                 "source": "proposal-state:shared_seam_candidates",
                 "trigger_type": "shared_seam",
             }
-            trigger_path = (substrate_dir
+            trigger_path = (signal_dir
                             / f"substrate-trigger-{section.number}"
                               f"-{i:02d}.json")
             trigger_path.write_text(
@@ -1411,31 +1442,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             sig_path.write_text(
                 json.dumps(seam_signal, indent=2), encoding="utf-8")
 
-        # 4. research_questions → durable open-problem artifacts
-        for question in ps.get("research_questions", []):
-            _append_open_problem(
-                planspace, section.number,
-                str(question), "proposal-state:research_question",
-            )
-        # Also write machine-readable research-questions artifact
-        rq_list = ps.get("research_questions", [])
-        if rq_list:
-            open_problems_dir = artifacts / "open-problems"
-            open_problems_dir.mkdir(parents=True, exist_ok=True)
-            rq_artifact = {
-                "section": section.number,
-                "research_questions": [str(q) for q in rq_list],
-                "source": "proposal-state",
-            }
-            rq_path = (open_problems_dir
-                        / f"section-{section.number}"
-                          f"-research-questions.json")
-            rq_path.write_text(
-                json.dumps(rq_artifact, indent=2), encoding="utf-8")
-            log(f"Section {section.number}: wrote {len(rq_list)} "
-                f"research questions to open-problems artifact")
-
-        # 5. unresolved_contracts + unresolved_anchors →
+        # 3. unresolved_contracts + unresolved_anchors →
         #    reconciliation queue
         uc = [str(c) for c in ps.get("unresolved_contracts", [])]
         ua = [str(a) for a in ps.get("unresolved_anchors", [])]

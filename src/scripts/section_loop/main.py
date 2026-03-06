@@ -655,9 +655,6 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
 
         restart_phase1 = False
         for sec_num, section in sections_by_num.items():
-            if not section.related_files:
-                continue
-
             # Skip sections whose inputs haven't changed since last
             # ALIGNED result (incremental convergence).
             cur_hash = _section_inputs_hash(

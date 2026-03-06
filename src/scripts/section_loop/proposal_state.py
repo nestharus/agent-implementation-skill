@@ -125,7 +125,34 @@ def load_proposal_state(path: Path) -> dict:
             pass
         return _fail_closed_default()
 
-    return validate_proposal_state(raw)
+    # Strict validation for loaded artifacts: missing required keys or
+    # wrong types are structural corruption, not "fill in the blanks".
+    for key, expected_type in PROPOSAL_STATE_SCHEMA.items():
+        if key not in raw:
+            logger.warning(
+                "Proposal state at %s missing required key '%s' "
+                "— renaming to .malformed.json",
+                path, key,
+            )
+            try:
+                path.rename(path.with_suffix(".malformed.json"))
+            except OSError:
+                pass
+            return _fail_closed_default()
+        if not isinstance(raw[key], expected_type):
+            logger.warning(
+                "Proposal state at %s has wrong type for '%s' "
+                "(expected %s, got %s) — renaming to .malformed.json",
+                path, key, expected_type.__name__,
+                type(raw[key]).__name__,
+            )
+            try:
+                path.rename(path.with_suffix(".malformed.json"))
+            except OSError:
+                pass
+            return _fail_closed_default()
+
+    return raw
 
 
 def save_proposal_state(state: dict, path: Path) -> None:

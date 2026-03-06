@@ -412,18 +412,10 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
     # ---- Step 4: Apply trigger rule ----
     trigger_threshold = _read_trigger_threshold(artifacts_dir)
 
-    if project_mode == "greenfield":
-        # Greenfield: run for ALL sections
-        target_sections = [_section_number(sf) for sf in section_files]
-        target_paths = {_section_number(sf): sf for sf in section_files}
-        trigger_reason = (
-            f"greenfield project -- running for all "
-            f"{total_sections} sections"
-        )
-    elif len(vacuum_sections) >= trigger_threshold or signal_triggered:
-        # Brownfield/hybrid with enough vacuum sections or signal-driven
-        combined = list(
-            dict.fromkeys(vacuum_sections + signal_triggered))
+    # Structural evidence drives SIS: vacuum sections + signal triggers.
+    # project_mode is telemetry only — not a routing key.
+    combined = list(dict.fromkeys(vacuum_sections + signal_triggered))
+    if len(vacuum_sections) >= trigger_threshold or signal_triggered:
         target_sections = combined
         target_paths = {
             _section_number(sf): sf

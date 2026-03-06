@@ -97,12 +97,22 @@ def load_reconciliation_requests(run_dir: Path) -> list[dict]:
                 requests.append(data)
             else:
                 logger.warning(
-                    "Reconciliation request at %s is not a dict — skipping",
+                    "Reconciliation request at %s is not a dict "
+                    "— renaming to .malformed.json",
                     req_path,
                 )
+                try:
+                    req_path.rename(req_path.with_suffix(".malformed.json"))
+                except OSError:
+                    pass
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning(
-                "Malformed reconciliation request at %s (%s) — skipping",
+                "Malformed reconciliation request at %s (%s) "
+                "— renaming to .malformed.json",
                 req_path, exc,
             )
+            try:
+                req_path.rename(req_path.with_suffix(".malformed.json"))
+            except OSError:
+                pass
     return requests

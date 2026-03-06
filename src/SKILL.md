@@ -33,7 +33,7 @@ $WORKFLOW_HOME/
     db.sh               # SQLite-backed coordination database
     scan.sh             # Stage 3 coordinator: dispatches agents to explore codespace and build codemap, then per-section file identification
     substrate.sh        # Stage 3.5 shim: sets PYTHONPATH, runs python -m substrate
-    substrate/          # Stage 3.5: shared integration substrate discovery (shards → prune → seed) for greenfield/vacuum sections
+    substrate/          # Stage 3.5: shared integration substrate discovery (shards → prune → seed) for vacuum/signal-triggered sections
     section-loop.py     # strategic section-loop orchestrator: integration proposals, strategic implementation, cross-section communication, global coordination (Stages 4-5 of implement.md)
   tools/
     extract-docstring-py  # extract Python module docstrings

@@ -856,28 +856,32 @@ is updated to `cleaned`.
 
 ## Stage 3.5: Shared Integration Substrate (SIS) Discovery
 
-**Conditional** — runs between scan and section-loop when greenfield or
-vacuum sections are detected.
+**Conditional** — runs between scan and section-loop when vacuum sections
+or signal triggers are detected.
 
 ### Purpose
 
-When sections have nothing to integrate against (greenfield projects or
-brownfield with new subsystems that have zero existing related files),
-integration proposals become hollow because each section independently
-invents project structure. SIS discovers shared integration seams
-*before* proposals begin, so sections have real anchor points.
+When sections have nothing to integrate against (vacuum sections with
+zero existing related files), integration proposals become hollow
+because each section independently invents project structure. SIS
+discovers shared integration seams *before* proposals begin, so sections
+have real anchor points.
 
 ### Trigger conditions
 
-- **Greenfield**: always runs, targeting all sections.
-- **Brownfield/hybrid**: runs when vacuum sections (zero existing related
-  files in codespace) meet the configured threshold (read from
+Trigger is structural evidence, not project mode. Project mode is
+recorded as telemetry only.
+
+- **Vacuum sections**: runs when sections with zero existing related
+  files in codespace meet the configured threshold (read from
   `model-policy.json` key `substrate_trigger_min_vacuum_sections`,
   default 2). Targets only vacuum sections.
 - **Signal-driven**: any section can request SIS by writing
   `artifacts/signals/substrate-trigger-<NN>.json` with
   `{"section": "NN", "reason": "..."}`. Signal-triggered sections
   are included alongside vacuum sections regardless of threshold.
+- Combined: vacuum + signal-triggered sections are deduplicated and
+  targeted together.
 
 ### Pipeline
 

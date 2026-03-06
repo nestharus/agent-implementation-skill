@@ -221,6 +221,7 @@ def _route_scope_deltas(
                 )
 
         delta = {
+            "delta_id": f"delta-{sec_num}-scan-deep",
             "section": sec_num,
             "origin": "scan-deep",
             "items": all_oos,

@@ -459,7 +459,12 @@ def _write_scope_delta(run_dir: Path, candidate: dict) -> Path:
     title_slug = candidate.get("title", "unknown")[:40].replace(" ", "_")
     filename = f"reconciliation-{sources}-{title_slug}.json"
     path = delta_dir / filename
+    import hashlib as _hashlib
+    title_hash = _hashlib.sha256(
+        candidate.get("title", "").encode()).hexdigest()[:8]
+    delta_id = f"delta-recon-{sources}-{title_hash}"
     delta = {
+        "delta_id": delta_id,
         "source": "reconciliation",
         "title": candidate.get("title", ""),
         "source_sections": candidate.get("source_sections", []),
@@ -525,13 +530,24 @@ def load_reconciliation_result(
         if isinstance(data, dict):
             return data
         logger.warning(
-            "Reconciliation result at %s is not a dict — ignoring", path,
+            "Reconciliation result at %s is not a dict "
+            "— renaming to .malformed.json",
+            path,
         )
+        try:
+            path.rename(path.with_suffix(".malformed.json"))
+        except OSError:
+            pass
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning(
-            "Malformed reconciliation result at %s (%s) — ignoring",
+            "Malformed reconciliation result at %s (%s) "
+            "— renaming to .malformed.json",
             path, exc,
         )
+        try:
+            path.rename(path.with_suffix(".malformed.json"))
+        except OSError:
+            pass
     return None
 
 
