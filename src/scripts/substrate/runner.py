@@ -13,15 +13,25 @@ CLI entry point: ``main()``.
 from __future__ import annotations
 
 import argparse
-import re
-import subprocess
 import sys
 from pathlib import Path
 
-from lib.artifact_io import read_json, write_json
+from lib.artifact_io import read_json
 from lib.path_registry import PathRegistry
-
-from scan.related_files import extract_related_files
+from lib.substrate_dispatch import dispatch_substrate_agent as _dispatch_agent
+from lib.substrate_helpers import (
+    count_existing_related as _count_existing_related,
+    list_section_files as _list_section_files,
+    read_project_mode as _read_project_mode,
+    section_number as _section_number,
+    write_status as _write_status,
+)
+from lib.substrate_policy import (
+    DEFAULT_TRIGGER_THRESHOLD as _DEFAULT_TRIGGER_THRESHOLD,
+    read_substrate_model_policy as _read_model_policy,
+    read_trigger_signals as _read_trigger_signals,
+    read_trigger_threshold as _read_trigger_threshold,
+)
 
 from lib.substrate_prompt_builder import (
     write_pruner_prompt,
@@ -34,284 +44,8 @@ from .schemas import read_seed_plan_failclosed, read_shard_failclosed
 # WORKFLOW_HOME: scripts/substrate -> scripts -> src
 WORKFLOW_HOME = Path(__file__).resolve().parent.parent.parent
 
-# ---- Default model assignments ----
-
-_DEFAULT_MODELS: dict[str, str] = {
-    "substrate_shard": "gpt-5.4-high",
-    "substrate_pruner": "gpt-5.4-xhigh",
-    "substrate_seeder": "gpt-5.4-high",
-}
-
-
-# ---- Model policy ----
-
-_DEFAULT_TRIGGER_THRESHOLD = 2
-
-
-def _read_model_policy(artifacts_dir: Path) -> dict[str, str]:
-    """Read substrate model assignments from ``model-policy.json``.
-
-    Looks for a ``"substrate_shard"``, ``"substrate_pruner"``, and
-    ``"substrate_seeder"`` keys at the top level of the policy file.
-    Falls back to defaults when the file is missing, malformed, or
-    lacks the relevant keys.
-
-    Returns a dict mapping task name -> model string.
-    """
-    policy = dict(_DEFAULT_MODELS)
-    policy_path = artifacts_dir / "model-policy.json"
-    if policy_path.is_file():
-        data = read_json(policy_path)
-        if isinstance(data, dict):
-            for key in _DEFAULT_MODELS:
-                if key in data and isinstance(data[key], str):
-                    policy[key] = data[key]
-        else:
-            print(
-                "[SUBSTRATE][WARN] model-policy.json exists but is "
-                "invalid -- renaming to .malformed.json"
-            )
-    return policy
-
-
 def _registry_for_artifacts(artifacts_dir: Path) -> PathRegistry:
     return PathRegistry(artifacts_dir.parent)
-
-
-def _read_trigger_signals(artifacts_dir: Path) -> list[str]:
-    """Read signal-driven SIS trigger requests.
-
-    Sections can request SIS via
-    ``artifacts/signals/substrate-trigger-<NN>.json`` with at least
-    ``{"section": "NN"}``. Returns a list of section number strings
-    that requested SIS regardless of vacuum status.
-    """
-    signals_dir = _registry_for_artifacts(artifacts_dir).signals_dir()
-    if not signals_dir.is_dir():
-        return []
-    triggered: list[str] = []
-    for p in sorted(signals_dir.iterdir()):
-        if not p.name.startswith("substrate-trigger-") or not p.name.endswith(".json"):
-            continue
-        data = read_json(p)
-        if isinstance(data, dict) and "section" in data:
-            triggered.append(str(data["section"]))
-        elif isinstance(data, dict) and "sections" in data:
-            # Reconciliation-generated triggers list multiple sections
-            for sec in data["sections"]:
-                triggered.append(str(sec))
-        else:
-            print(
-                f"[SUBSTRATE][WARN] {p.name} malformed "
-                f"-- renaming to .malformed.json"
-            )
-    return triggered
-
-
-def _read_trigger_threshold(artifacts_dir: Path) -> int:
-    """Read the vacuum section threshold from policy config.
-
-    Checks ``model-policy.json`` for ``substrate_trigger_min_vacuum_sections``.
-    Falls back to ``_DEFAULT_TRIGGER_THRESHOLD``.
-    """
-    policy_path = artifacts_dir / "model-policy.json"
-    if policy_path.is_file():
-        data = read_json(policy_path)
-        if isinstance(data, dict):
-            val = data.get("substrate_trigger_min_vacuum_sections")
-            if isinstance(val, int) and val >= 1:
-                return val
-        else:
-            print(
-                "[SUBSTRATE][WARN] model-policy.json malformed while "
-                "reading trigger threshold -- renaming to "
-                f".malformed.json"
-            )
-    return _DEFAULT_TRIGGER_THRESHOLD
-
-
-# ---- Agent dispatch ----
-
-def _dispatch_agent(
-    model: str,
-    prompt_path: Path,
-    output_path: Path,
-    codespace: Path | None = None,
-    *,
-    agent_file: str,
-) -> bool:
-    """Run an agent via the ``agents`` binary and capture output.
-
-    Parameters
-    ----------
-    model:
-        Model name (e.g. ``"gpt-5.4-high"``).
-    prompt_path:
-        ``--file`` path containing the agent prompt.
-    output_path:
-        Path to write combined stdout+stderr.
-    codespace:
-        If given, passed as ``--project`` so the agent runs with the
-        correct working directory.
-    agent_file:
-        REQUIRED basename of the agent definition file (e.g.
-        ``"substrate-shard-explorer.md"``).  Every dispatch must have
-        behavioral constraints.
-
-    Returns
-    -------
-    bool
-        ``True`` if the agent exited with return code 0.
-    """
-    if not agent_file:
-        raise ValueError(
-            "agent_file is required — every dispatch must have "
-            "behavioral constraints"
-        )
-    agent_path = WORKFLOW_HOME / "agents" / agent_file
-    if not agent_path.exists():
-        raise FileNotFoundError(f"Agent file not found: {agent_path}")
-
-    cmd = [
-        "agents",
-        "--model", model,
-        "--file", str(prompt_path),
-        "--agent-file", str(agent_path),
-    ]
-    if codespace:
-        cmd.extend(["--project", str(codespace)])
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        result = subprocess.run(  # noqa: S603
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
-        output_path.write_text(
-            result.stdout + result.stderr, encoding="utf-8",
-        )
-        if result.returncode != 0:
-            print(
-                f"[SUBSTRATE][WARN] Agent returned "
-                f"{result.returncode} for {prompt_path.name}"
-            )
-        return result.returncode == 0
-    except subprocess.TimeoutExpired:
-        output_path.write_text(
-            "TIMEOUT: Agent exceeded 600s time limit\n",
-            encoding="utf-8",
-        )
-        print(
-            f"[SUBSTRATE][WARN] Agent timed out for {prompt_path.name}"
-        )
-        return False
-
-
-# ---- Project mode ----
-
-def _read_project_mode(artifacts_dir: Path) -> str | None:
-    """Read project mode from scan-stage signals.
-
-    Checks ``artifacts/signals/project-mode.json`` first, then falls
-    back to ``artifacts/project-mode.txt``.
-
-    Returns one of ``"greenfield"``, ``"brownfield"``, ``"hybrid"``,
-    or ``None`` if no mode signal exists.
-    """
-    registry = _registry_for_artifacts(artifacts_dir)
-    json_path = registry.project_mode_json()
-    txt_path = registry.project_mode_txt()
-
-    if json_path.is_file():
-        data = read_json(json_path)
-        if isinstance(data, dict):
-            mode = data.get("mode", "").strip().lower()
-            if mode in ("greenfield", "brownfield", "hybrid"):
-                return mode
-        else:
-            print(
-                f"[SUBSTRATE][WARN] project-mode.json malformed "
-                "-- preserved as .malformed.json, "
-                f"trying text fallback"
-            )
-
-    if txt_path.is_file():
-        mode = txt_path.read_text(encoding="utf-8").strip().lower()
-        if mode in ("greenfield", "brownfield", "hybrid"):
-            return mode
-
-    return None
-
-
-# ---- Section analysis ----
-
-def _list_section_files(sections_dir: Path) -> list[Path]:
-    """Return sorted list of ``section-N.md`` files."""
-    files = [
-        f
-        for f in sections_dir.iterdir()
-        if f.is_file()
-        and re.match(r"section-\d+\.md$", f.name)
-    ]
-    return sorted(files)
-
-
-def _section_number(path: Path) -> str:
-    """Extract section number string from a section filename.
-
-    ``section-03.md`` -> ``"03"``.
-    """
-    match = re.match(r"section-(\d+)\.md$", path.name)
-    if match:
-        return match.group(1)
-    return path.stem.replace("section-", "")
-
-
-def _count_existing_related(
-    section_path: Path,
-    codespace: Path,
-) -> int:
-    """Count how many related files in a section spec actually exist.
-
-    Reads the ``## Related Files`` block, extracts ``### <path>``
-    entries, and checks each against the codespace.
-    """
-    text = section_path.read_text(encoding="utf-8")
-    related = extract_related_files(text)
-    count = 0
-    for rel_path in related:
-        candidate = codespace / rel_path
-        if candidate.exists():
-            count += 1
-    return count
-
-
-# ---- Status writing ----
-
-def _write_status(
-    artifacts_dir: Path,
-    state: str,
-    project_mode: str,
-    total_sections: int,
-    vacuum_sections: list[str],
-    notes: str,
-    threshold: int = _DEFAULT_TRIGGER_THRESHOLD,
-) -> None:
-    """Write ``artifacts/substrate/status.json``."""
-    status_dir = _registry_for_artifacts(artifacts_dir).substrate_dir()
-    status_dir.mkdir(parents=True, exist_ok=True)
-    status = {
-        "state": state,
-        "project_mode": project_mode,
-        "total_sections": total_sections,
-        "vacuum_sections": [int(s) for s in vacuum_sections],
-        "threshold": threshold,
-        "notes": notes,
-    }
-    write_json(status_dir / "status.json", status)
 
 
 # ---- Main orchestration ----
