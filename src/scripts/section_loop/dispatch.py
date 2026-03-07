@@ -3,9 +3,12 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from lib.artifact_io import read_json, rename_malformed, write_json
+from lib.artifact_io import write_json
 from lib.database_client import DatabaseClient
+from lib.dispatch_metadata import write_dispatch_metadata
+from lib.model_policy import load_model_policy
 from lib.monitor_service import MonitorService
+from lib.signal_reader import read_agent_signal, read_signal_tuple
 
 from .agent_templates import render_template, validate_dynamic_content
 from .communication import (
@@ -137,12 +140,11 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
         _log_artifact(planspace, f"output:{output_path.stem}")
 
     # Write dispatch metadata sidecar for callers that need return-code visibility
-    meta_path = output_path.with_suffix(".meta.json")
-    meta = {
-        "returncode": result.returncode if not timed_out else None,
-        "timed_out": timed_out,
-    }
-    write_json(meta_path, meta, indent=None)
+    write_dispatch_metadata(
+        output_path,
+        returncode=result.returncode if not timed_out else None,
+        timed_out=timed_out,
+    )
 
     return output
 
@@ -224,66 +226,6 @@ def summarize_output(output: str, max_len: int = 200) -> str:
         if stripped and not stripped.startswith("#") and not stripped.startswith("---"):
             return stripped[:max_len]
     return "(no output)"
-
-
-def read_signal_tuple(signal_path: Path) -> tuple[str | None, str]:
-    """Read a structured signal file written by an agent.
-
-    Agents write JSON signal files when they need to pause the pipeline.
-    Returns (signal_type, detail) or (None, "") if no signal file exists.
-    The detail includes structured fields (needs, assumptions_refused,
-    suggested_escalation_target) when available for richer context.
-    """
-    if not signal_path.exists():
-        return None, ""
-    data = read_json(signal_path)
-    if isinstance(data, dict):
-        state = data.get("state", "").lower()
-        detail = data.get("detail", "")
-        # Enrich detail with structured fields when present
-        needs = data.get("needs", "")
-        refused = data.get("assumptions_refused", "")
-        target = data.get("suggested_escalation_target", "")
-        extras = []
-        if needs:
-            extras.append(f"Needs: {needs}")
-        if refused:
-            extras.append(f"Refused assumptions: {refused}")
-        if target:
-            extras.append(f"Escalation target: {target}")
-        if extras:
-            detail = f"{detail} [{'; '.join(extras)}]"
-        if state in ("underspec", "underspecified"):
-            return "underspec", detail
-        if state in ("need_decision",):
-            return "need_decision", detail
-        if state in ("dependency",):
-            return "dependency", detail
-        if state in ("loop_detected",):
-            return "loop_detected", detail
-        if state in ("out_of_scope", "out-of-scope"):
-            return "out_of_scope", detail
-        if state in ("needs_parent",):
-            return "needs_parent", detail
-        # Unknown state — fail closed rather than silently ignoring
-        return "needs_parent", (
-            f"Unknown signal state '{state}' in {signal_path} — "
-            f"failing closed. Original detail: {detail}"
-        )
-    # Malformed signal — preserve corrupted file for diagnosis,
-    # then fail closed rather than silently ignoring.
-    exc = "invalid JSON"
-    if data is not None:
-        exc = "non-object JSON"
-        print(
-            f"[SIGNAL][WARN] Malformed signal JSON at {signal_path} "
-            f"({exc}) — renaming to .malformed.json",
-        )
-        rename_malformed(signal_path)
-    return "needs_parent", (
-        f"Malformed signal JSON at {signal_path} ({exc}) — "
-        f"failing closed"
-    )
 
 
 def adjudicate_agent_output(
@@ -369,41 +311,6 @@ LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
     return None, ""
 
 
-def read_agent_signal(
-    signal_path: Path, expected_fields: list[str] | None = None,
-) -> dict[str, Any] | None:
-    """Read a structured JSON signal artifact written by an agent.
-
-    Returns the parsed dict if the file exists and is valid JSON.
-    Returns None if the file doesn't exist or is malformed.
-    If expected_fields is provided, returns None when any are missing.
-
-    Scripts read JSON only — if missing/invalid, the caller should
-    dispatch the appropriate agent to regenerate.
-    """
-    if not signal_path.exists():
-        return None
-    data = read_json(signal_path)
-    if data is None:
-        print(
-            f"[SIGNAL][WARN] Malformed JSON in {signal_path} "
-            f"— renaming to .malformed.json",
-        )
-        return None
-    if not isinstance(data, dict):
-        print(
-            f"[SIGNAL][WARN] Signal at {signal_path} is not a JSON object "
-            f"— renaming to .malformed.json",
-        )
-        rename_malformed(signal_path)
-        return None
-    if expected_fields:
-        for f in expected_fields:
-            if f not in data:
-                return None
-    return data
-
-
 def write_model_choice_signal(
     planspace: Path, section: str, step: str,
     model: str, reason: str,
@@ -468,61 +375,5 @@ def create_signal_template(section: str, state: str, detail: str = "",
 
 
 def read_model_policy(planspace: Path) -> dict[str, Any]:
-    """Read model policy from artifacts/model-policy.json.
-
-    Returns policy dict with defaults and escalation triggers.
-    Falls back to built-in defaults if no policy file exists.
-    """
-    policy_path = planspace / "artifacts" / "model-policy.json"
-    defaults: dict[str, Any] = {
-        "setup": "claude-opus",
-        "proposal": "gpt-5.4-high",
-        "alignment": "claude-opus",
-        "implementation": "gpt-5.4-high",
-        "coordination_plan": "claude-opus",
-        "coordination_fix": "gpt-5.4-high",
-        "coordination_bridge": "gpt-5.4-xhigh",
-        "exploration": "glm",
-        "adjudicator": "glm",
-        "impact_analysis": "glm",
-        "impact_normalizer": "glm",
-        "triage": "glm",
-        "microstrategy_decider": "glm",
-        "tool_registrar": "glm",
-        "bridge_tools": "gpt-5.4-high",
-        "escalation_model": "gpt-5.4-xhigh",
-        "intent_triage": "glm",
-        "intent_philosophy": "claude-opus",
-        "intent_pack": "gpt-5.4-high",
-        "intent_judge": "claude-opus",
-        "intent_problem_expander": "claude-opus",
-        "intent_philosophy_expander": "claude-opus",
-        "intent_triage_escalation": "claude-opus",
-        "intent_recurrence_adjudicator": "glm",
-        "intent_philosophy_selector": "glm",
-        "substrate_shard": "gpt-5.4-high",
-        "substrate_pruner": "gpt-5.4-xhigh",
-        "substrate_seeder": "gpt-5.4-high",
-        "reconciliation_adjudicate": "claude-opus",
-        "escalation_triggers": {
-            "stall_count": 2,
-            "max_attempts_before_escalation": 3,
-        },
-    }
-    if not policy_path.exists():
-        return defaults
-    policy = read_json(policy_path)
-    if isinstance(policy, dict):
-        # Merge with defaults (policy overrides)
-        merged = {**defaults, **policy}
-        if "escalation_triggers" in policy:
-            merged["escalation_triggers"] = {
-                **defaults["escalation_triggers"],
-                **policy["escalation_triggers"],
-            }
-        return merged
-    log("  WARNING: model-policy.json exists but is invalid — "
-        "renaming to .malformed.json")
-    if policy is not None:
-        rename_malformed(policy_path)
-    return defaults
+    """Read model policy from artifacts/model-policy.json."""
+    return load_model_policy(planspace)

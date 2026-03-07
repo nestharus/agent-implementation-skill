@@ -29,6 +29,10 @@ import time
 from pathlib import Path
 
 from lib.artifact_io import read_json
+from lib.dispatch_metadata import (
+    DISPATCH_META_CORRUPT,
+    read_dispatch_metadata,
+)
 
 # Resolve paths relative to this script's location.
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -56,7 +60,7 @@ DISPATCHER_NAME = "task-dispatcher"
 # Sentinel returned by _read_dispatch_meta when the sidecar file exists
 # but contains malformed JSON.  Distinct from None (file absent) and
 # dict (valid parse).
-_DISPATCH_META_CORRUPT = object()
+_DISPATCH_META_CORRUPT = DISPATCH_META_CORRUPT
 
 
 def _db(db_path: str, *args: str) -> subprocess.CompletedProcess[str]:
@@ -113,17 +117,13 @@ def _read_dispatch_meta(meta_path: Path) -> dict | None | object:
       ``.malformed.json`` for forensic preservation and a warning is
       logged (same pattern as ``_read_flow_json`` in task_flow.py).
     """
-    if not meta_path.exists():
-        return None
-
-    data = read_json(meta_path)
-    if data is None:
+    data = read_dispatch_metadata(meta_path)
+    if data is DISPATCH_META_CORRUPT:
         log(
             f"WARNING: Malformed dispatch meta at {meta_path} "
             f"— renaming to .malformed.json"
         )
         return _DISPATCH_META_CORRUPT
-
     return data
 
 
