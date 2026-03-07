@@ -10,6 +10,8 @@ from lib.excerpt_repository import exists as excerpt_exists
 from lib.hash_service import content_hash, file_hash
 from lib.note_repository import write_consequence_note
 from lib.path_registry import PathRegistry
+from lib.readiness_resolver import resolve_readiness
+from lib.intent_triage import load_triage_result
 from lib.tool_surface import (
     handle_tool_friction,
     surface_tool_registry,
@@ -76,8 +78,6 @@ from ..intent.surfaces import (
     normalize_surface_ids,
     save_surface_registry,
 )
-from ..intent.triage import load_triage_result
-from ..readiness import resolve_readiness
 from ..reconciliation import load_reconciliation_result
 from lib.proposal_state_repository import load_proposal_state
 from lib.reconciliation_queue import queue_reconciliation_request

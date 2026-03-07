@@ -9,17 +9,12 @@ import re
 from pathlib import Path
 
 from lib.artifact_io import read_json, write_json
+from lib.scan_template_loader import load_scan_template
 
 from prompt_safety import validate_dynamic_content
 
 from .dispatch import dispatch_agent, read_scan_model_policy
 from .exploration import apply_related_files_update
-
-_TEMPLATES = Path(__file__).resolve().parent / "templates"
-
-
-def _load_template(name: str) -> str:
-    return (_TEMPLATES / name).read_text()
 
 
 def collect_and_route_feedback(
@@ -326,7 +321,7 @@ def _apply_feedback(
                 "frame. Give a short reason for each removal.\n\n"
             )
 
-        prompt = _load_template("related_files_updater.md").format(
+        prompt = load_scan_template("related_files_updater.md").format(
             section_name=sec_name,
             section_file=section_file,
             codemap_path=codemap_path,

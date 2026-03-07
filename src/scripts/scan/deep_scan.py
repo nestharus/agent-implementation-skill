@@ -12,6 +12,8 @@ from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed, write_json
 from lib.hash_service import content_hash
+from lib.scan_phase_logger import log_phase_failure
+from lib.scan_template_loader import load_scan_template
 
 from prompt_safety import validate_dynamic_content
 
@@ -19,12 +21,6 @@ from .cache import FileCardCache, is_valid_cached_feedback, strip_scan_summaries
 from .dispatch import dispatch_agent, read_scan_model_policy
 from .exploration import list_section_files
 from .feedback import collect_and_route_feedback
-
-_TEMPLATES = Path(__file__).resolve().parent / "templates"
-
-
-def _load_template(name: str) -> str:
-    return (_TEMPLATES / name).read_text()
 
 
 # ------------------------------------------------------------------
@@ -239,7 +235,7 @@ def _run_tier_ranking(
 
     file_list_text = "\n".join(f"- {rf}" for rf in related_files if rf.strip())
 
-    prompt = _load_template("tier_ranking.md").format(
+    prompt = load_scan_template("tier_ranking.md").format(
         section_file=section_file,
         file_list_text=file_list_text,
         tier_file=tier_file,
@@ -375,11 +371,11 @@ def _analyze_file(
     abs_source = codespace / source_file
 
     if not abs_source.is_file():
-        _log_phase_failure(
-            scan_log_dir,
+        log_phase_failure(
             "deep-scan",
             f"{section_name}:{source_file}",
             "source file missing in codespace",
+            scan_log_dir,
         )
         return False
 
@@ -417,11 +413,11 @@ def _analyze_file(
                 shutil.copy2(cached_fb, feedback_file)
 
             if not update_match(section_file, source_file, response_file):
-                _log_phase_failure(
-                    scan_log_dir,
+                log_phase_failure(
                     "deep-update",
                     f"{section_name}:{source_file}",
                     "failed to update section file (cached)",
+                    scan_log_dir,
                 )
                 return False
 
@@ -437,7 +433,7 @@ def _analyze_file(
         )
 
     # Dispatch analysis agent
-    prompt = _load_template("deep_analysis.md").format(
+    prompt = load_scan_template("deep_analysis.md").format(
         section_file=section_file,
         abs_source=abs_source,
         codemap_path=codemap_path,
@@ -447,10 +443,11 @@ def _analyze_file(
     )
     violations = validate_dynamic_content(prompt)
     if violations:
-        _log_phase_failure(
-            scan_log_dir, "deep-scan",
+        log_phase_failure(
+            "deep-scan",
             f"{section_name}:{source_file}",
             f"prompt blocked — safety violations: {violations}",
+            scan_log_dir,
         )
         return False
     prompt_file.write_text(prompt)
@@ -465,20 +462,20 @@ def _analyze_file(
     )
 
     if result.returncode != 0:
-        _log_phase_failure(
-            scan_log_dir,
+        log_phase_failure(
             "deep-scan",
             f"{section_name}:{source_file}",
             f"deep analysis failed (see {stderr_file})",
+            scan_log_dir,
         )
         return False
 
     if not response_file.is_file() or not response_file.read_text().strip():
-        _log_phase_failure(
-            scan_log_dir,
+        log_phase_failure(
             "deep-scan",
             f"{section_name}:{source_file}",
             "agent produced empty output",
+            scan_log_dir,
         )
         return False
 
@@ -490,11 +487,11 @@ def _analyze_file(
     )
 
     if not update_match(section_file, source_file, response_file):
-        _log_phase_failure(
-            scan_log_dir,
+        log_phase_failure(
             "deep-update",
             f"{section_name}:{source_file}",
             "failed to update section file",
+            scan_log_dir,
         )
         return False
 
@@ -571,11 +568,11 @@ def _scan_sections(
                 "— skipping deep scan (fail-closed)",
             )
             phase_failed = True
-            _log_phase_failure(
-                scan_log_dir,
+            log_phase_failure(
                 "deep-scan",
                 section_name,
                 "tier ranking unavailable — deep scan skipped",
+                scan_log_dir,
             )
             continue
 
@@ -692,22 +689,3 @@ def run_deep_scan(
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
-
-
-def _log_phase_failure(
-    scan_log_dir: Path,
-    phase: str,
-    context: str,
-    message: str,
-) -> None:
-    from datetime import datetime, timezone
-
-    failure_log = scan_log_dir / "failures.log"
-    ts = datetime.now(tz=timezone.utc).isoformat()
-    line = f"{ts} phase={phase} context={context} message={message}\n"
-    with failure_log.open("a") as f:
-        f.write(line)
-    print(
-        f"[FAIL] phase={phase} context={context} message={message}",
-        file=sys.stderr,
-    )

@@ -6,22 +6,17 @@ Translates ``run_section_exploration()`` and helpers from scan.sh.
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 
 from lib.artifact_io import read_json, write_json
 from lib.hash_service import content_hash, file_hash
+from lib.scan_phase_logger import log_phase_failure
+from lib.scan_template_loader import load_scan_template
 
 from prompt_safety import validate_dynamic_content
 
 from .cache import strip_scan_summaries
 from .dispatch import dispatch_agent, read_scan_model_policy
-
-_TEMPLATES = Path(__file__).resolve().parent / "templates"
-
-
-def _load_template(name: str) -> str:
-    return (_TEMPLATES / name).read_text()
 
 
 def list_section_files(sections_dir: Path) -> list[Path]:
@@ -208,7 +203,7 @@ def _validate_existing_related_files(
             f"`{corrections_file}`"
         )
 
-    prompt = _load_template("validate_related_files.md").format(
+    prompt = load_scan_template("validate_related_files.md").format(
         section_file=section_file,
         codemap_path=codemap_path,
         corrections_ref=corrections_ref,
@@ -331,16 +326,18 @@ def _explore_section(
         artifacts_dir / "signals" / "codemap-corrections.json"
     )
 
-    prompt = _load_template("explore_section.md").format(
+    prompt = load_scan_template("explore_section.md").format(
         codemap_path=codemap_path,
         section_file=section_file,
         corrections_signal=corrections_signal,
     )
     violations = validate_dynamic_content(prompt)
     if violations:
-        _log_phase_failure(
-            scan_log_dir, "quick-explore", section_name,
+        log_phase_failure(
+            "quick-explore",
+            section_name,
             f"prompt blocked — safety violations: {violations}",
+            scan_log_dir,
         )
         return
     prompt_file.write_text(prompt)
@@ -355,11 +352,11 @@ def _explore_section(
     )
 
     if result.returncode != 0:
-        _log_phase_failure(
-            scan_log_dir,
+        log_phase_failure(
             "quick-explore",
             section_name,
             f"exploration agent failed (see {stderr_file})",
+            scan_log_dir,
         )
         return
 
@@ -384,28 +381,9 @@ def _explore_section(
                 f.write(rf_block)
             print(f"[EXPLORE] {section_name} — related files identified")
         else:
-            _log_phase_failure(
-                scan_log_dir,
+            log_phase_failure(
                 "quick-explore",
                 section_name,
                 "agent output missing Related Files block",
+                scan_log_dir,
             )
-
-
-def _log_phase_failure(
-    scan_log_dir: Path,
-    phase: str,
-    context: str,
-    message: str,
-) -> None:
-    from datetime import datetime, timezone
-
-    failure_log = scan_log_dir / "failures.log"
-    ts = datetime.now(tz=timezone.utc).isoformat()
-    line = f"{ts} phase={phase} context={context} message={message}\n"
-    with failure_log.open("a") as f:
-        f.write(line)
-    print(
-        f"[FAIL] phase={phase} context={context} message={message}",
-        file=sys.stderr,
-    )

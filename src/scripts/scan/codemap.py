@@ -5,23 +5,16 @@ Translates ``run_codemap_build()`` and its helpers from scan.sh.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed
+from lib.scan_phase_logger import log_phase_failure
+from lib.scan_template_loader import load_scan_template
 
 from prompt_safety import validate_dynamic_content
 
 from .dispatch import dispatch_agent, read_scan_model_policy
 from .fingerprint import NON_GIT_SENTINEL, compute_codespace_fingerprint
-
-# Template directory lives alongside this module
-_TEMPLATES = Path(__file__).resolve().parent / "templates"
-
-
-def _load_template(name: str) -> str:
-    return (_TEMPLATES / name).read_text()
-
 
 def run_codemap_build(
     *,
@@ -105,15 +98,17 @@ def run_codemap_build(
     signals_dir = artifacts_dir / "signals"
     signals_dir.mkdir(parents=True, exist_ok=True)
 
-    prompt = _load_template("codemap_build.md").format(
+    prompt = load_scan_template("codemap_build.md").format(
         project_mode_path=artifacts_dir / "project-mode.txt",
         project_mode_signal=signals_dir / "project-mode.json",
     )
     violations = validate_dynamic_content(prompt)
     if violations:
-        _log_phase_failure(
-            scan_log_dir, "quick-codemap", codemap_path.name,
+        log_phase_failure(
+            "quick-codemap",
+            codemap_path.name,
             f"prompt blocked — safety violations: {violations}",
+            scan_log_dir,
         )
         return False
     prompt_file.write_text(prompt)
@@ -128,20 +123,20 @@ def run_codemap_build(
     )
 
     if result.returncode != 0:
-        _log_phase_failure(
-            scan_log_dir,
+        log_phase_failure(
             "quick-codemap",
             codemap_path.name,
             f"codemap agent failed (see {stderr_file})",
+            scan_log_dir,
         )
         return False
 
     if not _has_content(codemap_path):
-        _log_phase_failure(
-            scan_log_dir,
+        log_phase_failure(
             "quick-codemap",
             codemap_path.name,
             "codemap agent produced empty output",
+            scan_log_dir,
         )
         return False
 
@@ -212,7 +207,7 @@ def _run_freshness_check(
             f"`{corrections_path}`"
         )
 
-    prompt = _load_template("codemap_freshness.md").format(
+    prompt = load_scan_template("codemap_freshness.md").format(
         codemap_path=codemap_path,
         codespace=codespace,
         change_description=change_desc,
@@ -281,7 +276,7 @@ def _run_verification(
     verifier_output = scan_log_dir / "codemap-verify-output.md"
     corrections_signal = artifacts_dir / "signals" / "codemap-corrections.json"
 
-    prompt = _load_template("codemap_verify.md").format(
+    prompt = load_scan_template("codemap_verify.md").format(
         codemap_path=codemap_path,
         corrections_signal=corrections_signal,
     )
@@ -314,23 +309,3 @@ def _has_content(path: Path) -> bool:
         return bool(path.read_text().strip())
     except OSError:
         return False
-
-
-def _log_phase_failure(
-    scan_log_dir: Path,
-    phase: str,
-    context: str,
-    message: str,
-) -> None:
-    """Append structured failure to failures.log and print to stderr."""
-    from datetime import datetime, timezone
-
-    failure_log = scan_log_dir / "failures.log"
-    ts = datetime.now(tz=timezone.utc).isoformat()
-    line = f"{ts} phase={phase} context={context} message={message}\n"
-    with failure_log.open("a") as f:
-        f.write(line)
-    print(
-        f"[FAIL] phase={phase} context={context} message={message}",
-        file=sys.stderr,
-    )
