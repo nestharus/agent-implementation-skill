@@ -18,11 +18,14 @@ are fully processed (chains and fanouts).
 
 from __future__ import annotations
 
-import json
-import re
 import sys
 from pathlib import Path
 
+from lib.task_ingestion import (
+    find_first_section_scope,
+    ingest_task_requests as _ingest_task_requests,
+    parse_signal_file as _parse_signal_file,
+)
 from lib.path_registry import PathRegistry
 
 from .agent_templates import validate_dynamic_content
@@ -36,9 +39,6 @@ if str(_SCRIPTS_DIR) not in sys.path:
 from flow_schema import (  # noqa: E402
     ChainAction,
     FanoutAction,
-    FlowDeclaration,
-    parse_flow_signal,
-    validate_flow_declaration,
 )
 from task_flow import (  # noqa: E402
     compute_section_freshness,
@@ -47,51 +47,6 @@ from task_flow import (  # noqa: E402
 )
 from lib.flow_submitter import new_flow_id  # noqa: E402
 from task_router import resolve_task  # noqa: E402
-
-
-def _parse_signal_file(signal_path: Path) -> FlowDeclaration | None:
-    """Parse a task-request signal file into a FlowDeclaration.
-
-    Returns None if the file is missing, empty, or malformed.
-    On parse errors, renames to .malformed.json for diagnosis.
-    On success, deletes the signal file to prevent re-processing.
-    """
-    if not signal_path.exists():
-        return None
-
-    raw = signal_path.read_text(encoding="utf-8").strip()
-    if not raw:
-        signal_path.unlink(missing_ok=True)
-        return None
-
-    try:
-        decl = parse_flow_signal(signal_path)
-    except ValueError as exc:
-        log(f"  task_ingestion: WARNING — malformed signal in "
-            f"{signal_path} ({exc}), renaming to .malformed.json")
-        try:
-            signal_path.rename(
-                signal_path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
-        return None
-
-    # Validate v2 declarations
-    if decl.version >= 2:
-        errors = validate_flow_declaration(decl)
-        if errors:
-            log(f"  task_ingestion: WARNING — v2 flow declaration in "
-                f"{signal_path} has validation errors: {errors}")
-            try:
-                signal_path.rename(
-                    signal_path.with_suffix(".malformed.json"))
-            except OSError:
-                pass
-            return None
-
-    signal_path.unlink(missing_ok=True)
-    return decl
-
 
 def ingest_task_requests(signal_path: Path) -> list[dict]:
     """Read and parse a task-request signal file.
@@ -114,54 +69,7 @@ def ingest_task_requests(signal_path: Path) -> list[dict]:
         Use :func:`ingest_and_submit` instead, which submits tasks into
         the queue with flow metadata rather than returning raw dicts.
     """
-    decl = _parse_signal_file(signal_path)
-    if decl is None:
-        return []
-
-    # Legacy v1 only — v2 declarations are handled by ingest_and_submit
-    if decl.version >= 2:
-        log(f"  task_ingestion: WARNING — v2 flow actions should use "
-            f"ingest_and_submit, skipping")
-        return []
-
-    # --- Legacy (v1): extract task dicts from chain steps ---
-    entries = _extract_legacy_tasks(decl)
-
-    # Validate: each entry must have task_type
-    valid: list[dict] = []
-    for entry in entries:
-        if "task_type" not in entry:
-            log(f"  task_ingestion: WARNING — skipping entry without "
-                f"task_type: {entry!r}")
-            continue
-        valid.append(entry)
-
-    return valid
-
-
-def _extract_legacy_tasks(decl: FlowDeclaration) -> list[dict]:
-    """Extract flat task dicts from a legacy (v1) FlowDeclaration.
-
-    Legacy declarations are normalized into a single ChainAction whose
-    steps map 1:1 to the original task dicts.
-    """
-    from flow_schema import ChainAction  # noqa: E402 — deferred to avoid circular
-
-    tasks: list[dict] = []
-    for action in decl.actions:
-        if isinstance(action, ChainAction):
-            for step in action.steps:
-                task: dict = {"task_type": step.task_type}
-                if step.concern_scope:
-                    task["concern_scope"] = step.concern_scope
-                if step.payload_path:
-                    task["payload_path"] = step.payload_path
-                if step.priority and step.priority != "normal":
-                    task["priority"] = step.priority
-                if step.problem_id:
-                    task["problem_id"] = step.problem_id
-                tasks.append(task)
-    return tasks
+    return _ingest_task_requests(signal_path, logger=log)
 
 
 def dispatch_ingested_tasks(
@@ -292,7 +200,7 @@ def ingest_and_submit(
 
     Returns list of submitted task IDs.
     """
-    decl = _parse_signal_file(signal_path)
+    decl = _parse_signal_file(signal_path, logger=log)
     if decl is None:
         return []
 
@@ -305,14 +213,11 @@ def ingest_and_submit(
                 continue
             # P4: compute freshness token for section-scoped tasks
             token: str | None = None
-            for step in action.steps:
-                if step.concern_scope:
-                    m = re.match(r'^section-(\d+)$', step.concern_scope)
-                    if m:
-                        token = compute_section_freshness(
-                            planspace, m.group(1),
-                        )
-                        break  # one token per chain is sufficient
+            section_scope = find_first_section_scope(action.steps)
+            if section_scope:
+                token = compute_section_freshness(
+                    planspace, section_scope,
+                )
             task_ids = submit_chain(
                 db_path,
                 submitted_by,

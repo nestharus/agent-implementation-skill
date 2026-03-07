@@ -4,9 +4,13 @@ from pathlib import Path
 from typing import Any
 
 from lib import agent_executor
-from lib.artifact_io import write_json
 from lib.alignment_change_tracker import check_pending as alignment_changed_pending
 from lib.database_client import DatabaseClient
+from lib.dispatch_helpers import (
+    check_agent_signals,
+    summarize_output,
+    write_model_choice_signal,
+)
 from lib.dispatch_metadata import write_dispatch_metadata
 from lib.model_policy import load_model_policy
 from lib.monitor_service import MonitorService
@@ -211,21 +215,6 @@ Do NOT send loop signals via mailbox — only log signal events as above.
     return prompt_path
 
 
-def summarize_output(output: str, max_len: int = 200) -> str:
-    """Extract a brief summary from agent output for status messages."""
-    # Look for explicit summary lines first
-    for line in output.split("\n"):
-        stripped = line.strip()
-        if stripped.lower().startswith("summary:"):
-            return stripped[len("summary:"):].strip()[:max_len]
-    # Fall back to first non-empty, non-heading line
-    for line in output.split("\n"):
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#") and not stripped.startswith("---"):
-            return stripped[:max_len]
-    return "(no output)"
-
-
 def adjudicate_agent_output(
     output_path: Path, planspace: Path, parent: str,
     codespace: Path | None = None,
@@ -307,53 +296,6 @@ LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
             f"[ADJUDICATOR][WARN] Malformed adjudicator verdict JSON "
             f"({exc}) — treating as unrecognized signal",
         )
-    return None, ""
-
-
-def write_model_choice_signal(
-    planspace: Path, section: str, step: str,
-    model: str, reason: str,
-    escalated_from: str | None = None,
-) -> None:
-    """Write a structured model-choice signal for auditability."""
-    signals_dir = PathRegistry(planspace).signals_dir()
-    signals_dir.mkdir(parents=True, exist_ok=True)
-    signal = {
-        "section": section,
-        "step": step,
-        "model": model,
-        "reason": reason,
-        "escalated_from": escalated_from,
-    }
-    signal_path = signals_dir / f"model-choice-{section}-{step}.json"
-    write_json(signal_path, signal)
-
-
-def check_agent_signals(
-    output: str, signal_path: Path | None = None,
-    output_path: Path | None = None,
-    planspace: Path | None = None,
-    parent: str | None = None,
-    codespace: Path | None = None,
-) -> tuple[str | None, str]:
-    """Check for agent signals via the structured JSON file.
-
-    The JSON signal file is the sole truth channel.  If the agent
-    wrote a signal file, it is read and returned.  If no signal file
-    exists, the function returns ``(None, "")``.
-
-    Adjudication (``adjudicate_agent_output``) is available for
-    callers that detect a mechanical anomaly (expected artifact
-    missing, empty output, malformed signal) — but it is NOT invoked
-    automatically here.  This avoids paying an "adjudicator tax" on
-    every unblocked agent dispatch in the common path.
-    """
-    # Structured signal file — the only automatic check.
-    if signal_path:
-        sig, detail = read_signal_tuple(signal_path)
-        if sig:
-            return sig, detail
-
     return None, ""
 
 

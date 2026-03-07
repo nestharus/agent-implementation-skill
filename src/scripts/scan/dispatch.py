@@ -17,47 +17,14 @@ import json
 import subprocess
 from pathlib import Path
 
-# Default model assignments per scan task.
-_DEFAULT_MODELS: dict[str, str] = {
-    "codemap_build": "claude-opus",
-    "codemap_freshness": "claude-opus",
-    "exploration": "claude-opus",
-    "validation": "claude-opus",
-    "tier_ranking": "glm",
-    "deep_analysis": "glm",
-    "feedback_updater": "glm",
-}
+from lib.scan_dispatch import (
+    DEFAULT_SCAN_MODELS,
+    build_scan_dispatch_command,
+    read_scan_model_policy,
+    resolve_scan_agent_path,
+)
 
-
-def read_scan_model_policy(artifacts_dir: Path) -> dict[str, str]:
-    """Read scan-stage model policy from ``model-policy.json``.
-
-    Looks for a ``"scan"`` key inside the policy file. Falls back to
-    defaults when the file is missing, malformed, or has no scan key.
-
-    Returns a dict mapping task name → model string.
-    """
-    policy = dict(_DEFAULT_MODELS)
-    policy_path = artifacts_dir / "model-policy.json"
-    if policy_path.is_file():
-        try:
-            data = json.loads(policy_path.read_text())
-            scan_overrides = data.get("scan", {})
-            if isinstance(scan_overrides, dict):
-                for key, val in scan_overrides.items():
-                    if key in policy and isinstance(val, str):
-                        policy[key] = val
-        except (json.JSONDecodeError, OSError) as exc:
-            print(
-                f"[SCAN] WARNING: model-policy.json exists but is "
-                f"invalid ({exc}) — renaming to .malformed.json",
-            )
-            try:
-                policy_path.rename(
-                    policy_path.with_suffix(".malformed.json"))
-            except OSError:
-                pass
-    return policy
+_DEFAULT_MODELS = DEFAULT_SCAN_MODELS
 
 
 def dispatch_agent(
@@ -101,17 +68,13 @@ def dispatch_agent(
         )
     # WORKFLOW_HOME: scripts/scan -> scripts -> src
     workflow_home = Path(__file__).resolve().parent.parent.parent
-    agent_path = workflow_home / "agents" / agent_file
-    if not agent_path.exists():
-        raise FileNotFoundError(f"Agent file not found: {agent_path}")
-
-    cmd = [
-        "agents",
-        "--model", model,
-        "--project", str(project),
-        "--file", str(prompt_file),
-        "--agent-file", str(agent_path),
-    ]
+    agent_path = resolve_scan_agent_path(workflow_home, agent_file)
+    cmd = build_scan_dispatch_command(
+        model=model,
+        project=project,
+        prompt_file=prompt_file,
+        agent_path=agent_path,
+    )
 
     result = subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603
 

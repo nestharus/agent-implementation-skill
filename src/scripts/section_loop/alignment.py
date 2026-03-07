@@ -1,5 +1,9 @@
 from pathlib import Path
 
+from lib.alignment_service import (
+    collect_modified_files as _collect_modified_files,
+    extract_problems,
+)
 from lib.path_registry import PathRegistry
 from .agent_templates import render_template
 from .communication import log
@@ -13,41 +17,13 @@ from .types import Section
 def collect_modified_files(
     planspace: Path, section: Section, codespace: Path,
 ) -> list[str]:
-    """Collect modified file paths from the implementation report.
-
-    Normalizes all paths to safe relative paths under ``codespace``.
-    Absolute paths are converted to relative (if under codespace) or
-    rejected. Paths containing ``..`` that escape codespace are rejected.
-    """
-    paths = PathRegistry(planspace)
-    modified_report = paths.impl_modified(section.number)
-    codespace_resolved = codespace.resolve()
-    modified = set()
-    if modified_report.exists():
-        for line in modified_report.read_text(encoding="utf-8").strip().split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            pp = Path(line)
-            if pp.is_absolute():
-                # Convert absolute to relative if under codespace
-                try:
-                    rel = pp.resolve().relative_to(codespace_resolved)
-                except ValueError:
-                    log(f"  WARNING: reported path outside codespace, "
-                        f"skipping: {line}")
-                    continue
-            else:
-                # Resolve relative path and ensure it stays under codespace
-                full = (codespace / pp).resolve()
-                try:
-                    rel = full.relative_to(codespace_resolved)
-                except ValueError:
-                    log(f"  WARNING: reported path escapes codespace, "
-                        f"skipping: {line}")
-                    continue
-            modified.add(str(rel))
-    return list(modified)
+    """Collect modified files from the implementation report."""
+    return _collect_modified_files(
+        planspace,
+        section,
+        codespace,
+        logger=log,
+    )
 
 
 def _extract_problems(
@@ -74,14 +50,7 @@ def _extract_problems(
     # Primary: structured JSON verdict from alignment judge
     verdict = _parse_alignment_verdict(result)
     if verdict is not None:
-        if verdict.get("aligned", False):
-            return None
-        problems = verdict.get("problems")
-        if isinstance(problems, list) and problems:
-            return "\n".join(str(p) for p in problems)
-        if isinstance(problems, str) and problems.strip():
-            return problems.strip()
-        return "Alignment judge reported misaligned (no details in verdict)"
+        return extract_problems(verdict)
 
     # Fallback: dispatch GLM adjudicator to classify the alignment output.
     # Scripts must not interpret meaning from text — the adjudicator decides.
