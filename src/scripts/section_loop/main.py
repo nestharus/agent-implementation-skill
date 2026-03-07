@@ -9,6 +9,7 @@ from lib.alignment_change_tracker import (
     check_and_clear,
     check_pending as alignment_changed_pending,
 )
+from lib.coordination_problem_resolver import _collect_outstanding_problems
 from lib.path_registry import PathRegistry
 
 from .alignment import (
@@ -29,7 +30,6 @@ from .coordination import (
     MIN_COORDINATION_ROUNDS,
     run_global_coordination,
 )
-from .coordination.problems import _collect_outstanding_problems
 from .cross_section import read_incoming_notes
 from .dispatch import (
     check_agent_signals,

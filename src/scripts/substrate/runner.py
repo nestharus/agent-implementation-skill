@@ -23,7 +23,11 @@ from lib.path_registry import PathRegistry
 
 from scan.related_files import extract_related_files
 
-from .prompts import write_pruner_prompt, write_seeder_prompt, write_shard_prompt
+from lib.substrate_prompt_builder import (
+    write_pruner_prompt,
+    write_seeder_prompt,
+    write_shard_prompt,
+)
 from .related_files import apply_related_files_updates
 from .schemas import read_seed_plan_failclosed, read_shard_failclosed
 

@@ -13,13 +13,13 @@ from pathlib import Path
 from lib.artifact_io import read_json, rename_malformed, write_json
 from lib.hash_service import content_hash
 from lib.scan_phase_logger import log_phase_failure
+from lib.scan_related_files import list_section_files
 from lib.scan_template_loader import load_scan_template
 
 from prompt_safety import validate_dynamic_content
 
 from .cache import FileCardCache, is_valid_cached_feedback, strip_scan_summaries
 from .dispatch import dispatch_agent, read_scan_model_policy
-from .exploration import list_section_files
 from .feedback import collect_and_route_feedback
 
 

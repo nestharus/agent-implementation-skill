@@ -4,6 +4,15 @@ from pathlib import Path
 from typing import Any
 
 from lib.artifact_io import read_json, rename_malformed, write_json
+from lib.coordination_planner import (
+    _parse_coordination_plan,
+    write_coordination_plan_prompt,
+)
+from lib.coordination_problem_resolver import (
+    _collect_outstanding_problems,
+    _detect_recurrence_patterns,
+    build_file_to_sections,
+)
 from lib.hash_service import content_hash
 from lib.path_registry import PathRegistry
 from lib.scope_delta_parser import (
@@ -33,12 +42,6 @@ from ..types import Section, SectionResult
 from prompt_safety import write_validated_prompt
 
 from .execution import _dispatch_fix_group, write_coordinator_fix_prompt
-from .planning import _parse_coordination_plan, write_coordination_plan_prompt
-from .problems import (
-    _collect_outstanding_problems,
-    _detect_recurrence_patterns,
-    build_file_to_sections,
-)
 
 _parse_scope_delta_adjudication = parse_scope_delta_adjudication
 _normalize_section_id = normalize_section_id
