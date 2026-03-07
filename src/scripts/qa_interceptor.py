@@ -16,13 +16,13 @@ explicit REJECT blocks dispatch.
 
 from __future__ import annotations
 
-import json
 import os
 import time
 from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed, write_json
 from lib.path_registry import PathRegistry
+from lib.qa_verdict_parser import parse_qa_verdict
 
 # Resolve paths relative to this script's location.
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -179,24 +179,7 @@ def _parse_verdict(output: str) -> tuple[str, str, list[str]]:
     Returns (verdict, rationale, violations).
     On parse failure returns ("PASS", <error description>, []).
     """
-    try:
-        # Find JSON block in output (agent may wrap in code fences).
-        json_start = output.find("{")
-        json_end = output.rfind("}")
-        if json_start >= 0 and json_end > json_start:
-            data = json.loads(output[json_start:json_end + 1])
-            verdict = data.get("verdict", "").upper()
-            rationale = data.get("rationale", "")
-            violations = data.get("violations", [])
-            if verdict in ("PASS", "REJECT"):
-                return verdict, rationale, violations
-            # Unknown verdict — fail open.
-            return "PASS", f"Unknown verdict '{verdict}' — defaulting to PASS", []
-    except (json.JSONDecodeError, KeyError, TypeError):
-        pass
-
-    # Could not parse — fail open.
-    return "PASS", "QA agent output could not be parsed — defaulting to PASS", []
+    return parse_qa_verdict(output)
 
 
 def _write_rationale(

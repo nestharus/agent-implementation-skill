@@ -16,8 +16,11 @@ import logging
 from pathlib import Path
 
 from lib.artifact_io import write_json
-
-from .proposal_state import extract_blockers, has_blocking_fields, load_proposal_state
+from lib.proposal_state_repository import (
+    extract_blockers,
+    has_blocking_fields,
+    load_proposal_state,
+)
 
 logger = logging.getLogger(__name__)
 

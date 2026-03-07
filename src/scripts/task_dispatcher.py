@@ -34,6 +34,7 @@ from lib.dispatch_metadata import (
     read_dispatch_metadata,
 )
 from lib.path_registry import PathRegistry
+from lib.task_parser import parse_task_output
 
 # Resolve paths relative to this script's location.
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -94,16 +95,7 @@ def parse_next_task(output: str) -> dict[str, str] | None:
     Returns None if no runnable tasks.
     Output format: id=N | type=T | by=B | prio=P [| problem=X] [| ...]
     """
-    output = output.strip()
-    if output == "NO_RUNNABLE_TASKS":
-        return None
-
-    result = {}
-    for part in output.split(" | "):
-        if "=" in part:
-            key, value = part.split("=", 1)
-            result[key.strip()] = value.strip()
-    return result if "id" in result else None
+    return parse_task_output(output)
 
 
 def _read_dispatch_meta(meta_path: Path) -> dict | None | object:

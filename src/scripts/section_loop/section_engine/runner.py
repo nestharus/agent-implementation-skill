@@ -72,9 +72,9 @@ from ..intent.surfaces import (
     save_surface_registry,
 )
 from ..intent.triage import load_triage_result
-from ..proposal_state import load_proposal_state
 from ..readiness import resolve_readiness
 from ..reconciliation import load_reconciliation_result
+from lib.proposal_state_repository import load_proposal_state
 from lib.reconciliation_queue import queue_reconciliation_request
 from .blockers import _append_open_problem, _update_blocker_rollup
 from .reexplore import _write_alignment_surface

@@ -1,60 +1,28 @@
-import difflib
-import json
 import re
-import shutil
-import subprocess
-import tempfile
 from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed
 from lib.alignment_change_tracker import set_flag
 from lib.hash_service import content_hash, file_hash as hash_file
+from lib.impact_analyzer import (
+    analyze_impacts,
+    build_section_number_map,
+    normalize_section_number,
+)
 from lib.note_repository import (
     read_incoming_notes as load_incoming_notes,
     write_consequence_note,
 )
 from lib.path_registry import PathRegistry
+from lib.snapshot_service import compute_text_diff, snapshot_modified_files
 
 from .communication import (
     AGENT_NAME,
     DB_SH,
-    WORKFLOW_HOME,
     _log_artifact,
     log,
 )
-from .context_assembly import materialize_context_sidecar
-from .dispatch import dispatch_agent
 from .types import Section
-from prompt_safety import validate_dynamic_content
-
-
-def compute_text_diff(old_path: Path, new_path: Path) -> str:
-    """Compute a unified text diff between two files.
-
-    Returns a human-readable unified diff string. If either file is
-    missing, returns an appropriate message instead.
-    """
-    if not old_path.exists() and not new_path.exists():
-        return ""
-    if not old_path.exists():
-        old_lines: list[str] = []
-        old_label = "(did not exist)"
-    else:
-        old_lines = old_path.read_text(encoding="utf-8").splitlines(keepends=True)
-        old_label = str(old_path)
-    if not new_path.exists():
-        new_lines: list[str] = []
-        new_label = "(deleted)"
-    else:
-        new_lines = new_path.read_text(encoding="utf-8").splitlines(keepends=True)
-        new_label = str(new_path)
-
-    diff = difflib.unified_diff(
-        old_lines, new_lines,
-        fromfile=old_label, tofile=new_label,
-        lineterm="",
-    )
-    return "\n".join(diff)
 
 
 def post_section_completion(
@@ -83,28 +51,13 @@ def post_section_completion(
     # -----------------------------------------------------------------
     # (a) Snapshot modified files
     # -----------------------------------------------------------------
-    snapshot_dir = artifacts / "snapshots" / f"section-{sec_num}"
-    snapshot_dir.mkdir(parents=True, exist_ok=True)
-
-    codespace_resolved = codespace.resolve()
-    snapshot_resolved = snapshot_dir.resolve()
-    for rel_path in modified_files:
-        src = (codespace / rel_path).resolve()
-        if not src.exists():
-            continue
-        # Verify src is under codespace (belt-and-suspenders)
-        if not src.is_relative_to(codespace_resolved):
-            log(f"Section {sec_num}: WARNING — snapshot path escapes "
-                f"codespace, skipping: {rel_path}")
-            continue
-        # Preserve relative directory structure inside the snapshot
-        dest = (snapshot_dir / rel_path).resolve()
-        if not dest.is_relative_to(snapshot_resolved):
-            log(f"Section {sec_num}: WARNING — dest path escapes "
-                f"snapshot dir, skipping: {rel_path}")
-            continue
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(str(src), str(dest))
+    snapshot_dir = snapshot_modified_files(
+        planspace,
+        sec_num,
+        codespace,
+        modified_files,
+        warn=lambda msg: log(f"Section {sec_num}: WARNING — {msg}"),
+    )
 
     log(f"Section {sec_num}: snapshotted {len(modified_files)} files "
         f"to {snapshot_dir}")
@@ -112,328 +65,21 @@ def post_section_completion(
 
     section_summary = extract_section_summary(section.path)
 
-    # Build file-change description
-    change_lines = []
-    for rel_path in modified_files:
-        change_lines.append(f"- `{rel_path}`")
-    changes_text = "\n".join(change_lines) if change_lines else "(none)"
-
-    # -----------------------------------------------------------------
-    # (b) Two-stage impact analysis: candidate generation + semantic check
-    # -----------------------------------------------------------------
-    other_sections = [s for s in all_sections if s.number != sec_num]
-    if not other_sections:
-        log(f"Section {sec_num}: no other sections to check for impact")
-        return
-
-    # Stage A: Mechanical candidate generation (no agent call needed)
-    # Find sections with overlapping files, recent note mentions,
-    # shared snapshot files, shared input refs, or existing contracts
-    notes_dir_path = artifacts / "notes"
-    modified_set = set(modified_files)
-    candidate_sections: list[Section] = []
-    # Pre-compute source section's input refs for Check 4
-    source_inputs = artifacts / "inputs" / f"section-{sec_num}"
-    source_refs = set()
-    if source_inputs.is_dir():
-        source_refs = {f.name for f in source_inputs.iterdir()
-                       if f.suffix == ".ref"}
-    for other in other_sections:
-        other_files = set(other.related_files)
-        # Check 1: File overlap
-        if modified_set & other_files:
-            candidate_sections.append(other)
-            continue
-        # Check 2: Existing notes mentioning this section pair
-        note_path = notes_dir_path / f"from-{sec_num}-to-{other.number}.md"
-        if note_path.exists():
-            candidate_sections.append(other)
-            continue
-        # Check 3: Snapshot overlap (source section touched files
-        # that the other section previously snapshotted)
-        snapshot_match = False
-        other_snapshot = artifacts / "snapshots" / f"section-{other.number}"
-        if other_snapshot.exists():
-            for mod_file in modified_files:
-                if (other_snapshot / mod_file).exists():
-                    candidate_sections.append(other)
-                    snapshot_match = True
-                    break
-        if snapshot_match:
-            continue
-        # Check 4: Shared input refs (structured seam artifacts —
-        # both sections depend on the same substrate or contract ref)
-        if source_refs:
-            other_inputs = artifacts / "inputs" / f"section-{other.number}"
-            if other_inputs.is_dir():
-                other_refs = {f.name for f in other_inputs.iterdir()
-                              if f.suffix == ".ref"}
-                if source_refs & other_refs:
-                    candidate_sections.append(other)
-                    continue
-        # Check 5: Existing contract artifacts linking this pair
-        contracts_dir = artifacts / "contracts"
-        if contracts_dir.is_dir():
-            fwd = contracts_dir / f"contract-{sec_num}-{other.number}.md"
-            rev = contracts_dir / f"contract-{other.number}-{sec_num}.md"
-            if fwd.exists() or rev.exists():
-                candidate_sections.append(other)
-                continue
-
-    if not candidate_sections:
-        log(f"Section {sec_num}: no candidate sections for impact analysis")
-        return
-
-    log(f"Section {sec_num}: {len(candidate_sections)} candidate sections "
-        f"(of {len(other_sections)} total) for impact analysis")
-
-    # Stage B: Semantic impact analysis on candidates only (policy-controlled)
-    candidate_lines = []
-    for other in candidate_sections:
-        if other.related_files:
-            files_str = ", ".join(f"`{f}`" for f in other.related_files[:10])
-            if len(other.related_files) > 10:
-                files_str += f" (+{len(other.related_files) - 10} more)"
-        else:
-            files_str = "(no current file hypothesis)"
-        summary = extract_section_summary(other.path)
-        candidate_lines.append(
-            f"- SECTION-{other.number}: {summary}\n"
-            f"  Related files: {files_str}"
-        )
-    candidate_text = "\n".join(candidate_lines)
-
-    # Also note which sections were NOT evaluated
-    skipped_nums = sorted(
-        s.number for s in other_sections if s not in candidate_sections)
-    skipped_note = ""
-    if skipped_nums:
-        skipped_note = (
-            f"\n\n**Not evaluated** (no seam signals — file overlap, prior notes, "
-            f"snapshots, shared refs, or contract artifacts): "
-            f"sections {', '.join(skipped_nums)}"
-        )
-
-    impact_prompt_path = artifacts / f"impact-{sec_num}-prompt.md"
-    impact_output_path = artifacts / f"impact-{sec_num}-output.md"
-    heading = f"# Task: Semantic Impact Analysis for Section {sec_num}"
-    impact_prompt_path.write_text(f"""{heading}
-
-## What Section {sec_num} Did
-{section_summary}
-
-## Files Modified by Section {sec_num}
-{changes_text}
-
-## Candidate Sections (pre-filtered by seam signals)
-{candidate_text}
-{skipped_note}
-
-## Instructions
-
-These sections were pre-selected because they share modified files, have
-existing cross-section notes, have overlapping snapshots, share input refs,
-or have contract artifacts linking them to section {sec_num}.
-Candidate selection is a routing hypothesis — the seam signals identify
-sections that MAY be affected, not sections that definitely are.
-For each candidate, determine MATERIAL vs NO_IMPACT.
-
-A change is MATERIAL if:
-- It modifies an interface, contract, or API that the other section depends on
-- It changes control flow or data structures the other section needs
-- It introduces constraints the other section must accommodate
-
-Reply with a JSON block:
-
-```json
-{{"impacts": [
-  {{"to": "04", "impact": "MATERIAL", "reason": "Modified event model interface", "contract_risk": false, "note_markdown": "## Contract Delta\\nThe event model now uses X instead of Y. Section 04 must update its event handler to accept the new schema."}},
-  {{"to": "07", "impact": "NO_IMPACT"}}
-]}}
-```
-
-Each candidate section must appear. Include `contract_risk: true` if the
-impact involves a shared interface or contract change.
-
-For each MATERIAL impact, `note_markdown` is REQUIRED — a brief markdown
-description of what changed and what the target section must accommodate.
-This is the primary content of the consequence note the target receives.
-""", encoding="utf-8")
-    # Materialize sidecar BEFORE prompt-write so it exists at render time
-    sidecar_path = materialize_context_sidecar(
-        str(Path(WORKFLOW_HOME) / "agents" / "impact-analyzer.md"),
-        planspace, section=sec_num,
+    impacted_sections = analyze_impacts(
+        planspace,
+        sec_num,
+        section_summary,
+        modified_files,
+        all_sections,
+        codespace,
+        parent,
+        summary_reader=extract_section_summary,
+        impact_model=impact_model,
+        normalizer_model=normalizer_model,
     )
-    # Append context sidecar reference (materialized before rendering)
-    if sidecar_path:
-        with impact_prompt_path.open("a", encoding="utf-8") as f:
-            f.write(
-                f"\n## Scoped Context\n"
-                f"Agent context sidecar with resolved inputs: "
-                f"`{sidecar_path}`\n"
-            )
-    _log_artifact(planspace, f"prompt:impact-{sec_num}")
-
-    # Validate final rendered prompt before dispatch
-    violations = validate_dynamic_content(
-        impact_prompt_path.read_text(encoding="utf-8"))
-    if violations:
-        log(f"Section {sec_num}: impact prompt safety violation: "
-            f"{violations} — skipping dispatch")
-        return None
-
-    log(f"Section {sec_num}: running impact analysis")
-    # Emit GLM exploration event for QA monitor rule C2
-    subprocess.run(  # noqa: S603
-        ["bash", str(DB_SH), "log", str(planspace / "run.db"),  # noqa: S607
-         "summary", f"glm-explore:{sec_num}",
-         "impact analysis",
-         "--agent", AGENT_NAME],
-        capture_output=True, text=True,
-    )
-    impact_result = dispatch_agent(
-        impact_model, impact_prompt_path, impact_output_path,
-        planspace, parent, codespace=codespace,
-        section_number=sec_num,
-        agent_file="impact-analyzer.md",
-    )
-
-    # -----------------------------------------------------------------
-    # (c) Parse impact results and leave consequence notes
-    # -----------------------------------------------------------------
-    # Normalize section numbers to canonical form (handles "4" vs "04")
-    sec_num_map = build_section_number_map(all_sections)
-
-    impacted_sections: list[tuple[str, str, bool, str]] = []
-    # Primary: parse structured JSON from agent output
-    json_parsed = False
-    try:
-        # Find JSON block in output (may be in code fence)
-        json_text = None
-        in_fence = False
-        fence_lines: list[str] = []
-        for line in impact_result.split("\n"):
-            stripped = line.strip()
-            if stripped.startswith("```") and not in_fence:
-                in_fence = True
-                fence_lines = []
-                continue
-            if stripped.startswith("```") and in_fence:
-                in_fence = False
-                candidate = "\n".join(fence_lines)
-                if '"impacts"' in candidate:
-                    json_text = candidate
-                    break
-                continue
-            if in_fence:
-                fence_lines.append(line)
-
-        if json_text is None:
-            # Try raw JSON (no code fence)
-            start = impact_result.find("{")
-            end = impact_result.rfind("}")
-            if start >= 0 and end > start:
-                candidate = impact_result[start:end + 1]
-                if '"impacts"' in candidate:
-                    json_text = candidate
-
-        if json_text:
-            data = json.loads(json_text)
-            for entry in data.get("impacts", []):
-                if entry.get("impact") == "MATERIAL":
-                    target = normalize_section_number(
-                        str(entry["to"]), sec_num_map)
-                    reason = entry.get("reason", "")
-                    contract_risk = bool(entry.get("contract_risk", False))
-                    note_md = entry.get("note_markdown", "")
-                    impacted_sections.append(
-                        (target, reason, contract_risk, note_md))
-            json_parsed = True
-    except (json.JSONDecodeError, KeyError, TypeError):
-        pass
-
-    # Fallback: dispatch GLM to normalize raw output into JSON
-    if not json_parsed:
-        log(f"Section {sec_num}: impact analysis did not produce valid "
-            f"JSON — dispatching GLM to normalize raw output")
-        artifacts = PathRegistry(planspace).artifacts
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", dir=str(artifacts),
-            prefix=f"impact-normalize-{sec_num}-raw-", delete=False,
-        ) as raw_f:
-            raw_f.write(impact_result)
-            raw_path = Path(raw_f.name)
-        normalize_prompt_path = (
-            artifacts / f"impact-normalize-{sec_num}-prompt.md"
-        )
-        normalize_output_path = (
-            artifacts / f"impact-normalize-{sec_num}-output.md"
-        )
-        normalize_prompt_path.write_text(f"""# Task: Normalize Impact Analysis Output
-
-## Raw Output File
-`{raw_path}`
-
-Read the file above. It contains the raw output from a previous impact
-analysis that did not produce well-formed JSON.
-
-## Instructions
-
-Extract any MATERIAL impact entries from the raw text and return them
-as structured JSON. Look for mentions of section numbers paired with
-MATERIAL impact assessments, reasons, or notes.
-
-Reply with ONLY a JSON block:
-
-```json
-{{"impacts": [
-  {{"to": "<section_number>", "impact": "MATERIAL", "reason": "<reason>", "note_markdown": "<brief description of what changed and what the target must accommodate>"}},
-  ...
-]}}
-```
-
-If no material impacts can be extracted, reply:
-```json
-{{"impacts": []}}
-```
-""", encoding="utf-8")
-        normalize_result = dispatch_agent(
-            normalizer_model, normalize_prompt_path, normalize_output_path,
-            planspace, parent, codespace=codespace,
-            section_number=sec_num,
-            agent_file="impact-output-normalizer.md",
-        )
-        # Parse the normalizer's JSON output
-        try:
-            norm_json = None
-            norm_start = normalize_result.find("{")
-            norm_end = normalize_result.rfind("}")
-            if norm_start >= 0 and norm_end > norm_start:
-                candidate = normalize_result[norm_start:norm_end + 1]
-                if '"impacts"' in candidate:
-                    norm_json = candidate
-            if norm_json:
-                norm_data = json.loads(norm_json)
-                for entry in norm_data.get("impacts", []):
-                    if entry.get("impact") == "MATERIAL":
-                        target = normalize_section_number(
-                            str(entry["to"]), sec_num_map)
-                        reason = entry.get("reason", "")
-                        contract_risk = bool(
-                            entry.get("contract_risk", False))
-                        note_md = entry.get("note_markdown", "")
-                        impacted_sections.append(
-                            (target, reason, contract_risk, note_md))
-        except (json.JSONDecodeError, KeyError, TypeError):
-            log(f"Section {sec_num}: GLM normalizer also failed to "
-                f"produce valid JSON — no material impacts recorded")
-
     if not impacted_sections:
-        log(f"Section {sec_num}: no material impacts on other sections")
         return
-
-    log(f"Section {sec_num}: material impact on sections "
-        f"{[s[0] for s in impacted_sections]}")
+    modified_set = set(modified_files)
 
     integration_proposal = (artifacts / "proposals"
                             / f"section-{sec_num}-integration-proposal.md")

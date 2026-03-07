@@ -20,10 +20,10 @@ from pathlib import Path
 from lib.artifact_io import read_json, rename_malformed, write_json
 from lib.path_registry import PathRegistry
 from lib.hash_service import content_hash
+from lib.proposal_state_repository import load_proposal_state
 from .agent_templates import render_template
 from .dispatch import dispatch_agent, read_model_policy
 from prompt_safety import validate_dynamic_content
-from .proposal_state import load_proposal_state
 from lib.reconciliation_queue import load_reconciliation_requests
 
 logger = logging.getLogger(__name__)
