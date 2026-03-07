@@ -10,7 +10,9 @@ from unittest.mock import MagicMock
 
 from _paths import SRC_DIR
 
-from section_loop.main import load_sections, parse_related_files
+from lib.section_loader import load_sections, parse_related_files
+
+from section_loop.types import Section
 
 
 class TestNoModeRouting:
@@ -32,3 +34,29 @@ class TestParseRelatedFiles:
         p = tmp_path / "section-01.md"
         p.write_text("# Section 01\n\nJust a description.\n")
         assert parse_related_files(p) == []
+
+
+class TestLoadSections:
+    def test_load_sections_ignores_non_spec_artifacts(
+        self, tmp_path: Path,
+    ) -> None:
+        sections_dir = tmp_path / "sections"
+        sections_dir.mkdir()
+        (sections_dir / "section-01.md").write_text(
+            "# Section 01\n\n## Related Files\n### src/main.py\n",
+            encoding="utf-8",
+        )
+        (sections_dir / "section-01-proposal-excerpt.md").write_text(
+            "excerpt",
+            encoding="utf-8",
+        )
+
+        loaded = load_sections(sections_dir)
+
+        assert loaded == [
+            Section(
+                number="01",
+                path=sections_dir / "section-01.md",
+                related_files=["src/main.py"],
+            ),
+        ]

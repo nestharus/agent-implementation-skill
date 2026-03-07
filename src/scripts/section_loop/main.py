@@ -1,16 +1,21 @@
-import json
-import re
 import subprocess
 import sys
 from pathlib import Path
 
-from lib.artifact_io import read_json, write_json
 from lib.alignment_change_tracker import (
     check_and_clear,
     check_pending as alignment_changed_pending,
 )
 from lib.coordination_problem_resolver import _collect_outstanding_problems
+from lib.implementation_pass import (
+    ImplementationPassExit,
+    ImplementationPassRestart,
+    run_implementation_pass,
+)
 from lib.path_registry import PathRegistry
+from lib.project_mode import resolve_project_mode, write_mode_contract
+from lib.proposal_pass import ProposalPassExit, run_proposal_pass
+from lib.section_loader import load_sections
 
 from .alignment import (
     _extract_problems,
@@ -40,42 +45,12 @@ from lib.strategic_state import build_strategic_state
 from .pipeline_control import (
     _section_inputs_hash,
     handle_pending_messages,
-    pause_for_parent,
     poll_control_messages,
     requeue_changed_sections,
 )
 from .reconciliation import run_reconciliation
-from .section_engine import _reexplore_section, run_section
-from .types import ProposalPassResult, Section, SectionResult
-
-
-def parse_related_files(section_path: Path) -> list[str]:
-    """Extract file paths from ## Related Files / ### <path> entries.
-
-    Delegates to the unified block-scoped, code-fence-safe parser
-    in ``scan.related_files`` (R33/P9).
-    """
-    from scan.related_files import extract_related_files
-
-    return extract_related_files(section_path.read_text(encoding="utf-8"))
-
-
-def load_sections(sections_dir: Path) -> list[Section]:
-    """Load all section files and their related file maps.
-
-    Only matches files named ``section-<number>.md`` (the actual spec
-    files). Excerpt artifacts like ``section-01-proposal-excerpt.md`` are
-    explicitly excluded so they are never mistaken for section specs.
-    """
-    sections = []
-    for path in sorted(sections_dir.glob("section-*.md")):
-        m = re.match(r'^section-(\d+)\.md$', path.name)
-        if not m:
-            continue
-        related = parse_related_files(path)
-        sections.append(Section(number=m.group(1), path=path,
-                                related_files=related))
-    return sections
+from .section_engine import run_section
+from .types import ProposalPassResult, SectionResult
 
 
 def _check_and_clear_alignment_changed(planspace: Path) -> bool:
@@ -135,81 +110,8 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
               sections_dir: Path, global_proposal: Path,
               global_alignment: Path) -> None:
     paths = PathRegistry(planspace)
-    # Project mode (greenfield vs brownfield) is determined by the
-    # codemap agent during Stage 3 scan.sh. The mode file is written
-    # to artifacts/project-mode.txt by the codemap agent — not by
-    # hardcoded script logic. If neither file exists, fail closed and
-    # pause for parent rather than silently assuming brownfield.
-    # Read project mode from structured JSON (preferred) or text fallback
-    mode_json_path = paths.project_mode_json()
-    mode_txt_path = paths.project_mode_txt()
-    project_mode = "unknown"
-    mode_constraints: list[str] = []
-    mode_source = "default"
-    if mode_json_path.exists():
-        mode_data = read_json(mode_json_path)
-        if mode_data is not None:
-            project_mode = mode_data.get("mode", "unknown")
-            mode_constraints = mode_data.get("constraints", [])
-            mode_source = "JSON signal"
-        else:
-            log("project-mode.json malformed — "
-                "preserved as .malformed.json, trying text fallback")
-            if mode_txt_path.exists():
-                project_mode = mode_txt_path.read_text(
-                    encoding="utf-8").strip()
-                mode_source = "text (JSON malformed)"
-            else:
-                log("No text fallback — pausing for parent (fail-closed)")
-                pause_for_parent(
-                    planspace, parent,
-                    "pause:needs_parent:project-mode-malformed — "
-                    "JSON parse failed and no text fallback exists")
-                mode_source = "default (post-resume)"
-    elif mode_txt_path.exists():
-        project_mode = mode_txt_path.read_text(encoding="utf-8").strip()
-        mode_source = "text"
-    else:
-        # Fail closed: no project-mode signal from scan stage.
-        log("No project-mode signal found — pausing for parent "
-            "(fail-closed)")
-        pause_for_parent(
-            planspace, parent,
-            "pause:needs_parent:project-mode-missing — "
-            "scan stage did not write project-mode signal")
-        mode_source = "default (post-resume)"
-    # After any pause-for-parent, re-read in case parent provided mode
-    if mode_source.startswith("default (post-resume)"):
-        if mode_json_path.exists():
-            mode_data = read_json(mode_json_path)
-            if mode_data is not None:
-                project_mode = mode_data.get("mode", "unknown")
-                mode_constraints = mode_data.get("constraints", [])
-                mode_source = "JSON signal (post-resume)"
-            else:
-                log("project-mode.json malformed after resume "
-                    "— preserved as .malformed.json, trying text fallback")
-                if mode_txt_path.exists():
-                    project_mode = mode_txt_path.read_text(
-                        encoding="utf-8").strip()
-                    mode_source = "text (post-resume)"
-        elif mode_txt_path.exists():
-            project_mode = mode_txt_path.read_text(
-                encoding="utf-8").strip()
-            mode_source = "text (post-resume)"
-    log(f"Project mode: {project_mode} (from {mode_source})")
-
-    # Write formalized mode contract (telemetry only — mode does NOT
-    # choose planning paths or output shapes).
-    mode_contract_path = paths.mode_contract()
-    mode_contract = {
-        "mode": project_mode,
-        "constraints": mode_constraints,
-        "expected_outputs": [
-            "integration proposals", "code changes", "alignment checks",
-        ],
-    }
-    write_json(mode_contract_path, mode_contract)
+    project_mode, mode_constraints = resolve_project_mode(planspace, parent)
+    write_mode_contract(planspace, project_mode, mode_constraints)
 
     # Load sections and build cross-reference map
     all_sections = load_sections(sections_dir)
@@ -238,132 +140,17 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
         # readiness resolution.  No code files are modified.  Each section
         # yields a ProposalPassResult with readiness disposition.
         section_results: dict[str, SectionResult] = {}
-        proposal_results: dict[str, ProposalPassResult] = {}
-        queue = [s.number for s in all_sections]
-        completed: set[str] = set()
-
-        while queue:
-            # Check for abort or alignment changes before each section
-            if handle_pending_messages(planspace, queue, completed):
-                log("Aborted by parent")
-                mailbox_send(planspace, parent, "fail:aborted")
-                return
-
-            # If alignment_changed flag is already pending (set by
-            # handle_pending_messages above or a prior run_section),
-            # skip directly to the _check_and_clear below instead of
-            # wasting an Opus setup call.
-            if alignment_changed_pending(planspace):  # noqa: SIM102
-                # Clear the flag and requeue only sections whose inputs
-                # actually changed (targeted, not brute-force requeue).
-                if _check_and_clear_alignment_changed(planspace):
-                    requeue_changed_sections(
-                        completed, queue, sections_by_num,
-                        planspace, codespace)
-                    continue
-
-            sec_num = queue.pop(0)
-
-            if sec_num in completed:
-                continue
-
-            section = sections_by_num[sec_num]
-            section.solve_count += 1
-            log(f"=== Section {sec_num} proposal pass "
-                f"({len(queue)} remaining) "
-                f"[round {section.solve_count}] ===")
-            # Emit section lifecycle start event for QA monitor rule A6
-            subprocess.run(  # noqa: S603
-                ["bash", str(DB_SH), "log", str(planspace / "run.db"),  # noqa: S607
-                 "lifecycle", f"start:section:{sec_num}",
-                 f"round {section.solve_count}",
-                 "--agent", AGENT_NAME],
-                capture_output=True, text=True,
+        try:
+            proposal_results = run_proposal_pass(
+                all_sections,
+                sections_by_num,
+                planspace,
+                codespace,
+                parent,
+                policy,
             )
-
-            if not section.related_files:
-                # No related files — dispatch re-explorer to investigate
-                # regardless of project mode.  The re-explorer determines
-                # whether files were missed and may append them to the
-                # section spec.
-                log(f"Section {sec_num}: no related files — dispatching "
-                    f"re-explorer agent")
-                reexplore_result = _reexplore_section(
-                    section, planspace, codespace, parent,
-                    model=policy["setup"],
-                )
-                if reexplore_result == "ALIGNMENT_CHANGED_PENDING":
-                    if _check_and_clear_alignment_changed(planspace):
-                        requeue_changed_sections(
-                            completed, queue, sections_by_num,
-                            planspace, codespace,
-                            current_section=sec_num)
-                    continue
-
-                # Re-parse related files (agent may have appended them)
-                section.related_files = parse_related_files(section.path)
-                if section.related_files:
-                    log(f"Section {sec_num}: re-explorer found "
-                        f"{len(section.related_files)} files — continuing")
-                else:
-                    log(f"Section {sec_num}: re-explorer found no files "
-                        f"— continuing with unresolved related_files")
-
-            # Run proposal pass only — no code modification
-            proposal_result = run_section(
-                planspace, codespace, section, parent,
-                all_sections=all_sections,
-                pass_mode="proposal",
-            )
-
-            # Check if alignment_changed arrived during run_section
-            # (via handle_pending_messages or pause_for_parent)
-            if _check_and_clear_alignment_changed(planspace):
-                requeue_changed_sections(
-                    completed, queue, sections_by_num,
-                    planspace, codespace,
-                    current_section=sec_num)
-                continue
-
-            if proposal_result is None:
-                # Section was paused and parent told us to stop
-                log(f"Section {sec_num}: paused during proposal, exiting")
-                subprocess.run(  # noqa: S603
-                    ["bash", str(DB_SH), "log",  # noqa: S607
-                     str(planspace / "run.db"),
-                     "lifecycle", f"end:section:{sec_num}", "failed",
-                     "--agent", AGENT_NAME],
-                    capture_output=True, text=True,
-                )
-                return
-
-            completed.add(sec_num)
-            if isinstance(proposal_result, ProposalPassResult):
-                proposal_results[sec_num] = proposal_result
-                status = ("ready" if proposal_result.execution_ready
-                          else f"blocked ({len(proposal_result.blockers)} "
-                               f"blockers)")
-                mailbox_send(planspace, parent,
-                             f"proposal-done:{sec_num}:{status}")
-                log(f"Section {sec_num}: proposal pass complete — "
-                    f"{status}")
-            else:
-                # Defensive: run_section in proposal mode should always
-                # return ProposalPassResult or None, but handle gracefully
-                log(f"Section {sec_num}: unexpected proposal result type "
-                    f"— treating as failed")
-
-            subprocess.run(  # noqa: S603
-                ["bash", str(DB_SH), "log",  # noqa: S607
-                 str(planspace / "run.db"),
-                 "lifecycle", f"end:section:{sec_num}",
-                 "proposal-done",
-                 "--agent", AGENT_NAME],
-                capture_output=True, text=True,
-            )
-
-        log(f"=== Phase 1a complete: {len(completed)} sections "
-            f"proposed ===")
+        except ProposalPassExit:
+            return
 
         ready_sections = sorted(
             num for num, pr in proposal_results.items()
@@ -373,10 +160,6 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             num for num, pr in proposal_results.items()
             if not pr.execution_ready
         )
-        log(f"Proposal summary: {len(ready_sections)} ready, "
-            f"{len(blocked_sections)} blocked")
-        if blocked_sections:
-            log(f"Blocked sections: {blocked_sections}")
 
         # -----------------------------------------------------------------
         # Phase 1b: Universal reconciliation
@@ -518,100 +301,20 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
         # -----------------------------------------------------------------
         # Phase 1c: Implementation pass — execution-ready sections only
         # -----------------------------------------------------------------
-        impl_completed: set[str] = set()
-        impl_restart_phase1 = False
-
-        for sec_num in ready_sections:
-            # Check for abort or alignment changes before each section
-            if handle_pending_messages(planspace, [], impl_completed):
-                log("Aborted by parent during implementation pass")
-                mailbox_send(planspace, parent, "fail:aborted")
-                return
-
-            if alignment_changed_pending(planspace):
-                if _check_and_clear_alignment_changed(planspace):
-                    log("Alignment changed during implementation pass "
-                        "— restarting from Phase 1")
-                    impl_restart_phase1 = True
-                    break
-
-            section = sections_by_num[sec_num]
-            log(f"=== Section {sec_num} implementation pass ===")
-            subprocess.run(  # noqa: S603
-                ["bash", str(DB_SH), "log", str(planspace / "run.db"),  # noqa: S607
-                 "lifecycle", f"start:section:{sec_num}:impl",
-                 f"round {section.solve_count}",
-                 "--agent", AGENT_NAME],
-                capture_output=True, text=True,
+        try:
+            section_results.update(
+                run_implementation_pass(
+                    proposal_results,
+                    sections_by_num,
+                    planspace,
+                    codespace,
+                    parent,
+                ),
             )
-
-            modified_files = run_section(
-                planspace, codespace, section, parent,
-                all_sections=all_sections,
-                pass_mode="implementation",
-            )
-
-            # Check if alignment_changed arrived during implementation
-            if _check_and_clear_alignment_changed(planspace):
-                log("Alignment changed during implementation — "
-                    "restarting from Phase 1")
-                impl_restart_phase1 = True
-                break
-
-            if modified_files is None:
-                # Section was paused or not ready
-                log(f"Section {sec_num}: implementation returned None")
-                subprocess.run(  # noqa: S603
-                    ["bash", str(DB_SH), "log",  # noqa: S607
-                     str(planspace / "run.db"),
-                     "lifecycle", f"end:section:{sec_num}:impl",
-                     "failed",
-                     "--agent", AGENT_NAME],
-                    capture_output=True, text=True,
-                )
-                continue
-
-            impl_completed.add(sec_num)
-            mailbox_send(planspace, parent,
-                         f"done:{sec_num}:{len(modified_files)} files "
-                         f"modified")
-
-            # Record result — section passed its internal alignment
-            # loop, so it's initially ALIGNED. The coordinator may find
-            # cross-section issues later.
-            section_results[sec_num] = SectionResult(
-                section_number=sec_num,
-                aligned=True,
-                modified_files=modified_files,
-            )
-
-            # Persist baseline hash for targeted requeue (P5).
-            baseline_hash_dir = paths.section_inputs_hashes_dir()
-            baseline_hash_dir.mkdir(parents=True, exist_ok=True)
-            paths.section_input_hash(sec_num).write_text(
-                _section_inputs_hash(
-                    sec_num, planspace, codespace, sections_by_num),
-                encoding="utf-8")
-
-            # Save input hash for incremental Phase 2 checks
-            p2hd = paths.phase2_inputs_hashes_dir()
-            p2hd.mkdir(parents=True, exist_ok=True)
-            paths.phase2_input_hash(sec_num).write_text(
-                _section_inputs_hash(
-                    sec_num, planspace, codespace, sections_by_num),
-                encoding="utf-8")
-
-            log(f"Section {sec_num}: implementation done")
-            subprocess.run(  # noqa: S603
-                ["bash", str(DB_SH), "log",  # noqa: S607
-                 str(planspace / "run.db"),
-                 "lifecycle", f"end:section:{sec_num}:impl", "done",
-                 "--agent", AGENT_NAME],
-                capture_output=True, text=True,
-            )
-
-        if impl_restart_phase1:
-            continue  # outer while True → restart Phase 1
+        except ImplementationPassRestart:
+            continue
+        except ImplementationPassExit:
+            return
 
         # Record blocked sections (proposal aligned but not
         # execution-ready) as non-aligned results for Phase 2 to handle
@@ -627,7 +330,11 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 problems=f"readiness blocked: {blocker_summary}",
             ))
 
-        log(f"=== Phase 1 complete: {len(impl_completed)} sections "
+        implemented_sections = [
+            sec_num for sec_num, result in section_results.items()
+            if result.aligned
+        ]
+        log(f"=== Phase 1 complete: {len(implemented_sections)} sections "
             f"implemented, {len(blocked_sections)} blocked ===")
 
         # Write strategic state snapshot after Phase 1
