@@ -17,15 +17,30 @@ def test_full_default_is_fail_closed() -> None:
     result = _full_default("01")
 
     assert result["intent_mode"] == "full"
+    assert result["risk_mode"] == "full"
+    assert result["risk_budget_hint"] == 4
     assert result["budgets"]["intent_expansion_max"] == 2
 
 
 def test_load_triage_result_reads_signal_from_planspace(tmp_path: Path) -> None:
     signal_path = tmp_path / "artifacts" / "signals" / "intent-triage-01.json"
     signal_path.parent.mkdir(parents=True)
-    signal_path.write_text(json.dumps({"intent_mode": "lightweight"}), encoding="utf-8")
+    signal_path.write_text(
+        json.dumps({
+            "intent_mode": "lightweight",
+            "confidence": "high",
+        }),
+        encoding="utf-8",
+    )
 
-    assert load_triage_result("01", tmp_path) == {"intent_mode": "lightweight"}
+    assert load_triage_result("01", tmp_path) == {
+        "intent_mode": "lightweight",
+        "confidence": "high",
+        "risk_mode": "skip",
+        "risk_confidence": "high",
+        "risk_budget_hint": 0,
+        "posture_floor": None,
+    }
 
 
 def test_run_intent_triage_returns_signal_from_agent(
@@ -70,4 +85,7 @@ def test_run_intent_triage_returns_signal_from_agent(
     result = run_intent_triage("01", planspace, codespace, "parent")
 
     assert result["intent_mode"] == "lightweight"
+    assert result["risk_mode"] == "full"
+    assert result["risk_confidence"] == "low"
+    assert result["risk_budget_hint"] == 4
     assert artifact_events == ["prompt:intent-triage-01"]

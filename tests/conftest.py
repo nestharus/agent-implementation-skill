@@ -33,6 +33,8 @@ def planspace(tmp_path: Path) -> Path:
         "decisions",
         "todos",
         "coordination",
+        "readiness",
+        "risk",
     ):
         (artifacts / subdir).mkdir(parents=True)
 
@@ -94,6 +96,8 @@ def mock_dispatch(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     monkeypatch.setattr("lib.intent.intent_triage.dispatch_agent", mock)
     monkeypatch.setattr("lib.pipelines.impact_triage.dispatch_agent", mock)
     monkeypatch.setattr("lib.pipelines.problem_frame_gate.dispatch_agent", mock)
+    monkeypatch.setattr("lib.pipelines.proposal_pass.dispatch_agent", mock)
+    monkeypatch.setattr("lib.pipelines.implementation_pass.dispatch_agent", mock)
     monkeypatch.setattr("section_loop.intent.expansion.dispatch_agent", mock)
     monkeypatch.setattr("lib.pipelines.excerpt_extractor.dispatch_agent", mock)
     monkeypatch.setattr("lib.pipelines.proposal_loop.dispatch_agent", mock)

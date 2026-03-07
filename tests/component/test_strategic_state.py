@@ -79,6 +79,9 @@ def test_build_strategic_state_writes_snapshot_and_derives_fields(
             "reason": "Blocked on parent decision",
         }
     }
+    assert snapshot["risk_posture"] == {}
+    assert snapshot["dominant_risks_by_section"] == {}
+    assert snapshot["blocked_by_risk"] == []
     assert snapshot["key_decisions"] == ["d-global-001"]
     assert snapshot["coordination_rounds"] == 1
     assert snapshot["next_action"] == "resolve blocker for section 03"
@@ -115,6 +118,9 @@ def test_build_strategic_state_fail_closed_on_malformed_blocker(
             "reason": "blocker signal malformed",
         }
     }
+    assert snapshot["risk_posture"] == {}
+    assert snapshot["dominant_risks_by_section"] == {}
+    assert snapshot["blocked_by_risk"] == []
     assert snapshot["in_progress"] is None
     assert snapshot["next_action"] == "resolve blocker for section 04"
     assert not blocker_path.exists()

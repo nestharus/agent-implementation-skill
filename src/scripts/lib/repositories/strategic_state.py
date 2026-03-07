@@ -6,8 +6,14 @@ from pathlib import Path
 from typing import Any
 
 from lib.core.artifact_io import read_json, write_json
-from lib.repositories.decision_repository import load_decisions
 from lib.core.path_registry import PathRegistry
+from lib.repositories.decision_repository import load_decisions
+from lib.risk.serialization import (
+    deserialize_assessment,
+    deserialize_plan,
+    read_risk_artifact,
+)
+from lib.risk.types import PostureProfile, StepDecision
 
 
 def build_strategic_state(
@@ -23,6 +29,9 @@ def build_strategic_state(
     in_progress: str | None = None
     blocked: dict[str, dict[str, str]] = {}
     open_problems: list[dict[str, str]] = []
+    risk_posture: dict[str, str] = {}
+    dominant_risks_by_section: dict[str, list[str]] = {}
+    blocked_by_risk: list[str] = []
 
     for sec_num, result in sorted(section_results.items()):
         if isinstance(result, dict):
@@ -31,6 +40,18 @@ def build_strategic_state(
         else:
             aligned = getattr(result, "aligned", False)
             problems = getattr(result, "problems", None)
+
+        if planspace is not None:
+            posture, dominant_risks, risk_blocked = _read_risk_summary(
+                planspace,
+                sec_num,
+            )
+            if posture is not None:
+                risk_posture[sec_num] = posture
+            if dominant_risks:
+                dominant_risks_by_section[sec_num] = dominant_risks
+            if risk_blocked:
+                blocked_by_risk.append(sec_num)
 
         if aligned:
             completed.append(sec_num)
@@ -87,6 +108,9 @@ def build_strategic_state(
         "open_problems": open_problems,
         "key_decisions": key_decision_ids,
         "coordination_rounds": coordination_rounds,
+        "risk_posture": risk_posture,
+        "dominant_risks_by_section": dominant_risks_by_section,
+        "blocked_by_risk": blocked_by_risk,
         "next_action": _derive_next_action(
             completed,
             in_progress,
@@ -118,3 +142,64 @@ def _derive_next_action(
     if completed:
         return "all sections complete — ready for coordination"
     return None
+
+
+def _read_risk_summary(
+    planspace: Path,
+    sec_num: str,
+) -> tuple[str | None, list[str], bool]:
+    paths = PathRegistry(planspace)
+    scope = f"section-{sec_num}"
+    assessment_payload = read_risk_artifact(paths.risk_assessment(scope))
+    plan_payload = read_risk_artifact(paths.risk_plan(scope))
+
+    try:
+        assessment = (
+            deserialize_assessment(assessment_payload)
+            if isinstance(assessment_payload, dict)
+            else None
+        )
+    except (KeyError, TypeError, ValueError):
+        assessment = None
+
+    try:
+        plan = (
+            deserialize_plan(plan_payload)
+            if isinstance(plan_payload, dict)
+            else None
+        )
+    except (KeyError, TypeError, ValueError):
+        plan = None
+
+    posture = None
+    blocked_by_risk = False
+    if plan is not None:
+        postures = [
+            decision.posture
+            for decision in plan.step_decisions
+            if decision.posture is not None
+        ]
+        if postures:
+            posture = max(postures, key=_posture_rank).value
+        blocked_by_risk = bool(plan.step_decisions) and not any(
+            decision.decision == StepDecision.ACCEPT
+            for decision in plan.step_decisions
+        )
+
+    dominant_risks = (
+        [risk.value for risk in assessment.dominant_risks]
+        if assessment is not None
+        else []
+    )
+    return posture, dominant_risks, blocked_by_risk
+
+
+def _posture_rank(posture: PostureProfile) -> int:
+    ranks = {
+        PostureProfile.P0_DIRECT: 0,
+        PostureProfile.P1_LIGHT: 1,
+        PostureProfile.P2_STANDARD: 2,
+        PostureProfile.P3_GUARDED: 3,
+        PostureProfile.P4_REOPEN: 4,
+    }
+    return ranks[posture]

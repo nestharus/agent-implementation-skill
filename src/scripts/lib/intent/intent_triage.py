@@ -7,6 +7,8 @@ from pathlib import Path
 from prompt_safety import write_validated_prompt
 
 from lib.core.path_registry import PathRegistry
+from lib.risk.history import read_history
+from lib.risk.types import PostureProfile
 from section_loop.communication import _log_artifact, log
 from section_loop.dispatch import (
     dispatch_agent,
@@ -108,6 +110,10 @@ Write a JSON signal to: `{triage_signal_path}`
   "section": "{section_number}",
   "intent_mode": "full"|"lightweight",
   "confidence": "high"|"medium"|"low",
+  "risk_mode": "skip"|"light"|"full",
+  "risk_confidence": "high"|"medium"|"low",
+  "risk_budget_hint": 0,
+  "posture_floor": null,
   "escalate": false,
   "budgets": {{
     "proposal_max": 5,
@@ -121,7 +127,14 @@ Write a JSON signal to: `{triage_signal_path}`
 ```
 """
     if not write_validated_prompt(triage_prompt_text, triage_prompt_path):
-        return _full_default(section_number)
+        return _augment_risk_hints(
+            _full_default(section_number),
+            section_number,
+            planspace,
+            related_files_count=related_files_count,
+            incoming_notes_count=incoming_notes_count,
+            solve_count=solve_count,
+        )
     _log_artifact(planspace, f"prompt:intent-triage-{section_number}")
 
     result = dispatch_agent(
@@ -136,7 +149,14 @@ Write a JSON signal to: `{triage_signal_path}`
     )
 
     if result == "ALIGNMENT_CHANGED_PENDING":
-        return _full_default(section_number)
+        return _augment_risk_hints(
+            _full_default(section_number),
+            section_number,
+            planspace,
+            related_files_count=related_files_count,
+            incoming_notes_count=incoming_notes_count,
+            solve_count=solve_count,
+        )
 
     triage = read_agent_signal(
         triage_signal_path,
@@ -171,19 +191,40 @@ Write a JSON signal to: `{triage_signal_path}`
                     f"Section {section_number}: escalated triage → "
                     f"{escalated.get('intent_mode', 'unknown')}",
                 )
-                return escalated
+                return _augment_risk_hints(
+                    escalated,
+                    section_number,
+                    planspace,
+                    related_files_count=related_files_count,
+                    incoming_notes_count=incoming_notes_count,
+                    solve_count=solve_count,
+                )
 
         log(
             f"Section {section_number}: intent triage → "
             f"{triage.get('intent_mode', 'unknown')}",
         )
-        return triage
+        return _augment_risk_hints(
+            triage,
+            section_number,
+            planspace,
+            related_files_count=related_files_count,
+            incoming_notes_count=incoming_notes_count,
+            solve_count=solve_count,
+        )
 
     log(
         f"Section {section_number}: intent triage signal missing or "
         f"malformed — defaulting to full (uncertainty → more strategy)",
     )
-    return _full_default(section_number)
+    return _augment_risk_hints(
+        _full_default(section_number),
+        section_number,
+        planspace,
+        related_files_count=related_files_count,
+        incoming_notes_count=incoming_notes_count,
+        solve_count=solve_count,
+    )
 
 
 def load_triage_result(
@@ -193,10 +234,13 @@ def load_triage_result(
     """Load a previously-written triage result from signal file."""
     signals_dir = PathRegistry(planspace).signals_dir()
     triage_signal_path = signals_dir / f"intent-triage-{section_number}.json"
-    return read_agent_signal(
+    triage = read_agent_signal(
         triage_signal_path,
         expected_fields=["intent_mode"],
     )
+    if triage is None:
+        return None
+    return _augment_risk_hints(triage, section_number, planspace)
 
 
 def _full_default(section_number: str) -> dict:
@@ -204,6 +248,7 @@ def _full_default(section_number: str) -> dict:
     return {
         "section": section_number,
         "intent_mode": "full",
+        "confidence": "low",
         "budgets": {
             "proposal_max": 5,
             "implementation_max": 5,
@@ -212,4 +257,81 @@ def _full_default(section_number: str) -> dict:
             "max_new_axes_total": 6,
         },
         "reason": "default full (triage unavailable — uncertainty favors strategy)",
+        "risk_mode": "full",
+        "risk_confidence": "low",
+        "risk_budget_hint": 4,
+        "posture_floor": None,
     }
+
+
+def _augment_risk_hints(
+    triage: dict,
+    section_number: str,
+    planspace: Path,
+    *,
+    related_files_count: int = 0,
+    incoming_notes_count: int = 0,
+    solve_count: int = 0,
+) -> dict:
+    confidence = str(triage.get("confidence", "low")).strip().lower()
+    if confidence not in {"high", "medium", "low"}:
+        confidence = "low"
+
+    complexity_score = 0
+    if related_files_count > 1:
+        complexity_score += 1
+    if incoming_notes_count > 0:
+        complexity_score += 1
+    if solve_count > 0:
+        complexity_score += 1
+    if str(triage.get("intent_mode", "full")).strip().lower() == "full":
+        complexity_score += 1
+
+    if confidence == "low":
+        risk_mode = "full"
+    elif confidence == "medium":
+        risk_mode = "full" if complexity_score >= 2 else "light"
+    else:
+        if complexity_score == 0:
+            risk_mode = "skip"
+        elif complexity_score == 1:
+            risk_mode = "light"
+        else:
+            risk_mode = "full"
+
+    result = dict(triage)
+    result["risk_mode"] = risk_mode
+    result["risk_confidence"] = confidence
+    result["risk_budget_hint"] = {
+        "high": 0,
+        "medium": 2,
+        "low": 4,
+    }[confidence]
+    result["posture_floor"] = _derive_posture_floor(section_number, planspace)
+    return result
+
+
+def _derive_posture_floor(section_number: str, planspace: Path) -> str | None:
+    history = read_history(PathRegistry(planspace).risk_history())
+    relevant = [
+        entry
+        for entry in history
+        if f"section-{section_number}" in entry.package_id
+    ]
+    if not relevant:
+        return None
+
+    for entry in relevant:
+        outcome = entry.actual_outcome.strip().lower()
+        verification = (entry.verification_outcome or "").strip().lower()
+        if outcome in {"failure", "failed", "blocked", "reopen"}:
+            return PostureProfile.P3_GUARDED.value
+        if verification in {"failure", "failed", "blocked"}:
+            return PostureProfile.P3_GUARDED.value
+
+    if any(
+        entry.actual_outcome.strip().lower() in {"mixed", "partial", "warning"}
+        for entry in relevant
+    ):
+        return PostureProfile.P2_STANDARD.value
+    return None

@@ -4,13 +4,32 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Callable
 
+from lib.core.artifact_io import read_json
 from lib.services.alignment_change_tracker import (
     check_and_clear,
     check_pending as alignment_changed_pending,
 )
 from lib.core.path_registry import PathRegistry
+from lib.repositories.note_repository import read_incoming_notes
+from lib.repositories.proposal_state_repository import load_proposal_state
+from lib.risk.engagement import determine_engagement
+from lib.risk.history import append_history_entry
+from lib.risk.loop import run_lightweight_risk_check, run_risk_loop
+from lib.risk.package_builder import build_package_from_proposal, read_package
+from lib.risk.serialization import deserialize_assessment, read_risk_artifact
+from lib.risk.types import (
+    PostureProfile,
+    RiskHistoryEntry,
+    RiskMode,
+    RiskPlan,
+    StepDecision,
+)
+from lib.services.freshness_service import compute_section_freshness
+from lib.services.readiness_resolver import resolve_readiness
 from section_loop.communication import AGENT_NAME, DB_SH, log, mailbox_send
+from section_loop.dispatch import dispatch_agent
 from section_loop.pipeline_control import (
     _section_inputs_hash,
     handle_pending_messages,
@@ -29,6 +48,194 @@ class ImplementationPassRestart(Exception):
 
 def _check_and_clear_alignment_changed(planspace: Path) -> bool:
     return check_and_clear(planspace, db_sh=DB_SH, agent_name=AGENT_NAME)
+
+
+def _has_stale_freshness_token(
+    planspace: Path,
+    sec_num: str,
+    triage_signal: object,
+) -> bool:
+    if not isinstance(triage_signal, dict):
+        return False
+
+    token = triage_signal.get("freshness_token", triage_signal.get("freshness"))
+    if not isinstance(token, str) or not token.strip():
+        return False
+
+    current = compute_section_freshness(planspace, sec_num)
+    return token.strip() != current
+
+
+def _has_recent_loop_detected_signal(
+    planspace: Path,
+    sec_num: str,
+    scope: str,
+) -> bool:
+    signals_dir = PathRegistry(planspace).signals_dir()
+    if not signals_dir.exists():
+        return False
+
+    for path in sorted(signals_dir.glob("*.json")):
+        payload = read_json(path)
+        if not isinstance(payload, dict):
+            continue
+        if str(payload.get("state", "")).strip().lower() != "loop_detected":
+            continue
+
+        if str(payload.get("section_number", "")).strip() == sec_num:
+            return True
+        if str(payload.get("section", "")).strip() in {sec_num, scope}:
+            return True
+        if str(payload.get("scope", "")).strip() == scope:
+            return True
+        if str(payload.get("target", "")).strip() in {sec_num, scope}:
+            return True
+
+    return False
+
+
+def _run_risk_review(
+    planspace: Path,
+    sec_num: str,
+    section: Section,
+    dispatch_fn: Callable,
+) -> RiskPlan | None:
+    """Run ROAL risk review for a section before implementation.
+
+    Returns the risk plan, or None if ROAL is skipped (engagement mode = SKIP).
+    """
+    scope = f"section-{sec_num}"
+    paths = PathRegistry(planspace)
+
+    try:
+        package = build_package_from_proposal(scope, planspace)
+        proposal_state = load_proposal_state(
+            paths.proposals_dir() / f"{scope}-proposal-state.json"
+        )
+        triage_signal = read_json(paths.signals_dir() / f"intent-triage-{sec_num}.json")
+        triage_confidence = "low"
+        if isinstance(triage_signal, dict):
+            triage_confidence = str(triage_signal.get("confidence", "low"))
+        stale_inputs = _has_stale_freshness_token(planspace, sec_num, triage_signal)
+        recent_loop_signal = _has_recent_loop_detected_signal(
+            planspace,
+            sec_num,
+            scope,
+        )
+
+        engagement_mode = determine_engagement(
+            step_count=len(package.steps),
+            file_count=max(len(section.related_files), 1),
+            has_shared_seams=bool(proposal_state.get("shared_seam_candidates")),
+            has_consequence_notes=bool(read_incoming_notes(planspace, sec_num)),
+            has_stale_inputs=stale_inputs,
+            has_recent_failures=section.solve_count > 1 or recent_loop_signal,
+            has_tool_changes=False,
+            triage_confidence=triage_confidence,
+            freshness_changed=stale_inputs,
+        )
+        if engagement_mode == RiskMode.SKIP:
+            log(f"Section {sec_num}: ROAL skipped (engagement mode = skip)")
+            return None
+        if engagement_mode == RiskMode.LIGHT:
+            plan = run_lightweight_risk_check(
+                planspace,
+                scope,
+                "implementation",
+                package,
+                dispatch_fn,
+            )
+        else:
+            plan = run_risk_loop(
+                planspace,
+                scope,
+                "implementation",
+                package,
+                dispatch_fn,
+            )
+
+        log(
+            f"Section {sec_num}: ROAL plan accepted={len(plan.accepted_frontier)} "
+            f"deferred={len(plan.deferred_steps)} reopened={len(plan.reopen_steps)}",
+        )
+        return plan
+    except Exception as exc:  # noqa: BLE001
+        log(
+            f"Section {sec_num}: ROAL review failed ({exc}) "
+            "— continuing with standard implementation",
+        )
+        return None
+
+
+def _append_risk_history(
+    planspace: Path,
+    sec_num: str,
+    risk_plan: RiskPlan,
+    modified_files: list[str],
+) -> None:
+    scope = f"section-{sec_num}"
+    paths = PathRegistry(planspace)
+    package = read_package(paths, scope)
+    assessment_payload = read_risk_artifact(paths.risk_assessment(scope))
+    try:
+        assessment = (
+            deserialize_assessment(assessment_payload)
+            if isinstance(assessment_payload, dict)
+            else None
+        )
+    except (KeyError, TypeError, ValueError):
+        assessment = None
+
+    package_steps = {
+        step.step_id: step
+        for step in (package.steps if package is not None else [])
+    }
+    assessment_steps = {
+        step.step_id: step
+        for step in (assessment.step_assessments if assessment is not None else [])
+    }
+
+    actual_outcome = "success" if modified_files else "warning"
+    surfaced_surprises = (
+        []
+        if modified_files
+        else ["implementation completed without file modifications"]
+    )
+    for decision in risk_plan.step_decisions:
+        if decision.decision != StepDecision.ACCEPT:
+            continue
+        package_step = package_steps.get(decision.step_id)
+        assessment_step = assessment_steps.get(decision.step_id)
+        if package_step is None:
+            continue
+        append_history_entry(
+            paths.risk_history(),
+            RiskHistoryEntry(
+                package_id=risk_plan.package_id,
+                step_id=decision.step_id,
+                layer=risk_plan.layer,
+                step_class=package_step.step_class,
+                posture=decision.posture or PostureProfile.P4_REOPEN,
+                predicted_risk=(
+                    decision.residual_risk
+                    if decision.residual_risk is not None
+                    else 100
+                ),
+                actual_outcome=actual_outcome,
+                surfaced_surprises=list(surfaced_surprises),
+                verification_outcome="passed" if modified_files else None,
+                dominant_risks=(
+                    list(assessment_step.dominant_risks)
+                    if assessment_step is not None
+                    else []
+                ),
+                blast_radius_band=(
+                    assessment_step.modifiers.blast_radius
+                    if assessment_step is not None
+                    else 0
+                ),
+            ),
+        )
 
 
 def run_implementation_pass(
@@ -78,6 +285,32 @@ def run_implementation_pass(
             text=True,
         )
 
+        readiness = resolve_readiness(paths.artifacts, sec_num)
+        if not readiness.get("ready"):
+            log(
+                f"Section {sec_num}: implementation pass skipped — "
+                "readiness check failed before dispatch",
+            )
+            continue
+
+        risk_plan = _run_risk_review(
+            planspace,
+            sec_num,
+            section,
+            dispatch_agent,
+        )
+        if risk_plan is not None and not risk_plan.accepted_frontier:
+            reasons = [
+                decision.reason
+                for decision in risk_plan.step_decisions
+                if decision.reason
+            ]
+            log(
+                f"Section {sec_num}: implementation skipped by ROAL — "
+                f"{reasons[0] if reasons else 'all steps rejected'}",
+            )
+            continue
+
         modified_files = run_section(
             planspace,
             codespace,
@@ -112,6 +345,8 @@ def run_implementation_pass(
             continue
 
         impl_completed.add(sec_num)
+        if risk_plan is not None:
+            _append_risk_history(planspace, sec_num, risk_plan, modified_files)
         mailbox_send(
             planspace,
             parent,

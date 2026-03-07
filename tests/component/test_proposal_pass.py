@@ -34,6 +34,11 @@ def test_run_proposal_pass_reexplores_then_records_result(
     )
     monkeypatch.setattr(
         proposal_pass,
+        "_risk_check_proposal",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        proposal_pass,
         "_reexplore_section",
         lambda *args, **kwargs: "ok",
     )

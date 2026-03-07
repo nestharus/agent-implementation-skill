@@ -1,0 +1,177 @@
+"""ROAL risk data types."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
+
+
+class StepClass(str, Enum):
+    EXPLORE = "explore"
+    STABILIZE = "stabilize"
+    EDIT = "edit"
+    COORDINATE = "coordinate"
+    VERIFY = "verify"
+
+
+class PostureProfile(str, Enum):
+    P0_DIRECT = "P0"
+    P1_LIGHT = "P1"
+    P2_STANDARD = "P2"
+    P3_GUARDED = "P3"
+    P4_REOPEN = "P4"
+
+
+class RiskType(str, Enum):
+    CONTEXT_ROT = "context_rot"
+    SILENT_DRIFT = "silent_drift"
+    SCOPE_CREEP = "scope_creep"
+    BRUTE_FORCE_REGRESSION = "brute_force_regression"
+    CROSS_SECTION_INCOHERENCE = "cross_section_incoherence"
+    TOOL_ISLAND_ISOLATION = "tool_island_isolation"
+    STALE_ARTIFACT_CONTAMINATION = "stale_artifact_contamination"
+
+
+class StepDecision(str, Enum):
+    ACCEPT = "accept"
+    REJECT_DEFER = "reject_defer"
+    REJECT_REOPEN = "reject_reopen"
+
+
+class RiskMode(str, Enum):
+    SKIP = "skip"
+    LIGHT = "light"
+    FULL = "full"
+
+
+class RiskConfidence(str, Enum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+@dataclass
+class RiskVector:
+    context_rot: int = 0
+    silent_drift: int = 0
+    scope_creep: int = 0
+    brute_force_regression: int = 0
+    cross_section_incoherence: int = 0
+    tool_island_isolation: int = 0
+    stale_artifact_contamination: int = 0
+
+
+@dataclass
+class RiskModifiers:
+    blast_radius: int = 0
+    reversibility: int = 4
+    observability: int = 4
+    confidence: float = 0.5
+
+
+@dataclass
+class UnderstandingInventory:
+    confirmed: list[str] = field(default_factory=list)
+    assumed: list[str] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list)
+    stale: list[str] = field(default_factory=list)
+
+
+@dataclass
+class PackageStep:
+    step_id: str
+    step_class: StepClass
+    summary: str
+    prerequisites: list[str] = field(default_factory=list)
+    expected_outputs: list[str] = field(default_factory=list)
+    expected_resolutions: list[str] = field(default_factory=list)
+    mutation_surface: list[str] = field(default_factory=list)
+    verification_surface: list[str] = field(default_factory=list)
+    reversibility: str = "medium"
+
+
+@dataclass
+class StepAssessment:
+    step_id: str
+    step_class: StepClass
+    summary: str
+    prerequisites: list[str]
+    risk_vector: RiskVector
+    modifiers: RiskModifiers
+    raw_risk: int
+    dominant_risks: list[RiskType]
+
+
+@dataclass
+class RiskAssessment:
+    assessment_id: str
+    layer: str
+    package_id: str
+    assessment_scope: str
+    understanding_inventory: UnderstandingInventory
+    package_raw_risk: int
+    assessment_confidence: float
+    dominant_risks: list[RiskType]
+    step_assessments: list[StepAssessment]
+    frontier_candidates: list[str]
+    reopen_recommendations: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class StepMitigation:
+    step_id: str
+    decision: StepDecision
+    posture: PostureProfile | None = None
+    mitigations: list[str] = field(default_factory=list)
+    residual_risk: int | None = None
+    reason: str | None = None
+    wait_for: list[str] = field(default_factory=list)
+    route_to: str | None = None
+    dispatch_shape: dict | None = None
+
+
+@dataclass
+class RiskPlan:
+    plan_id: str
+    assessment_id: str
+    package_id: str
+    layer: str
+    step_decisions: list[StepMitigation]
+    accepted_frontier: list[str]
+    deferred_steps: list[str]
+    reopen_steps: list[str]
+    expected_reassessment_inputs: list[str] = field(default_factory=list)
+
+
+@dataclass
+class RiskPackage:
+    package_id: str
+    layer: str
+    scope: str
+    origin_problem_id: str
+    origin_source: str
+    steps: list[PackageStep]
+
+
+@dataclass
+class RiskHistoryEntry:
+    package_id: str
+    step_id: str
+    layer: str
+    step_class: StepClass
+    posture: PostureProfile
+    predicted_risk: int
+    actual_outcome: str
+    surfaced_surprises: list[str] = field(default_factory=list)
+    verification_outcome: str | None = None
+    dominant_risks: list[RiskType] = field(default_factory=list)
+    blast_radius_band: int = 0
+
+
+@dataclass
+class IntentRiskHint:
+    risk_mode: RiskMode
+    risk_confidence: RiskConfidence
+    risk_budget_hint: int = 0
+    posture_floor: PostureProfile | None = None

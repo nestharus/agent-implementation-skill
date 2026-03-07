@@ -35,6 +35,14 @@ def test_run_implementation_pass_records_results_and_hashes(
         lambda *args: False,
     )
     monkeypatch.setattr(
+        "lib.pipelines.implementation_pass.resolve_readiness",
+        lambda *_args, **_kwargs: {"ready": True},
+    )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass._run_risk_review",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
         "lib.pipelines.implementation_pass.run_section",
         lambda *args, **kwargs: ["src/app.py"],
     )
@@ -122,3 +130,62 @@ def test_run_implementation_pass_exits_when_parent_aborts(
         )
 
     assert messages == ["fail:aborted"]
+
+
+def test_run_implementation_pass_invokes_roal_when_section_is_ready(
+    planspace: Path,
+    codespace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    section = _make_section(planspace, "01")
+    risk_plans: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass.handle_pending_messages",
+        lambda *args: False,
+    )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass.alignment_changed_pending",
+        lambda *args: False,
+    )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass._check_and_clear_alignment_changed",
+        lambda *args: False,
+    )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass.resolve_readiness",
+        lambda *_args, **_kwargs: {"ready": True},
+    )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass._run_risk_review",
+        lambda planspace_arg, sec_num, section_arg, _dispatch: (
+            risk_plans.append((sec_num, section_arg.number)) or None
+        ),
+    )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass.run_section",
+        lambda *args, **kwargs: ["src/app.py"],
+    )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass._section_inputs_hash",
+        lambda *args: "hash-123",
+    )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass.mailbox_send",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass.subprocess.run",
+        lambda *args, **kwargs: None,
+    )
+
+    results = run_implementation_pass(
+        {"01": ProposalPassResult(section_number="01", execution_ready=True)},
+        {"01": section},
+        planspace,
+        codespace,
+        "parent",
+    )
+
+    assert results["01"].modified_files == ["src/app.py"]
+    assert risk_plans == [("01", "01")]

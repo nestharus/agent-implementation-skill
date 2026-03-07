@@ -87,6 +87,9 @@ class PathRegistry:
     def intent_sections_dir(self) -> Path:
         return self.intent_dir() / "sections"
 
+    def risk_dir(self) -> Path:
+        return self._artifacts / "risk"
+
     def section_inputs_hashes_dir(self) -> Path:
         return self._artifacts / "section-inputs-hashes"
 
@@ -148,6 +151,26 @@ class PathRegistry:
 
     def phase2_input_hash(self, num: str) -> Path:
         return self.phase2_inputs_hashes_dir() / f"{num}.hash"
+
+    # --- Risk artifact accessors ---
+
+    def risk_package(self, scope: str) -> Path:
+        return self.risk_dir() / f"{scope}-risk-package.json"
+
+    def risk_assessment(self, scope: str) -> Path:
+        return self.risk_dir() / f"{scope}-risk-assessment.json"
+
+    def risk_plan(self, scope: str) -> Path:
+        return self.risk_dir() / f"{scope}-risk-plan.json"
+
+    def risk_history(self) -> Path:
+        return self.risk_dir() / "risk-history.jsonl"
+
+    def risk_summary(self, scope: str) -> Path:
+        return self.risk_dir() / f"{scope}-risk-summary.md"
+
+    def risk_parameters(self) -> Path:
+        return self.risk_dir() / "risk-parameters.json"
 
     # --- Global file accessors ---
 
