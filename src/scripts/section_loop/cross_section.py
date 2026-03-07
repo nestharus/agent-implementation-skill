@@ -7,6 +7,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from lib.artifact_io import read_json, rename_malformed
+
 from .communication import (
     AGENT_NAME,
     DB_SH,
@@ -589,22 +591,19 @@ def read_incoming_notes(
     ack_path = (artifacts / "signals" / f"note-ack-{sec_num}.json")
     resolved_ids: set[str] = set()
     if ack_path.exists():
-        try:
-            ack_data = json.loads(ack_path.read_text(encoding="utf-8"))
+        ack_data = read_json(ack_path)
+        if isinstance(ack_data, dict):
             for entry in ack_data.get("acknowledged", []):
                 nid = entry.get("note_id", "")
                 action = entry.get("action", "accepted")
                 if nid and action in ("accepted", "deferred"):
                     resolved_ids.add(nid)
-        except (json.JSONDecodeError, OSError) as exc:
+        else:
             # Preserve corrupted note-ack for diagnosis
             malformed_path = ack_path.with_suffix(".malformed.json")
-            try:
-                ack_path.rename(malformed_path)
-            except OSError:
-                pass  # Best-effort preserve
+            rename_malformed(ack_path)
             log(
-                f"Section {sec_num}: note-ack malformed ({exc}) — "
+                f"Section {sec_num}: note-ack malformed — "
                 f"preserved as {malformed_path.name}, treating as "
                 f"no acknowledgements"
             )
@@ -750,5 +749,4 @@ def normalize_section_number(
 def build_section_number_map(sections: list[Section]) -> dict[int, str]:
     """Build a mapping from int section number to canonical string form."""
     return {int(s.number): s.number for s in sections}
-
 

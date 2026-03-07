@@ -4,6 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from lib.artifact_io import read_json, write_json
+
 from .alignment import (
     _extract_problems,
     _parse_alignment_verdict,
@@ -136,19 +138,13 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
     mode_constraints: list[str] = []
     mode_source = "default"
     if mode_json_path.exists():
-        try:
-            mode_data = json.loads(
-                mode_json_path.read_text(encoding="utf-8"))
+        mode_data = read_json(mode_json_path)
+        if mode_data is not None:
             project_mode = mode_data.get("mode", "unknown")
             mode_constraints = mode_data.get("constraints", [])
             mode_source = "JSON signal"
-        except (json.JSONDecodeError, OSError) as exc:
-            try:
-                mode_json_path.rename(
-                    mode_json_path.with_suffix(".malformed.json"))
-            except OSError:
-                pass  # Best-effort preserve
-            log(f"project-mode.json malformed ({exc}) — "
+        else:
+            log("project-mode.json malformed — "
                 "preserved as .malformed.json, trying text fallback")
             if mode_txt_path.exists():
                 project_mode = mode_txt_path.read_text(
@@ -176,19 +172,13 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
     # After any pause-for-parent, re-read in case parent provided mode
     if mode_source.startswith("default (post-resume)"):
         if mode_json_path.exists():
-            try:
-                mode_data = json.loads(
-                    mode_json_path.read_text(encoding="utf-8"))
+            mode_data = read_json(mode_json_path)
+            if mode_data is not None:
                 project_mode = mode_data.get("mode", "unknown")
                 mode_constraints = mode_data.get("constraints", [])
                 mode_source = "JSON signal (post-resume)"
-            except (json.JSONDecodeError, OSError) as exc:
-                try:
-                    mode_json_path.rename(
-                        mode_json_path.with_suffix(".malformed.json"))
-                except OSError:
-                    pass  # Best-effort preserve
-                log(f"project-mode.json malformed after resume ({exc}) "
+            else:
+                log("project-mode.json malformed after resume "
                     "— preserved as .malformed.json, trying text fallback")
                 if mode_txt_path.exists():
                     project_mode = mode_txt_path.read_text(
@@ -210,8 +200,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             "integration proposals", "code changes", "alignment checks",
         ],
     }
-    mode_contract_path.write_text(
-        json.dumps(mode_contract, indent=2) + "\n", encoding="utf-8")
+    write_json(mode_contract_path, mode_contract)
 
     # Load sections and build cross-reference map
     all_sections = load_sections(sections_dir)
@@ -944,12 +933,13 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 rollup_dir = planspace / "artifacts" / "coordination"
                 rollup_dir.mkdir(parents=True, exist_ok=True)
                 rollup_path = rollup_dir / "coordination-exhausted.json"
-                rollup_path.write_text(json.dumps(
+                write_json(
+                    rollup_path,
                     [{"type": p["type"],
                       "section": p["section"],
                       "description": p["description"][:200]}
                      for p in outstanding],
-                    indent=2), encoding="utf-8")
+                )
                 mailbox_send(
                     planspace, parent,
                     f"fail:coordination_exhausted:outstanding:"

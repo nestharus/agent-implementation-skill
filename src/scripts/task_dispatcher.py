@@ -28,6 +28,8 @@ import sys
 import time
 from pathlib import Path
 
+from lib.artifact_io import read_json
+
 # Resolve paths relative to this script's location.
 SCRIPTS_DIR = Path(__file__).resolve().parent
 WORKFLOW_HOME = Path(os.environ.get("WORKFLOW_HOME", SCRIPTS_DIR.parent))
@@ -114,17 +116,12 @@ def _read_dispatch_meta(meta_path: Path) -> dict | None | object:
     if not meta_path.exists():
         return None
 
-    try:
-        data = json.loads(meta_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
+    data = read_json(meta_path)
+    if data is None:
         log(
-            f"WARNING: Malformed dispatch meta at {meta_path} ({exc}) "
+            f"WARNING: Malformed dispatch meta at {meta_path} "
             f"— renaming to .malformed.json"
         )
-        try:
-            meta_path.rename(meta_path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
         return _DISPATCH_META_CORRUPT
 
     return data

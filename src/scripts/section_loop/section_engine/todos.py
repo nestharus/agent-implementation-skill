@@ -1,5 +1,6 @@
-import json
 from pathlib import Path
+
+from lib.artifact_io import read_json, write_json
 
 from ..dispatch import dispatch_agent
 from prompt_safety import write_validated_prompt
@@ -20,21 +21,21 @@ def _gather_complexity_signals(
     # 1. Section mode signal
     mode_signal = artifacts / "signals" / f"section-{section_number}-mode.json"
     if mode_signal.exists():
-        try:
-            mode_data = json.loads(mode_signal.read_text(encoding="utf-8"))
+        mode_data = read_json(mode_signal)
+        if mode_data is not None:
             signals["section_mode"] = mode_data.get("mode", "unknown")
-        except (json.JSONDecodeError, OSError):
+        else:
             signals["section_mode"] = "unreadable"
     else:
         signals["section_mode"] = "unknown"
 
     # 2. Related file count from mode signal (if it contains file info)
     if mode_signal.exists():
-        try:
-            mode_data = json.loads(mode_signal.read_text(encoding="utf-8"))
+        mode_data = read_json(mode_signal)
+        if mode_data is not None:
             file_count = len(mode_data.get("related_files", []))
             signals["related_file_count"] = str(file_count) if file_count else "unknown"
-        except (json.JSONDecodeError, OSError):
+        else:
             signals["related_file_count"] = "unknown"
     else:
         signals["related_file_count"] = "unknown"
@@ -123,19 +124,14 @@ def _check_needs_microstrategy(
     signal_path = (planspace / "artifacts" / "signals"
                    / f"proposal-{section_number}-microstrategy.json")
     if signal_path.exists():
-        try:
-            data = json.loads(signal_path.read_text(encoding="utf-8"))
+        data = read_json(signal_path)
+        if data is not None:
             return data.get("needs_microstrategy", False) is True
-        except (json.JSONDecodeError, OSError) as exc:
+        else:
             print(
                 f"[MICROSTRATEGY][WARN] Malformed signal at {signal_path} "
-                f"({exc}) — renaming and dispatching fresh",
+                "— renaming and dispatching fresh",
             )
-            try:
-                signal_path.rename(
-                    signal_path.with_suffix(".malformed.json"))
-            except OSError:
-                pass
             # Fall through to dispatch
 
     # Fallback: dispatch to produce structured microstrategy signal
@@ -179,13 +175,13 @@ Write a JSON signal to: `{signal_path}`
         agent_file="microstrategy-decider.md",
     )
     if signal_path.exists():
-        try:
-            data = json.loads(signal_path.read_text(encoding="utf-8"))
+        data = read_json(signal_path)
+        if data is not None:
             return data.get("needs_microstrategy", False) is True
-        except (json.JSONDecodeError, OSError) as exc:
+        else:
             print(
                 f"[MICROSTRATEGY][WARN] Section {section_number}: "
-                f"malformed signal after primary attempt ({exc}) "
+                "malformed signal after primary attempt "
                 f"— retrying with escalation model",
             )
 
@@ -201,13 +197,13 @@ Write a JSON signal to: `{signal_path}`
         agent_file="microstrategy-decider.md",
     )
     if signal_path.exists():
-        try:
-            data = json.loads(signal_path.read_text(encoding="utf-8"))
+        data = read_json(signal_path)
+        if data is not None:
             return data.get("needs_microstrategy", False) is True
-        except (json.JSONDecodeError, OSError) as exc:
+        else:
             print(
                 f"[MICROSTRATEGY][WARN] Section {section_number}: "
-                f"malformed signal after escalation attempt ({exc}) "
+                "malformed signal after escalation attempt "
                 f"— defaulting to fail-closed (needs microstrategy)",
             )
 
@@ -219,6 +215,5 @@ Write a JSON signal to: `{signal_path}`
             "signal after retries (default + escalation model)"
         ),
     }
-    signal_path.write_text(
-        json.dumps(fallback, indent=2), encoding="utf-8")
+    write_json(signal_path, fallback)
     return True

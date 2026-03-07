@@ -24,6 +24,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from lib.artifact_io import read_json, rename_malformed, write_json
+
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
@@ -229,17 +231,12 @@ def _read_flow_json(path: Path) -> tuple[str, dict | list | None]:
     if not path.exists():
         return ("missing", None)
 
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
+    data = read_json(path)
+    if data is None:
         print(
-            f"[FLOW][WARN] Malformed JSON in {path} ({exc}) "
+            f"[FLOW][WARN] Malformed JSON in {path} "
             f"— renaming to .malformed.json",
         )
-        try:
-            path.rename(path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
         return ("malformed", None)
 
     return ("ok", data)
@@ -393,7 +390,7 @@ def _write_flow_context(
     }
 
     context_path = flows_dir / f"task-{task_id}-context.json"
-    context_path.write_text(json.dumps(context, indent=2) + "\n")
+    write_json(context_path, context)
 
 
 # ---------------------------------------------------------------------------
@@ -727,8 +724,7 @@ def reconcile_task_completion(
 
     if result_manifest_path:
         manifest_file = planspace / result_manifest_path
-        manifest_file.parent.mkdir(parents=True, exist_ok=True)
-        manifest_file.write_text(json.dumps(manifest, indent=2) + "\n")
+        write_json(manifest_file, manifest)
 
     # Read origin_refs from flow context file (needed for gate operations)
     origin_refs = _read_origin_refs(planspace, task_id)
@@ -767,12 +763,7 @@ def reconcile_task_completion(
                         f"[FLOW][WARN] Malformed continuation at {cont_file} "
                         f"({exc}) — renaming to .malformed.json",
                     )
-                    try:
-                        cont_file.rename(
-                            cont_file.with_suffix(".malformed.json")
-                        )
-                    except OSError:
-                        pass
+                    rename_malformed(cont_file)
                     # Treat as task failure: cancel descendants, update gate
                     if chain_id:
                         _cancel_chain_descendants(db_path, chain_id, task_id)
@@ -1049,8 +1040,7 @@ def _check_and_fire_gate(
     # Write aggregate manifest
     agg_relpath = _gate_aggregate_relpath(gate_id)
     agg_file = planspace / agg_relpath
-    agg_file.parent.mkdir(parents=True, exist_ok=True)
-    agg_file.write_text(json.dumps(aggregate, indent=2) + "\n")
+    write_json(agg_file, aggregate)
 
     # Update gate status to "ready" and set aggregate path
     conn = sqlite3.connect(str(db_path), timeout=5.0)

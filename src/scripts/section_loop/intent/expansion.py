@@ -1,7 +1,7 @@
 """Expansion cycle: dispatch expanders, interpret deltas, decide restart."""
-
-import json
 from pathlib import Path
+
+from lib.artifact_io import write_json
 
 from ..communication import _log_artifact, log, mailbox_send
 from ..dispatch import dispatch_agent, read_agent_signal, read_model_policy
@@ -66,7 +66,7 @@ def run_expansion_cycle(
         planspace / "artifacts" / "signals"
         / f"intent-surfaces-{section_number}.json"
     )
-    surfaces_path.write_text(json.dumps(surfaces, indent=2), encoding="utf-8")
+    write_json(surfaces_path, surfaces)
 
     # Handle recurrence: discarded surfaces that resurfaced (V4/V5 R54)
     # Instead of a script-side threshold, dispatch an adjudicator when
@@ -154,8 +154,7 @@ def run_expansion_cycle(
         planspace / "artifacts" / "signals"
         / f"intent-surfaces-pending-{section_number}.json"
     )
-    pending_surfaces_path.write_text(
-        json.dumps(budgeted_surfaces, indent=2), encoding="utf-8")
+    write_json(pending_surfaces_path, budgeted_surfaces)
 
     # V5/R56: Axis budget enforcement — compute remaining axis budget
     # from registry metadata so expanders know the constraint.
@@ -252,8 +251,7 @@ def run_expansion_cycle(
     delta_path = (
         artifacts / "signals" / f"intent-delta-{section_number}.json"
     )
-    delta_path.parent.mkdir(parents=True, exist_ok=True)
-    delta_path.write_text(json.dumps(delta, indent=2), encoding="utf-8")
+    write_json(delta_path, delta)
 
     expansion_applied = (
         delta["applied"]["problem_definition_updated"]
@@ -334,8 +332,7 @@ def handle_user_gate(
             "needs": msg["needs"],
             "why_blocked": msg["why_blocked"],
         }
-        blocker_path.write_text(
-            json.dumps(blocker, indent=2), encoding="utf-8")
+        write_json(blocker_path, blocker)
 
     # Pause for parent
     response = pause_for_parent(
@@ -580,8 +577,7 @@ def _adjudicate_recurrence(
     recurrence_path = (
         signals_dir / f"intent-surface-recurrence-{section_number}.json"
     )
-    recurrence_path.write_text(
-        json.dumps(recurrence_signal, indent=2), encoding="utf-8")
+    write_json(recurrence_path, recurrence_signal)
 
     adjudication_path = (
         signals_dir / f"intent-recurrence-adjudication-{section_number}.json"

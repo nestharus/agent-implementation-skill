@@ -3,6 +3,7 @@ from pathlib import Path
 from .agent_templates import render_template
 from .communication import log
 from .dispatch import dispatch_agent
+from lib.verdict_parsers import parse_alignment_verdict as _parse_alignment_verdict
 from prompt_safety import validate_dynamic_content
 from .pipeline_control import poll_control_messages
 from .types import Section
@@ -46,54 +47,6 @@ def collect_modified_files(
                     continue
             modified.add(str(rel))
     return list(modified)
-
-
-def _parse_alignment_verdict(result: str) -> dict | None:
-    """Parse structured verdict from alignment judge output.
-
-    Looks for a JSON block containing ``frame_ok``.  Returns the full
-    dict (which may also contain ``aligned`` and ``problems``), or
-    ``None`` if no JSON verdict is found.
-    """
-    import json as _json
-
-    def _try_parse(text: str) -> dict | None:
-        try:
-            data = _json.loads(text)
-            if isinstance(data, dict) and "frame_ok" in data:
-                return data
-        except _json.JSONDecodeError:
-            pass
-        return None
-
-    # Single-line JSON
-    for line in result.split("\n"):
-        stripped = line.strip()
-        if stripped.startswith("{") and "frame_ok" in stripped:
-            parsed = _try_parse(stripped)
-            if parsed:
-                return parsed
-
-    # Code-fenced JSON
-    in_fence = False
-    fence_lines: list[str] = []
-    for line in result.split("\n"):
-        stripped = line.strip()
-        if stripped.startswith("```") and not in_fence:
-            in_fence = True
-            fence_lines = []
-            continue
-        if stripped.startswith("```") and in_fence:
-            candidate = "\n".join(fence_lines)
-            if "frame_ok" in candidate:
-                parsed = _try_parse(candidate)
-                if parsed:
-                    return parsed
-            in_fence = False
-            continue
-        if in_fence:
-            fence_lines.append(line)
-    return None
 
 
 def _extract_problems(

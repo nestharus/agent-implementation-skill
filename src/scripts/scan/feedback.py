@@ -5,9 +5,10 @@ Translates the post-scan feedback collection and routing from scan.sh.
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
+
+from lib.artifact_io import read_json, write_json
 
 from prompt_safety import validate_dynamic_content
 
@@ -55,9 +56,8 @@ def collect_and_route_feedback(
         out_of_scope_items: list[str] = []
 
         for fb_file in sorted(sec_log_dir.glob("deep-*-feedback.json")):
-            try:
-                data = json.loads(fb_file.read_text())
-            except (json.JSONDecodeError, OSError):
+            data = read_json(fb_file)
+            if data is None:
                 print(
                     f"[DEEP SCAN] WARNING: Malformed feedback JSON: "
                     f"{fb_file} (section: {sec_name})",
@@ -66,11 +66,6 @@ def collect_and_route_feedback(
                     scan_log_dir / "failures.log",
                     f"- Malformed feedback: `{fb_file}` (section: {sec_name})",
                 )
-                # Preserve corrupted file for diagnosis (V2/R55)
-                try:
-                    fb_file.rename(fb_file.with_suffix(".malformed.json"))
-                except OSError:
-                    pass  # Best-effort preserve
                 continue
 
             # Schema validation: required fields must be present and typed
@@ -172,18 +167,12 @@ def _route_scope_deltas(
 
         all_oos: list[str] = []
         for fb_file in sorted(sec_log_dir.glob("deep-*-feedback.json")):
-            try:
-                data = json.loads(fb_file.read_text())
-            except (json.JSONDecodeError, OSError) as exc:
+            data = read_json(fb_file)
+            if data is None:
                 print(
                     f"[SCOPE][WARN] Malformed feedback JSON in "
-                    f"scope-delta routing: {fb_file} ({exc})",
+                    f"scope-delta routing: {fb_file}",
                 )
-                # Preserve corrupted file for diagnosis (V2/R55)
-                try:
-                    fb_file.rename(fb_file.with_suffix(".malformed.json"))
-                except OSError:
-                    pass  # Best-effort preserve
                 continue
             for item in data.get("out_of_scope", []):
                 if isinstance(item, str) and item.strip():
@@ -196,28 +185,29 @@ def _route_scope_deltas(
 
         # Skip if already adjudicated
         if delta_path.is_file():
-            try:
-                existing = json.loads(delta_path.read_text())
+            existing = read_json(delta_path)
+            if existing is not None:
                 if existing.get("adjudicated"):
                     print(
                         f"[SCOPE] section-{sec_num}: scope delta "
                         "already adjudicated — skipping",
                     )
                     continue
-            except (json.JSONDecodeError, OSError) as exc:
+            else:
                 # Preserve corrupted scope-delta for diagnosis
                 malformed_path = (
                     scope_deltas_dir
                     / f"section-{sec_num}-scope-delta.malformed.json"
                 )
-                try:
-                    delta_path.rename(malformed_path)
-                except OSError:
-                    pass  # Best-effort preserve
+                if delta_path.exists():
+                    try:
+                        delta_path.rename(malformed_path)
+                    except OSError:
+                        pass  # Best-effort preserve
                 print(
                     f"[SCOPE][WARN] section-{sec_num}: malformed "
                     f"scope-delta JSON preserved as "
-                    f"{malformed_path.name} ({exc})",
+                    f"{malformed_path.name}",
                 )
 
         delta = {
@@ -227,7 +217,7 @@ def _route_scope_deltas(
             "items": all_oos,
             "adjudicated": False,
         }
-        delta_path.write_text(json.dumps(delta, indent=2))
+        write_json(delta_path, delta)
         print(
             f"[SCOPE] section-{sec_num}: {len(all_oos)} out-of-scope "
             "items routed to scope-deltas",
@@ -268,18 +258,12 @@ def _apply_feedback(
         all_irrelevant: list[str] = []
 
         for fb_file in sorted(sec_log_dir.glob("deep-*-feedback.json")):
-            try:
-                data = json.loads(fb_file.read_text())
-            except (json.JSONDecodeError, OSError) as exc:
+            data = read_json(fb_file)
+            if data is None:
                 print(
                     f"[FEEDBACK][WARN] Malformed feedback JSON in "
-                    f"apply_feedback: {fb_file} ({exc})",
+                    f"apply_feedback: {fb_file}",
                 )
-                # Preserve corrupted file for diagnosis (V2/R55)
-                try:
-                    fb_file.rename(fb_file.with_suffix(".malformed.json"))
-                except OSError:
-                    pass  # Best-effort preserve
                 continue
 
             # Skip entries with missing required fields
@@ -403,21 +387,14 @@ def _apply_feedback(
                 )
             continue
 
-        try:
-            sig_data = json.loads(updater_signal.read_text())
-            status = sig_data.get("status", "")
-        except (json.JSONDecodeError, OSError) as exc:
+        sig_data = read_json(updater_signal)
+        if sig_data is None:
             print(
                 f"[FEEDBACK][WARN] Malformed updater signal: "
-                f"{updater_signal} ({exc})",
+                f"{updater_signal} — preserved as .malformed.json",
             )
-            # Preserve corrupted signal for diagnosis (V3/R56)
-            try:
-                updater_signal.rename(
-                    updater_signal.with_suffix(".malformed.json"))
-            except OSError:
-                pass  # Best-effort preserve
             continue
+        status = sig_data.get("status", "")
 
         if status == "stale":
             applied = apply_related_files_update(
@@ -426,8 +403,7 @@ def _apply_feedback(
             # re-applied on subsequent runs.
             try:
                 sig_data["status"] = "applied" if applied else "no_change"
-                updater_signal.write_text(
-                    json.dumps(sig_data, indent=2), encoding="utf-8")
+                write_json(updater_signal, sig_data)
             except OSError:
                 pass  # Best-effort ack; signal file may be read-only
             if applied:
@@ -444,21 +420,14 @@ def _apply_feedback(
 
 def _is_valid_updater_signal(signal_path: Path) -> bool:
     """Check if an updater signal file contains valid JSON with status."""
-    try:
-        data = json.loads(signal_path.read_text())
+    data = read_json(signal_path)
+    if data is not None:
         return isinstance(data.get("status"), str)
-    except (json.JSONDecodeError, OSError) as exc:
-        print(
-            f"[FEEDBACK][WARN] Malformed updater signal in validity "
-            f"check: {signal_path} ({exc})",
-        )
-        # Preserve corrupted signal for diagnosis (V2/R57)
-        try:
-            signal_path.rename(
-                signal_path.with_suffix(".malformed.json"))
-        except OSError:
-            pass  # Best-effort preserve
-        return False
+    print(
+        f"[FEEDBACK][WARN] Malformed updater signal in validity "
+        f"check: {signal_path}",
+    )
+    return False
 
 
 def _validate_feedback_schema(

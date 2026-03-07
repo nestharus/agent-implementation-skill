@@ -5,9 +5,10 @@ Translates ``run_codemap_build()`` and its helpers from scan.sh.
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
+
+from lib.artifact_io import read_json, rename_malformed
 
 from prompt_safety import validate_dynamic_content
 
@@ -236,32 +237,17 @@ def _run_freshness_check(
     )
 
     if result.returncode == 0 and freshness_signal.is_file():
-        try:
-            data = json.loads(freshness_signal.read_text())
-            if not isinstance(data, dict):
-                print(
-                    f"[CODEMAP][WARN] Freshness signal at "
-                    f"{freshness_signal} is not a JSON object "
-                    f"— renaming to .malformed.json")
-                try:
-                    freshness_signal.rename(
-                        freshness_signal.with_suffix(".malformed.json"))
-                except OSError:
-                    pass
-                rebuild = True
-            else:
-                rebuild = data.get("rebuild", True)
-        except (json.JSONDecodeError, OSError) as exc:
+        data = read_json(freshness_signal)
+        if not isinstance(data, dict):
             print(
                 f"[CODEMAP][WARN] Malformed freshness signal at "
-                f"{freshness_signal} ({exc}) "
+                f"{freshness_signal} "
                 f"— renaming to .malformed.json")
-            try:
-                freshness_signal.rename(
-                    freshness_signal.with_suffix(".malformed.json"))
-            except OSError:
-                pass
+            if data is not None:
+                rename_malformed(freshness_signal)
             rebuild = True
+        else:
+            rebuild = data.get("rebuild", True)
 
         if str(rebuild).lower() == "false" or rebuild is False:
             print("[CODEMAP] Verifier says codemap still valid — reusing")

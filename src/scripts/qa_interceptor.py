@@ -21,6 +21,8 @@ import os
 import time
 from pathlib import Path
 
+from lib.artifact_io import read_json, rename_malformed, write_json
+
 # Resolve paths relative to this script's location.
 SCRIPTS_DIR = Path(__file__).resolve().parent
 WORKFLOW_HOME = Path(os.environ.get("WORKFLOW_HOME", SCRIPTS_DIR.parent))
@@ -60,18 +62,13 @@ def read_qa_parameters(planspace: Path) -> dict:
     if not params_path.exists():
         return defaults
 
-    try:
-        data = json.loads(params_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
+    data = read_json(params_path)
+    if data is None:
         print(
             f"[qa-interceptor] WARNING: Malformed parameters.json at "
-            f"{params_path} ({exc}) — renaming to .malformed.json",
+            f"{params_path} — renaming to .malformed.json",
             flush=True,
         )
-        try:
-            params_path.rename(params_path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
         return defaults
 
     if not isinstance(data, dict):
@@ -80,10 +77,7 @@ def read_qa_parameters(planspace: Path) -> dict:
             f"object — renaming to .malformed.json",
             flush=True,
         )
-        try:
-            params_path.rename(params_path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
+        rename_malformed(params_path)
         return defaults
 
     # Merge with defaults so qa_mode always exists.
@@ -233,10 +227,7 @@ def _write_rationale(
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 
-    rationale_path.write_text(
-        json.dumps(rationale_data, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    write_json(rationale_path, rationale_data)
     return rationale_path
 
 

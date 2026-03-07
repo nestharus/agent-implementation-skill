@@ -3,6 +3,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from lib.artifact_io import read_json, rename_malformed, write_json
+
 from .agent_templates import render_template, validate_dynamic_content
 from .communication import (
     AGENT_NAME,
@@ -184,7 +186,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
         "returncode": result.returncode if not timed_out else None,
         "timed_out": timed_out,
     }
-    meta_path.write_text(json.dumps(meta) + "\n", encoding="utf-8")
+    write_json(meta_path, meta, indent=None)
 
     if monitor_proc:
         assert monitor_name is not None  # set when monitor_proc created  # noqa: S101
@@ -304,8 +306,8 @@ def read_signal_tuple(signal_path: Path) -> tuple[str | None, str]:
     """
     if not signal_path.exists():
         return None, ""
-    try:
-        data = json.loads(signal_path.read_text(encoding="utf-8"))
+    data = read_json(signal_path)
+    if isinstance(data, dict):
         state = data.get("state", "").lower()
         detail = data.get("detail", "")
         # Enrich detail with structured fields when present
@@ -338,21 +340,20 @@ def read_signal_tuple(signal_path: Path) -> tuple[str | None, str]:
             f"Unknown signal state '{state}' in {signal_path} — "
             f"failing closed. Original detail: {detail}"
         )
-    except (json.JSONDecodeError, KeyError) as exc:
-        # Malformed signal — preserve corrupted file for diagnosis,
-        # then fail closed rather than silently ignoring.
+    # Malformed signal — preserve corrupted file for diagnosis,
+    # then fail closed rather than silently ignoring.
+    exc = "invalid JSON"
+    if data is not None:
+        exc = "non-object JSON"
         print(
             f"[SIGNAL][WARN] Malformed signal JSON at {signal_path} "
             f"({exc}) — renaming to .malformed.json",
         )
-        try:
-            signal_path.rename(signal_path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
-        return "needs_parent", (
-            f"Malformed signal JSON at {signal_path} ({exc}) — "
-            f"failing closed"
-        )
+        rename_malformed(signal_path)
+    return "needs_parent", (
+        f"Malformed signal JSON at {signal_path} ({exc}) — "
+        f"failing closed"
+    )
 
 
 def adjudicate_agent_output(
@@ -452,27 +453,19 @@ def read_agent_signal(
     """
     if not signal_path.exists():
         return None
-    try:
-        data = json.loads(signal_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
+    data = read_json(signal_path)
+    if data is None:
         print(
-            f"[SIGNAL][WARN] Malformed JSON in {signal_path} ({exc}) "
+            f"[SIGNAL][WARN] Malformed JSON in {signal_path} "
             f"— renaming to .malformed.json",
         )
-        try:
-            signal_path.rename(signal_path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
         return None
     if not isinstance(data, dict):
         print(
             f"[SIGNAL][WARN] Signal at {signal_path} is not a JSON object "
             f"— renaming to .malformed.json",
         )
-        try:
-            signal_path.rename(signal_path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
+        rename_malformed(signal_path)
         return None
     if expected_fields:
         for f in expected_fields:
@@ -497,9 +490,7 @@ def write_model_choice_signal(
         "escalated_from": escalated_from,
     }
     signal_path = signals_dir / f"model-choice-{section}-{step}.json"
-    signal_path.write_text(
-        json.dumps(signal, indent=2) + "\n", encoding="utf-8",
-    )
+    write_json(signal_path, signal)
 
 
 def check_agent_signals(
@@ -590,8 +581,8 @@ def read_model_policy(planspace: Path) -> dict[str, Any]:
     }
     if not policy_path.exists():
         return defaults
-    try:
-        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy = read_json(policy_path)
+    if isinstance(policy, dict):
         # Merge with defaults (policy overrides)
         merged = {**defaults, **policy}
         if "escalation_triggers" in policy:
@@ -600,11 +591,8 @@ def read_model_policy(planspace: Path) -> dict[str, Any]:
                 **policy["escalation_triggers"],
             }
         return merged
-    except (json.JSONDecodeError, OSError):
-        log("  WARNING: model-policy.json exists but is invalid — "
-            "renaming to .malformed.json")
-        try:
-            policy_path.rename(policy_path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
-        return defaults
+    log("  WARNING: model-policy.json exists but is invalid — "
+        "renaming to .malformed.json")
+    if policy is not None:
+        rename_malformed(policy_path)
+    return defaults

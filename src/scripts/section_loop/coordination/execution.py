@@ -1,6 +1,7 @@
-import json
 from pathlib import Path
 from typing import Any
+
+from lib.artifact_io import read_json
 
 from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
 from ..communication import WORKFLOW_HOME, _log_artifact, log
@@ -90,10 +91,8 @@ def write_coordinator_fix_prompt(
             f"See tool digest: `{tool_digest_path}`\n"
         )
     elif tool_registry_path.exists():
-        try:
-            reg = json.loads(
-                tool_registry_path.read_text(encoding="utf-8"),
-            )
+        reg = read_json(tool_registry_path)
+        if reg is not None:
             cross_tools = [
                 t for t in (reg if isinstance(reg, list)
                             else reg.get("tools", []))
@@ -109,20 +108,19 @@ def write_coordinator_fix_prompt(
                 tools_block = (
                     f"\n## Available Cross-Section Tools\n{tool_lines}\n"
                 )
-        except (json.JSONDecodeError, ValueError) as exc:
-            # V2/R58: Preserve corrupted tool-registry for diagnosis.
-            malformed_path = tool_registry_path.with_suffix(
-                ".malformed.json")
-            try:
-                import shutil
-                shutil.copy2(tool_registry_path, malformed_path)
-            except OSError:
-                pass  # Best-effort preserve
+        else:
+            malformed_path = tool_registry_path.with_suffix(".malformed.json")
+            if malformed_path.exists() and not tool_registry_path.exists():
+                try:
+                    import shutil
+                    shutil.copy2(malformed_path, tool_registry_path)
+                except OSError:
+                    pass
             tools_block = (
                 f"\n## Tool Registry Warning\n"
-                f"Tool registry exists but is malformed ({exc}); "
+                "Tool registry exists but is malformed; "
                 f"see `{tool_registry_path}`.\n"
-                f"Malformed copy preserved at "
+                f"Malformed artifact preserved at "
                 f"`{malformed_path}`.\n"
                 f"Consider dispatching tool-registrar repair before "
                 f"relying on tool context.\n"

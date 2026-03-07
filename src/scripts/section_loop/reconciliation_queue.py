@@ -11,9 +11,10 @@ and can be inspected by monitors.
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
+
+from lib.artifact_io import read_json, rename_malformed, write_json
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +54,7 @@ def queue_reconciliation_request(
     }
 
     request_path = recon_dir / f"section-{section_number}-reconciliation.json"
-    request_path.write_text(
-        json.dumps(request, indent=2) + "\n", encoding="utf-8",
-    )
+    write_json(request_path, request)
     logger.info(
         "Reconciliation request written for section %s (%d contracts, "
         "%d anchors) at %s",
@@ -91,28 +90,20 @@ def load_reconciliation_requests(run_dir: Path) -> list[dict]:
 
     requests: list[dict] = []
     for req_path in sorted(recon_dir.glob("section-*-reconciliation.json")):
-        try:
-            data = json.loads(req_path.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                requests.append(data)
-            else:
-                logger.warning(
-                    "Reconciliation request at %s is not a dict "
-                    "— renaming to .malformed.json",
-                    req_path,
-                )
-                try:
-                    req_path.rename(req_path.with_suffix(".malformed.json"))
-                except OSError:
-                    pass
-        except (json.JSONDecodeError, OSError) as exc:
+        data = read_json(req_path)
+        if data is None:
             logger.warning(
-                "Malformed reconciliation request at %s (%s) "
-                "— renaming to .malformed.json",
-                req_path, exc,
+                "Malformed reconciliation request at %s — skipped",
+                req_path,
             )
-            try:
-                req_path.rename(req_path.with_suffix(".malformed.json"))
-            except OSError:
-                pass
+            continue
+        if isinstance(data, dict):
+            requests.append(data)
+        else:
+            logger.warning(
+                "Reconciliation request at %s is not a dict "
+                "— renaming to .malformed.json",
+                req_path,
+            )
+            rename_malformed(req_path)
     return requests

@@ -6,10 +6,11 @@ Translates ``run_deep_scan()`` and helpers from scan.sh.
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import sys
 from pathlib import Path
+
+from lib.artifact_io import read_json, rename_malformed, write_json
 
 from prompt_safety import validate_dynamic_content
 
@@ -32,9 +33,8 @@ def _load_template(name: str) -> str:
 
 def validate_tier_file(tier_file: Path) -> bool:
     """Validate tier file structure: valid JSON with required fields."""
-    try:
-        data = json.loads(tier_file.read_text())
-    except (json.JSONDecodeError, OSError):
+    data = read_json(tier_file)
+    if data is None:
         return False
 
     tiers = data.get("tiers")
@@ -125,20 +125,13 @@ def update_match(
     if not feedback_file.exists():
         return True  # No feedback = no annotation needed
 
-    try:
-        feedback = json.loads(feedback_file.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
+    feedback = read_json(feedback_file)
+    if feedback is None:
         print(
             f"[DEEP][WARN] Malformed feedback JSON: "
-            f"{feedback_file} ({exc})",
+            f"{feedback_file}",
             file=sys.stderr,
         )
-        # Preserve corrupted file for diagnosis (V1/R57)
-        try:
-            feedback_file.rename(
-                feedback_file.with_suffix(".malformed.json"))
-        except OSError:
-            pass  # Best-effort preserve
         return True
 
     lines = feedback.get("summary_lines")
@@ -227,10 +220,7 @@ def _run_tier_ranking(
                 "(missing scan_now or bad schema) — preserving as "
                 ".malformed.json and regenerating",
             )
-            try:
-                tier_file.rename(
-                    tier_file.with_suffix(".malformed.json"))
-            except OSError:
+            if rename_malformed(tier_file) is None:
                 tier_file.unlink()  # Fallback: remove if rename fails
         elif tier_inputs_sidecar.is_file() and tier_inputs_sidecar.read_text().strip() == tier_inputs_hash:
             return tier_file
@@ -307,7 +297,7 @@ def _run_tier_ranking(
                 "suggested_action": "manual_review_or_parent_escalation",
             }
             fail_path = signals_dir / f"{section_name}-tier-ranking-failed.json"
-            fail_path.write_text(json.dumps(fail_data, indent=2))
+            write_json(fail_path, fail_data)
 
     # Post-generation validation
     if tier_file.is_file() and not validate_tier_file(tier_file):
@@ -322,7 +312,7 @@ def _run_tier_ranking(
             "suggested_action": "manual_review_or_parent_escalation",
         }
         fail_path = signals_dir / f"{section_name}-tier-ranking-invalid.json"
-        fail_path.write_text(json.dumps(fail_data, indent=2))
+        write_json(fail_path, fail_data)
         tier_file.unlink()
 
     # Write inputs sidecar on success for future invalidation checks
@@ -337,19 +327,13 @@ def _get_scan_files(tier_file: Path) -> tuple[list[str], str]:
 
     Returns ([], "") if no files to scan.
     """
-    try:
-        data = json.loads(tier_file.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
+    data = read_json(tier_file)
+    if data is None:
         print(
-            f"[TIER][WARN] Malformed tier file: {tier_file} ({exc}) "
+            f"[TIER][WARN] Malformed tier file: {tier_file} "
             f"— preserving as .malformed.json",
             file=sys.stderr,
         )
-        # Preserve corrupted file for diagnosis (V4/R55)
-        try:
-            tier_file.rename(tier_file.with_suffix(".malformed.json"))
-        except OSError:
-            pass  # Best-effort preserve
         return [], ""
 
     tiers = data.get("tiers", {})

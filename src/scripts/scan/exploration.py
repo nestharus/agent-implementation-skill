@@ -6,10 +6,11 @@ Translates ``run_section_exploration()`` and helpers from scan.sh.
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import sys
 from pathlib import Path
+
+from lib.artifact_io import read_json, write_json
 
 from prompt_safety import validate_dynamic_content
 
@@ -44,19 +45,12 @@ def apply_related_files_update(
     if not signal_file.exists():
         return False
 
-    try:
-        signal = json.loads(signal_file.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
+    signal = read_json(signal_file)
+    if signal is None:
         print(
             f"[RELATED FILES][WARN] Malformed update signal: "
-            f"{signal_file} ({exc})",
+            f"{signal_file}",
         )
-        # V3/R58: Preserve corrupted signal for diagnosis.
-        try:
-            signal_file.rename(
-                signal_file.with_suffix(".malformed.json"))
-        except OSError:
-            pass  # Best-effort preserve
         return False
 
     if signal.get("status") != "stale":
@@ -253,25 +247,18 @@ def _validate_existing_related_files(
         )
         write_hash = True
         if signal_file.is_file():
-            try:
-                data = json.loads(signal_file.read_text())
-                status = data.get("status", "")
-            except (json.JSONDecodeError, OSError) as exc:
+            data = read_json(signal_file)
+            if data is None:
                 # Fail-closed: malformed signal must NOT write skip-hash
                 print(
                     f"[EXPLORE][WARN] {section_name}: malformed "
-                    f"related-files update signal ({exc}) — "
+                    "related-files update signal — "
                     f"forcing revalidation on next run",
                 )
-                # Preserve corrupted file for diagnosis
-                malformed_path = signal_file.with_suffix(
-                    ".malformed.json")
-                try:
-                    signal_file.rename(malformed_path)
-                except OSError:
-                    pass
                 write_hash = False
                 status = ""
+            else:
+                status = data.get("status", "")
 
             if status == "stale":
                 print(
@@ -281,9 +268,7 @@ def _validate_existing_related_files(
                 if apply_related_files_update(section_file, signal_file):
                     # Mark signal as applied so re-runs don't re-apply
                     data["status"] = "applied"
-                    signal_file.write_text(
-                        json.dumps(data, indent=2),
-                    )
+                    write_json(signal_file, data)
                     print(
                         f"[EXPLORE] {section_name}: list updated",
                     )

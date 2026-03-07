@@ -12,9 +12,10 @@ keys all yield ``execution_ready = False``.
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
+
+from lib.artifact_io import read_json, rename_malformed, write_json
 
 logger = logging.getLogger(__name__)
 
@@ -102,18 +103,12 @@ def load_proposal_state(path: Path) -> dict:
     if not path.exists():
         return _fail_closed_default()
 
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
+    raw = read_json(path)
+    if raw is None:
         logger.warning(
-            "Malformed proposal state at %s (%s) — renaming to "
-            ".malformed.json",
-            path, exc,
+            "Malformed proposal state at %s — returning fail-closed default",
+            path,
         )
-        try:
-            path.rename(path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
         return _fail_closed_default()
 
     if not isinstance(raw, dict):
@@ -122,10 +117,7 @@ def load_proposal_state(path: Path) -> dict:
             ".malformed.json",
             path,
         )
-        try:
-            path.rename(path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
+        rename_malformed(path)
         return _fail_closed_default()
 
     # Strict validation for loaded artifacts: missing required keys or
@@ -137,10 +129,7 @@ def load_proposal_state(path: Path) -> dict:
                 "— renaming to .malformed.json",
                 path, key,
             )
-            try:
-                path.rename(path.with_suffix(".malformed.json"))
-            except OSError:
-                pass
+            rename_malformed(path)
             return _fail_closed_default()
         if not isinstance(raw[key], expected_type):
             logger.warning(
@@ -149,10 +138,7 @@ def load_proposal_state(path: Path) -> dict:
                 path, key, expected_type.__name__,
                 type(raw[key]).__name__,
             )
-            try:
-                path.rename(path.with_suffix(".malformed.json"))
-            except OSError:
-                pass
+            rename_malformed(path)
             return _fail_closed_default()
 
     return raw
@@ -163,10 +149,7 @@ def save_proposal_state(state: dict, path: Path) -> None:
 
     Parent directories are created if they do not exist.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(state, indent=2) + "\n", encoding="utf-8",
-    )
+    write_json(path, state)
 
 
 def has_blocking_fields(state: dict) -> bool:

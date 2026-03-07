@@ -5,6 +5,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
+from lib.artifact_io import read_json, rename_malformed, write_json
+
 from ..alignment import (
     _extract_problems,
     _parse_alignment_verdict,
@@ -192,7 +194,7 @@ def run_global_coordination(
 
     # Save coordination state for debugging / inspection
     state_path = coord_dir / "problems.json"
-    state_path.write_text(json.dumps(problems, indent=2), encoding="utf-8")
+    write_json(state_path, problems)
     _log_artifact(planspace, "coordination:problems")
 
     # -----------------------------------------------------------------
@@ -209,21 +211,16 @@ def run_global_coordination(
         if delta_files:
             pending_deltas = []
             for df in delta_files:
-                try:
-                    delta = json.loads(df.read_text(encoding="utf-8"))
+                delta = read_json(df)
+                if delta is not None:
                     # Skip already-adjudicated deltas
                     if delta.get("adjudicated"):
                         continue
                     pending_deltas.append(delta)
-                except (json.JSONDecodeError, OSError) as exc:
+                else:
                     log(f"  coordinator: WARNING — malformed scope-delta "
-                        f"{df.name} ({exc}), preserving as "
+                        f"{df.name}, preserving as "
                         f".malformed.json")
-                    # Preserve corrupted scope-delta (V7/R55)
-                    try:
-                        df.rename(df.with_suffix(".malformed.json"))
-                    except OSError:
-                        pass  # Best-effort preserve
                     continue
 
             if pending_deltas:
@@ -235,8 +232,7 @@ def run_global_coordination(
 
                 # Write deltas to artifact file (avoid inline embedding)
                 pending_deltas_path = coord_dir / "scope-deltas-pending.json"
-                pending_deltas_path.write_text(
-                    json.dumps(pending_deltas, indent=2), encoding="utf-8")
+                write_json(pending_deltas_path, pending_deltas)
 
                 adj_prompt_text = f"""# Task: Adjudicate Scope Deltas
 
@@ -324,12 +320,12 @@ Reply with a JSON block:
                         coord_dir
                         / "scope-delta-adjudication-failure.json"
                     )
-                    failure_path.write_text(json.dumps({
+                    write_json(failure_path, {
                         "error": "unparseable_adjudication_json",
                         "prompt_path": str(adjudication_prompt),
                         "output_path": str(adjudication_output),
                         "attempts": 2,
-                    }, indent=2), encoding="utf-8")
+                    })
                     mailbox_send(
                         planspace, parent,
                         "fail:coordination:"
@@ -341,14 +337,11 @@ Reply with a JSON block:
                 # deltas so we can apply decisions to exact files.
                 delta_id_to_path: dict[str, Path] = {}
                 for df in delta_files:
-                    try:
-                        d = json.loads(
-                            df.read_text(encoding="utf-8"))
+                    d = read_json(df)
+                    if isinstance(d, dict):
                         did = d.get("delta_id")
                         if did:
                             delta_id_to_path[did] = df
-                    except (json.JSONDecodeError, OSError):
-                        pass  # Already handled above
 
                 all_decisions = adj_data.get("decisions", [])
                 for decision in all_decisions:
@@ -366,22 +359,17 @@ Reply with a JSON block:
                             scope_deltas_dir
                             / f"section-{sec}-scope-delta.json")
                     if delta_path.exists():
-                        try:
-                            delta = json.loads(
-                                delta_path.read_text(encoding="utf-8"))
-                        except (json.JSONDecodeError, OSError) as exc:
+                        delta = read_json(delta_path)
+                        if delta is None:
                             # V1/R58: Preserve corrupted delta for
                             # diagnosis — don't crash the coordinator.
                             log(f"  coordinator: WARNING — malformed "
                                 f"scope-delta {delta_path.name} during "
-                                f"adjudication application ({exc}), "
+                                "adjudication application, "
                                 f"preserving as .malformed.json")
                             malformed = delta_path.with_suffix(
                                 ".malformed.json")
-                            try:
-                                delta_path.rename(malformed)
-                            except OSError:
-                                pass  # Best-effort preserve
+                            rename_malformed(delta_path)
                             delta = {
                                 "delta_id": did,
                                 "section": decision.get("section", ""),
@@ -394,17 +382,11 @@ Reply with a JSON block:
                                 ),
                                 "preserved_path": str(malformed),
                             }
-                            delta_path.write_text(
-                                json.dumps(delta, indent=2),
-                                encoding="utf-8",
-                            )
+                            write_json(delta_path, delta)
                             continue
                         delta["adjudicated"] = True
                         delta["adjudication"] = decision
-                        delta_path.write_text(
-                            json.dumps(delta, indent=2),
-                            encoding="utf-8",
-                        )
+                        write_json(delta_path, delta)
                     log(f"  coordinator: scope delta "
                         f"{did or delta_path.name} → {action}")
 
@@ -414,12 +396,7 @@ Reply with a JSON block:
                     coord_dir
                     / "scope-delta-decisions.json"
                 )
-                decisions_rollup_path.write_text(
-                    json.dumps(
-                        {"decisions": all_decisions}, indent=2,
-                    ),
-                    encoding="utf-8",
-                )
+                write_json(decisions_rollup_path, {"decisions": all_decisions})
                 _log_artifact(
                     planspace,
                     "coordination:scope-delta-decisions",
@@ -516,10 +493,10 @@ Reply with a JSON block:
         # Scripts must not invent grouping — only the agent decides.
         log("  coordinator: plan parse failed after retry — fail closed")
         failure_path = coord_dir / "coordination-plan-failure.md"
-        failure_path.write_text(json.dumps({
+        write_json(failure_path, {
             "reason": "unparseable_plan_json",
             "attempts": 2,
-        }, indent=2), encoding="utf-8")
+        })
         mailbox_send(
             planspace, parent,
             "fail:coordination:unparseable_plan_json",
@@ -543,7 +520,7 @@ Reply with a JSON block:
 
     # Save plan and groups for debugging
     plan_path = coord_dir / "coordination-plan.json"
-    plan_path.write_text(json.dumps(coord_plan, indent=2), encoding="utf-8")
+    write_json(plan_path, coord_plan)
     _log_artifact(planspace, "coordination:plan")
 
     groups_path = coord_dir / "groups.json"
@@ -556,7 +533,7 @@ Reply with a JSON block:
             "sections": sorted({p["section"] for p in g}),
             "files": sorted({f for p in g for f in p.get("files", [])}),
         })
-    groups_path.write_text(json.dumps(groups_data, indent=2), encoding="utf-8")
+    write_json(groups_path, groups_data)
     _log_artifact(planspace, "coordination:groups")
 
     # -----------------------------------------------------------------

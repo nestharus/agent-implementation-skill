@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from lib.artifact_io import write_json
+
 from ..communication import _log_artifact, log
 from prompt_safety import write_validated_prompt
 
@@ -143,7 +145,7 @@ def write_coordination_plan_prompt(
 
     # Write problems to artifact file (avoid inline embedding)
     problems_path = artifacts / "problems.json"
-    problems_path.write_text(json.dumps(problems, indent=2), encoding="utf-8")
+    write_json(problems_path, problems)
 
     # Include codemap reference so the planner sees project skeleton
     codemap_path = planspace / "artifacts" / "codemap.md"

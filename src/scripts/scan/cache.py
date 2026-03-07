@@ -11,6 +11,8 @@ import re
 import shutil
 from pathlib import Path
 
+from lib.artifact_io import read_json
+
 # Regex to strip scan-generated summary blocks from section text.
 # These blocks are wrapped in HTML comment markers by update_match().
 _SCAN_SUMMARY_RE = re.compile(
@@ -123,16 +125,13 @@ def is_valid_cached_feedback(feedback_path: Path) -> bool:
     Returns ``True`` if valid, ``False`` if missing, malformed, or
     missing required fields.
     """
-    import json
-
     if not feedback_path.is_file():
         return False
-    try:
-        data = json.loads(feedback_path.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
+    data = read_json(feedback_path)
+    if data is None:
         print(
             f"[CACHE][WARN] Malformed cached feedback: "
-            f"{feedback_path} ({exc})",
+            f"{feedback_path}",
         )
         return False
     if not isinstance(data, dict):

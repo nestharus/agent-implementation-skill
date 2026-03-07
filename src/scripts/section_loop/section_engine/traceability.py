@@ -1,7 +1,8 @@
 import hashlib
-import json
 from datetime import datetime, timezone
 from pathlib import Path
+
+from lib.artifact_io import read_json, write_json
 
 from ..alignment import _parse_alignment_verdict
 from ..communication import log
@@ -108,9 +109,7 @@ def _write_traceability_index(
     }
 
     trace_path = trace_dir / f"section-{sec}.json"
-    trace_path.write_text(
-        json.dumps(index, indent=2), encoding="utf-8",
-    )
+    write_json(trace_path, index)
     log(f"Section {sec}: traceability index written to {trace_path}")
 
 
@@ -132,10 +131,9 @@ def _verify_traceability(planspace: Path, section_number: str) -> list[str]:
         violations.append(f"Traceability index missing: {trace_path}")
         return violations
 
-    try:
-        index = json.loads(trace_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        violations.append(f"Traceability index unreadable: {exc}")
+    index = read_json(trace_path)
+    if index is None:
+        violations.append(f"Traceability index unreadable: {trace_path}")
         return violations
 
     # Check required excerpt artifacts exist and hashes match

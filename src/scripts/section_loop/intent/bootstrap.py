@@ -6,6 +6,8 @@ import os
 import re
 from pathlib import Path
 
+from lib.artifact_io import read_json, write_json
+
 from ..communication import _log_artifact, log
 from ..dispatch import (
     dispatch_agent, read_agent_signal, read_model_policy,
@@ -152,31 +154,22 @@ def _validate_philosophy_grounding(
                 "Section execution will be blocked until philosophy is available."
             ),
         }
-        fail_signal.write_text(
-            json.dumps(signal, indent=2), encoding="utf-8")
+        write_json(fail_signal, signal)
         return False
 
     # Parse source map
-    try:
-        source_map = json.loads(
-            source_map_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        log(f"Intent bootstrap: malformed source map ({exc}) — "
+    source_map = read_json(source_map_path)
+    if source_map is None:
+        log("Intent bootstrap: malformed source map — "
             f"preserving as .malformed.json")
-        malformed = source_map_path.with_suffix(".malformed.json")
-        try:
-            source_map_path.rename(malformed)
-        except OSError:
-            pass
         signal = {
             "state": "philosophy_grounding_failed",
             "detail": (
-                f"Philosophy source map is malformed ({exc}). "
+                "Philosophy source map is malformed. "
                 "Section execution will be blocked until philosophy is available."
             ),
         }
-        fail_signal.write_text(
-            json.dumps(signal, indent=2), encoding="utf-8")
+        write_json(fail_signal, signal)
         return False
 
     if not isinstance(source_map, dict):
@@ -187,8 +180,7 @@ def _validate_philosophy_grounding(
                 "Section execution will be blocked until philosophy is available."
             ),
         }
-        fail_signal.write_text(
-            json.dumps(signal, indent=2), encoding="utf-8")
+        write_json(fail_signal, signal)
         return False
 
     # Extract principle IDs from philosophy.md
@@ -217,8 +209,7 @@ def _validate_philosophy_grounding(
             "total_principles": len(principle_ids),
             "mapped_principles": len(principle_ids - unmapped),
         }
-        fail_signal.write_text(
-            json.dumps(signal, indent=2), encoding="utf-8")
+        write_json(fail_signal, signal)
         return False
 
     return True
@@ -291,9 +282,8 @@ def ensure_global_philosophy(
             # V7/R67: Check source manifest — regenerate if sources changed
             manifest_path = intent_global / "philosophy-source-manifest.json"
             if manifest_path.exists():
-                try:
-                    manifest = json.loads(
-                        manifest_path.read_text(encoding="utf-8"))
+                manifest = read_json(manifest_path)
+                if isinstance(manifest, dict):
                     sources_changed = False
                     for entry in manifest.get("sources", []):
                         src = Path(entry.get("path", ""))
@@ -331,7 +321,7 @@ def ensure_global_philosophy(
                         pass  # Fall through to regeneration
                     else:
                         return philosophy_path
-                except (json.JSONDecodeError, OSError, KeyError):
+                else:
                     log("Intent bootstrap: source manifest malformed — "
                         "regenerating philosophy")
             else:
@@ -354,14 +344,12 @@ def ensure_global_philosophy(
                 "is available."
             ),
         }
-        (signal_dir / "philosophy-source-missing.json").write_text(
-            json.dumps(signal, indent=2), encoding="utf-8")
+        write_json(signal_dir / "philosophy-source-missing.json", signal)
         return None
 
     # Write catalog for source selector agent
     catalog_path = artifacts / "philosophy-candidate-catalog.json"
-    catalog_path.write_text(
-        json.dumps(catalog, indent=2), encoding="utf-8")
+    write_json(catalog_path, catalog)
 
     # Dispatch source selector to pick philosophy files from catalog
     selector_prompt = artifacts / "philosophy-select-prompt.md"
@@ -539,8 +527,7 @@ Write a JSON signal to: `{verify_signal}`
                 f"{sorted(extra)} — rebuilding catalog (one-shot)")
             catalog = _build_philosophy_catalog(
                 planspace, codespace, extensions=expanded_exts)
-            catalog_path.write_text(
-                json.dumps(catalog, indent=2), encoding="utf-8")
+            write_json(catalog_path, catalog)
 
             # Re-invoke selector once with expanded catalog
             selector_output2 = artifacts / "philosophy-select-output-2.md"
@@ -569,8 +556,7 @@ Write a JSON signal to: `{verify_signal}`
                 "until philosophy is available."
             ),
         }
-        (signal_dir / "philosophy-source-missing.json").write_text(
-            json.dumps(signal, indent=2), encoding="utf-8")
+        write_json(signal_dir / "philosophy-source-missing.json", signal)
         return None
 
     sources = [
@@ -651,8 +637,7 @@ Format: JSON mapping principle ID to source file/section.
             ),
             "sources": [str(s) for s in sources],
         }
-        (signal_dir / "philosophy-distillation-failed.json").write_text(
-            json.dumps(signal, indent=2), encoding="utf-8")
+        write_json(signal_dir / "philosophy-distillation-failed.json", signal)
         return None
 
     # V2/R59: Validate philosophy source grounding — the distiller
@@ -672,8 +657,7 @@ Format: JSON mapping principle ID to source file/section.
             {"path": str(s), "hash": _sha256_file(s)} for s in sources
         ],
     }
-    manifest_path.write_text(
-        json.dumps(manifest, indent=2), encoding="utf-8")
+    write_json(manifest_path, manifest)
 
     # V3/R69: Write catalog fingerprint so the next run can detect
     # changes in the candidate universe (new files, modified candidates).
@@ -877,10 +861,9 @@ Write an empty surface registry to: `{intent_sec / "surface-registry.json"}`
     # Ensure surface registry exists
     registry_path = intent_sec / "surface-registry.json"
     if not registry_path.exists():
-        registry_path.write_text(
-            json.dumps({"section": sec, "next_id": 1, "surfaces": []},
-                       indent=2),
-            encoding="utf-8",
+        write_json(
+            registry_path,
+            {"section": sec, "next_id": 1, "surfaces": []},
         )
 
     if problem_path.exists() and rubric_path.exists():

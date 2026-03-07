@@ -1,8 +1,9 @@
 """Surface registry: deduplication, tracking, and diminishing returns."""
 
 import hashlib
-import json
 from pathlib import Path
+
+from lib.artifact_io import read_json, rename_malformed, write_json
 
 from ..communication import log
 from ..dispatch import read_agent_signal
@@ -22,26 +23,20 @@ def load_surface_registry(
     if not registry_path.exists():
         return {"section": section_number, "next_id": 1, "surfaces": []}
 
-    try:
-        data = json.loads(registry_path.read_text(encoding="utf-8"))
-        if isinstance(data, dict) and "surfaces" in data:
-            return data
+    data = read_json(registry_path)
+    if isinstance(data, dict) and "surfaces" in data:
+        return data
+    if data is not None:
         # Schema mismatch: JSON valid but missing required keys (V6/R53)
         log(f"Section {section_number}: surface registry missing 'surfaces' "
             f"key — preserving and starting fresh")
-        try:
-            registry_path.rename(registry_path.with_suffix(".malformed.json"))
-        except OSError as rename_exc:
+        malformed_path = rename_malformed(registry_path)
+        if malformed_path is None and registry_path.exists():
             log(f"Section {section_number}: failed to rename schema-"
-                f"mismatched registry: {rename_exc}")
-    except (json.JSONDecodeError, OSError) as exc:
-        log(f"Section {section_number}: surface registry malformed ({exc}) "
+                "mismatched registry")
+    else:
+        log(f"Section {section_number}: surface registry malformed "
             f"— preserving and starting fresh")
-        try:
-            registry_path.rename(registry_path.with_suffix(".malformed.json"))
-        except OSError as rename_exc:
-            log(f"Section {section_number}: failed to rename malformed "
-                f"registry: {rename_exc}")
 
     return {"section": section_number, "next_id": 1, "surfaces": []}
 
@@ -54,10 +49,7 @@ def save_surface_registry(
         planspace / "artifacts" / "intent" / "sections"
         / f"section-{section_number}" / "surface-registry.json"
     )
-    registry_path.parent.mkdir(parents=True, exist_ok=True)
-    registry_path.write_text(
-        json.dumps(registry, indent=2), encoding="utf-8",
-    )
+    write_json(registry_path, registry)
 
 
 def load_intent_surfaces(

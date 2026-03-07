@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
+
+from lib.artifact_io import read_json, rename_malformed
 
 
 def _append_open_problem(
@@ -46,8 +47,8 @@ def _update_blocker_rollup(planspace: Path) -> None:
     blockers: list[dict] = []
     if signals_dir.exists():
         for sig_path in sorted(signals_dir.glob("*-signal.json")):
-            try:
-                data = json.loads(sig_path.read_text(encoding="utf-8"))
+            data = read_json(sig_path)
+            if data is not None:
                 state = data.get("state", "").lower()
                 if state in ("underspecified", "underspec", "need_decision",
                              "dependency", "out_of_scope", "out-of-scope",
@@ -72,7 +73,7 @@ def _update_blocker_rollup(planspace: Path) -> None:
                         "needs": data.get("needs", ""),
                         "why_blocked": data.get("why_blocked", ""),
                     })
-            except (json.JSONDecodeError, OSError) as exc:
+            else:
                 blockers.append({
                     "signal_file": sig_path.name,
                     "state": "malformed",
@@ -80,16 +81,13 @@ def _update_blocker_rollup(planspace: Path) -> None:
                     "section": "unknown",
                     "detail": (
                         f"Signal file {sig_path.name} could not be parsed "
-                        f"({exc}); fix or regenerate this signal."
+                        "or read; fix or regenerate this signal."
                     ),
                     "needs": "Valid signal JSON",
-                    "why_blocked": str(exc),
+                    "why_blocked": "Signal JSON unreadable",
                 })
                 # Preserve corrupted signal for diagnosis (V5/R55)
-                try:
-                    sig_path.rename(sig_path.with_suffix(".malformed.json"))
-                except OSError:
-                    pass  # Best-effort preserve
+                rename_malformed(sig_path)
                 continue
 
     # Collect proposal-state blockers from readiness artifacts
@@ -97,42 +95,41 @@ def _update_blocker_rollup(planspace: Path) -> None:
     if readiness_dir and readiness_dir.exists():
         for rdy_path in sorted(readiness_dir.glob(
                 "section-*-execution-ready.json")):
-            try:
-                rdy = json.loads(rdy_path.read_text(encoding="utf-8"))
-                if rdy.get("ready"):
-                    continue
-                for b in rdy.get("blockers", []):
-                    btype = b.get("type", "unknown")
-                    desc = b.get("description", "")
-                    # Map proposal-state blocker types to categories
-                    if btype == "user_root_questions":
-                        category = "decision_required"
-                    elif btype == "unresolved_contracts":
-                        category = "dependency"
-                    elif btype == "unresolved_anchors":
-                        category = "dependency"
-                    elif btype == "shared_seam_candidates":
-                        category = "scope_expansion"
-                    else:
-                        category = "missing_info"
-                    # Extract section number from filename
-                    sec_match = rdy_path.stem.replace(
-                        "section-", "").replace(
-                        "-execution-ready", "")
-                    blockers.append({
-                        "signal_file": rdy_path.name,
-                        "state": f"proposal-state:{btype}",
-                        "category": category,
-                        "section": sec_match,
-                        "detail": desc,
-                        "needs": "",
-                        "why_blocked": (
-                            f"Proposal-state field '{btype}' has "
-                            f"unresolved items"
-                        ),
-                    })
-            except (json.JSONDecodeError, OSError):
+            rdy = read_json(rdy_path)
+            if rdy is None:
                 continue
+            if rdy.get("ready"):
+                continue
+            for b in rdy.get("blockers", []):
+                btype = b.get("type", "unknown")
+                desc = b.get("description", "")
+                # Map proposal-state blocker types to categories
+                if btype == "user_root_questions":
+                    category = "decision_required"
+                elif btype == "unresolved_contracts":
+                    category = "dependency"
+                elif btype == "unresolved_anchors":
+                    category = "dependency"
+                elif btype == "shared_seam_candidates":
+                    category = "scope_expansion"
+                else:
+                    category = "missing_info"
+                # Extract section number from filename
+                sec_match = rdy_path.stem.replace(
+                    "section-", "").replace(
+                    "-execution-ready", "")
+                blockers.append({
+                    "signal_file": rdy_path.name,
+                    "state": f"proposal-state:{btype}",
+                    "category": category,
+                    "section": sec_match,
+                    "detail": desc,
+                    "needs": "",
+                    "why_blocked": (
+                        f"Proposal-state field '{btype}' has "
+                        f"unresolved items"
+                    ),
+                })
 
     if not blockers:
         return

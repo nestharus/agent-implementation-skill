@@ -12,9 +12,10 @@ The readiness result is written as a durable artifact at
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
+
+from lib.artifact_io import write_json
 
 from .proposal_state import extract_blockers, has_blocking_fields, load_proposal_state
 
@@ -72,9 +73,7 @@ def resolve_readiness(section_dir: Path, section_number: str) -> dict:
     readiness_dir.mkdir(parents=True, exist_ok=True)
     artifact_path = readiness_dir / f"section-{section_number}-execution-ready.json"
     try:
-        artifact_path.write_text(
-            json.dumps(result, indent=2) + "\n", encoding="utf-8",
-        )
+        write_json(artifact_path, result)
     except OSError:
         logger.warning(
             "Could not write readiness artifact to %s", artifact_path,

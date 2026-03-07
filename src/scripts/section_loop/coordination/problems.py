@@ -1,7 +1,8 @@
-import json
 import re
 from pathlib import Path
 from typing import Any
+
+from lib.artifact_io import read_json, rename_malformed, write_json
 
 from ..communication import _log_artifact, log
 from ..dispatch import read_agent_signal
@@ -45,9 +46,8 @@ def _collect_outstanding_problems(
         blocker_path = (planspace / "artifacts" / "signals"
                         / f"section-{sec_num}-blocker.json")
         if blocker_path.exists():
-            try:
-                blocker = json.loads(
-                    blocker_path.read_text(encoding="utf-8"))
+            blocker = read_json(blocker_path)
+            if blocker is not None:
                 if blocker.get("state") == "needs_parent":
                     problems.append({
                         "section": sec_num,
@@ -57,7 +57,7 @@ def _collect_outstanding_problems(
                         "files": files,
                     })
                     continue
-            except (json.JSONDecodeError, OSError) as exc:
+            else:
                 # Fail-closed: malformed blocker → needs_parent, not
                 # misaligned (which would trigger code-fix dispatch).
                 problems.append({
@@ -65,18 +65,14 @@ def _collect_outstanding_problems(
                     "type": "needs_parent",
                     "description": (
                         f"Blocker signal at {blocker_path} is malformed "
-                        f"({exc}); cannot determine blocker state — "
+                        "or unreadable; cannot determine blocker state — "
                         f"routing as needs_parent for manual repair."
                     ),
                     "needs": "Valid blocker signal JSON",
                     "files": files,
                 })
                 # Preserve corrupted blocker for diagnosis (V6/R55)
-                try:
-                    blocker_path.rename(
-                        blocker_path.with_suffix(".malformed.json"))
-                except OSError:
-                    pass  # Best-effort preserve
+                rename_malformed(blocker_path)
                 continue
 
         if result.problems:
@@ -200,17 +196,14 @@ def _detect_recurrence_patterns(
 
     recurring_sections: list[dict[str, Any]] = []
     for sig_path in sorted(signals_dir.glob("section-*-recurrence.json")):
-        try:
-            data = json.loads(sig_path.read_text(encoding="utf-8"))
+        data = read_json(sig_path)
+        if data is not None:
             if data.get("recurring"):
                 recurring_sections.append(data)
-        except (json.JSONDecodeError, OSError) as exc:
-            log(f"Recurrence signal malformed at {sig_path} ({exc}) "
+        else:
+            log(f"Recurrence signal malformed at {sig_path} "
                 "— preserving as .malformed.json")
-            try:
-                sig_path.rename(sig_path.with_suffix(".malformed.json"))
-            except OSError:
-                pass  # Best-effort preserve
+            rename_malformed(sig_path)
             continue
 
     if not recurring_sections:
@@ -241,8 +234,7 @@ def _detect_recurrence_patterns(
     coord_dir = planspace / "artifacts" / "coordination"
     coord_dir.mkdir(parents=True, exist_ok=True)
     recurrence_path = coord_dir / "recurrence.json"
-    recurrence_path.write_text(
-        json.dumps(report, indent=2), encoding="utf-8")
+    write_json(recurrence_path, report)
     _log_artifact(planspace, "coordination:recurrence")
 
     log(f"  coordinator: recurrence detected — "
