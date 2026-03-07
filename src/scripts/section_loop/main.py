@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from lib.artifact_io import read_json, write_json
+from lib.path_registry import PathRegistry
 
 from .alignment import (
     _extract_problems,
@@ -105,11 +106,12 @@ def main() -> None:
         print(f"Error: global alignment not found: {args.global_alignment}")
         sys.exit(1)
 
-    sections_dir = args.planspace / "artifacts" / "sections"
+    paths = PathRegistry(args.planspace)
+    sections_dir = paths.sections_dir()
 
     # Initialize coordination DB (idempotent) and register
     subprocess.run(  # noqa: S603
-        ["bash", str(DB_SH), "init", str(args.planspace / "run.db")],  # noqa: S607
+        ["bash", str(DB_SH), "init", str(paths.run_db())],  # noqa: S607
         check=True, capture_output=True, text=True,
     )
     mailbox_register(args.planspace)
@@ -126,14 +128,15 @@ def main() -> None:
 def _run_loop(planspace: Path, codespace: Path, parent: str,
               sections_dir: Path, global_proposal: Path,
               global_alignment: Path) -> None:
+    paths = PathRegistry(planspace)
     # Project mode (greenfield vs brownfield) is determined by the
     # codemap agent during Stage 3 scan.sh. The mode file is written
     # to artifacts/project-mode.txt by the codemap agent — not by
     # hardcoded script logic. If neither file exists, fail closed and
     # pause for parent rather than silently assuming brownfield.
     # Read project mode from structured JSON (preferred) or text fallback
-    mode_json_path = planspace / "artifacts" / "signals" / "project-mode.json"
-    mode_txt_path = planspace / "artifacts" / "project-mode.txt"
+    mode_json_path = paths.project_mode_json()
+    mode_txt_path = paths.project_mode_txt()
     project_mode = "unknown"
     mode_constraints: list[str] = []
     mode_source = "default"
@@ -192,7 +195,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
 
     # Write formalized mode contract (telemetry only — mode does NOT
     # choose planning paths or output shapes).
-    mode_contract_path = planspace / "artifacts" / "mode-contract.json"
+    mode_contract_path = paths.mode_contract()
     mode_contract = {
         "mode": project_mode,
         "constraints": mode_constraints,
@@ -577,18 +580,17 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             )
 
             # Persist baseline hash for targeted requeue (P5).
-            baseline_hash_dir = (planspace / "artifacts"
-                                 / "section-inputs-hashes")
+            baseline_hash_dir = paths.section_inputs_hashes_dir()
             baseline_hash_dir.mkdir(parents=True, exist_ok=True)
-            (baseline_hash_dir / f"{sec_num}.hash").write_text(
+            paths.section_input_hash(sec_num).write_text(
                 _section_inputs_hash(
                     sec_num, planspace, codespace, sections_by_num),
                 encoding="utf-8")
 
             # Save input hash for incremental Phase 2 checks
-            p2hd = planspace / "artifacts" / "phase2-inputs-hashes"
+            p2hd = paths.phase2_inputs_hashes_dir()
             p2hd.mkdir(parents=True, exist_ok=True)
-            (p2hd / f"{sec_num}.hash").write_text(
+            paths.phase2_input_hash(sec_num).write_text(
                 _section_inputs_hash(
                     sec_num, planspace, codespace, sections_by_num),
                 encoding="utf-8")
@@ -623,7 +625,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             f"implemented, {len(blocked_sections)} blocked ===")
 
         # Write strategic state snapshot after Phase 1
-        decisions_dir = planspace / "artifacts" / "decisions"
+        decisions_dir = paths.decisions_dir()
         build_strategic_state(decisions_dir, section_results, planspace)
 
         # -------------------------------------------------------------
@@ -638,8 +640,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
 
         # Compute input hashes to skip unchanged sections (targeted,
         # not brute-force recheck).
-        phase2_hash_dir = (planspace / "artifacts"
-                           / "phase2-inputs-hashes")
+        phase2_hash_dir = paths.phase2_inputs_hashes_dir()
         phase2_hash_dir.mkdir(parents=True, exist_ok=True)
 
         restart_phase1 = False
@@ -648,7 +649,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             # ALIGNED result (incremental convergence).
             cur_hash = _section_inputs_hash(
                 sec_num, planspace, codespace, sections_by_num)
-            prev_hash_file = phase2_hash_dir / f"{sec_num}.hash"
+            prev_hash_file = paths.phase2_input_hash(sec_num)
             prev_hash = (prev_hash_file.read_text(encoding="utf-8")
                          .strip() if prev_hash_file.exists() else "")
             prev_result = section_results.get(sec_num)
@@ -717,21 +718,21 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 )
                 continue
 
-            global_align_output = (planspace / "artifacts"
-                                   / f"global-align-{sec_num}-output.md")
+            global_align_output = (
+                paths.artifacts / f"global-align-{sec_num}-output.md"
+            )
             problems = _extract_problems(
                 align_result, output_path=global_align_output,
                 planspace=planspace, parent=parent, codespace=codespace,
                 adjudicator_model=policy.get("adjudicator", "glm"),
             )
-            main_signal_dir = (planspace / "artifacts" / "signals")
+            main_signal_dir = paths.signals_dir()
             main_signal_dir.mkdir(parents=True, exist_ok=True)
             signal, detail = check_agent_signals(
                 align_result,
                 signal_path=(main_signal_dir
                              / f"global-align-{sec_num}-signal.json"),
-                output_path=(planspace / "artifacts"
-                             / f"global-align-{sec_num}-output.md"),
+                output_path=global_align_output,
                 planspace=planspace, parent=parent, codespace=codespace,
             )
 
@@ -881,8 +882,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                     log(f"Coordination churning ({stall_count} rounds "
                         f"without improvement) — escalating model")
                     escalation_file = (
-                        planspace / "artifacts" / "coordination"
-                        / "model-escalation.txt"
+                        paths.coordination_dir() / "model-escalation.txt"
                     )
                     escalation_file.write_text(
                         policy["escalation_model"], encoding="utf-8")
@@ -930,7 +930,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                     f"outstanding problems remain ===")
                 build_strategic_state(decisions_dir, section_results, planspace)
                 # Write structured rollup artifact for parent visibility
-                rollup_dir = planspace / "artifacts" / "coordination"
+                rollup_dir = paths.coordination_dir()
                 rollup_dir.mkdir(parents=True, exist_ok=True)
                 rollup_path = rollup_dir / "coordination-exhausted.json"
                 write_json(

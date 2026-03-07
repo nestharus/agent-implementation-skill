@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from lib.path_registry import PathRegistry
 from .agent_templates import render_template
 from .communication import log
 from .dispatch import dispatch_agent
@@ -18,8 +19,8 @@ def collect_modified_files(
     Absolute paths are converted to relative (if under codespace) or
     rejected. Paths containing ``..`` that escape codespace are rejected.
     """
-    artifacts = planspace / "artifacts"
-    modified_report = artifacts / f"impl-{section.number}-modified.txt"
+    paths = PathRegistry(planspace)
+    modified_report = paths.impl_modified(section.number)
     codespace_resolved = codespace.resolve()
     modified = set()
     if modified_report.exists():
@@ -85,7 +86,8 @@ def _extract_problems(
     # Fallback: dispatch GLM adjudicator to classify the alignment output.
     # Scripts must not interpret meaning from text — the adjudicator decides.
     if output_path is not None and planspace is not None and parent is not None:
-        artifacts = planspace / "artifacts"
+        paths = PathRegistry(planspace)
+        artifacts = paths.artifacts
         artifacts.mkdir(parents=True, exist_ok=True)
         adj_prompt = artifacts / "alignment-adjudicate-prompt.md"
         adj_output = artifacts / "alignment-adjudicate-output.md"
@@ -182,7 +184,7 @@ def _run_alignment_check_with_retries(
     """
     from .prompts import write_impl_alignment_prompt
 
-    artifacts = planspace / "artifacts"
+    paths = PathRegistry(planspace)
     for attempt in range(1, max_retries + 2):  # 1 initial + max_retries
         ctrl = poll_control_messages(planspace, parent,
                                      current_section=sec_num)
@@ -191,7 +193,7 @@ def _run_alignment_check_with_retries(
         align_prompt = write_impl_alignment_prompt(
             section, planspace, codespace,
         )
-        align_output = artifacts / f"{output_prefix}-{sec_num}-output.md"
+        align_output = paths.artifacts / f"{output_prefix}-{sec_num}-output.md"
         result = dispatch_agent(
             model, align_prompt, align_output,
             planspace, parent, codespace=codespace,

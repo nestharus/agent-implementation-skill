@@ -23,6 +23,8 @@ import re
 import sys
 from pathlib import Path
 
+from lib.path_registry import PathRegistry
+
 from .agent_templates import validate_dynamic_content
 from .communication import log
 from .dispatch import dispatch_agent, read_model_policy
@@ -177,7 +179,7 @@ def dispatch_ingested_tasks(
     if not tasks:
         return []
 
-    artifacts = planspace / "artifacts"
+    artifacts = PathRegistry(planspace).artifacts
     artifacts.mkdir(parents=True, exist_ok=True)
     model_policy = read_model_policy(planspace)
     outputs: list[str] = []

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from lib.artifact_io import read_json, rename_malformed, write_json
+from lib.path_registry import PathRegistry
 
 
 @dataclasses.dataclass
@@ -238,8 +239,7 @@ def build_strategic_state(
         # R82/P2: Check structured blocker signal — authoritative for
         # blocked status.  Replaces prose-parsing of "needs_parent".
         if planspace is not None:
-            blocker_path = (planspace / "artifacts" / "signals"
-                            / f"section-{sec_num}-blocker.json")
+            blocker_path = PathRegistry(planspace).blocker_signal(sec_num)
             if blocker_path.exists():
                 blocker = read_json(blocker_path)
                 if blocker is None:

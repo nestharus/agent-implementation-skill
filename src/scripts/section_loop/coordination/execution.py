@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any
 
 from lib.artifact_io import read_json
+from lib.path_registry import PathRegistry
 
 from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
 from ..communication import WORKFLOW_HOME, _log_artifact, log
@@ -20,7 +21,8 @@ def write_coordinator_fix_prompt(
     affected files, and instructs the agent to fix ALL listed problems
     in a coordinated way.
     """
-    artifacts = planspace / "artifacts" / "coordination"
+    paths = PathRegistry(planspace)
+    artifacts = paths.coordination_dir()
     artifacts.mkdir(parents=True, exist_ok=True)
     prompt_path = artifacts / f"fix-{group_id}-prompt.md"
     modified_report = artifacts / f"fix-{group_id}-modified.txt"
@@ -48,7 +50,7 @@ def write_coordinator_fix_prompt(
 
     # Collect section specs for context (include both actual spec and excerpts)
     section_nums = sorted({p["section"] for p in group})
-    sec_dir = planspace / "artifacts" / "sections"
+    sec_dir = paths.sections_dir()
     section_specs = "\n".join(
         f"- Section {n} specification:"
         f" `{sec_dir / f'section-{n}.md'}`\n"
@@ -62,9 +64,8 @@ def write_coordinator_fix_prompt(
         for n in section_nums
     )
 
-    codemap_path = planspace / "artifacts" / "codemap.md"
-    corrections_path = (planspace / "artifacts" / "signals"
-                        / "codemap-corrections.json")
+    codemap_path = paths.codemap()
+    corrections_path = paths.corrections()
     codemap_block = ""
     if codemap_path.exists():
         corrections_line = ""
@@ -83,8 +84,8 @@ def write_coordinator_fix_prompt(
 
     # Include cross-section tools — prefer digest if available
     tools_block = ""
-    tool_digest_path = planspace / "artifacts" / "tool-digest.md"
-    tool_registry_path = planspace / "artifacts" / "tool-registry.json"
+    tool_digest_path = paths.tool_digest()
+    tool_registry_path = paths.tool_registry()
     if tool_digest_path.exists():
         tools_block = (
             f"\n## Available Tools\n"
@@ -232,7 +233,8 @@ def _dispatch_fix_group(
     """
     from ..dispatch import read_model_policy
 
-    artifacts = planspace / "artifacts" / "coordination"
+    paths = PathRegistry(planspace)
+    artifacts = paths.coordination_dir()
     policy = read_model_policy(planspace)
     fix_prompt = write_coordinator_fix_prompt(
         group, planspace, codespace, group_id,
@@ -276,7 +278,7 @@ def _dispatch_fix_group(
     # V6: Submit agent-emitted follow-up work into the queue
     ingest_and_submit(
         planspace,
-        db_path=planspace / "run.db",
+        db_path=paths.run_db(),
         submitted_by=f"coordination-fix-{group_id}",
         signal_path=artifacts / f"signals/task-requests-coord-{group_id}.json",
         origin_refs=[str(fix_prompt)],

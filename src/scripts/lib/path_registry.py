@@ -45,6 +45,9 @@ class PathRegistry:
     def todos_dir(self) -> Path:
         return self._artifacts / "todos"
 
+    def readiness_dir(self) -> Path:
+        return self._artifacts / "readiness"
+
     def coordination_dir(self) -> Path:
         return self._artifacts / "coordination"
 
@@ -53,6 +56,45 @@ class PathRegistry:
 
     def scope_deltas_dir(self) -> Path:
         return self._artifacts / "scope-deltas"
+
+    def contracts_dir(self) -> Path:
+        return self._artifacts / "contracts"
+
+    def inputs_dir(self) -> Path:
+        return self._artifacts / "inputs"
+
+    def trace_dir(self) -> Path:
+        return self._artifacts / "trace"
+
+    def flows_dir(self) -> Path:
+        return self._artifacts / "flows"
+
+    def qa_intercepts_dir(self) -> Path:
+        return self._artifacts / "qa-intercepts"
+
+    def substrate_dir(self) -> Path:
+        return self._artifacts / "substrate"
+
+    def substrate_prompts_dir(self) -> Path:
+        return self.substrate_dir() / "prompts"
+
+    def intent_dir(self) -> Path:
+        return self._artifacts / "intent"
+
+    def intent_global_dir(self) -> Path:
+        return self.intent_dir() / "global"
+
+    def intent_sections_dir(self) -> Path:
+        return self.intent_dir() / "sections"
+
+    def section_inputs_hashes_dir(self) -> Path:
+        return self._artifacts / "section-inputs-hashes"
+
+    def phase2_inputs_hashes_dir(self) -> Path:
+        return self._artifacts / "phase2-inputs-hashes"
+
+    def related_files_update_dir(self) -> Path:
+        return self.signals_dir() / "related-files-update"
 
     # --- Section-scoped file accessors ---
 
@@ -63,16 +105,16 @@ class PathRegistry:
         return self.proposals_dir() / f"section-{num}-integration-proposal.md"
 
     def proposal_excerpt(self, num: str) -> Path:
-        return self.proposals_dir() / f"section-{num}-proposal-excerpt.md"
+        return self.sections_dir() / f"section-{num}-proposal-excerpt.md"
 
     def alignment_excerpt(self, num: str) -> Path:
-        return self._artifacts / f"alignment-excerpt-{num}.md"
+        return self.sections_dir() / f"section-{num}-alignment-excerpt.md"
 
     def microstrategy(self, num: str) -> Path:
         return self.proposals_dir() / f"section-{num}-microstrategy.md"
 
     def problem_frame(self, num: str) -> Path:
-        return self.signals_dir() / f"section-{num}-problem-frame.json"
+        return self.sections_dir() / f"section-{num}-problem-frame.md"
 
     def cycle_budget(self, num: str) -> Path:
         return self.signals_dir() / f"section-{num}-cycle-budget.json"
@@ -95,16 +137,31 @@ class PathRegistry:
     def impl_modified(self, num: str) -> Path:
         return self._artifacts / f"impl-{num}-modified.txt"
 
+    def input_refs_dir(self, num: str) -> Path:
+        return self.inputs_dir() / f"section-{num}"
+
+    def intent_section_dir(self, num: str) -> Path:
+        return self.intent_sections_dir() / f"section-{num}"
+
+    def section_input_hash(self, num: str) -> Path:
+        return self.section_inputs_hashes_dir() / f"{num}.hash"
+
+    def phase2_input_hash(self, num: str) -> Path:
+        return self.phase2_inputs_hashes_dir() / f"{num}.hash"
+
     # --- Global file accessors ---
 
     def codemap(self) -> Path:
-        return self._artifacts / "codemap.json"
+        return self._artifacts / "codemap.md"
 
     def corrections(self) -> Path:
-        return self._artifacts / "codemap-corrections.json"
+        return self.signals_dir() / "codemap-corrections.json"
 
     def tool_registry(self) -> Path:
         return self._artifacts / "tool-registry.json"
+
+    def tool_digest(self) -> Path:
+        return self._artifacts / "tool-digest.md"
 
     def project_mode_json(self) -> Path:
         return self.signals_dir() / "project-mode.json"
@@ -120,6 +177,15 @@ class PathRegistry:
 
     def strategic_state(self) -> Path:
         return self._artifacts / "strategic-state.json"
+
+    def parameters(self) -> Path:
+        return self._artifacts / "parameters.json"
+
+    def traceability(self) -> Path:
+        return self._artifacts / "traceability.json"
+
+    def alignment_changed_flag(self) -> Path:
+        return self._artifacts / "alignment-changed-pending"
 
     def run_db(self) -> Path:
         return self._planspace / "run.db"

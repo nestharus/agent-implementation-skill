@@ -3,7 +3,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from lib.hash_service import content_hash
+from lib.path_registry import PathRegistry
+from lib.section_input_hasher import (
+    coordination_recheck_hash,
+    section_inputs_hash,
+)
 
 from .communication import (
     AGENT_NAME,
@@ -34,207 +38,21 @@ def check_pipeline_state(planspace: Path) -> str:
 
 def _invalidate_excerpts(planspace: Path) -> None:
     """Delete all section excerpt files, forcing setup to rerun."""
-    sections_dir = planspace / "artifacts" / "sections"
+    paths = PathRegistry(planspace)
+    sections_dir = paths.sections_dir()
     if sections_dir.exists():
         for f in sections_dir.glob("section-*-proposal-excerpt.md"):
             f.unlink(missing_ok=True)
         for f in sections_dir.glob("section-*-alignment-excerpt.md"):
             f.unlink(missing_ok=True)
 
-
-def _section_inputs_hash(
-    sec_num: str, planspace: Path, codespace: Path,
-    sections_by_num: dict[str, Any],
-) -> str:
-    """Compute a hash of a section's alignment-relevant inputs.
-
-    Includes: proposal excerpt, alignment excerpt, related files list,
-    consequence notes targeting this section, and tool registry digest.
-    Used for targeted requeue (only requeue sections whose inputs
-    actually changed) and incremental Phase 2 alignment checks.
-    """
-    hash_parts: list[bytes] = []
-    artifacts = planspace / "artifacts"
-
-    # Excerpt files
-    for suffix in ("proposal-excerpt.md", "alignment-excerpt.md"):
-        p = artifacts / "sections" / f"section-{sec_num}-{suffix}"
-        if p.exists():
-            hash_parts.append(p.read_bytes())
-
-    # Related files list (sorted for stability)
-    section = sections_by_num.get(sec_num)
-    if section and section.related_files:
-        hash_parts.append(
-            "\n".join(sorted(section.related_files)).encode("utf-8"))
-
-    # Consequence notes targeting this section
-    notes_dir = artifacts / "notes"
-    if notes_dir.exists():
-        for note in sorted(notes_dir.glob(f"from-*-to-{sec_num}.md")):
-            hash_parts.append(note.read_bytes())
-
-    # Tool registry digest (if exists)
-    tools_path = artifacts / "tool-registry.json"
-    if tools_path.exists():
-        hash_parts.append(tools_path.read_bytes())
-
-    # Section spec file
-    spec_path = artifacts / "sections" / f"section-{sec_num}.md"
-    if spec_path.exists():
-        hash_parts.append(spec_path.read_bytes())
-
-    # Decisions file
-    decisions_path = artifacts / "decisions" / f"section-{sec_num}.md"
-    if decisions_path.exists():
-        hash_parts.append(decisions_path.read_bytes())
-
-    # Integration proposal
-    integration_path = (artifacts / "proposals"
-                        / f"section-{sec_num}-integration-proposal.md")
-    if integration_path.exists():
-        hash_parts.append(integration_path.read_bytes())
-
-    # Microstrategy: canonical artifact (actual content)
-    microstrategy_path = (artifacts / "proposals"
-                          / f"section-{sec_num}-microstrategy.md")
-    if microstrategy_path.exists():
-        hash_parts.append(microstrategy_path.read_bytes())
-
-    # Microstrategy prompt/output logs (secondary)
-    for ms_path in sorted(artifacts.glob(f"microstrategy-{sec_num}*.md")):
-        hash_parts.append(ms_path.read_bytes())
-
-    # TODO extraction
-    todos_path = artifacts / "todos" / f"section-{sec_num}-todos.md"
-    if todos_path.exists():
-        hash_parts.append(todos_path.read_bytes())
-
-    # Codemap digest (influences proposal generation)
-    codemap_path = artifacts / "codemap.md"
-    if codemap_path.exists():
-        hash_parts.append(codemap_path.read_bytes())
-
-    # Codemap corrections — authoritative fixes that override codemap.md
-    corrections_path = artifacts / "signals" / "codemap-corrections.json"
-    if corrections_path.exists():
-        hash_parts.append(corrections_path.read_bytes())
-
-    # Mode files — greenfield/brownfield affects prompt context
-    for mode_file in (
-        artifacts / "project-mode.txt",
-        artifacts / "signals" / "project-mode.json",
-        artifacts / "sections" / f"section-{sec_num}-mode.txt",
-    ):
-        if mode_file.exists():
-            hash_parts.append(mode_file.read_bytes())
-
-    # Problem frame — alignment-relevant summary artifact (R33/P11)
-    problem_frame_path = (
-        artifacts / "sections" / f"section-{sec_num}-problem-frame.md"
-    )
-    if problem_frame_path.exists():
-        hash_parts.append(problem_frame_path.read_bytes())
-
-    # Intent layer artifacts — trigger re-proposal when definitions evolve
-    intent_global_philosophy = artifacts / "intent" / "global" / "philosophy.md"
-    if intent_global_philosophy.exists():
-        hash_parts.append(intent_global_philosophy.read_bytes())
-    # V7/R67: Hash source manifest so changes to upstream philosophy
-    # sources trigger re-proposal even when distilled artifact is cached
-    intent_global_manifest = (
-        artifacts / "intent" / "global" / "philosophy-source-manifest.json")
-    if intent_global_manifest.exists():
-        hash_parts.append(intent_global_manifest.read_bytes())
-    # V2/R69: Hash source map — philosophy mutations must update
-    # provenance, and provenance changes are alignment-relevant
-    intent_global_source_map = (
-        artifacts / "intent" / "global" / "philosophy-source-map.json")
-    if intent_global_source_map.exists():
-        hash_parts.append(intent_global_source_map.read_bytes())
-    intent_sec_dir = artifacts / "intent" / "sections" / f"section-{sec_num}"
-    for intent_file in (
-        intent_sec_dir / "problem.md",
-        intent_sec_dir / "problem-alignment.md",
-        intent_sec_dir / "philosophy-excerpt.md",
-    ):
-        if intent_file.exists():
-            hash_parts.append(intent_file.read_bytes())
-
-    # Proposal state — captures resolved/unresolved anchors, contracts,
-    # research questions, and execution_ready flag
-    proposal_state_path = (
-        artifacts / "proposals"
-        / f"section-{sec_num}-proposal-state.json"
-    )
-    if proposal_state_path.exists():
-        hash_parts.append(proposal_state_path.read_bytes())
-
-    # Reconciliation result — cross-section overlap/conflict findings
-    reconciliation_path = (
-        artifacts / "reconciliation"
-        / f"section-{sec_num}-reconciliation-result.json"
-    )
-    if reconciliation_path.exists():
-        hash_parts.append(reconciliation_path.read_bytes())
-
-    # Execution readiness — fail-closed gate artifact
-    readiness_path = (
-        artifacts / "readiness"
-        / f"section-{sec_num}-execution-ready.json"
-    )
-    if readiness_path.exists():
-        hash_parts.append(readiness_path.read_bytes())
-
-    # Input refs — contract deltas and other registered inputs
-    inputs_dir = artifacts / "inputs" / f"section-{sec_num}"
-    if inputs_dir.exists():
-        for ref_path in sorted(inputs_dir.glob("*.ref")):
-            hash_parts.append(ref_path.read_bytes())
-            # Also hash the referenced file itself (not just the pointer)
-            try:
-                referenced = Path(ref_path.read_text(encoding="utf-8").strip())
-                if referenced.exists():
-                    hash_parts.append(referenced.read_bytes())
-            except (OSError, ValueError) as exc:
-                # V3/R57: Use stable error marker so convergence cannot
-                # be falsely reported when refs are unreadable.
-                hash_parts.append(
-                    f"REF_READ_ERROR:{ref_path}".encode("utf-8"))
-                print(
-                    f"[HASH][WARN] Failed to read ref "
-                    f"{ref_path}: {exc}",
-                )
-
-    return content_hash(b"".join(hash_parts))
-
-
-def coordination_recheck_hash(
-    sec_num: str,
-    planspace: Path,
-    codespace: Path,
-    sections_by_num: dict[str, Any],
-    modified_files: list[str],
-) -> str:
-    """Canonical section-input hash plus coordinator-modified files.
-
-    Used by the coordination loop to determine whether a section's
-    alignment-relevant inputs have changed since the last recheck.
-    Delegates to ``_section_inputs_hash`` for the canonical surface,
-    then appends sorted bytes of files modified by the coordinator.
-    """
-    base = _section_inputs_hash(sec_num, planspace, codespace, sections_by_num)
-    hash_parts = [base.encode("utf-8")]
-    for mod_f in sorted(modified_files):
-        mod_path = codespace / mod_f
-        if mod_path.exists():
-            hash_parts.append(mod_path.read_bytes())
-    return content_hash(b"".join(hash_parts))
+_section_inputs_hash = section_inputs_hash
 
 
 def _set_alignment_changed_flag(planspace: Path) -> None:
     """Write flag file so the main loop knows to requeue sections."""
-    flag = planspace / "artifacts" / "alignment-changed-pending"
+    paths = PathRegistry(planspace)
+    flag = paths.alignment_changed_flag()
     flag.parent.mkdir(parents=True, exist_ok=True)
     flag.write_text("1", encoding="utf-8")
     subprocess.run(  # noqa: S603
@@ -247,12 +65,12 @@ def _set_alignment_changed_flag(planspace: Path) -> None:
 
 def alignment_changed_pending(planspace: Path) -> bool:
     """Check if alignment_changed flag is set (non-clearing)."""
-    return (planspace / "artifacts" / "alignment-changed-pending").exists()
+    return PathRegistry(planspace).alignment_changed_flag().exists()
 
 
 def _check_and_clear_alignment_changed(planspace: Path) -> bool:
     """Check if alignment_changed flag is set. Clears it if so."""
-    flag = planspace / "artifacts" / "alignment-changed-pending"
+    flag = PathRegistry(planspace).alignment_changed_flag()
     if flag.exists():
         flag.unlink(missing_ok=True)
         subprocess.run(  # noqa: S603
@@ -277,7 +95,8 @@ def requeue_changed_sections(
     numbers that were actually requeued. Always re-adds *current_section*
     to the front of the queue (it was interrupted mid-flight).
     """
-    hash_dir = planspace / "artifacts" / "section-inputs-hashes"
+    paths = PathRegistry(planspace)
+    hash_dir = paths.section_inputs_hashes_dir()
     hash_dir.mkdir(parents=True, exist_ok=True)
     requeued: list[str] = []
     for done_num in list(completed):

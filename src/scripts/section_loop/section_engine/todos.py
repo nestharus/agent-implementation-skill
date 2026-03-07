@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from lib.artifact_io import read_json, write_json
+from lib.path_registry import PathRegistry
 
 from ..dispatch import dispatch_agent
 from prompt_safety import write_validated_prompt
@@ -16,10 +17,10 @@ def _gather_complexity_signals(
     and counts.
     """
     signals: dict[str, str] = {}
-    artifacts = planspace / "artifacts"
+    paths = PathRegistry(planspace)
 
     # 1. Section mode signal
-    mode_signal = artifacts / "signals" / f"section-{section_number}-mode.json"
+    mode_signal = paths.mode_signal(section_number)
     if mode_signal.exists():
         mode_data = read_json(mode_signal)
         if mode_data is not None:
@@ -41,23 +42,23 @@ def _gather_complexity_signals(
         signals["related_file_count"] = "unknown"
 
     # 3. Cross-section notes (from other sections to this one, or this to others)
-    notes_dir = artifacts / "notes"
+    notes_dir = paths.notes_dir()
     cross_notes_inbound = sorted(notes_dir.glob(f"from-*-to-{section_number}.md")) if notes_dir.is_dir() else []
     cross_notes_outbound = sorted(notes_dir.glob(f"from-{section_number}-to-*.md")) if notes_dir.is_dir() else []
     total_notes = len(cross_notes_inbound) + len(cross_notes_outbound)
     signals["cross_section_notes"] = f"yes ({total_notes})" if total_notes else "no"
 
     # 4. Cross-section decisions
-    decisions_dir = artifacts / "decisions"
+    decisions_dir = paths.decisions_dir()
     decisions = sorted(decisions_dir.glob(f"section-{section_number}*.md")) if decisions_dir.is_dir() else []
     signals["cross_section_decisions"] = f"yes ({len(decisions)})" if decisions else "no"
 
     # 5. TODO extraction
-    todos_path = artifacts / "todos" / f"section-{section_number}-todos.md"
+    todos_path = paths.todos(section_number)
     signals["todo_extraction_exists"] = "yes" if todos_path.exists() else "no"
 
     # 6. Previous proposal attempts (proposal signals for this section)
-    signals_dir = artifacts / "signals"
+    signals_dir = paths.signals_dir()
     prev_proposals = sorted(signals_dir.glob(f"proposal-{section_number}-*.json")) if signals_dir.is_dir() else []
     signals["previous_proposal_attempts"] = str(len(prev_proposals))
 
@@ -121,8 +122,8 @@ def _check_needs_microstrategy(
     pass ``policy["microstrategy_decider"]`` for policy-driven selection.
     """
     # Primary: structured JSON signal
-    signal_path = (planspace / "artifacts" / "signals"
-                   / f"proposal-{section_number}-microstrategy.json")
+    paths = PathRegistry(planspace)
+    signal_path = paths.microstrategy_signal(section_number)
     if signal_path.exists():
         data = read_json(signal_path)
         if data is not None:
@@ -137,7 +138,7 @@ def _check_needs_microstrategy(
     # Fallback: dispatch to produce structured microstrategy signal
     if not proposal_path.exists():
         return False
-    artifacts = planspace / "artifacts"
+    artifacts = paths.artifacts
     decider_prompt = artifacts / f"microstrategy-decider-{section_number}-prompt.md"
     decider_output = artifacts / f"microstrategy-decider-{section_number}-output.md"
     complexity = _gather_complexity_signals(planspace, section_number)

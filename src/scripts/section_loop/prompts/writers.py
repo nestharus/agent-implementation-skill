@@ -6,6 +6,8 @@ render → write file → log artifact.
 
 from pathlib import Path
 
+from lib.path_registry import PathRegistry
+
 from ..agent_templates import validate_dynamic_content
 from ..alignment import collect_modified_files
 from ..communication import DB_SH, WORKFLOW_HOME, _log_artifact, log
@@ -30,8 +32,9 @@ def agent_mail_instructions(
     planspace: Path, agent_name: str, monitor_name: str,
 ) -> str:
     """Return narration-via-mailbox instructions for an agent."""
+    run_db = PathRegistry(planspace).run_db()
     mailbox_cmd = (
-        f'bash "{DB_SH}" send "{planspace / "run.db"}" '
+        f'bash "{DB_SH}" send "{run_db}" '
         f"{agent_name} --from {agent_name}"
     )
     tpl = load_template("mail-instructions.md")
@@ -54,8 +57,9 @@ def write_section_setup_prompt(
     global_alignment: Path,
 ) -> Path:
     """Write the prompt for extracting section-level excerpts from globals."""
-    artifacts = planspace / "artifacts"
-    sections_dir = artifacts / "sections"
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
+    sections_dir = paths.sections_dir()
     sections_dir.mkdir(parents=True, exist_ok=True)
     sec = section.number
     a_name = f"setup-{sec}"
@@ -96,8 +100,9 @@ def write_integration_proposal_prompt(
     model_policy: dict | None = None,
 ) -> Path:
     """Write the prompt for creating an integration proposal."""
-    artifacts = planspace / "artifacts"
-    proposals_dir = artifacts / "proposals"
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
+    proposals_dir = paths.proposals_dir()
     proposals_dir.mkdir(parents=True, exist_ok=True)
     sec = section.number
     a_name = f"intg-proposal-{sec}"
@@ -204,7 +209,7 @@ def write_integration_alignment_prompt(
     section: Section, planspace: Path, codespace: Path,
 ) -> Path:
     """Write the prompt for reviewing the integration proposal."""
-    artifacts = planspace / "artifacts"
+    artifacts = PathRegistry(planspace).artifacts
     sec = section.number
 
     ctx = build_prompt_context(section, planspace, codespace)
@@ -266,7 +271,7 @@ def write_strategic_impl_prompt(
     model_policy: dict | None = None,
 ) -> Path:
     """Write the prompt for strategic implementation."""
-    artifacts = planspace / "artifacts"
+    artifacts = PathRegistry(planspace).artifacts
     sec = section.number
     a_name = f"impl-{sec}"
     m_name = f"{a_name}-monitor"
@@ -471,7 +476,7 @@ def write_impl_alignment_prompt(
     section: Section, planspace: Path, codespace: Path,
 ) -> Path:
     """Write the prompt for verifying implementation alignment."""
-    artifacts = planspace / "artifacts"
+    artifacts = PathRegistry(planspace).artifacts
     sec = section.number
 
     alignment_excerpt = (

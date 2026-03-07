@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from lib.path_registry import PathRegistry
+
 
 def write_shard_prompt(
     section_num: str,
@@ -23,21 +25,20 @@ def write_shard_prompt(
 
     Returns the path to the written prompt file.
     """
-    artifacts = planspace / "artifacts"
-    prompts_dir = artifacts / "substrate" / "prompts"
+    registry = PathRegistry(planspace)
+    artifacts = registry.artifacts
+    prompts_dir = registry.substrate_prompts_dir()
     prompts_dir.mkdir(parents=True, exist_ok=True)
 
-    output_path = artifacts / "substrate" / "shards" / f"shard-{section_num}.json"
-    codemap_path = artifacts / "codemap.md"
-    codemap_corrections_path = artifacts / "signals" / "codemap-corrections.json"
-    proposal_excerpt = artifacts / "sections" / f"section-{section_num}-proposal-excerpt.md"
-    alignment_excerpt = artifacts / "sections" / f"section-{section_num}-alignment-excerpt.md"
-    problem_frame = artifacts / "sections" / f"section-{section_num}-problem-frame.md"
-    intent_problem = (
-        artifacts / "intent" / "sections" / f"section-{section_num}" / "problem.md"
-    )
+    output_path = registry.substrate_dir() / "shards" / f"shard-{section_num}.json"
+    codemap_path = registry.codemap()
+    codemap_corrections_path = registry.corrections()
+    proposal_excerpt = registry.proposal_excerpt(section_num)
+    alignment_excerpt = registry.alignment_excerpt(section_num)
+    problem_frame = registry.problem_frame(section_num)
+    intent_problem = registry.intent_section_dir(section_num) / "problem.md"
     intent_rubric = (
-        artifacts / "intent" / "sections" / f"section-{section_num}" / "problem-alignment.md"
+        registry.intent_section_dir(section_num) / "problem-alignment.md"
     )
 
     refs: list[str] = []
@@ -56,7 +57,10 @@ def write_shard_prompt(
         refs.append(f"- **Intent problem**: `{intent_problem}`")
     if intent_rubric.exists():
         refs.append(f"- **Intent rubric**: `{intent_rubric}`")
-    refs.append(f"- **All section specs** (for cross-reference): `{artifacts / 'sections'}` directory")
+    refs.append(
+        f"- **All section specs** (for cross-reference): "
+        f"`{registry.sections_dir()}` directory"
+    )
 
     refs_block = "\n".join(refs)
 
@@ -100,23 +104,24 @@ def write_pruner_prompt(
 
     Returns the path to the written prompt file.
     """
-    artifacts = planspace / "artifacts"
-    prompts_dir = artifacts / "substrate" / "prompts"
+    registry = PathRegistry(planspace)
+    artifacts = registry.artifacts
+    prompts_dir = registry.substrate_prompts_dir()
     prompts_dir.mkdir(parents=True, exist_ok=True)
 
-    shards_dir = artifacts / "substrate" / "shards"
-    substrate_dir = artifacts / "substrate"
-    codemap_path = artifacts / "codemap.md"
-    codemap_corrections_path = artifacts / "signals" / "codemap-corrections.json"
+    shards_dir = registry.substrate_dir() / "shards"
+    substrate_dir = registry.substrate_dir()
+    codemap_path = registry.codemap()
+    codemap_corrections_path = registry.corrections()
     proposal_path = artifacts / "proposal.md"
     alignment_path = artifacts / "alignment.md"
-    philosophy_path = artifacts / "intent" / "global" / "philosophy.md"
+    philosophy_path = registry.intent_global_dir() / "philosophy.md"
 
     sections_list = ", ".join(target_sections)
 
     refs: list[str] = []
     refs.append(f"- **All shards**: `{shards_dir}/shard-*.json`")
-    refs.append(f"- **Section specs**: `{artifacts / 'sections'}` directory")
+    refs.append(f"- **Section specs**: `{registry.sections_dir()}` directory")
     if proposal_path.exists():
         refs.append(f"- **Global proposal**: `{proposal_path}`")
     if alignment_path.exists():
@@ -174,15 +179,15 @@ def write_seeder_prompt(
 
     Returns the path to the written prompt file.
     """
-    artifacts = planspace / "artifacts"
-    prompts_dir = artifacts / "substrate" / "prompts"
+    registry = PathRegistry(planspace)
+    prompts_dir = registry.substrate_prompts_dir()
     prompts_dir.mkdir(parents=True, exist_ok=True)
 
-    substrate_dir = artifacts / "substrate"
+    substrate_dir = registry.substrate_dir()
     seed_plan_path = substrate_dir / "seed-plan.json"
     substrate_md_path = substrate_dir / "substrate.md"
-    codemap_path = artifacts / "codemap.md"
-    codemap_corrections_path = artifacts / "signals" / "codemap-corrections.json"
+    codemap_path = registry.codemap()
+    codemap_corrections_path = registry.corrections()
 
     refs: list[str] = []
     refs.append(f"- **Seed plan**: `{seed_plan_path}`")
@@ -216,8 +221,8 @@ Create anchor files under: `{codespace}`
 Your agent definition specifies four outputs:
 
 1. **Anchor files** in codespace at `{codespace}` (paths from seed plan)
-2. **Related-files-update signals** at `{artifacts / "signals" / "related-files-update"}/section-<NN>.json`
-3. **Substrate input refs** at `{artifacts / "inputs"}/section-<NN>/substrate.ref` (each containing the absolute path to `{substrate_md_path}`)
+2. **Related-files-update signals** at `{registry.related_files_update_dir()}/section-<NN>.json`
+3. **Substrate input refs** at `{registry.inputs_dir()}/section-<NN>/substrate.ref` (each containing the absolute path to `{substrate_md_path}`)
 4. **Completion signal** at `{substrate_dir / "seed-signal.json"}`
 
 Create parent directories as needed. Follow the schemas from your

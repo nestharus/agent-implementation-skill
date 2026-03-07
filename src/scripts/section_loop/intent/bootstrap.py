@@ -7,6 +7,7 @@ from pathlib import Path
 
 from lib.artifact_io import read_json, write_json
 from lib.hash_service import content_hash, file_hash
+from lib.path_registry import PathRegistry
 
 from ..communication import _log_artifact, log
 from ..dispatch import (
@@ -263,8 +264,9 @@ def ensure_global_philosophy(
     or ``None`` if no philosophy source was found (fail-closed).
     """
     policy = read_model_policy(planspace)
-    artifacts = planspace / "artifacts"
-    intent_global = artifacts / "intent" / "global"
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
+    intent_global = paths.intent_global_dir()
     intent_global.mkdir(parents=True, exist_ok=True)
     philosophy_path = intent_global / "philosophy.md"
 
@@ -677,9 +679,10 @@ def generate_intent_pack(
     Returns the path to the section's intent directory.
     """
     policy = read_model_policy(planspace)
-    artifacts = planspace / "artifacts"
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     sec = section.number
-    intent_sec = artifacts / "intent" / "sections" / f"section-{sec}"
+    intent_sec = paths.intent_section_dir(sec)
     intent_sec.mkdir(parents=True, exist_ok=True)
 
     problem_path = intent_sec / "problem.md"

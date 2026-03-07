@@ -6,6 +6,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from lib.path_registry import PathRegistry
+
 from log_extract import formatters, timeline
 from log_extract.correlator import correlate
 from log_extract.extractors import artifacts, claude, codex, gemini, opencode, run_db
@@ -83,11 +85,12 @@ def run(argv: list[str] | None = None) -> None:
     sections_filter = _expand_list(args.section)
 
     # Extract
-    db_path = planspace / "run.db"
+    registry = PathRegistry(planspace)
+    db_path = registry.run_db()
     db_events = list(run_db.iter_events(db_path, model_map)) if db_path.is_file() else []
     dispatch_cands = list(run_db.iter_dispatch_candidates(db_path, model_map)) if db_path.is_file() else []
 
-    artifacts_dir = planspace / "artifacts"
+    artifacts_dir = registry.artifacts
     artifact_events = list(artifacts.iter_events(artifacts_dir)) if artifacts_dir.is_dir() else []
 
     claude_events = list(claude.iter_events(claude_homes))

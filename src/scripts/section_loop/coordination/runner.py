@@ -6,6 +6,7 @@ from typing import Any
 
 from lib.artifact_io import read_json, rename_malformed, write_json
 from lib.hash_service import content_hash
+from lib.path_registry import PathRegistry
 
 from ..alignment import (
     _extract_problems,
@@ -161,7 +162,8 @@ def run_global_coordination(
 
     Returns True if all sections are ALIGNED (or no problems remain).
     """
-    coord_dir = planspace / "artifacts" / "coordination"
+    paths = PathRegistry(planspace)
+    coord_dir = paths.coordination_dir()
     coord_dir.mkdir(parents=True, exist_ok=True)
     policy = read_model_policy(planspace)
 
@@ -200,7 +202,7 @@ def run_global_coordination(
     # -----------------------------------------------------------------
     # Step 1b: Aggregate scope deltas for coordinator adjudication
     # -----------------------------------------------------------------
-    scope_deltas_dir = planspace / "artifacts" / "scope-deltas"
+    scope_deltas_dir = paths.scope_deltas_dir()
     if scope_deltas_dir.exists():
         # Pick up both per-section deltas and reconciliation-generated
         # consolidated deltas (written by Phase 1b reconciliation).
@@ -425,9 +427,7 @@ Reply with a JSON block:
                     load_decisions,
                     record_decision,
                 )
-                decisions_dir = (
-                    planspace / "artifacts" / "decisions"
-                )
+                decisions_dir = paths.decisions_dir()
                 for adj_decision in all_decisions:
                     adj_did = adj_decision.get("delta_id", "")
                     adj_sec = str(adj_decision.get("section", ""))
@@ -676,12 +676,11 @@ Reply with a JSON block:
                 contract_path = (
                     coord_dir / f"contract-patch-{gidx}.md")
                 contract_delta_path = (
-                    planspace / "artifacts" / "contracts"
-                    / f"contract-delta-group-{gidx}.md"
+                    paths.contracts_dir() / f"contract-delta-group-{gidx}.md"
                 )
-                notes_dir = planspace / "artifacts" / "notes"
+                notes_dir = paths.notes_dir()
                 notes_dir.mkdir(parents=True, exist_ok=True)
-                sec_dir = planspace / "artifacts" / "sections"
+                sec_dir = paths.sections_dir()
 
                 # P9-D: Build full context for bridge agent —
                 # include proposal excerpts, alignment excerpts,
@@ -695,7 +694,7 @@ Reply with a JSON block:
                     f"- Section {s}: `{sec_dir / f'section-{s}-alignment-excerpt.md'}`"
                     for s in group_sections
                 )
-                proposals_dir = planspace / "artifacts" / "proposals"
+                proposals_dir = paths.proposals_dir()
                 prop_refs = "\n".join(
                     f"- `{proposals_dir / f'section-{s}-integration-proposal.md'}`"
                     for s in group_sections
@@ -754,7 +753,7 @@ Reply with a JSON block:
                 # P9-E: Fail-closed on missing contract delta.
                 # If bridge didn't write the delta, retry once.
                 # If still missing, emit NEEDS_PARENT blocker.
-                contracts_dir = planspace / "artifacts" / "contracts"
+                contracts_dir = paths.contracts_dir()
                 contracts_dir.mkdir(parents=True, exist_ok=True)
                 if not contract_delta_path.exists():
                     log(f"  coordinator: bridge didn't write contract "
@@ -779,8 +778,7 @@ Reply with a JSON block:
                         ),
                     }
                     blocker_path = (
-                        planspace / "artifacts" / "signals"
-                        / f"blocker-bridge-{gidx}.json"
+                        paths.signals_dir() / f"blocker-bridge-{gidx}.json"
                     )
                     blocker_path.parent.mkdir(parents=True, exist_ok=True)
                     blocker_path.write_text(
@@ -819,10 +817,7 @@ Reply with a JSON block:
                 # Register the contract delta as an input artifact for
                 # downstream sections in this group
                 for s_num in group_sections:
-                    input_ref_dir = (
-                        planspace / "artifacts" / "inputs"
-                        / f"section-{s_num}"
-                    )
+                    input_ref_dir = paths.input_refs_dir(s_num)
                     input_ref_dir.mkdir(parents=True, exist_ok=True)
                     ref_path = (
                         input_ref_dir
@@ -972,8 +967,9 @@ Reply with a JSON block:
             )
             continue
 
-        coord_align_output = (planspace / "artifacts"
-                              / f"coord-align-{sec_num}-output.md")
+        coord_align_output = (
+            paths.artifacts / f"coord-align-{sec_num}-output.md"
+        )
         align_problems = _extract_problems(
             align_result, output_path=coord_align_output,
             planspace=planspace, parent=parent, codespace=codespace,

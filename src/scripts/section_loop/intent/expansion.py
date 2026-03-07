@@ -2,6 +2,7 @@
 from pathlib import Path
 
 from lib.artifact_io import write_json
+from lib.path_registry import PathRegistry
 
 from ..communication import _log_artifact, log, mailbox_send
 from ..dispatch import dispatch_agent, read_agent_signal, read_model_policy
@@ -37,7 +38,8 @@ def run_expansion_cycle(
     - ``surfaces_found``: int — how many surfaces were processed
     """
     policy = read_model_policy(planspace)
-    artifacts = planspace / "artifacts"
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     _budgets = budgets or {}
     _no_work = {
         "restart_required": False,
@@ -63,8 +65,7 @@ def run_expansion_cycle(
 
     # Rewrite surfaces file with normalized IDs so expanders see them
     surfaces_path = (
-        planspace / "artifacts" / "signals"
-        / f"intent-surfaces-{section_number}.json"
+        paths.signals_dir() / f"intent-surfaces-{section_number}.json"
     )
     write_json(surfaces_path, surfaces)
 
@@ -151,8 +152,7 @@ def run_expansion_cycle(
         "philosophy_surfaces": philosophy_surfaces,
     }
     pending_surfaces_path = (
-        planspace / "artifacts" / "signals"
-        / f"intent-surfaces-pending-{section_number}.json"
+        paths.signals_dir() / f"intent-surfaces-pending-{section_number}.json"
     )
     write_json(pending_surfaces_path, budgeted_surfaces)
 
@@ -283,7 +283,7 @@ def handle_user_gate(
     if not delta_result.get("needs_user_input"):
         return None
 
-    artifacts = planspace / "artifacts"
+    artifacts = PathRegistry(planspace).artifacts
     signals_dir = artifacts / "signals"
     signals_dir.mkdir(parents=True, exist_ok=True)
 
@@ -354,7 +354,8 @@ def _run_problem_expander(
     remaining_axis_budget: int = 6,
 ) -> dict | None:
     """Dispatch problem-expander and return its delta."""
-    artifacts = planspace / "artifacts"
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     intent_sec = (
         artifacts / "intent" / "sections" / f"section-{section_number}"
     )
@@ -451,7 +452,8 @@ def _run_philosophy_expander(
     pending_surfaces_path: Path | None = None,
 ) -> dict | None:
     """Dispatch philosophy-expander and return its delta."""
-    artifacts = planspace / "artifacts"
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     signals_dir = artifacts / "signals"
     intent_global = artifacts / "intent" / "global"
 
@@ -555,7 +557,8 @@ def _adjudicate_recurrence(
 
     Returns a list of surface IDs to reopen (may be empty).
     """
-    artifacts = planspace / "artifacts"
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     signals_dir = artifacts / "signals"
     signals_dir.mkdir(parents=True, exist_ok=True)
 

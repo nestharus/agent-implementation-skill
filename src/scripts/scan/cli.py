@@ -13,6 +13,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from lib.path_registry import PathRegistry
+
 from .codemap import run_codemap_build
 from .deep_scan import run_deep_scan
 from .dispatch import read_scan_model_policy
@@ -103,12 +105,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     planspace: Path = args.planspace
     codespace: Path = args.codespace
+    registry = PathRegistry(planspace)
 
-    artifacts_dir = planspace / "artifacts"
-    sections_dir = artifacts_dir / "sections"
-    codemap_path = artifacts_dir / "codemap.md"
-    scan_log_dir = artifacts_dir / "scan-logs"
-    fingerprint_path = artifacts_dir / "codemap.codespace.fingerprint"
+    artifacts_dir = registry.artifacts
+    sections_dir = registry.sections_dir()
+    codemap_path = registry.codemap()
+    scan_log_dir = registry.artifacts / "scan-logs"
+    fingerprint_path = registry.artifacts / "codemap.codespace.fingerprint"
 
     scan_log_dir.mkdir(parents=True, exist_ok=True)
 

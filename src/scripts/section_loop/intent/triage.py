@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+from lib.path_registry import PathRegistry
+
 from ..communication import _log_artifact, log
 from ..dispatch import dispatch_agent, read_agent_signal, read_model_policy
 from prompt_safety import write_validated_prompt
@@ -26,8 +28,9 @@ def run_intent_triage(
     about complexity pushes toward more strategy, not less).
     """
     policy = read_model_policy(planspace)
-    artifacts = planspace / "artifacts"
-    signals_dir = artifacts / "signals"
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
+    signals_dir = paths.signals_dir()
     signals_dir.mkdir(parents=True, exist_ok=True)
 
     triage_signal_path = signals_dir / f"intent-triage-{section_number}.json"
@@ -182,7 +185,7 @@ def load_triage_result(
     section_number: str, planspace: Path,
 ) -> dict | None:
     """Load a previously-written triage result from signal file."""
-    signals_dir = planspace / "artifacts" / "signals"
+    signals_dir = PathRegistry(planspace).signals_dir()
     triage_signal_path = signals_dir / f"intent-triage-{section_number}.json"
     return read_agent_signal(
         triage_signal_path, expected_fields=["intent_mode"],

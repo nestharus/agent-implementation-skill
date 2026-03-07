@@ -17,6 +17,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 from flow_schema import BranchSpec, TaskSpec  # noqa: E402
+from lib.path_registry import PathRegistry  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -144,11 +145,9 @@ def build_coordination_branches(
         List of BranchSpec, one per group. Empty list if groups is empty.
     """
     branches: list[BranchSpec] = []
+    registry = PathRegistry(planspace)
     for group_id in sorted(groups):
-        prompt_path = (
-            planspace / "artifacts" / "coordination"
-            / f"fix-{group_id}-prompt.md"
-        )
+        prompt_path = registry.coordination_dir() / f"fix-{group_id}-prompt.md"
         branches.append(
             BranchSpec(
                 label=f"coord-fix-{group_id}",

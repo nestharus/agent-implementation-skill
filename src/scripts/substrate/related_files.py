@@ -14,6 +14,8 @@ import json
 import re
 from pathlib import Path
 
+from lib.path_registry import PathRegistry
+
 # Reuse the shared related_files parser from the scan package.
 # Both scan and substrate need identical parsing logic.
 from scan.related_files import block_insert_position, extract_related_files
@@ -91,10 +93,9 @@ def apply_related_files_updates(planspace: Path, codespace: Path) -> int:
     int
         Count of sections that were actually updated.
     """
-    signals_dir = (
-        planspace / "artifacts" / "signals" / "related-files-update"
-    )
-    sections_dir = planspace / "artifacts" / "sections"
+    registry = PathRegistry(planspace)
+    signals_dir = registry.related_files_update_dir()
+    sections_dir = registry.sections_dir()
 
     if not signals_dir.is_dir():
         return 0

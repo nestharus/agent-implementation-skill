@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from lib.artifact_io import read_json, rename_malformed, write_json
+from lib.path_registry import PathRegistry
 
 from ..communication import _log_artifact, log
 from ..dispatch import read_agent_signal
@@ -34,6 +35,7 @@ def _collect_outstanding_problems(
       - description: the problem text
       - files: list of files related to this section
     """
+    paths = PathRegistry(planspace)
     problems = []
     for sec_num, result in section_results.items():
         if result.aligned:
@@ -43,8 +45,7 @@ def _collect_outstanding_problems(
 
         # Check for structured blocker signal — routes as "needs_parent"
         # instead of "misaligned", excluded from code-fix dispatch.
-        blocker_path = (planspace / "artifacts" / "signals"
-                        / f"section-{sec_num}-blocker.json")
+        blocker_path = paths.blocker_signal(sec_num)
         if blocker_path.exists():
             blocker = read_json(blocker_path)
             if blocker is not None:
@@ -87,7 +88,7 @@ def _collect_outstanding_problems(
     # ID from the note content (do NOT recompute the hash — the original
     # was derived from a draft subset that differs from the full content).
     # Target sections acknowledge notes via signals/note-ack-<target>.json.
-    notes_dir = planspace / "artifacts" / "notes"
+    notes_dir = paths.notes_dir()
     if notes_dir.exists():
         for note_path in sorted(notes_dir.glob("from-*-to-*.md")):
             name_match = re.match(
@@ -110,8 +111,7 @@ def _collect_outstanding_problems(
             note_id = note_id_match.group(1)
 
             # Check acknowledgment via structured signal
-            ack_path = (planspace / "artifacts" / "signals"
-                        / f"note-ack-{target_num}.json")
+            ack_path = paths.signals_dir() / f"note-ack-{target_num}.json"
             ack_signal = read_agent_signal(ack_path)
             if ack_signal:
                 acks = ack_signal.get("acknowledged", [])
@@ -190,7 +190,8 @@ def _detect_recurrence_patterns(
     systemic patterns. Returns a recurrence report dict, or None if no
     patterns found.
     """
-    signals_dir = planspace / "artifacts" / "signals"
+    paths = PathRegistry(planspace)
+    signals_dir = paths.signals_dir()
     if not signals_dir.exists():
         return None
 
@@ -231,7 +232,7 @@ def _detect_recurrence_patterns(
     }
 
     # Persist recurrence report
-    coord_dir = planspace / "artifacts" / "coordination"
+    coord_dir = paths.coordination_dir()
     coord_dir.mkdir(parents=True, exist_ok=True)
     recurrence_path = coord_dir / "recurrence.json"
     write_json(recurrence_path, report)

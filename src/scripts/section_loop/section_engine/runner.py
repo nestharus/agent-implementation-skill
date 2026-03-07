@@ -6,6 +6,7 @@ from pathlib import Path
 
 from lib.artifact_io import read_json, read_json_or_default, write_json
 from lib.hash_service import content_hash, file_hash
+from lib.path_registry import PathRegistry
 
 from ..alignment import (
     _extract_problems,
@@ -193,7 +194,8 @@ def run_section(
     - ``ProposalPassResult`` when ``pass_mode="proposal"`` completes.
     - ``None`` if paused/aborted (waiting for parent).
     """
-    artifacts = planspace / "artifacts"
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     policy = read_model_policy(planspace)
 
     # -----------------------------------------------------------------
@@ -216,8 +218,9 @@ def run_section(
             "recurring": True,
             "escalate_to_coordinator": True,
         }
-        recurrence_path = (planspace / "artifacts" / "signals"
-                           / f"section-{section.number}-recurrence.json")
+        recurrence_path = (
+            paths.signals_dir() / f"section-{section.number}-recurrence.json"
+        )
         write_json(recurrence_path, recurrence_signal)
         log(f"Section {section.number}: recurrence signal written "
             f"(attempt {section.solve_count})")
@@ -518,7 +521,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                              f"open-problem:{section.number}:"
                              f"{signal}:{detail[:200]}")
             if signal == "out_of_scope":
-                scope_delta_dir = planspace / "artifacts" / "scope-deltas"
+                scope_delta_dir = paths.scope_deltas_dir()
                 scope_delta_dir.mkdir(parents=True, exist_ok=True)
                 # Load full signal payload for richer coordinator context
                 setup_sig_path = (signal_dir
@@ -873,7 +876,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         # or heavy cross-section coupling
         proposal_model = policy["proposal"]
         notes_count = 0
-        notes_dir = planspace / "artifacts" / "notes"
+        notes_dir = paths.notes_dir()
         if notes_dir.exists():
             notes_count = len(list(
                 notes_dir.glob(f"from-*-to-{section.number}.md")))
@@ -985,7 +988,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                              f"open-problem:{section.number}:"
                              f"{signal}:{detail[:200]}")
             if signal == "out_of_scope":
-                scope_delta_dir = planspace / "artifacts" / "scope-deltas"
+                scope_delta_dir = paths.scope_deltas_dir()
                 scope_delta_dir.mkdir(parents=True, exist_ok=True)
                 # Load full signal payload for richer coordinator context
                 proposal_sig_path = (signal_dir
@@ -1233,7 +1236,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
     # ---------------------------------------------------------------
 
     # new_section_candidates → scope-delta artifacts
-    scope_delta_dir = planspace / "artifacts" / "scope-deltas"
+    scope_delta_dir = PathRegistry(planspace).scope_deltas_dir()
     for candidate in ps.get("new_section_candidates", []):
         scope_delta_dir.mkdir(parents=True, exist_ok=True)
         cand_text = str(candidate)

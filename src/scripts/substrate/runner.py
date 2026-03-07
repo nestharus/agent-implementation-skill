@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 from lib.artifact_io import read_json, write_json
+from lib.path_registry import PathRegistry
 
 from scan.related_files import extract_related_files
 
@@ -69,6 +70,10 @@ def _read_model_policy(artifacts_dir: Path) -> dict[str, str]:
     return policy
 
 
+def _registry_for_artifacts(artifacts_dir: Path) -> PathRegistry:
+    return PathRegistry(artifacts_dir.parent)
+
+
 def _read_trigger_signals(artifacts_dir: Path) -> list[str]:
     """Read signal-driven SIS trigger requests.
 
@@ -77,7 +82,7 @@ def _read_trigger_signals(artifacts_dir: Path) -> list[str]:
     ``{"section": "NN"}``. Returns a list of section number strings
     that requested SIS regardless of vacuum status.
     """
-    signals_dir = artifacts_dir / "signals"
+    signals_dir = _registry_for_artifacts(artifacts_dir).signals_dir()
     if not signals_dir.is_dir():
         return []
     triggered: list[str] = []
@@ -212,8 +217,9 @@ def _read_project_mode(artifacts_dir: Path) -> str | None:
     Returns one of ``"greenfield"``, ``"brownfield"``, ``"hybrid"``,
     or ``None`` if no mode signal exists.
     """
-    json_path = artifacts_dir / "signals" / "project-mode.json"
-    txt_path = artifacts_dir / "project-mode.txt"
+    registry = _registry_for_artifacts(artifacts_dir)
+    json_path = registry.project_mode_json()
+    txt_path = registry.project_mode_txt()
 
     if json_path.is_file():
         data = read_json(json_path)
@@ -291,7 +297,7 @@ def _write_status(
     threshold: int = _DEFAULT_TRIGGER_THRESHOLD,
 ) -> None:
     """Write ``artifacts/substrate/status.json``."""
-    status_dir = artifacts_dir / "substrate"
+    status_dir = _registry_for_artifacts(artifacts_dir).substrate_dir()
     status_dir.mkdir(parents=True, exist_ok=True)
     status = {
         "state": state,
@@ -330,8 +336,9 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
     bool
         ``True`` on success, ``False`` on failure.
     """
-    artifacts_dir = planspace / "artifacts"
-    sections_dir = artifacts_dir / "sections"
+    registry = PathRegistry(planspace)
+    artifacts_dir = registry.artifacts
+    sections_dir = registry.sections_dir()
 
     # ---- Step 1: Read project mode ----
     project_mode = _read_project_mode(artifacts_dir)
@@ -441,9 +448,9 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
 
     # ---- Phase A: Shard exploration ----
     print(f"[SUBSTRATE] Phase A: Shard exploration ({len(target_sections)} sections)")
-    shards_dir = artifacts_dir / "substrate" / "shards"
+    shards_dir = registry.substrate_dir() / "shards"
     shards_dir.mkdir(parents=True, exist_ok=True)
-    logs_dir = artifacts_dir / "substrate" / "logs"
+    logs_dir = registry.substrate_dir() / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     shard_failures: list[str] = []
@@ -512,7 +519,7 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
         agent_file="substrate-pruner.md",
     )
 
-    substrate_dir = artifacts_dir / "substrate"
+    substrate_dir = registry.substrate_dir()
     substrate_md_path = substrate_dir / "substrate.md"
     seed_plan_path = substrate_dir / "seed-plan.json"
     prune_signal_path = substrate_dir / "prune-signal.json"
@@ -606,7 +613,7 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
 
     # Write substrate.ref for each target section (input-ref mechanism)
     for section_num in target_sections:
-        ref_dir = artifacts_dir / "inputs" / f"section-{section_num}"
+        ref_dir = registry.input_refs_dir(section_num)
         ref_dir.mkdir(parents=True, exist_ok=True)
         ref_path = ref_dir / "substrate.ref"
         ref_path.write_text(

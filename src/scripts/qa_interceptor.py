@@ -22,6 +22,7 @@ import time
 from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed, write_json
+from lib.path_registry import PathRegistry
 
 # Resolve paths relative to this script's location.
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -56,7 +57,7 @@ def read_qa_parameters(planspace: Path) -> dict:
     Malformed files are renamed to ``.malformed.json`` (same pattern
     as ``read_model_policy`` in ``section_loop/dispatch.py``).
     """
-    params_path = planspace / "artifacts" / "parameters.json"
+    params_path = PathRegistry(planspace).parameters()
     defaults: dict = {"qa_mode": False}
 
     if not params_path.exists():
@@ -210,7 +211,7 @@ def _write_rationale(
 
     Returns the path to the written file.
     """
-    intercepts_dir = planspace / "artifacts" / "qa-intercepts"
+    intercepts_dir = PathRegistry(planspace).qa_intercepts_dir()
     intercepts_dir.mkdir(parents=True, exist_ok=True)
 
     task_id = task.get("id", "unknown")
@@ -281,7 +282,7 @@ def intercept_task(
         )
 
         # 5. Write prompt to artifacts.
-        intercepts_dir = planspace / "artifacts" / "qa-intercepts"
+        intercepts_dir = PathRegistry(planspace).qa_intercepts_dir()
         intercepts_dir.mkdir(parents=True, exist_ok=True)
         prompt_path = intercepts_dir / f"qa-{task_id}-prompt.md"
         prompt_path.write_text(qa_prompt_text, encoding="utf-8")

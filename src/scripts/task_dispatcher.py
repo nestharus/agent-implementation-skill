@@ -33,6 +33,7 @@ from lib.dispatch_metadata import (
     DISPATCH_META_CORRUPT,
     read_dispatch_metadata,
 )
+from lib.path_registry import PathRegistry
 
 # Resolve paths relative to this script's location.
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -139,6 +140,7 @@ def dispatch_task(
     task_type = task["type"]
     submitted_by = task.get("by", "unknown")
     payload_path = task.get("payload")
+    registry = PathRegistry(planspace)
 
     # Resolve agent file and model.
     try:
@@ -164,7 +166,7 @@ def dispatch_task(
 
     # Build the prompt path. payload_path is required for all queued tasks
     # (R80/P1). Fail closed if absent.
-    artifacts_dir = planspace / "artifacts"
+    artifacts_dir = registry.artifacts
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
     if payload_path:
@@ -447,7 +449,7 @@ def main() -> None:
     args = parser.parse_args()
 
     planspace = args.planspace.resolve()
-    db_path = str(planspace / "run.db")
+    db_path = str(PathRegistry(planspace).run_db())
 
     if not Path(db_path).exists():
         log(f"ERROR: Database not found at {db_path}")

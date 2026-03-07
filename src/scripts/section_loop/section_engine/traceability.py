@@ -3,6 +3,7 @@ from pathlib import Path
 
 from lib.artifact_io import read_json, write_json
 from lib.hash_service import file_hash
+from lib.path_registry import PathRegistry
 
 from ..alignment import _parse_alignment_verdict
 from ..communication import log
@@ -24,26 +25,20 @@ def _write_traceability_index(
     authoritative artifacts, the list of modified files, and alignment
     verdicts extracted from alignment output files.
     """
-    artifacts = planspace / "artifacts"
-    trace_dir = artifacts / "trace"
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
+    trace_dir = paths.trace_dir()
     trace_dir.mkdir(parents=True, exist_ok=True)
     sec = section.number
 
     # Artifact paths
-    proposal_excerpt = (artifacts / "sections"
-                        / f"section-{sec}-proposal-excerpt.md")
-    alignment_excerpt = (artifacts / "sections"
-                         / f"section-{sec}-alignment-excerpt.md")
-    integration_proposal = (artifacts / "proposals"
-                            / f"section-{sec}-integration-proposal.md")
-    microstrategy = (artifacts / "proposals"
-                     / f"section-{sec}-microstrategy.md")
-    todos_extraction = (artifacts / "todos"
-                        / f"section-{sec}-todos.md")
-    alignment_surface = (artifacts / "sections"
-                         / f"section-{sec}-alignment-surface.md")
-    problem_frame = (artifacts / "sections"
-                     / f"section-{sec}-problem-frame.md")
+    proposal_excerpt = paths.proposal_excerpt(sec)
+    alignment_excerpt = paths.alignment_excerpt(sec)
+    integration_proposal = paths.proposal(sec)
+    microstrategy = paths.microstrategy(sec)
+    todos_extraction = paths.todos(sec)
+    alignment_surface = paths.sections_dir() / f"section-{sec}-alignment-surface.md"
+    problem_frame = paths.problem_frame(sec)
 
     # Collect alignment verdicts from output files using structured JSON
     alignment_verdicts: list[dict] = []
@@ -121,8 +116,9 @@ def _verify_traceability(planspace: Path, section_number: str) -> list[str]:
 
     Returns a list of violations (empty = pass).
     """
-    trace_path = (planspace / "artifacts" / "trace"
-                  / f"section-{section_number}.json")
+    trace_path = (
+        PathRegistry(planspace).trace_dir() / f"section-{section_number}.json"
+    )
     violations: list[str] = []
 
     if not trace_path.exists():

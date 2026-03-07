@@ -4,6 +4,7 @@ from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed, write_json
 from lib.hash_service import content_hash
+from lib.path_registry import PathRegistry
 
 from ..communication import log
 from ..dispatch import read_agent_signal
@@ -17,8 +18,8 @@ def load_surface_registry(
     Returns the registry dict or an empty default if missing/malformed.
     """
     registry_path = (
-        planspace / "artifacts" / "intent" / "sections"
-        / f"section-{section_number}" / "surface-registry.json"
+        PathRegistry(planspace).intent_section_dir(section_number)
+        / "surface-registry.json"
     )
     if not registry_path.exists():
         return {"section": section_number, "next_id": 1, "surfaces": []}
@@ -46,8 +47,8 @@ def save_surface_registry(
 ) -> None:
     """Write the surface registry back to disk."""
     registry_path = (
-        planspace / "artifacts" / "intent" / "sections"
-        / f"section-{section_number}" / "surface-registry.json"
+        PathRegistry(planspace).intent_section_dir(section_number)
+        / "surface-registry.json"
     )
     write_json(registry_path, registry)
 
@@ -56,7 +57,7 @@ def load_intent_surfaces(
     section_number: str, planspace: Path,
 ) -> dict | None:
     """Load intent-surfaces-NN.json signal written by intent-judge."""
-    signals_dir = planspace / "artifacts" / "signals"
+    signals_dir = PathRegistry(planspace).signals_dir()
     surfaces_path = signals_dir / f"intent-surfaces-{section_number}.json"
     return read_agent_signal(surfaces_path)
 

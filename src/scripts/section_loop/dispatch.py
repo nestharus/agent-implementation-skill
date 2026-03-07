@@ -8,6 +8,7 @@ from lib.database_client import DatabaseClient
 from lib.dispatch_metadata import write_dispatch_metadata
 from lib.model_policy import load_model_policy
 from lib.monitor_service import MonitorService
+from lib.path_registry import PathRegistry
 from lib.signal_reader import read_agent_signal, read_signal_tuple
 
 from .agent_templates import render_template, validate_dynamic_content
@@ -23,7 +24,7 @@ from .pipeline_control import alignment_changed_pending, wait_if_paused
 
 
 def _database_client(planspace: Path) -> DatabaseClient:
-    return DatabaseClient(DB_SH, planspace / "run.db")
+    return DatabaseClient(DB_SH, PathRegistry(planspace).run_db())
 
 
 def _monitor_service(planspace: Path) -> MonitorService:
@@ -153,8 +154,9 @@ def _write_agent_monitor_prompt(
     planspace: Path, agent_name: str, monitor_name: str,
 ) -> Path:
     """Write the prompt file for a per-agent GLM monitor."""
-    db_path = planspace / "run.db"
-    prompt_path = planspace / "artifacts" / f"{monitor_name}-prompt.md"
+    paths = PathRegistry(planspace)
+    db_path = paths.run_db()
+    prompt_path = paths.artifacts / f"{monitor_name}-prompt.md"
 
     dynamic_body = f"""# Agent Monitor: {agent_name}
 
@@ -241,7 +243,8 @@ def adjudicate_agent_output(
     The ``model`` parameter defaults to ``"glm"`` but callers should
     pass ``policy["adjudicator"]`` for policy-driven selection.
     """
-    artifacts = planspace / "artifacts"
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     artifacts.mkdir(parents=True, exist_ok=True)
     adj_prompt = artifacts / "adjudicate-prompt.md"
     adj_output = artifacts / "adjudicate-output.md"
@@ -317,7 +320,7 @@ def write_model_choice_signal(
     escalated_from: str | None = None,
 ) -> None:
     """Write a structured model-choice signal for auditability."""
-    signals_dir = planspace / "artifacts" / "signals"
+    signals_dir = PathRegistry(planspace).signals_dir()
     signals_dir.mkdir(parents=True, exist_ok=True)
     signal = {
         "section": section,

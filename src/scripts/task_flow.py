@@ -25,6 +25,7 @@ from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed, write_json
 from lib.hash_service import content_hash
+from lib.path_registry import PathRegistry
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
@@ -83,74 +84,69 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
     (file-level hashing only, no model loading).
     """
     hash_parts: list[bytes] = []
-    artifacts = planspace / "artifacts"
+    registry = PathRegistry(planspace)
     sec = section_number
 
     # Excerpts + section spec + integration proposal
-    for suffix in (
-        f"sections/section-{sec}-alignment-excerpt.md",
-        f"sections/section-{sec}-proposal-excerpt.md",
-        f"sections/section-{sec}.md",
-        f"proposals/section-{sec}-integration-proposal.md",
+    for path in (
+        registry.alignment_excerpt(sec),
+        registry.proposal_excerpt(sec),
+        registry.section_spec(sec),
+        registry.proposal(sec),
     ):
-        p = artifacts / suffix
-        if p.exists():
-            hash_parts.append(p.read_bytes())
+        if path.exists():
+            hash_parts.append(path.read_bytes())
 
     # Notes targeting this section
-    notes_dir = artifacts / "notes"
+    notes_dir = registry.notes_dir()
     if notes_dir.exists():
         for note in sorted(notes_dir.glob(f"from-*-to-{sec}.md")):
             hash_parts.append(note.read_bytes())
 
     # Tool registry
-    tools_path = artifacts / "tool-registry.json"
+    tools_path = registry.tool_registry()
     if tools_path.exists():
         hash_parts.append(tools_path.read_bytes())
 
     # Decisions
-    decisions_path = artifacts / "decisions" / f"section-{sec}.md"
+    decisions_path = registry.decisions_dir() / f"section-{sec}.md"
     if decisions_path.exists():
         hash_parts.append(decisions_path.read_bytes())
 
     # Microstrategy
-    microstrategy_path = (
-        artifacts / "proposals" / f"section-{sec}-microstrategy.md"
-    )
+    microstrategy_path = registry.microstrategy(sec)
     if microstrategy_path.exists():
         hash_parts.append(microstrategy_path.read_bytes())
 
     # TODOs
-    todos_path = artifacts / "todos" / f"section-{sec}-todos.md"
+    todos_path = registry.todos(sec)
     if todos_path.exists():
         hash_parts.append(todos_path.read_bytes())
 
     # Codemap + corrections
-    codemap_path = artifacts / "codemap.md"
+    codemap_path = registry.codemap()
     if codemap_path.exists():
         hash_parts.append(codemap_path.read_bytes())
-    corrections_path = artifacts / "signals" / "codemap-corrections.json"
+    corrections_path = registry.corrections()
     if corrections_path.exists():
         hash_parts.append(corrections_path.read_bytes())
 
     # Mode files
     for mode_file in (
-        artifacts / "project-mode.txt",
-        artifacts / "signals" / "project-mode.json",
-        artifacts / "sections" / f"section-{sec}-mode.txt",
+        registry.project_mode_txt(),
+        registry.project_mode_json(),
+        registry.sections_dir() / f"section-{sec}-mode.txt",
     ):
         if mode_file.exists():
             hash_parts.append(mode_file.read_bytes())
 
     # Problem frame
-    problem_frame = (
-        artifacts / "sections" / f"section-{sec}-problem-frame.md"
-    )
+    problem_frame = registry.problem_frame(sec)
     if problem_frame.exists():
         hash_parts.append(problem_frame.read_bytes())
 
     # Intent artifacts
-    intent_global = artifacts / "intent" / "global"
+    intent_global = registry.intent_global_dir()
     for intent_file in (
         intent_global / "philosophy.md",
         intent_global / "philosophy-source-manifest.json",
@@ -158,7 +154,7 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
     ):
         if intent_file.exists():
             hash_parts.append(intent_file.read_bytes())
-    intent_sec_dir = artifacts / "intent" / "sections" / f"section-{sec}"
+    intent_sec_dir = registry.intent_section_dir(sec)
     for intent_file in (
         intent_sec_dir / "problem.md",
         intent_sec_dir / "problem-alignment.md",
@@ -170,15 +166,14 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
     # Proposal state — captures resolved/unresolved anchors, contracts,
     # research questions, and execution_ready flag
     proposal_state_path = (
-        artifacts / "proposals"
-        / f"section-{sec}-proposal-state.json"
+        registry.proposals_dir() / f"section-{sec}-proposal-state.json"
     )
     if proposal_state_path.exists():
         hash_parts.append(proposal_state_path.read_bytes())
 
     # Reconciliation result — cross-section overlap/conflict findings
     reconciliation_path = (
-        artifacts / "reconciliation"
+        registry.reconciliation_dir()
         / f"section-{sec}-reconciliation-result.json"
     )
     if reconciliation_path.exists():
@@ -186,7 +181,7 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
 
     # Execution readiness — fail-closed gate artifact
     readiness_path = (
-        artifacts / "readiness"
+        registry.readiness_dir()
         / f"section-{sec}-execution-ready.json"
     )
     if readiness_path.exists():
@@ -318,7 +313,7 @@ def write_dispatch_prompt(
 
     Returns the absolute path to the wrapper prompt file.
     """
-    flows_dir = planspace / "artifacts" / "flows"
+    flows_dir = PathRegistry(planspace).flows_dir()
     flows_dir.mkdir(parents=True, exist_ok=True)
 
     # Read original prompt content.
@@ -364,7 +359,7 @@ def _write_flow_context(
     previous_task_id: int | None,
 ) -> None:
     """Write a flow context JSON file for a task."""
-    flows_dir = planspace / "artifacts" / "flows"
+    flows_dir = PathRegistry(planspace).flows_dir()
     flows_dir.mkdir(parents=True, exist_ok=True)
 
     previous_result = None

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from lib.database_client import DatabaseClient
 from lib.mailbox_service import MailboxService, summary_tag
+from lib.path_registry import PathRegistry
 
 WORKFLOW_HOME = Path(os.environ.get(
     "WORKFLOW_HOME",
@@ -19,7 +20,7 @@ def log(msg: str) -> None:
 
 
 def _db_client(planspace: Path) -> DatabaseClient:
-    return DatabaseClient(DB_SH, planspace / "run.db")
+    return DatabaseClient(DB_SH, PathRegistry(planspace).run_db())
 
 
 def _mailbox(planspace: Path) -> MailboxService:
@@ -82,7 +83,7 @@ def _record_traceability(
     microstrategy → files/changes. Each entry captures what artifact
     was produced, from what source, and for which section.
     """
-    trace_path = planspace / "artifacts" / "traceability.json"
+    trace_path = PathRegistry(planspace).traceability()
     entries: list[dict] = []
     if trace_path.exists():
         try:

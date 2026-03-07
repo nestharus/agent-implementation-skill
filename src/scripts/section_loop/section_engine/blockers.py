@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed
+from lib.path_registry import PathRegistry
 
 
 def _append_open_problem(
@@ -15,8 +16,7 @@ def _append_open_problem(
     implementation) can surface them. They represent issues that could not
     be resolved at the current level and need upward routing.
     """
-    sec_file = (planspace / "artifacts" / "sections"
-                / f"section-{section_number}.md")
+    sec_file = PathRegistry(planspace).section_spec(section_number)
     if not sec_file.exists():
         return
     content = sec_file.read_text(encoding="utf-8")
@@ -42,7 +42,8 @@ def _update_blocker_rollup(planspace: Path) -> None:
     missing_info, decision_required, dependency, scope_expansion,
     needs_parent.
     """
-    signals_dir = planspace / "artifacts" / "signals"
+    paths = PathRegistry(planspace)
+    signals_dir = paths.signals_dir()
 
     blockers: list[dict] = []
     if signals_dir.exists():
@@ -91,7 +92,7 @@ def _update_blocker_rollup(planspace: Path) -> None:
                 continue
 
     # Collect proposal-state blockers from readiness artifacts
-    readiness_dir = planspace / "artifacts" / "readiness"
+    readiness_dir = paths.readiness_dir()
     if readiness_dir and readiness_dir.exists():
         for rdy_path in sorted(readiness_dir.glob(
                 "section-*-execution-ready.json")):
@@ -134,7 +135,7 @@ def _update_blocker_rollup(planspace: Path) -> None:
     if not blockers:
         return
 
-    decisions_dir = planspace / "artifacts" / "decisions"
+    decisions_dir = paths.decisions_dir()
     decisions_dir.mkdir(parents=True, exist_ok=True)
     rollup_path = decisions_dir / "needs-input.md"
 

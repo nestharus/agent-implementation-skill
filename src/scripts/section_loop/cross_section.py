@@ -8,6 +8,7 @@ from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed
 from lib.hash_service import content_hash, file_hash as hash_file
+from lib.path_registry import PathRegistry
 
 from .communication import (
     AGENT_NAME,
@@ -72,7 +73,7 @@ def post_section_completion(
     ``"glm"`` but callers should pass ``policy["impact_analysis"]`` and
     ``policy["impact_normalizer"]`` for policy-driven selection.
     """
-    artifacts = planspace / "artifacts"
+    artifacts = PathRegistry(planspace).artifacts
     sec_num = section.number
 
     # -----------------------------------------------------------------
@@ -351,7 +352,7 @@ This is the primary content of the consequence note the target receives.
     if not json_parsed:
         log(f"Section {sec_num}: impact analysis did not produce valid "
             f"JSON — dispatching GLM to normalize raw output")
-        artifacts = planspace / "artifacts"
+        artifacts = PathRegistry(planspace).artifacts
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".md", dir=str(artifacts),
             prefix=f"impact-normalize-{sec_num}-raw-", delete=False,
@@ -513,7 +514,7 @@ Snapshot directory: `{snapshot_dir}`
     # that section needs to rerun alignment with the new input.
     # Setting the flag is mechanical — the main loop's requeue logic
     # determines which sections actually changed (hash comparison).
-    baseline_hash_dir = planspace / "artifacts" / "section-inputs-hashes"
+    baseline_hash_dir = PathRegistry(planspace).section_inputs_hashes_dir()
     completed_targets = [
         t for t, _r, _cr, _nm in impacted_sections
         if (baseline_hash_dir / f"{t}.hash").exists()
@@ -567,7 +568,7 @@ def read_incoming_notes(
     Filters out acknowledged notes and bounds diff sizes to prevent
     context bloat. Returns combined context string for prompts.
     """
-    artifacts = planspace / "artifacts"
+    artifacts = PathRegistry(planspace).artifacts
     notes_dir = artifacts / "notes"
     sec_num = section.number
 
@@ -683,8 +684,9 @@ def read_decisions(planspace: Path, section_number: str) -> str:
     Returns the decisions text (may be multi-entry), or empty string
     if no decisions file exists.
     """
-    decisions_file = (planspace / "artifacts" / "decisions"
-                      / f"section-{section_number}.md")
+    decisions_file = (
+        PathRegistry(planspace).decisions_dir() / f"section-{section_number}.md"
+    )
     if decisions_file.exists():
         return decisions_file.read_text(encoding="utf-8")
     return ""
@@ -700,7 +702,7 @@ def persist_decision(planspace: Path, section_number: str,
     """
     from .decisions import Decision, load_decisions, record_decision
 
-    decisions_dir = planspace / "artifacts" / "decisions"
+    decisions_dir = PathRegistry(planspace).decisions_dir()
     decisions_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate a sequential decision ID based on existing count

@@ -52,6 +52,9 @@ class TestDirectoryAccessors:
     def test_todos_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
         assert reg.todos_dir() == tmp_path / "artifacts" / "todos"
 
+    def test_readiness_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.readiness_dir() == tmp_path / "artifacts" / "readiness"
+
     def test_coordination_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
         assert reg.coordination_dir() == tmp_path / "artifacts" / "coordination"
 
@@ -60,6 +63,57 @@ class TestDirectoryAccessors:
 
     def test_scope_deltas_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
         assert reg.scope_deltas_dir() == tmp_path / "artifacts" / "scope-deltas"
+
+    def test_contracts_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.contracts_dir() == tmp_path / "artifacts" / "contracts"
+
+    def test_inputs_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.inputs_dir() == tmp_path / "artifacts" / "inputs"
+
+    def test_trace_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.trace_dir() == tmp_path / "artifacts" / "trace"
+
+    def test_flows_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.flows_dir() == tmp_path / "artifacts" / "flows"
+
+    def test_qa_intercepts_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.qa_intercepts_dir() == tmp_path / "artifacts" / "qa-intercepts"
+
+    def test_substrate_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.substrate_dir() == tmp_path / "artifacts" / "substrate"
+
+    def test_substrate_prompts_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.substrate_prompts_dir() == (
+            tmp_path / "artifacts" / "substrate" / "prompts"
+        )
+
+    def test_intent_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.intent_dir() == tmp_path / "artifacts" / "intent"
+
+    def test_intent_global_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.intent_global_dir() == (
+            tmp_path / "artifacts" / "intent" / "global"
+        )
+
+    def test_intent_sections_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.intent_sections_dir() == (
+            tmp_path / "artifacts" / "intent" / "sections"
+        )
+
+    def test_section_inputs_hashes_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.section_inputs_hashes_dir() == (
+            tmp_path / "artifacts" / "section-inputs-hashes"
+        )
+
+    def test_phase2_inputs_hashes_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.phase2_inputs_hashes_dir() == (
+            tmp_path / "artifacts" / "phase2-inputs-hashes"
+        )
+
+    def test_related_files_update_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.related_files_update_dir() == (
+            tmp_path / "artifacts" / "signals" / "related-files-update"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -88,14 +142,15 @@ class TestSectionScopedAccessors:
     @pytest.mark.parametrize("num", ["01", "12"])
     def test_proposal_excerpt(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
         assert reg.proposal_excerpt(num) == (
-            tmp_path / "artifacts" / "proposals"
+            tmp_path / "artifacts" / "sections"
             / f"section-{num}-proposal-excerpt.md"
         )
 
     @pytest.mark.parametrize("num", ["01", "12"])
     def test_alignment_excerpt(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
         assert reg.alignment_excerpt(num) == (
-            tmp_path / "artifacts" / f"alignment-excerpt-{num}.md"
+            tmp_path / "artifacts" / "sections"
+            / f"section-{num}-alignment-excerpt.md"
         )
 
     @pytest.mark.parametrize("num", ["01", "12"])
@@ -108,8 +163,8 @@ class TestSectionScopedAccessors:
     @pytest.mark.parametrize("num", ["01", "12"])
     def test_problem_frame(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
         assert reg.problem_frame(num) == (
-            tmp_path / "artifacts" / "signals"
-            / f"section-{num}-problem-frame.json"
+            tmp_path / "artifacts" / "sections"
+            / f"section-{num}-problem-frame.md"
         )
 
     @pytest.mark.parametrize("num", ["01", "12"])
@@ -157,6 +212,30 @@ class TestSectionScopedAccessors:
             tmp_path / "artifacts" / f"impl-{num}-modified.txt"
         )
 
+    @pytest.mark.parametrize("num", ["01", "12"])
+    def test_input_refs_dir(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
+        assert reg.input_refs_dir(num) == (
+            tmp_path / "artifacts" / "inputs" / f"section-{num}"
+        )
+
+    @pytest.mark.parametrize("num", ["01", "12"])
+    def test_intent_section_dir(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
+        assert reg.intent_section_dir(num) == (
+            tmp_path / "artifacts" / "intent" / "sections" / f"section-{num}"
+        )
+
+    @pytest.mark.parametrize("num", ["01", "12"])
+    def test_section_input_hash(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
+        assert reg.section_input_hash(num) == (
+            tmp_path / "artifacts" / "section-inputs-hashes" / f"{num}.hash"
+        )
+
+    @pytest.mark.parametrize("num", ["01", "12"])
+    def test_phase2_input_hash(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
+        assert reg.phase2_input_hash(num) == (
+            tmp_path / "artifacts" / "phase2-inputs-hashes" / f"{num}.hash"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Global file accessors
@@ -169,13 +248,18 @@ class TestGlobalAccessors:
         return PathRegistry(tmp_path)
 
     def test_codemap(self, reg: PathRegistry, tmp_path: Path) -> None:
-        assert reg.codemap() == tmp_path / "artifacts" / "codemap.json"
+        assert reg.codemap() == tmp_path / "artifacts" / "codemap.md"
 
     def test_corrections(self, reg: PathRegistry, tmp_path: Path) -> None:
-        assert reg.corrections() == tmp_path / "artifacts" / "codemap-corrections.json"
+        assert reg.corrections() == (
+            tmp_path / "artifacts" / "signals" / "codemap-corrections.json"
+        )
 
     def test_tool_registry(self, reg: PathRegistry, tmp_path: Path) -> None:
         assert reg.tool_registry() == tmp_path / "artifacts" / "tool-registry.json"
+
+    def test_tool_digest(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.tool_digest() == tmp_path / "artifacts" / "tool-digest.md"
 
     def test_project_mode_json(self, reg: PathRegistry, tmp_path: Path) -> None:
         assert reg.project_mode_json() == (
@@ -193,6 +277,17 @@ class TestGlobalAccessors:
 
     def test_strategic_state(self, reg: PathRegistry, tmp_path: Path) -> None:
         assert reg.strategic_state() == tmp_path / "artifacts" / "strategic-state.json"
+
+    def test_parameters(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.parameters() == tmp_path / "artifacts" / "parameters.json"
+
+    def test_traceability(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.traceability() == tmp_path / "artifacts" / "traceability.json"
+
+    def test_alignment_changed_flag(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.alignment_changed_flag() == (
+            tmp_path / "artifacts" / "alignment-changed-pending"
+        )
 
     def test_run_db(self, reg: PathRegistry, tmp_path: Path) -> None:
         assert reg.run_db() == tmp_path / "run.db"

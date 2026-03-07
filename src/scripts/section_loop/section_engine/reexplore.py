@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from lib.path_registry import PathRegistry
+
 from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
 from ..communication import _log_artifact, log
 from ..cross_section import extract_section_summary
@@ -28,8 +30,9 @@ def _reexplore_section(
     ``scan.exploration`` policy key when queued ``scan_explore`` tasks
     are dispatched — no ``exploration_model`` parameter is needed here.
     """
-    artifacts = planspace / "artifacts"
-    codemap_path = artifacts / "codemap.md"
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
+    codemap_path = paths.codemap()
     prompt_path = artifacts / f"reexplore-{section.number}-prompt.md"
     output_path = artifacts / f"reexplore-{section.number}-output.md"
     summary = extract_section_summary(section.path)
@@ -38,7 +41,7 @@ def _reexplore_section(
     if codemap_path.exists():
         codemap_ref = f"3. Codemap: `{codemap_path}`"
 
-    corrections_path = artifacts / "signals" / "codemap-corrections.json"
+    corrections_path = paths.corrections()
     corrections_ref = ""
     if corrections_path.exists():
         corrections_ref = (
@@ -128,9 +131,9 @@ the JSON, not unstructured text.
     if result != "ALIGNMENT_CHANGED_PENDING":
         ingest_and_submit(
             planspace,
-            db_path=planspace / "run.db",
+            db_path=paths.run_db(),
             submitted_by=f"reexplore-{section.number}",
-            signal_path=planspace / "artifacts" / "signals"
+            signal_path=paths.signals_dir()
             / f"task-requests-reexplore-{section.number}.json",
             origin_refs=[str(output_path)],
         )
@@ -147,9 +150,10 @@ def _write_alignment_surface(
     knows exactly which artifacts exist for this section and where to
     find them.
     """
-    artifacts = planspace / "artifacts"
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     sec = section.number
-    sections_dir = artifacts / "sections"
+    sections_dir = paths.sections_dir()
     sections_dir.mkdir(parents=True, exist_ok=True)
     surface_path = sections_dir / f"section-{sec}-alignment-surface.md"
 
@@ -157,60 +161,55 @@ def _write_alignment_surface(
     lines.append("Authoritative inputs for alignment judgement:\n")
 
     # Proposal excerpt
-    proposal_excerpt = sections_dir / f"section-{sec}-proposal-excerpt.md"
+    proposal_excerpt = paths.proposal_excerpt(sec)
     if proposal_excerpt.exists():
         lines.append(f"- **Proposal excerpt**: `{proposal_excerpt}`")
 
     # Alignment excerpt
-    alignment_excerpt = sections_dir / f"section-{sec}-alignment-excerpt.md"
+    alignment_excerpt = paths.alignment_excerpt(sec)
     if alignment_excerpt.exists():
         lines.append(f"- **Alignment excerpt**: `{alignment_excerpt}`")
 
     # Integration proposal
-    integration_proposal = (
-        artifacts / "proposals"
-        / f"section-{sec}-integration-proposal.md"
-    )
+    integration_proposal = paths.proposal(sec)
     if integration_proposal.exists():
         lines.append(
             f"- **Integration proposal**: `{integration_proposal}`")
 
     # Proposal-state artifact (machine-readable problem state)
     proposal_state_path = (
-        artifacts / "proposals" / f"section-{sec}-proposal-state.json"
+        paths.proposals_dir() / f"section-{sec}-proposal-state.json"
     )
     if proposal_state_path.exists():
         lines.append(
             f"- **Proposal-state artifact**: `{proposal_state_path}`")
 
     # TODO extraction
-    todos_path = artifacts / "todos" / f"section-{sec}-todos.md"
+    todos_path = paths.todos(sec)
     if todos_path.exists():
         lines.append(f"- **TODO extraction**: `{todos_path}`")
 
     # Microstrategy
-    microstrategy_path = (
-        artifacts / "proposals" / f"section-{sec}-microstrategy.md"
-    )
+    microstrategy_path = paths.microstrategy(sec)
     if microstrategy_path.exists():
         lines.append(f"- **Microstrategy**: `{microstrategy_path}`")
 
     # Problem frame
-    problem_frame = sections_dir / f"section-{sec}-problem-frame.md"
+    problem_frame = paths.problem_frame(sec)
     if problem_frame.exists():
         lines.append(
             f"- **Problem frame** (derived summary; defer to excerpts "
             f"on conflict): `{problem_frame}`")
 
     # Incoming consequence notes
-    notes_dir = artifacts / "notes"
+    notes_dir = paths.notes_dir()
     if notes_dir.exists():
         incoming = sorted(notes_dir.glob(f"from-*-to-{sec}.md"))
         for note in incoming:
             lines.append(f"- **Incoming note**: `{note}`")
 
     # Decisions (glob matches both section-03.md and section-03-*.md)
-    decisions_dir = artifacts / "decisions"
+    decisions_dir = paths.decisions_dir()
     if decisions_dir.exists():
         decisions = sorted(decisions_dir.glob(f"section-{sec}*.md"))
         for dec in decisions:
@@ -218,9 +217,7 @@ def _write_alignment_surface(
 
     # V1/R61: Intent pack artifacts — propagate to alignment surface
     # so the surface is truly authoritative over all alignment inputs.
-    intent_sec_dir = (
-        artifacts / "intent" / "sections" / f"section-{sec}"
-    )
+    intent_sec_dir = paths.intent_section_dir(sec)
     intent_problem = intent_sec_dir / "problem.md"
     if intent_problem.exists():
         lines.append(

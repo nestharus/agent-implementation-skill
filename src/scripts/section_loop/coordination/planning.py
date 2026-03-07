@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from lib.artifact_io import write_json
+from lib.path_registry import PathRegistry
 
 from ..communication import _log_artifact, log
 from prompt_safety import write_validated_prompt
@@ -139,7 +140,8 @@ def write_coordination_plan_prompt(
     produces a JSON plan with groups, strategies, and execution order.
     The script then executes the plan mechanically.
     """
-    artifacts = planspace / "artifacts" / "coordination"
+    paths = PathRegistry(planspace)
+    artifacts = paths.coordination_dir()
     artifacts.mkdir(parents=True, exist_ok=True)
     prompt_path = artifacts / "coordination-plan-prompt.md"
 
@@ -148,9 +150,8 @@ def write_coordination_plan_prompt(
     write_json(problems_path, problems)
 
     # Include codemap reference so the planner sees project skeleton
-    codemap_path = planspace / "artifacts" / "codemap.md"
-    corrections_path = (planspace / "artifacts" / "signals"
-                        / "codemap-corrections.json")
+    codemap_path = paths.codemap()
+    corrections_path = paths.corrections()
     codemap_ref = ""
     if codemap_path.exists():
         corrections_line = ""
@@ -169,7 +170,7 @@ def write_coordination_plan_prompt(
 
     # Include recurrence data if available
     recurrence_ref = ""
-    recurrence_path = planspace / "artifacts" / "coordination" / "recurrence.json"
+    recurrence_path = paths.coordination_dir() / "recurrence.json"
     if recurrence_path.exists():
         recurrence_ref = (
             f"\n## Recurrence Data\n\n"

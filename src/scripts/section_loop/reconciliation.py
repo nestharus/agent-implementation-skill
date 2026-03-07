@@ -18,6 +18,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed, write_json
+from lib.path_registry import PathRegistry
 from lib.hash_service import content_hash
 from .agent_templates import render_template
 from .dispatch import dispatch_agent, read_model_policy
@@ -170,7 +171,7 @@ def _adjudicate_ungrouped_candidates(
     if len(ungrouped) < 2:
         return []
 
-    recon_dir = planspace / "artifacts" / "reconciliation"
+    recon_dir = PathRegistry(planspace).reconciliation_dir()
 
     # Write ungrouped candidates to a JSON artifact so that raw candidate
     # text never appears inline in the dynamic prompt body.  This prevents
