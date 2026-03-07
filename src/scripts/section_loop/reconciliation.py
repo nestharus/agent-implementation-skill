@@ -10,15 +10,13 @@ scope-delta and substrate-trigger artifacts.
 Entry point: ``run_reconciliation(run_dir, proposal_results)``.
 """
 
-from __future__ import annotations
-
-import json
 import logging
 from pathlib import Path
 
-from lib.artifact_io import read_json, rename_malformed, write_json
+from lib.artifact_io import write_json
 from lib.path_registry import PathRegistry
 from lib.proposal_state_repository import load_proposal_state
+from lib.reconciliation_adjudicator import adjudicate_ungrouped_candidates
 from lib.reconciliation_detectors import (
     aggregate_shared_seams,
     consolidate_new_section_candidates,
@@ -32,212 +30,9 @@ from lib.reconciliation_result_repository import (
     write_scope_delta,
     write_substrate_trigger,
 )
-from .agent_templates import render_template
-from .dispatch import dispatch_agent, read_model_policy
-from prompt_safety import validate_dynamic_content
 from lib.reconciliation_queue import load_reconciliation_requests
 
 logger = logging.getLogger(__name__)
-
-
-def _adjudicate_ungrouped_candidates(
-    ungrouped: list[dict],
-    planspace: Path,
-    candidate_type: str,
-) -> list[dict]:
-    """Dispatch an adjudicator agent to merge semantically similar candidates.
-
-    Parameters
-    ----------
-    ungrouped:
-        List of dicts, each with ``title``, ``source_section``, and
-        optionally ``description``.
-    planspace:
-        The planspace root directory (for artifact writes and dispatch).
-    candidate_type:
-        Either ``"new_section"`` or ``"shared_seam"`` — used for
-        artifact naming and prompt context.
-
-    Returns
-    -------
-    list[dict]
-        Merged groups from the agent verdict. Each dict has
-        ``canonical_title``, ``members`` (list of original titles),
-        and ``rationale``. Returns empty list on failure (fail-open).
-    """
-    if len(ungrouped) < 2:
-        return []
-
-    recon_dir = PathRegistry(planspace).reconciliation_dir()
-
-    # Write ungrouped candidates to a JSON artifact so that raw candidate
-    # text never appears inline in the dynamic prompt body.  This prevents
-    # candidate titles/descriptions from tripping prompt-safety and aligns
-    # with the filepath-over-inline prompt pattern.
-    candidates_path = recon_dir / f"ungrouped-{candidate_type}.json"
-    write_json(candidates_path, ungrouped)
-
-    dynamic_body = f"""# Reconciliation Adjudication: {candidate_type}
-
-## Candidate Type
-{candidate_type.replace("_", " ").title()} candidates
-
-## Ungrouped Candidates
-
-Read the ungrouped candidates from: `{candidates_path}`
-
-The candidates were NOT matched by exact title comparison.
-Decide which ones describe the same underlying concern and should be
-merged, and which should remain separate.
-
-## Instructions
-
-Return a JSON verdict with merged groups and separate candidates.
-Every candidate title must appear exactly once — either in a merged
-group's `members` array or in the `separate` array.
-
-```json
-{{
-  "merged_groups": [
-    {{"canonical_title": "...", "members": ["title-a", "title-b"], "rationale": "..."}}
-  ],
-  "separate": ["title-c"]
-}}
-```
-"""
-
-    prompt_path = recon_dir / f"adjudicate-{candidate_type}-prompt.md"
-    output_path = recon_dir / f"adjudicate-{candidate_type}-output.md"
-
-    # Validate dynamic body before wrapping in template
-    violations = validate_dynamic_content(dynamic_body)
-    if violations:
-        logger.warning(
-            "Reconciliation adjudicate prompt safety violation: %s "
-            "— skipping dispatch (fail-open: returning empty list)",
-            violations,
-        )
-        return []
-
-    prompt_path.write_text(
-        render_template("reconciliation-adjudicate", dynamic_body),
-        encoding="utf-8",
-    )
-
-    policy = read_model_policy(planspace)
-    model = policy.get("reconciliation_adjudicate", "claude-opus")
-
-    try:
-        result = dispatch_agent(
-            model, prompt_path, output_path,
-            planspace=planspace,
-            agent_file="reconciliation-adjudicator.md",
-        )
-    except Exception:
-        logger.warning(
-            "Reconciliation adjudication dispatch failed for %s "
-            "— falling back to exact-match only",
-            candidate_type,
-            exc_info=True,
-        )
-        return []
-
-    # Parse JSON verdict from agent output (fail-open on parse errors)
-    try:
-        json_start = result.find("{")
-        json_end = result.rfind("}")
-        if json_start >= 0 and json_end > json_start:
-            data = json.loads(result[json_start:json_end + 1])
-            merged = data.get("merged_groups", [])
-            if isinstance(merged, list):
-                return merged
-    except (json.JSONDecodeError, KeyError, TypeError):
-        logger.warning(
-            "Reconciliation adjudication returned malformed JSON for "
-            "%s — falling back to exact-match only",
-            candidate_type,
-        )
-    return []
-
-def _detect_anchor_overlaps(states: dict[str, dict]) -> list[dict]:
-    return detect_anchor_overlaps(states)
-
-
-def _detect_contract_conflicts(states: dict[str, dict]) -> list[dict]:
-    return detect_contract_conflicts(states)
-
-
-def _consolidate_new_section_candidates(
-    states: dict[str, dict],
-    planspace: Path | None = None,
-) -> list[dict]:
-    consolidated, ungrouped_titles = consolidate_new_section_candidates(states)
-
-    if planspace and len(ungrouped_titles) >= 2:
-        merged_groups = _adjudicate_ungrouped_candidates(
-            ungrouped_titles, planspace, "new_section",
-        )
-        for mg in (merged_groups or []):
-            members = mg.get("members", [])
-            canonical = mg.get("canonical_title", "")
-            if not members or not canonical:
-                continue
-            member_set = {m.strip().lower() for m in members}
-            merged_candidates: list[dict] = []
-            merged_sections: set[str] = set()
-            for ug in ungrouped_titles:
-                if ug["title"] in member_set:
-                    merged_sections.add(ug["source_section"])
-                    merged_candidates.append({
-                        "section": ug["source_section"],
-                        "candidate": ug["title"],
-                    })
-            if merged_sections:
-                consolidated.append({
-                    "title": canonical.strip().lower(),
-                    "source_sections": sorted(merged_sections),
-                    "candidates": merged_candidates,
-                    "type": "consolidated_new_section",
-                    "adjudicated": True,
-                    "rationale": mg.get("rationale", ""),
-                })
-
-    return consolidated
-
-
-def _aggregate_shared_seams(
-    states: dict[str, dict],
-    planspace: Path | None = None,
-) -> list[dict]:
-    aggregated, ungrouped_seams = aggregate_shared_seams(states)
-
-    if planspace and len(ungrouped_seams) >= 2:
-        merged_groups = _adjudicate_ungrouped_candidates(
-            ungrouped_seams, planspace, "shared_seam",
-        )
-        for mg in (merged_groups or []):
-            members = mg.get("members", [])
-            canonical = mg.get("canonical_title", "")
-            if not members or not canonical:
-                continue
-            member_set = {m.strip().lower() for m in members}
-            merged_sections: set[str] = set()
-            for ug in ungrouped_seams:
-                if ug["title"] in member_set:
-                    merged_sections.add(ug["source_section"])
-            if len(merged_sections) > 1:
-                aggregated.append({
-                    "seam": canonical.strip().lower(),
-                    "sections": sorted(merged_sections),
-                    "needs_substrate": True,
-                    "type": "shared_seam",
-                    "adjudicated": True,
-                    "rationale": mg.get("rationale", ""),
-                })
-
-    return aggregated
-
-
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -355,12 +150,64 @@ def run_reconciliation(
     # ------------------------------------------------------------------
     # 3. Detect overlaps, conflicts, consolidations
     # ------------------------------------------------------------------
-    anchor_overlaps = _detect_anchor_overlaps(states)
-    contract_conflicts = _detect_contract_conflicts(states)
-    consolidated_sections = _consolidate_new_section_candidates(
-        states, planspace=run_dir,
+    anchor_overlaps = detect_anchor_overlaps(states)
+    contract_conflicts = detect_contract_conflicts(states)
+    consolidated_sections, ungrouped_titles = consolidate_new_section_candidates(
+        states
     )
-    shared_seams = _aggregate_shared_seams(states, planspace=run_dir)
+    if len(ungrouped_titles) >= 2:
+        merged_groups = adjudicate_ungrouped_candidates(
+            ungrouped_titles, run_dir, "new_section",
+        )
+        for merged_group in merged_groups or []:
+            members = merged_group.get("members", [])
+            canonical = merged_group.get("canonical_title", "")
+            if not members or not canonical:
+                continue
+            member_set = {member.strip().lower() for member in members}
+            merged_candidates: list[dict] = []
+            merged_sections: set[str] = set()
+            for ungrouped in ungrouped_titles:
+                if ungrouped["title"] in member_set:
+                    merged_sections.add(ungrouped["source_section"])
+                    merged_candidates.append({
+                        "section": ungrouped["source_section"],
+                        "candidate": ungrouped["title"],
+                    })
+            if merged_sections:
+                consolidated_sections.append({
+                    "title": canonical.strip().lower(),
+                    "source_sections": sorted(merged_sections),
+                    "candidates": merged_candidates,
+                    "type": "consolidated_new_section",
+                    "adjudicated": True,
+                    "rationale": merged_group.get("rationale", ""),
+                })
+
+    shared_seams, ungrouped_seams = aggregate_shared_seams(states)
+    if len(ungrouped_seams) >= 2:
+        merged_groups = adjudicate_ungrouped_candidates(
+            ungrouped_seams, run_dir, "shared_seam",
+        )
+        for merged_group in merged_groups or []:
+            members = merged_group.get("members", [])
+            canonical = merged_group.get("canonical_title", "")
+            if not members or not canonical:
+                continue
+            member_set = {member.strip().lower() for member in members}
+            merged_sections: set[str] = set()
+            for ungrouped in ungrouped_seams:
+                if ungrouped["title"] in member_set:
+                    merged_sections.add(ungrouped["source_section"])
+            if len(merged_sections) > 1:
+                shared_seams.append({
+                    "seam": canonical.strip().lower(),
+                    "sections": sorted(merged_sections),
+                    "needs_substrate": True,
+                    "type": "shared_seam",
+                    "adjudicated": True,
+                    "rationale": merged_group.get("rationale", ""),
+                })
 
     # Seams that involve multiple sections need substrate work
     substrate_seams = [s for s in shared_seams if s.get("needs_substrate")]

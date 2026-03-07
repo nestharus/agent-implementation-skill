@@ -6,6 +6,10 @@ render → write file → log artifact.
 
 from pathlib import Path
 
+from lib.prompt_context_assembler import (
+    build_impl_context_extras,
+    build_proposal_context_extras,
+)
 from lib.path_registry import PathRegistry
 from lib.prompt_helpers import (
     agent_mail_instructions,
@@ -18,7 +22,6 @@ from ..agent_templates import validate_dynamic_content
 from ..alignment import collect_modified_files
 from ..communication import WORKFLOW_HOME, _log_artifact, log
 from ..context_assembly import materialize_context_sidecar
-from ..cross_section import extract_section_summary
 from ..types import Section
 from .context import build_prompt_context
 from .renderer import load_template, render
@@ -100,49 +103,12 @@ def write_integration_proposal_prompt(
         proposals_dir / f"section-{sec}-proposal-state.json"
     )
 
-    # Write alignment problems to file if present
-    problems_block = ""
-    if alignment_problems:
-        problems_file = artifacts / f"intg-proposal-{sec}-problems.md"
-        problems_file.write_text(alignment_problems, encoding="utf-8")
-        problems_block = (
-            f"\n## Previous Alignment Problems\n\n"
-            f"The alignment check found problems with your previous integration\n"
-            f"proposal. Read them and address ALL of them in this revision:\n"
-            f"`{problems_file}`\n"
-        )
-
-    existing_note = ""
-    if integration_proposal.exists():
-        existing_note = (
-            f"\n## Existing Integration Proposal\n"
-            f"There is an existing proposal from a previous round at:\n"
-            f"`{integration_proposal}`\n"
-            f"Read it and revise it to address the alignment problems above.\n"
-        )
-
-    # Write incoming notes to file if present
-    notes_block = ""
-    if incoming_notes:
-        notes_file = artifacts / f"intg-proposal-{sec}-notes.md"
-        notes_file.write_text(incoming_notes, encoding="utf-8")
-        notes_block = (
-            f"\n## Notes from Other Sections\n\n"
-            f"Other sections have completed work that may affect this section. Read\n"
-            f"these notes carefully — they describe consequences, contracts, and\n"
-            f"interfaces that may constrain or inform your integration strategy:\n"
-            f"`{notes_file}`\n"
-        )
-
     ctx = build_prompt_context(section, planspace, codespace)
     ctx.update({
         "proposal_excerpt": proposal_excerpt,
         "alignment_excerpt": alignment_excerpt,
         "integration_proposal": integration_proposal,
         "proposal_state_path": proposal_state_path,
-        "problems_block": problems_block,
-        "existing_note": existing_note,
-        "notes_block": notes_block,
         "task_submission_path": str(
             artifacts / "signals" / f"task-requests-proposal-{sec}.json"),
         "allowed_tasks": "scan_explore, impact_analysis, integration_proposal",
@@ -151,6 +117,14 @@ def write_integration_proposal_prompt(
         ),
         "mail_block": agent_mail_instructions(planspace, a_name, m_name),
     })
+    ctx.update(
+        build_proposal_context_extras(
+            section,
+            planspace,
+            alignment_problems,
+            incoming_notes,
+        )
+    )
 
     # Materialize sidecar BEFORE rendering so it exists at prompt-write time
     sidecar_path = materialize_context_sidecar(
@@ -262,87 +236,6 @@ def write_strategic_impl_prompt(
     )
     modified_report = artifacts / f"impl-{sec}-modified.txt"
 
-    # Write alignment problems to file if present
-    problems_block = ""
-    if alignment_problems:
-        problems_file = artifacts / f"impl-{sec}-problems.md"
-        problems_file.write_text(alignment_problems, encoding="utf-8")
-        problems_block = (
-            f"\n## Previous Implementation Alignment Problems\n\n"
-            f"The alignment check found problems with your previous implementation.\n"
-            f"Read them and address ALL of them: `{problems_file}`\n"
-        )
-
-    # Decisions block (implementation-specific wording)
-    decisions_file = artifacts / "decisions" / f"section-{sec}.md"
-    impl_decisions_block = ""
-    if decisions_file.exists():
-        impl_decisions_block = (
-            f"\n## Decisions from Parent (answers to earlier questions)\n\n"
-            f"Read decisions: `{decisions_file}`\n"
-        )
-
-    # Impl-specific corrections ref (numbered differently from proposal)
-    codemap_corrections_path = (
-        artifacts / "signals" / "codemap-corrections.json"
-    )
-    impl_corrections_ref = ""
-    if codemap_corrections_path.exists():
-        impl_corrections_ref = (
-            f"\n   - Codemap corrections (authoritative fixes): "
-            f"`{codemap_corrections_path}`"
-        )
-
-    # Impl-specific codemap ref (numbered 7 instead of 5)
-    codemap_path = artifacts / "codemap.md"
-    impl_codemap_ref = ""
-    if codemap_path.exists():
-        impl_codemap_ref = (
-            f"\n7. Codemap (project understanding): `{codemap_path}`"
-        )
-
-    # Impl-specific todos ref (numbered 8)
-    todos_path = artifacts / "todos" / f"section-{sec}-todos.md"
-    impl_todos_ref = ""
-    if todos_path.exists():
-        impl_todos_ref = (
-            f"\n8. TODO extraction (in-code microstrategies): `{todos_path}`"
-        )
-
-    # Impl-specific tools ref (numbered 9)
-    tools_path = (
-        artifacts / "sections" / f"section-{sec}-tools-available.md"
-    )
-    impl_tools_ref = ""
-    if tools_path.exists():
-        impl_tools_ref = (
-            f"\n9. Available tools from earlier sections: `{tools_path}`"
-        )
-
-    # Tool registry
-    tool_registry_path = artifacts / "tool-registry.json"
-    friction_signal_path = (
-        artifacts / "signals" / f"section-{sec}-tool-friction.json"
-    )
-    tooling_block = (
-        f"\n## Tooling\n\n"
-        f"If you create any new tool/script intended for reuse, you MUST append an\n"
-        f"entry to the tool registry at: `{tool_registry_path}`\n"
-        f"using the documented schema (id/path/created_by/scope/status/description/\n"
-        f"registered_at). If you are unsure a script qualifies as a tool, register it\n"
-        f"as `experimental` and note the uncertainty in the description.\n\n"
-        f"### Tool Friction Detection\n\n"
-        f"If you encounter tool composition friction (tools that don't compose\n"
-        f"cleanly, a missing bridge tool, or disconnected tool islands), write a\n"
-        f"friction signal to: `{friction_signal_path}`\n\n"
-        f"Format:\n"
-        f"```json\n"
-        f'{{"friction": true, "islands": [["toolA","toolB"]], '
-        f'"missing_bridge": "description of what is missing"}}\n'
-        f"```\n"
-        f"The runner reads this file to dispatch bridge-tool creation.\n"
-    )
-
     # Microstrategy ref (numbered 6 in impl)
     microstrategy_path = (
         artifacts / "proposals" / f"section-{sec}-microstrategy.md"
@@ -390,18 +283,23 @@ def write_strategic_impl_prompt(
         )
 
     ctx = build_prompt_context(section, planspace, codespace)
+    impl_extras = build_impl_context_extras(
+        section,
+        planspace,
+        alignment_problems,
+    )
     ctx.update({
         "proposal_excerpt": proposal_excerpt,
         "alignment_excerpt": alignment_excerpt,
         "integration_proposal": integration_proposal,
         "modified_report": modified_report,
-        "problems_block": problems_block,
-        "decisions_block": impl_decisions_block,
-        "impl_corrections_ref": impl_corrections_ref,
-        "codemap_ref": impl_codemap_ref,
-        "todos_ref": impl_todos_ref,
-        "impl_tools_ref": impl_tools_ref,
-        "tooling_block": tooling_block,
+        "problems_block": impl_extras["problems_block"],
+        "decisions_block": impl_extras["decisions_block"],
+        "impl_corrections_ref": impl_extras["corrections_ref"],
+        "codemap_ref": impl_extras["codemap_ref"],
+        "todos_ref": impl_extras["todos_ref"],
+        "impl_tools_ref": impl_extras["tools_ref"],
+        "tooling_block": impl_extras["tooling_block"],
         "micro_ref": impl_micro_ref,
         "proposal_state_ref": proposal_state_ref,
         "reconciliation_ref": reconciliation_ref,

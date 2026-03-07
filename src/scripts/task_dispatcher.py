@@ -20,26 +20,25 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
-import subprocess
 import sys
 import time
 from pathlib import Path
 
-from lib.artifact_io import read_json
-from lib.dispatch_metadata import (
-    DISPATCH_META_CORRUPT,
-    read_dispatch_metadata,
-)
+from lib.dispatch_metadata import DISPATCH_META_CORRUPT, read_dispatch_metadata
 from lib.path_registry import PathRegistry
+from lib.task_db_client import db_cmd
+from lib.task_notifier import (
+    notify_task_result,
+    record_qa_intercept,
+    record_task_routing,
+)
 from lib.task_parser import parse_task_output
 
 # Resolve paths relative to this script's location.
 SCRIPTS_DIR = Path(__file__).resolve().parent
 WORKFLOW_HOME = Path(os.environ.get("WORKFLOW_HOME", SCRIPTS_DIR.parent))
-DB_SH = SCRIPTS_DIR / "db.sh"
 
 # Import task_router and task_flow from the same directory.
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -65,28 +64,57 @@ DISPATCHER_NAME = "task-dispatcher"
 _DISPATCH_META_CORRUPT = DISPATCH_META_CORRUPT
 
 
-def _db(db_path: str, *args: str) -> subprocess.CompletedProcess[str]:
-    """Run a db.sh subcommand and return the result."""
-    cmd = ["bash", str(DB_SH), *args, db_path] if args[0] == "init" else ["bash", str(DB_SH), args[0], db_path, *args[1:]]
-    # db.sh expects: db.sh <command> <db> [args...]
-    # So: bash db.sh <command> <db_path> [remaining args]
-    return subprocess.run(  # noqa: S603, S607
-        cmd, capture_output=True, text=True, timeout=30,
-    )
-
-
 def _db_cmd(db_path: str, command: str, *args: str) -> str:
-    """Run a db.sh subcommand, return stdout. Raises on failure."""
-    cmd = ["bash", str(DB_SH), command, db_path, *args]
-    result = subprocess.run(  # noqa: S603, S607
-        cmd, capture_output=True, text=True, timeout=30,
+    """Compatibility shim for tests that patch dispatcher-local DB calls."""
+    return db_cmd(db_path, command, *args)
+
+
+def _notify(
+    db_path: str,
+    target: str,
+    task_id: str,
+    task_type: str,
+    status: str,
+    detail: str,
+) -> None:
+    """Compatibility shim for tests that patch dispatcher-local notifications."""
+    notify_task_result(db_path, target, task_id, task_type, status, detail)
+
+
+def _record_task_routing(
+    db_path: str,
+    planspace: Path,
+    task_id: str,
+    task_type: str,
+    agent_file: str,
+    model: str,
+) -> None:
+    """Compatibility shim for dispatcher-local routing persistence."""
+    record_task_routing(
+        planspace,
+        task_id,
+        task_type,
+        agent_file,
+        model,
+        db_path=db_path,
     )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"db.sh {command} failed (rc={result.returncode}): "
-            f"{result.stderr.strip()}"
-        )
-    return result.stdout.strip()
+
+
+def _record_qa_intercept(
+    db_path: str,
+    planspace: Path,
+    task_id: str,
+    task_type: str,
+    rejection_reason: str | None,
+) -> None:
+    """Compatibility shim for dispatcher-local QA logging."""
+    record_qa_intercept(
+        planspace,
+        task_id,
+        task_type,
+        rejection_reason,
+        db_path=db_path,
+    )
 
 
 def parse_next_task(output: str) -> dict[str, str] | None:
@@ -152,7 +180,14 @@ def dispatch_task(
         return
 
     # Record agent_file and model on the task row for observability.
-    _record_task_routing(db_path, task_id, agent_file, model)
+    _record_task_routing(
+        db_path,
+        planspace,
+        task_id,
+        task_type,
+        agent_file,
+        model,
+    )
 
     log(f"Dispatching task {task_id}: {task_type} -> {agent_file} ({model})")
 
@@ -209,8 +244,11 @@ def dispatch_task(
             rationale_path = None
 
         _record_qa_intercept(
-            db_path, planspace, task_id,
-            "passed" if passed else "rejected", rationale_path,
+            db_path,
+            planspace,
+            task_id,
+            task_type,
+            None if passed else rationale_path,
         )
 
         if not passed:
@@ -357,65 +395,6 @@ def dispatch_task(
             Path(db_path), planspace, int(task_id),
             "complete", str(output_path),
         )
-
-
-def _record_task_routing(
-    db_path: str, task_id: str, agent_file: str, model: str,
-) -> None:
-    """Update the task row with the resolved agent_file and model."""
-    import sqlite3
-
-    conn = sqlite3.connect(db_path, timeout=5.0)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute(
-        "UPDATE tasks SET agent_file=?, model=? WHERE id=?",
-        (agent_file, model, int(task_id)),
-    )
-    conn.commit()
-    conn.close()
-
-
-def _record_qa_intercept(
-    db_path: str,
-    planspace: Path,
-    task_id: str,
-    verdict: str,
-    rationale_path: str | None,
-) -> None:
-    """Log a QA intercept event to the DB for observability."""
-    body = f"qa:{verdict}:{task_id}"
-    if rationale_path:
-        body += f":{rationale_path}"
-    try:
-        subprocess.run(  # noqa: S603
-            ["bash", str(DB_SH), "log", db_path,  # noqa: S607
-             "lifecycle", f"qa-intercept:{task_id}", body,
-             "--agent", DISPATCHER_NAME],
-            capture_output=True, text=True, timeout=10,
-        )
-    except Exception:
-        # Non-critical — logging failure must not block dispatch.
-        pass
-
-
-def _notify(
-    db_path: str,
-    target: str,
-    task_id: str,
-    task_type: str,
-    status: str,
-    detail: str,
-) -> None:
-    """Send a mailbox notification to the task submitter."""
-    body = f"task:{status}:{task_id}:{task_type}:{detail}"
-    try:
-        _db_cmd(
-            db_path, "send", target, "--from", DISPATCHER_NAME, body,
-        )
-    except RuntimeError:
-        # Non-critical — submitter may not have a mailbox.
-        pass
 
 
 def log(msg: str) -> None:
