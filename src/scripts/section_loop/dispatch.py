@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from lib.artifact_io import write_json
+from lib.alignment_change_tracker import check_pending as alignment_changed_pending
 from lib.database_client import DatabaseClient
 from lib.dispatch_metadata import write_dispatch_metadata
 from lib.model_policy import load_model_policy
@@ -20,7 +21,7 @@ from .communication import (
     log,
 )
 from .context_assembly import materialize_context_sidecar
-from .pipeline_control import alignment_changed_pending, wait_if_paused
+from .pipeline_control import wait_if_paused
 
 
 def _database_client(planspace: Path) -> DatabaseClient:

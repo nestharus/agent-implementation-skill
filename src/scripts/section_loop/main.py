@@ -5,6 +5,10 @@ import sys
 from pathlib import Path
 
 from lib.artifact_io import read_json, write_json
+from lib.alignment_change_tracker import (
+    check_and_clear,
+    check_pending as alignment_changed_pending,
+)
 from lib.path_registry import PathRegistry
 
 from .alignment import (
@@ -34,9 +38,7 @@ from .dispatch import (
     read_model_policy,
 )
 from .pipeline_control import (
-    _check_and_clear_alignment_changed,
     _section_inputs_hash,
-    alignment_changed_pending,
     handle_pending_messages,
     pause_for_parent,
     poll_control_messages,
@@ -74,6 +76,10 @@ def load_sections(sections_dir: Path) -> list[Section]:
         sections.append(Section(number=m.group(1), path=path,
                                 related_files=related))
     return sections
+
+
+def _check_and_clear_alignment_changed(planspace: Path) -> bool:
+    return check_and_clear(planspace, db_sh=DB_SH, agent_name=AGENT_NAME)
 
 
 def main() -> None:

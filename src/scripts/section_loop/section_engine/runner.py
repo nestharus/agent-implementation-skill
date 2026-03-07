@@ -5,7 +5,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from lib.artifact_io import read_json, read_json_or_default, write_json
+from lib.alignment_change_tracker import check_pending as alignment_changed_pending
+from lib.excerpt_repository import exists as excerpt_exists
 from lib.hash_service import content_hash, file_hash
+from lib.note_repository import write_consequence_note
 from lib.path_registry import PathRegistry
 
 from ..alignment import (
@@ -41,7 +44,6 @@ from ..dispatch import (
 from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
 from ..task_ingestion import ingest_and_submit
 from ..pipeline_control import (
-    alignment_changed_pending,
     handle_pending_messages,
     pause_for_parent,
     poll_control_messages,
@@ -484,7 +486,10 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                          / f"section-{section.number}-alignment-excerpt.md")
 
     # Setup loop: runs until excerpts exist. Retries after pause/resume.
-    while not proposal_excerpt.exists() or not alignment_excerpt.exists():
+    while (
+        not excerpt_exists(planspace, section.number, "proposal")
+        or not excerpt_exists(planspace, section.number, "alignment")
+    ):
         log(f"Section {section.number}: setup — extracting excerpts")
         setup_prompt = write_section_setup_prompt(
             section, planspace, codespace,
@@ -557,7 +562,10 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             continue  # Retry setup with new decisions context
 
         # Verify excerpts were created
-        if not proposal_excerpt.exists() or not alignment_excerpt.exists():
+        if (
+            not excerpt_exists(planspace, section.number, "proposal")
+            or not excerpt_exists(planspace, section.number, "alignment")
+        ):
             log(f"Section {section.number}: ERROR — setup failed to create "
                 f"excerpt files")
             mailbox_send(planspace, parent,
@@ -674,7 +682,10 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                     f"integration proposal due to problem frame change")
     pf_hash_path.write_text(current_pf_hash, encoding="utf-8")
 
-    if proposal_excerpt.exists() and alignment_excerpt.exists():
+    if (
+        excerpt_exists(planspace, section.number, "proposal")
+        and excerpt_exists(planspace, section.number, "alignment")
+    ):
         log(f"Section {section.number}: setup — excerpts ready")
         _record_traceability(
             planspace, section.number,
@@ -2179,21 +2190,18 @@ with JSON:
             broadcast = bridge_data.get("broadcast", False)
             note_md = bridge_data.get("note_markdown", "")
             if note_md and (targets or broadcast):
-                notes_dir = artifacts / "notes"
-                notes_dir.mkdir(parents=True, exist_ok=True)
                 if broadcast and all_sections:
                     # All sections except self
                     targets = [s.number for s in all_sections
                                if s.number != section.number]
                 for target in targets:
-                    note_path = (notes_dir
-                                 / f"from-bridge-{section.number}"
-                                 f"-to-{target}.md")
-                    note_path.write_text(
+                    write_consequence_note(
+                        planspace,
+                        f"bridge-{section.number}",
+                        str(target),
                         f"# Bridge Note from Section {section.number}\n\n"
                         f"{note_md}\n\n"
                         f"See full proposal: `{bridge_proposal}`\n",
-                        encoding="utf-8",
                     )
                 if targets:
                     log(f"Section {section.number}: bridge notes routed "

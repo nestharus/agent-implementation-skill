@@ -7,7 +7,12 @@ import tempfile
 from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed
+from lib.alignment_change_tracker import set_flag
 from lib.hash_service import content_hash, file_hash as hash_file
+from lib.note_repository import (
+    read_incoming_notes as load_incoming_notes,
+    write_consequence_note,
+)
 from lib.path_registry import PathRegistry
 
 from .communication import (
@@ -19,7 +24,6 @@ from .communication import (
 )
 from .context_assembly import materialize_context_sidecar
 from .dispatch import dispatch_agent
-from .pipeline_control import _set_alignment_changed_flag
 from .types import Section
 from prompt_safety import validate_dynamic_content
 
@@ -431,9 +435,6 @@ If no material impacts can be extracted, reply:
     log(f"Section {sec_num}: material impact on sections "
         f"{[s[0] for s in impacted_sections]}")
 
-    notes_dir = artifacts / "notes"
-    notes_dir.mkdir(parents=True, exist_ok=True)
-
     integration_proposal = (artifacts / "proposals"
                             / f"section-{sec_num}-integration-proposal.md")
 
@@ -453,7 +454,10 @@ If no material impacts can be extracted, reply:
     files_fingerprint = content_hash("\n".join(file_fingerprint_parts))
 
     for target_num, reason, contract_risk, note_md in impacted_sections:
-        note_path = notes_dir / f"from-{sec_num}-to-{target_num}.md"
+        note_path = (
+            PathRegistry(planspace).notes_dir()
+            / f"from-{sec_num}-to-{target_num}.md"
+        )
 
         # Build the list of modified files with brief context
         file_changes = "\n".join(
@@ -477,7 +481,7 @@ If no material impacts can be extracted, reply:
             f"{note_path.name}:{files_fingerprint}",
         )[:12]
 
-        note_path.write_text(f"""{heading}
+        note_path = write_consequence_note(planspace, sec_num, target_num, f"""{heading}
 
 **Note ID**: `{note_id}`
 
@@ -504,7 +508,7 @@ designated problem.
 
 Full integration proposal: `{integration_proposal}`
 Snapshot directory: `{snapshot_dir}`
-""", encoding="utf-8")
+""")
         _log_artifact(planspace, f"note:from-{sec_num}-to-{target_num}")
         log(f"Section {sec_num}: left note for section {target_num} "
             f"at {note_path}")
@@ -520,7 +524,7 @@ Snapshot directory: `{snapshot_dir}`
         if (baseline_hash_dir / f"{t}.hash").exists()
     ]
     if completed_targets:
-        _set_alignment_changed_flag(planspace)
+        set_flag(planspace, db_sh=DB_SH, agent_name=AGENT_NAME)
         log(f"Section {sec_num}: set alignment_changed_pending — "
             f"{len(completed_targets)} target section(s) have baseline "
             f"hashes: {completed_targets}")
@@ -569,16 +573,11 @@ def read_incoming_notes(
     context bloat. Returns combined context string for prompts.
     """
     artifacts = PathRegistry(planspace).artifacts
-    notes_dir = artifacts / "notes"
     sec_num = section.number
 
-    if not notes_dir.exists():
-        return ""
+    note_entries = load_incoming_notes(planspace, sec_num)
 
-    note_pattern = f"from-*-to-{sec_num}.md"
-    note_files = sorted(notes_dir.glob(note_pattern))
-
-    if not note_files:
+    if not note_entries:
         return ""
 
     # P13: Load acknowledged note IDs for filtering.
@@ -604,12 +603,13 @@ def read_incoming_notes(
                 f"no acknowledgements"
             )
 
-    log(f"Section {sec_num}: found {len(note_files)} incoming notes"
+    log(f"Section {sec_num}: found {len(note_entries)} incoming notes"
         + (f" ({len(resolved_ids)} resolved)" if resolved_ids else ""))
 
     parts: list[str] = []
-    for note_path in note_files:
-        note_text = note_path.read_text(encoding="utf-8")
+    for note in note_entries:
+        note_path = note["path"]
+        note_text = note["content"]
 
         # P13: Skip resolved notes (accepted or deferred).
         # Rejected notes are NOT filtered — the section must see them.
@@ -621,10 +621,9 @@ def read_incoming_notes(
         parts.append(note_text)
 
         # Extract the source section number from the filename
-        name_match = re.match(r'from-(\d+)-to-\d+\.md', note_path.name)
-        if not name_match:
+        source_num = note["source"]
+        if not re.fullmatch(r"\d+", source_num):
             continue
-        source_num = name_match.group(1)
 
         # Compute diffs for files this section shares with the source
         source_snapshot_dir = (artifacts / "snapshots"

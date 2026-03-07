@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from lib.artifact_io import read_json, rename_malformed, write_json
+from lib.note_repository import read_incoming_notes as load_incoming_notes
 from lib.path_registry import PathRegistry
 
 from ..communication import _log_artifact, log
@@ -88,22 +89,19 @@ def _collect_outstanding_problems(
     # ID from the note content (do NOT recompute the hash — the original
     # was derived from a draft subset that differs from the full content).
     # Target sections acknowledge notes via signals/note-ack-<target>.json.
-    notes_dir = paths.notes_dir()
-    if notes_dir.exists():
-        for note_path in sorted(notes_dir.glob("from-*-to-*.md")):
-            name_match = re.match(
-                r'from-(.+)-to-(\d+)\.md', note_path.name,
-            )
-            if not name_match:
-                continue
-            target_num = name_match.group(2)
-            source_label = name_match.group(1)
+    note_entries: list[dict[str, Any]] = []
+    for target_num in sorted(section_results):
+        note_entries.extend(load_incoming_notes(planspace, target_num))
+    for note in sorted(note_entries, key=lambda entry: entry["path"].name):
+            note_path = note["path"]
+            target_num = note["target"]
+            source_label = note["source"]
             target_result = section_results.get(target_num)
             if not target_result or not target_result.aligned:
                 continue  # target isn't aligned yet — will see note
 
             # Parse note ID from the note content (canonical)
-            note_content = note_path.read_text(encoding="utf-8")
+            note_content = note["content"]
             note_id_match = re.search(
                 r'\*\*Note ID\*\*:\s*`([^`]+)`', note_content)
             if not note_id_match:

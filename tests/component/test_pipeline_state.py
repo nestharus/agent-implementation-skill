@@ -1,0 +1,123 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from _paths import DB_SH
+from src.scripts.lib.database_client import DatabaseClient
+from src.scripts.lib.mailbox_service import MailboxService
+from src.scripts.lib import pipeline_state
+from src.scripts.lib.pipeline_state import (
+    check_pipeline_state,
+    pause_for_parent,
+    wait_if_paused,
+)
+
+
+def _db(tmp_path: Path) -> tuple[Path, DatabaseClient]:
+    planspace = tmp_path / "planspace"
+    (planspace / "artifacts").mkdir(parents=True)
+    client = DatabaseClient(DB_SH, planspace / "run.db")
+    client.execute("init")
+    return planspace, client
+
+
+def _mailbox(client: DatabaseClient, name: str) -> MailboxService:
+    mailbox = MailboxService(client, name)
+    mailbox.register()
+    return mailbox
+
+
+def test_check_pipeline_state_defaults_to_running(tmp_path: Path) -> None:
+    planspace, _client = _db(tmp_path)
+
+    assert check_pipeline_state(planspace, db_sh=DB_SH) == "running"
+
+
+def test_check_pipeline_state_reads_latest_logged_value(tmp_path: Path) -> None:
+    planspace, client = _db(tmp_path)
+    client.log_event(
+        "lifecycle",
+        "pipeline-state",
+        "paused",
+        agent="section-loop",
+        check=False,
+    )
+
+    assert check_pipeline_state(planspace, db_sh=DB_SH) == "paused"
+
+
+def test_wait_if_paused_replays_buffered_messages_after_resume(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    planspace, client = _db(tmp_path)
+    parent = _mailbox(client, "parent")
+    section_loop = _mailbox(client, "section-loop")
+
+    parent.send("section-loop", "resume:now")
+    states = iter(["paused", "paused", "running"])
+    monkeypatch.setattr(
+        pipeline_state,
+        "check_pipeline_state",
+        lambda _planspace, *, db_sh: next(states),
+    )
+
+    wait_if_paused(
+        planspace,
+        "parent",
+        db_sh=DB_SH,
+        agent_name="section-loop",
+        logger=lambda _msg: None,
+    )
+
+    parent_messages = parent.drain()
+    replayed = section_loop.drain()
+    assert "status:paused" in parent_messages
+    assert "status:resumed" in parent_messages
+    assert replayed == ["resume:now"]
+
+
+def test_pause_for_parent_consumes_alignment_changed_before_resume(
+    tmp_path: Path,
+) -> None:
+    planspace, client = _db(tmp_path)
+    parent = _mailbox(client, "parent")
+    _mailbox(client, "section-loop")
+    excerpts = planspace / "artifacts" / "sections"
+    excerpts.mkdir(parents=True)
+    (excerpts / "section-01-proposal-excerpt.md").write_text("proposal")
+
+    parent.send("section-loop", "alignment_changed")
+    parent.send("section-loop", "resume:continue")
+
+    response = pause_for_parent(
+        planspace,
+        "parent",
+        "pause:test",
+        db_sh=DB_SH,
+        agent_name="section-loop",
+        logger=lambda _msg: None,
+    )
+
+    assert response == "resume:continue"
+    assert not (excerpts / "section-01-proposal-excerpt.md").exists()
+    assert (planspace / "artifacts" / "alignment-changed-pending").exists()
+
+
+def test_pause_for_parent_exits_on_abort(tmp_path: Path) -> None:
+    planspace, client = _db(tmp_path)
+    parent = _mailbox(client, "parent")
+    _mailbox(client, "section-loop")
+    parent.send("section-loop", "abort")
+
+    with pytest.raises(SystemExit):
+        pause_for_parent(
+            planspace,
+            "parent",
+            "pause:test",
+            db_sh=DB_SH,
+            agent_name="section-loop",
+            logger=lambda _msg: None,
+        )
