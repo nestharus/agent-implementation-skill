@@ -5,6 +5,8 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from lib.artifact_io import read_json, read_json_or_default, write_json
+
 from ..alignment import (
     _extract_problems,
     _parse_alignment_verdict,
@@ -216,9 +218,7 @@ def run_section(
         }
         recurrence_path = (planspace / "artifacts" / "signals"
                            / f"section-{section.number}-recurrence.json")
-        recurrence_path.parent.mkdir(parents=True, exist_ok=True)
-        recurrence_path.write_text(
-            json.dumps(recurrence_signal, indent=2), encoding="utf-8")
+        write_json(recurrence_path, recurrence_signal)
         log(f"Section {section.number}: recurrence signal written "
             f"(attempt {section.solve_count})")
 
@@ -307,98 +307,67 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         )
 
         # Read triage signal
-        if triage_signal_path.exists():
-            try:
-                triage = json.loads(
-                    triage_signal_path.read_text(encoding="utf-8"))
-                needs_replan = triage.get("needs_replan", True)
-                needs_code = triage.get("needs_code_change", True)
-                if not needs_replan and not needs_code:
-                    # Merge triage acknowledgments into note-ack file
-                    triage_acks = triage.get("acknowledge", [])
-                    ack_path = (artifacts / "signals"
-                                / f"note-ack-{section.number}.json")
-                    existing_acks: dict = {"acknowledged": []}
-                    if ack_path.exists():
-                        try:
-                            existing_acks = json.loads(
-                                ack_path.read_text(encoding="utf-8"))
-                        except (json.JSONDecodeError, OSError) as exc:
-                            # Preserve corrupted file for diagnosis
-                            malformed_path = ack_path.with_suffix(
-                                ".malformed.json")
-                            try:
-                                ack_path.rename(malformed_path)
-                            except OSError:
-                                pass  # Best-effort preserve
-                            log(
-                                f"Section {section.number}: note-ack "
-                                f"file malformed ({exc}) — preserved "
-                                f"as {malformed_path.name}, starting "
-                                f"fresh"
-                            )
-                    existing_ids = {
-                        e.get("note_id")
-                        for e in existing_acks.get("acknowledged", [])
-                    }
-                    for ack in triage_acks:
-                        nid = ack.get("note_id")
-                        if nid and nid not in existing_ids:
-                            existing_acks.setdefault(
-                                "acknowledged", []).append(ack)
-                            existing_ids.add(nid)
-                    ack_path.parent.mkdir(parents=True, exist_ok=True)
-                    ack_path.write_text(
-                        json.dumps(existing_acks, indent=2),
-                        encoding="utf-8")
+        triage = read_json(triage_signal_path)
+        if triage is not None:
+            needs_replan = triage.get("needs_replan", True)
+            needs_code = triage.get("needs_code_change", True)
+            if not needs_replan and not needs_code:
+                # Merge triage acknowledgments into note-ack file
+                triage_acks = triage.get("acknowledge", [])
+                ack_path = (artifacts / "signals"
+                            / f"note-ack-{section.number}.json")
+                existing_acks: dict = read_json_or_default(
+                    ack_path, {"acknowledged": []})
+                existing_ids = {
+                    e.get("note_id")
+                    for e in existing_acks.get("acknowledged", [])
+                }
+                for ack in triage_acks:
+                    nid = ack.get("note_id")
+                    if nid and nid not in existing_ids:
+                        existing_acks.setdefault(
+                            "acknowledged", []).append(ack)
+                        existing_ids.add(nid)
+                write_json(ack_path, existing_acks)
 
-                    # Completeness check: all incoming note IDs must be acked
-                    incoming_note_ids = set(re.findall(
-                        r'\*\*Note ID\*\*:\s*`([^`]+)`',
-                        incoming_notes))
-                    acked_ids = {
-                        a.get("note_id") for a in triage_acks
-                    } | existing_ids
-                    if (incoming_note_ids
-                            and not incoming_note_ids.issubset(acked_ids)):
-                        log(f"Section {section.number}: triage did not "
-                            f"acknowledge all notes — full processing")
-                    else:
-                        log(f"Section {section.number}: triage says no "
-                            f"rework needed — skipping to alignment check")
-                        # Jump straight to alignment verification
-                        verify_result = (
-                            _run_alignment_check_with_retries(
-                                section, planspace, codespace, parent,
-                                section.number,
-                                output_prefix="triage-align",
-                                model=policy["alignment"],
-                                adjudicator_model=policy.get(
-                                    "adjudicator", "glm"),
-                            ))
-                        if verify_result == "ALIGNMENT_CHANGED_PENDING":
-                            return None
-                        if verify_result:
-                            verdict = _parse_alignment_verdict(
-                                verify_result)
-                            if (verdict is not None
-                                    and verdict.get("aligned") is True
-                                    and verdict.get("frame_ok", True)
-                                    is True):
-                                log(f"Section {section.number}: triage + "
-                                    f"alignment confirms no rework needed")
-                                reported = collect_modified_files(
-                                    planspace, section, codespace)
-                                return reported if reported else []
-            except (json.JSONDecodeError, OSError) as exc:
-                log(f"Section {section.number}: triage signal "
-                    f"malformed ({exc}) — preserving and falling "
-                    f"through to full processing")
-                try:
-                    triage_signal_path.rename(
-                        triage_signal_path.with_suffix(".malformed.json"))
-                except OSError:
-                    pass  # Best-effort preserve
+                # Completeness check: all incoming note IDs must be acked
+                incoming_note_ids = set(re.findall(
+                    r'\*\*Note ID\*\*:\s*`([^`]+)`',
+                    incoming_notes))
+                acked_ids = {
+                    a.get("note_id") for a in triage_acks
+                } | existing_ids
+                if (incoming_note_ids
+                        and not incoming_note_ids.issubset(acked_ids)):
+                    log(f"Section {section.number}: triage did not "
+                        f"acknowledge all notes — full processing")
+                else:
+                    log(f"Section {section.number}: triage says no "
+                        f"rework needed — skipping to alignment check")
+                    # Jump straight to alignment verification
+                    verify_result = (
+                        _run_alignment_check_with_retries(
+                            section, planspace, codespace, parent,
+                            section.number,
+                            output_prefix="triage-align",
+                            model=policy["alignment"],
+                            adjudicator_model=policy.get(
+                                "adjudicator", "glm"),
+                        ))
+                    if verify_result == "ALIGNMENT_CHANGED_PENDING":
+                        return None
+                    if verify_result:
+                        verdict = _parse_alignment_verdict(
+                            verify_result)
+                        if (verdict is not None
+                                and verdict.get("aligned") is True
+                                and verdict.get("frame_ok", True)
+                                is True):
+                            log(f"Section {section.number}: triage + "
+                                f"alignment confirms no rework needed")
+                            reported = collect_modified_files(
+                                planspace, section, codespace)
+                            return reported if reported else []
 
     # -----------------------------------------------------------------
     # Step 0b: Surface section-relevant tools from tool registry
@@ -467,9 +436,8 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                 agent_file="tool-registrar.md",
             )
             # Re-check after repair
-            try:
-                registry = json.loads(
-                    tool_registry_path.read_text(encoding="utf-8"))
+            registry = read_json(tool_registry_path)
+            if registry is not None:
                 all_tools = (registry if isinstance(registry, list)
                              else registry.get("tools", []))
                 pre_tool_total = len(all_tools)
@@ -482,11 +450,9 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                 if relevant_count:
                     log(f"Section {section.number}: rebuilt tools "
                         f"surface ({relevant_count} relevant tools)")
-            except (json.JSONDecodeError, ValueError):
+            else:
                 log(f"Section {section.number}: tool registry "
                     f"repair failed — writing blocker signal")
-                signal_dir = artifacts / "signals"
-                signal_dir.mkdir(parents=True, exist_ok=True)
                 blocker = {
                     "state": "needs_parent",
                     "detail": (
@@ -499,11 +465,10 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                         "invalid registry."
                     ),
                 }
-                (signal_dir
-                 / f"section-{section.number}-blocker.json"
-                 ).write_text(
-                    json.dumps(blocker, indent=2),
-                    encoding="utf-8",
+                write_json(
+                    artifacts / "signals"
+                    / f"section-{section.number}-blocker.json",
+                    blocker,
                 )
                 _update_blocker_rollup(planspace)
 
@@ -556,17 +521,9 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                 scope_delta_dir = planspace / "artifacts" / "scope-deltas"
                 scope_delta_dir.mkdir(parents=True, exist_ok=True)
                 # Load full signal payload for richer coordinator context
-                signal_payload = {}
                 setup_sig_path = (signal_dir
                                   / f"setup-{section.number}-signal.json")
-                if setup_sig_path.exists():
-                    try:
-                        signal_payload = json.loads(
-                            setup_sig_path.read_text(encoding="utf-8"))
-                    except (json.JSONDecodeError, OSError) as exc:
-                        log(f"Section {section.number}: WARNING — "
-                            f"malformed setup signal ({exc}), scope-delta "
-                            f"will lack payload enrichment")
+                signal_payload = read_json_or_default(setup_sig_path, {})
                 scope_delta = {
                     "delta_id": f"delta-{section.number}-setup-oos",
                     "section": section.number,
@@ -576,10 +533,11 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                     "signal_path": str(setup_sig_path),
                     "signal_payload": signal_payload,
                 }
-                (scope_delta_dir
-                 / f"section-{section.number}-scope-delta.json"
-                 ).write_text(
-                    json.dumps(scope_delta, indent=2), encoding="utf-8")
+                write_json(
+                    scope_delta_dir
+                    / f"section-{section.number}-scope-delta.json",
+                    scope_delta,
+                )
             _update_blocker_rollup(planspace)
             response = pause_for_parent(
                 planspace, parent,
@@ -634,8 +592,6 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         # Still missing after retry — emit needs_parent signal and pause
         log(f"Section {section.number}: problem frame still missing after "
             f"retry — emitting needs_parent signal")
-        signal_dir = artifacts / "signals"
-        signal_dir.mkdir(parents=True, exist_ok=True)
         pf_signal = {
             "state": "needs_parent",
             "detail": (
@@ -653,8 +609,10 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                 "right problem."
             ),
         }
-        (signal_dir / f"setup-{section.number}-signal.json").write_text(
-            json.dumps(pf_signal, indent=2), encoding="utf-8")
+        write_json(
+            artifacts / "signals" / f"setup-{section.number}-signal.json",
+            pf_signal,
+        )
         _update_blocker_rollup(planspace)
         mailbox_send(planspace, parent,
                      f"pause:needs_parent:{section.number}:problem frame "
@@ -666,8 +624,6 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
     pf_content = problem_frame_path.read_text(encoding="utf-8").strip()
     if not pf_content:
         log(f"Section {section.number}: problem frame is empty")
-        signal_dir = artifacts / "signals"
-        signal_dir.mkdir(parents=True, exist_ok=True)
         pf_signal = {
             "state": "needs_parent",
             "detail": (
@@ -683,8 +639,10 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                 "understanding"
             ),
         }
-        (signal_dir / f"setup-{section.number}-signal.json").write_text(
-            json.dumps(pf_signal, indent=2), encoding="utf-8")
+        write_json(
+            artifacts / "signals" / f"setup-{section.number}-signal.json",
+            pf_signal,
+        )
         _update_blocker_rollup(planspace)
         mailbox_send(planspace, parent,
                      f"pause:needs_parent:{section.number}:problem frame "
@@ -800,8 +758,6 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
     if philosophy_result is None:
         log(f"Section {section.number}: philosophy unavailable — "
             f"blocking section (project-level invariant)")
-        signal_dir = artifacts / "signals"
-        signal_dir.mkdir(parents=True, exist_ok=True)
         blocker = {
             "section": section.number,
             "blocker": "philosophy_unavailable",
@@ -810,11 +766,11 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                 "Section execution blocked until resolved."
             ),
         }
-        (signal_dir
-         / f"philosophy-blocker-{section.number}.json"
-         ).write_text(
-            json.dumps(blocker, indent=2),
-            encoding="utf-8")
+        write_json(
+            artifacts / "signals"
+            / f"philosophy-blocker-{section.number}.json",
+            blocker,
+        )
         return None
 
     if intent_mode == "full":
@@ -839,27 +795,14 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             ("proposal_max", "implementation_max"))
         cycle_budget_path_ib = (artifacts / "signals"
                                 / f"section-{section.number}-cycle-budget.json")
-        if cycle_budget_path_ib.exists():
-            try:
-                existing_budget = json.loads(
-                    cycle_budget_path_ib.read_text(encoding="utf-8"))
-                existing_budget.update({
-                    k: v for k, v in intent_budgets.items()
-                    if (k.startswith("intent_") or k.startswith("max_new_")
-                        or k in _triage_budget_keys)
-                })
-                cycle_budget_path_ib.write_text(
-                    json.dumps(existing_budget, indent=2), encoding="utf-8")
-            except (json.JSONDecodeError, OSError) as exc:
-                log(f"Section {section.number}: cycle budget malformed "
-                    f"({exc}) — preserving and proceeding with triage "
-                    f"defaults")
-                try:
-                    cycle_budget_path_ib.rename(
-                        cycle_budget_path_ib.with_suffix(".malformed.json"))
-                except OSError as rename_exc:
-                    log(f"Section {section.number}: failed to rename "
-                        f"malformed cycle budget: {rename_exc}")
+        existing_budget = read_json(cycle_budget_path_ib)
+        if existing_budget is not None:
+            existing_budget.update({
+                k: v for k, v in intent_budgets.items()
+                if (k.startswith("intent_") or k.startswith("max_new_")
+                    or k in _triage_budget_keys)
+            })
+            write_json(cycle_budget_path_ib, existing_budget)
 
     # -----------------------------------------------------------------
     # Step 2: Integration proposal loop
@@ -873,18 +816,9 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
     cycle_budget_path = (artifacts / "signals"
                          / f"section-{section.number}-cycle-budget.json")
     cycle_budget = {"proposal_max": 5, "implementation_max": 5}
-    if cycle_budget_path.exists():
-        try:
-            cycle_budget.update(
-                json.loads(cycle_budget_path.read_text(encoding="utf-8")))
-        except (json.JSONDecodeError, OSError) as exc:
-            log(f"Section {section.number}: cycle budget signal "
-                f"malformed ({exc}) — preserving and using defaults")
-            try:
-                cycle_budget_path.rename(
-                    cycle_budget_path.with_suffix(".malformed.json"))
-            except OSError:
-                pass  # Best-effort preserve
+    _loaded_budget = read_json(cycle_budget_path)
+    if _loaded_budget is not None:
+        cycle_budget.update(_loaded_budget)
 
     while True:
         # Check for pending messages between iterations
@@ -915,9 +849,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             budget_signal_path = (artifacts / "signals"
                                   / f"section-{section.number}"
                                   f"-proposal-budget-exhausted.json")
-            budget_signal_path.parent.mkdir(parents=True, exist_ok=True)
-            budget_signal_path.write_text(
-                json.dumps(budget_signal, indent=2), encoding="utf-8")
+            write_json(budget_signal_path, budget_signal)
             mailbox_send(planspace, parent,
                          f"budget-exhausted:{section.number}:proposal:"
                          f"{proposal_attempt - 1}")
@@ -930,14 +862,9 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             if not response.startswith("resume"):
                 return None
             # Parent may have raised the budget — re-read
-            if cycle_budget_path.exists():
-                try:
-                    cycle_budget.update(json.loads(
-                        cycle_budget_path.read_text(encoding="utf-8")))
-                except (json.JSONDecodeError, OSError) as exc:
-                    log(f"Section {section.number}: WARNING — "
-                        f"malformed cycle-budget.json ({exc}), "
-                        f"keeping previous budget")
+            _reloaded = read_json(cycle_budget_path)
+            if _reloaded is not None:
+                cycle_budget.update(_reloaded)
         tag = "revise " if proposal_problems else ""
         log(f"Section {section.number}: {tag}integration proposal "
             f"(attempt {proposal_attempt})")
@@ -1062,17 +989,10 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                 scope_delta_dir = planspace / "artifacts" / "scope-deltas"
                 scope_delta_dir.mkdir(parents=True, exist_ok=True)
                 # Load full signal payload for richer coordinator context
-                signal_payload = {}
                 proposal_sig_path = (signal_dir
                                      / f"proposal-{section.number}-signal.json")
-                if proposal_sig_path.exists():
-                    try:
-                        signal_payload = json.loads(
-                            proposal_sig_path.read_text(encoding="utf-8"))
-                    except (json.JSONDecodeError, OSError) as exc:
-                        log(f"Section {section.number}: WARNING — "
-                            f"malformed proposal signal ({exc}), "
-                            f"scope-delta will lack payload enrichment")
+                signal_payload = read_json_or_default(
+                    proposal_sig_path, {})
                 scope_delta = {
                     "delta_id": f"delta-{section.number}-proposal-oos",
                     "section": section.number,
@@ -1082,10 +1002,11 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                     "signal_path": str(proposal_sig_path),
                     "signal_payload": signal_payload,
                 }
-                (scope_delta_dir
-                 / f"section-{section.number}-scope-delta.json"
-                 ).write_text(
-                    json.dumps(scope_delta, indent=2), encoding="utf-8")
+                write_json(
+                    scope_delta_dir
+                    / f"section-{section.number}-scope-delta.json",
+                    scope_delta,
+                )
             _update_blocker_rollup(planspace)
             response = pause_for_parent(
                 planspace, parent,
@@ -1205,11 +1126,11 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                             "reason": "expansion budget exhausted",
                             "cycles": expansion_count,
                         }
-                        (artifacts / "signals"
-                         / f"intent-stalled-{section.number}.json"
-                         ).write_text(
-                            json.dumps(stalled_signal, indent=2),
-                            encoding="utf-8")
+                        write_json(
+                            artifacts / "signals"
+                            / f"intent-stalled-{section.number}.json",
+                            stalled_signal,
+                        )
                         response = pause_for_parent(
                             planspace, parent,
                             f"pause:intent-stalled:{section.number}:"
@@ -1331,8 +1252,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         delta_path = (scope_delta_dir
                       / f"section-{section.number}"
                         f"-candidate-{cand_hash}-scope-delta.json")
-        delta_path.write_text(
-            json.dumps(scope_delta, indent=2), encoding="utf-8")
+        write_json(delta_path, scope_delta)
         log(f"Section {section.number}: wrote scope-delta for "
             f"new_section_candidate ({cand_hash})")
 
@@ -1354,8 +1274,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         rq_path = (open_problems_dir
                     / f"section-{section.number}"
                       f"-research-questions.json")
-        rq_path.write_text(
-            json.dumps(rq_artifact, indent=2), encoding="utf-8")
+        write_json(rq_path, rq_artifact)
         log(f"Section {section.number}: wrote {len(rq_list)} "
             f"research questions to open-problems artifact")
 
@@ -1397,14 +1316,12 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             sig_path = (signal_dir
                         / f"section-{section.number}"
                           f"-proposal-q{i}-signal.json")
-            sig_path.write_text(
-                json.dumps(q_signal, indent=2), encoding="utf-8")
+            write_json(sig_path, q_signal)
             log(f"Section {section.number}: emitted NEED_DECISION "
                 f"signal for user_root_question[{i}]")
 
         # 2. shared_seam_candidates → substrate-trigger signals
         for i, seam in enumerate(ps.get("shared_seam_candidates", [])):
-            signal_dir.mkdir(parents=True, exist_ok=True)
             trigger = {
                 "section": section.number,
                 "seam": str(seam),
@@ -1414,8 +1331,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             trigger_path = (signal_dir
                             / f"substrate-trigger-{section.number}"
                               f"-{i:02d}.json")
-            trigger_path.write_text(
-                json.dumps(trigger, indent=2), encoding="utf-8")
+            write_json(trigger_path, trigger)
             log(f"Section {section.number}: wrote substrate-trigger "
                 f"for shared_seam_candidate[{i}]")
 
@@ -1441,8 +1357,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             sig_path = (signal_dir
                         / f"section-{section.number}"
                           f"-seam-{i}-signal.json")
-            sig_path.write_text(
-                json.dumps(seam_signal, indent=2), encoding="utf-8")
+            write_json(sig_path, seam_signal)
 
         # 3. unresolved_contracts + unresolved_anchors →
         #    reconciliation queue
@@ -1541,26 +1456,18 @@ def _run_section_implementation_steps(
     cycle_budget_path = (artifacts / "signals"
                          / f"section-{section.number}-cycle-budget.json")
     cycle_budget = {"proposal_max": 5, "implementation_max": 5}
-    if cycle_budget_path.exists():
-        try:
-            cycle_budget.update(
-                json.loads(cycle_budget_path.read_text(encoding="utf-8")))
-        except (json.JSONDecodeError, OSError) as exc:
-            log(f"Section {section.number}: cycle budget signal "
-                f"malformed ({exc}) — using defaults")
+    _loaded_budget = read_json(cycle_budget_path)
+    if _loaded_budget is not None:
+        cycle_budget.update(_loaded_budget)
 
     # Tool registry state for post-impl validation
     tool_registry_path = artifacts / "tool-registry.json"
     pre_tool_total = 0
-    if tool_registry_path.exists():
-        try:
-            registry = json.loads(
-                tool_registry_path.read_text(encoding="utf-8"))
-            all_tools = (registry if isinstance(registry, list)
-                         else registry.get("tools", []))
-            pre_tool_total = len(all_tools)
-        except (json.JSONDecodeError, ValueError):
-            pass
+    registry = read_json(tool_registry_path)
+    if registry is not None:
+        all_tools = (registry if isinstance(registry, list)
+                     else registry.get("tools", []))
+        pre_tool_total = len(all_tools)
     needs_microstrategy = (
         _check_needs_microstrategy(
             integration_proposal, planspace, section.number, parent,
@@ -1691,8 +1598,6 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
         else:
             log(f"Section {section.number}: microstrategy generation "
                 f"failed — emitting blocker signal")
-            signal_dir = artifacts / "signals"
-            signal_dir.mkdir(parents=True, exist_ok=True)
             blocker = {
                 "state": "NEEDS_PARENT",
                 "section": str(section.number),
@@ -1705,11 +1610,10 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
                     "to proceed without microstrategy"
                 ),
             }
-            (signal_dir
-             / f"microstrategy-blocker-{section.number}.json"
-             ).write_text(
-                json.dumps(blocker, indent=2) + "\n",
-                encoding="utf-8",
+            write_json(
+                artifacts / "signals"
+                / f"microstrategy-blocker-{section.number}.json",
+                blocker,
             )
             _record_traceability(
                 planspace, section.number,
@@ -1770,9 +1674,7 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
             budget_signal_path = (artifacts / "signals"
                                   / f"section-{section.number}"
                                   f"-impl-budget-exhausted.json")
-            budget_signal_path.parent.mkdir(parents=True, exist_ok=True)
-            budget_signal_path.write_text(
-                json.dumps(budget_signal, indent=2), encoding="utf-8")
+            write_json(budget_signal_path, budget_signal)
             mailbox_send(planspace, parent,
                          f"budget-exhausted:{section.number}:implementation:"
                          f"{impl_attempt - 1}")
@@ -1785,14 +1687,9 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
             if not response.startswith("resume"):
                 return None
             # Parent may have raised the budget — re-read
-            if cycle_budget_path.exists():
-                try:
-                    cycle_budget.update(json.loads(
-                        cycle_budget_path.read_text(encoding="utf-8")))
-                except (json.JSONDecodeError, OSError) as exc:
-                    log(f"Section {section.number}: WARNING — "
-                        f"malformed cycle-budget.json ({exc}), "
-                        f"keeping previous budget")
+            _reloaded = read_json(cycle_budget_path)
+            if _reloaded is not None:
+                cycle_budget.update(_reloaded)
 
         tag = "fix " if impl_problems else ""
         log(f"Section {section.number}: {tag}strategic implementation "
@@ -2007,8 +1904,7 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
                 })
         except (OSError, UnicodeDecodeError):
             continue
-    trace_map_path.write_text(
-        json.dumps(trace_map, indent=2), encoding="utf-8")
+    write_json(trace_map_path, trace_map)
     log(f"Section {section.number}: trace-map written to {trace_map_path}")
 
     # -----------------------------------------------------------------
@@ -2117,16 +2013,12 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
                 agent_file="tool-registrar.md",
             )
             # Verify repair succeeded
-            try:
-                json.loads(
-                    tool_registry_path.read_text(encoding="utf-8"))
+            if read_json(tool_registry_path) is not None:
                 log(f"Section {section.number}: post-impl tool "
                     f"registry repaired")
-            except (json.JSONDecodeError, ValueError):
+            else:
                 log(f"Section {section.number}: post-impl tool "
                     f"registry repair failed — writing blocker")
-                signal_dir = artifacts / "signals"
-                signal_dir.mkdir(parents=True, exist_ok=True)
                 blocker = {
                     "state": "needs_parent",
                     "detail": (
@@ -2140,11 +2032,10 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
                         "sections' tool surfacing."
                     ),
                 }
-                (signal_dir
-                 / f"section-{section.number}-post-impl-blocker.json"
-                 ).write_text(
-                    json.dumps(blocker, indent=2),
-                    encoding="utf-8",
+                write_json(
+                    artifacts / "signals"
+                    / f"section-{section.number}-post-impl-blocker.json",
+                    blocker,
                 )
                 _update_blocker_rollup(planspace)
 
@@ -2153,21 +2044,13 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
     # -----------------------------------------------------------------
     tool_friction_detected = False
     if friction_signal_path.exists():
-        try:
-            friction = json.loads(
-                friction_signal_path.read_text(encoding="utf-8"))
+        friction = read_json(friction_signal_path)
+        if friction is not None:
             tool_friction_detected = friction.get("friction", False)
-        except (json.JSONDecodeError, OSError) as exc:
-            # File existence is the signal attempt — treat malformed
-            # JSON as friction detected (fail closed).
-            try:
-                friction_signal_path.rename(
-                    friction_signal_path.with_suffix(".malformed.json"))
-            except OSError:
-                pass  # Best-effort preserve
-            log(f"Section {section.number}: friction signal malformed "
-                f"({exc}) — preserved as .malformed.json, treating "
-                f"as friction detected")
+        else:
+            # File existed but was corrupt — treat as friction
+            # detected (fail closed). read_json already preserved
+            # the malformed file.
             tool_friction_detected = True
 
     if tool_friction_detected and tool_registry_path.exists():
@@ -2240,26 +2123,16 @@ with JSON:
 
         # -- V1/R43: Verify bridge-tools output --
         bridge_valid = False
-        if bridge_signal_path.exists():
-            try:
-                bridge_data = json.loads(
-                    bridge_signal_path.read_text(encoding="utf-8"))
-                if bridge_data.get("status") in (
-                    "bridged", "no_action", "needs_parent",
-                ):
-                    proposal_path = Path(bridge_data.get(
-                        "proposal_path", str(default_proposal_path)))
-                    if (bridge_data["status"] == "no_action"
-                            or proposal_path.exists()):
-                        bridge_valid = True
-            except (json.JSONDecodeError, OSError) as exc:
-                log(f"Section {section.number}: bridge signal "
-                    f"malformed ({exc}) — preserving")
-                try:
-                    bridge_signal_path.rename(
-                        bridge_signal_path.with_suffix(".malformed.json"))
-                except OSError:
-                    pass  # Best-effort preserve
+        bridge_data = read_json(bridge_signal_path)
+        if bridge_data is not None:
+            if bridge_data.get("status") in (
+                "bridged", "no_action", "needs_parent",
+            ):
+                proposal_path = Path(bridge_data.get(
+                    "proposal_path", str(default_proposal_path)))
+                if (bridge_data["status"] == "no_action"
+                        or proposal_path.exists()):
+                    bridge_valid = True
 
         if not bridge_valid:
             log(f"Section {section.number}: bridge signal missing or "
@@ -2278,28 +2151,16 @@ with JSON:
                 section_number=section.number,
             )
             # Re-check after escalation
-            if bridge_signal_path.exists():
-                try:
-                    bridge_data = json.loads(
-                        bridge_signal_path.read_text(encoding="utf-8"))
-                    if bridge_data.get("status") in (
-                        "bridged", "no_action", "needs_parent",
-                    ):
-                        proposal_path = Path(bridge_data.get(
-                            "proposal_path", str(default_proposal_path)))
-                        if (bridge_data["status"] == "no_action"
-                                or proposal_path.exists()):
-                            bridge_valid = True
-                except (json.JSONDecodeError, OSError) as exc:
-                    log(f"Section {section.number}: bridge signal "
-                        f"malformed after escalation ({exc}) "
-                        f"— preserving")
-                    try:
-                        bridge_signal_path.rename(
-                            bridge_signal_path.with_suffix(
-                                ".malformed.json"))
-                    except OSError:
-                        pass  # Best-effort preserve
+            bridge_data = read_json(bridge_signal_path)
+            if bridge_data is not None:
+                if bridge_data.get("status") in (
+                    "bridged", "no_action", "needs_parent",
+                ):
+                    proposal_path = Path(bridge_data.get(
+                        "proposal_path", str(default_proposal_path)))
+                    if (bridge_data["status"] == "no_action"
+                            or proposal_path.exists()):
+                        bridge_valid = True
 
         # -- R44/V1: Wire bridge outputs into downstream channels --
         if bridge_valid:
@@ -2381,37 +2242,38 @@ with JSON:
             failure_artifact = (
                 artifacts / "signals"
                 / f"section-{section.number}-bridge-tools-failure.json")
-            failure_artifact.write_text(json.dumps({
+            write_json(failure_artifact, {
                 "section": section.number,
                 "status": "failed",
                 "reason": "bridge-tools agent did not produce valid "
                           "signal after primary + escalation dispatch",
-            }, indent=2), encoding="utf-8")
+            })
             # Also write a structured blocker for rollup
-            blocker_path = (
+            write_json(
                 artifacts / "signals"
-                / f"section-{section.number}-post-impl-blocker.json")
-            blocker_path.write_text(json.dumps({
-                "state": "needs_parent",
-                "detail": (
-                    "Bridge-tools agent failed to produce valid output "
-                    "after primary + escalation dispatch. Tool friction "
-                    "remains unresolved."
-                ),
-                "needs": "Manual review of tool composition gaps",
-                "why_blocked": (
-                    f"See failure details: "
-                    f"{failure_artifact}"
-                ),
-            }, indent=2), encoding="utf-8")
+                / f"section-{section.number}-post-impl-blocker.json",
+                {
+                    "state": "needs_parent",
+                    "detail": (
+                        "Bridge-tools agent failed to produce valid output "
+                        "after primary + escalation dispatch. Tool friction "
+                        "remains unresolved."
+                    ),
+                    "needs": "Manual review of tool composition gaps",
+                    "why_blocked": (
+                        f"See failure details: "
+                        f"{failure_artifact}"
+                    ),
+                },
+            )
             _update_blocker_rollup(planspace)
 
         # Acknowledge friction signal so it doesn't re-fire
         try:
-            friction_signal_path.write_text(json.dumps({
+            write_json(friction_signal_path, {
                 "friction": False,
                 "status": "handled",
-            }), encoding="utf-8")
+            })
         except OSError:
             log(f"Section {section.number}: could not acknowledge "
                 f"friction signal — file write failed")

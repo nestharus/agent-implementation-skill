@@ -17,6 +17,7 @@ import logging
 from collections import defaultdict
 from pathlib import Path
 
+from lib.artifact_io import read_json, rename_malformed, write_json
 from .agent_templates import render_template
 from .dispatch import dispatch_agent, read_model_policy
 from prompt_safety import validate_dynamic_content
@@ -169,16 +170,13 @@ def _adjudicate_ungrouped_candidates(
         return []
 
     recon_dir = planspace / "artifacts" / "reconciliation"
-    recon_dir.mkdir(parents=True, exist_ok=True)
 
     # Write ungrouped candidates to a JSON artifact so that raw candidate
     # text never appears inline in the dynamic prompt body.  This prevents
     # candidate titles/descriptions from tripping prompt-safety and aligns
     # with the filepath-over-inline prompt pattern.
     candidates_path = recon_dir / f"ungrouped-{candidate_type}.json"
-    candidates_path.write_text(
-        json.dumps(ungrouped, indent=2), encoding="utf-8",
-    )
+    write_json(candidates_path, ungrouped)
 
     dynamic_body = f"""# Reconciliation Adjudication: {candidate_type}
 
@@ -452,22 +450,21 @@ def _write_reconciliation_result(
     result: dict,
 ) -> Path:
     """Write a per-section reconciliation result artifact."""
-    recon_dir = run_dir / "artifacts" / "reconciliation"
-    recon_dir.mkdir(parents=True, exist_ok=True)
-    path = recon_dir / f"section-{section_number}-reconciliation-result.json"
-    path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    path = (
+        run_dir / "artifacts" / "reconciliation"
+        / f"section-{section_number}-reconciliation-result.json"
+    )
+    write_json(path, result)
     return path
 
 
 def _write_scope_delta(run_dir: Path, candidate: dict) -> Path:
     """Write a consolidated scope-delta artifact from reconciliation."""
-    delta_dir = run_dir / "artifacts" / "scope-deltas"
-    delta_dir.mkdir(parents=True, exist_ok=True)
     # Use source sections for unique naming
     sources = "-".join(candidate.get("source_sections", ["unknown"]))
     title_slug = candidate.get("title", "unknown")[:40].replace(" ", "_")
     filename = f"reconciliation-{sources}-{title_slug}.json"
-    path = delta_dir / filename
+    path = run_dir / "artifacts" / "scope-deltas" / filename
     import hashlib as _hashlib
     title_hash = _hashlib.sha256(
         candidate.get("title", "").encode()).hexdigest()[:8]
@@ -480,7 +477,7 @@ def _write_scope_delta(run_dir: Path, candidate: dict) -> Path:
         "candidates": candidate.get("candidates", []),
         "adjudicated": False,
     }
-    path.write_text(json.dumps(delta, indent=2) + "\n", encoding="utf-8")
+    write_json(path, delta)
     return path
 
 
@@ -489,18 +486,16 @@ def _write_substrate_trigger(
     seam: dict,
 ) -> Path:
     """Write a substrate-trigger artifact from reconciliation."""
-    signals_dir = run_dir / "artifacts" / "signals"
-    signals_dir.mkdir(parents=True, exist_ok=True)
     sections_tag = "-".join(seam.get("sections", ["unknown"]))
     filename = f"substrate-trigger-reconciliation-{sections_tag}.json"
-    path = signals_dir / filename
+    path = run_dir / "artifacts" / "signals" / filename
     trigger = {
         "source": "reconciliation",
         "seam": seam.get("seam", ""),
         "sections": seam.get("sections", []),
         "trigger_type": "shared_seam_reconciliation",
     }
-    path.write_text(json.dumps(trigger, indent=2) + "\n", encoding="utf-8")
+    write_json(path, trigger)
     return path
 
 
@@ -532,31 +527,17 @@ def load_reconciliation_result(
         section_dir / "reconciliation"
         / f"section-{section_number}-reconciliation-result.json"
     )
-    if not path.exists():
+    data = read_json(path)
+    if data is None:
         return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(data, dict):
-            return data
-        logger.warning(
-            "Reconciliation result at %s is not a dict "
-            "— renaming to .malformed.json",
-            path,
-        )
-        try:
-            path.rename(path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.warning(
-            "Malformed reconciliation result at %s (%s) "
-            "— renaming to .malformed.json",
-            path, exc,
-        )
-        try:
-            path.rename(path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
+    if isinstance(data, dict):
+        return data
+    logger.warning(
+        "Reconciliation result at %s is not a dict "
+        "— renaming to .malformed.json",
+        path,
+    )
+    rename_malformed(path)
     return None
 
 
@@ -734,11 +715,10 @@ def run_reconciliation(
     logger.info("Reconciliation summary: %s", summary)
 
     # Write summary artifact
-    recon_summary_dir = run_dir / "artifacts" / "reconciliation"
-    recon_summary_dir.mkdir(parents=True, exist_ok=True)
-    summary_path = recon_summary_dir / "reconciliation-summary.json"
-    summary_path.write_text(
-        json.dumps(summary, indent=2) + "\n", encoding="utf-8",
+    summary_path = (
+        run_dir / "artifacts" / "reconciliation"
+        / "reconciliation-summary.json"
     )
+    write_json(summary_path, summary)
 
     return summary

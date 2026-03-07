@@ -12,10 +12,11 @@ to be maintained as the human-readable complement.
 from __future__ import annotations
 
 import dataclasses
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from lib.artifact_io import read_json, rename_malformed, write_json
 
 
 @dataclasses.dataclass
@@ -61,25 +62,20 @@ def record_decision(decisions_dir: Path, decision: Decision) -> None:
 
     # --- JSON sidecar (append to array) ---
     json_path = decisions_dir / f"{stem}.json"
-    existing: list[dict[str, Any]] = []
-    if json_path.exists():
-        try:
-            existing = json.loads(json_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as exc:
-            # R82/P4: corruption preservation — rename, don't overwrite
+    existed = json_path.exists()
+    loaded = read_json(json_path)
+    if loaded is None:
+        if existed:
+            # R82/P4: corruption preservation — read_json already renamed
             print(
                 f"[DECISIONS][WARN] Malformed decision JSON at {json_path} "
-                f"({exc}) — renaming to .malformed.json"
+                f"— renaming to .malformed.json"
             )
-            try:
-                json_path.rename(json_path.with_suffix(".malformed.json"))
-            except OSError:
-                pass
-            existing = []
+        existing: list[dict[str, Any]] = []
+    else:
+        existing = loaded
     existing.append(dataclasses.asdict(decision))
-    json_path.write_text(
-        json.dumps(existing, indent=2) + "\n", encoding="utf-8",
-    )
+    write_json(json_path, existing)
 
     # --- Prose appendix (append to markdown) ---
     md_path = decisions_dir / f"{stem}.md"
@@ -151,20 +147,16 @@ def load_decisions(
     for json_path in paths:
         if not json_path.exists():
             continue
-        try:
-            raw = json.loads(json_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as exc:
+        raw = read_json(json_path)
+        if raw is None:
+            # read_json already renamed the corrupt file
             msg = (
-                f"Malformed decision JSON at {json_path} ({exc}) "
+                f"Malformed decision JSON at {json_path} "
                 f"— renaming to .malformed.json"
             )
             print(f"[DECISIONS][WARN] {msg}")
             if warnings is not None:
                 warnings.append(msg)
-            try:
-                json_path.rename(json_path.with_suffix(".malformed.json"))
-            except OSError:
-                pass
             continue
         if not isinstance(raw, list):
             msg = (
@@ -174,10 +166,7 @@ def load_decisions(
             print(f"[DECISIONS][WARN] {msg}")
             if warnings is not None:
                 warnings.append(msg)
-            try:
-                json_path.rename(json_path.with_suffix(".malformed.json"))
-            except OSError:
-                pass
+            rename_malformed(json_path)
             continue
         for entry in raw:
             if not isinstance(entry, dict):
@@ -252,26 +241,20 @@ def build_strategic_state(
             blocker_path = (planspace / "artifacts" / "signals"
                             / f"section-{sec_num}-blocker.json")
             if blocker_path.exists():
-                try:
-                    blocker = json.loads(
-                        blocker_path.read_text(encoding="utf-8"))
-                    if blocker.get("state") == "needs_parent":
-                        blocked[sec_num] = {
-                            "problem_id": blocker.get("problem_id", ""),
-                            "reason": blocker.get("detail", "")[:200],
-                        }
-                        continue
-                except (json.JSONDecodeError, OSError) as exc:
+                blocker = read_json(blocker_path)
+                if blocker is None:
                     # Fail-closed: malformed blocker → route as blocked
+                    # read_json already renamed the corrupt file
                     blocked[sec_num] = {
                         "problem_id": "",
-                        "reason": f"blocker signal malformed ({exc})",
+                        "reason": "blocker signal malformed",
                     }
-                    try:
-                        blocker_path.rename(
-                            blocker_path.with_suffix(".malformed.json"))
-                    except OSError:
-                        pass
+                    continue
+                if blocker.get("state") == "needs_parent":
+                    blocked[sec_num] = {
+                        "problem_id": blocker.get("problem_id", ""),
+                        "reason": blocker.get("detail", "")[:200],
+                    }
                     continue
 
         # Not aligned, not blocked — in progress or open problem
@@ -320,9 +303,7 @@ def build_strategic_state(
     # Write to artifacts/strategic-state.json (parent of decisions_dir)
     artifacts_dir = decisions_dir.parent
     state_path = artifacts_dir / "strategic-state.json"
-    state_path.write_text(
-        json.dumps(snapshot, indent=2) + "\n", encoding="utf-8",
-    )
+    write_json(state_path, snapshot)
 
     return snapshot
 
