@@ -17,39 +17,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from _paths import DB_SH, WORKFLOW_HOME
+
 
 # ---------------------------------------------------------------------------
 # Helpers — same pattern as test_dispatch_meta_fail_closed.py
 # ---------------------------------------------------------------------------
 
-def _find_project_root() -> Path:
-    """Walk upward from this file to find the project root."""
-    current = Path(__file__).resolve().parent
-    for _ in range(5):
-        if (current / "SKILL.md").exists():
-            return current
-        if (current / "scripts").is_dir() and (current / "agents").is_dir():
-            return current
-        parent = current.parent
-        if parent == current:
-            break
-        current = parent
-    return Path(__file__).resolve().parent.parent
-
-
-_PROJECT_ROOT = _find_project_root()
-_WORKFLOW_HOME = (
-    _PROJECT_ROOT / "src"
-    if (_PROJECT_ROOT / "src" / "scripts").exists()
-    else _PROJECT_ROOT
-)
-_DB_SH = _WORKFLOW_HOME / "scripts" / "db.sh"
-
 
 def _init_db(db_path: Path) -> None:
     """Initialize a fresh database via db.sh."""
     subprocess.run(
-        ["bash", str(_DB_SH), "init", str(db_path)],
+        ["bash", str(DB_SH), "init", str(db_path)],
         check=True,
         capture_output=True,
         text=True,
@@ -69,7 +48,7 @@ def _setup_planspace(tmp_path: Path) -> Path:
 def _submit_task(db_path: str, task_type: str = "test-task") -> str:
     """Submit a task and return its ID."""
     result = subprocess.run(
-        ["bash", str(_DB_SH), "submit-task", db_path,
+        ["bash", str(DB_SH), "submit-task", db_path,
          task_type, "--by", "test-submitter"],
         check=True, capture_output=True, text=True,
     )
@@ -238,7 +217,7 @@ class TestInterceptTask:
         ps = _setup_planspace(tmp_path)
 
         # Create a dummy target agent file.
-        agents_dir = _WORKFLOW_HOME / "agents"
+        agents_dir = WORKFLOW_HOME / "agents"
         assert agents_dir.exists(), f"agents dir not found: {agents_dir}"
 
         task = {
@@ -695,7 +674,7 @@ class TestDispatcherQaIntegration:
 
         # Check for lifecycle event in DB.
         result = subprocess.run(
-            ["bash", str(_DB_SH), "query", db_path, "lifecycle",
+            ["bash", str(DB_SH), "query", db_path, "lifecycle",
              "--tag", f"qa-intercept:{task_id}"],
             capture_output=True, text=True,
         )
@@ -711,12 +690,12 @@ class TestQaAgentDefinition:
 
     def test_agent_file_exists(self) -> None:
         """qa-interceptor.md exists in agents directory."""
-        agent_path = _WORKFLOW_HOME / "agents" / "qa-interceptor.md"
+        agent_path = WORKFLOW_HOME / "agents" / "qa-interceptor.md"
         assert agent_path.exists(), f"Agent file not found: {agent_path}"
 
     def test_agent_file_has_frontmatter(self) -> None:
         """qa-interceptor.md has YAML frontmatter with required fields."""
-        agent_path = _WORKFLOW_HOME / "agents" / "qa-interceptor.md"
+        agent_path = WORKFLOW_HOME / "agents" / "qa-interceptor.md"
         content = agent_path.read_text(encoding="utf-8")
         assert content.startswith("---")
         # Extract frontmatter.

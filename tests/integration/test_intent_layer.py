@@ -13,6 +13,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from _paths import SRC_DIR
+
 from section_loop.intent.surfaces import (
     find_discarded_recurrences,
     load_surface_registry,
@@ -876,7 +878,7 @@ class TestIntentConventions:
 
     def test_loop_contract_includes_intent_artifacts(self) -> None:
         """loop-contract.md lists intent artifacts in inputs."""
-        contract = Path(__file__).resolve().parent.parent / "src" / "loop-contract.md"
+        contract = SRC_DIR / "loop-contract.md"
         if not contract.exists():
             pytest.skip("loop-contract.md not found")
         text = contract.read_text(encoding="utf-8")
@@ -886,7 +888,7 @@ class TestIntentConventions:
 
     def test_alignment_template_includes_intent_refs(self) -> None:
         """Integration alignment template references intent artifacts."""
-        tmpl = (Path(__file__).resolve().parent.parent / "src"
+        tmpl = (SRC_DIR
                 / "scripts" / "section_loop" / "prompts" / "templates"
                 / "integration-alignment.md")
         if not tmpl.exists():
@@ -898,7 +900,7 @@ class TestIntentConventions:
 
     def test_agent_contract_triager_budget_keys(self) -> None:
         """intent-triager.md contains cycle-budget schema keys (V1/R53)."""
-        agent = (Path(__file__).resolve().parent.parent / "src"
+        agent = (SRC_DIR
                  / "agents" / "intent-triager.md")
         if not agent.exists():
             pytest.skip("intent-triager.md not found")
@@ -910,7 +912,7 @@ class TestIntentConventions:
 
     def test_agent_contract_problem_expander_delta_keys(self) -> None:
         """problem-expander.md delta matches expansion.py schema (V2/R53)."""
-        agent = (Path(__file__).resolve().parent.parent / "src"
+        agent = (SRC_DIR
                  / "agents" / "problem-expander.md")
         if not agent.exists():
             pytest.skip("problem-expander.md not found")
@@ -922,7 +924,7 @@ class TestIntentConventions:
 
     def test_agent_contract_philosophy_expander_delta_keys(self) -> None:
         """philosophy-expander.md delta matches expansion.py schema (V3/R53)."""
-        agent = (Path(__file__).resolve().parent.parent / "src"
+        agent = (SRC_DIR
                  / "agents" / "philosophy-expander.md")
         if not agent.exists():
             pytest.skip("philosophy-expander.md not found")
@@ -934,7 +936,7 @@ class TestIntentConventions:
 
     def test_agent_contract_pack_generator_registry_schema(self) -> None:
         """intent-pack-generator.md defines dedupe registry, not axis metadata (V4/R53)."""
-        agent = (Path(__file__).resolve().parent.parent / "src"
+        agent = (SRC_DIR
                  / "agents" / "intent-pack-generator.md")
         if not agent.exists():
             pytest.skip("intent-pack-generator.md not found")
@@ -1258,7 +1260,7 @@ class TestIntentConventions:
 
     def test_no_hard_rule_in_triager(self) -> None:
         """intent-triager.md must not contain 'hard rule' phrasing (V2/R54)."""
-        agent = (Path(__file__).resolve().parent.parent / "src"
+        agent = (SRC_DIR
                  / "agents" / "intent-triager.md")
         if not agent.exists():
             pytest.skip("intent-triager.md not found")
@@ -1271,7 +1273,7 @@ class TestIntentConventions:
 
     def test_no_default_axes_mandate_in_bootstrap(self) -> None:
         """bootstrap.py prompt must not mandate default axes (V3/V8 R54)."""
-        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+        bootstrap = (SRC_DIR
                      / "scripts" / "section_loop" / "intent" / "bootstrap.py")
         if not bootstrap.exists():
             pytest.skip("bootstrap.py not found")
@@ -1285,7 +1287,7 @@ class TestIntentConventions:
 
     def test_no_diminishing_returns_threshold_in_surfaces(self) -> None:
         """surfaces.py must not contain hardcoded diminishing threshold (V4/R54)."""
-        surf = (Path(__file__).resolve().parent.parent / "src"
+        surf = (SRC_DIR
                 / "scripts" / "section_loop" / "intent" / "surfaces.py")
         if not surf.exists():
             pytest.skip("surfaces.py not found")
@@ -1312,7 +1314,7 @@ class TestIntentConventions:
 
     def test_layout_agnostic_conftest(self) -> None:
         """conftest.py DB_SH path resolves without hardcoded src/ (V6/R54)."""
-        conftest = (Path(__file__).resolve().parent / "conftest.py")
+        conftest = (Path(__file__).resolve().parent.parent / "conftest.py")
         text = conftest.read_text(encoding="utf-8")
         # Must NOT hardcode "src" / "scripts" / "db.sh" directly
         assert "PROJECT_ROOT / \"src\" / \"scripts\" / \"db.sh\"" not in text, (
@@ -1320,7 +1322,7 @@ class TestIntentConventions:
 
     def test_implement_md_describes_intent_layer(self) -> None:
         """implement.md must describe the intent layer (V7/R54)."""
-        impl = (Path(__file__).resolve().parent.parent / "src"
+        impl = (SRC_DIR
                 / "implement.md")
         if not impl.exists():
             pytest.skip("implement.md not found")
@@ -1513,7 +1515,7 @@ class TestR56AgentSelectedSources:
 
     def test_no_hardcoded_filenames_in_bootstrap(self) -> None:
         """bootstrap.py must not contain hardcoded philosophy filename lists."""
-        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+        bootstrap = (SRC_DIR
                      / "scripts" / "section_loop" / "intent" / "bootstrap.py")
         if not bootstrap.exists():
             pytest.skip("bootstrap.py not found")
@@ -1528,7 +1530,7 @@ class TestR56AgentSelectedSources:
 
     def test_catalog_builder_is_mechanical(self) -> None:
         """_build_philosophy_catalog uses bounded walk, not name matching."""
-        bootstrap = (Path(__file__).resolve().parent.parent / "src"
+        bootstrap = (SRC_DIR
                      / "scripts" / "section_loop" / "intent" / "bootstrap.py")
         if not bootstrap.exists():
             pytest.skip("bootstrap.py not found")
@@ -1539,7 +1541,7 @@ class TestR56AgentSelectedSources:
 
     def test_selector_agent_file_exists(self) -> None:
         """philosophy-source-selector.md agent file must exist."""
-        agent = (Path(__file__).resolve().parent.parent / "src"
+        agent = (SRC_DIR
                  / "agents" / "philosophy-source-selector.md")
         if not agent.exists():
             pytest.skip("philosophy-source-selector.md not found")
@@ -1588,7 +1590,7 @@ class TestR56UpdaterSignalPreservation:
 
     def test_malformed_updater_signal_preserved(self) -> None:
         """feedback.py updater signal parse site preserves malformed files."""
-        content = (Path(__file__).resolve().parent.parent / "src"
+        content = (SRC_DIR
                    / "scripts" / "scan" / "feedback.py").read_text()
         # Find the updater signal parse site (around _apply_feedback)
         region_start = content.find("Malformed updater signal:")
@@ -2550,8 +2552,7 @@ class TestR60ToolOSErrorHandling:
 
     def test_missing_file_structured_error(self) -> None:
         """Missing file must produce structured ERROR output, not crash."""
-        tool_path = (Path(__file__).resolve().parent.parent
-                     / "src" / "tools" / "extract-docstring-py")
+        tool_path = (SRC_DIR / "tools" / "extract-docstring-py")
         if not tool_path.exists():
             pytest.skip("extract-docstring-py not found")
 
@@ -2566,8 +2567,7 @@ class TestR60ToolOSErrorHandling:
 
     def test_missing_file_exit_code_2(self) -> None:
         """Running tool against missing file must exit with code 2."""
-        tool_path = (Path(__file__).resolve().parent.parent
-                     / "src" / "tools" / "extract-docstring-py")
+        tool_path = (SRC_DIR / "tools" / "extract-docstring-py")
         if not tool_path.exists():
             pytest.skip("extract-docstring-py not found")
 

@@ -19,8 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from _paths import SRC_DIR
 
 
 @pytest.fixture()
@@ -593,7 +592,7 @@ class TestScanModelPolicy:
         import ast
         from pathlib import Path as P
 
-        scan_dir = P(__file__).resolve().parent.parent / "scripts" / "scan"
+        scan_dir = P(__file__).resolve().parent.parent.parent / "src" / "scripts" / "scan"
         violations = []
         for py_file in scan_dir.glob("*.py"):
             if py_file.name in ("dispatch.py", "__init__.py", "__main__.py"):

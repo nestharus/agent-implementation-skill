@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from _paths import SRC_DIR
+
 from section_loop.main import load_sections, parse_related_files
 
 
@@ -16,8 +18,7 @@ class TestNoModeRouting:
 
     def test_no_greenfield_shortcircuit_in_main(self) -> None:
         """main.py must not short-circuit based on project_mode == greenfield."""
-        main_path = (Path(__file__).resolve().parent.parent
-                     / "src" / "scripts" / "section_loop" / "main.py")
+        main_path = (SRC_DIR / "scripts" / "section_loop" / "main.py")
         content = main_path.read_text()
         # The old greenfield short-circuit checked project_mode and wrote
         # a blocker signal directly. This should no longer exist.

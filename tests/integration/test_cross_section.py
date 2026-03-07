@@ -6,6 +6,10 @@ section number normalization).
 
 from pathlib import Path
 
+import pytest
+
+from _paths import SRC_DIR
+
 from section_loop.cross_section import (
     build_section_number_map,
     compute_text_diff,
@@ -129,8 +133,7 @@ class TestImpactPrefilterSeamAwareness:
     def test_shared_input_refs_generate_candidates(self) -> None:
         """Sections sharing .ref files should be impact candidates."""
         src = (
-            Path(__file__).resolve().parent.parent
-            / "src" / "scripts" / "section_loop" / "cross_section.py"
+            SRC_DIR / "scripts" / "section_loop" / "cross_section.py"
         )
         if not src.exists():
             pytest.skip("cross_section.py not found")
@@ -144,8 +147,7 @@ class TestImpactPrefilterSeamAwareness:
     def test_contract_artifacts_generate_candidates(self) -> None:
         """Existing contract artifacts should be impact candidates."""
         src = (
-            Path(__file__).resolve().parent.parent
-            / "src" / "scripts" / "section_loop" / "cross_section.py"
+            SRC_DIR / "scripts" / "section_loop" / "cross_section.py"
         )
         if not src.exists():
             pytest.skip("cross_section.py not found")

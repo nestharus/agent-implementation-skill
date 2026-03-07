@@ -18,6 +18,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from _paths import DB_SH
+
 from flow_schema import TaskSpec
 from task_flow import (
     FlowCorruptionError,
@@ -33,34 +35,11 @@ from flow_schema import BranchSpec, GateSpec
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _find_project_root() -> Path:
-    """Walk upward from this file to find the project root."""
-    current = Path(__file__).resolve().parent
-    for _ in range(5):
-        if (current / "SKILL.md").exists():
-            return current
-        if (current / "scripts").is_dir() and (current / "agents").is_dir():
-            return current
-        parent = current.parent
-        if parent == current:
-            break
-        current = parent
-    return Path(__file__).resolve().parent.parent
-
-
-_PROJECT_ROOT = _find_project_root()
-_WORKFLOW_HOME = (
-    _PROJECT_ROOT / "src"
-    if (_PROJECT_ROOT / "src" / "scripts").exists()
-    else _PROJECT_ROOT
-)
-_DB_SH = _WORKFLOW_HOME / "scripts" / "db.sh"
-
 
 def _init_db(db_path: Path) -> None:
     """Initialize a fresh database via db.sh."""
     subprocess.run(
-        ["bash", str(_DB_SH), "init", str(db_path)],
+        ["bash", str(DB_SH), "init", str(db_path)],
         check=True,
         capture_output=True,
         text=True,

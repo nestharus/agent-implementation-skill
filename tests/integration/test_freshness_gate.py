@@ -15,37 +15,17 @@ from unittest.mock import patch
 
 import pytest
 
+from _paths import DB_SH
+
 
 # ---------------------------------------------------------------------------
 # Helpers (same patterns as test_dispatcher_section_scope.py)
 # ---------------------------------------------------------------------------
 
-def _find_project_root() -> Path:
-    current = Path(__file__).resolve().parent
-    for _ in range(5):
-        if (current / "SKILL.md").exists():
-            return current
-        if (current / "scripts").is_dir() and (current / "agents").is_dir():
-            return current
-        parent = current.parent
-        if parent == current:
-            break
-        current = parent
-    return Path(__file__).resolve().parent.parent
-
-
-_PROJECT_ROOT = _find_project_root()
-_WORKFLOW_HOME = (
-    _PROJECT_ROOT / "src"
-    if (_PROJECT_ROOT / "src" / "scripts").exists()
-    else _PROJECT_ROOT
-)
-_DB_SH = _WORKFLOW_HOME / "scripts" / "db.sh"
-
 
 def _init_db(db_path: Path) -> None:
     subprocess.run(
-        ["bash", str(_DB_SH), "init", str(db_path)],
+        ["bash", str(DB_SH), "init", str(db_path)],
         check=True, capture_output=True, text=True,
     )
 
@@ -90,7 +70,7 @@ def _submit_task_with_freshness(
 ) -> str:
     """Submit a task with optional freshness token. Returns task ID."""
     cmd = [
-        "bash", str(_DB_SH), "submit-task", db_path,
+        "bash", str(DB_SH), "submit-task", db_path,
         "test-submitter", task_type,
     ]
     if scope:
@@ -349,7 +329,7 @@ class TestDbShFreshnessToken:
         )
 
         result = subprocess.run(
-            ["bash", str(_DB_SH), "next-task", db_path],
+            ["bash", str(DB_SH), "next-task", db_path],
             check=True, capture_output=True, text=True,
         )
         output = result.stdout.strip()
@@ -368,7 +348,7 @@ class TestDbShFreshnessToken:
         )
 
         result = subprocess.run(
-            ["bash", str(_DB_SH), "next-task", db_path],
+            ["bash", str(DB_SH), "next-task", db_path],
             check=True, capture_output=True, text=True,
         )
         output = result.stdout.strip()
