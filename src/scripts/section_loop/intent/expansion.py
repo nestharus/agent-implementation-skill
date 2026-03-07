@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ..communication import _log_artifact, log, mailbox_send
 from ..dispatch import dispatch_agent, read_agent_signal, read_model_policy
+from prompt_safety import write_validated_prompt
 from ..pipeline_control import pause_for_parent
 from .surfaces import (
     find_discarded_recurrences,
@@ -384,7 +385,7 @@ def _run_problem_expander(
             f"possible.\n"
         )
 
-    prompt_path.write_text(f"""# Task: Expand Problem Definition for Section {section_number}
+    expand_prompt_text = f"""# Task: Expand Problem Definition for Section {section_number}
 
 ## Files to Read
 1. Intent surfaces (problem portion): `{surfaces_path}`
@@ -421,7 +422,9 @@ For each surface:
 
 Set restart_required=true if new axes were added or existing axes
 materially changed (new constraints, new success criteria).
-""", encoding="utf-8")
+"""
+    if not write_validated_prompt(expand_prompt_text, prompt_path):
+        return None
     _log_artifact(planspace, f"prompt:problem-expand-{section_number}")
 
     result = dispatch_agent(
@@ -469,7 +472,7 @@ def _run_philosophy_expander(
     prompt_path = artifacts / f"philosophy-expand-{section_number}-prompt.md"
     output_path = artifacts / f"philosophy-expand-{section_number}-output.md"
 
-    prompt_path.write_text(f"""# Task: Expand Philosophy for Section {section_number}
+    phil_expand_text = f"""# Task: Expand Philosophy for Section {section_number}
 
 ## Files to Read
 1. Intent surfaces (philosophy portion): `{surfaces_path}`
@@ -509,7 +512,9 @@ Validate each philosophy surface and classify it:
   "restart_required": true|false
 }}
 ```
-""", encoding="utf-8")
+"""
+    if not write_validated_prompt(phil_expand_text, prompt_path):
+        return None
     _log_artifact(planspace, f"prompt:philosophy-expand-{section_number}")
 
     result = dispatch_agent(
@@ -589,7 +594,7 @@ def _adjudicate_recurrence(
     )
 
     ids_list = ", ".join(r["id"] for r in recurrences)
-    prompt_path.write_text(f"""# Task: Adjudicate Surface Recurrence for Section {section_number}
+    recurrence_prompt_text = f"""# Task: Adjudicate Surface Recurrence for Section {section_number}
 
 ## Context
 These previously-discarded surfaces have resurfaced during alignment:
@@ -612,7 +617,9 @@ Write a JSON signal to: `{adjudication_path}`
   "reason": "..."
 }}
 ```
-""", encoding="utf-8")
+"""
+    if not write_validated_prompt(recurrence_prompt_text, prompt_path):
+        return
     _log_artifact(planspace, f"prompt:recurrence-adjudicate-{section_number}")
 
     adjudicator_model = policy.get(

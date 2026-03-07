@@ -168,6 +168,7 @@ This file MUST conform to the canonical proposal-state schema:
     "resolved_contracts": ["<confirmed interface contract with citation>"],
     "unresolved_contracts": ["<needed but undefined/unverified contract>"],
     "research_questions": ["<question answerable with more exploration>"],
+    "blocking_research_questions": ["<research question that determines structural direction — blocks implementation>"],
     "user_root_questions": ["<question only the user can answer>"],
     "new_section_candidates": ["<problem region that may need its own section>"],
     "shared_seam_candidates": ["<integration surface shared with other sections>"],
@@ -177,8 +178,8 @@ This file MUST conform to the canonical proposal-state schema:
 ```
 
 **Blocking fields** (any non-empty list forces `execution_ready` to `false`):
-`unresolved_anchors`, `unresolved_contracts`, `user_root_questions`,
-`shared_seam_candidates`.
+`unresolved_anchors`, `unresolved_contracts`, `blocking_research_questions`,
+`user_root_questions`, `shared_seam_candidates`.
 
 **`execution_ready` is fail-closed.** When in doubt, set it to `false`.
 A premature `true` causes downstream implementation failures. An honest

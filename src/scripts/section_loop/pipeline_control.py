@@ -208,6 +208,29 @@ def _section_inputs_hash(
     return hasher.hexdigest()
 
 
+def coordination_recheck_hash(
+    sec_num: str,
+    planspace: Path,
+    codespace: Path,
+    sections_by_num: dict[str, Any],
+    modified_files: list[str],
+) -> str:
+    """Canonical section-input hash plus coordinator-modified files.
+
+    Used by the coordination loop to determine whether a section's
+    alignment-relevant inputs have changed since the last recheck.
+    Delegates to ``_section_inputs_hash`` for the canonical surface,
+    then appends sorted bytes of files modified by the coordinator.
+    """
+    base = _section_inputs_hash(sec_num, planspace, codespace, sections_by_num)
+    hasher = hashlib.sha256(base.encode("utf-8"))
+    for mod_f in sorted(modified_files):
+        mod_path = codespace / mod_f
+        if mod_path.exists():
+            hasher.update(mod_path.read_bytes())
+    return hasher.hexdigest()
+
+
 def _set_alignment_changed_flag(planspace: Path) -> None:
     """Write flag file so the main loop knows to requeue sections."""
     flag = planspace / "artifacts" / "alignment-changed-pending"

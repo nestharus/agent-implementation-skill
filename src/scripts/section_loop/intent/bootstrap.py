@@ -11,6 +11,7 @@ from ..dispatch import (
     dispatch_agent, read_agent_signal, read_model_policy,
 )
 from ..types import Section
+from prompt_safety import write_validated_prompt
 
 
 def _walk_md_bounded(
@@ -462,7 +463,7 @@ If NO files contain philosophy or constraints, write:
                 f"- `{a['path']}` — {a.get('reason', 'ambiguous')}"
                 for a in verifiable
             )
-            verify_prompt.write_text(f"""# Task: Verify Ambiguous Philosophy Candidates
+            verify_prompt_text = f"""# Task: Verify Ambiguous Philosophy Candidates
 
 ## Context
 The source selector could not classify these files from a 10-line
@@ -490,7 +491,9 @@ Write a JSON signal to: `{verify_signal}`
   ]
 }}}}
 ```
-""", encoding="utf-8")
+"""
+            if not write_validated_prompt(verify_prompt_text, verify_prompt):
+                return selected  # fail-closed: skip verification
             _log_artifact(planspace, "prompt:philosophy-verify")
 
             dispatch_agent(
@@ -587,7 +590,7 @@ Write a JSON signal to: `{verify_signal}`
     source_map_path = intent_global / "philosophy-source-map.json"
 
     sources_block = "\n".join(f"- `{s}`" for s in sources)
-    prompt_path.write_text(f"""# Task: Distill Operational Philosophy
+    distill_prompt_text = f"""# Task: Distill Operational Philosophy
 
 ## Context
 Convert the execution philosophy into an operational philosophy document
@@ -616,7 +619,9 @@ Format: JSON mapping principle ID to source file/section.
 - Note known tensions between principles explicitly
 - Include expansion guidance: what classifies as absorbable vs tension vs contradiction
 - Do NOT invent principles — every principle must trace to one of the source files
-""", encoding="utf-8")
+"""
+    if not write_validated_prompt(distill_prompt_text, prompt_path):
+        return None
     _log_artifact(planspace, "prompt:philosophy-distill")
 
     result = dispatch_agent(
@@ -775,7 +780,7 @@ def generate_intent_pack(
     prompt_path = artifacts / f"intent-pack-{sec}-prompt.md"
     output_path = artifacts / f"intent-pack-{sec}-output.md"
 
-    prompt_path.write_text(f"""# Task: Generate Intent Pack for Section {sec}
+    pack_prompt_text = f"""# Task: Generate Intent Pack for Section {sec}
 
 ## Files to Read
 {inputs_block}{notes_block}
@@ -850,7 +855,9 @@ Write an empty surface registry to: `{intent_sec / "surface-registry.json"}`
 ```json
 {{"section": "{sec}", "next_id": 1, "surfaces": []}}
 ```
-""", encoding="utf-8")
+"""
+    if not write_validated_prompt(pack_prompt_text, prompt_path):
+        return None
     _log_artifact(planspace, f"prompt:intent-pack-{sec}")
 
     result = dispatch_agent(

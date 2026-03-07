@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from ..communication import _log_artifact, log
+from prompt_safety import write_validated_prompt
 
 
 def _parse_coordination_plan(
@@ -176,7 +177,7 @@ def write_coordination_plan_prompt(
             f"and flagged for escalated model usage.\n"
         )
 
-    prompt_path.write_text(f"""# Task: Plan Coordination Strategy
+    plan_prompt_text = f"""# Task: Plan Coordination Strategy
 
 ## Outstanding Problems
 
@@ -225,6 +226,8 @@ list of group indices to run concurrently (subject to file-safety checks).
 Batches execute sequentially — batch 0 completes before batch 1 starts.
 Example: `[[0, 2], [1]]` means run groups 0 and 2 in parallel first,
 then run group 1.
-""", encoding="utf-8")
+"""
+    if not write_validated_prompt(plan_prompt_text, prompt_path):
+        return None
     _log_artifact(planspace, "prompt:coordination-plan")
     return prompt_path

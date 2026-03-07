@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from ..dispatch import dispatch_agent
+from prompt_safety import write_validated_prompt
 
 
 def _gather_complexity_signals(
@@ -144,7 +145,7 @@ def _check_needs_microstrategy(
     decider_prompt = artifacts / f"microstrategy-decider-{section_number}-prompt.md"
     decider_output = artifacts / f"microstrategy-decider-{section_number}-output.md"
     complexity = _gather_complexity_signals(planspace, section_number)
-    decider_prompt.write_text(f"""# Task: Microstrategy Decision for Section {section_number}
+    decider_prompt_text = f"""# Task: Microstrategy Decision for Section {section_number}
 
 ## Files to Read
 1. Integration proposal: `{proposal_path}`
@@ -165,7 +166,9 @@ Write a JSON signal to: `{signal_path}`
 ```json
 {{"needs_microstrategy": true, "reason": "..."}}
 ```
-""", encoding="utf-8")
+"""
+    if not write_validated_prompt(decider_prompt_text, decider_prompt):
+        return False
     signal_path.parent.mkdir(parents=True, exist_ok=True)
 
     # First attempt with default model

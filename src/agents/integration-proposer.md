@@ -45,6 +45,7 @@ The `proposal-state.json` must contain all of these fields:
 | `resolved_contracts` | list | Interface contracts (function signatures, data shapes, protocols) that are confirmed |
 | `unresolved_contracts` | list | Interface contracts that are needed but not yet defined or verified |
 | `research_questions` | list | Open questions that need further exploration (not blocking, but affect quality) |
+| `blocking_research_questions` | list | Research questions that determine structural direction — implementation must not descend until these are resolved |
 | `user_root_questions` | list | Questions that only the user can answer — escalation signals |
 | `new_section_candidates` | list | Problem regions discovered during exploration that may warrant their own section |
 | `shared_seam_candidates` | list | Integration surfaces shared with other sections that need coordination |
@@ -54,6 +55,7 @@ The `proposal-state.json` must contain all of these fields:
 **Blocking fields** (any non-empty list here forces `execution_ready = false`):
 - `unresolved_anchors`
 - `unresolved_contracts`
+- `blocking_research_questions`
 - `user_root_questions`
 - `shared_seam_candidates`
 

@@ -22,8 +22,9 @@ from ..dispatch import (
     read_agent_signal,
     read_model_policy,
 )
-from ..pipeline_control import poll_control_messages
+from ..pipeline_control import coordination_recheck_hash, poll_control_messages
 from ..types import Section, SectionResult
+from prompt_safety import write_validated_prompt
 
 from .execution import _dispatch_fix_group, write_coordinator_fix_prompt
 from .planning import _parse_coordination_plan, write_coordination_plan_prompt
@@ -237,7 +238,7 @@ def run_global_coordination(
                 pending_deltas_path.write_text(
                     json.dumps(pending_deltas, indent=2), encoding="utf-8")
 
-                adjudication_prompt.write_text(f"""# Task: Adjudicate Scope Deltas
+                adj_prompt_text = f"""# Task: Adjudicate Scope Deltas
 
 ## Pending Scope Deltas
 
@@ -270,7 +271,11 @@ Reply with a JSON block:
 - ALL: `delta_id`, `action`, `reason`
 - accept: `new_sections` (array of `{{title, scope}}`)
 - absorb: `absorb_into_section`, `scope_addition`
-""", encoding="utf-8")
+"""
+                if not write_validated_prompt(
+                    adj_prompt_text, adjudication_prompt,
+                ):
+                    return False
                 _log_artifact(planspace, "prompt:scope-delta-adjudication")
 
                 adjudication_result = dispatch_agent(
@@ -927,29 +932,11 @@ Reply with a JSON block:
         if not section:
             continue
 
-        # Compute inputs hash for this section
-        sec_artifacts = planspace / "artifacts"
-        hash_sources = [
-            sec_artifacts / "sections"
-            / f"section-{sec_num}-alignment-excerpt.md",
-            sec_artifacts / "proposals"
-            / f"section-{sec_num}-integration-proposal.md",
-        ]
-        hasher = hashlib.sha256()
-        for hp in hash_sources:
-            if hp.exists():
-                hasher.update(hp.read_bytes())
-        # Include incoming notes hash
-        notes_dir = planspace / "artifacts" / "notes"
-        if notes_dir.exists():
-            for note_path in sorted(notes_dir.glob(f"from-*-to-{sec_num}.md")):
-                hasher.update(note_path.read_bytes())
-        # Include modified files hash (coordinator may have changed files)
-        for mod_f in sorted(all_modified):
-            mod_path = codespace / mod_f
-            if mod_path.exists():
-                hasher.update(mod_path.read_bytes())
-        current_hash = hasher.hexdigest()
+        # Canonical section-input hash + coordinator-modified files
+        current_hash = coordination_recheck_hash(
+            sec_num, planspace, codespace, sections_by_num,
+            list(all_modified),
+        )
 
         prev_hash_file = inputs_hash_dir / f"section-{sec_num}.hash"
         if prev_hash_file.exists():

@@ -29,6 +29,7 @@ PROPOSAL_STATE_SCHEMA: dict[str, type] = {
     "resolved_contracts": list,
     "unresolved_contracts": list,
     "research_questions": list,
+    "blocking_research_questions": list,
     "user_root_questions": list,
     "new_section_candidates": list,
     "shared_seam_candidates": list,
@@ -40,6 +41,7 @@ PROPOSAL_STATE_SCHEMA: dict[str, type] = {
 _BLOCKING_FIELDS: tuple[str, ...] = (
     "unresolved_anchors",
     "unresolved_contracts",
+    "blocking_research_questions",
     "user_root_questions",
     "shared_seam_candidates",
 )
@@ -53,6 +55,7 @@ def _fail_closed_default() -> dict:
         "resolved_contracts": [],
         "unresolved_contracts": [],
         "research_questions": [],
+        "blocking_research_questions": [],
         "user_root_questions": [],
         "new_section_candidates": [],
         "shared_seam_candidates": [],
@@ -170,7 +173,8 @@ def has_blocking_fields(state: dict) -> bool:
     """Return True if any blocking fields contain items.
 
     Blocking fields: ``unresolved_anchors``, ``unresolved_contracts``,
-    ``user_root_questions``, ``shared_seam_candidates``.
+    ``blocking_research_questions``, ``user_root_questions``,
+    ``shared_seam_candidates``.
     """
     for key in _BLOCKING_FIELDS:
         items = state.get(key, [])

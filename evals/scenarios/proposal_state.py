@@ -323,7 +323,8 @@ def _setup_vacuum(planspace: Path, codespace: Path) -> Path:
 
         The proposal-state JSON must have these fields:
         resolved_anchors, unresolved_anchors, resolved_contracts,
-        unresolved_contracts, research_questions, user_root_questions,
+        unresolved_contracts, research_questions,
+        blocking_research_questions, user_root_questions,
         new_section_candidates, shared_seam_candidates, execution_ready,
         readiness_rationale.
 
@@ -421,7 +422,8 @@ def _setup_partial_anchors(planspace: Path, codespace: Path) -> Path:
 
         The proposal-state JSON must have these fields:
         resolved_anchors, unresolved_anchors, resolved_contracts,
-        unresolved_contracts, research_questions, user_root_questions,
+        unresolved_contracts, research_questions,
+        blocking_research_questions, user_root_questions,
         new_section_candidates, shared_seam_candidates, execution_ready,
         readiness_rationale.
 
@@ -708,7 +710,8 @@ def _check_brownfield_no_blocking_fields(
         return False, "Proposal-state is not valid JSON"
     blocking_fields = [
         "unresolved_anchors", "unresolved_contracts",
-        "user_root_questions", "shared_seam_candidates",
+        "blocking_research_questions", "user_root_questions",
+        "shared_seam_candidates",
     ]
     non_empty = [
         f for f in blocking_fields

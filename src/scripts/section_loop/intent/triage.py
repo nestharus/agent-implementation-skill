@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ..communication import _log_artifact, log
 from ..dispatch import dispatch_agent, read_agent_signal, read_model_policy
+from prompt_safety import write_validated_prompt
 
 
 def run_intent_triage(
@@ -62,7 +63,7 @@ def run_intent_triage(
             triage_refs.append(f"- {label}: `{path}`")
     triage_refs_block = "\n".join(triage_refs) if triage_refs else "- (none)"
 
-    triage_prompt_path.write_text(f"""# Task: Intent Triage for Section {section_number}
+    triage_prompt_text = f"""# Task: Intent Triage for Section {section_number}
 
 ## Context
 Decide whether this section needs the full bidirectional intent cycle
@@ -114,7 +115,9 @@ Write a JSON signal to: `{triage_signal_path}`
   "reason": "<why this mode was chosen>"
 }}
 ```
-""", encoding="utf-8")
+"""
+    if not write_validated_prompt(triage_prompt_text, triage_prompt_path):
+        return _full_default(section_number)
     _log_artifact(planspace, f"prompt:intent-triage-{section_number}")
 
     result = dispatch_agent(

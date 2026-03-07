@@ -1005,14 +1005,16 @@ implementation:
    data shapes, protocols) and unresolved contracts (needed but not yet
    defined or verified)
 3. **Open questions** — research questions (answerable with more
-   exploration) and user/root questions (only the user can answer,
-   escalation signals)
+   exploration), blocking research questions (structurally decisive
+   unknowns that must be resolved before implementation descends),
+   and user/root questions (only the user can answer, escalation signals)
 4. **Cross-section surfaces** — shared seam candidates (integration
    surfaces shared with other sections) and new-section candidates
    (problem regions that may warrant their own section)
 5. **Execution readiness** — fail-closed: `execution_ready` is `true`
    only when all blocking fields (unresolved anchors, unresolved
-   contracts, user root questions, shared seam candidates) are empty
+   contracts, blocking research questions, user root questions, shared
+   seam candidates) are empty
 
 The shape is the same regardless of whether the section is greenfield,
 brownfield, or hybrid — only the fill level changes. This is STRATEGIC

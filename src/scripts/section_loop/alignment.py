@@ -3,6 +3,7 @@ from pathlib import Path
 from .agent_templates import render_template
 from .communication import log
 from .dispatch import dispatch_agent
+from prompt_safety import validate_dynamic_content
 from .pipeline_control import poll_control_messages
 from .types import Section
 
@@ -163,6 +164,13 @@ Reply with a JSON block:
 - If you cannot determine the state → `"aligned": false` with a single
   problem: "Unable to determine alignment state from judge output"
 """
+        # Validate dynamic body before wrapping in template
+        violations = validate_dynamic_content(dynamic_body)
+        if violations:
+            log(f"Alignment adjudicate prompt safety violation: "
+                f"{violations} — skipping dispatch")
+            return None
+
         adj_prompt.write_text(
             render_template(
                 "alignment-adjudicate", dynamic_body,

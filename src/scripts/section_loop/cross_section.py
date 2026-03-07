@@ -18,6 +18,7 @@ from .context_assembly import materialize_context_sidecar
 from .dispatch import dispatch_agent
 from .pipeline_control import _set_alignment_changed_flag
 from .types import Section
+from prompt_safety import validate_dynamic_content
 
 
 def compute_text_diff(old_path: Path, new_path: Path) -> str:
@@ -265,6 +266,14 @@ This is the primary content of the consequence note the target receives.
                 f"`{sidecar_path}`\n"
             )
     _log_artifact(planspace, f"prompt:impact-{sec_num}")
+
+    # Validate final rendered prompt before dispatch
+    violations = validate_dynamic_content(
+        impact_prompt_path.read_text(encoding="utf-8"))
+    if violations:
+        log(f"Section {sec_num}: impact prompt safety violation: "
+            f"{violations} — skipping dispatch")
+        return None
 
     log(f"Section {sec_num}: running impact analysis")
     # Emit GLM exploration event for QA monitor rule C2

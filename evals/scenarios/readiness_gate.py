@@ -92,6 +92,7 @@ def _setup_blocked(planspace: Path, codespace: Path) -> Path:
         "resolved_contracts": [],
         "unresolved_contracts": ["MessageBrokerProtocol"],
         "research_questions": ["What message format does the broker use?"],
+        "blocking_research_questions": [],
         "user_root_questions": [],
         "new_section_candidates": [],
         "shared_seam_candidates": [],
@@ -134,6 +135,7 @@ def _setup_user_decision(planspace: Path, codespace: Path) -> Path:
         "resolved_contracts": ["DatabaseProtocol"],
         "unresolved_contracts": [],
         "research_questions": [],
+        "blocking_research_questions": [],
         "user_root_questions": [
             "Should the API support both REST and GraphQL?",
             "What is the expected SLA for this endpoint?",
@@ -182,6 +184,7 @@ def _setup_stale_reopen(planspace: Path, codespace: Path) -> Path:
         "resolved_contracts": ["ReportFormat"],
         "unresolved_contracts": [],
         "research_questions": [],
+        "blocking_research_questions": [],
         "user_root_questions": [],
         "new_section_candidates": [],
         "shared_seam_candidates": [],
@@ -203,6 +206,7 @@ def _setup_stale_reopen(planspace: Path, codespace: Path) -> Path:
         "resolved_contracts": [],
         "unresolved_contracts": ["ReportFormat"],
         "research_questions": [],
+        "blocking_research_questions": [],
         "user_root_questions": [],
         "new_section_candidates": [],
         "shared_seam_candidates": ["report generation seam"],
@@ -220,6 +224,7 @@ def _setup_stale_reopen(planspace: Path, codespace: Path) -> Path:
         "resolved_contracts": ["ReportFormat"],
         "unresolved_contracts": [],
         "research_questions": [],
+        "blocking_research_questions": [],
         "user_root_questions": [],
         "new_section_candidates": [],
         "shared_seam_candidates": ["report generation seam"],
@@ -527,6 +532,94 @@ def _check_missing_no_dispatch(
 # Exported scenarios
 # ---------------------------------------------------------------------------
 
+def _setup_blocking_research(planspace: Path, codespace: Path) -> Path:
+    """Section blocked ONLY by blocking_research_questions."""
+    artifacts = planspace / "artifacts"
+    proposals = artifacts / "proposals"
+    signals = artifacts / "signals"
+    proposals.mkdir(parents=True, exist_ok=True)
+    signals.mkdir(parents=True, exist_ok=True)
+
+    state = {
+        "resolved_anchors": ["api.endpoint", "db.connection"],
+        "unresolved_anchors": [],
+        "resolved_contracts": ["DatabaseProtocol"],
+        "unresolved_contracts": [],
+        "research_questions": ["Minor: best pagination style?"],
+        "blocking_research_questions": [
+            "Must resolve: event-driven vs request-response architecture "
+            "determines all downstream module boundaries",
+        ],
+        "user_root_questions": [],
+        "new_section_candidates": [],
+        "shared_seam_candidates": [],
+        "execution_ready": False,
+        "readiness_rationale": (
+            "Blocking research question on architecture style must be "
+            "resolved before implementation can descend"
+        ),
+    }
+    save_proposal_state(state,
+                        proposals / "section-25-proposal-state.json")
+    resolve_readiness(artifacts, "25")
+
+    (codespace / "api").mkdir(parents=True, exist_ok=True)
+    (codespace / "api" / "__init__.py").write_text("", encoding="utf-8")
+
+    return _write_inspection_prompt(
+        artifacts, "blocking-research", "25",
+        "This section has a blocking_research_questions entry as the only "
+        "blocker. Readiness should be false.",
+    )
+
+
+def _check_blocking_research_not_ready(
+    planspace: Path, codespace: Path, agent_output: str,
+) -> tuple[bool, str]:
+    """Verify readiness is false when blocking_research_questions present."""
+    path = (planspace / "artifacts" / "readiness"
+            / "section-25-execution-ready.json")
+    if not path.exists():
+        return False, f"Readiness artifact not written: {path}"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return False, f"Readiness artifact is not valid JSON: {exc}"
+    ready = data.get("ready")
+    if ready is False:
+        return True, "ready=false (correct for blocking research)"
+    return False, f"Expected ready=false, got {ready}"
+
+
+def _check_blocking_research_blocker_type(
+    planspace: Path, codespace: Path, agent_output: str,
+) -> tuple[bool, str]:
+    """Verify blockers include blocking_research_questions type."""
+    path = (planspace / "artifacts" / "readiness"
+            / "section-25-execution-ready.json")
+    if not path.exists():
+        return False, "Readiness artifact not written"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return False, "Readiness artifact is not valid JSON"
+    blockers = data.get("blockers", [])
+    brq_blockers = [
+        b for b in blockers
+        if b.get("type") == "blocking_research_questions"
+    ]
+    if brq_blockers:
+        return True, (
+            f"Found {len(brq_blockers)} blocking_research_questions "
+            f"blocker(s)"
+        )
+    blocker_types = [b.get("type") for b in blockers]
+    return False, (
+        f"Expected blocking_research_questions blocker, "
+        f"found types: {blocker_types}"
+    )
+
+
 SCENARIOS = [
     Scenario(
         name="readiness_gate_blocked",
@@ -605,6 +698,22 @@ SCENARIOS = [
             Check(
                 description="No implementation dispatch artifacts written",
                 verify=_check_missing_no_dispatch,
+            ),
+        ],
+    ),
+    Scenario(
+        name="readiness_gate_blocking_research",
+        agent_file="state-adjudicator.md",
+        model_policy_key="setup",
+        setup=_setup_blocking_research,
+        checks=[
+            Check(
+                description="Readiness is false when blocking_research_questions present",
+                verify=_check_blocking_research_not_ready,
+            ),
+            Check(
+                description="Blockers include blocking_research_questions type",
+                verify=_check_blocking_research_blocker_type,
             ),
         ],
     ),

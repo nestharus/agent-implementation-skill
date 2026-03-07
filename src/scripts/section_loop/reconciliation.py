@@ -19,6 +19,7 @@ from pathlib import Path
 
 from .agent_templates import render_template
 from .dispatch import dispatch_agent, read_model_policy
+from prompt_safety import validate_dynamic_content
 from .proposal_state import load_proposal_state
 from .reconciliation_queue import load_reconciliation_requests
 
@@ -212,6 +213,16 @@ group's `members` array or in the `separate` array.
 
     prompt_path = recon_dir / f"adjudicate-{candidate_type}-prompt.md"
     output_path = recon_dir / f"adjudicate-{candidate_type}-output.md"
+
+    # Validate dynamic body before wrapping in template
+    violations = validate_dynamic_content(dynamic_body)
+    if violations:
+        logger.warning(
+            "Reconciliation adjudicate prompt safety violation: %s "
+            "— skipping dispatch",
+            violations,
+        )
+        return None
 
     prompt_path.write_text(
         render_template("reconciliation-adjudicate", dynamic_body),

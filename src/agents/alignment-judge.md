@@ -142,6 +142,7 @@ Files to Read, verify the following:
    blocking fields must be empty:
    - `unresolved_anchors` must be `[]`
    - `unresolved_contracts` must be `[]`
+   - `blocking_research_questions` must be `[]`
    - `user_root_questions` must be `[]`
    - `shared_seam_candidates` must be `[]`
    If ANY of these contain items while `execution_ready` is `true`, that
