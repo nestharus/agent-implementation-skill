@@ -45,6 +45,7 @@ from task_flow import (  # noqa: E402
     submit_chain,
     submit_fanout,
 )
+from lib.flow_submitter import new_flow_id  # noqa: E402
 from task_router import resolve_task  # noqa: E402
 
 
@@ -330,8 +331,7 @@ def ingest_and_submit(
             # Fanout requires a flow_id — allocate one if not provided
             fanout_flow_id = flow_id
             if not fanout_flow_id:
-                from task_flow import _new_flow_id  # noqa: E402
-                fanout_flow_id = _new_flow_id()
+                fanout_flow_id = new_flow_id()
             submit_fanout(
                 db_path,
                 submitted_by,

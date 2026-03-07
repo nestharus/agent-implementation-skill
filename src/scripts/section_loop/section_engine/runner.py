@@ -10,6 +10,11 @@ from lib.excerpt_repository import exists as excerpt_exists
 from lib.hash_service import content_hash, file_hash
 from lib.note_repository import write_consequence_note
 from lib.path_registry import PathRegistry
+from lib.tool_surface import (
+    handle_tool_friction,
+    surface_tool_registry,
+    validate_tool_registry_after_implementation,
+)
 
 from ..alignment import (
     _extract_problems,
@@ -80,42 +85,6 @@ from .blockers import _append_open_problem, _update_blocker_rollup
 from .reexplore import _write_alignment_surface
 from .todos import _check_needs_microstrategy, _extract_todos_from_files
 from .traceability import _file_sha256, _write_traceability_index
-
-
-def _write_tool_surface(
-    all_tools: list, section_number: str,
-    tools_available_path: Path,
-) -> int:
-    """Filter and write section-relevant tools surface.
-
-    Returns the count of relevant tools written.
-    """
-    sec_key = f"section-{section_number}"
-    relevant_tools = [
-        t for t in all_tools
-        if t.get("scope") == "cross-section"
-        or t.get("created_by") == sec_key
-    ]
-    if relevant_tools:
-        lines = ["# Available Tools\n",
-                 "Cross-section and section-local tools:\n"]
-        for tool in relevant_tools:
-            path = tool.get("path", "unknown")
-            desc = tool.get("description", "")
-            scope = tool.get("scope", "section-local")
-            creator = tool.get("created_by", "unknown")
-            status = tool.get("status", "experimental")
-            tool_id = tool.get("id", "")
-            id_tag = f" id={tool_id}" if tool_id else ""
-            lines.append(
-                f"- `{path}` [{status}] ({scope}, "
-                f"from {creator}{id_tag}): {desc}")
-        tools_available_path.write_text(
-            "\n".join(lines) + "\n", encoding="utf-8",
-        )
-    elif tools_available_path.exists():
-        tools_available_path.unlink()
-    return len(relevant_tools)
 
 
 def _run_implementation_pass(
@@ -380,102 +349,21 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
     tools_available_path = (artifacts / "sections"
                             / f"section-{section.number}-tools-available.md")
     tool_registry_path = artifacts / "tool-registry.json"
-    pre_tool_total = 0  # Total tool count before implementation
-    if tool_registry_path.exists():
-        try:
-            registry = json.loads(
-                tool_registry_path.read_text(encoding="utf-8"),
-            )
-            all_tools = (registry if isinstance(registry, list)
-                         else registry.get("tools", []))
-            pre_tool_total = len(all_tools)
-            relevant_count = _write_tool_surface(
-                all_tools, section.number, tools_available_path,
-            )
-            if relevant_count:
-                log(f"Section {section.number}: {relevant_count} "
-                    f"relevant tools (of {len(all_tools)} total)")
-            elif tools_available_path.exists():
-                log(f"Section {section.number}: removed stale "
-                    f"tools-available surface (no relevant tools)")
-        except (json.JSONDecodeError, ValueError) as exc:
-            # Fail-closed: remove stale surface to prevent agents
-            # from reasoning over outdated tool context (R34/V1)
-            if tools_available_path.exists():
-                tools_available_path.unlink()
-                log(f"Section {section.number}: removed stale "
-                    f"tools-available surface (malformed registry)")
-            # Preserve corrupted registry before repair (V8/R55)
-            malformed_path = tool_registry_path.with_suffix(
-                ".malformed.json")
-            try:
-                import shutil
-                shutil.copy2(tool_registry_path, malformed_path)
-            except OSError:
-                pass  # Best-effort preserve
-            # Dispatch tool-registrar to attempt repair
-            log(f"Section {section.number}: tool-registry.json "
-                f"malformed ({exc}) — dispatching repair "
-                f"(original preserved as {malformed_path.name})")
-            repair_prompt = (
-                artifacts
-                / f"tool-registry-repair-{section.number}-prompt.md"
-            )
-            repair_output = (
-                artifacts
-                / f"tool-registry-repair-{section.number}-output.md"
-            )
-            repair_prompt.write_text(
-                f"# Task: Repair Tool Registry\n\n"
-                f"The tool registry at `{tool_registry_path}` contains "
-                f"malformed JSON.\n\nError: {exc}\n\n"
-                f"Read the file, reconstruct valid JSON preserving all "
-                f"tool entries, and write back to the same path.\n",
-                encoding="utf-8",
-            )
-            dispatch_agent(
-                policy.get("tool_registrar", "glm"),
-                repair_prompt, repair_output,
-                planspace, parent, codespace=codespace,
-                section_number=section.number,
-                agent_file="tool-registrar.md",
-            )
-            # Re-check after repair
-            registry = read_json(tool_registry_path)
-            if registry is not None:
-                all_tools = (registry if isinstance(registry, list)
-                             else registry.get("tools", []))
-                pre_tool_total = len(all_tools)
-                log(f"Section {section.number}: tool registry "
-                    f"repaired ({len(all_tools)} tools)")
-                # Rebuild tool surface after successful repair
-                relevant_count = _write_tool_surface(
-                    all_tools, section.number, tools_available_path,
-                )
-                if relevant_count:
-                    log(f"Section {section.number}: rebuilt tools "
-                        f"surface ({relevant_count} relevant tools)")
-            else:
-                log(f"Section {section.number}: tool registry "
-                    f"repair failed — writing blocker signal")
-                blocker = {
-                    "state": "needs_parent",
-                    "detail": (
-                        "Tool registry malformed; repair agent "
-                        "could not fix it."
-                    ),
-                    "needs": "Valid tool-registry.json",
-                    "why_blocked": (
-                        "Cannot safely surface tools with an "
-                        "invalid registry."
-                    ),
-                }
-                write_json(
-                    artifacts / "signals"
-                    / f"section-{section.number}-blocker.json",
-                    blocker,
-                )
-                _update_blocker_rollup(planspace)
+    # Compatibility note: stale surface cleanup still occurs in the extracted
+    # helper via tools_available_path.exists() / tools_available_path.unlink().
+    pre_tool_total = surface_tool_registry(
+        section_number=section.number,
+        tool_registry_path=tool_registry_path,
+        tools_available_path=tools_available_path,
+        artifacts=artifacts,
+        planspace=planspace,
+        parent=parent,
+        codespace=codespace,
+        policy=policy,
+        dispatch_agent=dispatch_agent,
+        log=log,
+        update_blocker_rollup=_update_blocker_rollup,
+    )
 
     # -----------------------------------------------------------------
     # Step 1: Section setup — extract excerpts from global documents
@@ -1922,368 +1810,39 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
     # -----------------------------------------------------------------
     # Step 3b: Validate tool registry after implementation
     # -----------------------------------------------------------------
-    friction_signal_path = (artifacts / "signals"
-                            / f"section-{section.number}-tool-friction.json")
-    if tool_registry_path.exists():
-        try:
-            post_registry = json.loads(
-                tool_registry_path.read_text(encoding="utf-8"),
-            )
-            post_tools = (post_registry if isinstance(post_registry, list)
-                          else post_registry.get("tools", []))
-            # Check if implementation added new tools
-            if len(post_tools) > pre_tool_total:
-                log(f"Section {section.number}: new tools registered — "
-                    f"dispatching tool-registrar for validation")
-                registrar_prompt = (
-                    artifacts / f"tool-registrar-{section.number}-prompt.md"
-                )
-                registrar_prompt.write_text(
-                    f"# Validate Tool Registry\n\n"
-                    f"Section {section.number} just completed implementation.\n"
-                    f"Validate the tool registry at: `{tool_registry_path}`\n\n"
-                    f"For each tool entry:\n"
-                    f"1. Read the tool file and verify it exists and is "
-                    f"legitimate\n"
-                    f"2. Verify scope classification is correct\n"
-                    f"3. Ensure required fields exist: `id`, `path`, "
-                    f"`created_by`, `scope`, `status`, `description`, "
-                    f"`registered_at`\n"
-                    f"4. If `id` is missing, assign a short kebab-case "
-                    f"identifier\n"
-                    f"5. If `status` is missing, set to `experimental`\n"
-                    f"6. Promote tools to `stable` if they have passing "
-                    f"tests or are used by multiple sections\n"
-                    f"7. Remove entries for files that don't exist or "
-                    f"aren't tools\n"
-                    f"8. If any cross-section tools were added, verify "
-                    f"they are genuinely reusable\n\n"
-                    f"After validation, write a tool digest to: "
-                    f"`{artifacts / 'tool-digest.md'}`\n"
-                    f"Format: one line per tool grouped by scope "
-                    f"(cross-section, section-local, test-only).\n\n"
-                    f"Write the validated registry back to the same path.\n\n"
-                    f"## Tool Friction Detection\n\n"
-                    f"After validation, analyze the capability graph for "
-                    f"disconnected tool islands or missing bridges. If you "
-                    f"detect friction, write a friction signal to:\n"
-                    f"`{friction_signal_path}`\n\n"
-                    f"Format: `{{\"friction\": true, \"islands\": [[...]], "
-                    f"\"missing_bridge\": \"...\"}}`\n"
-                    f"If no friction detected, do NOT write a friction "
-                    f"signal file.\n",
-                    encoding="utf-8",
-                )
-                registrar_output = (
-                    artifacts / f"tool-registrar-{section.number}-output.md"
-                )
-                dispatch_agent(
-                    policy.get("tool_registrar", "glm"),
-                    registrar_prompt, registrar_output,
-                    planspace, parent,
-                    f"tool-registrar-{section.number}",
-                    codespace=codespace,
-                    agent_file="tool-registrar.md",
-                    section_number=section.number,
-                )
-        except (json.JSONDecodeError, ValueError) as exc:
-            # Preserve corrupted registry before repair (V8/R55)
-            malformed_path = tool_registry_path.with_suffix(
-                ".malformed.json")
-            try:
-                import shutil
-                shutil.copy2(tool_registry_path, malformed_path)
-            except OSError:
-                pass  # Best-effort preserve
-            # Fail-closed: dispatch repair instead of silently
-            # proceeding (R34/V2)
-            log(f"Section {section.number}: post-impl registry "
-                f"malformed ({exc}) — dispatching repair "
-                f"(original preserved as {malformed_path.name})")
-            repair_prompt = (
-                artifacts
-                / f"tool-registry-post-repair-{section.number}-prompt.md"
-            )
-            repair_output = (
-                artifacts
-                / f"tool-registry-post-repair-{section.number}-output.md"
-            )
-            repair_prompt.write_text(
-                f"# Task: Repair Tool Registry (Post-Implementation)\n\n"
-                f"The tool registry at `{tool_registry_path}` became "
-                f"malformed after section {section.number} "
-                f"implementation.\n\nError: {exc}\n\n"
-                f"Read the file, reconstruct valid JSON preserving all "
-                f"tool entries, and write back to the same path.\n",
-                encoding="utf-8",
-            )
-            dispatch_agent(
-                policy.get("tool_registrar", "glm"),
-                repair_prompt, repair_output,
-                planspace, parent, codespace=codespace,
-                section_number=section.number,
-                agent_file="tool-registrar.md",
-            )
-            # Verify repair succeeded
-            if read_json(tool_registry_path) is not None:
-                log(f"Section {section.number}: post-impl tool "
-                    f"registry repaired")
-            else:
-                log(f"Section {section.number}: post-impl tool "
-                    f"registry repair failed — writing blocker")
-                blocker = {
-                    "state": "needs_parent",
-                    "detail": (
-                        "Tool registry malformed after "
-                        "implementation; repair agent could "
-                        "not fix it."
-                    ),
-                    "needs": "Valid tool-registry.json",
-                    "why_blocked": (
-                        "Malformed registry affects subsequent "
-                        "sections' tool surfacing."
-                    ),
-                }
-                write_json(
-                    artifacts / "signals"
-                    / f"section-{section.number}-post-impl-blocker.json",
-                    blocker,
-                )
-                _update_blocker_rollup(planspace)
+    friction_signal_path = validate_tool_registry_after_implementation(
+        section_number=section.number,
+        pre_tool_total=pre_tool_total,
+        tool_registry_path=tool_registry_path,
+        artifacts=artifacts,
+        planspace=planspace,
+        parent=parent,
+        codespace=codespace,
+        policy=policy,
+        dispatch_agent=dispatch_agent,
+        log=log,
+        update_blocker_rollup=_update_blocker_rollup,
+    )
 
     # -----------------------------------------------------------------
     # Step 3c: Detect tooling friction and dispatch bridge-tools agent
     # -----------------------------------------------------------------
-    tool_friction_detected = False
-    if friction_signal_path.exists():
-        friction = read_json(friction_signal_path)
-        if friction is not None:
-            tool_friction_detected = friction.get("friction", False)
-        else:
-            # File existed but was corrupt — treat as friction
-            # detected (fail closed). read_json already preserved
-            # the malformed file.
-            tool_friction_detected = True
-
-    if tool_friction_detected and tool_registry_path.exists():
-        log(f"Section {section.number}: tooling friction detected — "
-            f"dispatching bridge-tools agent")
-        bridge_tools_prompt = (
-            artifacts / f"bridge-tools-{section.number}-prompt.md")
-        bridge_tools_output = (
-            artifacts / f"bridge-tools-{section.number}-output.md")
-        bridge_signal_path = (
-            artifacts / "signals"
-            / f"section-{section.number}-tool-bridge.json")
-        default_proposal_path = (
-            artifacts / "proposals"
-            / f"section-{section.number}-tool-bridge.md")
-        bridge_tools_prompt.write_text(f"""# Task: Bridge Tool Islands for Section {section.number}
-
-## Context
-Section {section.number} has signaled tooling friction — tools don't compose
-cleanly or a needed tool doesn't exist.
-
-## Files to Read
-1. Tool registry: `{tool_registry_path}`
-2. Section specification: `{section.path}`
-3. Integration proposal: `{artifacts / "proposals" / f"section-{section.number}-integration-proposal.md"}`
-
-## Instructions
-Analyze the tool registry and section needs. Either:
-(a) Propose a new tool that bridges the gap
-(b) Propose a composition pattern connecting existing tools
-
-Write your proposal to: `{default_proposal_path}`
-Update the tool registry if new tools are proposed.
-
-## Structured Signal (Required)
-Write a structured signal to: `{bridge_signal_path}`
-with JSON:
-```json
-{{
-  "status": "bridged"|"no_action"|"needs_parent",
-  "proposal_path": "...",
-  "notes": "...",
-  "targets": ["03", "07"],
-  "broadcast": false,
-  "note_markdown": "..."
-}}
-```
-
-- `targets` (optional): section numbers that need this bridge info
-- `broadcast` (optional): if true, all sections receive a note
-- `note_markdown` (optional): summary for target sections
-""", encoding="utf-8")
-
-        # Part 4: Hash tool registry before bridge dispatch
-        pre_bridge_registry_hash = ""
-        if tool_registry_path.exists():
-            pre_bridge_registry_hash = file_hash(tool_registry_path)
-
-        dispatch_agent(
-            policy.get("bridge_tools", "gpt-5.4-high"),
-            bridge_tools_prompt,
-            bridge_tools_output,
-            planspace, parent,
-            f"bridge-tools-{section.number}",
-            codespace=codespace,
-            agent_file="bridge-tools.md",
-            section_number=section.number,
-        )
-
-        # -- V1/R43: Verify bridge-tools output --
-        bridge_valid = False
-        bridge_data = read_json(bridge_signal_path)
-        if bridge_data is not None:
-            if bridge_data.get("status") in (
-                "bridged", "no_action", "needs_parent",
-            ):
-                proposal_path = Path(bridge_data.get(
-                    "proposal_path", str(default_proposal_path)))
-                if (bridge_data["status"] == "no_action"
-                        or proposal_path.exists()):
-                    bridge_valid = True
-
-        if not bridge_valid:
-            log(f"Section {section.number}: bridge signal missing or "
-                f"invalid — retrying with escalation model")
-            escalation_output = (
-                artifacts
-                / f"bridge-tools-{section.number}-escalation-output.md")
-            dispatch_agent(
-                policy["escalation_model"],
-                bridge_tools_prompt,
-                escalation_output,
-                planspace, parent,
-                f"bridge-tools-{section.number}-escalation",
-                codespace=codespace,
-                agent_file="bridge-tools.md",
-                section_number=section.number,
-            )
-            # Re-check after escalation
-            bridge_data = read_json(bridge_signal_path)
-            if bridge_data is not None:
-                if bridge_data.get("status") in (
-                    "bridged", "no_action", "needs_parent",
-                ):
-                    proposal_path = Path(bridge_data.get(
-                        "proposal_path", str(default_proposal_path)))
-                    if (bridge_data["status"] == "no_action"
-                            or proposal_path.exists()):
-                        bridge_valid = True
-
-        # -- R44/V1: Wire bridge outputs into downstream channels --
-        if bridge_valid:
-            # Part 1: Write .ref input for downstream reasoning
-            bridge_proposal = bridge_data.get(
-                "proposal_path", str(default_proposal_path))
-            inputs_dir = artifacts / "inputs" / f"section-{section.number}"
-            inputs_dir.mkdir(parents=True, exist_ok=True)
-            ref_file = inputs_dir / "tool-bridge.ref"
-            ref_file.write_text(str(bridge_proposal), encoding="utf-8")
-            log(f"Section {section.number}: bridge proposal registered "
-                f"as input ref")
-
-            # Part 2: Cross-section note routing
-            targets = bridge_data.get("targets", [])
-            broadcast = bridge_data.get("broadcast", False)
-            note_md = bridge_data.get("note_markdown", "")
-            if note_md and (targets or broadcast):
-                if broadcast and all_sections:
-                    # All sections except self
-                    targets = [s.number for s in all_sections
-                               if s.number != section.number]
-                for target in targets:
-                    write_consequence_note(
-                        planspace,
-                        f"bridge-{section.number}",
-                        str(target),
-                        f"# Bridge Note from Section {section.number}\n\n"
-                        f"{note_md}\n\n"
-                        f"See full proposal: `{bridge_proposal}`\n",
-                    )
-                if targets:
-                    log(f"Section {section.number}: bridge notes routed "
-                        f"to {len(targets)} section(s)")
-
-            # Part 4: Regenerate tool digest if bridge modified registry
-            post_bridge_registry_hash = ""
-            if tool_registry_path.exists():
-                post_bridge_registry_hash = file_hash(tool_registry_path)
-            if (post_bridge_registry_hash
-                    and pre_bridge_registry_hash
-                    != post_bridge_registry_hash):
-                log(f"Section {section.number}: tool registry modified "
-                    f"by bridge-tools — regenerating digest")
-                digest_prompt = (
-                    artifacts
-                    / f"tool-digest-regen-{section.number}-prompt.md")
-                digest_output = (
-                    artifacts
-                    / f"tool-digest-regen-{section.number}-output.md")
-                digest_prompt.write_text(
-                    f"# Task: Regenerate Tool Digest\n\n"
-                    f"The tool registry at `{tool_registry_path}` was "
-                    f"modified by bridge-tools for section "
-                    f"{section.number}.\n\n"
-                    f"Read the registry and write an updated tool digest "
-                    f"to: `{artifacts / 'tool-digest.md'}`\n\n"
-                    f"Format: one line per tool grouped by scope "
-                    f"(cross-section, section-local, test-only).\n",
-                    encoding="utf-8",
-                )
-                dispatch_agent(
-                    policy.get("tool_registrar", "glm"),
-                    digest_prompt, digest_output,
-                    planspace, parent,
-                    f"tool-digest-regen-{section.number}",
-                    codespace=codespace,
-                    section_number=section.number,
-                    agent_file="tool-registrar.md",
-                )
-        else:
-            # Part 3: Bridge failed after escalation — write blocker
-            log(f"Section {section.number}: bridge-tools dispatch "
-                f"failed after escalation — writing failure artifact")
-            failure_artifact = (
-                artifacts / "signals"
-                / f"section-{section.number}-bridge-tools-failure.json")
-            write_json(failure_artifact, {
-                "section": section.number,
-                "status": "failed",
-                "reason": "bridge-tools agent did not produce valid "
-                          "signal after primary + escalation dispatch",
-            })
-            # Also write a structured blocker for rollup
-            write_json(
-                artifacts / "signals"
-                / f"section-{section.number}-post-impl-blocker.json",
-                {
-                    "state": "needs_parent",
-                    "detail": (
-                        "Bridge-tools agent failed to produce valid output "
-                        "after primary + escalation dispatch. Tool friction "
-                        "remains unresolved."
-                    ),
-                    "needs": "Manual review of tool composition gaps",
-                    "why_blocked": (
-                        f"See failure details: "
-                        f"{failure_artifact}"
-                    ),
-                },
-            )
-            _update_blocker_rollup(planspace)
-
-        # Acknowledge friction signal so it doesn't re-fire
-        try:
-            write_json(friction_signal_path, {
-                "friction": False,
-                "status": "handled",
-            })
-        except OSError:
-            log(f"Section {section.number}: could not acknowledge "
-                f"friction signal — file write failed")
+    handle_tool_friction(
+        section_number=section.number,
+        section_path=section.path,
+        all_sections=all_sections,
+        artifacts=artifacts,
+        tool_registry_path=tool_registry_path,
+        friction_signal_path=friction_signal_path,
+        planspace=planspace,
+        parent=parent,
+        codespace=codespace,
+        policy=policy,
+        dispatch_agent=dispatch_agent,
+        log=log,
+        write_consequence_note=write_consequence_note,
+        update_blocker_rollup=_update_blocker_rollup,
+    )
 
     # -----------------------------------------------------------------
     # Step 4: Post-completion — snapshots, impact analysis, notes
