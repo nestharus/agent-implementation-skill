@@ -1,0 +1,227 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from src.scripts.lib import coordination_loop
+from src.scripts.lib.coordination_loop import run_coordination_loop
+from section_loop.types import Section, SectionResult
+
+
+def _make_section(planspace: Path, number: str) -> Section:
+    section_path = planspace / "artifacts" / "sections" / f"section-{number}.md"
+    section_path.write_text(f"# Section {number}\n", encoding="utf-8")
+    return Section(number=number, path=section_path)
+
+
+def test_run_coordination_loop_completes_when_everything_is_aligned(
+    planspace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    section = _make_section(planspace, "01")
+    messages: list[str] = []
+    snapshots: list[int] = []
+
+    monkeypatch.setattr(
+        coordination_loop,
+        "_collect_outstanding_problems",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "poll_control_messages",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "build_strategic_state",
+        lambda _decisions_dir, section_results, _planspace: snapshots.append(
+            len(section_results),
+        ),
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "mailbox_send",
+        lambda _planspace, _parent, message: messages.append(message),
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "run_global_coordination",
+        lambda *_args, **_kwargs: pytest.fail("coordination should not run"),
+    )
+
+    status = run_coordination_loop(
+        [section],
+        {"01": SectionResult(section_number="01", aligned=True)},
+        {"01": section},
+        planspace,
+        planspace,
+        "parent",
+        {"escalation_model": "stronger-model"},
+    )
+
+    assert status == "complete"
+    assert snapshots == [1]
+    assert messages == ["complete"]
+
+
+def test_run_coordination_loop_restarts_when_control_message_arrives(
+    planspace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    section = _make_section(planspace, "01")
+
+    monkeypatch.setattr(
+        coordination_loop,
+        "poll_control_messages",
+        lambda *_args, **_kwargs: "alignment_changed",
+    )
+
+    status = run_coordination_loop(
+        [section],
+        {"01": SectionResult(section_number="01", aligned=False, problems="x")},
+        {"01": section},
+        planspace,
+        planspace,
+        "parent",
+        {"escalation_model": "stronger-model"},
+    )
+
+    assert status == "restart_phase1"
+
+
+def test_run_coordination_loop_stalls_and_reports_remaining_sections(
+    planspace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    section = _make_section(planspace, "01")
+    messages: list[str] = []
+    snapshots: list[int] = []
+
+    monkeypatch.setattr(coordination_loop, "MAX_COORDINATION_ROUNDS", 5)
+    monkeypatch.setattr(coordination_loop, "MIN_COORDINATION_ROUNDS", 1)
+    monkeypatch.setattr(
+        coordination_loop,
+        "poll_control_messages",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "run_global_coordination",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "_check_and_clear_alignment_changed",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "build_strategic_state",
+        lambda _decisions_dir, section_results, _planspace: snapshots.append(
+            len(section_results),
+        ),
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "mailbox_send",
+        lambda _planspace, _parent, message: messages.append(message),
+    )
+
+    status = run_coordination_loop(
+        [section],
+        {"01": SectionResult(section_number="01", aligned=False, problems="still broken")},
+        {"01": section},
+        planspace,
+        planspace,
+        "parent",
+        {
+            "escalation_model": "stronger-model",
+            "escalation_triggers": {"stall_count": 2},
+        },
+    )
+
+    assert status == "stalled"
+    assert snapshots == [1]
+    assert (planspace / "artifacts" / "coordination" / "model-escalation.txt").read_text(
+        encoding="utf-8",
+    ) == "stronger-model"
+    assert any(message.startswith("status:coordination:round-") for message in messages)
+    assert "escalation:coordination:round-2:stall_count=2" in messages
+    assert "fail:01:coordination_exhausted:still broken" in messages
+
+
+def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
+    planspace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    section = _make_section(planspace, "01")
+    messages: list[str] = []
+    snapshots: list[int] = []
+    outstanding = [
+        {"type": "unaddressed_note", "section": "01", "description": "note pending"},
+    ]
+    calls = iter([outstanding, outstanding, outstanding])
+
+    monkeypatch.setattr(coordination_loop, "MAX_COORDINATION_ROUNDS", 1)
+    monkeypatch.setattr(coordination_loop, "MIN_COORDINATION_ROUNDS", 1)
+    monkeypatch.setattr(
+        coordination_loop,
+        "_collect_outstanding_problems",
+        lambda *_args, **_kwargs: next(calls),
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "poll_control_messages",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "run_global_coordination",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "_check_and_clear_alignment_changed",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "build_strategic_state",
+        lambda _decisions_dir, section_results, _planspace: snapshots.append(
+            len(section_results),
+        ),
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "mailbox_send",
+        lambda _planspace, _parent, message: messages.append(message),
+    )
+
+    status = run_coordination_loop(
+        [section],
+        {"01": SectionResult(section_number="01", aligned=True)},
+        {"01": section},
+        planspace,
+        planspace,
+        "parent",
+        {"escalation_model": "stronger-model"},
+    )
+
+    assert status == "exhausted"
+    assert snapshots == [1]
+    rollup = json.loads(
+        (
+            planspace / "artifacts" / "coordination" / "coordination-exhausted.json"
+        ).read_text(encoding="utf-8"),
+    )
+    assert rollup == [
+        {
+            "type": "unaddressed_note",
+            "section": "01",
+            "description": "note pending",
+        },
+    ]
+    assert messages[-1] == "fail:coordination_exhausted:outstanding:1"

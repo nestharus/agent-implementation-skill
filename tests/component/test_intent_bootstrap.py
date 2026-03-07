@@ -1,0 +1,190 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from src.scripts.lib import intent_bootstrap
+from src.scripts.lib.intent_bootstrap import run_intent_bootstrap
+from section_loop.types import Section
+
+
+def _make_section(planspace: Path) -> Section:
+    section_path = planspace / "artifacts" / "sections" / "section-01.md"
+    section_path.write_text("# Section 01\n", encoding="utf-8")
+    problem_frame = (
+        planspace / "artifacts" / "sections" / "section-01-problem-frame.md"
+    )
+    problem_frame.write_text("Problem frame summary", encoding="utf-8")
+    return Section(number="01", path=section_path, related_files=["src/main.py"])
+
+
+def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
+    planspace: Path,
+    codespace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    section = _make_section(planspace)
+    cycle_budget_path = (
+        planspace / "artifacts" / "signals" / "section-01-cycle-budget.json"
+    )
+    cycle_budget_path.write_text(
+        json.dumps({"proposal_max": 1, "implementation_max": 1}),
+        encoding="utf-8",
+    )
+    traceability_calls: list[tuple] = []
+    intent_pack_calls: list[str] = []
+
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "run_intent_triage",
+        lambda *args, **kwargs: {
+            "intent_mode": "full",
+            "budgets": {
+                "proposal_max": 6,
+                "implementation_max": 7,
+                "intent_expansion_max": 2,
+                "max_new_surfaces_per_cycle": 3,
+                "ignored": 99,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "_extract_todos_from_files",
+        lambda *_args, **_kwargs: "- TODO: preserve invariant\n",
+    )
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "_record_traceability",
+        lambda *args: traceability_calls.append(args),
+    )
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "ensure_global_philosophy",
+        lambda *_args, **_kwargs: planspace / "artifacts" / "intent" / "global" / "philosophy.md",
+    )
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "alignment_changed_pending",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "generate_intent_pack",
+        lambda _section, _planspace, _codespace, _parent, *, incoming_notes: intent_pack_calls.append(incoming_notes),
+    )
+
+    cycle_budget = run_intent_bootstrap(
+        section,
+        planspace,
+        codespace,
+        "parent",
+        {},
+        "incoming note",
+    )
+
+    assert cycle_budget == {
+        "proposal_max": 6,
+        "implementation_max": 7,
+        "intent_expansion_max": 2,
+        "max_new_surfaces_per_cycle": 3,
+    }
+    assert traceability_calls
+    assert intent_pack_calls == ["incoming note"]
+    assert (
+        planspace / "artifacts" / "todos" / "section-01-todos.md"
+    ).read_text(encoding="utf-8") == "- TODO: preserve invariant\n"
+
+
+def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
+    planspace: Path,
+    codespace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    section = _make_section(planspace)
+
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "run_intent_triage",
+        lambda *args, **kwargs: {"intent_mode": "lightweight", "budgets": {}},
+    )
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "_extract_todos_from_files",
+        lambda *_args, **_kwargs: "",
+    )
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "ensure_global_philosophy",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "alignment_changed_pending",
+        lambda *_args, **_kwargs: False,
+    )
+
+    result = run_intent_bootstrap(
+        section,
+        planspace,
+        codespace,
+        "parent",
+        {},
+        None,
+    )
+
+    assert result is None
+    blocker = json.loads(
+        (
+            planspace / "artifacts" / "signals" / "philosophy-blocker-01.json"
+        ).read_text(encoding="utf-8"),
+    )
+    assert blocker["blocker"] == "philosophy_unavailable"
+
+
+def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
+    planspace: Path,
+    codespace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    section = _make_section(planspace)
+
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "run_intent_triage",
+        lambda *args, **kwargs: {"intent_mode": "full", "budgets": {}},
+    )
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "_extract_todos_from_files",
+        lambda *_args, **_kwargs: "",
+    )
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "ensure_global_philosophy",
+        lambda *_args, **_kwargs: planspace / "artifacts" / "intent" / "global" / "philosophy.md",
+    )
+    alignment_states = iter([True])
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "alignment_changed_pending",
+        lambda *_args, **_kwargs: next(alignment_states),
+    )
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "generate_intent_pack",
+        lambda *_args, **_kwargs: pytest.fail("intent pack should not run"),
+    )
+
+    result = run_intent_bootstrap(
+        section,
+        planspace,
+        codespace,
+        "parent",
+        {},
+        None,
+    )
+
+    assert result is None
