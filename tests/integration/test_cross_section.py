@@ -133,7 +133,7 @@ class TestImpactPrefilterSeamAwareness:
     def test_shared_input_refs_generate_candidates(self) -> None:
         """Sections sharing .ref files should be impact candidates."""
         src = (
-            SRC_DIR / "scripts" / "lib" / "impact_analyzer.py"
+            SRC_DIR / "scripts" / "lib" / "services" / "impact_analyzer.py"
         )
         if not src.exists():
             pytest.skip("impact_analyzer.py not found")
@@ -147,7 +147,7 @@ class TestImpactPrefilterSeamAwareness:
     def test_contract_artifacts_generate_candidates(self) -> None:
         """Existing contract artifacts should be impact candidates."""
         src = (
-            SRC_DIR / "scripts" / "lib" / "impact_analyzer.py"
+            SRC_DIR / "scripts" / "lib" / "services" / "impact_analyzer.py"
         )
         if not src.exists():
             pytest.skip("impact_analyzer.py not found")
