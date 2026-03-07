@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
-from lib.core.artifact_io import read_json
+from lib.core.artifact_io import read_json, write_json
 from lib.core.path_registry import PathRegistry
 from lib.repositories.proposal_state_repository import load_proposal_state
 from lib.risk.engagement import determine_engagement
@@ -35,6 +35,81 @@ class ProposalPassExit(Exception):
 
 def _check_and_clear_alignment_changed(planspace: Path) -> bool:
     return check_and_clear(planspace, db_sh=DB_SH, agent_name=AGENT_NAME)
+
+
+def _write_section_input_artifact(
+    paths: PathRegistry,
+    sec_num: str,
+    artifact_name: str,
+    payload: dict,
+) -> Path:
+    input_dir = paths.input_refs_dir(sec_num)
+    artifact_path = input_dir / artifact_name
+    write_json(artifact_path, payload)
+    ref_path = input_dir / f"{artifact_path.stem}.ref"
+    ref_path.write_text(str(artifact_path.resolve()), encoding="utf-8")
+    return artifact_path
+
+
+def _proposal_risk_severities(assessment: object) -> dict[str, int]:
+    severities: dict[str, int] = {}
+    for step_assessment in getattr(assessment, "step_assessments", []):
+        for risk in getattr(step_assessment, "dominant_risks", []):
+            value = getattr(step_assessment.risk_vector, risk.value, 0)
+            severities[risk.value] = max(severities.get(risk.value, 0), int(value))
+    return severities
+
+
+def _write_proposal_risk_advisory(
+    planspace: Path,
+    sec_num: str,
+    advisory_scope: str,
+    summary: dict[str, Any],
+) -> Path:
+    return _write_section_input_artifact(
+        PathRegistry(planspace),
+        sec_num,
+        f"{advisory_scope}-risk-advisory.json",
+        summary,
+    )
+
+
+def _write_proposal_risk_blocker(
+    planspace: Path,
+    sec_num: str,
+    advisory_scope: str,
+    dominant_risks: list[str],
+    severities: dict[str, int],
+    advisory_path: Path,
+) -> Path:
+    paths = PathRegistry(planspace)
+    reasons = [
+        f"{risk}={severities[risk]}"
+        for risk in ("brute_force_regression", "silent_drift")
+        if severities.get(risk, 0) >= 3 and risk in dominant_risks
+    ]
+    detail = (
+        "ROAL recommends additional exploration before implementation due to "
+        f"high-risk proposal findings ({', '.join(reasons)})"
+    )
+    blocker_path = paths.signals_dir() / f"section-{sec_num}-proposal-risk-blocker.json"
+    write_json(
+        blocker_path,
+        {
+            "state": "needs_parent",
+            "blocker_type": "proposal_risk_advisory",
+            "source": "roal",
+            "section": sec_num,
+            "scope": advisory_scope,
+            "detail": detail,
+            "why_blocked": detail,
+            "needs": "Additional exploration before implementation",
+            "dominant_risks": list(dominant_risks),
+            "dominant_risk_severities": severities,
+            "risk_summary_path": str(advisory_path.resolve()),
+        },
+    )
+    return blocker_path
 
 
 def _risk_check_proposal(
@@ -66,8 +141,12 @@ def _risk_check_proposal(
         )
         triage_signal = read_json(paths.signals_dir() / f"intent-triage-{sec_num}.json")
         triage_confidence = "low"
+        risk_mode_hint = ""
         if isinstance(triage_signal, dict):
-            triage_confidence = str(triage_signal.get("confidence", "low"))
+            triage_confidence = str(
+                triage_signal.get("risk_confidence", triage_signal.get("confidence", "low")),
+            )
+            risk_mode_hint = str(triage_signal.get("risk_mode", ""))
 
         risk_mode = determine_engagement(
             step_count=len(advisory_package.steps),
@@ -79,6 +158,7 @@ def _risk_check_proposal(
             has_tool_changes=False,
             triage_confidence=triage_confidence,
             freshness_changed=False,
+            risk_mode_hint=risk_mode_hint,
         )
         if risk_mode != RiskMode.FULL:
             return None
@@ -100,15 +180,41 @@ def _risk_check_proposal(
 
         assessment = deserialize_assessment(assessment_payload)
         dominant_risks = [risk.value for risk in assessment.dominant_risks]
-        return {
+        recommendation = (
+            "recommend additional exploration"
+            if _proposal_needs_additional_exploration(assessment)
+            else "proceed"
+        )
+        severities = _proposal_risk_severities(assessment)
+        summary = {
             "risk_mode": risk_mode.value,
             "dominant_risks": dominant_risks,
-            "recommendation": (
-                "recommend additional exploration"
-                if _proposal_needs_additional_exploration(assessment)
-                else "proceed"
-            ),
+            "dominant_risk_severities": severities,
+            "package_raw_risk": assessment.package_raw_risk,
+            "recommendation": recommendation,
         }
+        if recommendation == "recommend additional exploration":
+            advisory_path = _write_proposal_risk_advisory(
+                planspace,
+                sec_num,
+                advisory_scope,
+                summary,
+            )
+            high_risk = any(
+                severities.get(risk, 0) >= 3
+                for risk in ("brute_force_regression", "silent_drift")
+                if risk in dominant_risks
+            )
+            if high_risk:
+                _write_proposal_risk_blocker(
+                    planspace,
+                    sec_num,
+                    advisory_scope,
+                    dominant_risks,
+                    severities,
+                    advisory_path,
+                )
+        return summary
     except Exception as exc:  # noqa: BLE001
         log(
             f"Section {sec_num}: proposal ROAL pre-check failed ({exc}) "

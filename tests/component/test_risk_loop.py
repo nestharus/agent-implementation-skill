@@ -14,7 +14,7 @@ from lib.risk.loop import (
     run_lightweight_risk_check,
     run_risk_loop,
 )
-from lib.risk.serialization import serialize_assessment, serialize_plan
+from lib.risk.serialization import read_risk_artifact, serialize_assessment, serialize_plan
 from lib.risk.types import (
     PackageStep,
     PostureProfile,
@@ -53,13 +53,18 @@ def test_build_risk_assessment_prompt_includes_expected_context(tmp_path: Path) 
     prompt = build_risk_assessment_prompt(package, tmp_path, "section-03")
 
     assert "Section spec" in prompt
-    assert "Spec body" in prompt
+    assert "`" + str(tmp_path / "artifacts" / "sections" / "section-03.md") + "`" in prompt
     assert "Proposal excerpt" in prompt
-    assert "Alignment details" in prompt
-    assert "Problem frame details" in prompt
-    assert "Microstrategy" in prompt
+    assert "## Artifact Paths" in prompt
+    assert "Codemap corrections (authoritative overrides)" in prompt
+    assert "Monitor signals directory" in prompt
     assert "tool-registry.json" in prompt
-    assert "LOOP_DETECTED" in prompt
+    assert "Consequence notes" in prompt
+    assert "Impact artifacts" in prompt
+    assert "Spec body" not in prompt
+    assert "Alignment details" not in prompt
+    assert "Problem frame details" not in prompt
+    assert "LOOP_DETECTED" not in prompt
 
 
 def test_build_optimization_prompt_includes_assessment_and_parameters(
@@ -79,8 +84,10 @@ def test_build_optimization_prompt_includes_assessment_and_parameters(
     assert "ROAL Execution Optimization" in prompt
     assert '"assessment_id": "assessment-1"' in prompt
     assert '"package_id": "pkg-implementation-section-03"' in prompt
-    assert '"edit": 45' in prompt
+    assert "Risk parameters" in prompt
+    assert "`" + str(tmp_path / "artifacts" / "risk" / "risk-parameters.json") + "`" in prompt
     assert "tool-registry.json" in prompt
+    assert '"edit": 45' not in prompt
 
 
 def test_parse_risk_assessment_with_valid_json() -> None:
@@ -224,6 +231,144 @@ def test_run_risk_loop_retries_when_plan_fails_validation(tmp_path: Path) -> Non
     assert plan.deferred_steps == []
 
 
+def test_run_risk_loop_applies_history_adjustment_to_assessment(tmp_path: Path) -> None:
+    package = _package()
+    _write_artifacts(tmp_path)
+    append_history_entry(
+        tmp_path / "artifacts" / "risk" / "risk-history.jsonl",
+        RiskHistoryEntry(
+            package_id="pkg-prev",
+            step_id="explore-01",
+            layer="implementation",
+            step_class=StepClass.EXPLORE,
+            posture=PostureProfile.P3_GUARDED,
+            predicted_risk=5,
+            actual_outcome="failure",
+            dominant_risks=[RiskType.CONTEXT_ROT],
+            blast_radius_band=0,
+        ),
+    )
+
+    def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
+        if kwargs["agent_file"] == "risk-assessor.md":
+            return json.dumps(serialize_assessment(_assessment()))
+        return json.dumps(serialize_plan(_valid_plan()))
+
+    run_risk_loop(
+        tmp_path,
+        "section-03",
+        "implementation",
+        package,
+        _dispatch,
+    )
+
+    assessment_payload = read_risk_artifact(
+        tmp_path / "artifacts" / "risk" / "section-03-risk-assessment.json",
+    )
+
+    assert assessment_payload is not None
+    assert assessment_payload["package_raw_risk"] > 25
+
+
+def test_run_risk_loop_applies_posture_hysteresis_after_plan(tmp_path: Path) -> None:
+    package = _package()
+    _write_artifacts(tmp_path)
+    append_history_entry(
+        tmp_path / "artifacts" / "risk" / "risk-history.jsonl",
+        RiskHistoryEntry(
+            package_id="pkg-prev",
+            step_id="explore-01",
+            layer="implementation",
+            step_class=StepClass.EXPLORE,
+            posture=PostureProfile.P0_DIRECT,
+            predicted_risk=20,
+            actual_outcome="success",
+            dominant_risks=[RiskType.CONTEXT_ROT],
+            blast_radius_band=0,
+        ),
+    )
+    assessment = _assessment()
+    assessment.package_raw_risk = 85
+    assessment.step_assessments[0].raw_risk = 85
+    plan = _valid_plan()
+    plan.step_decisions[0].posture = PostureProfile.P4_REOPEN
+    plan.step_decisions[0].residual_risk = 85
+
+    def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
+        if kwargs["agent_file"] == "risk-assessor.md":
+            return json.dumps(serialize_assessment(assessment))
+        return json.dumps(serialize_plan(plan))
+
+    result = run_risk_loop(
+        tmp_path,
+        "section-03",
+        "implementation",
+        package,
+        _dispatch,
+    )
+
+    assert result.step_decisions[0].posture == PostureProfile.P1_LIGHT
+
+
+def test_run_risk_loop_calls_prompt_safety_validation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    package = _package()
+    _write_artifacts(tmp_path)
+    prompt_calls: list[Path] = []
+
+    def _validate(content: str, path: Path) -> bool:
+        prompt_calls.append(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return True
+
+    monkeypatch.setattr("lib.risk.loop.write_validated_prompt", _validate)
+
+    def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
+        if kwargs["agent_file"] == "risk-assessor.md":
+            return json.dumps(serialize_assessment(_assessment()))
+        return json.dumps(serialize_plan(_valid_plan()))
+
+    run_risk_loop(
+        tmp_path,
+        "section-03",
+        "implementation",
+        package,
+        _dispatch,
+    )
+
+    assert prompt_calls == [
+        tmp_path / "artifacts" / "risk" / "section-03-risk-assessment-prompt.md",
+        tmp_path / "artifacts" / "risk" / "section-03-risk-plan-prompt.md",
+    ]
+
+
+def test_run_risk_loop_falls_back_when_prompt_safety_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    package = _package()
+    _write_artifacts(tmp_path)
+    monkeypatch.setattr("lib.risk.loop.write_validated_prompt", lambda *_args, **_kwargs: False)
+
+    def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
+        raise AssertionError("dispatch should not be called when prompt validation fails")
+
+    plan = run_risk_loop(
+        tmp_path,
+        "section-03",
+        "implementation",
+        package,
+        _dispatch,
+    )
+
+    assert plan.step_decisions[0].posture == PostureProfile.P4_REOPEN
+    assert plan.step_decisions[0].decision == StepDecision.REJECT_REOPEN
+    assert plan.reopen_steps == ["explore-01"]
+
+
 def _package() -> RiskPackage:
     return RiskPackage(
         package_id="pkg-implementation-section-03",
@@ -353,6 +498,10 @@ def _write_artifacts(planspace: Path) -> None:
     readiness.mkdir(parents=True, exist_ok=True)
     signals.mkdir(parents=True, exist_ok=True)
     notes.mkdir(parents=True, exist_ok=True)
+    coordination = artifacts / "coordination"
+    risk = artifacts / "risk"
+    coordination.mkdir(parents=True, exist_ok=True)
+    risk.mkdir(parents=True, exist_ok=True)
 
     (sections / "section-03.md").write_text("Spec body\n", encoding="utf-8")
     (sections / "section-03-proposal-excerpt.md").write_text(
@@ -398,11 +547,23 @@ def _write_artifacts(planspace: Path) -> None:
         encoding="utf-8",
     )
     (artifacts / "codemap.md").write_text("Codemap body\n", encoding="utf-8")
+    (signals / "codemap-corrections.json").write_text(
+        json.dumps({"section-03": {"source": "override"}}),
+        encoding="utf-8",
+    )
     (signals / "section-03-monitor.json").write_text(
         json.dumps({"signal": "LOOP_DETECTED"}),
         encoding="utf-8",
     )
+    (risk / "risk-parameters.json").write_text(
+        json.dumps({"step_thresholds": {"explore": 60, "edit": 45}}),
+        encoding="utf-8",
+    )
     (notes / "section-03-consequence.md").write_text(
         "Consequence note\n",
+        encoding="utf-8",
+    )
+    (coordination / "section-03-impact.md").write_text(
+        "Impact artifact\n",
         encoding="utf-8",
     )

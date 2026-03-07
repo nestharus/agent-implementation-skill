@@ -104,10 +104,16 @@ def _actual_outcome_score(entry: RiskHistoryEntry) -> int:
     outcome = entry.actual_outcome.strip().lower()
     verification = (entry.verification_outcome or "").strip().lower()
 
-    if outcome in {"failure", "failed", "blocked", "reopen"}:
+    if outcome in {"failure", "failed", "blocked", "reopen", "reopened"}:
         score = 85
+    elif outcome == "risk_review_failure":
+        score = 90
     elif outcome in {"mixed", "partial", "warning"}:
         score = 60
+    elif outcome == "deferred":
+        score = 55
+    elif outcome == "over_guarded":
+        score = 15
     elif outcome in {"success", "passed", "accepted"}:
         score = 20
     else:

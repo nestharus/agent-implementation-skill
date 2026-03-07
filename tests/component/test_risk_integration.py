@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lib.core.artifact_io import write_json
-from lib.pipelines.implementation_pass import _run_risk_review
+from lib.core.artifact_io import read_json, write_json
+from lib.pipelines.implementation_pass import _append_risk_history, _run_risk_review
 from lib.pipelines.proposal_pass import _risk_check_proposal
 from lib.repositories.strategic_state import build_strategic_state
+from lib.risk.history import read_history
 from lib.risk.serialization import serialize_assessment, serialize_plan
 from lib.risk.types import (
     PostureProfile,
@@ -62,7 +63,7 @@ def test_run_risk_review_returns_none_when_engagement_skips(
     assert plan is None
 
 
-def test_run_risk_review_failure_falls_back_gracefully(
+def test_run_risk_review_failure_blocks_fail_closed(
     planspace: Path,
     monkeypatch,
 ) -> None:
@@ -79,7 +80,20 @@ def test_run_risk_review_failure_falls_back_gracefully(
 
     plan = _run_risk_review(planspace, "01", section, lambda *args, **kwargs: "")
 
-    assert plan is None
+    assert plan is not None
+    assert plan.accepted_frontier == []
+    blocker = read_json(planspace / "artifacts" / "signals" / "section-01-blocker.json")
+    assert blocker == {
+        "state": "needs_parent",
+        "blocker_type": "risk_review_failure",
+        "source": "roal",
+        "section": "01",
+        "scope": "section-01",
+        "reason": "boom",
+        "detail": "boom",
+        "why_blocked": "ROAL review failed; fail-closed implementation skip engaged",
+        "needs": "Repair risk review inputs or rerun ROAL successfully",
+    }
 
 
 def test_risk_check_proposal_returns_advisory_summary(planspace: Path) -> None:
@@ -93,8 +107,68 @@ def test_risk_check_proposal_returns_advisory_summary(planspace: Path) -> None:
     assert summary == {
         "risk_mode": "full",
         "dominant_risks": ["silent_drift"],
+        "dominant_risk_severities": {"silent_drift": 3},
+        "package_raw_risk": 72,
         "recommendation": "recommend additional exploration",
     }
+
+
+def test_risk_check_proposal_writes_advisory_artifact_and_blocker(
+    planspace: Path,
+) -> None:
+    _write_risk_inputs(planspace, "01", triage_confidence="medium")
+
+    def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
+        return json.dumps(serialize_assessment(_proposal_assessment()))
+
+    summary = _risk_check_proposal(planspace, "01", _dispatch)
+
+    advisory_path = (
+        planspace
+        / "artifacts"
+        / "inputs"
+        / "section-01"
+        / "section-01-proposal-risk-advisory.json"
+    )
+    advisory = read_json(advisory_path)
+    blocker = read_json(
+        planspace / "artifacts" / "signals" / "section-01-proposal-risk-blocker.json",
+    )
+
+    assert advisory == summary
+    assert blocker == {
+        "state": "needs_parent",
+        "blocker_type": "proposal_risk_advisory",
+        "source": "roal",
+        "section": "01",
+        "scope": "section-01-proposal",
+        "detail": (
+            "ROAL recommends additional exploration before implementation due to "
+            "high-risk proposal findings (silent_drift=3)"
+        ),
+        "why_blocked": (
+            "ROAL recommends additional exploration before implementation due to "
+            "high-risk proposal findings (silent_drift=3)"
+        ),
+        "needs": "Additional exploration before implementation",
+        "dominant_risks": ["silent_drift"],
+        "dominant_risk_severities": {"silent_drift": 3},
+        "risk_summary_path": str(advisory_path.resolve()),
+    }
+
+
+def test_risk_check_proposal_remains_advisory_without_blocking_finalization(
+    planspace: Path,
+) -> None:
+    _write_risk_inputs(planspace, "01", triage_confidence="medium")
+
+    def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
+        return json.dumps(serialize_assessment(_proposal_assessment()))
+
+    summary = _risk_check_proposal(planspace, "01", _dispatch)
+
+    assert summary["recommendation"] == "recommend additional exploration"
+    assert (planspace / "artifacts" / "signals" / "section-01-blocker.json").exists() is False
 
 
 def test_build_strategic_state_includes_risk_fields_when_artifacts_exist(
@@ -153,6 +227,79 @@ def test_build_strategic_state_uses_empty_risk_fields_without_artifacts(
     assert snapshot["risk_posture"] == {}
     assert snapshot["dominant_risks_by_section"] == {}
     assert snapshot["blocked_by_risk"] == []
+
+
+def test_append_risk_history_records_deferred_reopened_and_failure(
+    planspace: Path,
+) -> None:
+    _write_risk_inputs(planspace, "01", triage_confidence="medium")
+    section = Section(
+        number="01",
+        path=planspace / "artifacts" / "sections" / "section-01.md",
+        related_files=["src/app.py", "src/utils.py"],
+    )
+
+    def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
+        if kwargs["agent_file"] == "risk-assessor.md":
+            return json.dumps(serialize_assessment(_assessment()))
+        return json.dumps(
+            serialize_plan(
+                RiskPlan(
+                    plan_id="plan-mixed",
+                    assessment_id="assessment-section-01",
+                    package_id="pkg-implementation-section-01",
+                    layer="implementation",
+                    step_decisions=[
+                        StepMitigation(
+                            step_id="explore-01",
+                            decision=StepDecision.ACCEPT,
+                            posture=PostureProfile.P2_STANDARD,
+                            mitigations=["refresh context"],
+                            residual_risk=25,
+                            reason="below threshold",
+                        ),
+                        StepMitigation(
+                            step_id="edit-02",
+                            decision=StepDecision.REJECT_DEFER,
+                            posture=PostureProfile.P3_GUARDED,
+                            wait_for=["explore-01 output"],
+                            residual_risk=30,
+                            reason="defer until exploration output lands",
+                        ),
+                        StepMitigation(
+                            step_id="verify-03",
+                            decision=StepDecision.REJECT_REOPEN,
+                            posture=PostureProfile.P4_REOPEN,
+                            residual_risk=70,
+                            reason="needs higher-level coordination",
+                            route_to="coordination",
+                        ),
+                    ],
+                    accepted_frontier=["explore-01"],
+                    deferred_steps=["edit-02"],
+                    reopen_steps=["verify-03"],
+                    expected_reassessment_inputs=["modified-file-manifest"],
+                )
+            )
+        )
+
+    plan = _run_risk_review(planspace, "01", section, _dispatch)
+    assert plan is not None
+
+    _append_risk_history(
+        planspace,
+        "01",
+        plan,
+        None,
+        implementation_failed=True,
+    )
+    history = read_history(planspace / "artifacts" / "risk" / "risk-history.jsonl")
+
+    assert {entry.step_id: entry.actual_outcome for entry in history} == {
+        "explore-01": "failure",
+        "edit-02": "deferred",
+        "verify-03": "reopened",
+    }
 
 
 def _write_risk_inputs(
@@ -220,7 +367,22 @@ def _write_risk_inputs(
     )
     write_json(
         signals / f"intent-triage-{sec_num}.json",
-        {"intent_mode": "lightweight", "confidence": triage_confidence},
+        {
+            "intent_mode": "lightweight",
+            "confidence": triage_confidence,
+            "risk_confidence": triage_confidence,
+            "risk_mode": (
+                "skip"
+                if simple and triage_confidence == "high"
+                else "full"
+            ),
+            "risk_budget_hint": {
+                "high": 0,
+                "medium": 2,
+                "low": 4,
+            }[triage_confidence],
+            "posture_floor": None,
+        },
     )
     write_json(artifacts / "tool-registry.json", {"tools": ["pytest"]})
     (artifacts / "codemap.md").write_text("Codemap\n", encoding="utf-8")

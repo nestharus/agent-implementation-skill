@@ -226,7 +226,7 @@ def _materialize_steps(
     steps: list[PackageStep] = []
 
     for index, summary in enumerate(step_summaries, start=1):
-        step_class = _infer_step_class(summary, index=index, total=total)
+        step_class = _infer_step_class(index=index, total=total)
         step_id = f"{step_class.value}-{index:02d}"
         prerequisites = [] if not steps else [steps[-1].step_id]
         steps.append(
@@ -249,16 +249,9 @@ def _materialize_steps(
     return steps
 
 
-def _infer_step_class(summary: str, *, index: int, total: int) -> StepClass:
-    lowered = summary.lower()
-    if any(token in lowered for token in ("coordinate", "reconcile", "sync")):
-        return StepClass.COORDINATE
-    if any(token in lowered for token in ("verify", "test", "check", "validate")):
-        return StepClass.VERIFY
-    if any(token in lowered for token in ("stabilize", "refresh readiness", "align")):
-        return StepClass.STABILIZE
-    if any(token in lowered for token in ("explore", "inspect", "understand", "refresh")):
-        return StepClass.EXPLORE
+def _infer_step_class(*, index: int, total: int) -> StepClass:
+    if total == 1:
+        return StepClass.EDIT
     if index == 1 and total > 1:
         return StepClass.EXPLORE
     if index == total and total > 1:

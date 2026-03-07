@@ -4,26 +4,33 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from lib.core.artifact_io import write_json
-from lib.pipelines.implementation_pass import _append_risk_history, _run_risk_review
-from lib.risk.history import read_history
-from lib.risk.loop import run_lightweight_risk_check
+from lib.core.artifact_io import read_json, write_json
+from lib.pipelines.implementation_pass import (
+    _append_risk_history,
+    _run_risk_review,
+    run_implementation_pass,
+)
+from lib.risk.history import append_history_entry, read_history
+from lib.risk.loop import run_lightweight_risk_check, run_risk_loop
 from lib.risk.package_builder import build_package_from_proposal
 from lib.risk.serialization import serialize_assessment, serialize_plan
 from lib.risk.types import (
+    PackageStep,
     PostureProfile,
     RiskAssessment,
+    RiskHistoryEntry,
     RiskModifiers,
     RiskPackage,
     RiskPlan,
     RiskType,
     RiskVector,
     StepAssessment,
+    StepClass,
     StepDecision,
     StepMitigation,
     UnderstandingInventory,
 )
-from section_loop.types import Section
+from section_loop.types import ProposalPassResult, Section
 
 
 def _write_risk_inputs(
@@ -91,9 +98,17 @@ def _write_risk_inputs(
         readiness / f"section-{sec_num}-execution-ready.json",
         {"ready": True, "blockers": [], "rationale": "ready"},
     )
-    signal_payload: dict[str, str] = {
+    signal_payload: dict[str, str | int | None] = {
         "intent_mode": "lightweight",
         "confidence": triage_confidence,
+        "risk_confidence": triage_confidence,
+        "risk_mode": "full" if triage_confidence != "high" else "light",
+        "risk_budget_hint": {
+            "high": 0,
+            "medium": 2,
+            "low": 4,
+        }[triage_confidence],
+        "posture_floor": None,
     }
     if freshness_token is not None:
         signal_payload["freshness_token"] = freshness_token
@@ -443,3 +458,268 @@ def test_lightweight_risk_check(
     assert [call.kwargs["agent_file"] for call in mock_dispatch.call_args_list] == [
         "risk-assessor.md",
     ]
+
+
+def test_full_adaptive_cycle_relaxes_only_one_posture_level(
+    planspace: Path,
+) -> None:
+    _write_risk_inputs(
+        planspace,
+        "01",
+        triage_confidence="medium",
+        microstrategy_lines=["Apply the approved change"],
+    )
+    package = RiskPackage(
+        package_id="pkg-implementation-section-01",
+        layer="implementation",
+        scope="section-01",
+        origin_problem_id="problem-01",
+        origin_source="proposal",
+        steps=[
+            PackageStep(
+                step_id="explore-01",
+                step_class=StepClass.EXPLORE,
+                summary="Refresh context before implementation",
+            ),
+        ],
+    )
+    history_path = planspace / "artifacts" / "risk" / "risk-history.jsonl"
+    for index in range(2):
+        append_history_entry(
+            history_path,
+            RiskHistoryEntry(
+                package_id=f"pkg-prior-{index}",
+                step_id=package.steps[0].step_id,
+                layer="implementation",
+                step_class=package.steps[0].step_class,
+                posture=PostureProfile.P3_GUARDED,
+                predicted_risk=65,
+                actual_outcome="success",
+                dominant_risks=[RiskType.BRUTE_FORCE_REGRESSION],
+                blast_radius_band=3,
+            ),
+        )
+
+    high_assessment = RiskAssessment(
+        assessment_id="assessment-high",
+        layer="implementation",
+        package_id=package.package_id,
+        assessment_scope=package.scope,
+        understanding_inventory=UnderstandingInventory(
+            confirmed=["proposal reviewed"],
+            assumed=[],
+            missing=[],
+            stale=[],
+        ),
+        package_raw_risk=60,
+        assessment_confidence=0.9,
+        dominant_risks=[RiskType.BRUTE_FORCE_REGRESSION],
+        step_assessments=[
+            StepAssessment(
+                step_id=package.steps[0].step_id,
+                step_class=package.steps[0].step_class,
+                summary=package.steps[0].summary,
+                prerequisites=[],
+                risk_vector=RiskVector(brute_force_regression=4),
+                modifiers=RiskModifiers(blast_radius=3, confidence=0.9),
+                raw_risk=60,
+                dominant_risks=[RiskType.BRUTE_FORCE_REGRESSION],
+            ),
+        ],
+        frontier_candidates=[package.steps[0].step_id],
+    )
+    low_assessment = RiskAssessment(
+        assessment_id="assessment-low",
+        layer="implementation",
+        package_id=package.package_id,
+        assessment_scope=package.scope,
+        understanding_inventory=UnderstandingInventory(
+            confirmed=["proposal reviewed"],
+            assumed=[],
+            missing=[],
+            stale=[],
+        ),
+        package_raw_risk=35,
+        assessment_confidence=0.9,
+        dominant_risks=[RiskType.BRUTE_FORCE_REGRESSION],
+        step_assessments=[
+            StepAssessment(
+                step_id=package.steps[0].step_id,
+                step_class=package.steps[0].step_class,
+                summary=package.steps[0].summary,
+                prerequisites=[],
+                risk_vector=RiskVector(brute_force_regression=2),
+                modifiers=RiskModifiers(blast_radius=3, confidence=0.9),
+                raw_risk=35,
+                dominant_risks=[RiskType.BRUTE_FORCE_REGRESSION],
+            ),
+        ],
+        frontier_candidates=[package.steps[0].step_id],
+    )
+    high_plan = _plan_for(
+        package,
+        high_assessment.assessment_id,
+        [
+            StepMitigation(
+                step_id=package.steps[0].step_id,
+                decision=StepDecision.ACCEPT,
+                posture=PostureProfile.P3_GUARDED,
+                mitigations=["guard the risky edit"],
+                residual_risk=60,
+                reason="high-risk but still executable",
+            ),
+        ],
+    )
+    low_plan = _plan_for(
+        package,
+        low_assessment.assessment_id,
+        [
+            StepMitigation(
+                step_id=package.steps[0].step_id,
+                decision=StepDecision.ACCEPT,
+                posture=PostureProfile.P1_LIGHT,
+                mitigations=["risk score is now lower"],
+                residual_risk=35,
+                reason="lower risk after prior success",
+            ),
+        ],
+    )
+    responses = iter(
+        [
+            json.dumps(serialize_assessment(high_assessment)),
+            json.dumps(serialize_plan(high_plan)),
+            json.dumps(serialize_assessment(low_assessment)),
+            json.dumps(serialize_plan(low_plan)),
+        ]
+    )
+
+    def _dispatch(*_args, **_kwargs) -> str:
+        return next(responses)
+
+    first_plan = run_risk_loop(
+        planspace,
+        "section-01",
+        "implementation",
+        package,
+        _dispatch,
+    )
+    _append_risk_history(planspace, "01", first_plan, ["src/main.py"])
+    second_plan = run_risk_loop(
+        planspace,
+        "section-01",
+        "implementation",
+        package,
+        _dispatch,
+    )
+
+    assert first_plan.step_decisions[0].posture == PostureProfile.P3_GUARDED
+    assert second_plan.step_decisions[0].posture == PostureProfile.P2_STANDARD
+
+
+def test_reassessment_triggers_when_deferred_inputs_become_available(
+    planspace: Path,
+    codespace: Path,
+    monkeypatch,
+) -> None:
+    _write_risk_inputs(
+        planspace,
+        "01",
+        triage_confidence="medium",
+        microstrategy_lines=["Apply the approved change", "Verify the change"],
+    )
+    section = _make_section(planspace, "01")
+    package = build_package_from_proposal("section-01", planspace)
+    initial_plan = _plan_for(
+        package,
+        "assessment-initial",
+        [
+            StepMitigation(
+                step_id=package.steps[0].step_id,
+                decision=StepDecision.ACCEPT,
+                posture=PostureProfile.P2_STANDARD,
+                mitigations=["implement the approved slice"],
+                residual_risk=30,
+                reason="safe edit",
+            ),
+            StepMitigation(
+                step_id=package.steps[1].step_id,
+                decision=StepDecision.REJECT_DEFER,
+                posture=PostureProfile.P3_GUARDED,
+                mitigations=["wait for implementation outputs"],
+                residual_risk=55,
+                reason="verify after implementation outputs land",
+                wait_for=["modified-file-manifest", "alignment-check-result"],
+            ),
+        ],
+    )
+    initial_plan.expected_reassessment_inputs = [
+        "modified-file-manifest",
+        "alignment-check-result",
+    ]
+    reassessed_plan = _plan_for(
+        package,
+        "assessment-reassessed",
+        [
+            StepMitigation(
+                step_id=package.steps[1].step_id,
+                decision=StepDecision.ACCEPT,
+                posture=PostureProfile.P2_STANDARD,
+                mitigations=["verification can now proceed"],
+                residual_risk=35,
+                reason="required inputs arrived",
+            ),
+        ],
+    )
+    reassessment_packages: list[list[str]] = []
+
+    monkeypatch.setattr("lib.pipelines.implementation_pass.handle_pending_messages", lambda *args: False)
+    monkeypatch.setattr("lib.pipelines.implementation_pass.alignment_changed_pending", lambda *args: False)
+    monkeypatch.setattr("lib.pipelines.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
+    monkeypatch.setattr("lib.pipelines.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("lib.pipelines.implementation_pass._run_risk_review", lambda *_args, **_kwargs: initial_plan)
+    monkeypatch.setattr("lib.pipelines.implementation_pass._append_risk_history", lambda *args, **kwargs: None)
+    monkeypatch.setattr("lib.pipelines.implementation_pass.read_package", lambda *_args, **_kwargs: package)
+    monkeypatch.setattr("lib.pipelines.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
+    monkeypatch.setattr("lib.pipelines.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("lib.pipelines.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
+
+    def _run_section(*_args, **_kwargs) -> list[str]:
+        (planspace / "artifacts" / "impl-align-01-output.md").write_text(
+            '{"frame_ok": true, "aligned": true, "problems": []}',
+            encoding="utf-8",
+        )
+        return ["src/main.py"]
+
+    def _reassess(*args, **kwargs) -> RiskPlan:
+        reassessment_packages.append([step.step_id for step in args[3].steps])
+        return reassessed_plan
+
+    monkeypatch.setattr("lib.pipelines.implementation_pass.run_section", _run_section)
+    monkeypatch.setattr("lib.pipelines.implementation_pass.run_risk_loop", _reassess)
+
+    run_implementation_pass(
+        {"01": ProposalPassResult(section_number="01", execution_ready=True)},
+        {"01": section},
+        planspace,
+        codespace,
+        "parent",
+    )
+
+    deferred_payload = read_json(
+        planspace
+        / "artifacts"
+        / "inputs"
+        / "section-01"
+        / "section-01-risk-deferred.json",
+    )
+    accepted_payload = read_json(
+        planspace
+        / "artifacts"
+        / "inputs"
+        / "section-01"
+        / "section-01-risk-accepted-steps.json",
+    )
+
+    assert reassessment_packages == [[package.steps[1].step_id]]
+    assert accepted_payload["accepted_steps"] == [package.steps[1].step_id]
+    assert deferred_payload["deferred_steps"] == []

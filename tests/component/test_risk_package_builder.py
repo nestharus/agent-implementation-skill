@@ -7,6 +7,7 @@ from pathlib import Path
 
 from lib.core.path_registry import PathRegistry
 from lib.risk.package_builder import (
+    _infer_step_class,
     build_package,
     build_package_from_proposal,
     read_package,
@@ -118,7 +119,7 @@ def test_build_package_from_proposal_with_microstrategy(tmp_path: Path) -> None:
     ]
     assert [step.step_id for step in package.steps] == [
         "explore-01",
-        "coordinate-02",
+        "edit-02",
         "verify-03",
     ]
 
@@ -136,6 +137,24 @@ def test_build_package_from_empty_proposal_uses_generic_defaults(
     assert package.steps[0].summary == "Refresh understanding and constraints"
     assert package.steps[1].summary == "Implement the approved change slice"
     assert package.steps[2].summary == "Verify alignment and execution results"
+
+
+def test_infer_step_class_uses_edit_for_single_step() -> None:
+    assert _infer_step_class(index=1, total=1) == StepClass.EDIT
+
+
+def test_infer_step_class_uses_position_based_defaults_for_multi_step() -> None:
+    assert [
+        _infer_step_class(index=1, total=4),
+        _infer_step_class(index=2, total=4),
+        _infer_step_class(index=3, total=4),
+        _infer_step_class(index=4, total=4),
+    ] == [
+        StepClass.EXPLORE,
+        StepClass.EDIT,
+        StepClass.EDIT,
+        StepClass.VERIFY,
+    ]
 
 
 def test_refresh_package_removes_completed_steps() -> None:

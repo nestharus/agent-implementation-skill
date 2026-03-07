@@ -83,6 +83,8 @@ _SCENARIO_MODULES = [
     "evals.scenarios.proposal_state",
     "evals.scenarios.reconciliation",
     "evals.scenarios.readiness_gate",
+    "evals.scenarios.risk_assessor",
+    "evals.scenarios.execution_optimizer",
 ]
 
 

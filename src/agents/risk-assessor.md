@@ -1,11 +1,6 @@
 ---
 description: Assesses execution risk for a scoped ROAL package before an execution agent starts mutating code or coordinating work.
 model: gpt-5.4-high
-context:
-  - risk_package
-  - risk_history
-  - codemap
-  - tool_registry
 ---
 
 # Risk Assessor

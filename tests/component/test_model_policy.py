@@ -13,6 +13,8 @@ def test_load_model_policy_returns_defaults_when_file_missing(tmp_path) -> None:
     assert isinstance(policy, ModelPolicy)
     assert policy.setup == "claude-opus"
     assert policy["proposal"] == "gpt-5.4-high"
+    assert policy["risk_assessor"] == "gpt-5.4-high"
+    assert policy["execution_optimizer"] == "gpt-5.4-high"
     assert policy["escalation_triggers"]["stall_count"] == 2
     assert policy.get("scan") == {}
 
@@ -22,6 +24,8 @@ def test_load_model_policy_merges_overrides_and_nested_triggers(tmp_path) -> Non
     policy_path.parent.mkdir(parents=True, exist_ok=True)
     policy_path.write_text(json.dumps({
         "proposal": "gpt-5.4-xhigh",
+        "risk_assessor": "gpt-5.4-xhigh",
+        "execution_optimizer": "glm",
         "scan": {"codemap_build": "scan-model"},
         "escalation_triggers": {"stall_count": 5},
     }), encoding="utf-8")
@@ -29,6 +33,8 @@ def test_load_model_policy_merges_overrides_and_nested_triggers(tmp_path) -> Non
     policy = load_model_policy(tmp_path)
 
     assert policy.proposal == "gpt-5.4-xhigh"
+    assert resolve(policy, "risk_assessor") == "gpt-5.4-xhigh"
+    assert resolve(policy, "execution_optimizer") == "glm"
     assert policy["alignment"] == "claude-opus"
     assert policy["escalation_triggers"] == {
         "stall_count": 5,

@@ -28,6 +28,8 @@ class ModelPolicy(Mapping[str, Any]):
     microstrategy_decider: str = "glm"
     tool_registrar: str = "glm"
     bridge_tools: str = "gpt-5.4-high"
+    risk_assessor: str = "gpt-5.4-high"
+    execution_optimizer: str = "gpt-5.4-high"
     escalation_model: str = "gpt-5.4-xhigh"
     intent_triage: str = "glm"
     intent_philosophy: str = "claude-opus"

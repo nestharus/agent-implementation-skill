@@ -111,15 +111,16 @@ failures.
    valid only if they solve the original problems. An optimization or
    complexity argument is an excuse. Do not introduce constraints the user
    did not specify.
-7. **Accuracy over shortcuts — zero risk tolerance** — Every shortcut or
-   bypass of the pipeline introduces risk. We do not accept any risk.
+7. **Accuracy over shortcuts — zero tolerance for fabrication and bypasses** —
+   We accept zero tolerance for invented understanding, bypassed
+   safeguards, or pipeline shortcuts that skip required grounding.
    Agents must follow the full pipeline faithfully: explore before
    proposing, propose before implementing, align before proceeding.
-   Shortcuts are permitted ONLY when the remaining work is so small that
-   no meaningful risk exists (e.g., a single trivial cleanup after
-   everything else is aligned and verified). "This is simple enough to
-   skip a step" is never valid reasoning — simplicity is not the same as
-   zero risk. When in doubt, follow the pipeline.
+   Operational execution still uses proportional guardrails: the ROAL
+   loop scales effort to actual risk and keeps residual risk below the
+   configured threshold rather than pretending all execution can be made
+   literally risk-free. "This is simple enough to skip a step" is never
+   valid reasoning. When in doubt, follow the pipeline.
 
 ### Terminology Contract
 

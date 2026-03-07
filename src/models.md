@@ -81,6 +81,16 @@ The pruner is the only SIS agent that requires xhigh reasoning — it must
 identify convergence patterns, resolve contradictions, and make strategic
 deferral decisions across all shards simultaneously.
 
+## ROAL Model Policy Keys
+
+The ROAL execution-risk loop uses two explicit model policy keys,
+configurable in `model-policy.json`:
+
+| Key | Default | Why |
+|-----|---------|-----|
+| `risk_assessor` | `gpt-5.4-high` | Diagnostic agent assessing execution risk before descent |
+| `execution_optimizer` | `gpt-5.4-high` | Translates the risk assessment into the minimum effective execution posture |
+
 ## Pipeline Patterns
 
 ### Implementation Pipeline

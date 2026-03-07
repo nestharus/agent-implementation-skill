@@ -131,12 +131,15 @@ recursively from global proposal down to TODO blocks. Microstrategy/TODO
 extraction is not optional convenience — it is the lowest-layer instance
 of the same explore-propose-align pattern.
 
-**Zero risk tolerance: no stage is optional.** Every stage exists because
-skipping it introduces risk. Agents MUST NOT bypass stages, combine
-stages, or rationalize that the project is "simple enough" to skip
-exploration, proposal, or alignment steps. Shortcuts are permitted ONLY
-when the remaining work is so trivially small that no meaningful risk
-exists. This applies equally to greenfield and brownfield projects.
+**Zero tolerance for fabricated understanding or bypassed gates: no stage
+is optional.** Every stage exists because skipping it introduces
+ungrounded execution. Agents MUST NOT bypass stages, combine stages, or
+rationalize that the project is "simple enough" to skip exploration,
+proposal, or alignment steps. Operational work still runs under
+proportional guardrails: the ROAL loop scales effort to actual risk and
+keeps residual risk below threshold instead of claiming execution can be
+made literally risk-free. This applies equally to greenfield and
+brownfield projects.
 
 1. **Section Decomposition** — Recursive decomposition into atomic section files
 2. **Demand-Driven Docstring Cache** — Ensure relevant source files have module docstrings
@@ -1080,6 +1083,13 @@ integration proposal. Iterate until ALIGNED.
 GPT reads the aligned integration proposal, section excerpts, and
 source files. Implements the changes **holistically** — multiple files
 at once, coordinated changes. NOT mechanical per-file execution.
+
+Before implementation dispatch, ROAL performs a fail-closed risk review
+between readiness and execution. The risk assessor diagnoses package
+risk, then the execution optimizer chooses the minimum effective
+posture. Only accepted-frontier steps proceed locally; deferred steps
+wait for the named inputs; reopened steps route upward. If risk review
+fails or cannot be validated mechanically, descent is blocked.
 
 **Submit task requests for exploration and targeted sub-work:**
 

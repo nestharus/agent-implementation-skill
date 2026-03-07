@@ -15,8 +15,21 @@ def determine_engagement(
     has_tool_changes: bool,
     triage_confidence: str,
     freshness_changed: bool,
+    risk_mode_hint: str = "",
 ) -> RiskMode:
-    """Determine whether ROAL can be skipped or must run in full."""
+    """Determine whether ROAL can be skipped, run lightly, or run in full."""
+    normalized_hint = risk_mode_hint.strip().lower()
+    skip_floor_hit = (
+        has_shared_seams
+        or has_stale_inputs
+        or has_recent_failures
+    )
+
+    if normalized_hint == RiskMode.FULL.value:
+        return RiskMode.FULL
+    if normalized_hint == RiskMode.SKIP.value:
+        return RiskMode.FULL if skip_floor_hit else RiskMode.SKIP
+
     should_skip = (
         step_count == 1
         and file_count <= 1
@@ -30,4 +43,17 @@ def determine_engagement(
     )
     if should_skip:
         return RiskMode.SKIP
-    return RiskMode.FULL
+
+    should_run_full = (
+        has_shared_seams
+        or has_consequence_notes
+        or has_stale_inputs
+        or has_recent_failures
+        or file_count > 3
+        or step_count > 3
+        or triage_confidence.strip().lower() == "low"
+    )
+    if should_run_full:
+        return RiskMode.FULL
+
+    return RiskMode.LIGHT
