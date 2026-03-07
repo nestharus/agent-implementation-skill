@@ -1,5 +1,4 @@
 import difflib
-import hashlib
 import json
 import re
 import shutil
@@ -8,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed
+from lib.hash_service import content_hash, file_hash as hash_file
 
 from .communication import (
     AGENT_NAME,
@@ -444,17 +444,12 @@ If no material impacts can be extracted, reply:
     for rel_path in sorted(modified_files):
         src = codespace / rel_path
         if src.exists():
-            try:
-                file_hash = hashlib.sha256(
-                    src.read_bytes()).hexdigest()
-            except OSError:
-                file_hash = "unreadable"
+            file_digest = hash_file(src)
+            file_hash = file_digest if file_digest else "unreadable"
         else:
             file_hash = "missing"
         file_fingerprint_parts.append(f"{rel_path}:{file_hash}")
-    files_fingerprint = hashlib.sha256(
-        "\n".join(file_fingerprint_parts).encode()
-    ).hexdigest()
+    files_fingerprint = content_hash("\n".join(file_fingerprint_parts))
 
     for target_num, reason, contract_risk, note_md in impacted_sections:
         note_path = notes_dir / f"from-{sec_num}-to-{target_num}.md"
@@ -477,9 +472,9 @@ If no material impacts can be extracted, reply:
 
         # Stable note ID from mechanical state (file fingerprint + target)
         # so repeated edits to the same files produce consistent IDs.
-        note_id = hashlib.sha256(
-            f"{note_path.name}:{files_fingerprint}".encode()
-        ).hexdigest()[:12]
+        note_id = content_hash(
+            f"{note_path.name}:{files_fingerprint}",
+        )[:12]
 
         note_path.write_text(f"""{heading}
 
@@ -749,4 +744,3 @@ def normalize_section_number(
 def build_section_number_map(sections: list[Section]) -> dict[int, str]:
     """Build a mapping from int section number to canonical string form."""
     return {int(s.number): s.number for s in sections}
-

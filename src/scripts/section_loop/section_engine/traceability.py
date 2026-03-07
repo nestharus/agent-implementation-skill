@@ -1,8 +1,8 @@
-import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 
 from lib.artifact_io import read_json, write_json
+from lib.hash_service import file_hash
 
 from ..alignment import _parse_alignment_verdict
 from ..communication import log
@@ -11,9 +11,7 @@ from ..types import Section
 
 def _file_sha256(path: Path) -> str:
     """Return hex SHA-256 of a file, or empty string if missing."""
-    if not path.exists():
-        return ""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return file_hash(path)
 
 
 def _write_traceability_index(

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+
+from lib.hash_service import content_hash
 
 _SECTION_RE = re.compile(r"(?:section[-_]?)(\d{2})\b|[-_:](\d{2})(?:[-_.:,\s]|$)")
 
@@ -60,7 +61,7 @@ def _fmt(dt: datetime) -> str:
 def prompt_signature(text: str) -> str:
     """Stable hash of prompt text for correlation matching."""
     normalized = " ".join(text.split())[:4000]
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return content_hash(normalized)
 
 
 def infer_section(*texts: str) -> str:

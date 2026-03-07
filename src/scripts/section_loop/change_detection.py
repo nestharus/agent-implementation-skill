@@ -1,12 +1,11 @@
-import hashlib
 from pathlib import Path
+
+from lib.hash_service import file_hash
 
 
 def hash_file(path: Path) -> str:
     """Return SHA-256 hex digest of a file, or empty string if missing."""
-    if not path.exists():
-        return ""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return file_hash(path)
 
 
 def snapshot_files(codespace: Path, rel_paths: list[str]) -> dict[str, str]:

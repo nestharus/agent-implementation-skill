@@ -1,4 +1,3 @@
-import hashlib
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -6,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from lib.artifact_io import read_json, rename_malformed, write_json
+from lib.hash_service import content_hash
 
 from ..alignment import (
     _extract_problems,
@@ -807,9 +807,9 @@ Reply with a JSON block:
                     if note_path.exists():
                         note_text = note_path.read_text(encoding="utf-8")
                         if "**Note ID**:" not in note_text:
-                            fp = hashlib.sha256(
-                                delta_bytes + s.encode("utf-8")
-                            ).hexdigest()[:12]
+                            fp = content_hash(
+                                delta_bytes + s.encode("utf-8"),
+                            )[:12]
                             note_id = f"bridge-{gidx}-to-{s}-{fp}"
                             note_path.write_text(
                                 f"**Note ID**: `{note_id}`\n\n{note_text}",

@@ -1,9 +1,9 @@
 """Surface registry: deduplication, tracking, and diminishing returns."""
 
-import hashlib
 from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed, write_json
+from lib.hash_service import content_hash
 
 from ..communication import log
 from ..dispatch import read_agent_signal
@@ -91,7 +91,7 @@ def normalize_surface_ids(
                 str(surface.get(f, "")).strip()
                 for f in ("kind", "axis_id", "title", "description", "evidence")
             )
-            fp = hashlib.sha256(fp_input.encode("utf-8")).hexdigest()[:12]
+            fp = content_hash(fp_input)[:12]
             surface["_fingerprint"] = fp
 
             if fp in fp_to_id:

@@ -1,12 +1,12 @@
 """Intent bootstrap: ensure philosophy and per-section intent packs exist."""
 
-import hashlib
 import json
 import os
 import re
 from pathlib import Path
 
 from lib.artifact_io import read_json, write_json
+from lib.hash_service import content_hash, file_hash
 
 from ..communication import _log_artifact, log
 from ..dispatch import (
@@ -217,10 +217,7 @@ def _validate_philosophy_grounding(
 
 def _sha256_file(path: Path) -> str:
     """Return hex sha256 of file contents, or empty string on error."""
-    try:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
-    except OSError:
-        return ""
+    return file_hash(path)
 
 
 def _compute_intent_pack_hash(
@@ -249,10 +246,10 @@ def _compute_intent_pack_hash(
         _sha256_file(corrections_path),
         _sha256_file(philosophy_path),
         _sha256_file(todos_path),
-        hashlib.sha256(incoming_notes.encode()).hexdigest(),
+        content_hash(incoming_notes),
     ]
     combined = ":".join(parts)
-    return hashlib.sha256(combined.encode()).hexdigest()
+    return content_hash(combined)
 
 
 def ensure_global_philosophy(
@@ -305,10 +302,9 @@ def ensure_global_philosophy(
                             encoding="utf-8").strip()
                         current_catalog = _build_philosophy_catalog(
                             planspace, codespace)
-                        current_fp = hashlib.sha256(
-                            json.dumps(current_catalog, sort_keys=True)
-                            .encode()
-                        ).hexdigest()
+                        current_fp = content_hash(
+                            json.dumps(current_catalog, sort_keys=True),
+                        )
                         if prev_fp != current_fp:
                             catalog_changed = True
                             log("Intent bootstrap: philosophy candidate "
@@ -662,9 +658,7 @@ Format: JSON mapping principle ID to source file/section.
     # V3/R69: Write catalog fingerprint so the next run can detect
     # changes in the candidate universe (new files, modified candidates).
     catalog_fp_path = intent_global / "philosophy-catalog-fingerprint.txt"
-    catalog_fp = hashlib.sha256(
-        json.dumps(catalog, sort_keys=True).encode()
-    ).hexdigest()
+    catalog_fp = content_hash(json.dumps(catalog, sort_keys=True))
     catalog_fp_path.write_text(catalog_fp, encoding="utf-8")
 
     return philosophy_path

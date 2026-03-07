@@ -18,6 +18,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed, write_json
+from lib.hash_service import content_hash
 from .agent_templates import render_template
 from .dispatch import dispatch_agent, read_model_policy
 from prompt_safety import validate_dynamic_content
@@ -465,9 +466,7 @@ def _write_scope_delta(run_dir: Path, candidate: dict) -> Path:
     title_slug = candidate.get("title", "unknown")[:40].replace(" ", "_")
     filename = f"reconciliation-{sources}-{title_slug}.json"
     path = run_dir / "artifacts" / "scope-deltas" / filename
-    import hashlib as _hashlib
-    title_hash = _hashlib.sha256(
-        candidate.get("title", "").encode()).hexdigest()[:8]
+    title_hash = content_hash(candidate.get("title", ""))[:8]
     delta_id = f"delta-recon-{sources}-{title_hash}"
     delta = {
         "delta_id": delta_id,

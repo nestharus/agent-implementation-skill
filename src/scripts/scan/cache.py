@@ -6,12 +6,12 @@ pair has not changed.
 
 from __future__ import annotations
 
-import hashlib
 import re
 import shutil
 from pathlib import Path
 
 from lib.artifact_io import read_json
+from lib.hash_service import content_hash
 
 # Regex to strip scan-generated summary blocks from section text.
 # These blocks are wrapped in HTML comment markers by update_match().
@@ -66,20 +66,20 @@ class FileCardCache:
         scan-generated summary blocks, preventing scan output from
         invalidating its own cache.
         """
-        h = hashlib.sha256()
+        parts: list[bytes] = []
         # Normalize section file: strip scan summaries so derived
         # annotations don't poison the cache key.
         try:
             section_text = section_file.read_text()
-            h.update(strip_scan_summaries(section_text).encode())
+            parts.append(strip_scan_summaries(section_text).encode())
         except OSError:
             pass
         for p in (source_file, *extra_files):
             try:
-                h.update(p.read_bytes())
+                parts.append(p.read_bytes())
             except OSError:
                 pass
-        return h.hexdigest()
+        return content_hash(b"".join(parts))
 
     # ------------------------------------------------------------------
     # Lookup

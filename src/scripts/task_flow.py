@@ -15,7 +15,6 @@ gate firing.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import sqlite3
@@ -25,6 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed, write_json
+from lib.hash_service import content_hash
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
@@ -82,7 +82,7 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
     from surviving alignment-relevant changes.  Must stay fast
     (file-level hashing only, no model loading).
     """
-    hasher = hashlib.sha256()
+    hash_parts: list[bytes] = []
     artifacts = planspace / "artifacts"
     sec = section_number
 
@@ -95,43 +95,43 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
     ):
         p = artifacts / suffix
         if p.exists():
-            hasher.update(p.read_bytes())
+            hash_parts.append(p.read_bytes())
 
     # Notes targeting this section
     notes_dir = artifacts / "notes"
     if notes_dir.exists():
         for note in sorted(notes_dir.glob(f"from-*-to-{sec}.md")):
-            hasher.update(note.read_bytes())
+            hash_parts.append(note.read_bytes())
 
     # Tool registry
     tools_path = artifacts / "tool-registry.json"
     if tools_path.exists():
-        hasher.update(tools_path.read_bytes())
+        hash_parts.append(tools_path.read_bytes())
 
     # Decisions
     decisions_path = artifacts / "decisions" / f"section-{sec}.md"
     if decisions_path.exists():
-        hasher.update(decisions_path.read_bytes())
+        hash_parts.append(decisions_path.read_bytes())
 
     # Microstrategy
     microstrategy_path = (
         artifacts / "proposals" / f"section-{sec}-microstrategy.md"
     )
     if microstrategy_path.exists():
-        hasher.update(microstrategy_path.read_bytes())
+        hash_parts.append(microstrategy_path.read_bytes())
 
     # TODOs
     todos_path = artifacts / "todos" / f"section-{sec}-todos.md"
     if todos_path.exists():
-        hasher.update(todos_path.read_bytes())
+        hash_parts.append(todos_path.read_bytes())
 
     # Codemap + corrections
     codemap_path = artifacts / "codemap.md"
     if codemap_path.exists():
-        hasher.update(codemap_path.read_bytes())
+        hash_parts.append(codemap_path.read_bytes())
     corrections_path = artifacts / "signals" / "codemap-corrections.json"
     if corrections_path.exists():
-        hasher.update(corrections_path.read_bytes())
+        hash_parts.append(corrections_path.read_bytes())
 
     # Mode files
     for mode_file in (
@@ -140,14 +140,14 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
         artifacts / "sections" / f"section-{sec}-mode.txt",
     ):
         if mode_file.exists():
-            hasher.update(mode_file.read_bytes())
+            hash_parts.append(mode_file.read_bytes())
 
     # Problem frame
     problem_frame = (
         artifacts / "sections" / f"section-{sec}-problem-frame.md"
     )
     if problem_frame.exists():
-        hasher.update(problem_frame.read_bytes())
+        hash_parts.append(problem_frame.read_bytes())
 
     # Intent artifacts
     intent_global = artifacts / "intent" / "global"
@@ -157,7 +157,7 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
         intent_global / "philosophy-source-map.json",
     ):
         if intent_file.exists():
-            hasher.update(intent_file.read_bytes())
+            hash_parts.append(intent_file.read_bytes())
     intent_sec_dir = artifacts / "intent" / "sections" / f"section-{sec}"
     for intent_file in (
         intent_sec_dir / "problem.md",
@@ -165,7 +165,7 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
         intent_sec_dir / "philosophy-excerpt.md",
     ):
         if intent_file.exists():
-            hasher.update(intent_file.read_bytes())
+            hash_parts.append(intent_file.read_bytes())
 
     # Proposal state — captures resolved/unresolved anchors, contracts,
     # research questions, and execution_ready flag
@@ -174,7 +174,7 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
         / f"section-{sec}-proposal-state.json"
     )
     if proposal_state_path.exists():
-        hasher.update(proposal_state_path.read_bytes())
+        hash_parts.append(proposal_state_path.read_bytes())
 
     # Reconciliation result — cross-section overlap/conflict findings
     reconciliation_path = (
@@ -182,7 +182,7 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
         / f"section-{sec}-reconciliation-result.json"
     )
     if reconciliation_path.exists():
-        hasher.update(reconciliation_path.read_bytes())
+        hash_parts.append(reconciliation_path.read_bytes())
 
     # Execution readiness — fail-closed gate artifact
     readiness_path = (
@@ -190,9 +190,9 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
         / f"section-{sec}-execution-ready.json"
     )
     if readiness_path.exists():
-        hasher.update(readiness_path.read_bytes())
+        hash_parts.append(readiness_path.read_bytes())
 
-    return hasher.hexdigest()[:16]
+    return content_hash(b"".join(hash_parts))[:16]
 
 
 # ---------------------------------------------------------------------------

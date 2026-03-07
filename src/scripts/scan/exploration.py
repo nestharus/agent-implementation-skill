@@ -5,12 +5,12 @@ Translates ``run_section_exploration()`` and helpers from scan.sh.
 
 from __future__ import annotations
 
-import hashlib
 import re
 import sys
 from pathlib import Path
 
 from lib.artifact_io import read_json, write_json
+from lib.hash_service import content_hash, file_hash
 
 from prompt_safety import validate_dynamic_content
 
@@ -148,10 +148,7 @@ def run_section_exploration(
 
 def _sha256_file(path: Path) -> str:
     """Return hex sha256 of file contents, or empty string on error."""
-    try:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
-    except OSError:
-        return ""
+    return file_hash(path)
 
 
 def _validate_existing_related_files(
@@ -176,11 +173,9 @@ def _validate_existing_related_files(
         _sha256_file(corrections_file) if corrections_file.is_file() else ""
     )
     section_text_raw = section_file.read_text() if section_file.is_file() else ""
-    section_hash = hashlib.sha256(
-        strip_scan_summaries(section_text_raw).encode(),
-    ).hexdigest()
+    section_hash = content_hash(strip_scan_summaries(section_text_raw))
     combined = f"{codemap_hash}:{corrections_hash}:{section_hash}"
-    combined_hash = hashlib.sha256(combined.encode()).hexdigest()
+    combined_hash = content_hash(combined)
 
     prev_hash = ""
     if codemap_hash_file.is_file():
@@ -278,15 +273,13 @@ def _validate_existing_related_files(
                         if section_file.is_file()
                         else ""
                     )
-                    section_hash = hashlib.sha256(
-                        strip_scan_summaries(section_text_updated).encode(),
-                    ).hexdigest()
+                    section_hash = content_hash(
+                        strip_scan_summaries(section_text_updated),
+                    )
                     combined = (
                         f"{codemap_hash}:{corrections_hash}:{section_hash}"
                     )
-                    combined_hash = hashlib.sha256(
-                        combined.encode(),
-                    ).hexdigest()
+                    combined_hash = content_hash(combined)
                 else:
                     print(
                         f"[EXPLORE] {section_name}: auto-apply "

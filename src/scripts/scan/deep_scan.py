@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed, write_json
+from lib.hash_service import content_hash
 
 from prompt_safety import validate_dynamic_content
 
@@ -210,7 +211,7 @@ def _run_tier_ranking(
     # don't invalidate tier ranking across runs.
     raw_section = section_file.read_text()
     tier_inputs = strip_scan_summaries(raw_section) + "\n" + "\n".join(sorted(related_files))
-    tier_inputs_hash = hashlib.sha256(tier_inputs.encode()).hexdigest()
+    tier_inputs_hash = content_hash(tier_inputs)
 
     # Validate existing tier file: schema + inputs match
     if tier_file.is_file():

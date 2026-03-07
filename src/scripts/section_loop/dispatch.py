@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Any
 
 from lib.artifact_io import read_json, rename_malformed, write_json
+from lib.database_client import DatabaseClient
+from lib.monitor_service import MonitorService
 
 from .agent_templates import render_template, validate_dynamic_content
 from .communication import (
@@ -15,6 +17,19 @@ from .communication import (
 )
 from .context_assembly import materialize_context_sidecar
 from .pipeline_control import alignment_changed_pending, wait_if_paused
+
+
+def _database_client(planspace: Path) -> DatabaseClient:
+    return DatabaseClient(DB_SH, planspace / "run.db")
+
+
+def _monitor_service(planspace: Path) -> MonitorService:
+    return MonitorService(
+        _database_client(planspace),
+        Path(WORKFLOW_HOME),
+        AGENT_NAME,
+        logger=log,
+    )
 
 
 def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
@@ -66,52 +81,29 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
             str(agent_path), planspace, section=section_number,
         )
 
-    monitor_name = f"{agent_name}-monitor" if agent_name else None
-    monitor_proc = None
-    dispatch_start_id = None
+    monitor_handle = None
 
     if planspace and agent_name:
-        db_path = str(planspace / "run.db")
-        # Register agent's mailbox (agents send narration here)
-        subprocess.run(  # noqa: S603
-            ["bash", str(DB_SH), "register",  # noqa: S607
-             db_path, agent_name],
-            check=True, capture_output=True, text=True,
-        )
-        # Record dispatch-start event and capture its ID for signal scoping
-        start_result = subprocess.run(  # noqa: S603
-            ["bash", str(DB_SH), "log", db_path,  # noqa: S607
-             "lifecycle", f"dispatch:{agent_name}", "start",
-             "--agent", AGENT_NAME],
-            capture_output=True, text=True,
-        )
-        # Output format: "logged:<id>:lifecycle:dispatch:<agent-name>"
-        start_out = start_result.stdout.strip()
-        if start_out.startswith("logged:"):
-            dispatch_start_id = start_out.split(":")[1]
-        # Launch agent-monitor (GLM) in background
-        assert monitor_name is not None  # narrowed by `if agent_name`  # noqa: S101
         monitor_prompt = _write_agent_monitor_prompt(
-            planspace, agent_name, monitor_name,
+            planspace,
+            agent_name,
+            f"{agent_name}-monitor",
         )
-        monitor_proc = subprocess.Popen(  # noqa: S603
-            ["agents", "--agent-file",  # noqa: S607
-             str(WORKFLOW_HOME / "agents" / "agent-monitor.md"),
-             "--file", str(monitor_prompt)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        monitor_handle = _monitor_service(planspace).start(
+            agent_name,
+            monitor_prompt,
         )
-        log(f"  agent-monitor started (pid={monitor_proc.pid})")
 
     log(f"  dispatch {model} → {prompt_path.name}")
     # Emit per-section dispatch summary event for QA monitor rule C1
     if planspace and section_number:
         name_label = agent_name or model
-        subprocess.run(  # noqa: S603
-            ["bash", str(DB_SH), "log", str(planspace / "run.db"),  # noqa: S607
-             "summary", f"dispatch:{section_number}",
-             f"{name_label} dispatched",
-             "--agent", AGENT_NAME],
-            capture_output=True, text=True,
+        _database_client(planspace).log_event(
+            "summary",
+            f"dispatch:{section_number}",
+            f"{name_label} dispatched",
+            agent=AGENT_NAME,
+            check=False,
         )
     cmd = ["agents", "--model", model,
            "--file", str(prompt_path),
@@ -135,44 +127,8 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
         log("  WARNING: agent timed out after 600s")
 
     # Shut down agent-monitor after agent finishes
-    if monitor_proc:
-        assert monitor_name is not None  # set when monitor_proc created  # noqa: S101
-        # Send stop signal to monitor
-        subprocess.run(  # noqa: S603
-            ["bash", str(DB_SH), "send", str(planspace / "run.db"),  # noqa: S607
-             monitor_name, "--from", AGENT_NAME, "agent-finished"],
-            capture_output=True, text=True,
-        )
-        try:
-            monitor_proc.wait(timeout=30)
-        except subprocess.TimeoutExpired:
-            monitor_proc.terminate()
-        # Query DB for signal events from this dispatch
-        if dispatch_start_id:
-            sig_result = subprocess.run(  # noqa: S603
-                ["bash", str(DB_SH), "query",  # noqa: S607
-                 str(planspace / "run.db"), "signal",
-                 "--tag", agent_name,
-                 "--since", dispatch_start_id],
-                capture_output=True, text=True,
-            )
-            for sig_line in sig_result.stdout.strip().splitlines():
-                # Output format: id|ts|kind|tag|body|agent
-                parts = sig_line.split("|")
-                if len(parts) >= 5:
-                    sig_body = parts[4]
-                    if sig_body:
-                        log(f"  SIGNAL from monitor: {sig_body[:100]}")
-                        output += "\nLOOP_DETECTED: " + sig_body
-                        # Re-log signal from section-loop for QA monitor rule A4
-                        subprocess.run(  # noqa: S603
-                            ["bash", str(DB_SH), "log",  # noqa: S607
-                             str(planspace / "run.db"),
-                             "signal", f"loop_detected:{agent_name}",
-                             sig_body,
-                             "--agent", AGENT_NAME],
-                            capture_output=True, text=True,
-                        )
+    if monitor_handle is not None:
+        output = _monitor_service(planspace).stop(monitor_handle, output)
 
     # Write output AFTER signal check (so the saved file includes
     # the LOOP_DETECTED line for forensic debugging)
@@ -187,32 +143,6 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
         "timed_out": timed_out,
     }
     write_json(meta_path, meta, indent=None)
-
-    if monitor_proc:
-        assert monitor_name is not None  # set when monitor_proc created  # noqa: S101
-        assert agent_name is not None  # noqa: S101  # monitor_proc only set when agent_name provided
-        # Clean up agent
-        subprocess.run(  # noqa: S603
-            ["bash", str(DB_SH), "cleanup",  # noqa: S607
-             str(planspace / "run.db"), agent_name],
-            capture_output=True, text=True,
-        )
-        subprocess.run(  # noqa: S603
-            ["bash", str(DB_SH), "unregister",  # noqa: S607
-             str(planspace / "run.db"), agent_name],
-            capture_output=True, text=True,
-        )
-        # Clean up monitor
-        subprocess.run(  # noqa: S603
-            ["bash", str(DB_SH), "cleanup",  # noqa: S607
-             str(planspace / "run.db"), monitor_name],
-            capture_output=True, text=True,
-        )
-        subprocess.run(  # noqa: S603
-            ["bash", str(DB_SH), "unregister",  # noqa: S607
-             str(planspace / "run.db"), monitor_name],
-            capture_output=True, text=True,
-        )
 
     return output
 

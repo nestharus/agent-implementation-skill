@@ -1,4 +1,3 @@
-import hashlib
 import json
 import re
 import subprocess
@@ -6,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from lib.artifact_io import read_json, read_json_or_default, write_json
+from lib.hash_service import content_hash, file_hash
 
 from ..alignment import (
     _extract_problems,
@@ -654,8 +654,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
     pf_hash_path = (artifacts / "signals"
                     / f"section-{section.number}-problem-frame-hash.txt")
     pf_hash_path.parent.mkdir(parents=True, exist_ok=True)
-    current_pf_hash = hashlib.sha256(
-        problem_frame_path.read_bytes()).hexdigest()
+    current_pf_hash = file_hash(problem_frame_path)
     if pf_hash_path.exists():
         prev_pf_hash = pf_hash_path.read_text(encoding="utf-8").strip()
         if prev_pf_hash != current_pf_hash:
@@ -1238,8 +1237,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
     for candidate in ps.get("new_section_candidates", []):
         scope_delta_dir.mkdir(parents=True, exist_ok=True)
         cand_text = str(candidate)
-        cand_hash = hashlib.sha256(
-            cand_text.encode()).hexdigest()[:8]
+        cand_hash = content_hash(cand_text)[:8]
         delta_id = f"delta-{section.number}-candidate-{cand_hash}"
         scope_delta = {
             "delta_id": delta_id,
@@ -2107,8 +2105,7 @@ with JSON:
         # Part 4: Hash tool registry before bridge dispatch
         pre_bridge_registry_hash = ""
         if tool_registry_path.exists():
-            pre_bridge_registry_hash = hashlib.sha256(
-                tool_registry_path.read_bytes()).hexdigest()
+            pre_bridge_registry_hash = file_hash(tool_registry_path)
 
         dispatch_agent(
             policy.get("bridge_tools", "gpt-5.4-high"),
@@ -2202,8 +2199,7 @@ with JSON:
             # Part 4: Regenerate tool digest if bridge modified registry
             post_bridge_registry_hash = ""
             if tool_registry_path.exists():
-                post_bridge_registry_hash = hashlib.sha256(
-                    tool_registry_path.read_bytes()).hexdigest()
+                post_bridge_registry_hash = file_hash(tool_registry_path)
             if (post_bridge_registry_hash
                     and pre_bridge_registry_hash
                     != post_bridge_registry_hash):
