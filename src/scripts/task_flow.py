@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed, write_json
-from lib.hash_service import content_hash
+from lib.freshness_service import compute_section_freshness
 from lib.path_registry import PathRegistry
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -69,125 +69,6 @@ def _new_chain_id() -> str:
 
 def _new_gate_id() -> str:
     return f"gate_{uuid.uuid4()}"
-
-
-# ---------------------------------------------------------------------------
-# Section freshness (P4)
-# ---------------------------------------------------------------------------
-
-def compute_section_freshness(planspace: Path, section_number: str) -> str:
-    """Compute a canonical alignment fingerprint for a section.
-
-    R82/P3: Hashes the same load-bearing artifacts recognized by the
-    section-loop's ``_section_inputs_hash`` to prevent queued tasks
-    from surviving alignment-relevant changes.  Must stay fast
-    (file-level hashing only, no model loading).
-    """
-    hash_parts: list[bytes] = []
-    registry = PathRegistry(planspace)
-    sec = section_number
-
-    # Excerpts + section spec + integration proposal
-    for path in (
-        registry.alignment_excerpt(sec),
-        registry.proposal_excerpt(sec),
-        registry.section_spec(sec),
-        registry.proposal(sec),
-    ):
-        if path.exists():
-            hash_parts.append(path.read_bytes())
-
-    # Notes targeting this section
-    notes_dir = registry.notes_dir()
-    if notes_dir.exists():
-        for note in sorted(notes_dir.glob(f"from-*-to-{sec}.md")):
-            hash_parts.append(note.read_bytes())
-
-    # Tool registry
-    tools_path = registry.tool_registry()
-    if tools_path.exists():
-        hash_parts.append(tools_path.read_bytes())
-
-    # Decisions
-    decisions_path = registry.decisions_dir() / f"section-{sec}.md"
-    if decisions_path.exists():
-        hash_parts.append(decisions_path.read_bytes())
-
-    # Microstrategy
-    microstrategy_path = registry.microstrategy(sec)
-    if microstrategy_path.exists():
-        hash_parts.append(microstrategy_path.read_bytes())
-
-    # TODOs
-    todos_path = registry.todos(sec)
-    if todos_path.exists():
-        hash_parts.append(todos_path.read_bytes())
-
-    # Codemap + corrections
-    codemap_path = registry.codemap()
-    if codemap_path.exists():
-        hash_parts.append(codemap_path.read_bytes())
-    corrections_path = registry.corrections()
-    if corrections_path.exists():
-        hash_parts.append(corrections_path.read_bytes())
-
-    # Mode files
-    for mode_file in (
-        registry.project_mode_txt(),
-        registry.project_mode_json(),
-        registry.sections_dir() / f"section-{sec}-mode.txt",
-    ):
-        if mode_file.exists():
-            hash_parts.append(mode_file.read_bytes())
-
-    # Problem frame
-    problem_frame = registry.problem_frame(sec)
-    if problem_frame.exists():
-        hash_parts.append(problem_frame.read_bytes())
-
-    # Intent artifacts
-    intent_global = registry.intent_global_dir()
-    for intent_file in (
-        intent_global / "philosophy.md",
-        intent_global / "philosophy-source-manifest.json",
-        intent_global / "philosophy-source-map.json",
-    ):
-        if intent_file.exists():
-            hash_parts.append(intent_file.read_bytes())
-    intent_sec_dir = registry.intent_section_dir(sec)
-    for intent_file in (
-        intent_sec_dir / "problem.md",
-        intent_sec_dir / "problem-alignment.md",
-        intent_sec_dir / "philosophy-excerpt.md",
-    ):
-        if intent_file.exists():
-            hash_parts.append(intent_file.read_bytes())
-
-    # Proposal state — captures resolved/unresolved anchors, contracts,
-    # research questions, and execution_ready flag
-    proposal_state_path = (
-        registry.proposals_dir() / f"section-{sec}-proposal-state.json"
-    )
-    if proposal_state_path.exists():
-        hash_parts.append(proposal_state_path.read_bytes())
-
-    # Reconciliation result — cross-section overlap/conflict findings
-    reconciliation_path = (
-        registry.reconciliation_dir()
-        / f"section-{sec}-reconciliation-result.json"
-    )
-    if reconciliation_path.exists():
-        hash_parts.append(reconciliation_path.read_bytes())
-
-    # Execution readiness — fail-closed gate artifact
-    readiness_path = (
-        registry.readiness_dir()
-        / f"section-{sec}-execution-ready.json"
-    )
-    if readiness_path.exists():
-        hash_parts.append(readiness_path.read_bytes())
-
-    return content_hash(b"".join(hash_parts))[:16]
 
 
 # ---------------------------------------------------------------------------

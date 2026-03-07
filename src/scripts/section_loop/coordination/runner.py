@@ -422,7 +422,7 @@ Reply with a JSON block:
 
                 # Record each scope-delta adjudication as a
                 # structured Decision sidecar for machine readability.
-                from ..decisions import (
+                from lib.decision_repository import (
                     Decision,
                     load_decisions,
                     record_decision,

@@ -699,7 +699,7 @@ def persist_decision(planspace: Path, section_number: str,
     sidecar via :func:`decisions.record_decision` so the two formats
     stay in sync from a single write path.
     """
-    from .decisions import Decision, load_decisions, record_decision
+    from lib.decision_repository import Decision, load_decisions, record_decision
 
     decisions_dir = PathRegistry(planspace).decisions_dir()
     decisions_dir.mkdir(parents=True, exist_ok=True)

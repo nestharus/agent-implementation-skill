@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from lib import agent_executor
 from lib.artifact_io import write_json
 from lib.alignment_change_tracker import check_pending as alignment_changed_pending
 from lib.database_client import DatabaseClient
@@ -110,26 +111,20 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
             agent=AGENT_NAME,
             check=False,
         )
-    cmd = ["agents", "--model", model,
-           "--file", str(prompt_path),
-           "--agent-file", str(WORKFLOW_HOME / "agents" / agent_file)]
-    if codespace:
-        cmd.extend(["--project", str(codespace)])
-    timed_out = False
-    try:
-        result = subprocess.run(  # noqa: S603
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
-        output = result.stdout + result.stderr
-        if result.returncode != 0:
-            log(f"  WARNING: agent returned {result.returncode}")
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        output = "TIMEOUT: Agent exceeded 600s time limit"
+    agent_executor.WORKFLOW_HOME = Path(WORKFLOW_HOME)
+    run_result = agent_executor.run_agent(
+        model,
+        prompt_path,
+        output_path,
+        agent_file=agent_file,
+        codespace=codespace,
+        timeout=600,
+    )
+    output = run_result.output
+    if run_result.timed_out:
         log("  WARNING: agent timed out after 600s")
+    elif run_result.returncode != 0:
+        log(f"  WARNING: agent returned {run_result.returncode}")
 
     # Shut down agent-monitor after agent finishes
     if monitor_handle is not None:
@@ -144,8 +139,8 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
     # Write dispatch metadata sidecar for callers that need return-code visibility
     write_dispatch_metadata(
         output_path,
-        returncode=result.returncode if not timed_out else None,
-        timed_out=timed_out,
+        returncode=run_result.returncode if not run_result.timed_out else None,
+        timed_out=run_result.timed_out,
     )
 
     return output

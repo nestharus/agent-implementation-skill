@@ -30,13 +30,13 @@ from .coordination import (
     run_global_coordination,
 )
 from .coordination.problems import _collect_outstanding_problems
-from .decisions import build_strategic_state
 from .cross_section import read_incoming_notes
 from .dispatch import (
     check_agent_signals,
     dispatch_agent,
     read_model_policy,
 )
+from lib.strategic_state import build_strategic_state
 from .pipeline_control import (
     _section_inputs_hash,
     handle_pending_messages,

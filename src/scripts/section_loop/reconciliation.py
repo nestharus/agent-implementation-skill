@@ -24,7 +24,7 @@ from .agent_templates import render_template
 from .dispatch import dispatch_agent, read_model_policy
 from prompt_safety import validate_dynamic_content
 from .proposal_state import load_proposal_state
-from .reconciliation_queue import load_reconciliation_requests
+from lib.reconciliation_queue import load_reconciliation_requests
 
 logger = logging.getLogger(__name__)
 

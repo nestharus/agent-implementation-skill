@@ -75,7 +75,7 @@ from ..intent.triage import load_triage_result
 from ..proposal_state import load_proposal_state
 from ..readiness import resolve_readiness
 from ..reconciliation import load_reconciliation_result
-from ..reconciliation_queue import queue_reconciliation_request
+from lib.reconciliation_queue import queue_reconciliation_request
 from .blockers import _append_open_problem, _update_blocker_rollup
 from .reexplore import _write_alignment_surface
 from .todos import _check_needs_microstrategy, _extract_todos_from_files
