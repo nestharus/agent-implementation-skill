@@ -1529,9 +1529,9 @@ def _run_section_implementation_steps(
     # -----------------------------------------------------------------
     # Step 2.5: Generate microstrategy (agent-driven decision)
     # -----------------------------------------------------------------
-    # The integration proposer decides whether a microstrategy is needed
-    # by including "needs_microstrategy: true" in its output. The script
-    # checks mechanically — no hardcoded file-count thresholds.
+    # The microstrategy decider decides whether a microstrategy is needed
+    # by writing a structured JSON signal. The script checks mechanically
+    # — no hardcoded file-count thresholds.
     integration_proposal = (artifacts / "proposals"
                             / f"section-{section.number}-integration-proposal.md")
     microstrategy_path = (artifacts / "proposals"
@@ -1570,7 +1570,7 @@ def _run_section_implementation_steps(
         and not microstrategy_path.exists()
     )
     if not needs_microstrategy and not microstrategy_path.exists():
-        log(f"Section {section.number}: integration proposer did not "
+        log(f"Section {section.number}: microstrategy decider did not "
             f"request microstrategy — skipping")
     if needs_microstrategy:
         log(f"Section {section.number}: generating microstrategy")

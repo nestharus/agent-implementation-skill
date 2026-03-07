@@ -189,28 +189,5 @@ Every item in the JSON must correspond to something discussed in the
 markdown proposal. The JSON is the machine-readable truth; the markdown
 is the human-readable explanation.
 
-### Microstrategy Decision
-
-At the end of your proposal, include this line:
-```
-needs_microstrategy: true
-```
-or
-```
-needs_microstrategy: false
-```
-
-Set it to `true` if the section is complex enough that an implementation
-agent would benefit from a tactical per-file breakdown (many files, complex
-interactions, ordering dependencies). Set `false` for simple sections where
-the integration proposal is sufficient guidance.
-
-**Also write a structured JSON signal** to
-`{artifacts}/signals/proposal-{section_number}-microstrategy.json`:
-```json
-{{"needs_microstrategy": true, "reason": "brief justification"}}
-```
-The JSON signal is mandatory and is the primary channel the script reads.
-Inline text is optional for human readability; the script does not parse it.
 {signal_block}
 {mail_block}

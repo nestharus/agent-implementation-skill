@@ -132,14 +132,14 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
     # Read project mode from structured JSON (preferred) or text fallback
     mode_json_path = planspace / "artifacts" / "signals" / "project-mode.json"
     mode_txt_path = planspace / "artifacts" / "project-mode.txt"
-    project_mode = "brownfield"
+    project_mode = "unknown"
     mode_constraints: list[str] = []
     mode_source = "default"
     if mode_json_path.exists():
         try:
             mode_data = json.loads(
                 mode_json_path.read_text(encoding="utf-8"))
-            project_mode = mode_data.get("mode", "brownfield")
+            project_mode = mode_data.get("mode", "unknown")
             mode_constraints = mode_data.get("constraints", [])
             mode_source = "JSON signal"
         except (json.JSONDecodeError, OSError) as exc:
@@ -179,7 +179,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             try:
                 mode_data = json.loads(
                     mode_json_path.read_text(encoding="utf-8"))
-                project_mode = mode_data.get("mode", "brownfield")
+                project_mode = mode_data.get("mode", "unknown")
                 mode_constraints = mode_data.get("constraints", [])
                 mode_source = "JSON signal (post-resume)"
             except (json.JSONDecodeError, OSError) as exc:
@@ -205,7 +205,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
     mode_contract_path = planspace / "artifacts" / "mode-contract.json"
     mode_contract = {
         "mode": project_mode,
-        "constraints": mode_constraints or ["integrate with existing code"],
+        "constraints": mode_constraints,
         "expected_outputs": [
             "integration proposals", "code changes", "alignment checks",
         ],

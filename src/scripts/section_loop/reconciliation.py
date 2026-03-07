@@ -171,16 +171,14 @@ def _adjudicate_ungrouped_candidates(
     recon_dir = planspace / "artifacts" / "reconciliation"
     recon_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build candidate list for the agent prompt
-    candidate_lines: list[str] = []
-    for cand in ungrouped:
-        title = cand.get("title", "")
-        source = cand.get("source_section", "unknown")
-        desc = cand.get("description", "")
-        line = f"- **{title}** (from section {source})"
-        if desc:
-            line += f": {desc}"
-        candidate_lines.append(line)
+    # Write ungrouped candidates to a JSON artifact so that raw candidate
+    # text never appears inline in the dynamic prompt body.  This prevents
+    # candidate titles/descriptions from tripping prompt-safety and aligns
+    # with the filepath-over-inline prompt pattern.
+    candidates_path = recon_dir / f"ungrouped-{candidate_type}.json"
+    candidates_path.write_text(
+        json.dumps(ungrouped, indent=2), encoding="utf-8",
+    )
 
     dynamic_body = f"""# Reconciliation Adjudication: {candidate_type}
 
@@ -189,11 +187,11 @@ def _adjudicate_ungrouped_candidates(
 
 ## Ungrouped Candidates
 
-The following candidates were NOT matched by exact title comparison.
+Read the ungrouped candidates from: `{candidates_path}`
+
+The candidates were NOT matched by exact title comparison.
 Decide which ones describe the same underlying concern and should be
 merged, and which should remain separate.
-
-{chr(10).join(candidate_lines)}
 
 ## Instructions
 
@@ -219,10 +217,10 @@ group's `members` array or in the `separate` array.
     if violations:
         logger.warning(
             "Reconciliation adjudicate prompt safety violation: %s "
-            "— skipping dispatch",
+            "— skipping dispatch (fail-open: returning empty list)",
             violations,
         )
-        return None
+        return []
 
     prompt_path.write_text(
         render_template("reconciliation-adjudicate", dynamic_body),
@@ -329,7 +327,7 @@ def _consolidate_new_section_candidates(
         )
         # Apply merged groups: create consolidated entries from verdict
         merged_title_set: set[str] = set()
-        for mg in merged_groups:
+        for mg in (merged_groups or []):
             members = mg.get("members", [])
             canonical = mg.get("canonical_title", "")
             if not members or not canonical:
@@ -421,7 +419,7 @@ def _aggregate_shared_seams(
             ungrouped_seams, planspace, "shared_seam",
         )
         # Apply merged groups: upgrade singleton seams to multi-section
-        for mg in merged_groups:
+        for mg in (merged_groups or []):
             members = mg.get("members", [])
             canonical = mg.get("canonical_title", "")
             if not members or not canonical:

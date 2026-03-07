@@ -108,10 +108,10 @@ def _check_needs_microstrategy(
     model: str = "glm",
     escalation_model: str = "gpt-5.4-xhigh",
 ) -> bool:
-    """Check if the integration proposal requests a microstrategy.
+    """Check if the microstrategy decider requests a microstrategy.
 
-    Reads the structured signal from the proposal's JSON output.
-    Falls back to dispatch to produce the signal if missing.
+    Reads the structured signal written by the microstrategy decider.
+    Falls back to dispatching the decider to produce the signal if missing.
 
     If the signal cannot be produced after retries (including escalation),
     defaults to True (fail-closed: prefer more strategy over silent skip).
