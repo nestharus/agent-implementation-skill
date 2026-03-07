@@ -14,133 +14,30 @@ from __future__ import annotations
 
 import json
 import logging
-from collections import defaultdict
 from pathlib import Path
 
 from lib.artifact_io import read_json, rename_malformed, write_json
 from lib.path_registry import PathRegistry
-from lib.hash_service import content_hash
 from lib.proposal_state_repository import load_proposal_state
+from lib.reconciliation_detectors import (
+    aggregate_shared_seams,
+    consolidate_new_section_candidates,
+    detect_anchor_overlaps,
+    detect_contract_conflicts,
+)
+from lib.reconciliation_result_repository import (
+    load_result,
+    was_section_affected as repository_was_section_affected,
+    write_result,
+    write_scope_delta,
+    write_substrate_trigger,
+)
 from .agent_templates import render_template
 from .dispatch import dispatch_agent, read_model_policy
 from prompt_safety import validate_dynamic_content
 from lib.reconciliation_queue import load_reconciliation_requests
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Internal detection helpers
-# ---------------------------------------------------------------------------
-
-def _detect_anchor_overlaps(
-    states: dict[str, dict],
-) -> list[dict]:
-    """Find anchors claimed by multiple sections.
-
-    An overlap is detected when two or more sections have an anchor
-    whose ``path`` (or string representation, if the anchor is a plain
-    string) matches.  The comparison is case-insensitive and ignores
-    leading/trailing whitespace.
-
-    Returns a list of overlap dicts, each with ``anchor``,
-    ``sections``, and ``type``.
-    """
-    anchor_to_sections: dict[str, list[str]] = defaultdict(list)
-
-    for sec_num, state in states.items():
-        for anchor in state.get("resolved_anchors", []):
-            key = _anchor_key(anchor)
-            if key:
-                anchor_to_sections[key].append(sec_num)
-        for anchor in state.get("unresolved_anchors", []):
-            key = _anchor_key(anchor)
-            if key:
-                anchor_to_sections[key].append(sec_num)
-
-    overlaps: list[dict] = []
-    for anchor_key, sections in anchor_to_sections.items():
-        if len(sections) > 1:
-            overlaps.append({
-                "anchor": anchor_key,
-                "sections": sorted(set(sections)),
-                "type": "anchor_overlap",
-            })
-    return overlaps
-
-
-def _anchor_key(anchor: object) -> str:
-    """Normalize an anchor value to a comparable key string."""
-    if isinstance(anchor, dict):
-        # Prefer "path", then "name", then str()
-        raw = anchor.get("path") or anchor.get("name") or str(anchor)
-    else:
-        raw = str(anchor)
-    return raw.strip().lower()
-
-
-def _detect_contract_conflicts(
-    states: dict[str, dict],
-) -> list[dict]:
-    """Find contracts referenced by multiple sections with differing expectations.
-
-    A conflict is detected when two or more sections reference a
-    contract with the same name (case-insensitive) but appear in both
-    the resolved and unresolved lists across sections, or when the same
-    contract name appears in unresolved lists for multiple sections.
-
-    Returns a list of conflict dicts, each with ``contract``,
-    ``sections``, and ``type``.
-    """
-    contract_resolved: dict[str, list[str]] = defaultdict(list)
-    contract_unresolved: dict[str, list[str]] = defaultdict(list)
-
-    for sec_num, state in states.items():
-        for contract in state.get("resolved_contracts", []):
-            key = _contract_key(contract)
-            if key:
-                contract_resolved[key].append(sec_num)
-        for contract in state.get("unresolved_contracts", []):
-            key = _contract_key(contract)
-            if key:
-                contract_unresolved[key].append(sec_num)
-
-    conflicts: list[dict] = []
-    all_contract_keys = set(contract_resolved) | set(contract_unresolved)
-    for key in sorted(all_contract_keys):
-        resolved_in = contract_resolved.get(key, [])
-        unresolved_in = contract_unresolved.get(key, [])
-        all_sections = sorted(set(resolved_in + unresolved_in))
-
-        # Conflict: same contract unresolved in multiple sections
-        if len(unresolved_in) > 1:
-            conflicts.append({
-                "contract": key,
-                "sections": all_sections,
-                "resolved_in": sorted(set(resolved_in)),
-                "unresolved_in": sorted(set(unresolved_in)),
-                "type": "contract_conflict",
-            })
-        # Conflict: resolved in one section, unresolved in another
-        elif resolved_in and unresolved_in:
-            conflicts.append({
-                "contract": key,
-                "sections": all_sections,
-                "resolved_in": sorted(set(resolved_in)),
-                "unresolved_in": sorted(set(unresolved_in)),
-                "type": "contract_conflict",
-            })
-
-    return conflicts
-
-
-def _contract_key(contract: object) -> str:
-    """Normalize a contract value to a comparable key string."""
-    if isinstance(contract, dict):
-        raw = contract.get("name") or contract.get("interface") or str(contract)
-    else:
-        raw = str(contract)
-    return raw.strip().lower()
 
 
 def _adjudicate_ungrouped_candidates(
@@ -262,79 +159,30 @@ group's `members` array or in the `separate` array.
         )
     return []
 
+def _detect_anchor_overlaps(states: dict[str, dict]) -> list[dict]:
+    return detect_anchor_overlaps(states)
+
+
+def _detect_contract_conflicts(states: dict[str, dict]) -> list[dict]:
+    return detect_contract_conflicts(states)
+
 
 def _consolidate_new_section_candidates(
     states: dict[str, dict],
     planspace: Path | None = None,
 ) -> list[dict]:
-    """Consolidate overlapping new-section candidates across sections.
+    consolidated, ungrouped_titles = consolidate_new_section_candidates(states)
 
-    If multiple sections propose new-section candidates that describe
-    the same concern (matched by exact normalized title), they
-    are consolidated into a single entry.  After exact-match,
-    ungrouped candidates (singletons) are dispatched to an
-    adjudicator agent for semantic grouping.
-
-    Returns a list of consolidated candidate dicts with ``title``,
-    ``source_sections``, and ``type``.
-    """
-    # Collect all candidates with their source section
-    all_candidates: list[tuple[str, dict | str]] = []
-    for sec_num, state in states.items():
-        for cand in state.get("new_section_candidates", []):
-            all_candidates.append((sec_num, cand))
-
-    if not all_candidates:
-        return []
-
-    # --- Pass 1: Group by exact normalized title ---
-    title_groups: dict[str, list[tuple[str, dict | str]]] = defaultdict(list)
-    for sec_num, cand in all_candidates:
-        title = _candidate_title(cand)
-        title_groups[title].append((sec_num, cand))
-
-    consolidated: list[dict] = []
-    ungrouped_titles: list[dict] = []
-
-    for title, group in title_groups.items():
-        source_sections = sorted({sec_num for sec_num, _ in group})
-        if len(source_sections) > 1:
-            consolidated.append({
-                "title": title,
-                "source_sections": source_sections,
-                "candidates": [
-                    {"section": sec, "candidate": cand}
-                    for sec, cand in group
-                ],
-                "type": "consolidated_new_section",
-            })
-        else:
-            # Singleton — candidate appeared in only one section
-            sec_num, cand = group[0]
-            desc = ""
-            if isinstance(cand, dict):
-                desc = cand.get("description", "") or cand.get("scope", "")
-            ungrouped_titles.append({
-                "title": title,
-                "source_section": sec_num,
-                "description": desc,
-            })
-
-    # --- Pass 2: Agent-adjudicated semantic grouping of ungrouped ---
     if planspace and len(ungrouped_titles) >= 2:
         merged_groups = _adjudicate_ungrouped_candidates(
             ungrouped_titles, planspace, "new_section",
         )
-        # Apply merged groups: create consolidated entries from verdict
-        merged_title_set: set[str] = set()
         for mg in (merged_groups or []):
             members = mg.get("members", [])
             canonical = mg.get("canonical_title", "")
             if not members or not canonical:
                 continue
-            # Find all candidates matching merged member titles
             member_set = {m.strip().lower() for m in members}
-            merged_title_set.update(member_set)
             merged_candidates: list[dict] = []
             merged_sections: set[str] = set()
             for ug in ungrouped_titles:
@@ -344,7 +192,7 @@ def _consolidate_new_section_candidates(
                         "section": ug["source_section"],
                         "candidate": ug["title"],
                     })
-            if len(merged_sections) > 0:
+            if merged_sections:
                 consolidated.append({
                     "title": canonical.strip().lower(),
                     "source_sections": sorted(merged_sections),
@@ -357,68 +205,16 @@ def _consolidate_new_section_candidates(
     return consolidated
 
 
-def _candidate_title(candidate: object) -> str:
-    """Normalize a new-section candidate to a title key."""
-    if isinstance(candidate, dict):
-        raw = candidate.get("title") or candidate.get("scope") or str(candidate)
-    else:
-        raw = str(candidate)
-    return raw.strip().lower()
-
-
 def _aggregate_shared_seams(
     states: dict[str, dict],
     planspace: Path | None = None,
 ) -> list[dict]:
-    """Aggregate shared seam candidates across all sections.
+    aggregated, ungrouped_seams = aggregate_shared_seams(states)
 
-    After exact-match grouping, singleton seams are dispatched to an
-    adjudicator agent for semantic grouping.
-
-    Returns a list of seam dicts, each with the seam description,
-    the set of sections referencing it, and whether substrate work is
-    needed.
-    """
-    seam_to_sections: dict[str, list[str]] = defaultdict(list)
-
-    for sec_num, state in states.items():
-        for seam in state.get("shared_seam_candidates", []):
-            key = str(seam).strip().lower()
-            if key:
-                seam_to_sections[key].append(sec_num)
-
-    aggregated: list[dict] = []
-    ungrouped_seams: list[dict] = []
-
-    for seam_key, sections in seam_to_sections.items():
-        unique_sections = sorted(set(sections))
-        if len(unique_sections) > 1:
-            aggregated.append({
-                "seam": seam_key,
-                "sections": unique_sections,
-                "needs_substrate": True,
-                "type": "shared_seam",
-            })
-        else:
-            # Singleton seam — only one section references it
-            aggregated.append({
-                "seam": seam_key,
-                "sections": unique_sections,
-                "needs_substrate": False,
-                "type": "shared_seam",
-            })
-            ungrouped_seams.append({
-                "title": seam_key,
-                "source_section": unique_sections[0],
-                "description": "",
-            })
-
-    # Agent-adjudicated semantic grouping of singleton seams
     if planspace and len(ungrouped_seams) >= 2:
         merged_groups = _adjudicate_ungrouped_candidates(
             ungrouped_seams, planspace, "shared_seam",
         )
-        # Apply merged groups: upgrade singleton seams to multi-section
         for mg in (merged_groups or []):
             members = mg.get("members", [])
             canonical = mg.get("canonical_title", "")
@@ -440,63 +236,6 @@ def _aggregate_shared_seams(
                 })
 
     return aggregated
-
-
-# ---------------------------------------------------------------------------
-# Result artifact I/O
-# ---------------------------------------------------------------------------
-
-def _write_reconciliation_result(
-    run_dir: Path,
-    section_number: str,
-    result: dict,
-) -> Path:
-    """Write a per-section reconciliation result artifact."""
-    path = (
-        run_dir / "artifacts" / "reconciliation"
-        / f"section-{section_number}-reconciliation-result.json"
-    )
-    write_json(path, result)
-    return path
-
-
-def _write_scope_delta(run_dir: Path, candidate: dict) -> Path:
-    """Write a consolidated scope-delta artifact from reconciliation."""
-    # Use source sections for unique naming
-    sources = "-".join(candidate.get("source_sections", ["unknown"]))
-    title_slug = candidate.get("title", "unknown")[:40].replace(" ", "_")
-    filename = f"reconciliation-{sources}-{title_slug}.json"
-    path = run_dir / "artifacts" / "scope-deltas" / filename
-    title_hash = content_hash(candidate.get("title", ""))[:8]
-    delta_id = f"delta-recon-{sources}-{title_hash}"
-    delta = {
-        "delta_id": delta_id,
-        "source": "reconciliation",
-        "title": candidate.get("title", ""),
-        "source_sections": candidate.get("source_sections", []),
-        "candidates": candidate.get("candidates", []),
-        "adjudicated": False,
-    }
-    write_json(path, delta)
-    return path
-
-
-def _write_substrate_trigger(
-    run_dir: Path,
-    seam: dict,
-) -> Path:
-    """Write a substrate-trigger artifact from reconciliation."""
-    sections_tag = "-".join(seam.get("sections", ["unknown"]))
-    filename = f"substrate-trigger-reconciliation-{sections_tag}.json"
-    path = run_dir / "artifacts" / "signals" / filename
-    trigger = {
-        "source": "reconciliation",
-        "seam": seam.get("seam", ""),
-        "sections": seam.get("sections", []),
-        "trigger_type": "shared_seam_reconciliation",
-    }
-    write_json(path, trigger)
-    return path
 
 
 # ---------------------------------------------------------------------------
@@ -523,22 +262,8 @@ def load_reconciliation_result(
         The reconciliation result dict, or ``None`` if no result file
         exists or the file is malformed.
     """
-    path = (
-        section_dir / "reconciliation"
-        / f"section-{section_number}-reconciliation-result.json"
-    )
-    data = read_json(path)
-    if data is None:
-        return None
-    if isinstance(data, dict):
-        return data
-    logger.warning(
-        "Reconciliation result at %s is not a dict "
-        "— renaming to .malformed.json",
-        path,
-    )
-    rename_malformed(path)
-    return None
+    planspace = section_dir.parent if section_dir.name == "artifacts" else section_dir
+    return load_result(planspace, section_number)
 
 
 def was_section_affected(run_dir: Path, section_number: str) -> bool:
@@ -555,12 +280,7 @@ def was_section_affected(run_dir: Path, section_number: str) -> bool:
     section_number:
         Zero-padded section number (e.g. ``"03"``).
     """
-    result = load_reconciliation_result(
-        run_dir / "artifacts", section_number,
-    )
-    if result is None:
-        return False
-    return bool(result.get("affected"))
+    return repository_was_section_affected(run_dir, section_number)
 
 
 def run_reconciliation(
@@ -685,19 +405,19 @@ def run_reconciliation(
             "substrate_seams": sec_seams,
             "affected": sec_num in affected_sections,
         }
-        _write_reconciliation_result(run_dir, sec_num, result)
+        write_result(run_dir, sec_num, result)
 
     # ------------------------------------------------------------------
     # 6. Write consolidated scope-delta artifacts for new sections
     # ------------------------------------------------------------------
     for consolidated in consolidated_sections:
-        _write_scope_delta(run_dir, consolidated)
+        write_scope_delta(run_dir, consolidated)
 
     # ------------------------------------------------------------------
     # 7. Write substrate-trigger artifacts for shared seams
     # ------------------------------------------------------------------
     for seam in substrate_seams:
-        _write_substrate_trigger(run_dir, seam)
+        write_substrate_trigger(run_dir, seam)
 
     # ------------------------------------------------------------------
     # 8. Build and return summary

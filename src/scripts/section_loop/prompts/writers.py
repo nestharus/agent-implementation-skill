@@ -7,42 +7,21 @@ render → write file → log artifact.
 from pathlib import Path
 
 from lib.path_registry import PathRegistry
+from lib.prompt_helpers import (
+    agent_mail_instructions,
+    format_existing_file_listing,
+    scoped_context_block,
+    signal_instructions,
+)
 
 from ..agent_templates import validate_dynamic_content
 from ..alignment import collect_modified_files
-from ..communication import DB_SH, WORKFLOW_HOME, _log_artifact, log
+from ..communication import WORKFLOW_HOME, _log_artifact, log
 from ..context_assembly import materialize_context_sidecar
 from ..cross_section import extract_section_summary
 from ..types import Section
 from .context import build_prompt_context
 from .renderer import load_template, render
-
-
-# ---------------------------------------------------------------------------
-# Instruction helpers (return strings, no file I/O)
-# ---------------------------------------------------------------------------
-
-def signal_instructions(signal_path: Path) -> str:
-    """Return signal instructions for an agent prompt."""
-    tpl = load_template("signal-instructions.md")
-    return render(tpl, {"signal_path": signal_path})
-
-
-def agent_mail_instructions(
-    planspace: Path, agent_name: str, monitor_name: str,
-) -> str:
-    """Return narration-via-mailbox instructions for an agent."""
-    run_db = PathRegistry(planspace).run_db()
-    mailbox_cmd = (
-        f'bash "{DB_SH}" send "{run_db}" '
-        f"{agent_name} --from {agent_name}"
-    )
-    tpl = load_template("mail-instructions.md")
-    return render(tpl, {
-        "agent_name": agent_name,
-        "monitor_name": monitor_name,
-        "mailbox_cmd": mailbox_cmd,
-    })
 
 
 # ---------------------------------------------------------------------------
@@ -195,11 +174,7 @@ def write_integration_proposal_prompt(
     # Append context sidecar reference (materialized before rendering)
     if sidecar_path:
         with prompt_path.open("a", encoding="utf-8") as f:
-            f.write(
-                f"\n## Scoped Context\n"
-                f"Agent context sidecar with resolved inputs: "
-                f"`{sidecar_path}`\n"
-            )
+            f.write(scoped_context_block(sidecar_path))
 
     _log_artifact(planspace, f"prompt:proposal-{sec}")
     return prompt_path
@@ -462,11 +437,7 @@ def write_strategic_impl_prompt(
     # Append context sidecar reference (materialized before rendering)
     if sidecar_path:
         with prompt_path.open("a", encoding="utf-8") as f:
-            f.write(
-                f"\n## Scoped Context\n"
-                f"Agent context sidecar with resolved inputs: "
-                f"`{sidecar_path}`\n"
-            )
+            f.write(scoped_context_block(sidecar_path))
 
     _log_artifact(planspace, f"prompt:impl-{sec}")
     return prompt_path
@@ -493,12 +464,7 @@ def write_impl_alignment_prompt(
     all_paths = set(section.related_files) | set(
         collect_modified_files(planspace, section, codespace)
     )
-    file_list = []
-    for rel_path in sorted(all_paths):
-        full_path = codespace / rel_path
-        if full_path.exists():
-            file_list.append(f"   - `{full_path}`")
-    impl_files_block = "\n".join(file_list) if file_list else "   (none)"
+    impl_files_block = format_existing_file_listing(codespace, all_paths)
 
     # Alignment surface
     alignment_surface = (

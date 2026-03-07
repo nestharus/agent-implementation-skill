@@ -1,12 +1,10 @@
 """Intent bootstrap: ensure philosophy and per-section intent packs exist."""
 
-import json
-import os
-import re
 from pathlib import Path
 
-from lib.artifact_io import read_json, write_json
+from lib.artifact_io import write_json
 from lib.hash_service import content_hash, file_hash
+from lib import philosophy_bootstrap as _philosophy_bootstrap
 from lib.path_registry import PathRegistry
 
 from ..communication import _log_artifact, log
@@ -17,6 +15,14 @@ from ..types import Section
 from prompt_safety import write_validated_prompt
 
 
+def _sync_philosophy_bootstrap_overrides() -> None:
+    """Propagate monkeypatched wrapper dependencies into the lib module."""
+    _philosophy_bootstrap.dispatch_agent = dispatch_agent
+    _philosophy_bootstrap.read_agent_signal = read_agent_signal
+    _philosophy_bootstrap.read_model_policy = read_model_policy
+    _philosophy_bootstrap.write_validated_prompt = write_validated_prompt
+
+
 def _walk_md_bounded(
     root: Path,
     *,
@@ -24,41 +30,12 @@ def _walk_md_bounded(
     exclude_top_dirs: frozenset[str] = frozenset(),
     extensions: frozenset[str] = frozenset({".md"}),
 ):
-    """Yield files matching *extensions* under *root* with depth-bounded traversal.
-
-    Uses ``os.walk`` with directory pruning so the full tree is never
-    materialized.  Entries are sorted per-directory for determinism.
-    *exclude_top_dirs* names are pruned at the first level only.
-
-    V4/R61: *extensions* parameter makes the walker agent-steerable
-    instead of hardcoding ``.md``.
-    """
-    if not root.is_dir():
-        return
-    root_s = str(root)
-    for dirpath, dirnames, filenames in os.walk(root_s):
-        rel = os.path.relpath(dirpath, root_s)
-        depth = 0 if rel == "." else rel.count(os.sep) + 1
-
-        # Prune excluded top-level dirs; sort all levels for determinism.
-        if depth == 0:
-            dirnames[:] = sorted(
-                d for d in dirnames if d not in exclude_top_dirs
-            )
-        else:
-            dirnames.sort()
-
-        # Stop descending when children would exceed max_depth.
-        if depth + 1 >= max_depth:
-            dirnames.clear()
-
-        # Files here have (depth+1) relative-path parts; yield if ≤ max_depth.
-        if depth + 1 > max_depth:
-            continue
-
-        for fname in sorted(filenames):
-            if any(fname.endswith(ext) for ext in extensions):
-                yield Path(dirpath) / fname
+    return _philosophy_bootstrap.walk_md_bounded(
+        root,
+        max_depth=max_depth,
+        exclude_top_dirs=exclude_top_dirs,
+        extensions=extensions,
+    )
 
 
 def _build_philosophy_catalog(
@@ -70,62 +47,14 @@ def _build_philosophy_catalog(
     max_depth: int = 3,
     extensions: frozenset[str] = frozenset({".md"}),
 ) -> list[dict]:
-    """Build a mechanical catalog of candidate philosophy source files.
-
-    Uses depth-bounded directory walks (``os.walk`` with pruning) to
-    avoid materializing the full file tree.  Per-root quotas guarantee
-    codespace coverage.  Planspace ``artifacts/`` is excluded.
-
-    V4/R61: *extensions* parameter is agent-steerable — the source
-    selector can request additional extensions for a second walk.
-
-    Returns a list of ``{path, size_kb, first_lines}`` entries.
-    """
-    # V1/R59: Per-root quotas guarantee codespace coverage.
-    # V1/R60: Traversal is depth-bounded via os.walk with pruning —
-    # the full tree is never materialized or sorted.
-    codespace_quota = max(max_files * 4 // 5, 1)  # 80% for codespace
-    planspace_quota = max(max_files - codespace_quota, 1)  # 20% for plan
-
-    candidates: list[dict] = []
-    seen: set[str] = set()
-
-    for root_dir, quota, exclude_top in (
-        (codespace, codespace_quota, frozenset()),
-        (planspace, planspace_quota, frozenset({"artifacts"})),
-    ):
-        root_count = 0
-        for found_file in _walk_md_bounded(
-            root_dir, max_depth=max_depth, exclude_top_dirs=exclude_top,
-            extensions=extensions,
-        ):
-            # Size check
-            try:
-                size = found_file.stat().st_size
-            except OSError:
-                continue
-            if size == 0 or size > max_size_kb * 1024:
-                continue
-            # Dedup by resolved path
-            resolved = str(found_file.resolve())
-            if resolved in seen:
-                continue
-            seen.add(resolved)
-            # Read first N lines for catalog preview
-            try:
-                lines = found_file.read_text(encoding="utf-8").splitlines()[:10]
-            except (OSError, UnicodeDecodeError):
-                continue
-            candidates.append({
-                "path": str(found_file),
-                "size_kb": round(size / 1024, 1),
-                "first_lines": "\n".join(lines),
-            })
-            root_count += 1
-            if root_count >= quota:
-                break
-
-    return candidates
+    return _philosophy_bootstrap.build_philosophy_catalog(
+        planspace,
+        codespace,
+        max_files=max_files,
+        max_size_kb=max_size_kb,
+        max_depth=max_depth,
+        extensions=extensions,
+    )
 
 
 def _validate_philosophy_grounding(
@@ -133,92 +62,15 @@ def _validate_philosophy_grounding(
     source_map_path: Path,
     artifacts: Path,
 ) -> bool:
-    """Validate that distilled philosophy is grounded in source files.
-
-    Checks: source map exists, parses as JSON object, and every
-    principle ID (``P\\d+``) found in philosophy.md has a mapping entry.
-    Writes a ``philosophy-grounding-failed.json`` signal on failure.
-
-    Returns ``True`` if grounding is valid; ``False`` otherwise.
-    """
-    signal_dir = artifacts / "signals"
-    signal_dir.mkdir(parents=True, exist_ok=True)
-    fail_signal = signal_dir / "philosophy-grounding-failed.json"
-
-    # Check source map exists
-    if not source_map_path.exists() or source_map_path.stat().st_size == 0:
-        signal = {
-            "state": "philosophy_grounding_failed",
-            "detail": (
-                "Philosophy source map is missing or empty. "
-                "Distilled philosophy cannot be verified as grounded. "
-                "Section execution will be blocked until philosophy is available."
-            ),
-        }
-        write_json(fail_signal, signal)
-        return False
-
-    # Parse source map
-    source_map = read_json(source_map_path)
-    if source_map is None:
-        log("Intent bootstrap: malformed source map — "
-            f"preserving as .malformed.json")
-        signal = {
-            "state": "philosophy_grounding_failed",
-            "detail": (
-                "Philosophy source map is malformed. "
-                "Section execution will be blocked until philosophy is available."
-            ),
-        }
-        write_json(fail_signal, signal)
-        return False
-
-    if not isinstance(source_map, dict):
-        signal = {
-            "state": "philosophy_grounding_failed",
-            "detail": (
-                "Philosophy source map is not a JSON object. "
-                "Section execution will be blocked until philosophy is available."
-            ),
-        }
-        write_json(fail_signal, signal)
-        return False
-
-    # Extract principle IDs from philosophy.md
-    try:
-        philosophy_text = philosophy_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return False
-
-    principle_ids = set(re.findall(r"\bP\d+\b", philosophy_text))
-    if not principle_ids:
-        # No principle IDs found — can't validate coverage, pass through
-        return True
-
-    # Check coverage: every principle ID must have a source map entry
-    map_keys = set(source_map.keys())
-    unmapped = principle_ids - map_keys
-    if unmapped:
-        signal = {
-            "state": "philosophy_grounding_failed",
-            "detail": (
-                f"Principle IDs missing from source map: "
-                f"{sorted(unmapped)}. Distilled philosophy may contain "
-                f"invented principles. Section execution will be blocked."
-            ),
-            "unmapped_principles": sorted(unmapped),
-            "total_principles": len(principle_ids),
-            "mapped_principles": len(principle_ids - unmapped),
-        }
-        write_json(fail_signal, signal)
-        return False
-
-    return True
+    return _philosophy_bootstrap.validate_philosophy_grounding(
+        philosophy_path,
+        source_map_path,
+        artifacts,
+    )
 
 
 def _sha256_file(path: Path) -> str:
-    """Return hex sha256 of file contents, or empty string on error."""
-    return file_hash(path)
+    return _philosophy_bootstrap.sha256_file(path)
 
 
 def _compute_intent_pack_hash(
@@ -258,412 +110,12 @@ def ensure_global_philosophy(
     codespace: Path,
     parent: str,
 ) -> Path | None:
-    """Ensure the operational philosophy exists; distill if missing.
-
-    Returns the path to ``artifacts/intent/global/philosophy.md``,
-    or ``None`` if no philosophy source was found (fail-closed).
-    """
-    policy = read_model_policy(planspace)
-    paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
-    intent_global = paths.intent_global_dir()
-    intent_global.mkdir(parents=True, exist_ok=True)
-    philosophy_path = intent_global / "philosophy.md"
-
-    if philosophy_path.exists() and philosophy_path.stat().st_size > 0:
-        # V2/R69: Require source-map alongside philosophy — without it
-        # grounding is unverifiable. Regenerate if missing.
-        source_map_path = intent_global / "philosophy-source-map.json"
-        if not source_map_path.exists():
-            log("Intent bootstrap: philosophy exists but source-map "
-                "missing — regenerating (fail-closed)")
-        else:
-            # V7/R67: Check source manifest — regenerate if sources changed
-            manifest_path = intent_global / "philosophy-source-manifest.json"
-            if manifest_path.exists():
-                manifest = read_json(manifest_path)
-                if isinstance(manifest, dict):
-                    sources_changed = False
-                    for entry in manifest.get("sources", []):
-                        src = Path(entry.get("path", ""))
-                        if not src.exists():
-                            sources_changed = True
-                            break
-                        if _sha256_file(src) != entry.get("hash", ""):
-                            sources_changed = True
-                            break
-
-                    # V3/R69: Check catalog fingerprint — regenerate if
-                    # the candidate universe changed (new files appeared
-                    # or existing candidates were modified).
-                    catalog_fp_path = (
-                        intent_global / "philosophy-catalog-fingerprint.txt")
-                    catalog_changed = False
-                    if catalog_fp_path.exists():
-                        prev_fp = catalog_fp_path.read_text(
-                            encoding="utf-8").strip()
-                        current_catalog = _build_philosophy_catalog(
-                            planspace, codespace)
-                        current_fp = content_hash(
-                            json.dumps(current_catalog, sort_keys=True),
-                        )
-                        if prev_fp != current_fp:
-                            catalog_changed = True
-                            log("Intent bootstrap: philosophy candidate "
-                                "catalog changed — rerunning selector")
-
-                    if sources_changed:
-                        log("Intent bootstrap: philosophy sources "
-                            "changed — regenerating")
-                    elif catalog_changed:
-                        pass  # Fall through to regeneration
-                    else:
-                        return philosophy_path
-                else:
-                    log("Intent bootstrap: source manifest malformed — "
-                        "regenerating philosophy")
-            else:
-                return philosophy_path
-
-    # V2/R56: Build mechanical catalog of candidate docs, then let an
-    # agent select which ones are philosophy sources. No hardcoded
-    # filename assumptions in scripts.
-    catalog = _build_philosophy_catalog(planspace, codespace)
-    if not catalog:
-        log("Intent bootstrap: no markdown files found for philosophy "
-            "catalog — blocking section (fail-closed)")
-        signal_dir = artifacts / "signals"
-        signal_dir.mkdir(parents=True, exist_ok=True)
-        signal = {
-            "state": "philosophy_source_missing",
-            "detail": (
-                "No markdown files found in planspace or codespace. "
-                "Section execution will be blocked until philosophy "
-                "is available."
-            ),
-        }
-        write_json(signal_dir / "philosophy-source-missing.json", signal)
-        return None
-
-    # Write catalog for source selector agent
-    catalog_path = artifacts / "philosophy-candidate-catalog.json"
-    write_json(catalog_path, catalog)
-
-    # Dispatch source selector to pick philosophy files from catalog
-    selector_prompt = artifacts / "philosophy-select-prompt.md"
-    selector_output = artifacts / "philosophy-select-output.md"
-    selected_signal = (
-        artifacts / "signals" / "philosophy-selected-sources.json"
-    )
-    selected_signal.parent.mkdir(parents=True, exist_ok=True)
-
-    selector_prompt.write_text(f"""# Task: Select Philosophy Source Files
-
-## Context
-Select which files from the candidate catalog contain execution
-philosophy, design constraints, or operational principles that should
-be distilled into the project's operational philosophy.
-
-## Input
-Read the candidate catalog at: `{catalog_path}`
-
-Each entry has a path, size, and first 10 lines as a preview.
-
-## Selection Criteria
-- Files that describe HOW to build (design principles, constraints,
-  operational rules) — not WHAT to build (requirements, specs)
-- Files that contain explicit principles, constraints, or philosophy
-- Prefer fewer, higher-quality sources over many marginal ones
-- Select 1-10 files maximum
-
-## Output
-Write a JSON signal to: `{selected_signal}`
-
-```json
-{{
-  "sources": [
-    {{"path": "...", "reason": "Contains design constraints"}}
-  ],
-  "ambiguous": [
-    {{"path": "...", "reason": "Preview inconclusive — title suggests principles"}}
-  ],
-  "additional_extensions": [".txt", ".rst"]
-}}
-```
-
-The ``ambiguous`` field is **optional**. Include it only when the
-10-line preview is genuinely insufficient to classify a candidate.
-Up to 5 ambiguous candidates will be sent for full-read verification
-by a stronger model. Do not nominate files you can classify from the
-preview alone.
-
-The ``additional_extensions`` field is **optional**. Include it only
-if you believe philosophy sources may exist in non-markdown formats
-that were not included in the catalog. The catalog will be rebuilt
-with these extensions and you will be re-invoked once.
-
-If NO files contain philosophy or constraints, write:
-```json
-{{"sources": []}}
-```
-""", encoding="utf-8")
-    _log_artifact(planspace, "prompt:philosophy-select")
-
-    dispatch_agent(
-        policy.get("intent_philosophy_selector", "glm"),
-        selector_prompt,
-        selector_output,
+    _sync_philosophy_bootstrap_overrides()
+    return _philosophy_bootstrap.ensure_global_philosophy(
         planspace,
+        codespace,
         parent,
-        codespace=codespace,
-        agent_file="philosophy-source-selector.md",
     )
-
-    # Read selected sources; fail-closed on malformed/missing
-    selected = read_agent_signal(selected_signal)
-
-    # V4/R69: Bounded full-read verification for ambiguous candidates.
-    # The selector nominates up to 5 files whose 10-line preview was
-    # insufficient. We dispatch a stronger model to read each fully and
-    # reclassify, then merge verified sources into the selection.
-    _AMBIGUOUS_CAP = 5
-    if (selected and isinstance(selected.get("ambiguous"), list)
-            and selected["ambiguous"]):
-        ambiguous = selected["ambiguous"][:_AMBIGUOUS_CAP]
-        verifiable = [
-            a for a in ambiguous
-            if isinstance(a, dict) and Path(a.get("path", "")).exists()
-        ]
-        if verifiable:
-            log(f"Intent bootstrap: verifying {len(verifiable)} "
-                f"ambiguous philosophy candidate(s) (full-read)")
-            verify_prompt = artifacts / "philosophy-verify-prompt.md"
-            verify_output = artifacts / "philosophy-verify-output.md"
-            verify_signal = (
-                artifacts / "signals"
-                / "philosophy-verified-sources.json"
-            )
-            verify_signal.parent.mkdir(parents=True, exist_ok=True)
-
-            candidates_block = "\n".join(
-                f"- `{a['path']}` — {a.get('reason', 'ambiguous')}"
-                for a in verifiable
-            )
-            verify_prompt_text = f"""# Task: Verify Ambiguous Philosophy Candidates
-
-## Context
-The source selector could not classify these files from a 10-line
-preview. Read each file in full and decide whether it contains
-execution philosophy, design constraints, or operational principles.
-
-## Candidates
-{candidates_block}
-
-## Instructions
-For each candidate, read the FULL file and classify:
-- **philosophy_source**: Contains principles, constraints, design rules → include
-- **not_philosophy**: Specification, requirements, or irrelevant → exclude
-
-## Output
-Write a JSON signal to: `{verify_signal}`
-
-```json
-{{{{
-  "verified_sources": [
-    {{{{"path": "...", "reason": "Contains design constraints at ..."}}}}
-  ],
-  "rejected": [
-    {{{{"path": "...", "reason": "Specification file, not philosophy"}}}}
-  ]
-}}}}
-```
-"""
-            if not write_validated_prompt(verify_prompt_text, verify_prompt):
-                return selected  # fail-closed: skip verification
-            _log_artifact(planspace, "prompt:philosophy-verify")
-
-            dispatch_agent(
-                policy.get("intent_philosophy_verifier", "claude-opus"),
-                verify_prompt,
-                verify_output,
-                planspace,
-                parent,
-                codespace=codespace,
-                agent_file="philosophy-source-verifier.md",
-            )
-
-            verified = read_agent_signal(verify_signal)
-            if verified and isinstance(
-                    verified.get("verified_sources"), list):
-                existing_paths = {
-                    s["path"] for s in selected.get("sources", [])
-                }
-                for vs in verified["verified_sources"]:
-                    if (isinstance(vs, dict)
-                            and vs.get("path") not in existing_paths):
-                        selected.setdefault("sources", []).append(vs)
-                        existing_paths.add(vs["path"])
-                log(f"Intent bootstrap: verified "
-                    f"{len(verified['verified_sources'])} source(s) "
-                    f"from ambiguous candidates")
-
-    # V4/R61: Agent-steerable expansion — if selector requests additional
-    # extensions, rebuild catalog once with expanded extensions and re-invoke.
-    _EXPANSION_CAP = 5  # max additional extensions to prevent abuse
-    if (selected and isinstance(selected.get("additional_extensions"), list)
-            and selected["additional_extensions"]):
-        raw_exts = selected["additional_extensions"][:_EXPANSION_CAP]
-        # Sanitize: must be dot-prefixed, short, no path separators
-        extra = frozenset(
-            e for e in raw_exts
-            if isinstance(e, str) and e.startswith(".")
-            and len(e) <= 6 and "/" not in e and "\\" not in e
-        )
-        if extra:
-            expanded_exts = frozenset({".md"}) | extra
-            log(f"Intent bootstrap: selector requested extensions "
-                f"{sorted(extra)} — rebuilding catalog (one-shot)")
-            catalog = _build_philosophy_catalog(
-                planspace, codespace, extensions=expanded_exts)
-            write_json(catalog_path, catalog)
-
-            # Re-invoke selector once with expanded catalog
-            selector_output2 = artifacts / "philosophy-select-output-2.md"
-            dispatch_agent(
-                policy.get("intent_philosophy_selector", "glm"),
-                selector_prompt,
-                selector_output2,
-                planspace,
-                parent,
-                codespace=codespace,
-                agent_file="philosophy-source-selector.md",
-            )
-            expanded = read_agent_signal(selected_signal)
-            if expanded and expanded.get("sources"):
-                selected = expanded
-    if not selected or not selected.get("sources"):
-        log("Intent bootstrap: source selector found no philosophy "
-            "files — blocking section (fail-closed)")
-        signal_dir = artifacts / "signals"
-        signal_dir.mkdir(parents=True, exist_ok=True)
-        signal = {
-            "state": "philosophy_source_missing",
-            "detail": (
-                "Source selector found no philosophy files in the "
-                "candidate catalog. Section execution will be blocked "
-                "until philosophy is available."
-            ),
-        }
-        write_json(signal_dir / "philosophy-source-missing.json", signal)
-        return None
-
-    sources = [
-        Path(s["path"]) for s in selected["sources"]
-        if Path(s["path"]).exists()
-    ]
-    if not sources:
-        log("Intent bootstrap: selected source paths do not exist — "
-            "skipping distillation (fail-closed)")
-        return None
-
-    log(f"Intent bootstrap: distilling operational philosophy from "
-        f"{len(sources)} agent-selected source(s)")
-
-    prompt_path = artifacts / "philosophy-distill-prompt.md"
-    output_path = artifacts / "philosophy-distill-output.md"
-    source_map_path = intent_global / "philosophy-source-map.json"
-
-    sources_block = "\n".join(f"- `{s}`" for s in sources)
-    distill_prompt_text = f"""# Task: Distill Operational Philosophy
-
-## Context
-Convert the execution philosophy into an operational philosophy document
-that alignment agents can use for per-section philosophy checks.
-
-## Input
-Read these philosophy source files:
-{sources_block}
-
-If a philosophy artifact already exists at `{philosophy_path}`, skip this task.
-
-## Output
-Write an operational philosophy to: `{philosophy_path}`
-
-Structure:
-1. Numbered principles (P1, P2, ...) — short, actionable
-2. Interactions between principles (which ones tension with each other)
-3. Expansion guidance (how new principles get added)
-
-Write a source map to: `{source_map_path}`
-Format: JSON mapping principle ID to source file/section.
-
-## Rules
-- Keep principles short and operational (1-2 sentences each)
-- Number them P1..PN for machine-stable references
-- Note known tensions between principles explicitly
-- Include expansion guidance: what classifies as absorbable vs tension vs contradiction
-- Do NOT invent principles — every principle must trace to one of the source files
-"""
-    if not write_validated_prompt(distill_prompt_text, prompt_path):
-        return None
-    _log_artifact(planspace, "prompt:philosophy-distill")
-
-    result = dispatch_agent(
-        policy.get("intent_philosophy", "claude-opus"),
-        prompt_path,
-        output_path,
-        planspace,
-        parent,
-        codespace=codespace,
-        agent_file="philosophy-distiller.md",
-    )
-
-    if result == "ALIGNMENT_CHANGED_PENDING":
-        return philosophy_path
-
-    if not philosophy_path.exists() or philosophy_path.stat().st_size == 0:
-        log("Intent bootstrap: philosophy distillation failed — "
-            "no output (fail-closed, blocking section)")
-        signal_dir = artifacts / "signals"
-        signal_dir.mkdir(parents=True, exist_ok=True)
-        signal = {
-            "state": "philosophy_distillation_failed",
-            "detail": (
-                "Philosophy distiller did not produce output despite "
-                "source files being available. Section execution will "
-                "be blocked until philosophy is available."
-            ),
-            "sources": [str(s) for s in sources],
-        }
-        write_json(signal_dir / "philosophy-distillation-failed.json", signal)
-        return None
-
-    # V2/R59: Validate philosophy source grounding — the distiller
-    # prompt requires a source map, and we must mechanically verify
-    # it exists, parses, and covers all principle IDs.
-    grounding_ok = _validate_philosophy_grounding(
-        philosophy_path, source_map_path, artifacts)
-    if not grounding_ok:
-        log("Intent bootstrap: philosophy grounding validation failed "
-            "— blocking section (fail-closed)")
-        return None
-
-    # V7/R67: Write source manifest for invalidation on next run
-    manifest_path = intent_global / "philosophy-source-manifest.json"
-    manifest = {
-        "sources": [
-            {"path": str(s), "hash": _sha256_file(s)} for s in sources
-        ],
-    }
-    write_json(manifest_path, manifest)
-
-    # V3/R69: Write catalog fingerprint so the next run can detect
-    # changes in the candidate universe (new files, modified candidates).
-    catalog_fp_path = intent_global / "philosophy-catalog-fingerprint.txt"
-    catalog_fp = content_hash(json.dumps(catalog, sort_keys=True))
-    catalog_fp_path.write_text(catalog_fp, encoding="utf-8")
-
-    return philosophy_path
 
 
 def generate_intent_pack(
