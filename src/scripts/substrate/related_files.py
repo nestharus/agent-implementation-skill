@@ -14,7 +14,7 @@ import json
 import re
 from pathlib import Path
 
-from lib.path_registry import PathRegistry
+from lib.core.path_registry import PathRegistry
 
 # Reuse the shared related_files parser from the scan package.
 # Both scan and substrate need identical parsing logic.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.scripts.lib.signal_reader import read_agent_signal, read_signal_tuple
+from src.scripts.lib.services.signal_reader import read_agent_signal, read_signal_tuple
 
 
 def test_read_agent_signal_returns_parsed_object(tmp_path) -> None:

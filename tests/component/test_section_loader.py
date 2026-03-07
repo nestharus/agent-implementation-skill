@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.scripts.lib.section_loader import load_sections, parse_related_files
+from src.scripts.lib.sections.section_loader import load_sections, parse_related_files
 
 
 def test_parse_related_files_returns_empty_when_block_missing(tmp_path: Path) -> None:

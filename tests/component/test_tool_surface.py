@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.scripts.lib.tool_surface import (
+from src.scripts.lib.tools.tool_surface import (
     handle_tool_friction,
     surface_tool_registry,
     validate_tool_registry_after_implementation,

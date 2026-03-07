@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib import impact_triage
-from src.scripts.lib.impact_triage import run_impact_triage
+from src.scripts.lib.pipelines import impact_triage
+from src.scripts.lib.pipelines.impact_triage import run_impact_triage
 from section_loop.types import Section
 
 

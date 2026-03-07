@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib import intent_surface as _intent_surface
+from lib.intent import intent_surface as _intent_surface
 from prompt_safety import write_validated_prompt
 
 from ..dispatch import dispatch_agent, read_agent_signal, read_model_policy

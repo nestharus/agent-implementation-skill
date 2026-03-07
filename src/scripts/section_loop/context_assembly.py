@@ -1,6 +1,6 @@
 """Compatibility wrapper for context sidecar resolution."""
 
-from lib.context_sidecar import (
+from lib.dispatch.context_sidecar import (
     VALID_CATEGORIES,
     _RESOLVERS,
     _resolve_allowed_tasks,

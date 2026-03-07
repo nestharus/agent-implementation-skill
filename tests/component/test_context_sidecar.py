@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.scripts.lib.context_sidecar import (
+from src.scripts.lib.dispatch.context_sidecar import (
     materialize_context_sidecar,
     parse_context_field,
     resolve_context,

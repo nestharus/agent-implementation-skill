@@ -16,24 +16,24 @@ import argparse
 import sys
 from pathlib import Path
 
-from lib.artifact_io import read_json
-from lib.path_registry import PathRegistry
-from lib.substrate_dispatch import dispatch_substrate_agent as _dispatch_agent
-from lib.substrate_helpers import (
+from lib.core.artifact_io import read_json
+from lib.core.path_registry import PathRegistry
+from lib.substrate.substrate_dispatch import dispatch_substrate_agent as _dispatch_agent
+from lib.substrate.substrate_helpers import (
     count_existing_related as _count_existing_related,
     list_section_files as _list_section_files,
     read_project_mode as _read_project_mode,
     section_number as _section_number,
     write_status as _write_status,
 )
-from lib.substrate_policy import (
+from lib.substrate.substrate_policy import (
     DEFAULT_TRIGGER_THRESHOLD as _DEFAULT_TRIGGER_THRESHOLD,
     read_substrate_model_policy as _read_model_policy,
     read_trigger_signals as _read_trigger_signals,
     read_trigger_threshold as _read_trigger_threshold,
 )
 
-from lib.substrate_prompt_builder import (
+from lib.prompts.substrate_prompt_builder import (
     write_pruner_prompt,
     write_seeder_prompt,
     write_shard_prompt,

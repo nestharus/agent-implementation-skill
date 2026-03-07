@@ -13,8 +13,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from lib.path_registry import PathRegistry
-from lib.scan_related_files import list_section_files
+from lib.core.path_registry import PathRegistry
+from lib.scan.scan_related_files import list_section_files
 
 from .codemap import run_codemap_build
 from .deep_scan import run_deep_scan

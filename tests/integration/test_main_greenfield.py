@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 from _paths import SRC_DIR
 
-from lib.section_loader import load_sections, parse_related_files
+from lib.sections.section_loader import load_sections, parse_related_files
 
 from section_loop.types import Section
 

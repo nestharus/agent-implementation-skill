@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.scripts.lib.artifact_io import (
+from src.scripts.lib.core.artifact_io import (
     read_json,
     read_json_or_default,
     rename_malformed,

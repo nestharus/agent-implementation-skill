@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.scripts.lib.dispatch_metadata import (
+from src.scripts.lib.dispatch.dispatch_metadata import (
     DISPATCH_META_CORRUPT,
     dispatch_meta_path,
     read_dispatch_metadata,

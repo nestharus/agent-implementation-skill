@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.proposal_loop import run_proposal_loop
+from src.scripts.lib.pipelines.proposal_loop import run_proposal_loop
 from src.scripts.section_loop.types import Section
 
 
@@ -50,27 +50,27 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
     alignment_written: list[str] = []
 
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.load_triage_result",
+        "src.scripts.lib.pipelines.proposal_loop.load_triage_result",
         lambda *_args, **_kwargs: {"intent_mode": "lightweight", "budgets": {}},
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.handle_pending_messages",
+        "src.scripts.lib.pipelines.proposal_loop.handle_pending_messages",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.alignment_changed_pending",
+        "src.scripts.lib.pipelines.proposal_loop.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.write_model_choice_signal",
+        "src.scripts.lib.pipelines.proposal_loop.write_model_choice_signal",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.write_integration_proposal_prompt",
+        "src.scripts.lib.pipelines.proposal_loop.write_integration_proposal_prompt",
         lambda *_args, **_kwargs: prompt_path,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.write_integration_alignment_prompt",
+        "src.scripts.lib.pipelines.proposal_loop.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: align_prompt_path,
     )
 
@@ -83,29 +83,29 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
         output_path.write_text("aligned", encoding="utf-8")
         return '{"aligned": true}'
 
-    monkeypatch.setattr("src.scripts.lib.proposal_loop.dispatch_agent", _dispatch)
+    monkeypatch.setattr("src.scripts.lib.pipelines.proposal_loop.dispatch_agent", _dispatch)
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.check_agent_signals",
+        "src.scripts.lib.pipelines.proposal_loop.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop._extract_problems",
+        "src.scripts.lib.pipelines.proposal_loop._extract_problems",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.mailbox_send",
+        "src.scripts.lib.pipelines.proposal_loop.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.ingest_and_submit",
+        "src.scripts.lib.pipelines.proposal_loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.load_reconciliation_result",
+        "src.scripts.lib.pipelines.proposal_loop.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop._write_alignment_surface",
+        "src.scripts.lib.pipelines.proposal_loop._write_alignment_surface",
         lambda _planspace, _section: alignment_written.append("done"),
     )
 
@@ -139,27 +139,27 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
     problems = iter(["missing anchor", None])
 
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.load_triage_result",
+        "src.scripts.lib.pipelines.proposal_loop.load_triage_result",
         lambda *_args, **_kwargs: {"intent_mode": "lightweight", "budgets": {}},
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.handle_pending_messages",
+        "src.scripts.lib.pipelines.proposal_loop.handle_pending_messages",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.alignment_changed_pending",
+        "src.scripts.lib.pipelines.proposal_loop.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.write_model_choice_signal",
+        "src.scripts.lib.pipelines.proposal_loop.write_model_choice_signal",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.write_integration_proposal_prompt",
+        "src.scripts.lib.pipelines.proposal_loop.write_integration_proposal_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.write_integration_alignment_prompt",
+        "src.scripts.lib.pipelines.proposal_loop.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
 
@@ -169,29 +169,29 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
             return "proposal output"
         return "alignment output"
 
-    monkeypatch.setattr("src.scripts.lib.proposal_loop.dispatch_agent", _dispatch)
+    monkeypatch.setattr("src.scripts.lib.pipelines.proposal_loop.dispatch_agent", _dispatch)
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.check_agent_signals",
+        "src.scripts.lib.pipelines.proposal_loop.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop._extract_problems",
+        "src.scripts.lib.pipelines.proposal_loop._extract_problems",
         lambda *_args, **_kwargs: next(problems),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.mailbox_send",
+        "src.scripts.lib.pipelines.proposal_loop.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.ingest_and_submit",
+        "src.scripts.lib.pipelines.proposal_loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.load_reconciliation_result",
+        "src.scripts.lib.pipelines.proposal_loop.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop._write_alignment_surface",
+        "src.scripts.lib.pipelines.proposal_loop._write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
 
@@ -227,27 +227,27 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
     call_count = {"value": 0}
 
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.load_triage_result",
+        "src.scripts.lib.pipelines.proposal_loop.load_triage_result",
         lambda *_args, **_kwargs: {"intent_mode": "lightweight", "budgets": {}},
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.handle_pending_messages",
+        "src.scripts.lib.pipelines.proposal_loop.handle_pending_messages",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.alignment_changed_pending",
+        "src.scripts.lib.pipelines.proposal_loop.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.write_model_choice_signal",
+        "src.scripts.lib.pipelines.proposal_loop.write_model_choice_signal",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.write_integration_proposal_prompt",
+        "src.scripts.lib.pipelines.proposal_loop.write_integration_proposal_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.write_integration_alignment_prompt",
+        "src.scripts.lib.pipelines.proposal_loop.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
 
@@ -262,42 +262,42 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
             return ("out_of_scope", "new work")
         return (None, "")
 
-    monkeypatch.setattr("src.scripts.lib.proposal_loop.dispatch_agent", _dispatch)
-    monkeypatch.setattr("src.scripts.lib.proposal_loop.check_agent_signals", _signals)
+    monkeypatch.setattr("src.scripts.lib.pipelines.proposal_loop.dispatch_agent", _dispatch)
+    monkeypatch.setattr("src.scripts.lib.pipelines.proposal_loop.check_agent_signals", _signals)
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop._extract_problems",
+        "src.scripts.lib.pipelines.proposal_loop._extract_problems",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.mailbox_send",
+        "src.scripts.lib.pipelines.proposal_loop.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.ingest_and_submit",
+        "src.scripts.lib.pipelines.proposal_loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.load_reconciliation_result",
+        "src.scripts.lib.pipelines.proposal_loop.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.pause_for_parent",
+        "src.scripts.lib.pipelines.proposal_loop.pause_for_parent",
         lambda *_args, **_kwargs: "resume:use new direction",
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop.persist_decision",
+        "src.scripts.lib.pipelines.proposal_loop.persist_decision",
         lambda _planspace, _section_number, payload: persisted.append(payload),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop._append_open_problem",
+        "src.scripts.lib.pipelines.proposal_loop._append_open_problem",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop._update_blocker_rollup",
+        "src.scripts.lib.pipelines.proposal_loop._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.proposal_loop._write_alignment_surface",
+        "src.scripts.lib.pipelines.proposal_loop._write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
 

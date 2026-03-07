@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib import reconciliation_adjudicator as adjudicator
+from src.scripts.lib.pipelines import reconciliation_adjudicator as adjudicator
 
 
 def test_adjudicate_ungrouped_candidates_returns_empty_for_singleton(

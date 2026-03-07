@@ -20,9 +20,9 @@ import os
 import time
 from pathlib import Path
 
-from lib.artifact_io import read_json, rename_malformed, write_json
-from lib.path_registry import PathRegistry
-from lib.qa_verdict_parser import parse_qa_verdict
+from lib.core.artifact_io import read_json, rename_malformed, write_json
+from lib.core.path_registry import PathRegistry
+from lib.services.qa_verdict_parser import parse_qa_verdict
 
 # Resolve paths relative to this script's location.
 SCRIPTS_DIR = Path(__file__).resolve().parent

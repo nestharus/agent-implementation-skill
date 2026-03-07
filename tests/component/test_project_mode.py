@@ -1,6 +1,6 @@
 import json
 
-from lib.project_mode import resolve_project_mode, write_mode_contract
+from lib.sections.project_mode import resolve_project_mode, write_mode_contract
 
 
 def test_resolve_project_mode_prefers_json_signal(planspace) -> None:
@@ -43,7 +43,7 @@ def test_resolve_project_mode_pauses_and_rereads_after_resume(
             encoding="utf-8",
         )
 
-    monkeypatch.setattr("lib.project_mode.pause_for_parent", fake_pause)
+    monkeypatch.setattr("lib.sections.project_mode.pause_for_parent", fake_pause)
 
     mode, constraints = resolve_project_mode(planspace, "parent")
 

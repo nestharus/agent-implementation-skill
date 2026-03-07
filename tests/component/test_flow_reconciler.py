@@ -7,12 +7,12 @@ from pathlib import Path
 
 from _paths import DB_SH
 from flow_schema import TaskSpec
-from src.scripts.lib.flow_reconciler import (
+from src.scripts.lib.flow.flow_reconciler import (
     build_gate_aggregate_manifest,
     build_result_manifest,
     reconcile_task_completion,
 )
-from src.scripts.lib.flow_submitter import submit_chain
+from src.scripts.lib.flow.flow_submitter import submit_chain
 
 
 def _init_db(db_path: Path) -> None:

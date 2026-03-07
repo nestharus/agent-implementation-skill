@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.scripts.lib.log_extract_utils import (
+from src.scripts.lib.tools.log_extract_utils import (
     infer_section,
     parse_timestamp,
     prompt_signature,

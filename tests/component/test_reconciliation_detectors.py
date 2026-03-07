@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.scripts.lib.reconciliation_detectors import (
+from src.scripts.lib.services.reconciliation_detectors import (
     aggregate_shared_seams,
     consolidate_new_section_candidates,
     detect_anchor_overlaps,

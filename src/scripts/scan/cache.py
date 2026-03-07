@@ -10,8 +10,8 @@ import re
 import shutil
 from pathlib import Path
 
-from lib.artifact_io import read_json
-from lib.hash_service import content_hash
+from lib.core.artifact_io import read_json
+from lib.core.hash_service import content_hash
 
 # Regex to strip scan-generated summary blocks from section text.
 # These blocks are wrapped in HTML comment markers by update_match().

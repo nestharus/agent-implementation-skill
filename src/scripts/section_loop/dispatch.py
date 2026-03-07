@@ -3,19 +3,19 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from lib import agent_executor
-from lib.alignment_change_tracker import check_pending as alignment_changed_pending
-from lib.database_client import DatabaseClient
-from lib.dispatch_helpers import (
+from lib.dispatch import agent_executor
+from lib.services.alignment_change_tracker import check_pending as alignment_changed_pending
+from lib.core.database_client import DatabaseClient
+from lib.dispatch.dispatch_helpers import (
     check_agent_signals,
     summarize_output,
     write_model_choice_signal,
 )
-from lib.dispatch_metadata import write_dispatch_metadata
-from lib.model_policy import load_model_policy
-from lib.monitor_service import MonitorService
-from lib.path_registry import PathRegistry
-from lib.signal_reader import read_agent_signal, read_signal_tuple
+from lib.dispatch.dispatch_metadata import write_dispatch_metadata
+from lib.core.model_policy import load_model_policy
+from lib.dispatch.monitor_service import MonitorService
+from lib.core.path_registry import PathRegistry
+from lib.services.signal_reader import read_agent_signal, read_signal_tuple
 
 from .agent_templates import render_template, validate_dynamic_content
 from .communication import (

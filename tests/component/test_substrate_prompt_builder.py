@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.scripts.lib.substrate_prompt_builder import (
+from src.scripts.lib.prompts.substrate_prompt_builder import (
     write_pruner_prompt,
     write_seeder_prompt,
     write_shard_prompt,

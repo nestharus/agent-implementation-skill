@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib import coordination_executor
-from src.scripts.lib.coordination_executor import (
+from src.scripts.lib.pipelines import coordination_executor
+from src.scripts.lib.pipelines.coordination_executor import (
     CoordinationExecutionExit,
     execute_coordination_plan,
     read_execution_modified_files,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.scripts.lib.prompt_template import (
+from src.scripts.lib.prompts.prompt_template import (
     SYSTEM_CONSTRAINTS,
     TASK_SUBMISSION_SEMANTICS,
     load_template,

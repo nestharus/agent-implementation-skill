@@ -5,7 +5,7 @@ from pathlib import Path
 
 from section_loop.types import Section
 
-from src.scripts.lib.section_decisions import (
+from src.scripts.lib.sections.section_decisions import (
     build_section_number_map,
     extract_section_summary,
     normalize_section_number,

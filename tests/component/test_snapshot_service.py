@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.scripts.lib.snapshot_service import (
+from src.scripts.lib.services.snapshot_service import (
     compute_text_diff,
     snapshot_modified_files,
 )

@@ -6,7 +6,7 @@ only needs to add prompt-specific keys.
 
 from pathlib import Path
 
-from lib.path_registry import PathRegistry
+from lib.core.path_registry import PathRegistry
 
 from ..cross_section import extract_section_summary
 from ..types import Section

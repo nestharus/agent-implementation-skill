@@ -17,7 +17,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 from flow_schema import BranchSpec, TaskSpec  # noqa: E402
-from lib.path_registry import PathRegistry  # noqa: E402
+from lib.core.path_registry import PathRegistry  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

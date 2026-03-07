@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from lib.path_registry import PathRegistry
+from lib.core.path_registry import PathRegistry
 
 from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
 from ..communication import _log_artifact, log

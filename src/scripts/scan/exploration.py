@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.scan_phase_logger import log_phase_failure
-from lib.scan_template_loader import load_scan_template
-from lib.scan_related_files import (
+from lib.scan.scan_phase_logger import log_phase_failure
+from lib.scan.scan_template_loader import load_scan_template
+from lib.scan.scan_related_files import (
     apply_related_files_update,
     list_section_files,
     validate_existing_related_files,

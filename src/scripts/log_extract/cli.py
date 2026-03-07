@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from lib.path_registry import PathRegistry
+from lib.core.path_registry import PathRegistry
 
 from log_extract import formatters, timeline
 from log_extract.correlator import correlate

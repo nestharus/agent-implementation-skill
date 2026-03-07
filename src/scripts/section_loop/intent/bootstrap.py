@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from lib.artifact_io import write_json
-from lib.hash_service import content_hash, file_hash
-from lib import philosophy_bootstrap as _philosophy_bootstrap
-from lib.path_registry import PathRegistry
+from lib.core.artifact_io import write_json
+from lib.core.hash_service import content_hash, file_hash
+from lib.intent import philosophy_bootstrap as _philosophy_bootstrap
+from lib.core.path_registry import PathRegistry
 
 from ..communication import _log_artifact, log
 from ..dispatch import (

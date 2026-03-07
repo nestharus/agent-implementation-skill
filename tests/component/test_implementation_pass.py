@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from lib.implementation_pass import (
+from lib.pipelines.implementation_pass import (
     ImplementationPassExit,
     ImplementationPassRestart,
     run_implementation_pass,
@@ -23,31 +23,31 @@ def test_run_implementation_pass_records_results_and_hashes(
     messages: list[str] = []
 
     monkeypatch.setattr(
-        "lib.implementation_pass.handle_pending_messages",
+        "lib.pipelines.implementation_pass.handle_pending_messages",
         lambda *args: False,
     )
     monkeypatch.setattr(
-        "lib.implementation_pass.alignment_changed_pending",
+        "lib.pipelines.implementation_pass.alignment_changed_pending",
         lambda *args: False,
     )
     monkeypatch.setattr(
-        "lib.implementation_pass._check_and_clear_alignment_changed",
+        "lib.pipelines.implementation_pass._check_and_clear_alignment_changed",
         lambda *args: False,
     )
     monkeypatch.setattr(
-        "lib.implementation_pass.run_section",
+        "lib.pipelines.implementation_pass.run_section",
         lambda *args, **kwargs: ["src/app.py"],
     )
     monkeypatch.setattr(
-        "lib.implementation_pass._section_inputs_hash",
+        "lib.pipelines.implementation_pass._section_inputs_hash",
         lambda *args: "hash-123",
     )
     monkeypatch.setattr(
-        "lib.implementation_pass.mailbox_send",
+        "lib.pipelines.implementation_pass.mailbox_send",
         lambda _planspace, _parent, message: messages.append(message),
     )
     monkeypatch.setattr(
-        "lib.implementation_pass.subprocess.run",
+        "lib.pipelines.implementation_pass.subprocess.run",
         lambda *args, **kwargs: None,
     )
 
@@ -75,15 +75,15 @@ def test_run_implementation_pass_restarts_on_alignment_change(
     section = _make_section(planspace, "01")
 
     monkeypatch.setattr(
-        "lib.implementation_pass.handle_pending_messages",
+        "lib.pipelines.implementation_pass.handle_pending_messages",
         lambda *args: False,
     )
     monkeypatch.setattr(
-        "lib.implementation_pass.alignment_changed_pending",
+        "lib.pipelines.implementation_pass.alignment_changed_pending",
         lambda *args: True,
     )
     monkeypatch.setattr(
-        "lib.implementation_pass._check_and_clear_alignment_changed",
+        "lib.pipelines.implementation_pass._check_and_clear_alignment_changed",
         lambda *args: True,
     )
 
@@ -104,11 +104,11 @@ def test_run_implementation_pass_exits_when_parent_aborts(
     messages: list[str] = []
 
     monkeypatch.setattr(
-        "lib.implementation_pass.handle_pending_messages",
+        "lib.pipelines.implementation_pass.handle_pending_messages",
         lambda *args: True,
     )
     monkeypatch.setattr(
-        "lib.implementation_pass.mailbox_send",
+        "lib.pipelines.implementation_pass.mailbox_send",
         lambda _planspace, _parent, message: messages.append(message),
     )
 

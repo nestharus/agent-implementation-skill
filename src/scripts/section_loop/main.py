@@ -2,19 +2,19 @@ import subprocess
 import sys
 from pathlib import Path
 
-from lib.alignment_change_tracker import check_and_clear
-from lib.coordination_loop import run_coordination_loop
-from lib.global_alignment_recheck import run_global_alignment_recheck
-from lib.implementation_pass import (
+from lib.services.alignment_change_tracker import check_and_clear
+from lib.pipelines.coordination_loop import run_coordination_loop
+from lib.pipelines.global_alignment_recheck import run_global_alignment_recheck
+from lib.pipelines.implementation_pass import (
     ImplementationPassExit,
     ImplementationPassRestart,
     run_implementation_pass,
 )
-from lib.path_registry import PathRegistry
-from lib.project_mode import resolve_project_mode, write_mode_contract
-from lib.proposal_pass import ProposalPassExit, run_proposal_pass
-from lib.reconciliation_phase import ReconciliationPhaseExit, run_reconciliation_phase
-from lib.section_loader import load_sections
+from lib.core.path_registry import PathRegistry
+from lib.sections.project_mode import resolve_project_mode, write_mode_contract
+from lib.pipelines.proposal_pass import ProposalPassExit, run_proposal_pass
+from lib.pipelines.reconciliation_phase import ReconciliationPhaseExit, run_reconciliation_phase
+from lib.sections.section_loader import load_sections
 
 from .communication import (
     AGENT_NAME,
@@ -24,7 +24,7 @@ from .communication import (
     mailbox_register,
 )
 from .dispatch import dispatch_agent, read_model_policy
-from lib.strategic_state import build_strategic_state
+from lib.repositories.strategic_state import build_strategic_state
 from .types import SectionResult
 
 

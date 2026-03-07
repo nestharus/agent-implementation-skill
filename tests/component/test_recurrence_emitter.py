@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.scripts.lib.recurrence_emitter import emit_recurrence_signal
+from src.scripts.lib.pipelines.recurrence_emitter import emit_recurrence_signal
 
 
 def test_emit_recurrence_signal_writes_expected_payload(tmp_path: Path) -> None:

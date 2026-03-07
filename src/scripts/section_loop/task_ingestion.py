@@ -21,12 +21,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from lib.task_ingestion import (
+from lib.tasks.task_ingestion import (
     find_first_section_scope,
     ingest_task_requests as _ingest_task_requests,
     parse_signal_file as _parse_signal_file,
 )
-from lib.path_registry import PathRegistry
+from lib.core.path_registry import PathRegistry
 
 from .agent_templates import validate_dynamic_content
 from .communication import log
@@ -45,7 +45,7 @@ from task_flow import (  # noqa: E402
     submit_chain,
     submit_fanout,
 )
-from lib.flow_submitter import new_flow_id  # noqa: E402
+from lib.flow.flow_submitter import new_flow_id  # noqa: E402
 from task_router import resolve_task  # noqa: E402
 
 def ingest_task_requests(signal_path: Path) -> list[dict]:

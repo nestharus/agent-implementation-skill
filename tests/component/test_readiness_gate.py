@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.readiness_gate import (
+from src.scripts.lib.pipelines.readiness_gate import (
     publish_discoveries,
     resolve_and_route,
     route_blockers,
@@ -32,7 +32,7 @@ def test_publish_discoveries_writes_scope_delta_and_research_artifact(
     (planspace / "artifacts" / "open-problems").mkdir(parents=True, exist_ok=True)
     appended: list[str] = []
     monkeypatch.setattr(
-        "src.scripts.lib.readiness_gate._append_open_problem",
+        "src.scripts.lib.pipelines.readiness_gate._append_open_problem",
         lambda _planspace, _section, detail, _source: appended.append(detail),
     )
 
@@ -63,13 +63,13 @@ def test_route_blockers_writes_signals_and_queues_reconciliation(
     queued: list[tuple[list[str], list[str]]] = []
 
     monkeypatch.setattr(
-        "src.scripts.lib.readiness_gate.queue_reconciliation_request",
+        "src.scripts.lib.pipelines.readiness_gate.queue_reconciliation_request",
         lambda _artifacts, _section, contracts, anchors: queued.append(
             (contracts, anchors)
         ),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.readiness_gate._update_blocker_rollup",
+        "src.scripts.lib.pipelines.readiness_gate._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
 
@@ -127,7 +127,7 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
     )
 
     monkeypatch.setattr(
-        "src.scripts.lib.readiness_gate.resolve_readiness",
+        "src.scripts.lib.pipelines.readiness_gate.resolve_readiness",
         lambda *_args, **_kwargs: {
             "ready": False,
             "blockers": [{"type": "user_root_questions", "description": "Choose retry policy"}],
@@ -135,19 +135,19 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
         },
     )
     monkeypatch.setattr(
-        "src.scripts.lib.readiness_gate.mailbox_send",
+        "src.scripts.lib.pipelines.readiness_gate.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.readiness_gate._append_open_problem",
+        "src.scripts.lib.pipelines.readiness_gate._append_open_problem",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.readiness_gate.queue_reconciliation_request",
+        "src.scripts.lib.pipelines.readiness_gate.queue_reconciliation_request",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.readiness_gate._update_blocker_rollup",
+        "src.scripts.lib.pipelines.readiness_gate._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
 

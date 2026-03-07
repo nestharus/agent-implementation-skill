@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.scripts.lib import scan_template_loader
-from src.scripts.lib.scan_template_loader import load_scan_template
+from src.scripts.lib.scan import scan_template_loader
+from src.scripts.lib.scan.scan_template_loader import load_scan_template
 
 
 def test_load_scan_template_reads_from_scan_templates_directory() -> None:

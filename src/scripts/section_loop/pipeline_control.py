@@ -1,24 +1,24 @@
 from pathlib import Path
 from typing import Any
 
-from lib.alignment_change_tracker import (
+from lib.services.alignment_change_tracker import (
     check_and_clear as check_and_clear_alignment_changed,
     check_pending as alignment_changed_pending_flag,
     invalidate_excerpts as invalidate_all_excerpts,
     set_flag as set_alignment_changed_flag,
 )
-from lib.message_poller import (
+from lib.dispatch.message_poller import (
     check_for_messages as drain_messages,
     handle_pending_messages as handle_messages,
     poll_control_messages as poll_messages,
 )
-from lib.path_registry import PathRegistry
-from lib.pipeline_state import (
+from lib.core.path_registry import PathRegistry
+from lib.core.pipeline_state import (
     check_pipeline_state as query_pipeline_state,
     pause_for_parent as wait_for_parent,
     wait_if_paused as block_if_paused,
 )
-from lib.section_input_hasher import (
+from lib.services.section_input_hasher import (
     coordination_recheck_hash,
     section_inputs_hash,
 )

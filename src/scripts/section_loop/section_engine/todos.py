@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from lib.artifact_io import read_json, write_json
-from lib.path_registry import PathRegistry
+from lib.core.artifact_io import read_json, write_json
+from lib.core.path_registry import PathRegistry
 
 from ..dispatch import dispatch_agent
 from prompt_safety import write_validated_prompt

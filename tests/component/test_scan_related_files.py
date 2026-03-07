@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from src.scripts.lib.artifact_io import write_json
-from src.scripts.lib.hash_service import content_hash, file_hash
-from src.scripts.lib.scan_related_files import (
+from src.scripts.lib.core.artifact_io import write_json
+from src.scripts.lib.core.hash_service import content_hash, file_hash
+from src.scripts.lib.scan.scan_related_files import (
     apply_related_files_update,
     list_section_files,
     validate_existing_related_files,
@@ -107,7 +107,7 @@ def test_validate_existing_related_files_skips_when_inputs_unchanged(
         raise AssertionError("dispatch_agent should not run when hash matches")
 
     monkeypatch.setattr(
-        "src.scripts.lib.scan_related_files.dispatch_agent",
+        "src.scripts.lib.scan.scan_related_files.dispatch_agent",
         fail_dispatch,
     )
 
@@ -157,7 +157,7 @@ def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
     )
 
     monkeypatch.setattr(
-        "src.scripts.lib.scan_related_files.load_scan_template",
+        "src.scripts.lib.scan.scan_related_files.load_scan_template",
         lambda name: (
             "Section: {section_file}\n"
             "Codemap: {codemap_path}\n"
@@ -166,11 +166,11 @@ def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
         ),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.scan_related_files.validate_dynamic_content",
+        "src.scripts.lib.scan.scan_related_files.validate_dynamic_content",
         lambda prompt: [],
     )
     monkeypatch.setattr(
-        "src.scripts.lib.scan_related_files.dispatch_agent",
+        "src.scripts.lib.scan.scan_related_files.dispatch_agent",
         lambda **kwargs: SimpleNamespace(returncode=0),
     )
 

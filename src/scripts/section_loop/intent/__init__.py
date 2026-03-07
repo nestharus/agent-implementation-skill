@@ -12,7 +12,7 @@ from .surfaces import (
     merge_surfaces_into_registry,
     normalize_surface_ids,
 )
-from lib.intent_triage import run_intent_triage
+from lib.intent.intent_triage import run_intent_triage
 
 __all__ = [
     "ensure_global_philosophy",

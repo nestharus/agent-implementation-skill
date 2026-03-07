@@ -1,6 +1,6 @@
 """Compatibility facade for shared section-loop communication helpers."""
 
-from lib.communication import (
+from lib.core.communication import (
     AGENT_NAME,
     DB_PATH,
     DB_SH,

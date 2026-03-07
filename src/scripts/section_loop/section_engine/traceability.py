@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-from lib.artifact_io import read_json, write_json
-from lib.hash_service import file_hash
-from lib.path_registry import PathRegistry
+from lib.core.artifact_io import read_json, write_json
+from lib.core.hash_service import file_hash
+from lib.core.path_registry import PathRegistry
 
 from ..alignment import _parse_alignment_verdict
 from ..communication import log

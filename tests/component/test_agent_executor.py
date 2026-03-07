@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.scripts.lib import agent_executor
+from src.scripts.lib.dispatch import agent_executor
 
 
 def test_run_agent_invokes_agents_binary_with_expected_args(

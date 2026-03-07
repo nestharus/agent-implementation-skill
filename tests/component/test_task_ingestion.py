@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from flow_schema import ChainAction, FlowDeclaration, TaskSpec
-from src.scripts.lib.task_ingestion import (
+from src.scripts.lib.tasks.task_ingestion import (
     extract_legacy_tasks,
     find_first_section_scope,
     ingest_task_requests,

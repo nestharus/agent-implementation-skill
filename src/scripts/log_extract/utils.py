@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.log_extract_utils import (
+from lib.tools.log_extract_utils import (
     infer_section,
     parse_timestamp,
     prompt_signature,

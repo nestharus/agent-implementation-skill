@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib import global_alignment_recheck
-from src.scripts.lib.global_alignment_recheck import run_global_alignment_recheck
+from src.scripts.lib.pipelines import global_alignment_recheck
+from src.scripts.lib.pipelines.global_alignment_recheck import run_global_alignment_recheck
 from section_loop.types import Section, SectionResult
 
 

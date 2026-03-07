@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from lib.section_decisions import (
+from lib.sections.section_decisions import (
     build_section_number_map,
     extract_section_summary,
     normalize_section_number,
     persist_decision as _persist_decision,
     read_decisions,
 )
-from lib.section_notes import post_section_completion, read_incoming_notes
-from lib.snapshot_service import compute_text_diff
+from lib.sections.section_notes import post_section_completion, read_incoming_notes
+from lib.services.snapshot_service import compute_text_diff
 
 from .communication import _log_artifact
 

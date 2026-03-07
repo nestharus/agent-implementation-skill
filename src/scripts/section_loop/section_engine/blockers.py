@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.artifact_io import read_json, rename_malformed
-from lib.path_registry import PathRegistry
+from lib.core.artifact_io import read_json, rename_malformed
+from lib.core.path_registry import PathRegistry
 
 
 def _append_open_problem(

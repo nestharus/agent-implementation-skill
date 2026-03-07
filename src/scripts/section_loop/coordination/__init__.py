@@ -4,11 +4,11 @@ Re-exports all public names so existing ``from section_loop.coordination import 
 statements continue to work unchanged.
 """
 
-from lib.coordination_planner import (
+from lib.pipelines.coordination_planner import (
     _parse_coordination_plan,
     write_coordination_plan_prompt,
 )
-from lib.coordination_problem_resolver import (
+from lib.pipelines.coordination_problem_resolver import (
     _collect_outstanding_problems,
     _detect_recurrence_patterns,
     build_file_to_sections,

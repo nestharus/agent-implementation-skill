@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib import reconciliation_phase
-from src.scripts.lib.reconciliation_phase import (
+from src.scripts.lib.pipelines import reconciliation_phase
+from src.scripts.lib.pipelines.reconciliation_phase import (
     ReconciliationPhaseExit,
     run_reconciliation_phase,
 )

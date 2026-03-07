@@ -26,15 +26,15 @@ import sys
 import time
 from pathlib import Path
 
-from lib.dispatch_metadata import DISPATCH_META_CORRUPT, read_dispatch_metadata
-from lib.path_registry import PathRegistry
-from lib.task_db_client import db_cmd
-from lib.task_notifier import (
+from lib.dispatch.dispatch_metadata import DISPATCH_META_CORRUPT, read_dispatch_metadata
+from lib.core.path_registry import PathRegistry
+from lib.tasks.task_db_client import db_cmd
+from lib.tasks.task_notifier import (
     notify_task_result,
     record_qa_intercept,
     record_task_routing,
 )
-from lib.task_parser import parse_task_output
+from lib.tasks.task_parser import parse_task_output
 
 # Resolve paths relative to this script's location.
 SCRIPTS_DIR = Path(__file__).resolve().parent

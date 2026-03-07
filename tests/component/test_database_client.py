@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 
 from _paths import DB_SH
-from src.scripts.lib.database_client import DatabaseClient
+from src.scripts.lib.core.database_client import DatabaseClient
 
 
 def _init_client(tmp_path: Path) -> tuple[DatabaseClient, Path]:

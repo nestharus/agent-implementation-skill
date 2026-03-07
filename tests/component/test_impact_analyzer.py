@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.scripts.lib import impact_analyzer
+from src.scripts.lib.services import impact_analyzer
 from src.scripts.section_loop.types import Section
 
 

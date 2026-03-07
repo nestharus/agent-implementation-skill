@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib import proposal_pass
-from src.scripts.lib.proposal_pass import ProposalPassExit, run_proposal_pass
+from src.scripts.lib.pipelines import proposal_pass
+from src.scripts.lib.pipelines.proposal_pass import ProposalPassExit, run_proposal_pass
 from section_loop.types import ProposalPassResult, Section
 
 

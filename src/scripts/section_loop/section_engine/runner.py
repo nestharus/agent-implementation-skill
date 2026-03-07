@@ -3,23 +3,23 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from lib import intent_bootstrap as intent_bootstrap_module
-from lib.artifact_io import read_json, write_json
-from lib.alignment_change_tracker import check_pending as alignment_changed_pending
-from lib.hash_service import content_hash
-from lib.impact_triage import run_impact_triage
-from lib.intent_bootstrap import run_intent_bootstrap
-from lib.problem_frame_gate import validate_problem_frame
-from lib.note_repository import write_consequence_note
-from lib.path_registry import PathRegistry
-from lib.microstrategy_orchestrator import run_microstrategy
-from lib.proposal_loop import run_proposal_loop
-from lib.readiness_gate import resolve_and_route
-from lib.readiness_resolver import resolve_readiness
-from lib.excerpt_extractor import extract_excerpts
-from lib.implementation_loop import run_implementation_loop
-from lib.recurrence_emitter import emit_recurrence_signal
-from lib.tool_surface import (
+from lib.intent import intent_bootstrap as intent_bootstrap_module
+from lib.core.artifact_io import read_json, write_json
+from lib.services.alignment_change_tracker import check_pending as alignment_changed_pending
+from lib.core.hash_service import content_hash
+from lib.pipelines.impact_triage import run_impact_triage
+from lib.intent.intent_bootstrap import run_intent_bootstrap
+from lib.pipelines.problem_frame_gate import validate_problem_frame
+from lib.repositories.note_repository import write_consequence_note
+from lib.core.path_registry import PathRegistry
+from lib.pipelines.microstrategy_orchestrator import run_microstrategy
+from lib.pipelines.proposal_loop import run_proposal_loop
+from lib.pipelines.readiness_gate import resolve_and_route
+from lib.services.readiness_resolver import resolve_readiness
+from lib.pipelines.excerpt_extractor import extract_excerpts
+from lib.pipelines.implementation_loop import run_implementation_loop
+from lib.pipelines.recurrence_emitter import emit_recurrence_signal
+from lib.tools.tool_surface import (
     handle_tool_friction,
     surface_tool_registry,
     validate_tool_registry_after_implementation,
@@ -81,8 +81,8 @@ from ..intent.surfaces import (
     save_surface_registry,
 )
 from ..reconciliation import load_reconciliation_result
-from lib.proposal_state_repository import load_proposal_state
-from lib.reconciliation_queue import queue_reconciliation_request
+from lib.repositories.proposal_state_repository import load_proposal_state
+from lib.repositories.reconciliation_queue import queue_reconciliation_request
 from .blockers import _update_blocker_rollup
 from .todos import _extract_todos_from_files
 from .traceability import _file_sha256, _write_traceability_index

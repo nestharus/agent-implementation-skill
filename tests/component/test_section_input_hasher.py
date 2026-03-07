@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.scripts.lib.section_input_hasher import (
+from src.scripts.lib.services.section_input_hasher import (
     coordination_recheck_hash,
     section_inputs_hash,
 )

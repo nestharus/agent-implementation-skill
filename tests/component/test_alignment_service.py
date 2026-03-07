@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.scripts.lib.alignment_service import collect_modified_files, extract_problems
+from src.scripts.lib.services.alignment_service import collect_modified_files, extract_problems
 from src.scripts.section_loop.types import Section
 
 

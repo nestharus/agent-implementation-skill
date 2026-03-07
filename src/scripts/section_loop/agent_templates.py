@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lib.prompt_template import (
+from lib.prompts.prompt_template import (
     SYSTEM_CONSTRAINTS,
     TASK_SUBMISSION_SEMANTICS,
     render_template,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.scripts.lib.scan_match_updater import (
+from src.scripts.lib.scan.scan_match_updater import (
     SUMMARY_BEGIN,
     SUMMARY_END,
     deep_scan_related_files,

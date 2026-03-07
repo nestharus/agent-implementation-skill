@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 from _paths import DB_SH
-from src.scripts.lib.communication import (
+from src.scripts.lib.core.communication import (
     AGENT_NAME,
     DB_PATH,
     _record_traceability,

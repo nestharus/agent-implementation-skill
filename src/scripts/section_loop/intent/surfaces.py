@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from lib.artifact_io import read_json, rename_malformed, write_json
-from lib.hash_service import content_hash
-from lib.path_registry import PathRegistry
+from lib.core.artifact_io import read_json, rename_malformed, write_json
+from lib.core.hash_service import content_hash
+from lib.core.path_registry import PathRegistry
 
 from ..communication import log
 from ..dispatch import read_agent_signal

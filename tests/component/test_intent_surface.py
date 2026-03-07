@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.scripts.lib import intent_surface
+from src.scripts.lib.intent import intent_surface
 
 
 def test_build_pending_surface_payload_reconstructs_backlog_entries() -> None:

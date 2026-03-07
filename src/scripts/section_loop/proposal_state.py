@@ -1,6 +1,6 @@
 """Compatibility re-export for proposal-state helpers."""
 
-from lib.proposal_state_repository import (
+from lib.repositories.proposal_state_repository import (
     PROPOSAL_STATE_SCHEMA,
     _BLOCKING_FIELDS,
     _fail_closed_default,

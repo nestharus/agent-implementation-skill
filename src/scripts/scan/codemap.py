@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.artifact_io import read_json, rename_malformed
-from lib.scan_phase_logger import log_phase_failure
-from lib.scan_template_loader import load_scan_template
+from lib.core.artifact_io import read_json, rename_malformed
+from lib.scan.scan_phase_logger import log_phase_failure
+from lib.scan.scan_template_loader import load_scan_template
 
 from prompt_safety import validate_dynamic_content
 

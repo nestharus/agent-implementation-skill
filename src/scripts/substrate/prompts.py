@@ -1,6 +1,6 @@
 """Compatibility re-exports for substrate prompt builders."""
 
-from lib.substrate_prompt_builder import (
+from lib.prompts.substrate_prompt_builder import (
     write_pruner_prompt,
     write_seeder_prompt,
     write_shard_prompt,

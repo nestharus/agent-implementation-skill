@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from lib.scope_delta_aggregator import (
+from lib.pipelines.scope_delta_aggregator import (
     ScopeDeltaAggregationExit,
     aggregate_scope_deltas,
 )
@@ -26,7 +26,7 @@ def test_aggregate_scope_deltas_adjudicates_and_records_decisions(
         encoding="utf-8",
     )
     monkeypatch.setattr(
-        "lib.scope_delta_aggregator.dispatch_agent",
+        "lib.pipelines.scope_delta_aggregator.dispatch_agent",
         lambda *args, **kwargs: (
             '{"decisions":[{"delta_id":"delta-01","section":"01",'
             '"action":"reject","reason":"defer"}]}'
@@ -80,9 +80,9 @@ def test_aggregate_scope_deltas_retries_then_fails_closed_on_bad_output(
         calls.append(model)
         return "not json"
 
-    monkeypatch.setattr("lib.scope_delta_aggregator.dispatch_agent", fake_dispatch)
+    monkeypatch.setattr("lib.pipelines.scope_delta_aggregator.dispatch_agent", fake_dispatch)
     monkeypatch.setattr(
-        "lib.scope_delta_aggregator.mailbox_send",
+        "lib.pipelines.scope_delta_aggregator.mailbox_send",
         lambda _planspace, _parent, message: messages.append(message),
     )
 

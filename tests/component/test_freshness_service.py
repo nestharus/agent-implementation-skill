@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.scripts.lib.freshness_service import compute_section_freshness
+from src.scripts.lib.services.freshness_service import compute_section_freshness
 
 
 def test_compute_section_freshness_is_stable_for_same_inputs(

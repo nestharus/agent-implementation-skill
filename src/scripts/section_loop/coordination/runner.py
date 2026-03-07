@@ -1,22 +1,22 @@
 from pathlib import Path
 from typing import Any
 
-from lib.artifact_io import write_json
-from lib.coordination_executor import (
+from lib.core.artifact_io import write_json
+from lib.pipelines.coordination_executor import (
     CoordinationExecutionExit,
     execute_coordination_plan,
     read_execution_modified_files,
 )
-from lib.coordination_planner import (
+from lib.pipelines.coordination_planner import (
     _parse_coordination_plan,
     write_coordination_plan_prompt,
 )
-from lib.coordination_problem_resolver import (
+from lib.pipelines.coordination_problem_resolver import (
     _collect_outstanding_problems,
     _detect_recurrence_patterns,
 )
-from lib.path_registry import PathRegistry
-from lib.scope_delta_aggregator import (
+from lib.core.path_registry import PathRegistry
+from lib.pipelines.scope_delta_aggregator import (
     ScopeDeltaAggregationExit,
     aggregate_scope_deltas,
 )
@@ -43,7 +43,7 @@ from ..types import Section, SectionResult
 
 def _normalize_section_id(value: str, scope_deltas_dir: Path) -> str:
     """Backward-compatible private alias used by older tests."""
-    from lib.scope_delta_parser import normalize_section_id
+    from lib.services.scope_delta_parser import normalize_section_id
 
     return normalize_section_id(value, scope_deltas_dir)
 

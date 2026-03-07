@@ -61,8 +61,8 @@ def mock_scan_dispatch(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     monkeypatch.setattr("scan.deep_scan.dispatch_agent", mock)
     monkeypatch.setattr("scan.exploration.dispatch_agent", mock)
     monkeypatch.setattr("scan.feedback.dispatch_agent", mock)
-    monkeypatch.setattr("lib.tier_ranking.dispatch_agent", mock)
-    monkeypatch.setattr("lib.deep_scan_analyzer.dispatch_agent", mock)
+    monkeypatch.setattr("lib.scan.tier_ranking.dispatch_agent", mock)
+    monkeypatch.setattr("lib.scan.deep_scan_analyzer.dispatch_agent", mock)
     return mock
 
 

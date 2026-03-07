@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib import coordination_loop
-from src.scripts.lib.coordination_loop import run_coordination_loop
+from src.scripts.lib.pipelines import coordination_loop
+from src.scripts.lib.pipelines.coordination_loop import run_coordination_loop
 from section_loop.types import Section, SectionResult
 
 

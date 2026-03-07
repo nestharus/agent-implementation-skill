@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.task_db_client import db_cmd
+from src.scripts.lib.tasks.task_db_client import db_cmd
 
 
 def test_db_cmd_init_and_log_round_trip(tmp_path: Path) -> None:

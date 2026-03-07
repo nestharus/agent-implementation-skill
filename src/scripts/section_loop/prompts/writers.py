@@ -6,12 +6,12 @@ render → write file → log artifact.
 
 from pathlib import Path
 
-from lib.prompt_context_assembler import (
+from lib.prompts.prompt_context_assembler import (
     build_impl_context_extras,
     build_proposal_context_extras,
 )
-from lib.path_registry import PathRegistry
-from lib.prompt_helpers import (
+from lib.core.path_registry import PathRegistry
+from lib.prompts.prompt_helpers import (
     agent_mail_instructions,
     format_existing_file_listing,
     scoped_context_block,

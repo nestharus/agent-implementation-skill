@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.scripts.lib.decision_repository import (
+from src.scripts.lib.repositories.decision_repository import (
     Decision,
     load_decisions,
     record_decision,

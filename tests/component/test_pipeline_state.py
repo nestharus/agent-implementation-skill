@@ -5,10 +5,10 @@ from pathlib import Path
 import pytest
 
 from _paths import DB_SH
-from src.scripts.lib.database_client import DatabaseClient
-from src.scripts.lib.mailbox_service import MailboxService
-from src.scripts.lib import pipeline_state
-from src.scripts.lib.pipeline_state import (
+from src.scripts.lib.core.database_client import DatabaseClient
+from src.scripts.lib.dispatch.mailbox_service import MailboxService
+from src.scripts.lib.core import pipeline_state
+from src.scripts.lib.core.pipeline_state import (
     check_pipeline_state,
     pause_for_parent,
     wait_if_paused,

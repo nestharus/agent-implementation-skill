@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from lib.hash_service import file_hash
+from lib.core.hash_service import file_hash
 
 
 def hash_file(path: Path) -> str:

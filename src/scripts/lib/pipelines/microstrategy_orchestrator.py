@@ -1,0 +1,199 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from lib.core.artifact_io import write_json
+from section_loop.agent_templates import (
+    TASK_SUBMISSION_SEMANTICS,
+    validate_dynamic_content,
+)
+from section_loop.communication import _log_artifact, _record_traceability, log, mailbox_send
+from section_loop.dispatch import dispatch_agent
+from section_loop.pipeline_control import poll_control_messages
+from section_loop.prompts import agent_mail_instructions
+from section_loop.task_ingestion import ingest_and_submit
+from section_loop.section_engine.todos import _check_needs_microstrategy
+
+
+def run_microstrategy(
+    section,
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+    policy: dict,
+) -> Path | None:
+    """Run the microstrategy decider and generation flow when needed."""
+    artifacts = planspace / "artifacts"
+    integration_proposal = (
+        artifacts / "proposals" / f"section-{section.number}-integration-proposal.md"
+    )
+    microstrategy_path = (
+        artifacts / "proposals" / f"section-{section.number}-microstrategy.md"
+    )
+
+    needs_microstrategy = (
+        _check_needs_microstrategy(
+            integration_proposal,
+            planspace,
+            section.number,
+            parent,
+            codespace=codespace,
+            model=policy.get("microstrategy_decider", "glm"),
+            escalation_model=policy["escalation_model"],
+        )
+        and not microstrategy_path.exists()
+    )
+    if not needs_microstrategy and not microstrategy_path.exists():
+        log(
+            f"Section {section.number}: microstrategy decider did not "
+            f"request microstrategy — skipping"
+        )
+        return None
+
+    if not needs_microstrategy:
+        return microstrategy_path if microstrategy_path.exists() else None
+
+    log(f"Section {section.number}: generating microstrategy")
+    micro_prompt_path = artifacts / f"microstrategy-{section.number}-prompt.md"
+    micro_output_path = artifacts / f"microstrategy-{section.number}-output.md"
+    agent_name = f"microstrategy-{section.number}"
+    monitor_name = f"{agent_name}-monitor"
+
+    file_list = "\n".join(f"- `{codespace / relative_path}`" for relative_path in section.related_files)
+    todos_ref = ""
+    section_todos = artifacts / "todos" / f"section-{section.number}-todos.md"
+    if section_todos.exists():
+        todos_ref = f"\nRead the TODO extraction: `{section_todos}`"
+
+    rendered = f"""# Task: Microstrategy for Section {section.number}
+
+## Context
+Read the integration proposal: `{integration_proposal}`
+Read the alignment excerpt: `{artifacts / "sections" / f"section-{section.number}-alignment-excerpt.md"}`{todos_ref}
+
+## Related Files
+{file_list}
+
+## Instructions
+
+The integration proposal describes the HIGH-LEVEL strategy for this
+section. Your job is to produce a MICROSTRATEGY — a tactical per-file
+breakdown that an implementation agent can follow directly.
+
+For each file that needs changes, write:
+1. **File path** and whether it's new or modified
+2. **What changes** — specific functions, classes, or blocks to add/modify
+3. **Order** — which file changes depend on which others
+4. **Risks** — what could go wrong with this specific change
+
+Write the microstrategy to: `{microstrategy_path}`
+
+Keep it tactical and concrete. The integration proposal already justified
+WHY — you're capturing WHAT and WHERE at the file level.
+
+## Task Submission
+
+If you need deeper analysis, submit a task request to:
+`{artifacts}/signals/task-requests-micro-{section.number}.json`
+
+Available task types: scan_deep_analyze, scan_explore
+
+Write a single JSON object (legacy format), or use the v2 envelope
+format with chain or fanout actions — see your agent file for the full
+v2 format reference. {TASK_SUBMISSION_SEMANTICS}
+{agent_mail_instructions(planspace, agent_name, monitor_name)}
+"""
+    violations = validate_dynamic_content(rendered)
+    if violations:
+        log(
+            f"  ERROR: prompt {micro_prompt_path.name} blocked — "
+            f"template violations: {violations}"
+        )
+        return None
+    micro_prompt_path.write_text(rendered, encoding="utf-8")
+    _log_artifact(planspace, f"prompt:microstrategy-{section.number}")
+
+    ctrl = poll_control_messages(planspace, parent, current_section=section.number)
+    if ctrl == "alignment_changed":
+        return None
+    micro_result = dispatch_agent(
+        policy.get("implementation", "gpt-5.4-high"),
+        micro_prompt_path,
+        micro_output_path,
+        planspace,
+        parent,
+        agent_name,
+        codespace=codespace,
+        section_number=section.number,
+        agent_file="microstrategy-writer.md",
+    )
+    if micro_result == "ALIGNMENT_CHANGED_PENDING":
+        return None
+
+    ingest_and_submit(
+        planspace,
+        db_path=planspace / "run.db",
+        submitted_by=f"microstrategy-{section.number}",
+        signal_path=artifacts / "signals" / f"task-requests-micro-{section.number}.json",
+        origin_refs=[str(microstrategy_path)],
+    )
+
+    if not microstrategy_path.exists() or microstrategy_path.stat().st_size == 0:
+        log(
+            f"Section {section.number}: microstrategy missing after "
+            f"dispatch — retrying with escalation model"
+        )
+        escalation_output = artifacts / f"microstrategy-{section.number}-escalation-output.md"
+        escalated_result = dispatch_agent(
+            policy["escalation_model"],
+            micro_prompt_path,
+            escalation_output,
+            planspace,
+            parent,
+            f"{agent_name}-escalation",
+            codespace=codespace,
+            section_number=section.number,
+            agent_file="microstrategy-writer.md",
+        )
+        if escalated_result == "ALIGNMENT_CHANGED_PENDING":
+            return None
+
+    if microstrategy_path.exists() and microstrategy_path.stat().st_size > 0:
+        log(f"Section {section.number}: microstrategy generated")
+        _record_traceability(
+            planspace,
+            section.number,
+            f"section-{section.number}-microstrategy.md",
+            f"section-{section.number}-integration-proposal.md",
+            "tactical breakdown from integration proposal",
+        )
+        mailbox_send(
+            planspace,
+            parent,
+            f"summary:microstrategy:{section.number}:generated",
+        )
+        return microstrategy_path
+
+    log(
+        f"Section {section.number}: microstrategy generation "
+        f"failed — emitting blocker signal"
+    )
+    blocker = {
+        "state": "NEEDS_PARENT",
+        "section": str(section.number),
+        "detail": "Microstrategy generation failed after primary + escalation attempts",
+        "needs": "Tactical breakdown from upstream or decision to proceed without microstrategy",
+    }
+    write_json(
+        artifacts / "signals" / f"microstrategy-blocker-{section.number}.json",
+        blocker,
+    )
+    _record_traceability(
+        planspace,
+        section.number,
+        f"microstrategy-blocker-{section.number}.json",
+        f"section-{section.number}-integration-proposal.md",
+        "microstrategy generation failed — blocker emitted",
+    )
+    mailbox_send(planspace, parent, f"summary:microstrategy:{section.number}:blocked")
+    return None

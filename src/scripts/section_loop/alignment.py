@@ -1,14 +1,14 @@
 from pathlib import Path
 
-from lib.alignment_service import (
+from lib.services.alignment_service import (
     collect_modified_files as _collect_modified_files,
     extract_problems,
 )
-from lib.path_registry import PathRegistry
+from lib.core.path_registry import PathRegistry
 from .agent_templates import render_template
 from .communication import log
 from .dispatch import dispatch_agent
-from lib.verdict_parsers import parse_alignment_verdict as _parse_alignment_verdict
+from lib.services.verdict_parsers import parse_alignment_verdict as _parse_alignment_verdict
 from prompt_safety import validate_dynamic_content
 from .pipeline_control import poll_control_messages
 from .types import Section

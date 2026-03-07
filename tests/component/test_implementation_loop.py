@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.implementation_loop import run_implementation_loop
+from src.scripts.lib.pipelines.implementation_loop import run_implementation_loop
 from src.scripts.section_loop.types import Section
 
 
@@ -51,19 +51,19 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
     impl_modified = planspace / "artifacts" / "impl-09-modified.txt"
 
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop.handle_pending_messages",
+        "src.scripts.lib.pipelines.implementation_loop.handle_pending_messages",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop.alignment_changed_pending",
+        "src.scripts.lib.pipelines.implementation_loop.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop.write_strategic_impl_prompt",
+        "src.scripts.lib.pipelines.implementation_loop.write_strategic_impl_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "impl-prompt.md",
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop.write_impl_alignment_prompt",
+        "src.scripts.lib.pipelines.implementation_loop.write_impl_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "impl-align-prompt.md",
     )
 
@@ -77,29 +77,29 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
             return "implementation output"
         return "alignment output"
 
-    monkeypatch.setattr("src.scripts.lib.implementation_loop.dispatch_agent", _dispatch)
+    monkeypatch.setattr("src.scripts.lib.pipelines.implementation_loop.dispatch_agent", _dispatch)
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop.check_agent_signals",
+        "src.scripts.lib.pipelines.implementation_loop.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop._extract_problems",
+        "src.scripts.lib.pipelines.implementation_loop._extract_problems",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop.mailbox_send",
+        "src.scripts.lib.pipelines.implementation_loop.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop.ingest_and_submit",
+        "src.scripts.lib.pipelines.implementation_loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop._record_traceability",
+        "src.scripts.lib.pipelines.implementation_loop._record_traceability",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop._write_traceability_index",
+        "src.scripts.lib.pipelines.implementation_loop._write_traceability_index",
         lambda *_args, **_kwargs: None,
     )
 
@@ -133,19 +133,19 @@ def test_run_implementation_loop_retries_after_alignment_problems(
     impl_calls = {"count": 0}
 
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop.handle_pending_messages",
+        "src.scripts.lib.pipelines.implementation_loop.handle_pending_messages",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop.alignment_changed_pending",
+        "src.scripts.lib.pipelines.implementation_loop.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop.write_strategic_impl_prompt",
+        "src.scripts.lib.pipelines.implementation_loop.write_strategic_impl_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "impl-prompt.md",
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop.write_impl_alignment_prompt",
+        "src.scripts.lib.pipelines.implementation_loop.write_impl_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "impl-align-prompt.md",
     )
 
@@ -160,29 +160,29 @@ def test_run_implementation_loop_retries_after_alignment_problems(
             return "implementation output"
         return "alignment output"
 
-    monkeypatch.setattr("src.scripts.lib.implementation_loop.dispatch_agent", _dispatch)
+    monkeypatch.setattr("src.scripts.lib.pipelines.implementation_loop.dispatch_agent", _dispatch)
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop.check_agent_signals",
+        "src.scripts.lib.pipelines.implementation_loop.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop._extract_problems",
+        "src.scripts.lib.pipelines.implementation_loop._extract_problems",
         lambda *_args, **_kwargs: next(problems),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop.mailbox_send",
+        "src.scripts.lib.pipelines.implementation_loop.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop.ingest_and_submit",
+        "src.scripts.lib.pipelines.implementation_loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop._record_traceability",
+        "src.scripts.lib.pipelines.implementation_loop._record_traceability",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.implementation_loop._write_traceability_index",
+        "src.scripts.lib.pipelines.implementation_loop._write_traceability_index",
         lambda *_args, **_kwargs: None,
     )
 

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib import intent_bootstrap
-from src.scripts.lib.intent_bootstrap import run_intent_bootstrap
+from src.scripts.lib.intent import intent_bootstrap
+from src.scripts.lib.intent.intent_bootstrap import run_intent_bootstrap
 from section_loop.types import Section
 
 

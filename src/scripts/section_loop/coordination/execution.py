@@ -1,8 +1,8 @@
 from pathlib import Path
 from typing import Any
 
-from lib.artifact_io import read_json
-from lib.path_registry import PathRegistry
+from lib.core.artifact_io import read_json
+from lib.core.path_registry import PathRegistry
 
 from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
 from ..communication import WORKFLOW_HOME, _log_artifact, log

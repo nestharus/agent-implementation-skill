@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.scan_dispatch import (
+from src.scripts.lib.scan.scan_dispatch import (
     DEFAULT_SCAN_MODELS,
     build_scan_dispatch_command,
     read_scan_model_policy,

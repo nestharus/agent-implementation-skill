@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.scripts.lib.scope_delta_parser import (
+from src.scripts.lib.services.scope_delta_parser import (
     normalize_section_id,
     parse_scope_delta_adjudication,
 )
