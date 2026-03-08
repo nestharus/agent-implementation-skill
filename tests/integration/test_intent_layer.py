@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from _paths import SRC_DIR
+from lib.core.hash_service import file_hash
 
 from section_loop.intent.surfaces import (
     find_discarded_recurrences,
@@ -63,6 +64,43 @@ def _make_intent_section(planspace: Path, codespace: Path) -> Section:
         "# Problem Statement\nAuth refactor.\n# Evidence\nLegacy.\n"
         "# Constraints\nBackward compat.\n# Success Criteria\nOAuth2.\n"
         "# Out of Scope\nUI changes.\n")
+    intent_global = planspace / "artifacts" / "intent" / "global"
+    intent_global.mkdir(parents=True, exist_ok=True)
+    source_path = codespace / "README.md"
+    if not source_path.exists():
+        source_path.write_text(
+            "# Project Notes\n\n"
+            "Fail explicitly. Escalate uncertainty before risky changes.\n",
+            encoding="utf-8",
+        )
+    (intent_global / "philosophy.md").write_text(
+        "# Operational Philosophy\n\n"
+        "## Principles\n\n"
+        "### P1: Fail explicitly with context.\n"
+        "Grounding: README.\n"
+        "Test: silent defaults violate this.\n",
+        encoding="utf-8",
+    )
+    (intent_global / "philosophy-source-map.json").write_text(
+        json.dumps({
+            "P1": {
+                "source_type": "repo_source",
+                "source_file": str(source_path),
+                "source_section": "Project Notes",
+            },
+        }),
+        encoding="utf-8",
+    )
+    (intent_global / "philosophy-source-manifest.json").write_text(
+        json.dumps({
+            "sources": [{
+                "path": str(source_path),
+                "hash": file_hash(source_path),
+                "source_type": "repo_source",
+            }],
+        }),
+        encoding="utf-8",
+    )
     return sec
 
 
@@ -285,8 +323,23 @@ class TestIntentBootstrap:
                 )
                 signal_path.parent.mkdir(parents=True, exist_ok=True)
                 signal_path.write_text(json.dumps({
+                    "status": "selected",
                     "sources": [{"path": str(constraints_path),
                                  "reason": "constraints"}],
+                }), encoding="utf-8")
+                return ""
+            if agent_file == "philosophy-source-verifier.md":
+                signal_path = (
+                    intent_planspace / "artifacts" / "signals"
+                    / "philosophy-verified-sources.json"
+                )
+                signal_path.parent.mkdir(parents=True, exist_ok=True)
+                signal_path.write_text(json.dumps({
+                    "verified_sources": [{
+                        "path": str(constraints_path),
+                        "reason": "confirmed constraints",
+                    }],
+                    "rejected": [],
                 }), encoding="utf-8")
                 return ""
             # Philosophy distiller writes output + source map
@@ -300,7 +353,11 @@ class TestIntentBootstrap:
                 source_map = philosophy_path.parent / \
                     "philosophy-source-map.json"
                 source_map.write_text(json.dumps({
-                    "P1": str(constraints_path) + ":1-5",
+                    "P1": {
+                        "source_type": "repo_source",
+                        "source_file": str(constraints_path),
+                        "source_section": "Constraints",
+                    },
                 }), encoding="utf-8")
                 return ""
             return ""
@@ -311,7 +368,8 @@ class TestIntentBootstrap:
         result = ensure_global_philosophy(
             intent_planspace, intent_planspace, "parent",
         )
-        assert result == philosophy_path
+        assert result["status"] == "ready"
+        assert result["philosophy_path"] == philosophy_path
         assert philosophy_path.exists()
         assert "P1" in philosophy_path.read_text(encoding="utf-8")
 
@@ -570,9 +628,22 @@ class TestRunnerIntentIntegration:
                                / "philosophy-selected-sources.json")
                 signal_path.parent.mkdir(parents=True, exist_ok=True)
                 signal_path.write_text(json.dumps({
+                    "status": "selected",
                     "sources": [{"path": str(
                         intent_planspace / "constraints.md"),
                         "reason": "constraints"}],
+                }), encoding="utf-8")
+                return ""
+            if agent_file == "philosophy-source-verifier.md":
+                signal_path = (intent_planspace / "artifacts" / "signals"
+                               / "philosophy-verified-sources.json")
+                signal_path.parent.mkdir(parents=True, exist_ok=True)
+                signal_path.write_text(json.dumps({
+                    "verified_sources": [{
+                        "path": str(intent_planspace / "constraints.md"),
+                        "reason": "confirmed constraints",
+                    }],
+                    "rejected": [],
                 }), encoding="utf-8")
                 return ""
 
@@ -583,7 +654,13 @@ class TestRunnerIntentIntegration:
                 phi_path.parent.mkdir(parents=True, exist_ok=True)
                 phi_path.write_text("# Operational Philosophy\nP1...\n")
                 smap = phi_path.parent / "philosophy-source-map.json"
-                smap.write_text(json.dumps({"P1": "constraints.md:1"}))
+                smap.write_text(json.dumps({
+                    "P1": {
+                        "source_type": "repo_source",
+                        "source_file": "constraints.md",
+                        "source_section": "Constraints",
+                    },
+                }))
                 return ""
 
             # Intent pack generator
@@ -860,21 +937,39 @@ class TestIntentConventions:
     def test_philosophy_fail_closed_no_sources(
         self, intent_planspace: Path, mock_dispatch: MagicMock,
     ) -> None:
-        """No philosophy sources → fail-closed, return None, write signal."""
+        """No philosophy sources → fail-closed, return blocker result."""
         from section_loop.intent.bootstrap import ensure_global_philosophy
         # No constraints.md, philosophy.md etc. in planspace
         result = ensure_global_philosophy(
             intent_planspace, intent_planspace, "parent",
         )
-        assert result is None
+        assert result["status"] == "needs_user_input"
         # Distiller should NOT have been called
         assert mock_dispatch.call_count == 0
         # Signal should exist
         signal_path = (intent_planspace / "artifacts" / "signals"
-                       / "philosophy-source-missing.json")
+                       / "philosophy-bootstrap-signal.json")
         assert signal_path.exists()
         signal = json.loads(signal_path.read_text(encoding="utf-8"))
-        assert signal["state"] == "philosophy_source_missing"
+        assert signal["state"] == "NEED_DECISION"
+        status_path = (intent_planspace / "artifacts" / "intent" / "global"
+                       / "philosophy-bootstrap-status.json")
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        assert status["bootstrap_state"] == "needs_user_input"
+        assert status["blocking_state"] == "NEED_DECISION"
+        user_source = (
+            intent_planspace / "artifacts" / "intent" / "global"
+            / "philosophy-source-user.md"
+        )
+        assert user_source.exists()
+        assert "## Your Philosophy" in user_source.read_text(encoding="utf-8")
+        decisions = (
+            intent_planspace / "artifacts" / "intent" / "global"
+            / "philosophy-bootstrap-decisions.md"
+        )
+        decisions_text = decisions.read_text(encoding="utf-8")
+        assert "philosophy-source-user.md" in decisions_text
+        assert "Freeform input is accepted" in decisions_text
 
     def test_loop_contract_includes_intent_artifacts(self) -> None:
         """loop-contract.md lists intent artifacts in inputs."""
@@ -1008,9 +1103,22 @@ class TestIntentConventions:
                                / "philosophy-selected-sources.json")
                 signal_path.parent.mkdir(parents=True, exist_ok=True)
                 signal_path.write_text(json.dumps({
+                    "status": "selected",
                     "sources": [{"path": str(
                         intent_planspace / "constraints.md"),
                         "reason": "constraints"}],
+                }), encoding="utf-8")
+                return ""
+            if agent_file == "philosophy-source-verifier.md":
+                signal_path = (intent_planspace / "artifacts" / "signals"
+                               / "philosophy-verified-sources.json")
+                signal_path.parent.mkdir(parents=True, exist_ok=True)
+                signal_path.write_text(json.dumps({
+                    "verified_sources": [{
+                        "path": str(intent_planspace / "constraints.md"),
+                        "reason": "confirmed constraints",
+                    }],
+                    "rejected": [],
                 }), encoding="utf-8")
                 return ""
 
@@ -1020,7 +1128,13 @@ class TestIntentConventions:
                 phi.parent.mkdir(parents=True, exist_ok=True)
                 phi.write_text("# Philosophy\nP1...\n")
                 smap = phi.parent / "philosophy-source-map.json"
-                smap.write_text(json.dumps({"P1": "constraints.md:1"}))
+                smap.write_text(json.dumps({
+                    "P1": {
+                        "source_type": "repo_source",
+                        "source_file": "constraints.md",
+                        "source_section": "Constraints",
+                    },
+                }))
                 return ""
 
             if agent_file == "intent-pack-generator.md":
@@ -1074,7 +1188,14 @@ class TestIntentConventions:
         # V1/R75: philosophy is now a gate — mock it as available
         monkeypatch.setattr(
             "section_loop.section_engine.runner.ensure_global_philosophy",
-            MagicMock(return_value=intent_planspace / "artifacts" / "philosophy.md"))
+            MagicMock(return_value={
+                "status": "ready",
+                "blocking_state": None,
+                "philosophy_path": (
+                    intent_planspace / "artifacts" / "philosophy.md"
+                ),
+                "detail": "ready",
+            }))
         section = _make_intent_section(intent_planspace, codespace)
 
         # Pre-create a cycle budget file
@@ -1138,7 +1259,14 @@ class TestIntentConventions:
         # V1/R75: philosophy is now a gate — mock it as available
         monkeypatch.setattr(
             "section_loop.section_engine.runner.ensure_global_philosophy",
-            MagicMock(return_value=intent_planspace / "artifacts" / "philosophy.md"))
+            MagicMock(return_value={
+                "status": "ready",
+                "blocking_state": None,
+                "philosophy_path": (
+                    intent_planspace / "artifacts" / "philosophy.md"
+                ),
+                "detail": "ready",
+            }))
         section = _make_intent_section(intent_planspace, codespace)
 
         # Write malformed cycle budget
@@ -1548,6 +1676,8 @@ class TestR56AgentSelectedSources:
         text = agent.read_text(encoding="utf-8")
         assert "sources" in text, (
             "Agent must define 'sources' in its output schema")
+        assert "status" in text, (
+            "Agent must define selector status in its output schema")
 
     def test_model_policy_has_selector_key(self) -> None:
         """Model policy must include intent_philosophy_selector key."""
@@ -1559,6 +1689,8 @@ class TestR56AgentSelectedSources:
             policy = read_model_policy(ps)
             assert "intent_philosophy_selector" in policy, (
                 "Model policy must include intent_philosophy_selector key")
+            assert "intent_philosophy_selector_escalation" in policy, (
+                "Model policy must include selector escalation key")
 
     def test_selector_fail_closed_no_selection(
         self, planspace, codespace, mock_dispatch,
@@ -1573,7 +1705,10 @@ class TestR56AgentSelectedSources:
                 signal = planspace / "artifacts" / "signals" / \
                     "philosophy-selected-sources.json"
                 signal.parent.mkdir(parents=True, exist_ok=True)
-                signal.write_text(json.dumps({"sources": []}))
+                signal.write_text(json.dumps({
+                    "status": "empty",
+                    "sources": [],
+                }))
                 return ""
             return ""
 
@@ -1581,8 +1716,217 @@ class TestR56AgentSelectedSources:
 
         from section_loop.intent.bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
-        assert result is None, (
-            "Empty selection must fail-closed (return None)")
+        assert result["status"] == "needs_user_input", (
+            "Empty selection must fail-closed with a blocker result")
+
+    def test_selector_missing_signal_retries_then_escalates(
+        self, planspace, codespace, mock_dispatch,
+    ) -> None:
+        """Missing selector signal retries twice, then escalates, then blocks."""
+        (planspace / "readme.md").write_text("# Readme\n")
+        models: list[str] = []
+
+        def selector_missing(*args, **kwargs):
+            if kwargs.get("agent_file", "") == "philosophy-source-selector.md":
+                models.append(args[0])
+            return ""
+
+        mock_dispatch.side_effect = selector_missing
+
+        from section_loop.intent.bootstrap import ensure_global_philosophy
+        result = ensure_global_philosophy(planspace, codespace, "parent")
+        assert result["status"] == "failed"
+        assert result["blocking_state"] == "NEEDS_PARENT"
+        assert models == ["gpt-high", "gpt-high", "claude-opus"]
+
+        diagnostics = planspace / "artifacts" / "intent" / "global" / \
+            "philosophy-bootstrap-diagnostics.json"
+        payload = json.loads(diagnostics.read_text())
+        assert payload["stage"] == "selector"
+        assert payload["final_outcome"] == "needs_parent"
+        assert [a["result"] for a in payload["attempts"]] == [
+            "missing_signal", "missing_signal", "missing_signal",
+        ]
+
+    def test_selector_diagnostics_record_missing_malformed_then_empty(
+        self, planspace, codespace, mock_dispatch,
+    ) -> None:
+        """Selector diagnostics keep missing, malformed, and empty distinct."""
+        (planspace / "readme.md").write_text("# Readme\n")
+        selector_calls = 0
+
+        def selector_states(*args, **kwargs):
+            nonlocal selector_calls
+            if kwargs.get("agent_file", "") != "philosophy-source-selector.md":
+                return ""
+            selector_calls += 1
+            signal = planspace / "artifacts" / "signals" / \
+                "philosophy-selected-sources.json"
+            signal.parent.mkdir(parents=True, exist_ok=True)
+            if selector_calls == 1:
+                return ""
+            if selector_calls == 2:
+                signal.write_text("NOT JSON", encoding="utf-8")
+                return ""
+            signal.write_text(json.dumps({
+                "status": "empty",
+                "sources": [],
+            }), encoding="utf-8")
+            return ""
+
+        mock_dispatch.side_effect = selector_states
+
+        from section_loop.intent.bootstrap import ensure_global_philosophy
+        result = ensure_global_philosophy(planspace, codespace, "parent")
+        assert result["status"] == "needs_user_input"
+
+        diagnostics = planspace / "artifacts" / "intent" / "global" / \
+            "philosophy-bootstrap-diagnostics.json"
+        payload = json.loads(diagnostics.read_text())
+        assert payload["final_outcome"] == "need_decision"
+        assert payload["attempts"] == [
+            {"attempt": 1, "model": "gpt-high", "result": "missing_signal"},
+            {
+                "attempt": 2,
+                "model": "gpt-high",
+                "result": "malformed_signal",
+                "preserved": "philosophy-selected-sources.malformed.json",
+            },
+            {"attempt": 3, "model": "claude-opus", "result": "valid_empty"},
+        ]
+        malformed = planspace / "artifacts" / "signals" / \
+            "philosophy-selected-sources.malformed.json"
+        assert malformed.exists()
+
+    def test_verifier_missing_signal_blocks_instead_of_silent_empty(
+        self, planspace, codespace, mock_dispatch,
+    ) -> None:
+        """Ambiguous-source verifier failure is treated as agent failure."""
+        source = codespace / "constraints.md"
+        source.write_text("# Constraints\nNo new deps.\n", encoding="utf-8")
+        ambiguous = codespace / "maybe.md"
+        ambiguous.write_text("# Maybe\nUnclear preview.\n", encoding="utf-8")
+        verifier_models: list[str] = []
+
+        def verifier_missing(*args, **kwargs):
+            agent_file = kwargs.get("agent_file", "")
+            if agent_file == "philosophy-source-selector.md":
+                signal = planspace / "artifacts" / "signals" / \
+                    "philosophy-selected-sources.json"
+                signal.parent.mkdir(parents=True, exist_ok=True)
+                signal.write_text(json.dumps({
+                    "status": "selected",
+                    "sources": [{"path": str(source), "reason": "constraints"}],
+                    "ambiguous": [{"path": str(ambiguous), "reason": "unclear"}],
+                }), encoding="utf-8")
+                return ""
+            if agent_file == "philosophy-source-verifier.md":
+                verifier_models.append(args[0])
+                return ""
+            return ""
+
+        mock_dispatch.side_effect = verifier_missing
+
+        from section_loop.intent.bootstrap import ensure_global_philosophy
+        result = ensure_global_philosophy(planspace, codespace, "parent")
+        assert result["status"] == "failed"
+        assert result["blocking_state"] == "NEEDS_PARENT"
+        assert verifier_models == ["claude-opus", "claude-opus", "claude-opus"]
+
+    def test_verifier_confirms_selected_and_ambiguous_sources(
+        self, planspace, codespace, mock_dispatch,
+    ) -> None:
+        """Verifier sees the full shortlist and becomes authoritative."""
+        selected_source = codespace / "constraints.md"
+        selected_source.write_text(
+            "# Constraints\nNo new deps.\n",
+            encoding="utf-8",
+        )
+        ambiguous_source = codespace / "principles.md"
+        ambiguous_source.write_text(
+            "# Principles\nAlways preserve invariants.\n",
+            encoding="utf-8",
+        )
+        verifier_seen_paths: list[str] = []
+
+        def verifier_authoritative(*args, **kwargs):
+            agent_file = kwargs.get("agent_file", "")
+            if agent_file == "philosophy-source-selector.md":
+                signal = planspace / "artifacts" / "signals" / \
+                    "philosophy-selected-sources.json"
+                signal.parent.mkdir(parents=True, exist_ok=True)
+                signal.write_text(json.dumps({
+                    "status": "selected",
+                    "sources": [{
+                        "path": str(selected_source),
+                        "reason": "constraints",
+                    }],
+                    "ambiguous": [{
+                        "path": str(ambiguous_source),
+                        "reason": "needs full read",
+                    }],
+                }), encoding="utf-8")
+                return ""
+            if agent_file == "philosophy-source-verifier.md":
+                prompt_path = args[1]
+                prompt_text = Path(prompt_path).read_text(encoding="utf-8")
+                verifier_seen_paths.extend([
+                    str(selected_source),
+                    str(ambiguous_source),
+                ])
+                assert str(selected_source) in prompt_text
+                assert str(ambiguous_source) in prompt_text
+                signal = planspace / "artifacts" / "signals" / \
+                    "philosophy-verified-sources.json"
+                signal.parent.mkdir(parents=True, exist_ok=True)
+                signal.write_text(json.dumps({
+                    "verified_sources": [{
+                        "path": str(ambiguous_source),
+                        "reason": "confirmed philosophy",
+                    }],
+                    "rejected": [{
+                        "path": str(selected_source),
+                        "reason": "not philosophy after full read",
+                    }],
+                }), encoding="utf-8")
+                return ""
+            if agent_file == "philosophy-distiller.md":
+                intent_global = planspace / "artifacts" / "intent" / "global"
+                intent_global.mkdir(parents=True, exist_ok=True)
+                (intent_global / "philosophy.md").write_text(
+                    "# Philosophy\n## P1: Preserve invariants\n",
+                    encoding="utf-8",
+                )
+                (intent_global / "philosophy-source-map.json").write_text(
+                    json.dumps({
+                        "P1": {
+                            "source_type": "repo_source",
+                            "source_file": str(ambiguous_source),
+                            "source_section": "Principles",
+                        },
+                    }),
+                    encoding="utf-8",
+                )
+                return ""
+            return ""
+
+        mock_dispatch.side_effect = verifier_authoritative
+
+        from section_loop.intent.bootstrap import ensure_global_philosophy
+        result = ensure_global_philosophy(planspace, codespace, "parent")
+
+        assert result["status"] == "ready"
+        assert verifier_seen_paths == [
+            str(selected_source),
+            str(ambiguous_source),
+        ]
+        manifest = json.loads((
+            planspace / "artifacts" / "intent" / "global"
+            / "philosophy-source-manifest.json"
+        ).read_text(encoding="utf-8"))
+        assert len(manifest["sources"]) == 1
+        assert manifest["sources"][0]["path"] == str(ambiguous_source)
+        assert manifest["sources"][0]["hash"]
 
 
 class TestR56UpdaterSignalPreservation:
@@ -2212,19 +2556,35 @@ class TestR59PhilosophyGroundingValidation:
 
         # Create a codespace doc for catalog
         (codespace / "philo.md").write_text("# Philosophy\nP1: Test.\n")
+        distiller_calls = 0
 
         def side_effect(*args, **kwargs):
+            nonlocal distiller_calls
             agent_file = kwargs.get("agent_file", "")
             if agent_file == "philosophy-source-selector.md":
                 signal = artifacts / "signals" / \
                     "philosophy-selected-sources.json"
                 signal.parent.mkdir(parents=True, exist_ok=True)
                 signal.write_text(json.dumps({
+                    "status": "selected",
                     "sources": [{"path": str(codespace / "philo.md"),
                                  "reason": "test"}],
                 }))
                 return ""
+            if agent_file == "philosophy-source-verifier.md":
+                signal = artifacts / "signals" / \
+                    "philosophy-verified-sources.json"
+                signal.parent.mkdir(parents=True, exist_ok=True)
+                signal.write_text(json.dumps({
+                    "verified_sources": [{
+                        "path": str(codespace / "philo.md"),
+                        "reason": "confirmed test",
+                    }],
+                    "rejected": [],
+                }))
+                return ""
             if agent_file == "philosophy-distiller.md":
+                distiller_calls += 1
                 # Write philosophy but NO source map
                 (intent_global / "philosophy.md").write_text(
                     "# Philosophy\n## P1: Test principle\nDo stuff.\n")
@@ -2235,13 +2595,16 @@ class TestR59PhilosophyGroundingValidation:
 
         from section_loop.intent.bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
-        assert result is None, (
-            "Missing source map must cause grounding failure (None)")
+        assert result["status"] == "failed", (
+            "Missing source map must cause grounding failure")
+        assert distiller_calls == 2, (
+            "Missing distiller outputs must retry once before blocking")
 
         fail_signal = artifacts / "signals" / \
-            "philosophy-grounding-failed.json"
+            "philosophy-bootstrap-signal.json"
         assert fail_signal.exists(), (
-            "Must write philosophy-grounding-failed.json signal")
+            "Must write philosophy-bootstrap-signal.json signal")
+        assert json.loads(fail_signal.read_text())["state"] == "NEEDS_PARENT"
 
     def test_malformed_source_map_preserved(
         self, planspace, codespace, mock_dispatch,
@@ -2260,8 +2623,21 @@ class TestR59PhilosophyGroundingValidation:
                     "philosophy-selected-sources.json"
                 signal.parent.mkdir(parents=True, exist_ok=True)
                 signal.write_text(json.dumps({
+                    "status": "selected",
                     "sources": [{"path": str(codespace / "philo.md"),
                                  "reason": "test"}],
+                }))
+                return ""
+            if agent_file == "philosophy-source-verifier.md":
+                signal = artifacts / "signals" / \
+                    "philosophy-verified-sources.json"
+                signal.parent.mkdir(parents=True, exist_ok=True)
+                signal.write_text(json.dumps({
+                    "verified_sources": [{
+                        "path": str(codespace / "philo.md"),
+                        "reason": "confirmed test",
+                    }],
+                    "rejected": [],
                 }))
                 return ""
             if agent_file == "philosophy-distiller.md":
@@ -2277,11 +2653,204 @@ class TestR59PhilosophyGroundingValidation:
 
         from section_loop.intent.bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
-        assert result is None
+        assert result["status"] == "failed"
 
         malformed = intent_global / "philosophy-source-map.malformed.json"
         assert malformed.exists(), (
             "Malformed source map must be preserved as .malformed.json")
+
+    def test_distiller_no_extractable_philosophy_needs_decision(
+        self, planspace, codespace, mock_dispatch,
+    ) -> None:
+        """Empty distillation is a genuine no-philosophy outcome."""
+        artifacts = planspace / "artifacts"
+        intent_global = artifacts / "intent" / "global"
+        intent_global.mkdir(parents=True, exist_ok=True)
+
+        source = codespace / "implementation.md"
+        source.write_text("# Build Steps\n1. Add endpoint.\n", encoding="utf-8")
+
+        def side_effect(*args, **kwargs):
+            agent_file = kwargs.get("agent_file", "")
+            if agent_file == "philosophy-source-selector.md":
+                signal = artifacts / "signals" / \
+                    "philosophy-selected-sources.json"
+                signal.parent.mkdir(parents=True, exist_ok=True)
+                signal.write_text(json.dumps({
+                    "status": "selected",
+                    "sources": [{"path": str(source), "reason": "mixed doc"}],
+                }))
+                return ""
+            if agent_file == "philosophy-source-verifier.md":
+                signal = artifacts / "signals" / \
+                    "philosophy-verified-sources.json"
+                signal.parent.mkdir(parents=True, exist_ok=True)
+                signal.write_text(json.dumps({
+                    "verified_sources": [{
+                        "path": str(source),
+                        "reason": "full read completed",
+                    }],
+                    "rejected": [],
+                }))
+                return ""
+            if agent_file == "philosophy-distiller.md":
+                (intent_global / "philosophy.md").write_text(
+                    "",
+                    encoding="utf-8",
+                )
+                (intent_global / "philosophy-source-map.json").write_text(
+                    "{}",
+                    encoding="utf-8",
+                )
+                return ""
+            return ""
+
+        mock_dispatch.side_effect = side_effect
+
+        from section_loop.intent.bootstrap import ensure_global_philosophy
+        result = ensure_global_philosophy(planspace, codespace, "parent")
+
+        assert result["status"] == "needs_user_input"
+        assert result["blocking_state"] == "NEED_DECISION"
+        blocker = json.loads(
+            (artifacts / "signals" / "philosophy-bootstrap-signal.json")
+            .read_text(encoding="utf-8"),
+        )
+        assert blocker["state"] == "NEED_DECISION"
+
+    def test_user_source_resume_distills_without_selector_or_verifier(
+        self, planspace, codespace, mock_dispatch,
+    ) -> None:
+        """User bootstrap input becomes an authorized distillation source."""
+        artifacts = planspace / "artifacts"
+        intent_global = artifacts / "intent" / "global"
+        intent_global.mkdir(parents=True, exist_ok=True)
+
+        user_source = intent_global / "philosophy-source-user.md"
+        user_source.write_text(
+            "# Philosophy Source — User\n\n"
+            "## Your Philosophy\n"
+            "- Fail explicitly with context instead of silently defaulting.\n"
+            "- Escalate uncertainty instead of guessing when consequences are material.\n",
+            encoding="utf-8",
+        )
+
+        dispatches: list[str] = []
+
+        def side_effect(*args, **kwargs):
+            agent_file = kwargs.get("agent_file", "")
+            dispatches.append(agent_file)
+            if agent_file == "philosophy-distiller.md":
+                (intent_global / "philosophy.md").write_text(
+                    "# Operational Philosophy\n\n"
+                    "## Principles\n\n"
+                    "### P1: Fail explicitly with context.\n"
+                    "Grounding: user text\n"
+                    "Test: silent defaults violate this.\n",
+                    encoding="utf-8",
+                )
+                (intent_global / "philosophy-source-map.json").write_text(
+                    json.dumps({
+                        "P1": {
+                            "source_type": "user_source",
+                            "source_file": str(user_source),
+                            "source_section": "Your Philosophy",
+                        },
+                    }),
+                    encoding="utf-8",
+                )
+                return ""
+            return ""
+
+        mock_dispatch.side_effect = side_effect
+
+        from section_loop.intent.bootstrap import ensure_global_philosophy
+        result = ensure_global_philosophy(planspace, codespace, "parent")
+
+        assert result["status"] == "ready"
+        assert dispatches == ["philosophy-distiller.md"]
+        manifest = json.loads(
+            (intent_global / "philosophy-source-manifest.json").read_text(
+                encoding="utf-8",
+            ),
+        )
+        assert manifest["sources"] == [{
+            "path": str(user_source),
+            "hash": manifest["sources"][0]["hash"],
+            "source_type": "user_source",
+        }]
+        status = json.loads(
+            (intent_global / "philosophy-bootstrap-status.json").read_text(
+                encoding="utf-8",
+            ),
+        )
+        assert status["source_mode"] == "user_source"
+
+    def test_user_source_ambiguous_repauses_with_same_decision_artifact(
+        self, planspace, codespace, mock_dispatch,
+    ) -> None:
+        """Thin or ambiguous user input triggers another NEED_DECISION cycle."""
+        artifacts = planspace / "artifacts"
+        intent_global = artifacts / "intent" / "global"
+        intent_global.mkdir(parents=True, exist_ok=True)
+
+        user_source = intent_global / "philosophy-source-user.md"
+        user_source.write_text(
+            "# Philosophy Source — User\n\n"
+            "## Your Philosophy\n"
+            "Sometimes move fast, sometimes be cautious, depending on the situation.\n"
+            "Use judgment.\n"
+            "Explain things if needed.\n"
+            "Prefer not to block, except when blocking is better.\n",
+            encoding="utf-8",
+        )
+        decisions = intent_global / "philosophy-bootstrap-decisions.md"
+
+        dispatches: list[str] = []
+
+        def side_effect(*args, **kwargs):
+            agent_file = kwargs.get("agent_file", "")
+            dispatches.append(agent_file)
+            if agent_file == "philosophy-distiller.md":
+                decisions.write_text(
+                    "# Philosophy Bootstrap Decisions\n\n"
+                    "The current philosophy input is still ambiguous.\n\n"
+                    "Please clarify:\n"
+                    "- When should the system block instead of proceed under uncertainty?\n"
+                    "- Which tradeoffs outrank speed when they conflict?\n",
+                    encoding="utf-8",
+                )
+                (intent_global / "philosophy.md").write_text(
+                    "",
+                    encoding="utf-8",
+                )
+                (intent_global / "philosophy-source-map.json").write_text(
+                    "{}",
+                    encoding="utf-8",
+                )
+                return ""
+            return ""
+
+        mock_dispatch.side_effect = side_effect
+
+        from section_loop.intent.bootstrap import ensure_global_philosophy
+        result = ensure_global_philosophy(planspace, codespace, "parent")
+
+        assert result["status"] == "needs_user_input"
+        assert result["blocking_state"] == "NEED_DECISION"
+        assert dispatches == [
+            "philosophy-distiller.md",
+            "philosophy-distiller.md",
+        ]
+        blocker = json.loads(
+            (artifacts / "signals" / "philosophy-bootstrap-signal.json")
+            .read_text(encoding="utf-8"),
+        )
+        assert blocker["state"] == "NEED_DECISION"
+        assert blocker["user_source_path"].endswith("philosophy-source-user.md")
+        decisions_text = decisions.read_text(encoding="utf-8")
+        assert "clarify" in decisions_text.lower()
+        assert "block instead of proceed" in decisions_text
 
     def test_unmapped_principles_fail_closed(
         self, planspace, codespace, mock_dispatch,
@@ -2300,8 +2869,21 @@ class TestR59PhilosophyGroundingValidation:
                     "philosophy-selected-sources.json"
                 signal.parent.mkdir(parents=True, exist_ok=True)
                 signal.write_text(json.dumps({
+                    "status": "selected",
                     "sources": [{"path": str(codespace / "philo.md"),
                                  "reason": "test"}],
+                }))
+                return ""
+            if agent_file == "philosophy-source-verifier.md":
+                signal = artifacts / "signals" / \
+                    "philosophy-verified-sources.json"
+                signal.parent.mkdir(parents=True, exist_ok=True)
+                signal.write_text(json.dumps({
+                    "verified_sources": [{
+                        "path": str(codespace / "philo.md"),
+                        "reason": "confirmed test",
+                    }],
+                    "rejected": [],
                 }))
                 return ""
             if agent_file == "philosophy-distiller.md":
@@ -2309,7 +2891,13 @@ class TestR59PhilosophyGroundingValidation:
                     "# Philosophy\n## P1: One\n## P2: Two\n## P3: Three\n")
                 # Source map only covers P1
                 (intent_global / "philosophy-source-map.json").write_text(
-                    json.dumps({"P1": "philo.md line 5"}))
+                    json.dumps({
+                        "P1": {
+                            "source_type": "repo_source",
+                            "source_file": "philo.md",
+                            "source_section": "One",
+                        },
+                    }))
                 return ""
             return ""
 
@@ -2317,14 +2905,15 @@ class TestR59PhilosophyGroundingValidation:
 
         from section_loop.intent.bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
-        assert result is None, (
+        assert result["status"] == "failed", (
             "Unmapped principles must cause grounding failure")
 
         fail_signal = artifacts / "signals" / \
-            "philosophy-grounding-failed.json"
+            "philosophy-bootstrap-signal.json"
         data = json.loads(fail_signal.read_text())
         assert "P2" in data.get("unmapped_principles", [])
         assert "P3" in data.get("unmapped_principles", [])
+        assert data["state"] == "NEEDS_PARENT"
 
     def test_fully_grounded_passes(
         self, planspace, codespace, mock_dispatch,
@@ -2343,15 +2932,39 @@ class TestR59PhilosophyGroundingValidation:
                     "philosophy-selected-sources.json"
                 signal.parent.mkdir(parents=True, exist_ok=True)
                 signal.write_text(json.dumps({
+                    "status": "selected",
                     "sources": [{"path": str(codespace / "philo.md"),
                                  "reason": "test"}],
+                }))
+                return ""
+            if agent_file == "philosophy-source-verifier.md":
+                signal = artifacts / "signals" / \
+                    "philosophy-verified-sources.json"
+                signal.parent.mkdir(parents=True, exist_ok=True)
+                signal.write_text(json.dumps({
+                    "verified_sources": [{
+                        "path": str(codespace / "philo.md"),
+                        "reason": "confirmed test",
+                    }],
+                    "rejected": [],
                 }))
                 return ""
             if agent_file == "philosophy-distiller.md":
                 (intent_global / "philosophy.md").write_text(
                     "# Philosophy\n## P1: One\n## P2: Two\n")
                 (intent_global / "philosophy-source-map.json").write_text(
-                    json.dumps({"P1": "philo.md:3", "P2": "philo.md:7"}))
+                    json.dumps({
+                        "P1": {
+                            "source_type": "repo_source",
+                            "source_file": "philo.md",
+                            "source_section": "One",
+                        },
+                        "P2": {
+                            "source_type": "repo_source",
+                            "source_file": "philo.md",
+                            "source_section": "Two",
+                        },
+                    }))
                 return ""
             return ""
 
@@ -2359,8 +2972,13 @@ class TestR59PhilosophyGroundingValidation:
 
         from section_loop.intent.bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
-        assert result is not None, (
+        assert result["status"] == "ready", (
             "Fully grounded philosophy must succeed")
+        status_path = artifacts / "intent" / "global" / \
+            "philosophy-bootstrap-status.json"
+        status = json.loads(status_path.read_text())
+        assert status["bootstrap_state"] == "ready"
+        assert status["blocking_state"] is None
 
 
 class TestR59IntentPackHashInvalidation:

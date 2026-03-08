@@ -15,6 +15,8 @@ def test_load_model_policy_returns_defaults_when_file_missing(tmp_path) -> None:
     assert policy["proposal"] == "gpt-high"
     assert policy["risk_assessor"] == "gpt-high"
     assert policy["execution_optimizer"] == "gpt-high"
+    assert policy["intent_philosophy_selector"] == "gpt-high"
+    assert policy["intent_philosophy_bootstrap_prompter"] == "glm"
     assert policy["qa_interceptor"] == "claude-opus"
     assert policy["escalation_triggers"]["stall_count"] == 2
     assert policy.get("scan") == {}

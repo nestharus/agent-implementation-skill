@@ -56,12 +56,16 @@ def run_agent(
     if codespace:
         cmd.extend(["--project", str(codespace)])
 
+    # Strip CLAUDECODE so nested agents sessions can launch
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
     try:
         result = subprocess.run(  # noqa: S603
             cmd,
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=env,
         )
         return AgentResult(
             output=result.stdout + result.stderr,

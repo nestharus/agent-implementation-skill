@@ -170,7 +170,11 @@ def _update_blocker_rollup(planspace: Path) -> None:
             continue
         lines.append(f"# {category_titles[cat_key]}\n")
         for b in cat_blockers:
-            lines.append(f"## Section {b['section']} — {b['state']}")
+            if str(b["section"]).lower() == "global":
+                heading = "## Global — philosophy bootstrap"
+            else:
+                heading = f"## Section {b['section']} — {b['state']}"
+            lines.append(heading)
             lines.append(f"- **Detail**: {b['detail']}")
             if b["why_blocked"]:
                 lines.append(f"- **Why blocked**: {b['why_blocked']}")

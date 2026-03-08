@@ -20,15 +20,36 @@ statement, and defined interactions with other principles. You do not
 add your own opinions, soften harsh constraints, or fill gaps with
 assumptions.
 
+Philosophy means cross-cutting reasoning about how the system should
+think before it knows what to build: tradeoff rules, uncertainty rules,
+escalation rules, authority boundaries, exploration doctrine, scope
+doctrine, and durable strategic constraints.
+
 ### Phase 1: Read and Identify Principles
 
 Read the execution philosophy source material. Look for:
 
-- **Explicit constraints**: "always X", "never Y", "prefer A over B"
-- **Implicit constraints**: Recurring themes, consistent preferences,
-  patterns in how tradeoffs are resolved
-- **Priority signals**: When two concerns are mentioned, which one
-  the user subordinates to the other
+- **Durable cross-task constraints**: Rules that should still govern
+  future tasks, not just this implementation
+- **Decision constraints**: Rules that constrain future choices and
+  tradeoffs
+- **Testable doctrine**: Statements that alignment review could verify
+  from work products
+- **Priority signals**: When two concerns are mentioned, which one the
+  user subordinates to the other
+
+Exclude:
+- Feature specs
+- API, schema, or data-model details
+- Local architecture plans without general reasoning rules
+- Framework or library choices
+- Coding-style notes
+- Task checklists and implementation recipes
+- File-level implementation tactics
+
+Implementation details are only extractable when they express genuine
+cross-cutting doctrine. Example: "submit tasks, don't spawn agents" is
+doctrine because it constrains control flow everywhere.
 
 Each principle must be independently testable — an agent reading a
 work product can determine whether the principle was followed or
@@ -45,10 +66,9 @@ Assign each principle a sequential ID (P1, P2, ..., PN). For each:
 - **Test**: How an agent checks compliance. What does violation look
   like concretely?
 
-Typical philosophies yield 6-12 principles. Fewer suggests
-over-abstraction; more suggests implementation details leaking in.
-Let the source material determine the count — do not pad or prune
-to hit a number.
+Do not target a fixed count. A small, real seed philosophy is valid.
+If the sources support only 1-3 principles, extract only those. If the
+sources contain no extractable philosophy, do not invent filler.
 
 ### Phase 3: Map Interactions
 
@@ -106,18 +126,35 @@ Test: [what violation looks like]
 ### Structured Output (Required)
 
 Emit `philosophy-source-map.json` — a JSON mapping from principle ID
-to source file and section:
+to source type, source file, and source section:
 
 ```json
 {
-  "P1": {"source_file": "path/to/source.md", "source_section": "Section heading"},
-  "P2": {"source_file": "path/to/source.md", "source_section": "Another heading"},
-  "P3": {"source_file": "path/to/other.md", "source_section": "Relevant section"}
+  "P1": {"source_type": "repo_source", "source_file": "path/to/source.md", "source_section": "Section heading"},
+  "P2": {"source_type": "repo_source", "source_file": "path/to/source.md", "source_section": "Another heading"},
+  "P3": {"source_type": "user_source", "source_file": "path/to/user-source.md", "source_section": "Your Philosophy"}
 }
 ```
 
 Each key is a principle ID (P1, P2, ...). Each value records where
 in the source material that principle was extracted from.
+
+Use `source_type: "repo_source"` for repository files and
+`source_type: "user_source"` for the user-authored bootstrap source.
+
+If the sources contain only implementation details and no extractable
+reasoning philosophy:
+- Do NOT invent principles
+- Leave `philosophy.md` empty
+- Write `{}` to `philosophy-source-map.json`
+
+If the source material is user-authored bootstrap input and it is too
+thin, contradictory, or genuinely ambiguous to yield stable principles:
+- Do NOT invent filler
+- Rewrite `philosophy-bootstrap-decisions.md` with concise follow-up
+  clarification questions
+- Leave `philosophy.md` empty
+- Write `{}` to `philosophy-source-map.json`
 
 ## Anti-Patterns
 
@@ -126,6 +163,8 @@ in the source material that principle was extracted from.
   "minimize ORM usage where practical."
 - **Gap filling**: If the philosophy is silent on testing, do not
   invent a testing principle. Silence is information.
+- **Extracting local tactics**: A local implementation step is not a
+  principle unless it expresses durable cross-cutting doctrine.
 - **Over-abstracting**: "Write good code" is not a principle. "Prefer
   explicit error returns over exception hierarchies" IS a principle.
 - **Under-grounding**: Every principle must trace to specific source

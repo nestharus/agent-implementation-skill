@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from lib.core.hash_service import file_hash
 from section_loop.section_engine import run_section
 from section_loop.types import Section
 
@@ -30,6 +31,43 @@ def _make_section(planspace: Path, codespace: Path) -> Section:
     sections_dir = planspace / "artifacts" / "sections"
     (sections_dir / "section-01-proposal-excerpt.md").write_text("excerpt")
     (sections_dir / "section-01-alignment-excerpt.md").write_text("excerpt")
+    intent_global = planspace / "artifacts" / "intent" / "global"
+    intent_global.mkdir(parents=True, exist_ok=True)
+    source_path = codespace / "README.md"
+    if not source_path.exists():
+        source_path.write_text(
+            "# Project Notes\n\n"
+            "Fail explicitly. Escalate uncertainty before risky changes.\n",
+            encoding="utf-8",
+        )
+    (intent_global / "philosophy.md").write_text(
+        "# Operational Philosophy\n\n"
+        "## Principles\n\n"
+        "### P1: Fail explicitly with context.\n"
+        "Grounding: README.\n"
+        "Test: silent defaults violate this.\n",
+        encoding="utf-8",
+    )
+    (intent_global / "philosophy-source-map.json").write_text(
+        json.dumps({
+            "P1": {
+                "source_type": "repo_source",
+                "source_file": str(source_path),
+                "source_section": "Project Notes",
+            },
+        }),
+        encoding="utf-8",
+    )
+    (intent_global / "philosophy-source-manifest.json").write_text(
+        json.dumps({
+            "sources": [{
+                "path": str(source_path),
+                "hash": file_hash(source_path),
+                "source_type": "repo_source",
+            }],
+        }),
+        encoding="utf-8",
+    )
     return sec
 
 

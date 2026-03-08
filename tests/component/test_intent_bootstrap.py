@@ -63,7 +63,14 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
     monkeypatch.setattr(
         intent_bootstrap,
         "ensure_global_philosophy",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "intent" / "global" / "philosophy.md",
+        lambda *_args, **_kwargs: {
+            "status": "ready",
+            "blocking_state": None,
+            "philosophy_path": (
+                planspace / "artifacts" / "intent" / "global" / "philosophy.md"
+            ),
+            "detail": "ready",
+        },
     )
     monkeypatch.setattr(
         intent_bootstrap,
@@ -118,12 +125,31 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
     monkeypatch.setattr(
         intent_bootstrap,
         "ensure_global_philosophy",
-        lambda *_args, **_kwargs: None,
+        lambda *_args, **_kwargs: {
+            "status": "needs_user_input",
+            "blocking_state": "NEED_DECISION",
+            "philosophy_path": None,
+            "detail": "philosophy bootstrap needs user input",
+        },
     )
     monkeypatch.setattr(
         intent_bootstrap,
         "alignment_changed_pending",
         lambda *_args, **_kwargs: False,
+    )
+    blocker_rollups: list[Path] = []
+    pauses: list[tuple[Path, str, str]] = []
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "_update_blocker_rollup",
+        lambda current_planspace: blocker_rollups.append(current_planspace),
+    )
+    monkeypatch.setattr(
+        intent_bootstrap,
+        "pause_for_parent",
+        lambda current_planspace, parent, signal: pauses.append(
+            (current_planspace, parent, signal),
+        ) or "resume",
     )
 
     result = run_intent_bootstrap(
@@ -136,12 +162,15 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
     )
 
     assert result is None
-    blocker = json.loads(
-        (
-            planspace / "artifacts" / "signals" / "philosophy-blocker-01.json"
-        ).read_text(encoding="utf-8"),
-    )
-    assert blocker["blocker"] == "philosophy_unavailable"
+    assert blocker_rollups == [planspace]
+    assert pauses == [(
+        planspace,
+        "parent",
+        "pause:need_decision:global:philosophy bootstrap requires user input",
+    )]
+    assert not (
+        planspace / "artifacts" / "signals" / "philosophy-blocker-01.json"
+    ).exists()
 
 
 def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
@@ -164,7 +193,14 @@ def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
     monkeypatch.setattr(
         intent_bootstrap,
         "ensure_global_philosophy",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "intent" / "global" / "philosophy.md",
+        lambda *_args, **_kwargs: {
+            "status": "ready",
+            "blocking_state": None,
+            "philosophy_path": (
+                planspace / "artifacts" / "intent" / "global" / "philosophy.md"
+            ),
+            "detail": "ready",
+        },
     )
     alignment_states = iter([True])
     monkeypatch.setattr(

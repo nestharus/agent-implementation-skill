@@ -1,6 +1,7 @@
 """Intent bootstrap: ensure philosophy and per-section intent packs exist."""
 
 from pathlib import Path
+from typing import Any
 
 from lib.core.artifact_io import write_json
 from lib.core.hash_service import content_hash, file_hash
@@ -109,7 +110,7 @@ def ensure_global_philosophy(
     planspace: Path,
     codespace: Path,
     parent: str,
-) -> Path | None:
+) -> dict[str, Any]:
     _sync_philosophy_bootstrap_overrides()
     return _philosophy_bootstrap.ensure_global_philosophy(
         planspace,

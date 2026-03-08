@@ -13,6 +13,8 @@ from section_loop.intent import (
     generate_intent_pack,
     run_intent_triage,
 )
+from section_loop.pipeline_control import pause_for_parent
+from section_loop.section_engine.blockers import _update_blocker_rollup
 from section_loop.types import Section
 
 
@@ -89,22 +91,29 @@ def run_intent_bootstrap(
     if alignment_changed_pending(planspace):
         return None
 
-    if philosophy_result is None:
-        log(
-            f"Section {section.number}: philosophy unavailable — blocking "
-            "section (project-level invariant)",
-        )
-        write_json(
-            artifacts / "signals" / f"philosophy-blocker-{section.number}.json",
-            {
-                "section": section.number,
-                "blocker": "philosophy_unavailable",
-                "reason": (
-                    "Global philosophy could not be established. Section "
-                    "execution blocked until resolved."
-                ),
-            },
-        )
+    if philosophy_result["status"] != "ready":
+        blocking_state = philosophy_result.get("blocking_state")
+        if blocking_state == "NEED_DECISION":
+            log(
+                f"Section {section.number}: philosophy bootstrap needs "
+                f"user input — {philosophy_result['detail']}",
+            )
+            _update_blocker_rollup(planspace)
+            pause_for_parent(
+                planspace,
+                parent,
+                "pause:need_decision:global:philosophy bootstrap requires user input",
+            )
+        elif blocking_state == "NEEDS_PARENT":
+            log(
+                f"Section {section.number}: philosophy bootstrap needs "
+                f"parent intervention — {philosophy_result['detail']}",
+            )
+        else:
+            log(
+                f"Section {section.number}: philosophy unavailable — "
+                f"{philosophy_result['detail']}",
+            )
         return None
 
     if intent_mode == "full":
