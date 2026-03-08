@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 try:
-    from prompt_safety import validate_dynamic_content
+    from prompt_safety import validate_dynamic_content, write_validated_prompt
 except ModuleNotFoundError:  # pragma: no cover - test package import path
-    from src.scripts.prompt_safety import validate_dynamic_content
+    from src.scripts.prompt_safety import validate_dynamic_content, write_validated_prompt
 
 try:
     from section_loop.communication import (
@@ -180,8 +180,7 @@ def analyze_impacts(
 
     impact_prompt_path = artifacts / f"impact-{section_number}-prompt.md"
     impact_output_path = artifacts / f"impact-{section_number}-output.md"
-    impact_prompt_path.write_text(
-        f"""# Task: Semantic Impact Analysis for Section {section_number}
+    impact_prompt_text = f"""# Task: Semantic Impact Analysis for Section {section_number}
 
 ## What Section {section_number} Did
 {section_summary}
@@ -222,9 +221,9 @@ impact involves a shared interface or contract change.
 For each MATERIAL impact, `note_markdown` is REQUIRED — a brief markdown
 description of what changed and what the target section must accommodate.
 This is the primary content of the consequence note the target receives.
-""",
-        encoding="utf-8",
-    )
+"""
+    if not write_validated_prompt(impact_prompt_text, impact_prompt_path):
+        return []
 
     sidecar_path = materialize_context_sidecar(
         str(Path(WORKFLOW_HOME) / "agents" / "impact-analyzer.md"),
@@ -306,8 +305,7 @@ This is the primary content of the consequence note the target receives.
 
     normalize_prompt_path = artifacts / f"impact-normalize-{section_number}-prompt.md"
     normalize_output_path = artifacts / f"impact-normalize-{section_number}-output.md"
-    normalize_prompt_path.write_text(
-        f"""# Task: Normalize Impact Analysis Output
+    normalize_prompt_text = f"""# Task: Normalize Impact Analysis Output
 
 ## Raw Output File
 `{raw_path}`
@@ -334,9 +332,9 @@ If no material impacts can be extracted, reply:
 ```json
 {{"impacts": []}}
 ```
-""",
-        encoding="utf-8",
-    )
+"""
+    if not write_validated_prompt(normalize_prompt_text, normalize_prompt_path):
+        return []
 
     normalize_result = dispatch_agent(
         normalizer_model,

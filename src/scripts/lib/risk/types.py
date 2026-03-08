@@ -39,7 +39,6 @@ class StepDecision(str, Enum):
 
 
 class RiskMode(str, Enum):
-    SKIP = "skip"
     LIGHT = "light"
     FULL = "full"
 

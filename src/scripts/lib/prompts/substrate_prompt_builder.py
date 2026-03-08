@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lib.core.path_registry import PathRegistry
+from prompt_safety import write_validated_prompt
 
 
 def write_shard_prompt(
@@ -54,7 +55,7 @@ def write_shard_prompt(
     refs_block = "\n".join(refs)
 
     prompt_path = prompts_dir / f"shard-{section_num}.md"
-    prompt_path.write_text(f"""# Shard Explorer: Section {section_num}
+    write_validated_prompt(f"""# Shard Explorer: Section {section_num}
 
 ## Your Task
 
@@ -79,7 +80,7 @@ Write your shard JSON to: `{output_path}`
 
 Create parent directories as needed. Follow the schema from your
 agent definition exactly.
-""", encoding="utf-8")
+""", prompt_path)
 
     return prompt_path
 
@@ -121,7 +122,7 @@ def write_pruner_prompt(
     refs_block = "\n".join(refs)
 
     prompt_path = prompts_dir / "pruner.md"
-    prompt_path.write_text(f"""# Pruner: Strategic Merge
+    write_validated_prompt(f"""# Pruner: Strategic Merge
 
 ## Your Task
 
@@ -151,7 +152,7 @@ Write three artifacts to `{substrate_dir}/`:
 
 Create parent directories as needed. Follow the schemas from your
 agent definition exactly.
-""", encoding="utf-8")
+""", prompt_path)
 
     return prompt_path
 
@@ -182,7 +183,7 @@ def write_seeder_prompt(
     refs_block = "\n".join(refs)
 
     prompt_path = prompts_dir / "seeder.md"
-    prompt_path.write_text(f"""# Seeder: Create Anchors and Wire References
+    write_validated_prompt(f"""# Seeder: Create Anchors and Wire References
 
 ## Your Task
 
@@ -209,7 +210,7 @@ Your agent definition specifies four outputs:
 
 Create parent directories as needed. Follow the schemas from your
 agent definition exactly.
-""", encoding="utf-8")
+""", prompt_path)
 
     return prompt_path
 

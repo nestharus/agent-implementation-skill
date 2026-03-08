@@ -271,7 +271,7 @@ def ensure_global_philosophy(
     selected_signal = artifacts / "signals" / "philosophy-selected-sources.json"
     selected_signal.parent.mkdir(parents=True, exist_ok=True)
 
-    selector_prompt.write_text(f"""# Task: Select Philosophy Source Files
+    selector_prompt_text = f"""# Task: Select Philosophy Source Files
 
 ## Context
 Select which files from the candidate catalog contain execution
@@ -320,7 +320,9 @@ If NO files contain philosophy or constraints, write:
 ```json
 {{"sources": []}}
 ```
-""", encoding="utf-8")
+"""
+    if not write_validated_prompt(selector_prompt_text, selector_prompt):
+        return None
     _log_artifact(planspace, "prompt:philosophy-select")
 
     dispatch_agent(

@@ -86,7 +86,6 @@ class TestEnums:
             (
                 RiskMode,
                 {
-                    "SKIP": "skip",
                     "LIGHT": "light",
                     "FULL": "full",
                 },

@@ -29,22 +29,8 @@ def determine_engagement(
         return RiskMode.FULL
     if normalized_hint == RiskMode.LIGHT.value:
         return RiskMode.FULL if skip_floor_hit else RiskMode.LIGHT
-    if normalized_hint == RiskMode.SKIP.value:
-        return RiskMode.FULL if skip_floor_hit else RiskMode.SKIP
-
-    should_skip = (
-        step_count == 1
-        and file_count <= 1
-        and not has_shared_seams
-        and not has_consequence_notes
-        and not has_stale_inputs
-        and not has_recent_failures
-        and not has_tool_changes
-        and triage_confidence.strip().lower() == "high"
-        and not freshness_changed
-    )
-    if should_skip:
-        return RiskMode.SKIP
+    if normalized_hint == "skip":
+        return RiskMode.FULL if skip_floor_hit else RiskMode.LIGHT
 
     should_run_full = (
         has_shared_seams

@@ -81,9 +81,10 @@ You own the strategic handoff into ROAL.
 
 - `risk_mode`: your assessment of how much ROAL scrutiny this section
   needs based on the section's problem structure, complexity, and
-  history. Use `skip` only for narrow, low-uncertainty work; use
-  `light` for bounded work that still merits a quick ROAL pass; use
-  `full` when the section is tangled, uncertain, or failure-prone.
+  history. Use `light` for bounded, low-uncertainty work that merits a
+  single-pass risk check; use `full` when the section is tangled,
+  uncertain, or failure-prone. There is no skip — every section gets
+  at least a lightweight risk assessment.
 
 - `risk_budget_hint`: extra ROAL iteration budget. Use `0` for simple
   work. Use `2-4` when the section is complex, uncertain, or likely to
@@ -98,7 +99,7 @@ Emit `intent-triage-NN.json`:
   "section": "section-name",
   "intent_mode": "full|lightweight|cached",
   "confidence": "high|medium|low",
-  "risk_mode": "skip|light|full",
+  "risk_mode": "light|full",
   "risk_budget_hint": 0,
   "escalate": false,
   "budgets": {

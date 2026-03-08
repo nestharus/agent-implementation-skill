@@ -236,7 +236,7 @@ Control and recovery:
 |-------|----------|
 | `claude-opus` | Section setup (excerpt extraction), alignment checks (shape/direction), decomposition, codemap exploration, per-section file identification |
 | `gpt-high` | Integration proposals, strategic implementation, coordinated fixes, extraction, investigation, constraint alignment check |
-| `gpt-xhigh` | Deep architectural synthesis, proposal drafting |
+| `gpt-xhigh` | Escalation-tier synthesis, deep cross-section convergence |
 | `glm` | Test running, verification, quick commands, deep file analysis, semantic impact analysis |
 
 ### Prompt Files

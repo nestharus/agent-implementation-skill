@@ -48,9 +48,10 @@ def test_run_risk_review_with_mocked_dispatch_returns_plan(
     assert plan.accepted_frontier == ["explore-01", "edit-02", "verify-03"]
 
 
-def test_run_risk_review_returns_none_when_engagement_skips(
+def test_run_risk_review_returns_plan_when_engagement_light(
     planspace: Path,
 ) -> None:
+    """Simple high-confidence sections still get lightweight ROAL (no skip)."""
     _write_risk_inputs(planspace, "01", triage_confidence="high", simple=True)
     section = Section(
         number="01",
@@ -58,9 +59,14 @@ def test_run_risk_review_returns_none_when_engagement_skips(
         related_files=["src/app.py"],
     )
 
-    plan = _run_risk_review(planspace, "01", section, lambda *args, **kwargs: "")
+    def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
+        if kwargs.get("agent_file") == "risk-assessor.md":
+            return json.dumps(serialize_assessment(_assessment()))
+        return json.dumps(serialize_plan(_plan()))
 
-    assert plan is None
+    plan = _run_risk_review(planspace, "01", section, _dispatch)
+
+    assert plan is not None
 
 
 def test_run_risk_review_failure_blocks_fail_closed(
@@ -385,7 +391,7 @@ def _write_risk_inputs(
             "intent_mode": "lightweight",
             "confidence": triage_confidence,
             "risk_mode": (
-                "skip"
+                "light"
                 if simple and triage_confidence == "high"
                 else "full"
             ),

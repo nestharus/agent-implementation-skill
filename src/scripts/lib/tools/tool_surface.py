@@ -8,6 +8,7 @@ from typing import Any
 
 from lib.core.artifact_io import read_json, write_json
 from lib.core.hash_service import file_hash
+from prompt_safety import write_validated_prompt
 
 
 def write_tool_surface(
@@ -98,14 +99,15 @@ def surface_tool_registry(
         )
         repair_prompt = artifacts / f"tool-registry-repair-{section_number}-prompt.md"
         repair_output = artifacts / f"tool-registry-repair-{section_number}-output.md"
-        repair_prompt.write_text(
+        if not write_validated_prompt(
             f"# Task: Repair Tool Registry\n\n"
             f"The tool registry at `{tool_registry_path}` contains "
             f"malformed JSON.\n\nError: {exc}\n\n"
             f"Read the file, reconstruct valid JSON preserving all "
             f"tool entries, and write back to the same path.\n",
-            encoding="utf-8",
-        )
+            repair_prompt,
+        ):
+            return friction_signal_path
         dispatch_agent(
             policy.get("tool_registrar", "glm"),
             repair_prompt,
@@ -193,7 +195,7 @@ def validate_tool_registry_after_implementation(
                 f"dispatching tool-registrar for validation"
             )
             registrar_prompt = artifacts / f"tool-registrar-{section_number}-prompt.md"
-            registrar_prompt.write_text(
+            write_validated_prompt(
                 f"# Validate Tool Registry\n\n"
                 f"Section {section_number} just completed implementation.\n"
                 f"Validate the tool registry at: `{tool_registry_path}`\n\n"
@@ -223,7 +225,7 @@ def validate_tool_registry_after_implementation(
                 f"Format: `{{\"friction\": true, \"islands\": [[...]], "
                 f"\"missing_bridge\": \"...\"}}`\n"
                 f"If no friction detected, do NOT write a friction signal file.\n",
-                encoding="utf-8",
+                registrar_prompt,
             )
             registrar_output = artifacts / f"tool-registrar-{section_number}-output.md"
             dispatch_agent(
@@ -250,14 +252,14 @@ def validate_tool_registry_after_implementation(
         repair_output = (
             artifacts / f"tool-registry-post-repair-{section_number}-output.md"
         )
-        repair_prompt.write_text(
+        write_validated_prompt(
             f"# Task: Repair Tool Registry (Post-Implementation)\n\n"
             f"The tool registry at `{tool_registry_path}` became "
             f"malformed after section {section_number} implementation.\n\n"
             f"Error: {exc}\n\n"
             f"Read the file, reconstruct valid JSON preserving all "
             f"tool entries, and write back to the same path.\n",
-            encoding="utf-8",
+            repair_prompt,
         )
         dispatch_agent(
             policy.get("tool_registrar", "glm"),
@@ -339,7 +341,7 @@ def handle_tool_friction(
     default_proposal_path = (
         artifacts / "proposals" / f"section-{section_number}-tool-bridge.md"
     )
-    bridge_tools_prompt.write_text(
+    if not write_validated_prompt(
         f"""# Task: Bridge Tool Islands for Section {section_number}
 
 ## Context
@@ -377,8 +379,9 @@ with JSON:
 - `broadcast` (optional): if true, all sections receive a note
 - `note_markdown` (optional): summary for target sections
 """,
-        encoding="utf-8",
-    )
+        bridge_tools_prompt,
+    ):
+        return
 
     pre_bridge_registry_hash = ""
     if tool_registry_path.exists():
@@ -473,7 +476,7 @@ with JSON:
             )
             digest_prompt = artifacts / f"tool-digest-regen-{section_number}-prompt.md"
             digest_output = artifacts / f"tool-digest-regen-{section_number}-output.md"
-            digest_prompt.write_text(
+            write_validated_prompt(
                 f"# Task: Regenerate Tool Digest\n\n"
                 f"The tool registry at `{tool_registry_path}` was "
                 f"modified by bridge-tools for section "
@@ -482,7 +485,7 @@ with JSON:
                 f"to: `{artifacts / 'tool-digest.md'}`\n\n"
                 f"Format: one line per tool grouped by scope "
                 f"(cross-section, section-local, test-only).\n",
-                encoding="utf-8",
+                digest_prompt,
             )
             dispatch_agent(
                 policy.get("tool_registrar", "glm"),

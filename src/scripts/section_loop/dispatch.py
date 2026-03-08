@@ -207,6 +207,11 @@ Do NOT send loop signals via mailbox — only log signal events as above.
   bash "{DB_SH}" log "{db_path}" signal {agent_name} "STALLED:{agent_name}:no messages for 5 minutes" --agent {monitor_name}
   ```
 """
+    violations = validate_dynamic_content(dynamic_body)
+    if violations:
+        from .communication import log
+        log(f"  ERROR: monitor prompt blocked — dynamic violations: {violations}")
+        return prompt_path
     prompt_path.write_text(
         render_template("monitor", dynamic_body),
         encoding="utf-8",
@@ -255,6 +260,11 @@ Classify the output into exactly one state. Reply with a JSON block:
 States: ALIGNED, PROBLEMS, UNDERSPECIFIED, NEED_DECISION, DEPENDENCY,
 LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
 """
+    violations = validate_dynamic_content(dynamic_body)
+    if violations:
+        from .communication import log
+        log(f"  ERROR: adjudicate prompt blocked — dynamic violations: {violations}")
+        return None, ""
     adj_prompt.write_text(
         render_template(
             "adjudicate", dynamic_body,

@@ -10,6 +10,7 @@ from typing import Any
 from lib.core.artifact_io import read_json, write_json
 from lib.core.hash_service import content_hash
 from lib.core.path_registry import PathRegistry
+from prompt_safety import write_validated_prompt
 from section_loop.communication import log, mailbox_send
 from section_loop.coordination.execution import _dispatch_fix_group
 from section_loop.dispatch import dispatch_agent
@@ -206,7 +207,7 @@ def _run_bridge_for_group(
         f"- `{notes_dir / f'from-bridge-{group_index}-to-{section_num}.md'}`"
         for section_num in group_sections
     )
-    bridge_prompt.write_text(
+    bridge_prompt_text = (
         f"# Bridge: Resolve Cross-Section Friction "
         f"(Group {group_index})\n\n"
         f"## Trigger Reason\n{bridge_reason}\n\n"
@@ -221,9 +222,10 @@ def _run_bridge_for_group(
         f"Write a contract delta summary to: `{contract_delta_path}`\n"
         f"Write per-section consequence notes to:\n"
         + note_output_refs
-        + "\n",
-        encoding="utf-8",
+        + "\n"
     )
+    if not write_validated_prompt(bridge_prompt_text, bridge_prompt):
+        return
     log(
         f"  coordinator: dispatching bridge agent for group "
         f"{group_index} ({group_sections}) — reason: {bridge_reason}",

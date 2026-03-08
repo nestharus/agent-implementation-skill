@@ -19,6 +19,7 @@ from lib.prompts.prompt_helpers import (
 )
 
 from ..agent_templates import validate_dynamic_content
+from prompt_safety import write_validated_prompt
 from ..alignment import collect_modified_files
 from ..communication import WORKFLOW_HOME, _log_artifact, log
 from ..context_assembly import materialize_context_sidecar
@@ -68,7 +69,9 @@ def write_section_setup_prompt(
 
     prompt_path = artifacts / f"setup-{sec}-prompt.md"
     tpl = load_template("section-setup.md")
-    prompt_path.write_text(render(tpl, ctx), encoding="utf-8")
+    if not write_validated_prompt(render(tpl, ctx), prompt_path):
+        log(f"  ERROR: prompt {prompt_path.name} blocked — template violations")
+        return None
     _log_artifact(planspace, f"prompt:setup-{sec}")
     return prompt_path
 
@@ -207,7 +210,9 @@ def write_integration_alignment_prompt(
 
     prompt_path = artifacts / f"intg-align-{sec}-prompt.md"
     tpl = load_template("integration-alignment.md")
-    prompt_path.write_text(render(tpl, ctx), encoding="utf-8")
+    if not write_validated_prompt(render(tpl, ctx), prompt_path):
+        log(f"  ERROR: prompt {prompt_path.name} blocked — template violations")
+        return None
     _log_artifact(planspace, f"prompt:proposal-align-{sec}")
     return prompt_path
 
@@ -445,6 +450,8 @@ def write_impl_alignment_prompt(
 
     prompt_path = artifacts / f"impl-align-{sec}-prompt.md"
     tpl = load_template("implementation-alignment.md")
-    prompt_path.write_text(render(tpl, ctx), encoding="utf-8")
+    if not write_validated_prompt(render(tpl, ctx), prompt_path):
+        log(f"  ERROR: prompt {prompt_path.name} blocked — template violations")
+        return None
     _log_artifact(planspace, f"prompt:impl-align-{sec}")
     return prompt_path

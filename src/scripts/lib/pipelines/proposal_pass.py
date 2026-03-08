@@ -161,15 +161,6 @@ def _risk_check_proposal(
             freshness_changed=False,
             risk_mode_hint=risk_mode_hint,
         )
-        if risk_mode != RiskMode.FULL:
-            _refresh_roal_input_index(
-                planspace,
-                sec_num,
-                replace_kinds=frozenset({"proposal_advisory"}),
-                new_entries=[],
-            )
-            return None
-
         run_lightweight_risk_check(
             planspace,
             advisory_scope,

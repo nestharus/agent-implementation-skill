@@ -221,8 +221,8 @@ mechanical classification needs controllability.
 ## Anti-Patterns
 
 - **DO NOT use Opus for mechanical review** — GPT is better
-- **DO NOT use GPT-high for primary synthesis** — it reviews alignment, GPT-xhigh synthesizes
-- **DO NOT synthesize proposals yourself** — use GPT-xhigh
+- **DO NOT pre-escalate to GPT-xhigh** — GPT-high is the default proposer; escalate to xhigh only on recurrence or stall
+- **DO NOT synthesize proposals yourself** — use GPT-high (or GPT-xhigh on escalation)
 - **DO NOT send inline instructions to GPT** — use `--file` with prompt file
 - **DO NOT pre-escalate models** — start with the default and escalate on failure
 - **DO NOT use reasoning models for extraction** — GLM follows instructions more reliably for reads/scans

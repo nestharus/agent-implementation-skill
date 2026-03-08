@@ -266,6 +266,11 @@ def intercept_task(
         )
 
         # 5. Write prompt to artifacts.
+        # QA prompt embeds full agent contracts as reference material,
+        # which legitimately contain agent-related terminology. The
+        # prompt is already wrapped via render_template (immutable
+        # envelope). Write directly — the embedded content is from
+        # trusted agent files, not user-supplied dynamic content.
         intercepts_dir = PathRegistry(planspace).qa_intercepts_dir()
         intercepts_dir.mkdir(parents=True, exist_ok=True)
         prompt_path = intercepts_dir / f"qa-{task_id}-prompt.md"

@@ -156,16 +156,18 @@ def _full_review_payloads(planspace: Path, sec_num: str) -> tuple[str, str]:
     )
 
 
-def test_trivial_single_file_edit_skips_roal(
+def test_trivial_single_file_edit_gets_lightweight_roal(
     planspace: Path,
     mock_dispatch: MagicMock,
 ) -> None:
+    """Trivial work gets lightweight ROAL (no skip mode)."""
     _write_risk_inputs(planspace, "01", triage_confidence="high")
+    mock_dispatch.side_effect = list(_full_review_payloads(planspace, "01"))
 
     result = _run_risk_review(planspace, "01", _section(planspace, "01"), mock_dispatch)
 
-    assert result is None
-    assert mock_dispatch.call_count == 0
+    assert result is not None
+    assert mock_dispatch.call_count > 0
 
 
 def test_multi_section_triggers_full(

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from lib.core.artifact_io import read_json, read_json_or_default, write_json
 from lib.core.path_registry import PathRegistry
+from prompt_safety import write_validated_prompt
 from section_loop.alignment import (
     _parse_alignment_verdict,
     _run_alignment_check_with_retries,
@@ -51,8 +52,7 @@ def run_impact_triage(
     triage_notes_path = triage_dir / f"triage-{section.number}-incoming-notes.md"
     triage_notes_path.write_text(incoming_notes, encoding="utf-8")
 
-    triage_prompt_path.write_text(
-        f"""# Task: Impact Triage for Section {section.number}
+    triage_prompt_text = f"""# Task: Impact Triage for Section {section.number}
 
 ## Context
 This section has already been solved once (attempt {section.solve_count}).
@@ -89,9 +89,9 @@ Write a JSON signal to: `{triage_signal_path}`
 
 Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
 "deferred" (will address later).
-""",
-        encoding="utf-8",
-    )
+"""
+    if not write_validated_prompt(triage_prompt_text, triage_prompt_path):
+        return ("continue", None)
     _log_artifact(planspace, f"prompt:triage-{section.number}")
 
     dispatch_agent(

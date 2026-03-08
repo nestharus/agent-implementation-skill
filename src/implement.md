@@ -446,10 +446,11 @@ discovered. The agent decides what's important, not a template.
    supporting, tier-3 peripheral) via a single GLM pass. Deep scan only
    tier-1 files by default. Full analysis stored in `file-cards/`; section
    file gets summary only.
-3. Dispatch a GLM agent with the full section content + full file content.
-   The agent reasons about what specific parts of the file matter for this
-   section — functions, classes, configurations, risks, dependencies.
-4. No fixed output format — the agent writes what it discovers naturally.
+3. Dispatch a GLM agent with a path-based prompt referencing the section
+   file and source file. The agent reads both, reasons about relevance,
+   and writes structured JSON feedback.
+4. Output is structured JSON with fields: `relevant`, `missing_files`,
+   `out_of_scope`, `summary_lines`. See `agents/scan-file-analyzer.md`.
 5. Skip missing/invalid file paths with diagnostics. On per-pair failures,
    record diagnostics and continue remaining pairs.
 
@@ -499,7 +500,7 @@ A file can appear in multiple section files.
 - If codemap agent fails or produces empty output: stop Stage 3.
 - If a section exploration agent fails: log failure, continue others.
 - Deep scan runs only on confirmed matches.
-- No fixed output format enforcement — agents reason freely.
+- Deep scan output is structured JSON (see deep scan feedback authority).
 
 ## Section-at-a-Time Execution
 

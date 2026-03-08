@@ -698,9 +698,6 @@ def _run_risk_review(
             freshness_changed=stale_inputs,
             risk_mode_hint=hints["risk_mode_hint"],
         )
-        if engagement_mode == RiskMode.SKIP:
-            log(f"Section {sec_num}: ROAL skipped (engagement mode = skip)")
-            return None
         if engagement_mode == RiskMode.LIGHT:
             plan = run_lightweight_risk_check(
                 planspace,
