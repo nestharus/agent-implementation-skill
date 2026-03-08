@@ -45,10 +45,11 @@ Simple lookup or classification?
 - **Use for**: Directing workflow, integration stories, evaluating proposals, constraints
 - **Should NOT**: Synthesize proposals (bias risk), do mechanical tasks
 
-### gpt-5.4-xhigh (Primary Proposer)
+### gpt-5.4-xhigh (Escalation Proposer — Strategic Synthesis)
 - **Strengths**: Highest reasoning effort, novel architectural synthesis
 - **Invocation**: `agents --model gpt-5.4-xhigh --file <prompt.md>`
-- **Use for**: Primary research synthesis (proposer role)
+- **Use for**: Escalation-tier research synthesis when default proposer
+  (policy.proposal = 5.4-high) hits recurrence or stall
 - **Does NOT**: Audit or implement
 
 ### gpt-5.4-high

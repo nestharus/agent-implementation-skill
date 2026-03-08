@@ -8,22 +8,16 @@ model: claude-opus
 You handle a failed workflow step. Investigate the root cause, fix it,
 and prepare for retry.
 
-## Paths
-
-`$WORKFLOW_HOME` is the skill directory (containing SKILL.md). Set by the caller in your prompt or environment.
-
 ## Input
 
-Your prompt includes:
+You will be given the relevant artifact paths and control endpoints in
+the dispatch prompt. Your prompt includes:
 - Planspace path
 - Codespace path
+- Paths to scripts needed for workflow retry and database queries
 - Failed step name and number
 - Failure context (error output, agent response)
 - Current state from state.md
-
-Set `PLANSPACE` from the planspace path provided in your prompt. Set
-`CODESPACE` from the codespace path. Use `$PLANSPACE` and `$CODESPACE` in
-all commands below. Do not invent or assume paths.
 
 <!-- ==========================================================================
 TODO [sqlite-migration]: Replace state/log file operations with DB queries

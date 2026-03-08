@@ -170,8 +170,9 @@ everything from memory.
 ### Dispatch: All Agents via `agents`
 
 **CRITICAL**: All step dispatch goes through `agents` via Bash.
-Never use Claude's Task tool to spawn sub-agents — it causes "sibling"
-errors and reliability issues. The agent runner automatically unsets
+Never use any sub-agent spawning or delegation mechanism outside this
+repo's `agents` dispatch and task-submission system — external spawning
+causes "sibling" errors and reliability issues. The agent runner automatically unsets
 `CLAUDECODE` so sibling Claude sessions can launch.
 
 ```bash

@@ -7,19 +7,12 @@ model: claude-opus
 
 Given a workspace, report exactly where the workflow stands.
 
-## Paths
-
-`$WORKFLOW_HOME` is the skill directory (containing SKILL.md). Set by the caller in your prompt or environment.
-
 ## Input
 
-Your prompt includes:
+You will be given the relevant artifact paths and control endpoints in
+the dispatch prompt. Your prompt includes:
 - Planspace path
-
-Set `PLANSPACE` from the planspace path provided in your prompt. Use
-`$PLANSPACE` in all commands below. Do not invent or assume paths.
-
-The planspace lives at `~/.claude/workspaces/<task-slug>/`.
+- Paths to scripts needed for database and workflow queries
 
 <!-- ==========================================================================
 TODO [sqlite-migration]: Replace 5 remaining file-based operations with DB queries
