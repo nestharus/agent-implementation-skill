@@ -117,7 +117,7 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
     if ctrl == "alignment_changed":
         return None
     micro_result = dispatch_agent(
-        policy.get("implementation", "gpt-5.4-high"),
+        policy.get("implementation", "gpt-high"),
         micro_prompt_path,
         micro_output_path,
         planspace,

@@ -103,7 +103,7 @@ def run_implementation_loop(
         impl_output = artifacts / f"impl-{section.number}-output.md"
         impl_agent = f"impl-{section.number}"
         impl_result = dispatch_agent(
-            policy.get("implementation", "gpt-5.4-high"),
+            policy.get("implementation", "gpt-high"),
             impl_prompt,
             impl_output,
             planspace,

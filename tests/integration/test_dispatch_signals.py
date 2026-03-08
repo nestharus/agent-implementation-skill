@@ -152,7 +152,7 @@ class TestWriteModelChoiceSignal:
     def test_writes_correct_json(self, planspace: Path) -> None:
         write_model_choice_signal(
             planspace, "03", "integration-proposal",
-            "gpt-5.4-high", "first attempt, default model",
+            "gpt-high", "first attempt, default model",
         )
         sig_path = (planspace / "artifacts" / "signals"
                     / "model-choice-03-integration-proposal.json")
@@ -160,19 +160,19 @@ class TestWriteModelChoiceSignal:
         data = json.loads(sig_path.read_text())
         assert data["section"] == "03"
         assert data["step"] == "integration-proposal"
-        assert data["model"] == "gpt-5.4-high"
+        assert data["model"] == "gpt-high"
         assert data["escalated_from"] is None
 
     def test_writes_escalation(self, planspace: Path) -> None:
         write_model_choice_signal(
             planspace, "01", "alignment",
-            "gpt-5.4-xhigh", "escalated after 2 failures",
-            escalated_from="gpt-5.4-high",
+            "gpt-xhigh", "escalated after 2 failures",
+            escalated_from="gpt-high",
         )
         sig_path = (planspace / "artifacts" / "signals"
                     / "model-choice-01-alignment.json")
         data = json.loads(sig_path.read_text())
-        assert data["escalated_from"] == "gpt-5.4-high"
+        assert data["escalated_from"] == "gpt-high"
 
 
 class TestCheckAgentSignals:
@@ -248,21 +248,21 @@ class TestReadModelPolicy:
     def test_defaults_when_no_file(self, planspace: Path) -> None:
         policy = read_model_policy(planspace)
         assert policy["setup"] == "claude-opus"
-        assert policy["proposal"] == "gpt-5.4-high"
+        assert policy["proposal"] == "gpt-high"
         assert policy["alignment"] == "claude-opus"
         assert policy["exploration"] == "glm"
-        assert policy["escalation_model"] == "gpt-5.4-xhigh"
+        assert policy["escalation_model"] == "gpt-xhigh"
         assert policy["escalation_triggers"]["stall_count"] == 2
 
     def test_custom_policy_overrides(self, planspace: Path) -> None:
         policy_path = planspace / "artifacts" / "model-policy.json"
         policy_path.write_text(json.dumps({
-            "proposal": "gpt-5.4-xhigh",
-            "alignment": "gpt-5.4-high",
+            "proposal": "gpt-xhigh",
+            "alignment": "gpt-high",
         }))
         policy = read_model_policy(planspace)
-        assert policy["proposal"] == "gpt-5.4-xhigh"
-        assert policy["alignment"] == "gpt-5.4-high"
+        assert policy["proposal"] == "gpt-xhigh"
+        assert policy["alignment"] == "gpt-high"
         # Defaults preserved for unset keys
         assert policy["setup"] == "claude-opus"
 

@@ -1,6 +1,6 @@
 ---
 description: Meta-agent generator that produces per-section intent pack artifacts (seed problem definition with axis structure and alignment rubric) from section excerpts and code context.
-model: gpt-5.4-high
+model: gpt-high
 ---
 
 # Intent Pack Generator

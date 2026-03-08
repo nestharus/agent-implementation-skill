@@ -14,19 +14,19 @@ UNDERSTANDING intent or FORMULATING questions?
   → Opus (current session)
 
 DESIGNING something new under constraints (primary synthesis)?
-  → gpt-5.4-xhigh
+  → gpt-xhigh
 
 ALIGNMENT CHECKING for coherence or divergence?
-  → Opus (default for alignment-judge), 5.4-high as fallback
+  → Opus (default for alignment-judge), GPT-high as fallback
 
 WRITING detailed algorithms or IMPL notes from direction?
-  → gpt-5.4-high
+  → gpt-high
 
 DEBUGGING test failures or finding root causes?
-  → gpt-5.4-high
+  → gpt-high
 
 WRITING source code from detailed specs?
-  → gpt-5.4-high
+  → gpt-high
 
 SCANNING codebase for relevant locations or SUMMARIZING block fit?
   → glm
@@ -40,19 +40,19 @@ Simple lookup or classification?
 
 ## Model Details
 
-### Opus 4.6 (Current Session)
+### Opus (Current Session)
 - **Strengths**: Intent interpretation, question formulation, alignment checking
 - **Use for**: Directing workflow, integration stories, evaluating proposals, constraints
 - **Should NOT**: Synthesize proposals (bias risk), do mechanical tasks
 
-### gpt-5.4-xhigh (Escalation Proposer — Strategic Synthesis)
+### gpt-xhigh (Escalation Proposer — Strategic Synthesis)
 - **Strengths**: Highest reasoning effort, novel architectural synthesis
-- **Invocation**: `agents --model gpt-5.4-xhigh --file <prompt.md>`
+- **Invocation**: `agents --model gpt-xhigh --file <prompt.md>`
 - **Use for**: Escalation-tier research synthesis when default proposer
-  (policy.proposal = 5.4-high) hits recurrence or stall
+  (policy.proposal = GPT-high) hits recurrence or stall
 - **Does NOT**: Audit or implement
 
-### gpt-5.4-high
+### gpt-high
 - **Strengths**: Constraint-aware design, systematic constraint evaluation
   (not feature coverage), algorithm writing, IMPL notes, debug/RCA
 - **Prompt format**: `--file <prompt.md>` (reads from file)
@@ -74,9 +74,9 @@ configurable in `model-policy.json`:
 
 | Key | Default | Why |
 |-----|---------|-----|
-| `substrate_shard` | `gpt-5.4-high` | Per-section dependency exploration — structured extraction, high controllability needed |
-| `substrate_pruner` | `gpt-5.4-xhigh` | Strategic cross-section convergence analysis — highest reasoning for graph exploration with pruning |
-| `substrate_seeder` | `gpt-5.4-high` | Anchor creation from seed plan — follows precise instructions, no novel reasoning |
+| `substrate_shard` | `gpt-high` | Per-section dependency exploration — structured extraction, high controllability needed |
+| `substrate_pruner` | `gpt-xhigh` | Strategic cross-section convergence analysis — highest reasoning for graph exploration with pruning |
+| `substrate_seeder` | `gpt-high` | Anchor creation from seed plan — follows precise instructions, no novel reasoning |
 
 The pruner is the only SIS agent that requires xhigh reasoning — it must
 identify convergence patterns, resolve contradictions, and make strategic
@@ -89,8 +89,8 @@ configurable in `model-policy.json`:
 
 | Key | Default | Why |
 |-----|---------|-----|
-| `risk_assessor` | `gpt-5.4-high` | Diagnostic agent assessing execution risk before descent |
-| `execution_optimizer` | `gpt-5.4-high` | Translates the risk assessment into the minimum effective execution posture |
+| `risk_assessor` | `gpt-high` | Diagnostic agent assessing execution risk before descent |
+| `execution_optimizer` | `gpt-high` | Translates the risk assessment into the minimum effective execution posture |
 
 ## QA Interceptor Model Policy Key
 
@@ -105,18 +105,18 @@ configurable in `model-policy.json`:
 
 ### Implementation Pipeline
 ```
-5.4-high       → ALGORITHM block + IMPL notes (NO code)
-5.4-high       → Source code from ALGORITHM + IMPL
+GPT-high       → ALGORITHM block + IMPL notes (NO code)
+GPT-high       → Source code from ALGORITHM + IMPL
 (pytest)       → Tests
-5.4-high       → Debug/RCA if failures
-5.4-high       → Constraint alignment check
+GPT-high       → Debug/RCA if failures
+GPT-high       → Constraint alignment check
 ```
 
 ### Research Pipeline
 ```
 Opus           → Research prompt + context package
-5.4-xhigh   → Synthesize proposal
-5.4-high     → Divergence review
+GPT-xhigh   → Synthesize proposal
+GPT-high     → Divergence review
 Opus           → Evaluate, refine if needed
 (repeat)
 ```
@@ -131,13 +131,13 @@ rather than hurts.
 | Model | Controllability Profile |
 |-------|------------------------|
 | Opus | High reasoning + high controllability. Best for directing and judging. |
-| 5.4-xhigh | Highest reasoning, moderate controllability. Needs clear problem framing. |
-| 5.4-high | Good reasoning, high controllability. Best for structured constraint evaluation (not feature coverage). |
+| GPT-xhigh | Highest reasoning, moderate controllability. Needs clear problem framing. |
+| GPT-high | Good reasoning, high controllability. Best for structured constraint evaluation (not feature coverage). |
 | GLM | Low reasoning, highest controllability. Follows instructions precisely. |
 
 **Escalation rule**: Only escalate when a lower model has demonstrably
-failed on the same task (e.g., 2+ alignment failures at 5.4-high before
-escalating to 5.4-xhigh). Don't pre-escalate — it wastes reasoning
+failed on the same task (e.g., 2+ alignment failures at GPT-high before
+escalating to GPT-xhigh). Don't pre-escalate — it wastes reasoning
 budget and can reduce instruction adherence.
 
 ## Model-Choice Signal
@@ -148,7 +148,7 @@ When section-loop selects a model for a dispatch, it writes:
 {
   "section": "03",
   "step": "integration-proposal",
-  "model": "gpt-5.4-high",
+  "model": "gpt-high",
   "reason": "first attempt, default model",
   "escalated_from": null
 }
@@ -167,7 +167,7 @@ for model selection decisions.
 
 ### Required Fields in Agent Output
 
-Strategic agents (Opus, 5.4-xhigh) should include at the end of
+Strategic agents (Opus, GPT-xhigh) should include at the end of
 their response:
 
 ```
@@ -181,7 +181,7 @@ their response:
 - **Default**: Start with the model specified in the model policy
 - **Escalate on recurrence**: If a section signals recurrence (2+ attempts),
   escalate the next dispatch to a higher tier
-- **Never pre-escalate**: Don't use 5.4-xhigh on first attempt "just in case"
+- **Never pre-escalate**: Don't use GPT-xhigh on first attempt "just in case"
 - **Justify downgrades**: If using a cheaper model than policy suggests,
   explain why (e.g., "classification task, GLM sufficient")
 
@@ -208,7 +208,7 @@ runtime paths or specific task context. Model selection determines the
 **controllability and capability** applied to that method.
 
 The combination of agent definition + model determines strategic behavior:
-- A high-reasoning model (Opus, 5.4-xhigh) with a methodological agent
+- A high-reasoning model (Opus, GPT-xhigh) with a methodological agent
   file produces strategic analysis that adapts to novel situations.
 - A high-controllability model (GLM) with a methodological agent file
   produces precise, instruction-following execution of that method.
@@ -221,8 +221,8 @@ mechanical classification needs controllability.
 ## Anti-Patterns
 
 - **DO NOT use Opus for mechanical review** — GPT is better
-- **DO NOT use 5.4-high for primary synthesis** — it reviews alignment, 5.4-xhigh synthesizes
-- **DO NOT synthesize proposals yourself** — use 5.4-xhigh
+- **DO NOT use GPT-high for primary synthesis** — it reviews alignment, GPT-xhigh synthesizes
+- **DO NOT synthesize proposals yourself** — use GPT-xhigh
 - **DO NOT send inline instructions to GPT** — use `--file` with prompt file
 - **DO NOT pre-escalate models** — start with the default and escalate on failure
 - **DO NOT use reasoning models for extraction** — GLM follows instructions more reliably for reads/scans

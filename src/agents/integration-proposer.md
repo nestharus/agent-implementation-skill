@@ -1,6 +1,6 @@
 ---
 description: Writes integration proposals as problem-state artifacts — capturing what is resolved, what is unresolved, and whether the section is ready for implementation. Explores strategically to populate the problem state, not to invent architecture.
-model: gpt-5.4-high
+model: gpt-high
 context:
   - section_spec
   - codemap

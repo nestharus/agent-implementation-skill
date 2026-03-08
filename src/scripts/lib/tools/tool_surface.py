@@ -385,7 +385,7 @@ with JSON:
         pre_bridge_registry_hash = file_hash(tool_registry_path)
 
     dispatch_agent(
-        policy.get("bridge_tools", "gpt-5.4-high"),
+        policy.get("bridge_tools", "gpt-high"),
         bridge_tools_prompt,
         bridge_tools_output,
         planspace,

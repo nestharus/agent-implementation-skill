@@ -11,7 +11,7 @@ can be traced back to the specific principle it should follow.
 
 - An approved proposal (passed evaluation)
 - The alignment document
-- Access to GPT-5.4-high for alignment check
+- Access to GPT-GPT-high for alignment check
 
 ## Step 1: Read the Proposal and Alignment Document
 
@@ -68,12 +68,12 @@ Directory layout, what goes where, reading order, authoritative sources.
 
 ## Step 8: Verify Constraint Traceability
 
-GPT-5.4-high checks that every problem, constraint, and tradeoff from
+GPT-GPT-high checks that every problem, constraint, and tradeoff from
 the proposal is traceable through the design documents. Fix gaps.
 Re-check until clean.
 
 ```bash
-agents --model gpt-5.4-high --file "<review-prompt-path>"
+agents --model gpt-high --file "<review-prompt-path>"
 ```
 
 ## Anti-Patterns

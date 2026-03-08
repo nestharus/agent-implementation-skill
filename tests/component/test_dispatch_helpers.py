@@ -29,7 +29,7 @@ def test_write_model_choice_signal_writes_structured_artifact(planspace: Path) -
         planspace,
         "04",
         "alignment",
-        "gpt-5.4-high",
+        "gpt-high",
         "default policy",
         escalated_from="glm",
     )
@@ -42,7 +42,7 @@ def test_write_model_choice_signal_writes_structured_artifact(planspace: Path) -
     assert data == {
         "section": "04",
         "step": "alignment",
-        "model": "gpt-5.4-high",
+        "model": "gpt-high",
         "reason": "default policy",
         "escalated_from": "glm",
     }

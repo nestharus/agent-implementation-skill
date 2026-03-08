@@ -229,7 +229,7 @@ def _run_bridge_for_group(
         f"{group_index} ({group_sections}) — reason: {bridge_reason}",
     )
 
-    bridge_model = policy.get("coordination_bridge", "gpt-5.4-xhigh")
+    bridge_model = policy.get("coordination_bridge", "gpt-xhigh")
     dispatch_agent(
         bridge_model,
         bridge_prompt,

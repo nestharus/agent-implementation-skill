@@ -294,7 +294,7 @@ Write an empty surface registry to: `{intent_sec / "surface-registry.json"}`
     _log_artifact(planspace, f"prompt:intent-pack-{sec}")
 
     result = dispatch_agent(
-        policy.get("intent_pack", "gpt-5.4-high"),
+        policy.get("intent_pack", "gpt-high"),
         prompt_path,
         output_path,
         planspace,

@@ -78,7 +78,7 @@ Run from within the worktree:
 
 ```bash
 cd .worktrees/rca-<issue-slug>
-agents --model gpt-5.4-high --file .tmp/rca-wave-N.md
+agents --model gpt-high --file .tmp/rca-wave-N.md
 ```
 
 **Critical**: The prompt says "do NOT modify any files." GPT produces a
@@ -176,7 +176,7 @@ git branch -D rca/<issue-slug>
 
 | Step | Model | Role |
 |------|-------|------|
-| 1: RCA | GPT-5.4-high | Investigate + report (no code changes) |
+| 1: RCA | GPT-GPT-high | Investigate + report (no code changes) |
 | 2: Plan + Fix | Opus fix agent | Read report, plan correct fix, apply to working branch |
 | 3: Verify | (automated) | pytest on working branch |
 

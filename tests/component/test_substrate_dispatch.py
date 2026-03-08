@@ -75,7 +75,7 @@ def test_dispatch_substrate_agent_writes_combined_output(
     monkeypatch.setattr(substrate_dispatch.subprocess, "run", fake_run)
 
     ok = substrate_dispatch.dispatch_substrate_agent(
-        model="gpt-5.4-high",
+        model="gpt-high",
         prompt_path=prompt_path,
         output_path=output_path,
         codespace=codespace,
@@ -86,7 +86,7 @@ def test_dispatch_substrate_agent_writes_combined_output(
     assert output_path.read_text(encoding="utf-8") == "stdout\nstderr\n"
     assert calls == [[
         "agents",
-        "--model", "gpt-5.4-high",
+        "--model", "gpt-high",
         "--file", str(prompt_path),
         "--agent-file", str(workflow_home / "agents" / "substrate-shard-explorer.md"),
         "--project", str(codespace),
@@ -109,7 +109,7 @@ def test_dispatch_substrate_agent_handles_timeout(
     monkeypatch.setattr(substrate_dispatch.subprocess, "run", fake_run)
 
     ok = substrate_dispatch.dispatch_substrate_agent(
-        model="gpt-5.4-high",
+        model="gpt-high",
         prompt_path=prompt_path,
         output_path=output_path,
         agent_file="substrate-shard-explorer.md",

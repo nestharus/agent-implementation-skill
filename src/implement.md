@@ -931,9 +931,9 @@ recorded as telemetry only.
 
 | Key | Default | Role |
 |-----|---------|------|
-| `substrate_shard` | `gpt-5.4-high` | Per-section dependency exploration |
-| `substrate_pruner` | `gpt-5.4-xhigh` | Strategic cross-section convergence |
-| `substrate_seeder` | `gpt-5.4-high` | Anchor creation from seed plan |
+| `substrate_shard` | `gpt-high` | Per-section dependency exploration |
+| `substrate_pruner` | `gpt-GPT-xhigh` | Strategic cross-section convergence |
+| `substrate_seeder` | `gpt-high` | Anchor creation from seed plan |
 
 ### CLI
 
@@ -1037,7 +1037,7 @@ a full or lightweight intent cycle is needed:
    - **Philosophy distillation** (Opus) — distills operational philosophy
      from source files into numbered principles with expansion guidance.
      Runs once globally, not per-section.
-   - **Intent pack generation** (GPT-5.4-high) — produces per-section
+   - **Intent pack generation** (GPT-GPT-high) — produces per-section
      `problem.md` (seed problem definition with axes) and
      `problem-alignment.md` (rubric) from section spec, excerpts, code
      context, and TODOs.
@@ -1148,7 +1148,7 @@ external artifacts — no markers placed in source code.
 After the section queue is empty (all sections clean), verify in the
 task worktree:
 
-### 6a: Constraint Alignment Check (GPT-5.4-high)
+### 6a: Constraint Alignment Check (GPT-GPT-high)
 Check against design principles. Fix violations.
 
 ### 6b: Lint Fix
@@ -1167,7 +1167,7 @@ uv run pytest <test-dir> -k "<relevant-tests>" -x -v -p no:randomly
 ```
 
 ### 6d: Debug/RCA
-If tests fail: GPT-5.4-high reads failures, fixes root cause, re-runs.
+If tests fail: GPT-GPT-high reads failures, fixes root cause, re-runs.
 Persistent after one round → escalate.
 
 ## Stage 7: Post-Task Verification
@@ -1307,8 +1307,8 @@ conflicts after the initial pass.
 | 5: Impact Analysis | GLM | Semantic impact analysis for cross-section communication |
 | 5: Global Coordination | GPT | Coordinated fixes for grouped cross-section problems |
 | 5: Coordination Alignment | Opus | Per-section re-verification after coordinated fixes |
-| 6a: Constraint Alignment Check | GPT-5.4-high | Design principle check |
-| 6d: Debug/RCA | GPT-5.4-high | Fix test failures |
+| 6a: Constraint Alignment Check | GPT-GPT-high | Design principle check |
+| 6d: Debug/RCA | GPT-GPT-high | Fix test failures |
 
 ## Anti-Patterns
 

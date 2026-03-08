@@ -88,7 +88,7 @@ state, relevant code, prior responses, tradeoff docs.
 
 ### Step 4: Send to Research Agent
 ```bash
-agents --model gpt-5.4-xhigh --file "$research_dir/prompt.md"
+agents --model gpt-xhigh --file "$research_dir/prompt.md"
 ```
 Save response as `response.md`.
 
@@ -97,7 +97,7 @@ Save response as `response.md`.
 ### Step 5: Divergence Review
 1. Quick Opus analysis — identify 5-10 divergence signals
 2. Write `review-prompt.md` with divergence signals
-3. Run review: `agents --model gpt-5.4-high --file review-prompt.md`
+3. Run review: `agents --model gpt-high --file review-prompt.md`
 4. Save as `review-results.md`
 
 ### Step 6: Evaluate Review Results
@@ -114,7 +114,7 @@ Save response as `response.md`.
 ## What the Previous Response Got Wrong
 ## Redirected Questions
 ```
-Send to 5.4-xhigh. Save as `response2.md`. Review again.
+Send to GPT-xhigh. Save as `response2.md`. Review again.
 Repeat until convergence (typically 2-3 rounds).
 
 ### Step 8: Final Validation
@@ -132,15 +132,15 @@ Present to user for approval. Do NOT proceed without approval.
 | Task | Model |
 |------|-------|
 | Direction + intent + alignment doc | Opus (current session) |
-| Deep architectural synthesis | gpt-5.4-xhigh |
-| Constraint alignment checking | gpt-5.4-high |
+| Deep architectural synthesis | gpt-xhigh |
+| Constraint alignment checking | gpt-high |
 | Quick fact-checking | GLM |
 
 ## Anti-Patterns
 
 - **DO NOT skip Phase A-B** — jumping to proposals without exploration produces wrong solutions
-- **DO NOT synthesize the proposal yourself** — Opus formulates questions, 5.4-xhigh synthesizes
+- **DO NOT synthesize the proposal yourself** — Opus formulates questions, GPT-xhigh synthesizes
 - **DO NOT accept first response** — always check alignment against the alignment document
 - **DO NOT add requirements during audit** — audit checks existing constraints only
 - **DO NOT retry the same prompt** — write a refinement prompt explaining WHY it diverged
-- **DO NOT send synthesis prompts to 5.4-high** — 5.4-high reviews alignment; 5.4-xhigh synthesizes
+- **DO NOT send synthesis prompts to GPT-high** — GPT-high reviews alignment; GPT-xhigh synthesizes

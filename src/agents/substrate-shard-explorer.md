@@ -1,6 +1,6 @@
 ---
 description: Produces structured shard JSON describing what a section needs, provides, and what shared seams it touches. Explores the section spec and intent pack to surface cross-section dependencies without proposing architecture.
-model: gpt-5.4-high
+model: gpt-high
 ---
 
 # Substrate Shard Explorer

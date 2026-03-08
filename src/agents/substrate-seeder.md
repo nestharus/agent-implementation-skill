@@ -1,6 +1,6 @@
 ---
 description: Creates minimal anchor files in codespace from the seed plan, and emits related-files update signals so section specs gain references to the new anchors.
-model: gpt-5.4-high
+model: gpt-high
 ---
 
 # Substrate Seeder

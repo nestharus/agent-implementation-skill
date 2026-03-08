@@ -185,9 +185,9 @@ agents --agent-file "$WORKFLOW_HOME/agents/exception-handler.md" \
   --file <planspace>/artifacts/exception-prompt.md
 
 # Parallel dispatch with db.sh coordination
-(agents --model gpt-5.4-high --file <prompt-A.md> && \
+(agents --model gpt-high --file <prompt-A.md> && \
   bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-A") &
-(agents --model gpt-5.4-high --file <prompt-B.md> && \
+(agents --model gpt-high --file <prompt-B.md> && \
   bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-B") &
 bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator
 bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator
@@ -235,8 +235,8 @@ Control and recovery:
 | Model | Used For |
 |-------|----------|
 | `claude-opus` | Section setup (excerpt extraction), alignment checks (shape/direction), decomposition, codemap exploration, per-section file identification |
-| `gpt-5.4-high` | Integration proposals, strategic implementation, coordinated fixes, extraction, investigation, constraint alignment check |
-| `gpt-5.4-xhigh` | Deep architectural synthesis, proposal drafting |
+| `gpt-high` | Integration proposals, strategic implementation, coordinated fixes, extraction, investigation, constraint alignment check |
+| `gpt-xhigh` | Deep architectural synthesis, proposal drafting |
 | `glm` | Test running, verification, quick commands, deep file analysis, semantic impact analysis |
 
 ### Prompt Files

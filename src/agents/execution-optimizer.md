@@ -1,6 +1,6 @@
 ---
 description: Converts a ROAL risk assessment into the minimum effective execution posture and per-step execution decisions.
-model: gpt-5.4-high
+model: gpt-high
 ---
 
 # Execution Optimizer

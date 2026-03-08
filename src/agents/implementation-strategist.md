@@ -1,6 +1,6 @@
 ---
 description: Implements changes strategically across multiple files. Reads the aligned integration proposal, understands the shape, and executes holistically with task submission for exploration and targeted work.
-model: gpt-5.4-high
+model: gpt-high
 context:
   - section_spec
   - codemap

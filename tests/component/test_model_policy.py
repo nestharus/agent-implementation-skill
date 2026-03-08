@@ -12,9 +12,9 @@ def test_load_model_policy_returns_defaults_when_file_missing(tmp_path) -> None:
 
     assert isinstance(policy, ModelPolicy)
     assert policy.setup == "claude-opus"
-    assert policy["proposal"] == "gpt-5.4-high"
-    assert policy["risk_assessor"] == "gpt-5.4-high"
-    assert policy["execution_optimizer"] == "gpt-5.4-high"
+    assert policy["proposal"] == "gpt-high"
+    assert policy["risk_assessor"] == "gpt-high"
+    assert policy["execution_optimizer"] == "gpt-high"
     assert policy["qa_interceptor"] == "claude-opus"
     assert policy["escalation_triggers"]["stall_count"] == 2
     assert policy.get("scan") == {}
@@ -24,20 +24,20 @@ def test_load_model_policy_merges_overrides_and_nested_triggers(tmp_path) -> Non
     policy_path = tmp_path / "artifacts" / "model-policy.json"
     policy_path.parent.mkdir(parents=True, exist_ok=True)
     policy_path.write_text(json.dumps({
-        "proposal": "gpt-5.4-xhigh",
-        "risk_assessor": "gpt-5.4-xhigh",
+        "proposal": "gpt-xhigh",
+        "risk_assessor": "gpt-xhigh",
         "execution_optimizer": "glm",
-        "qa_interceptor": "gpt-5.4-high",
+        "qa_interceptor": "gpt-high",
         "scan": {"codemap_build": "scan-model"},
         "escalation_triggers": {"stall_count": 5},
     }), encoding="utf-8")
 
     policy = load_model_policy(tmp_path)
 
-    assert policy.proposal == "gpt-5.4-xhigh"
-    assert resolve(policy, "risk_assessor") == "gpt-5.4-xhigh"
+    assert policy.proposal == "gpt-xhigh"
+    assert resolve(policy, "risk_assessor") == "gpt-xhigh"
     assert resolve(policy, "execution_optimizer") == "glm"
-    assert resolve(policy, "qa_interceptor") == "gpt-5.4-high"
+    assert resolve(policy, "qa_interceptor") == "gpt-high"
     assert policy["alignment"] == "claude-opus"
     assert policy["escalation_triggers"] == {
         "stall_count": 5,

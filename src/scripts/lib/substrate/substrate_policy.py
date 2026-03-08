@@ -8,9 +8,9 @@ from lib.core.artifact_io import read_json
 from lib.core.path_registry import PathRegistry
 
 DEFAULT_SUBSTRATE_MODELS: dict[str, str] = {
-    "substrate_shard": "gpt-5.4-high",
-    "substrate_pruner": "gpt-5.4-xhigh",
-    "substrate_seeder": "gpt-5.4-high",
+    "substrate_shard": "gpt-high",
+    "substrate_pruner": "gpt-xhigh",
+    "substrate_seeder": "gpt-high",
 }
 
 DEFAULT_TRIGGER_THRESHOLD = 2
