@@ -30,8 +30,8 @@ def run_intent_triage(
 ) -> dict:
     """Dispatch intent-triager (GLM) and return the triage result.
 
-    Returns a dict with at least ``intent_mode`` ("full" or "lightweight")
-    and ``budgets``. Falls back to full on failure.
+    Returns a dict with at least ``intent_mode`` and ``budgets``.
+    Falls back to full on failure.
     """
     policy = read_model_policy(planspace)
     paths = PathRegistry(planspace)
@@ -102,18 +102,24 @@ Weigh these factors heuristically. Sections that are narrow, well-understood,
 and have no failure history lean lightweight. Sections with broad integration,
 uncertainty, or prior failures lean full.
 
+## Risk Handoff
+
+- `risk_mode`: your assessment of how much ROAL scrutiny this section
+  needs based on the section's problem structure, complexity, and
+  history.
+- `risk_budget_hint`: extra ROAL iteration budget (0 for simple work,
+  2-4 for complex or uncertain work).
+
 ## Output
 Write a JSON signal to: `{triage_signal_path}`
 
 ```json
 {{
   "section": "{section_number}",
-  "intent_mode": "full"|"lightweight",
+  "intent_mode": "full"|"lightweight"|"cached",
   "confidence": "high"|"medium"|"low",
   "risk_mode": "skip"|"light"|"full",
-  "risk_confidence": "high"|"medium"|"low",
   "risk_budget_hint": 0,
-  "posture_floor": null,
   "escalate": false,
   "budgets": {{
     "proposal_max": 5,
@@ -268,45 +274,16 @@ def _augment_risk_hints(
     triage: dict,
     section_number: str,
     planspace: Path,
-    *,
-    related_files_count: int = 0,
-    incoming_notes_count: int = 0,
-    solve_count: int = 0,
+    **_kwargs: object,
 ) -> dict:
-    confidence = str(triage.get("confidence", "low")).strip().lower()
+    result = dict(triage)
+    confidence = str(result.get("confidence", "low")).strip().lower()
     if confidence not in {"high", "medium", "low"}:
         confidence = "low"
-
-    complexity_score = 0
-    if related_files_count > 1:
-        complexity_score += 1
-    if incoming_notes_count > 0:
-        complexity_score += 1
-    if solve_count > 0:
-        complexity_score += 1
-    if str(triage.get("intent_mode", "full")).strip().lower() == "full":
-        complexity_score += 1
-
-    if confidence == "low":
-        risk_mode = "full"
-    elif confidence == "medium":
-        risk_mode = "full" if complexity_score >= 2 else "light"
-    else:
-        if complexity_score == 0:
-            risk_mode = "skip"
-        elif complexity_score == 1:
-            risk_mode = "light"
-        else:
-            risk_mode = "full"
-
-    result = dict(triage)
-    result["risk_mode"] = risk_mode
-    result["risk_confidence"] = confidence
-    result["risk_budget_hint"] = {
-        "high": 0,
-        "medium": 2,
-        "low": 4,
-    }[confidence]
+    result["confidence"] = confidence
+    result.setdefault("risk_mode", "full")
+    result.setdefault("risk_budget_hint", 0)
+    result.setdefault("risk_confidence", confidence)
     result["posture_floor"] = _derive_posture_floor(section_number, planspace)
     return result
 

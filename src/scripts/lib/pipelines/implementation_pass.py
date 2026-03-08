@@ -38,6 +38,19 @@ from section_loop.pipeline_control import (
 from section_loop.section_engine import run_section
 from section_loop.types import ProposalPassResult, Section, SectionResult
 
+_IMPLEMENTATION_ROAL_KINDS = frozenset({
+    "accepted_frontier",
+    "deferred",
+    "reopen",
+})
+_MAX_FRONTIER_ITERATIONS = 3
+_ROAL_INDEX_KINDS = frozenset({
+    "accepted_frontier",
+    "deferred",
+    "reopen",
+    "proposal_advisory",
+})
+
 
 class ImplementationPassExit(Exception):
     """Raised when the implementation pass should stop the outer run."""
@@ -82,6 +95,109 @@ def _write_section_input_artifact(
     ref_path = input_dir / f"{artifact_path.stem}.ref"
     ref_path.write_text(str(artifact_path.resolve()), encoding="utf-8")
     return artifact_path
+
+
+def _read_roal_input_index(
+    planspace: Path,
+    sec_num: str,
+) -> list[dict]:
+    paths = PathRegistry(planspace)
+    index_path = paths.input_refs_dir(sec_num) / f"section-{sec_num}-roal-input-index.json"
+    payload = read_json(index_path)
+    if not isinstance(payload, list):
+        return []
+    return [entry for entry in payload if isinstance(entry, dict)]
+
+
+def _normalize_roal_entries(entries: list[dict]) -> list[dict]:
+    normalized: list[dict] = []
+    seen: set[tuple[str, str, str]] = set()
+    for entry in entries:
+        kind = str(entry.get("kind", "")).strip()
+        path = str(entry.get("path", "")).strip()
+        produced_by = str(entry.get("produced_by", "")).strip()
+        if kind not in _ROAL_INDEX_KINDS or not path:
+            continue
+        key = (kind, path, produced_by)
+        if key in seen:
+            continue
+        seen.add(key)
+        item = {
+            "kind": kind,
+            "path": path,
+        }
+        if produced_by:
+            item["produced_by"] = produced_by
+        normalized.append(item)
+    return normalized
+
+
+def _write_roal_input_index(
+    planspace: Path,
+    sec_num: str,
+    entries: list[dict],
+) -> Path:
+    """Write a typed ROAL input index for a section."""
+    paths = PathRegistry(planspace)
+    input_dir = paths.input_refs_dir(sec_num)
+    index_path = input_dir / f"section-{sec_num}-roal-input-index.json"
+    normalized_entries = _normalize_roal_entries(entries)
+    indexed_paths = {
+        str(Path(entry["path"]).resolve())
+        for entry in normalized_entries
+    }
+
+    if input_dir.exists():
+        for ref_path in sorted(input_dir.glob("*.ref")):
+            try:
+                referenced = ref_path.read_text(encoding="utf-8").strip()
+            except OSError:
+                continue
+            if not referenced:
+                continue
+            target_path = Path(referenced)
+            resolved = str(target_path.resolve())
+            if (
+                target_path.parent == input_dir
+                and "-risk-" in target_path.name
+                and resolved not in indexed_paths
+            ):
+                ref_path.unlink(missing_ok=True)
+        for artifact_path in sorted(input_dir.iterdir()):
+            if (
+                not artifact_path.is_file()
+                or artifact_path == index_path
+                or artifact_path.suffix == ".ref"
+            ):
+                continue
+            if (
+                artifact_path.parent == input_dir
+                and "-risk-" in artifact_path.name
+                and str(artifact_path.resolve()) not in indexed_paths
+            ):
+                artifact_path.unlink(missing_ok=True)
+
+    write_json(index_path, normalized_entries)
+    return index_path
+
+
+def _refresh_roal_input_index(
+    planspace: Path,
+    sec_num: str,
+    *,
+    replace_kinds: frozenset[str],
+    new_entries: list[dict],
+) -> Path:
+    preserved = [
+        entry
+        for entry in _read_roal_input_index(planspace, sec_num)
+        if str(entry.get("kind", "")).strip() not in replace_kinds
+    ]
+    return _write_roal_input_index(
+        planspace,
+        sec_num,
+        preserved + new_entries,
+    )
 
 
 def _write_accepted_steps(
@@ -329,6 +445,85 @@ def _write_modified_file_manifest(
             "count": len(modified_files),
         },
     )
+
+
+def _persist_roal_artifacts(
+    planspace: Path,
+    sec_num: str,
+    risk_plan: RiskPlan,
+) -> None:
+    entries: list[dict] = []
+    if risk_plan.accepted_frontier:
+        accepted_artifact = _write_accepted_steps(planspace, sec_num, risk_plan)
+        entries.append({
+            "kind": "accepted_frontier",
+            "path": str(accepted_artifact),
+            "produced_by": "implementation_pass",
+        })
+        log(
+            f"Section {sec_num}: persisted ROAL accepted frontier artifact "
+            f"to {accepted_artifact}",
+        )
+    if risk_plan.deferred_steps:
+        deferred_artifact = _write_deferred_steps(planspace, sec_num, risk_plan)
+        entries.append({
+            "kind": "deferred",
+            "path": str(deferred_artifact),
+            "produced_by": "implementation_pass",
+        })
+        log(
+            f"Section {sec_num}: persisted deferred ROAL artifact "
+            f"in {deferred_artifact}",
+        )
+    if risk_plan.reopen_steps:
+        blocker_path = _write_reopen_blocker(planspace, sec_num, risk_plan)
+        entries.append({
+            "kind": "reopen",
+            "path": str(blocker_path),
+            "produced_by": "implementation_pass",
+        })
+        log(
+            f"Section {sec_num}: persisted ROAL reopen blocker "
+            f"via {blocker_path}",
+        )
+    _refresh_roal_input_index(
+        planspace,
+        sec_num,
+        replace_kinds=_IMPLEMENTATION_ROAL_KINDS,
+        new_entries=entries,
+    )
+
+
+def _describe_remaining_risk_work(
+    risk_plan: RiskPlan,
+    *,
+    frontier_cap_reached: bool = False,
+) -> str | None:
+    if risk_plan.reopen_steps:
+        reopen_reason = next(
+            (
+                decision.reason
+                for decision in risk_plan.step_decisions
+                if decision.decision == StepDecision.REJECT_REOPEN
+                and decision.step_id in risk_plan.reopen_steps
+                and decision.reason
+            ),
+            None,
+        )
+        if reopen_reason:
+            return reopen_reason
+        return (
+            "ROAL reopened steps remain: "
+            + ", ".join(risk_plan.reopen_steps)
+        )
+    if risk_plan.deferred_steps:
+        prefix = (
+            "ROAL deferred steps remain after bounded frontier execution"
+            if frontier_cap_reached
+            else "ROAL deferred steps remain"
+        )
+        return f"{prefix}: {', '.join(risk_plan.deferred_steps)}"
+    return None
 
 
 def _append_risk_review_failure_history(
@@ -745,26 +940,14 @@ def run_implementation_pass(
             dispatch_agent,
         )
         if risk_plan is None:
-            pass
+            _refresh_roal_input_index(
+                planspace,
+                sec_num,
+                replace_kinds=_IMPLEMENTATION_ROAL_KINDS,
+                new_entries=[],
+            )
         else:
-            if risk_plan.accepted_frontier:
-                accepted_artifact = _write_accepted_steps(planspace, sec_num, risk_plan)
-                log(
-                    f"Section {sec_num}: wrote ROAL accepted frontier artifact "
-                    f"to {accepted_artifact}",
-                )
-            if risk_plan.deferred_steps:
-                deferred_artifact = _write_deferred_steps(planspace, sec_num, risk_plan)
-                log(
-                    f"Section {sec_num}: parked deferred ROAL work in "
-                    f"{deferred_artifact}",
-                )
-            if risk_plan.reopen_steps:
-                blocker_path = _write_reopen_blocker(planspace, sec_num, risk_plan)
-                log(
-                    f"Section {sec_num}: routed reopened ROAL steps via "
-                    f"{blocker_path}",
-                )
+            _persist_roal_artifacts(planspace, sec_num, risk_plan)
 
         if risk_plan is not None and not risk_plan.accepted_frontier:
             reasons = [
@@ -821,59 +1004,99 @@ def run_implementation_pass(
 
         impl_completed.add(sec_num)
         all_modified_files = list(modified_files)
+        current_risk_plan = risk_plan
+        frontier_iterations = 0
+        frontier_failed = False
+        final_problem: str | None = None
         if risk_plan is not None:
             _append_risk_history(planspace, sec_num, risk_plan, all_modified_files)
-            manifest_path = _write_modified_file_manifest(
-                planspace,
-                sec_num,
-                all_modified_files,
-            )
-            log(
-                f"Section {sec_num}: wrote modified file manifest "
-                f"to {manifest_path}",
-            )
-            reassessed_plan = _maybe_reassess_deferred_steps(
-                planspace,
-                sec_num,
-                dispatch_agent,
-                risk_plan,
-            )
-            if reassessed_plan is not None:
+            while frontier_iterations < _MAX_FRONTIER_ITERATIONS:
+                manifest_path = _write_modified_file_manifest(
+                    planspace,
+                    sec_num,
+                    all_modified_files,
+                )
+                log(
+                    f"Section {sec_num}: wrote modified file manifest "
+                    f"to {manifest_path}",
+                )
+                reassessed_plan = _maybe_reassess_deferred_steps(
+                    planspace,
+                    sec_num,
+                    dispatch_agent,
+                    current_risk_plan,
+                )
+                if reassessed_plan is None:
+                    break
+
+                frontier_iterations += 1
+                current_risk_plan = reassessed_plan
                 log(
                     f"Section {sec_num}: reassessed deferred ROAL steps "
                     f"accepted={len(reassessed_plan.accepted_frontier)} "
                     f"deferred={len(reassessed_plan.deferred_steps)} "
                     f"reopened={len(reassessed_plan.reopen_steps)}",
                 )
-                if reassessed_plan.accepted_frontier:
-                    accepted_artifact = _write_accepted_steps(
+                _persist_roal_artifacts(planspace, sec_num, reassessed_plan)
+
+                if not reassessed_plan.accepted_frontier:
+                    break
+
+                log(
+                    f"Section {sec_num}: dispatching deferred frontier slice "
+                    f"(iteration {frontier_iterations}, "
+                    f"accepted={len(reassessed_plan.accepted_frontier)})",
+                )
+                deferred_modified = run_section(
+                    planspace,
+                    codespace,
+                    section,
+                    parent,
+                    all_sections=list(sections_by_num.values()),
+                    pass_mode="implementation",
+                )
+
+                if _check_and_clear_alignment_changed(planspace):
+                    log("Alignment changed during deferred frontier execution "
+                        "— restarting from Phase 1")
+                    raise ImplementationPassRestart
+
+                if deferred_modified is None:
+                    log(f"Section {sec_num}: deferred frontier slice returned None")
+                    _append_risk_history(
                         planspace,
                         sec_num,
                         reassessed_plan,
+                        None,
+                        implementation_failed=True,
                     )
-                    log(
-                        f"Section {sec_num}: updated ROAL accepted frontier "
-                        f"after reassessment in {accepted_artifact}",
-                    )
-                deferred_artifact = _write_deferred_steps(
+                    frontier_failed = True
+                    final_problem = "deferred frontier execution failed"
+                    break
+
+                if deferred_modified:
+                    all_modified_files.extend(deferred_modified)
+
+                _append_risk_history(
                     planspace,
                     sec_num,
                     reassessed_plan,
+                    list(deferred_modified or []),
                 )
-                log(
-                    f"Section {sec_num}: refreshed deferred ROAL artifact "
-                    f"in {deferred_artifact}",
-                )
+
                 if reassessed_plan.reopen_steps:
-                    blocker_path = _write_reopen_blocker(
-                        planspace,
-                        sec_num,
-                        reassessed_plan,
-                    )
-                    log(
-                        f"Section {sec_num}: routed reassessed reopened steps "
-                        f"via {blocker_path}",
-                    )
+                    break
+                if not reassessed_plan.deferred_steps:
+                    break
+
+            if not frontier_failed and current_risk_plan is not None:
+                final_problem = _describe_remaining_risk_work(
+                    current_risk_plan,
+                    frontier_cap_reached=(
+                        frontier_iterations >= _MAX_FRONTIER_ITERATIONS
+                        and bool(current_risk_plan.deferred_steps)
+                    ),
+                )
         mailbox_send(
             planspace,
             parent,
@@ -882,7 +1105,8 @@ def run_implementation_pass(
 
         section_results[sec_num] = SectionResult(
             section_number=sec_num,
-            aligned=True,
+            aligned=final_problem is None,
+            problems=final_problem,
             modified_files=all_modified_files,
         )
 

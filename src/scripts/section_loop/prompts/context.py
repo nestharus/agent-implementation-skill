@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from lib.core.artifact_io import read_json
 from lib.core.path_registry import PathRegistry
 
 from ..cross_section import extract_section_summary
@@ -178,57 +179,47 @@ def build_prompt_context(
     additional_inputs_block = ""
     risk_inputs_block = ""
     if inputs_dir.exists():
+        roal_index_path = inputs_dir / f"section-{sec}-roal-input-index.json"
+        roal_index = read_json(roal_index_path)
+        roal_paths: set[str] = set()
+        risk_lines = []
+        if isinstance(roal_index, list):
+            for entry in roal_index:
+                if not isinstance(entry, dict):
+                    continue
+                path_value = str(entry.get("path", "")).strip()
+                if not path_value:
+                    continue
+                referenced_path = Path(path_value)
+                if not referenced_path.exists():
+                    continue
+                roal_paths.add(str(referenced_path.resolve()))
+                kind = str(entry.get("kind", "unknown")).strip() or "unknown"
+                risk_lines.append(f"   - `{referenced_path}` ({kind})")
+        if risk_lines:
+            risk_inputs_block = (
+                "\n\n## Risk Inputs (from ROAL)\n\n"
+                "These artifacts were produced by the "
+                "Risk-Optimization Adaptive Loop.\n"
+                "The accepted frontier is your current local execution "
+                "authority.\n"
+                "Deferred steps are NOT in scope. Reopened steps are "
+                "NOT locally solvable.\n"
+                + "\n".join(risk_lines)
+            )
+
         ref_files = sorted(inputs_dir.glob("*.ref"))
         if ref_files:
-            risk_ref_prefixes = (
-                "risk-accepted",
-                "risk-deferred",
-                "risk-reopen",
-                "risk-advisory",
-            )
-            risk_refs = []
-            coordination_refs = []
-            for ref_file in ref_files:
-                if any(
-                    ref_file.stem.startswith(prefix)
-                    for prefix in risk_ref_prefixes
-                ):
-                    risk_refs.append(ref_file)
-                else:
-                    coordination_refs.append(ref_file)
-
-            risk_lines = []
             input_lines = []
-            for ref_file in risk_refs:
+            for ref_file in ref_files:
                 try:
                     referenced = ref_file.read_text(encoding="utf-8").strip()
-                    if Path(referenced).exists():
-                        risk_lines.append(
-                            f"   - `{referenced}` (from {ref_file.stem})"
-                        )
-                except (OSError, ValueError) as exc:
-                    print(
-                        f"[CONTEXT][WARN] Failed to read ref "
-                        f"{ref_file}: {exc}",
-                    )
-            if risk_lines:
-                risk_inputs_block = (
-                    "\n\n## Risk Inputs (from ROAL)\n\n"
-                    "These artifacts were produced by the "
-                    "Risk-Optimization Adaptive Loop.\n"
-                    "The accepted frontier is your current local execution "
-                    "authority.\n"
-                    "Deferred steps are NOT in scope. Reopened steps are "
-                    "NOT locally solvable.\n"
-                    + "\n".join(risk_lines)
-                )
-
-            for ref_file in coordination_refs:
-                try:
-                    referenced = ref_file.read_text(encoding="utf-8").strip()
-                    if Path(referenced).exists():
+                    referenced_path = Path(referenced)
+                    if referenced_path.exists():
+                        if str(referenced_path.resolve()) in roal_paths:
+                            continue
                         input_lines.append(
-                            f"   - `{referenced}` (from {ref_file.stem})"
+                            f"   - `{referenced_path}` (from {ref_file.stem})"
                         )
                 except (OSError, ValueError) as exc:
                     print(

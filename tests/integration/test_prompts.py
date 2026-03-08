@@ -239,7 +239,13 @@ class TestStrategicImplementationRiskInputs:
         inputs_dir.mkdir(parents=True, exist_ok=True)
         risk_payload = inputs_dir / "section-01-risk-accepted-steps.json"
         risk_payload.write_text('{"accepted_steps": ["edit-02"]}\n')
-        (inputs_dir / "risk-accepted-frontier.ref").write_text(str(risk_payload))
+        (inputs_dir / "section-01-roal-input-index.json").write_text(
+            (
+                "[\n"
+                f'  {{"kind": "accepted_frontier", "path": "{risk_payload}"}}\n'
+                "]\n"
+            ),
+        )
         coordination_payload = inputs_dir / "section-01-bridge-note.md"
         coordination_payload.write_text("# Bridge\n\nShared seam details.\n")
         (inputs_dir / "bridge-note.ref").write_text(str(coordination_payload))

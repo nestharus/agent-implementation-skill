@@ -27,6 +27,8 @@ def determine_engagement(
 
     if normalized_hint == RiskMode.FULL.value:
         return RiskMode.FULL
+    if normalized_hint == RiskMode.LIGHT.value:
+        return RiskMode.FULL if skip_floor_hit else RiskMode.LIGHT
     if normalized_hint == RiskMode.SKIP.value:
         return RiskMode.FULL if skip_floor_hit else RiskMode.SKIP
 

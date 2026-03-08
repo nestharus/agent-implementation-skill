@@ -134,8 +134,22 @@ def test_risk_check_proposal_writes_advisory_artifact_and_blocker(
     blocker = read_json(
         planspace / "artifacts" / "signals" / "section-01-proposal-risk-blocker.json",
     )
+    roal_index = read_json(
+        planspace
+        / "artifacts"
+        / "inputs"
+        / "section-01"
+        / "section-01-roal-input-index.json",
+    )
 
     assert advisory == summary
+    assert roal_index == [
+        {
+            "kind": "proposal_advisory",
+            "path": str(advisory_path),
+            "produced_by": "proposal_pass",
+        },
+    ]
     assert blocker == {
         "state": "needs_parent",
         "blocker_type": "proposal_risk_advisory",
@@ -370,7 +384,6 @@ def _write_risk_inputs(
         {
             "intent_mode": "lightweight",
             "confidence": triage_confidence,
-            "risk_confidence": triage_confidence,
             "risk_mode": (
                 "skip"
                 if simple and triage_confidence == "high"
@@ -381,7 +394,6 @@ def _write_risk_inputs(
                 "medium": 2,
                 "low": 4,
             }[triage_confidence],
-            "posture_floor": None,
         },
     )
     write_json(artifacts / "tool-registry.json", {"tools": ["pytest"]})

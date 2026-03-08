@@ -27,8 +27,12 @@ def test_context_builder_separates_risk_refs_from_coordination_refs(
 
     risk_payload = inputs_dir / "section-01-risk-accepted-steps.json"
     risk_payload.write_text('{"accepted_steps": ["edit-02"]}\n', encoding="utf-8")
-    (inputs_dir / "risk-accepted-frontier.ref").write_text(
-        str(risk_payload),
+    (inputs_dir / "section-01-roal-input-index.json").write_text(
+        (
+            "[\n"
+            f'  {{"kind": "accepted_frontier", "path": "{risk_payload}"}}\n'
+            "]\n"
+        ),
         encoding="utf-8",
     )
 
@@ -43,6 +47,7 @@ def test_context_builder_separates_risk_refs_from_coordination_refs(
 
     assert "Risk Inputs (from ROAL)" in ctx["risk_inputs_block"]
     assert str(risk_payload) in ctx["risk_inputs_block"]
+    assert "accepted_frontier" in ctx["risk_inputs_block"]
     assert "accepted frontier is your current local execution authority" in ctx[
         "risk_inputs_block"
     ]
@@ -72,3 +77,31 @@ def test_context_builder_omits_risk_inputs_block_when_no_risk_refs(
     assert ctx["risk_inputs_block"] == ""
     assert "Additional Inputs (from coordination)" in ctx["additional_inputs_block"]
     assert str(coordination_payload) in ctx["additional_inputs_block"]
+
+
+def test_context_builder_uses_roal_index_without_ref_prefix_inference(
+    planspace: Path,
+    codespace: Path,
+) -> None:
+    section = _make_section(planspace)
+    inputs_dir = planspace / "artifacts" / "inputs" / "section-01"
+    inputs_dir.mkdir(parents=True, exist_ok=True)
+
+    risk_payload = inputs_dir / "section-01-risk-deferred.json"
+    risk_payload.write_text('{"deferred_steps": ["verify-03"]}\n', encoding="utf-8")
+    (inputs_dir / "section-01-roal-input-index.json").write_text(
+        (
+            "[\n"
+            f'  {{"kind": "deferred", "path": "{risk_payload}"}}\n'
+            "]\n"
+        ),
+        encoding="utf-8",
+    )
+    stale_roal_ref = inputs_dir / "stale-risk.ref"
+    stale_roal_ref.write_text(str(risk_payload), encoding="utf-8")
+
+    ctx = build_prompt_context(section, planspace, codespace)
+
+    assert str(risk_payload) in ctx["risk_inputs_block"]
+    assert str(risk_payload) not in ctx["additional_inputs_block"]
+    assert "stale-risk" not in ctx["additional_inputs_block"]

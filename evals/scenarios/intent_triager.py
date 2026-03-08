@@ -1,7 +1,7 @@
 """Intent triager scenario eval.
 
 Tests that the intent-triager agent produces a valid structured
-triage signal with intent_mode and budgets fields.
+triage signal with intent_mode, ROAL risk handoff, and budgets fields.
 
 Scenarios:
   intent_triage_full: Complex multi-file section -> valid triage JSON
@@ -258,6 +258,8 @@ def _setup_full_triage(planspace: Path, codespace: Path) -> Path:
           "section": "05",
           "intent_mode": "full"|"lightweight",
           "confidence": "high"|"medium"|"low",
+          "risk_mode": "skip"|"light"|"full",
+          "risk_budget_hint": 0,
           "escalate": false,
           "budgets": {{
             "proposal_max": 5,
@@ -336,6 +338,27 @@ def _check_triage_has_budgets(
     return False, f"budgets missing expected keys, has: {list(budgets.keys())}"
 
 
+def _check_triage_has_risk_handoff(
+    planspace: Path, codespace: Path, agent_output: str,
+) -> tuple[bool, str]:
+    """Verify triage signal has ROAL handoff fields."""
+    signal_path = (planspace / "artifacts" / "signals"
+                   / "intent-triage-05.json")
+    if not signal_path.exists():
+        return False, "Signal file not written"
+    try:
+        data = json.loads(signal_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return False, "Signal file is not valid JSON"
+    risk_mode = data.get("risk_mode", "")
+    budget_hint = data.get("risk_budget_hint")
+    if risk_mode not in ("skip", "light", "full"):
+        return False, f"risk_mode missing or invalid: '{risk_mode}'"
+    if not isinstance(budget_hint, int) or budget_hint < 0:
+        return False, f"risk_budget_hint missing or invalid: {budget_hint!r}"
+    return True, f"risk_mode={risk_mode}, risk_budget_hint={budget_hint}"
+
+
 def _check_triage_has_reason(
     planspace: Path, codespace: Path, agent_output: str,
 ) -> tuple[bool, str]:
@@ -376,6 +399,10 @@ SCENARIOS = [
             Check(
                 description="Signal has budgets object with expected keys",
                 verify=_check_triage_has_budgets,
+            ),
+            Check(
+                description="Signal has ROAL risk handoff fields",
+                verify=_check_triage_has_risk_handoff,
             ),
             Check(
                 description="Signal has non-empty reason",

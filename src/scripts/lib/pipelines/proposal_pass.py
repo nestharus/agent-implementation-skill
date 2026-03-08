@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from lib.core.artifact_io import read_json, write_json
 from lib.core.path_registry import PathRegistry
+from lib.pipelines.implementation_pass import _refresh_roal_input_index
 from lib.repositories.proposal_state_repository import load_proposal_state
 from lib.risk.engagement import determine_engagement
 from lib.risk.loop import run_lightweight_risk_check
@@ -161,6 +162,12 @@ def _risk_check_proposal(
             risk_mode_hint=risk_mode_hint,
         )
         if risk_mode != RiskMode.FULL:
+            _refresh_roal_input_index(
+                planspace,
+                sec_num,
+                replace_kinds=frozenset({"proposal_advisory"}),
+                new_entries=[],
+            )
             return None
 
         run_lightweight_risk_check(
@@ -172,6 +179,12 @@ def _risk_check_proposal(
         )
         assessment_payload = read_risk_artifact(paths.risk_assessment(advisory_scope))
         if not isinstance(assessment_payload, dict):
+            _refresh_roal_input_index(
+                planspace,
+                sec_num,
+                replace_kinds=frozenset({"proposal_advisory"}),
+                new_entries=[],
+            )
             return {
                 "risk_mode": risk_mode.value,
                 "dominant_risks": [],
@@ -193,6 +206,7 @@ def _risk_check_proposal(
             "package_raw_risk": assessment.package_raw_risk,
             "recommendation": recommendation,
         }
+        advisory_entries: list[dict] = []
         if recommendation == "recommend additional exploration":
             advisory_path = _write_proposal_risk_advisory(
                 planspace,
@@ -200,6 +214,11 @@ def _risk_check_proposal(
                 advisory_scope,
                 summary,
             )
+            advisory_entries.append({
+                "kind": "proposal_advisory",
+                "path": str(advisory_path),
+                "produced_by": "proposal_pass",
+            })
             high_risk = any(
                 severities.get(risk, 0) >= 3
                 for risk in ("brute_force_regression", "silent_drift")
@@ -214,8 +233,20 @@ def _risk_check_proposal(
                     severities,
                     advisory_path,
                 )
+        _refresh_roal_input_index(
+            planspace,
+            sec_num,
+            replace_kinds=frozenset({"proposal_advisory"}),
+            new_entries=advisory_entries,
+        )
         return summary
     except Exception as exc:  # noqa: BLE001
+        _refresh_roal_input_index(
+            planspace,
+            sec_num,
+            replace_kinds=frozenset({"proposal_advisory"}),
+            new_entries=[],
+        )
         log(
             f"Section {sec_num}: proposal ROAL pre-check failed ({exc}) "
             "— continuing without advisory risk summary",

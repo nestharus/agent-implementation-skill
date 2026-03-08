@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Callable
 
 import pytest
 
@@ -7,6 +8,7 @@ from lib.pipelines.implementation_pass import (
     ImplementationPassExit,
     ImplementationPassRestart,
     _append_risk_history,
+    _read_roal_input_index,
     run_implementation_pass,
 )
 from lib.risk.history import read_history
@@ -148,6 +150,76 @@ def _write_risk_context(planspace: Path, sec_num: str) -> None:
     )
 
 
+def _patch_implementation_pass_basics(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    risk_plan: RiskPlan | None,
+    run_section_fn: Callable[..., list[str] | None],
+    reassess_fn: Callable[..., RiskPlan | None] | None = None,
+    append_history_fn: Callable[..., None] | None = None,
+    alignment_checks: list[bool] | None = None,
+) -> None:
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass.handle_pending_messages",
+        lambda *args: False,
+    )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass.alignment_changed_pending",
+        lambda *args: False,
+    )
+    if alignment_checks is None:
+        monkeypatch.setattr(
+            "lib.pipelines.implementation_pass._check_and_clear_alignment_changed",
+            lambda *args: False,
+        )
+    else:
+        remaining = list(alignment_checks)
+
+        def _check_alignment(*_args) -> bool:
+            if remaining:
+                return remaining.pop(0)
+            return False
+
+        monkeypatch.setattr(
+            "lib.pipelines.implementation_pass._check_and_clear_alignment_changed",
+            _check_alignment,
+        )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass.resolve_readiness",
+        lambda *_args, **_kwargs: {"ready": True},
+    )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass._run_risk_review",
+        lambda *_args, **_kwargs: risk_plan,
+    )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass.run_section",
+        run_section_fn,
+    )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass._section_inputs_hash",
+        lambda *args: "hash-123",
+    )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass.mailbox_send",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "lib.pipelines.implementation_pass.subprocess.run",
+        lambda *args, **kwargs: None,
+    )
+    if reassess_fn is not None:
+        monkeypatch.setattr(
+            "lib.pipelines.implementation_pass._maybe_reassess_deferred_steps",
+            reassess_fn,
+        )
+    if append_history_fn is not None:
+        monkeypatch.setattr(
+            "lib.pipelines.implementation_pass._append_risk_history",
+            append_history_fn,
+        )
+
+
 def test_run_implementation_pass_records_results_and_hashes(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -277,6 +349,13 @@ def test_run_implementation_pass_writes_accepted_steps_artifact(
     assert accepted["dispatch_shapes"] == accepted["dispatch_shape"]
     ref_path = accepted_path.with_suffix(".ref")
     assert ref_path.read_text(encoding="utf-8").strip() == str(accepted_path.resolve())
+    assert _read_roal_input_index(planspace, "01") == [
+        {
+            "kind": "accepted_frontier",
+            "path": str(accepted_path),
+            "produced_by": "implementation_pass",
+        },
+    ]
 
 
 def test_run_implementation_pass_writes_deferred_steps_artifact(
@@ -337,6 +416,30 @@ def test_run_implementation_pass_writes_deferred_steps_artifact(
             "alignment-check-result",
         ],
     }
+    assert _read_roal_input_index(planspace, "01") == [
+        {
+            "kind": "accepted_frontier",
+            "path": str(
+                planspace
+                / "artifacts"
+                / "inputs"
+                / "section-01"
+                / "section-01-risk-accepted-steps.json"
+            ),
+            "produced_by": "implementation_pass",
+        },
+        {
+            "kind": "deferred",
+            "path": str(
+                planspace
+                / "artifacts"
+                / "inputs"
+                / "section-01"
+                / "section-01-risk-deferred.json"
+            ),
+            "produced_by": "implementation_pass",
+        },
+    ]
 
 
 def test_run_implementation_pass_writes_reopen_blocker_and_skips(
@@ -379,6 +482,18 @@ def test_run_implementation_pass_writes_reopen_blocker_and_skips(
     )
 
     blocker = read_json(planspace / "artifacts" / "signals" / "section-01-blocker.json")
+    assert _read_roal_input_index(planspace, "01") == [
+        {
+            "kind": "reopen",
+            "path": str(
+                planspace
+                / "artifacts"
+                / "signals"
+                / "section-01-blocker.json"
+            ),
+            "produced_by": "implementation_pass",
+        },
+    ]
     assert blocker == {
         "state": "needs_parent",
         "blocker_type": "risk_reopen",
@@ -453,7 +568,7 @@ def test_run_implementation_pass_skip_mode_proceeds_without_risk_artifacts(
     )
 
     assert results["01"].modified_files == ["src/app.py"]
-    assert not (planspace / "artifacts" / "inputs" / "section-01").exists()
+    assert _read_roal_input_index(planspace, "01") == []
     assert not (planspace / "artifacts" / "signals" / "section-01-blocker.json").exists()
 
 
@@ -540,103 +655,71 @@ def test_append_risk_history_records_enriched_outcomes(planspace: Path) -> None:
     }
 
 
-def test_run_implementation_pass_triggers_one_shot_reassessment(
+def test_run_implementation_pass_dispatches_reassessed_frontier_slice(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     section = _make_section(planspace, "01")
-    package = RiskPackage(
-        package_id="pkg-implementation-section-01",
-        layer="implementation",
-        scope="section-01",
-        origin_problem_id="problem-01",
-        origin_source="proposal",
-        steps=[
-            PackageStep(
-                step_id="edit-01",
-                step_class=StepClass.EDIT,
-                summary="Apply the change",
-            ),
-            PackageStep(
-                step_id="verify-02",
-                step_class=StepClass.VERIFY,
-                summary="Verify the change",
-                prerequisites=["edit-01"],
-            ),
-        ],
-    )
-    initial_plan = RiskPlan(
-        plan_id="plan-initial",
-        assessment_id="assessment-initial",
-        package_id=package.package_id,
-        layer="implementation",
+    initial_plan = _plan(
+        accepted_frontier=["edit-01"],
+        deferred_steps=["verify-02"],
         step_decisions=[
             StepMitigation(
                 step_id="edit-01",
                 decision=StepDecision.ACCEPT,
                 posture=PostureProfile.P2_STANDARD,
                 residual_risk=30,
-                reason="safe edit",
             ),
             StepMitigation(
                 step_id="verify-02",
                 decision=StepDecision.REJECT_DEFER,
                 posture=PostureProfile.P3_GUARDED,
                 residual_risk=55,
-                reason="wait for implementation outputs",
                 wait_for=["modified-file-manifest", "alignment-check-result"],
             ),
         ],
-        accepted_frontier=["edit-01"],
-        deferred_steps=["verify-02"],
-        reopen_steps=[],
-        expected_reassessment_inputs=[
-            "modified-file-manifest",
-            "alignment-check-result",
-        ],
     )
-    reassessed_plan = RiskPlan(
-        plan_id="plan-reassessed",
-        assessment_id="assessment-reassessed",
-        package_id=package.package_id,
-        layer="implementation",
+    reassessed_plan = _plan(
+        accepted_frontier=["verify-02"],
         step_decisions=[
             StepMitigation(
                 step_id="verify-02",
                 decision=StepDecision.ACCEPT,
                 posture=PostureProfile.P2_STANDARD,
                 residual_risk=35,
-                reason="outputs are now available",
             ),
         ],
-        accepted_frontier=["verify-02"],
-        deferred_steps=[],
-        reopen_steps=[],
-        expected_reassessment_inputs=[],
     )
-    reassessment_calls: list[list[str]] = []
+    run_calls: list[list[str]] = []
+    reassess_calls: list[str] = []
+    history_calls: list[tuple[str, list[str] | None, bool]] = []
 
-    monkeypatch.setattr("lib.pipelines.implementation_pass.handle_pending_messages", lambda *args: False)
-    monkeypatch.setattr("lib.pipelines.implementation_pass.alignment_changed_pending", lambda *args: False)
-    monkeypatch.setattr("lib.pipelines.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("lib.pipelines.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
-    monkeypatch.setattr("lib.pipelines.implementation_pass._run_risk_review", lambda *_args, **_kwargs: initial_plan)
-    monkeypatch.setattr("lib.pipelines.implementation_pass._append_risk_history", lambda *args, **kwargs: None)
-    monkeypatch.setattr("lib.pipelines.implementation_pass.read_package", lambda *_args, **_kwargs: package)
-    monkeypatch.setattr(
-        "lib.pipelines.implementation_pass.run_section",
-        lambda *args, **kwargs: _write_alignment_output(planspace) or ["src/app.py"],
+    def _run_section(*_args, **_kwargs) -> list[str]:
+        files = (
+            ["src/app.py"]
+            if not run_calls
+            else ["tests/app_test.py"]
+        )
+        run_calls.append(files)
+        return files
+
+    def _reassess(*_args, **_kwargs) -> RiskPlan | None:
+        reassess_calls.append("reassess")
+        return reassessed_plan if len(reassess_calls) == 1 else None
+
+    def _append_history(_planspace, _sec_num, plan, modified, *, implementation_failed=False) -> None:
+        history_calls.append(
+            (plan.plan_id, list(modified) if modified is not None else None, implementation_failed),
+        )
+
+    _patch_implementation_pass_basics(
+        monkeypatch,
+        risk_plan=initial_plan,
+        run_section_fn=_run_section,
+        reassess_fn=_reassess,
+        append_history_fn=_append_history,
     )
-    monkeypatch.setattr("lib.pipelines.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
-    monkeypatch.setattr("lib.pipelines.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("lib.pipelines.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
 
-    def _reassess(*args, **_kwargs) -> RiskPlan:
-        reassessment_calls.append([step.step_id for step in args[3].steps])
-        return reassessed_plan
-
-    monkeypatch.setattr("lib.pipelines.implementation_pass.run_risk_loop", _reassess)
-
-    run_implementation_pass(
+    results = run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
         {"01": section},
         planspace,
@@ -644,32 +727,346 @@ def test_run_implementation_pass_triggers_one_shot_reassessment(
         "parent",
     )
 
-    accepted = read_json(
-        planspace
-        / "artifacts"
-        / "inputs"
-        / "section-01"
-        / "section-01-risk-accepted-steps.json",
+    assert reassess_calls == ["reassess"]
+    assert run_calls == [["src/app.py"], ["tests/app_test.py"]]
+    assert history_calls == [
+        ("plan-01", ["src/app.py"], False),
+        ("plan-01", ["tests/app_test.py"], False),
+    ]
+    assert results["01"].aligned is True
+    assert results["01"].modified_files == ["src/app.py", "tests/app_test.py"]
+    assert _read_roal_input_index(planspace, "01") == [
+        {
+            "kind": "accepted_frontier",
+            "path": str(
+                planspace
+                / "artifacts"
+                / "inputs"
+                / "section-01"
+                / "section-01-risk-accepted-steps.json"
+            ),
+            "produced_by": "implementation_pass",
+        },
+    ]
+
+
+def test_run_implementation_pass_bounds_frontier_iterations(
+    planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    section = _make_section(planspace, "01")
+    initial_plan = _plan(
+        accepted_frontier=["edit-01"],
+        deferred_steps=["verify-02"],
+        step_decisions=[
+            StepMitigation(step_id="edit-01", decision=StepDecision.ACCEPT),
+            StepMitigation(step_id="verify-02", decision=StepDecision.REJECT_DEFER),
+        ],
     )
-    deferred = read_json(
-        planspace
-        / "artifacts"
-        / "inputs"
-        / "section-01"
-        / "section-01-risk-deferred.json",
+    frontier_plans = [
+        _plan(
+            accepted_frontier=["verify-02"],
+            deferred_steps=["coord-03"],
+            step_decisions=[
+                StepMitigation(step_id="verify-02", decision=StepDecision.ACCEPT),
+                StepMitigation(step_id="coord-03", decision=StepDecision.REJECT_DEFER),
+            ],
+        ),
+        _plan(
+            accepted_frontier=["coord-03"],
+            deferred_steps=["audit-04"],
+            step_decisions=[
+                StepMitigation(step_id="coord-03", decision=StepDecision.ACCEPT),
+                StepMitigation(step_id="audit-04", decision=StepDecision.REJECT_DEFER),
+            ],
+        ),
+        _plan(
+            accepted_frontier=["audit-04"],
+            deferred_steps=["wrap-05"],
+            step_decisions=[
+                StepMitigation(step_id="audit-04", decision=StepDecision.ACCEPT),
+                StepMitigation(step_id="wrap-05", decision=StepDecision.REJECT_DEFER),
+            ],
+        ),
+        _plan(
+            accepted_frontier=["wrap-05"],
+            deferred_steps=["tail-06"],
+            step_decisions=[
+                StepMitigation(step_id="wrap-05", decision=StepDecision.ACCEPT),
+                StepMitigation(step_id="tail-06", decision=StepDecision.REJECT_DEFER),
+            ],
+        ),
+    ]
+    run_calls: list[list[str]] = []
+    history_calls: list[list[str] | None] = []
+    reassess_count = 0
+
+    def _run_section(*_args, **_kwargs) -> list[str]:
+        files = [f"src/step-{len(run_calls) + 1}.py"]
+        run_calls.append(files)
+        return files
+
+    def _reassess(*_args, **_kwargs) -> RiskPlan | None:
+        nonlocal reassess_count
+        plan = frontier_plans[reassess_count]
+        reassess_count += 1
+        return plan
+
+    def _append_history(_planspace, _sec_num, _plan, modified, *, implementation_failed=False) -> None:
+        assert implementation_failed is False
+        history_calls.append(list(modified) if modified is not None else None)
+
+    _patch_implementation_pass_basics(
+        monkeypatch,
+        risk_plan=initial_plan,
+        run_section_fn=_run_section,
+        reassess_fn=_reassess,
+        append_history_fn=_append_history,
     )
 
-    assert reassessment_calls == [["verify-02"]]
-    assert accepted["accepted_steps"] == ["verify-02"]
-    assert deferred["deferred_steps"] == []
-
-
-def _write_alignment_output(planspace: Path) -> None:
-    (planspace / "artifacts" / "impl-align-01-output.md").write_text(
-        '{"frame_ok": true, "aligned": true, "problems": []}',
-        encoding="utf-8",
+    results = run_implementation_pass(
+        {"01": ProposalPassResult(section_number="01", execution_ready=True)},
+        {"01": section},
+        planspace,
+        codespace,
+        "parent",
     )
 
+    assert reassess_count == 3
+    assert run_calls == [
+        ["src/step-1.py"],
+        ["src/step-2.py"],
+        ["src/step-3.py"],
+        ["src/step-4.py"],
+    ]
+    assert history_calls == [
+        ["src/step-1.py"],
+        ["src/step-2.py"],
+        ["src/step-3.py"],
+        ["src/step-4.py"],
+    ]
+    assert results["01"].aligned is False
+    assert results["01"].problems == (
+        "ROAL deferred steps remain after bounded frontier execution: wrap-05"
+    )
+    assert results["01"].modified_files == [
+        "src/step-1.py",
+        "src/step-2.py",
+        "src/step-3.py",
+        "src/step-4.py",
+    ]
+
+
+def test_run_implementation_pass_stops_when_reassessment_accepts_nothing(
+    planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    section = _make_section(planspace, "01")
+    initial_plan = _plan(
+        accepted_frontier=["edit-01"],
+        deferred_steps=["verify-02"],
+        step_decisions=[
+            StepMitigation(step_id="edit-01", decision=StepDecision.ACCEPT),
+            StepMitigation(step_id="verify-02", decision=StepDecision.REJECT_DEFER),
+        ],
+    )
+    deferred_only_plan = _plan(
+        accepted_frontier=[],
+        deferred_steps=["verify-02"],
+        step_decisions=[
+            StepMitigation(step_id="verify-02", decision=StepDecision.REJECT_DEFER),
+        ],
+    )
+    run_calls: list[list[str]] = []
+
+    def _run_section(*_args, **_kwargs) -> list[str]:
+        files = ["src/app.py"]
+        run_calls.append(files)
+        return files
+
+    _patch_implementation_pass_basics(
+        monkeypatch,
+        risk_plan=initial_plan,
+        run_section_fn=_run_section,
+        reassess_fn=lambda *_args, **_kwargs: deferred_only_plan,
+        append_history_fn=lambda *args, **kwargs: None,
+    )
+
+    results = run_implementation_pass(
+        {"01": ProposalPassResult(section_number="01", execution_ready=True)},
+        {"01": section},
+        planspace,
+        codespace,
+        "parent",
+    )
+
+    assert run_calls == [["src/app.py"]]
+    assert results["01"].aligned is False
+    assert results["01"].problems == "ROAL deferred steps remain: verify-02"
+
+
+def test_run_implementation_pass_stops_on_reopen_outcome(
+    planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    section = _make_section(planspace, "01")
+    initial_plan = _plan(
+        accepted_frontier=["edit-01"],
+        deferred_steps=["verify-02"],
+        step_decisions=[
+            StepMitigation(step_id="edit-01", decision=StepDecision.ACCEPT),
+            StepMitigation(step_id="verify-02", decision=StepDecision.REJECT_DEFER),
+        ],
+    )
+    reopened_plan = _plan(
+        accepted_frontier=["verify-02"],
+        reopen_steps=["coord-03"],
+        step_decisions=[
+            StepMitigation(step_id="verify-02", decision=StepDecision.ACCEPT),
+            StepMitigation(
+                step_id="coord-03",
+                decision=StepDecision.REJECT_REOPEN,
+                reason="needs parent coordination",
+                route_to="coordination",
+            ),
+        ],
+    )
+    run_calls: list[list[str]] = []
+
+    def _run_section(*_args, **_kwargs) -> list[str]:
+        files = [f"src/step-{len(run_calls) + 1}.py"]
+        run_calls.append(files)
+        return files
+
+    _patch_implementation_pass_basics(
+        monkeypatch,
+        risk_plan=initial_plan,
+        run_section_fn=_run_section,
+        reassess_fn=lambda *_args, **_kwargs: reopened_plan,
+        append_history_fn=lambda *args, **kwargs: None,
+    )
+
+    results = run_implementation_pass(
+        {"01": ProposalPassResult(section_number="01", execution_ready=True)},
+        {"01": section},
+        planspace,
+        codespace,
+        "parent",
+    )
+
+    assert run_calls == [["src/step-1.py"], ["src/step-2.py"]]
+    assert results["01"].aligned is False
+    assert results["01"].problems == "needs parent coordination"
+    assert read_json(planspace / "artifacts" / "signals" / "section-01-blocker.json") == {
+        "state": "needs_parent",
+        "blocker_type": "risk_reopen",
+        "source": "roal",
+        "section": "01",
+        "scope": "section-01",
+        "steps": ["coord-03"],
+        "route_to": "coordination",
+        "reason": "needs parent coordination",
+        "detail": "needs parent coordination",
+        "why_blocked": "needs parent coordination",
+        "needs": "Resolve reopened ROAL steps before continuing local execution",
+    }
+
+
+def test_run_implementation_pass_marks_frontier_failure_in_section_result(
+    planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    section = _make_section(planspace, "01")
+    initial_plan = _plan(
+        accepted_frontier=["edit-01"],
+        deferred_steps=["verify-02"],
+        step_decisions=[
+            StepMitigation(step_id="edit-01", decision=StepDecision.ACCEPT),
+            StepMitigation(step_id="verify-02", decision=StepDecision.REJECT_DEFER),
+        ],
+    )
+    frontier_plan = _plan(
+        accepted_frontier=["verify-02"],
+        step_decisions=[
+            StepMitigation(step_id="verify-02", decision=StepDecision.ACCEPT),
+        ],
+    )
+    history_calls: list[tuple[list[str] | None, bool]] = []
+    run_results = iter([["src/app.py"], None])
+
+    def _run_section(*_args, **_kwargs) -> list[str] | None:
+        return next(run_results)
+
+    def _append_history(_planspace, _sec_num, _plan, modified, *, implementation_failed=False) -> None:
+        history_calls.append(
+            (list(modified) if modified is not None else None, implementation_failed),
+        )
+
+    _patch_implementation_pass_basics(
+        monkeypatch,
+        risk_plan=initial_plan,
+        run_section_fn=_run_section,
+        reassess_fn=lambda *_args, **_kwargs: frontier_plan,
+        append_history_fn=_append_history,
+    )
+
+    results = run_implementation_pass(
+        {"01": ProposalPassResult(section_number="01", execution_ready=True)},
+        {"01": section},
+        planspace,
+        codespace,
+        "parent",
+    )
+
+    assert history_calls == [
+        (["src/app.py"], False),
+        (None, True),
+    ]
+    assert results["01"].aligned is False
+    assert results["01"].problems == "deferred frontier execution failed"
+    assert results["01"].modified_files == ["src/app.py"]
+
+
+def test_run_implementation_pass_restarts_on_alignment_change_during_frontier_execution(
+    planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    section = _make_section(planspace, "01")
+    initial_plan = _plan(
+        accepted_frontier=["edit-01"],
+        deferred_steps=["verify-02"],
+        step_decisions=[
+            StepMitigation(step_id="edit-01", decision=StepDecision.ACCEPT),
+            StepMitigation(step_id="verify-02", decision=StepDecision.REJECT_DEFER),
+        ],
+    )
+    frontier_plan = _plan(
+        accepted_frontier=["verify-02"],
+        step_decisions=[
+            StepMitigation(step_id="verify-02", decision=StepDecision.ACCEPT),
+        ],
+    )
+    run_calls: list[list[str]] = []
+
+    def _run_section(*_args, **_kwargs) -> list[str]:
+        files = [f"src/step-{len(run_calls) + 1}.py"]
+        run_calls.append(files)
+        return files
+
+    _patch_implementation_pass_basics(
+        monkeypatch,
+        risk_plan=initial_plan,
+        run_section_fn=_run_section,
+        reassess_fn=lambda *_args, **_kwargs: frontier_plan,
+        append_history_fn=lambda *args, **kwargs: None,
+        alignment_checks=[False, True],
+    )
+
+    with pytest.raises(ImplementationPassRestart):
+        run_implementation_pass(
+            {"01": ProposalPassResult(section_number="01", execution_ready=True)},
+            {"01": section},
+            planspace,
+            codespace,
+            "parent",
+        )
+
+    assert run_calls == [["src/step-1.py"], ["src/step-2.py"]]
 
 def test_run_implementation_pass_exits_when_parent_aborts(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,

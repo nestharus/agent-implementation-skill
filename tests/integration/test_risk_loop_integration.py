@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from lib.core.artifact_io import read_json, write_json
 from lib.pipelines.implementation_pass import (
     _append_risk_history,
+    _read_roal_input_index,
     _run_risk_review,
     run_implementation_pass,
 )
@@ -616,7 +617,7 @@ def test_full_adaptive_cycle_relaxes_only_one_posture_level(
     assert second_plan.step_decisions[0].posture == PostureProfile.P2_STANDARD
 
 
-def test_reassessment_triggers_when_deferred_inputs_become_available(
+def test_reassessment_executes_newly_accepted_frontier_end_to_end(
     planspace: Path,
     codespace: Path,
     monkeypatch,
@@ -671,6 +672,7 @@ def test_reassessment_triggers_when_deferred_inputs_become_available(
         ],
     )
     reassessment_packages: list[list[str]] = []
+    run_calls: list[list[str]] = []
 
     monkeypatch.setattr("lib.pipelines.implementation_pass.handle_pending_messages", lambda *args: False)
     monkeypatch.setattr("lib.pipelines.implementation_pass.alignment_changed_pending", lambda *args: False)
@@ -684,11 +686,17 @@ def test_reassessment_triggers_when_deferred_inputs_become_available(
     monkeypatch.setattr("lib.pipelines.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
 
     def _run_section(*_args, **_kwargs) -> list[str]:
+        files = (
+            ["src/main.py"]
+            if not run_calls
+            else ["tests/test_main.py"]
+        )
+        run_calls.append(files)
         (planspace / "artifacts" / "impl-align-01-output.md").write_text(
             '{"frame_ok": true, "aligned": true, "problems": []}',
             encoding="utf-8",
         )
-        return ["src/main.py"]
+        return files
 
     def _reassess(*args, **kwargs) -> RiskPlan:
         reassessment_packages.append([step.step_id for step in args[3].steps])
@@ -697,7 +705,7 @@ def test_reassessment_triggers_when_deferred_inputs_become_available(
     monkeypatch.setattr("lib.pipelines.implementation_pass.run_section", _run_section)
     monkeypatch.setattr("lib.pipelines.implementation_pass.run_risk_loop", _reassess)
 
-    run_implementation_pass(
+    results = run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
         {"01": section},
         planspace,
@@ -719,7 +727,31 @@ def test_reassessment_triggers_when_deferred_inputs_become_available(
         / "section-01"
         / "section-01-risk-accepted-steps.json",
     )
+    deferred_ref = (
+        planspace
+        / "artifacts"
+        / "inputs"
+        / "section-01"
+        / "section-01-risk-deferred.ref"
+    )
 
     assert reassessment_packages == [[package.steps[1].step_id]]
+    assert run_calls == [["src/main.py"], ["tests/test_main.py"]]
     assert accepted_payload["accepted_steps"] == [package.steps[1].step_id]
-    assert deferred_payload["deferred_steps"] == []
+    assert deferred_payload is None
+    assert not deferred_ref.exists()
+    assert results["01"].aligned is True
+    assert results["01"].modified_files == ["src/main.py", "tests/test_main.py"]
+    assert _read_roal_input_index(planspace, "01") == [
+        {
+            "kind": "accepted_frontier",
+            "path": str(
+                planspace
+                / "artifacts"
+                / "inputs"
+                / "section-01"
+                / "section-01-risk-accepted-steps.json"
+            ),
+            "produced_by": "implementation_pass",
+        },
+    ]
