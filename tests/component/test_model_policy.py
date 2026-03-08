@@ -15,6 +15,7 @@ def test_load_model_policy_returns_defaults_when_file_missing(tmp_path) -> None:
     assert policy["proposal"] == "gpt-5.4-high"
     assert policy["risk_assessor"] == "gpt-5.4-high"
     assert policy["execution_optimizer"] == "gpt-5.4-high"
+    assert policy["qa_interceptor"] == "claude-opus"
     assert policy["escalation_triggers"]["stall_count"] == 2
     assert policy.get("scan") == {}
 
@@ -26,6 +27,7 @@ def test_load_model_policy_merges_overrides_and_nested_triggers(tmp_path) -> Non
         "proposal": "gpt-5.4-xhigh",
         "risk_assessor": "gpt-5.4-xhigh",
         "execution_optimizer": "glm",
+        "qa_interceptor": "gpt-5.4-high",
         "scan": {"codemap_build": "scan-model"},
         "escalation_triggers": {"stall_count": 5},
     }), encoding="utf-8")
@@ -35,6 +37,7 @@ def test_load_model_policy_merges_overrides_and_nested_triggers(tmp_path) -> Non
     assert policy.proposal == "gpt-5.4-xhigh"
     assert resolve(policy, "risk_assessor") == "gpt-5.4-xhigh"
     assert resolve(policy, "execution_optimizer") == "glm"
+    assert resolve(policy, "qa_interceptor") == "gpt-5.4-high"
     assert policy["alignment"] == "claude-opus"
     assert policy["escalation_triggers"] == {
         "stall_count": 5,

@@ -7,7 +7,8 @@ from pathlib import Path
 
 from lib.core.path_registry import PathRegistry
 from lib.risk.package_builder import (
-    _infer_step_class,
+    _materialize_steps,
+    _positional_step_class,
     build_package,
     build_package_from_proposal,
     read_package,
@@ -124,6 +125,46 @@ def test_build_package_from_proposal_with_microstrategy(tmp_path: Path) -> None:
     ]
 
 
+def test_build_package_from_proposal_consumes_typed_microstrategy_steps(
+    tmp_path: Path,
+) -> None:
+    artifacts = tmp_path / "artifacts"
+    proposals = artifacts / "proposals"
+    proposals.mkdir(parents=True)
+    (proposals / "section-03-microstrategy.md").write_text(
+        "```json\n"
+        "[\n"
+        '  {"summary": "Refresh local context", "step_class": "explore"},\n'
+        '  {"summary": "Stabilize stale readiness inputs", "step_class": "stabilize"},\n'
+        '  {"summary": "Resolve shared seam with section 04", "step_class": "coordinate"},\n'
+        '  {"summary": "Run final checks", "step_class": "verify"}\n'
+        "]\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+    package = build_package_from_proposal("section-03", tmp_path)
+
+    assert [step.summary for step in package.steps] == [
+        "Refresh local context",
+        "Stabilize stale readiness inputs",
+        "Resolve shared seam with section 04",
+        "Run final checks",
+    ]
+    assert [step.step_class for step in package.steps] == [
+        StepClass.EXPLORE,
+        StepClass.STABILIZE,
+        StepClass.COORDINATE,
+        StepClass.VERIFY,
+    ]
+    assert [step.step_id for step in package.steps] == [
+        "explore-01",
+        "stabilize-02",
+        "coordinate-03",
+        "verify-04",
+    ]
+
+
 def test_build_package_from_empty_proposal_uses_generic_defaults(
     tmp_path: Path,
 ) -> None:
@@ -139,19 +180,77 @@ def test_build_package_from_empty_proposal_uses_generic_defaults(
     assert package.steps[2].summary == "Verify alignment and execution results"
 
 
-def test_infer_step_class_uses_edit_for_single_step() -> None:
-    assert _infer_step_class(index=1, total=1) == StepClass.EDIT
+def test_positional_step_class_uses_edit_for_single_step() -> None:
+    assert _positional_step_class(index=1, total=1) == StepClass.EDIT
 
 
-def test_infer_step_class_uses_position_based_defaults_for_multi_step() -> None:
+def test_positional_step_class_uses_position_based_defaults_for_multi_step() -> None:
     assert [
-        _infer_step_class(index=1, total=4),
-        _infer_step_class(index=2, total=4),
-        _infer_step_class(index=3, total=4),
-        _infer_step_class(index=4, total=4),
+        _positional_step_class(index=1, total=4),
+        _positional_step_class(index=2, total=4),
+        _positional_step_class(index=3, total=4),
+        _positional_step_class(index=4, total=4),
     ] == [
         StepClass.EXPLORE,
         StepClass.EDIT,
+        StepClass.EDIT,
+        StepClass.VERIFY,
+    ]
+
+
+def test_materialize_steps_uses_typed_step_classes_when_present() -> None:
+    steps = _materialize_steps(
+        step_summaries=[
+            "Refresh context",
+            "Stabilize stale readiness inputs",
+            "Resolve seam with section 04",
+            "Verify final behavior",
+        ],
+        proposal_state={},
+        step_classes={
+            2: "stabilize",
+            3: "coordinate",
+        },
+    )
+
+    assert [step.step_class for step in steps] == [
+        StepClass.EXPLORE,
+        StepClass.STABILIZE,
+        StepClass.COORDINATE,
+        StepClass.VERIFY,
+    ]
+
+
+def test_materialize_steps_uses_positional_fallback_without_step_classes() -> None:
+    steps = _materialize_steps(
+        step_summaries=[
+            "Refresh context",
+            "Apply change",
+            "Verify final behavior",
+        ],
+        proposal_state={},
+    )
+
+    assert [step.step_class for step in steps] == [
+        StepClass.EXPLORE,
+        StepClass.EDIT,
+        StepClass.VERIFY,
+    ]
+
+
+def test_materialize_steps_invalid_step_class_falls_back_to_positional() -> None:
+    steps = _materialize_steps(
+        step_summaries=[
+            "Refresh context",
+            "Middle step",
+            "Verify final behavior",
+        ],
+        proposal_state={},
+        step_classes={2: "unknown"},
+    )
+
+    assert [step.step_class for step in steps] == [
+        StepClass.EXPLORE,
         StepClass.EDIT,
         StepClass.VERIFY,
     ]

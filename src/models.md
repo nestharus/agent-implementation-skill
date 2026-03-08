@@ -91,6 +91,15 @@ configurable in `model-policy.json`:
 | `risk_assessor` | `gpt-5.4-high` | Diagnostic agent assessing execution risk before descent |
 | `execution_optimizer` | `gpt-5.4-high` | Translates the risk assessment into the minimum effective execution posture |
 
+## QA Interceptor Model Policy Key
+
+The QA dispatch interceptor uses one explicit model policy key,
+configurable in `model-policy.json`:
+
+| Key | Default | Why |
+|-----|---------|-----|
+| `qa_interceptor` | `claude-opus` | Contract-compliance review between the submitting agent, target agent, and task payload |
+
 ## Pipeline Patterns
 
 ### Implementation Pipeline

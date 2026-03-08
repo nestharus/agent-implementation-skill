@@ -16,7 +16,6 @@ from lib.risk.serialization import (
     deserialize_assessment,
     deserialize_plan,
     serialize_assessment,
-    serialize_package,
     serialize_plan,
     write_risk_artifact,
 )
@@ -101,6 +100,7 @@ def run_risk_loop(
             package=package,
             parameters=parameters,
             planspace=planspace,
+            scope=scope,
         )
         if iteration > 1 and last_plan is not None:
             optimization_prompt += (
@@ -305,8 +305,7 @@ def build_risk_assessment_prompt(
         f"- Scope: `{scope}`",
         f"- Layer: `{package.layer}`",
         f"- Package ID: `{package.package_id}`",
-        "",
-        *_inline_json_block("Risk Package", serialize_package(package)),
+        f"- Risk package: `{paths.risk_package(scope)}`",
     ]
 
     artifact_specs = [
@@ -348,10 +347,21 @@ def build_risk_assessment_prompt(
     lines.extend(_json_block("Risk history", paths.risk_history(), None))
     lines.extend(_artifact_block("Monitor signals directory", paths.signals_dir(), "dir"))
 
-    consequence_paths = list(paths.notes_dir().glob(f"*{scope}*"))
-    impact_paths = list(paths.coordination_dir().glob(f"*{scope}*"))
-    lines.extend(_path_list_block("Consequence notes", consequence_paths))
+    consequence_paths = sorted(
+        paths.notes_dir().glob(f"from-*-to-{section_number}.md")
+    )
+    outgoing_paths = sorted(
+        paths.notes_dir().glob(f"from-{section_number}-to-*.md")
+    )
+    impact_paths = sorted(paths.coordination_dir().glob(f"*{scope}*"))
+    lines.extend(_path_list_block("Incoming consequence notes", consequence_paths))
+    lines.extend(_path_list_block("Outgoing consequence notes", outgoing_paths))
     lines.extend(_path_list_block("Impact artifacts", impact_paths))
+    evidence = _collect_roal_evidence(paths, scope, section_number)
+    if evidence:
+        lines.extend(["", "## Reassessment Evidence", ""])
+        for title, path in evidence:
+            lines.append(f"- {title}: `{path}`")
 
     return "\n".join(lines).strip() + "\n"
 
@@ -361,14 +371,15 @@ def build_optimization_prompt(
     package: RiskPackage,
     parameters: dict,
     planspace: Path,
+    scope: str,
 ) -> str:
     """Build the prompt for the Tool Agent (Execution Optimizer)."""
     paths = PathRegistry(planspace)
     lines = [
         "# ROAL Execution Optimization",
         "",
-        *_inline_json_block("Risk Assessment", serialize_assessment(assessment)),
-        *_inline_json_block("Current Package", serialize_package(package)),
+        f"- Risk assessment: `{paths.risk_assessment(scope)}`",
+        f"- Risk package: `{paths.risk_package(scope)}`",
         "## Artifact Paths",
         "",
         "Read these artifacts for context:",
@@ -482,6 +493,39 @@ def _path_list_block(title: str, paths: list[Path]) -> list[str]:
     if len(paths) == 1:
         return [f"- {title}: `{paths[0]}`"]
     return [f"- {title}: " + ", ".join(f"`{path}`" for path in paths)]
+
+
+def _collect_roal_evidence(
+    paths: PathRegistry,
+    scope: str,
+    section_number: str,
+) -> list[tuple[str, Path]]:
+    """Collect section-scoped evidence artifacts for ROAL prompts."""
+    evidence: list[tuple[str, Path]] = []
+
+    manifest_path = (
+        paths.input_refs_dir(section_number)
+        / f"section-{section_number}-modified-file-manifest.json"
+    )
+    if manifest_path.exists():
+        evidence.append(("Modified-file manifest", manifest_path))
+
+    align_result = paths.artifacts / f"impl-align-{section_number}-output.md"
+    if align_result.exists():
+        evidence.append(("Alignment check result", align_result))
+
+    for recon in sorted(paths.reconciliation_dir().glob(f"*{scope}*")):
+        evidence.append(("Reconciliation result", recon))
+
+    for risk_artifact_name in (
+        f"section-{section_number}-risk-accepted-steps.json",
+        f"section-{section_number}-risk-deferred.json",
+    ):
+        risk_path = paths.input_refs_dir(section_number) / risk_artifact_name
+        if risk_path.exists():
+            evidence.append(("Previous risk artifact", risk_path))
+
+    return evidence
 
 
 def _load_parameters(paths: PathRegistry) -> dict:

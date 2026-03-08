@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -18,6 +19,10 @@ from lib.risk.types import PackageStep, RiskPackage, StepClass
 
 _MICROSTRATEGY_LINE_RE = re.compile(r"^(?:[-*+]|\d+\.)\s+(.+)$")
 _MICROSTRATEGY_HEADING_RE = re.compile(r"^#{1,6}\s+(.+)$")
+_MICROSTRATEGY_JSON_BLOCK_RE = re.compile(
+    r"```json\s*(.*?)```",
+    re.DOTALL | re.IGNORECASE,
+)
 
 
 def build_package(
@@ -61,10 +66,19 @@ def build_package_from_proposal(
     proposal_state = load_proposal_state(proposal_state_path)
     readiness = read_json(readiness_path)
 
-    if microstrategy:
-        step_summaries = _extract_microstrategy_steps(microstrategy)
-    else:
-        step_summaries = []
+    microstrategy_steps = (
+        _extract_microstrategy_steps(microstrategy) if microstrategy else []
+    )
+    step_summaries = [
+        _microstrategy_summary(step)
+        for step in microstrategy_steps
+        if _microstrategy_summary(step)
+    ]
+    step_classes = {}
+    if microstrategy_steps:
+        for i, step in enumerate(microstrategy_steps, start=1):
+            if isinstance(step, dict) and "step_class" in step:
+                step_classes[i] = step["step_class"]
 
     if not step_summaries:
         step_summaries = _default_step_summaries(
@@ -76,6 +90,7 @@ def build_package_from_proposal(
     steps = _materialize_steps(
         step_summaries=step_summaries,
         proposal_state=proposal_state,
+        step_classes=step_classes or None,
     )
     return build_package(
         scope=scope,
@@ -166,8 +181,21 @@ def _read_text(path: Path) -> str:
         return ""
 
 
-def _extract_microstrategy_steps(text: str) -> list[str]:
-    steps: list[str] = []
+def _extract_microstrategy_steps(text: str) -> list[str | dict[str, str]]:
+    steps: list[str | dict[str, str]] = []
+    seen_summaries: set[str] = set()
+
+    for block_match in _MICROSTRATEGY_JSON_BLOCK_RE.finditer(text):
+        payload = _parse_microstrategy_json(block_match.group(1))
+        if payload is None:
+            continue
+        for item in _normalize_microstrategy_payload(payload):
+            summary = _microstrategy_summary(item)
+            if not summary or summary in seen_summaries:
+                continue
+            seen_summaries.add(summary)
+            steps.append(item)
+
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line:
@@ -178,9 +206,76 @@ def _extract_microstrategy_steps(text: str) -> list[str]:
         if match is None:
             continue
         candidate = match.group(1).strip()
-        if candidate and candidate not in steps:
-            steps.append(candidate)
+        if not candidate:
+            continue
+        structured = _parse_microstrategy_json(candidate)
+        item: str | dict[str, str]
+        if structured is None:
+            item = candidate
+        else:
+            normalized = _normalize_microstrategy_payload(structured)
+            if len(normalized) != 1:
+                continue
+            item = normalized[0]
+        summary = _microstrategy_summary(item)
+        if summary and summary not in seen_summaries:
+            seen_summaries.add(summary)
+            steps.append(item)
     return steps
+
+
+def _parse_microstrategy_json(text: str) -> object | None:
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return None
+
+
+def _normalize_microstrategy_payload(
+    payload: object,
+) -> list[str | dict[str, str]]:
+    if isinstance(payload, list):
+        items = payload
+    elif isinstance(payload, dict) and isinstance(payload.get("steps"), list):
+        items = payload["steps"]
+    else:
+        items = [payload]
+
+    normalized: list[str | dict[str, str]] = []
+    for item in items:
+        coerced = _coerce_microstrategy_step(item)
+        if coerced is not None:
+            normalized.append(coerced)
+    return normalized
+
+
+def _coerce_microstrategy_step(
+    value: object,
+) -> str | dict[str, str] | None:
+    if isinstance(value, str):
+        summary = value.strip()
+        return summary or None
+    if not isinstance(value, dict):
+        return None
+
+    raw_summary = value.get("summary")
+    if not isinstance(raw_summary, str):
+        return None
+    summary = raw_summary.strip()
+    if not summary:
+        return None
+
+    step: dict[str, str] = {"summary": summary}
+    raw_class = value.get("step_class")
+    if isinstance(raw_class, str) and raw_class.strip():
+        step["step_class"] = raw_class.strip()
+    return step
+
+
+def _microstrategy_summary(step: str | dict[str, str]) -> str:
+    if isinstance(step, str):
+        return step.strip()
+    return str(step.get("summary", "")).strip()
 
 
 def _default_step_summaries(
@@ -217,6 +312,7 @@ def _materialize_steps(
     *,
     step_summaries: list[str],
     proposal_state: dict,
+    step_classes: dict[int, str] | None = None,
 ) -> list[PackageStep]:
     mutation_surface = [str(item) for item in proposal_state.get("resolved_contracts", [])]
     verification_surface = [
@@ -226,7 +322,14 @@ def _materialize_steps(
     steps: list[PackageStep] = []
 
     for index, summary in enumerate(step_summaries, start=1):
-        step_class = _infer_step_class(index=index, total=total)
+        if step_classes and index in step_classes:
+            raw_class = step_classes[index]
+            try:
+                step_class = StepClass(raw_class)
+            except ValueError:
+                step_class = _positional_step_class(index=index, total=total)
+        else:
+            step_class = _positional_step_class(index=index, total=total)
         step_id = f"{step_class.value}-{index:02d}"
         prerequisites = [] if not steps else [steps[-1].step_id]
         steps.append(
@@ -249,7 +352,7 @@ def _materialize_steps(
     return steps
 
 
-def _infer_step_class(*, index: int, total: int) -> StepClass:
+def _positional_step_class(*, index: int, total: int) -> StepClass:
     if total == 1:
         return StepClass.EDIT
     if index == 1 and total > 1:

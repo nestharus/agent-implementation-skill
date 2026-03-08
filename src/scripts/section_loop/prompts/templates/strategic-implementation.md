@@ -10,7 +10,7 @@
 4. Section specification: `{section_path}`
 5. Related source files:
 {files_block}{problem_frame_ref}{micro_ref}{codemap_ref}{impl_corrections_ref}{substrate_ref}{todos_ref}{impl_tools_ref}{intent_problem_ref}{intent_rubric_ref}{intent_philosophy_ref}{intent_registry_ref}{proposal_state_ref}{reconciliation_ref}{readiness_ref}
-{problems_block}{decisions_block}{tooling_block}{additional_inputs_block}
+{problems_block}{decisions_block}{tooling_block}{risk_inputs_block}{additional_inputs_block}
 ## Instructions
 
 A section is a **problem region / concern**, not a file bundle. Related
@@ -27,12 +27,30 @@ execute it strategically.
 
 ### Accuracy First — Zero Risk Tolerance
 
-Every shortcut introduces risk. You accept zero risk. Follow the full
-process faithfully: explore before changing, follow the proposal exactly,
-verify after changing. Shortcuts are permitted ONLY when the remaining
-work is so trivially small that no meaningful risk exists. "This is
-simple enough to do directly" is not valid reasoning for skipping
-exploration or verification.
+Every shortcut introduces risk. You have zero tolerance for fabricated
+understanding or bypassed safety gates; operational risk is managed
+proportionally by ROAL. Follow the full process faithfully: explore
+before changing, follow the proposal exactly, verify after changing.
+Shortcuts are permitted ONLY when the remaining work is so trivially
+small that no meaningful risk exists. "This is simple enough to do
+directly" is not valid reasoning for skipping exploration or
+verification.
+
+### Risk Boundary
+
+If a "Risk Inputs (from ROAL)" section appears above, it defines your
+execution scope:
+
+- **Accepted frontier**: these steps are the hard local authority. Execute
+  only what they authorize.
+- **Deferred steps**: these are NOT in your scope. Do not attempt them.
+- **Reopened steps**: these are NOT locally solvable. Do not attempt them.
+- **`dispatch_shape`**: this is follow-on topology metadata. It tells you
+  the expected shape (chain/fanout/gate) but does NOT grant permission to
+  widen your scope.
+
+If no risk inputs are present, proceed normally per the integration
+proposal.
 
 ### How to Work
 

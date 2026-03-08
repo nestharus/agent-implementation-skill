@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 
 from lib.core.artifact_io import read_json, rename_malformed, write_json
+from lib.core.model_policy import load_model_policy, resolve
 from lib.core.path_registry import PathRegistry
 from lib.services.qa_verdict_parser import parse_qa_verdict
 
@@ -273,8 +274,10 @@ def intercept_task(
         output_path = intercepts_dir / f"qa-{task_id}-output.md"
 
         # 6. Dispatch QA agent.
+        policy = load_model_policy(planspace)
+        model = resolve(policy, "qa_interceptor")
         output = dispatch_agent(
-            "claude-opus",
+            model,
             prompt_path,
             output_path,
             planspace,

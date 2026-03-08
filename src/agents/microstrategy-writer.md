@@ -17,10 +17,12 @@ follow without re-deriving the strategy.
 
 ### Accuracy First — Zero Risk Tolerance
 
-Every shortcut introduces risk. You accept zero risk. You MUST read every
-related file before writing the microstrategy. Do not guess file contents
-or assume structure. A microstrategy based on wrong assumptions about the
-codebase will cause implementation agents to produce incorrect code.
+Every shortcut introduces risk. You have zero tolerance for fabricated
+understanding or bypassed safety gates; operational risk is managed
+proportionally by ROAL. You MUST read every related file before writing
+the microstrategy. Do not guess file contents or assume structure. A
+microstrategy based on wrong assumptions about the codebase will cause
+implementation agents to produce incorrect code.
 
 ### Before Writing
 
@@ -125,3 +127,25 @@ When superseding a TODO, keep the original ID and add `SUPERSEDED:`:
 Write the microstrategy as markdown. Keep it tactical and concrete.
 The integration proposal already justified WHY — you're capturing
 WHAT and WHERE at the file level.
+
+Each step in your microstrategy may include an optional `step_class` to
+communicate execution intent to ROAL:
+
+- `explore` — refresh understanding, read artifacts, narrow unknowns
+- `stabilize` — resolve blocking state (missing readiness, stale inputs)
+- `edit` — implement approved changes
+- `coordinate` — resolve cross-section seams or shared contracts
+- `verify` — confirm alignment, run checks
+
+Example step with typed class:
+
+```json
+{
+  "summary": "Resolve shared contract with section-05 before editing",
+  "step_class": "coordinate"
+}
+```
+
+If you omit `step_class`, a positional default is used (first=explore,
+last=verify, middle=edit). But for non-trivial strategies, explicit
+typing helps ROAL apply appropriate risk thresholds.

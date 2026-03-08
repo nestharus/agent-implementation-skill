@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from lib.risk import loop as risk_loop
 from lib.risk.history import append_history_entry
 from lib.risk.loop import (
+    _collect_roal_evidence,
     build_optimization_prompt,
     build_risk_assessment_prompt,
     parse_risk_assessment,
@@ -59,12 +61,18 @@ def test_build_risk_assessment_prompt_includes_expected_context(tmp_path: Path) 
     assert "Codemap corrections (authoritative overrides)" in prompt
     assert "Monitor signals directory" in prompt
     assert "tool-registry.json" in prompt
-    assert "Consequence notes" in prompt
+    assert "Risk package" in prompt
+    assert "`" + str(tmp_path / "artifacts" / "risk" / "section-03-risk-package.json") + "`" in prompt
+    assert "Incoming consequence notes" in prompt
+    assert "Outgoing consequence notes" in prompt
+    assert "from-12-to-03.md" in prompt
+    assert "from-03-to-07.md" in prompt
     assert "Impact artifacts" in prompt
     assert "Spec body" not in prompt
     assert "Alignment details" not in prompt
     assert "Problem frame details" not in prompt
     assert "LOOP_DETECTED" not in prompt
+    assert '"package_id": "pkg-implementation-section-03"' not in prompt
 
 
 def test_build_optimization_prompt_includes_assessment_and_parameters(
@@ -79,15 +87,76 @@ def test_build_optimization_prompt_includes_assessment_and_parameters(
         package,
         {"step_thresholds": {"explore": 60, "edit": 45}},
         tmp_path,
+        "section-03",
     )
 
     assert "ROAL Execution Optimization" in prompt
-    assert '"assessment_id": "assessment-1"' in prompt
-    assert '"package_id": "pkg-implementation-section-03"' in prompt
+    assert "`" + str(tmp_path / "artifacts" / "risk" / "section-03-risk-assessment.json") + "`" in prompt
+    assert "`" + str(tmp_path / "artifacts" / "risk" / "section-03-risk-package.json") + "`" in prompt
     assert "Risk parameters" in prompt
     assert "`" + str(tmp_path / "artifacts" / "risk" / "risk-parameters.json") + "`" in prompt
     assert "tool-registry.json" in prompt
     assert '"edit": 45' not in prompt
+    assert '"assessment_id": "assessment-1"' not in prompt
+    assert '"package_id": "pkg-implementation-section-03"' not in prompt
+
+
+def test_prompt_builders_do_not_use_inline_json_blocks(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _write_artifacts(tmp_path)
+    monkeypatch.setattr(
+        risk_loop,
+        "_inline_json_block",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("_inline_json_block should not be used by prompt builders")
+        ),
+    )
+
+    build_risk_assessment_prompt(_package(), tmp_path, "section-03")
+    build_optimization_prompt(
+        _assessment(),
+        _package(),
+        {"step_thresholds": {"explore": 60}},
+        tmp_path,
+        "section-03",
+    )
+
+
+def test_collect_roal_evidence_includes_reassessment_artifacts(tmp_path: Path) -> None:
+    _write_artifacts(tmp_path)
+    artifacts = tmp_path / "artifacts"
+    input_dir = artifacts / "inputs" / "section-03"
+    input_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = input_dir / "section-03-modified-file-manifest.json"
+    manifest_path.write_text(json.dumps({"modified_files": ["src/app.py"]}), encoding="utf-8")
+    accepted_path = input_dir / "section-03-risk-accepted-steps.json"
+    accepted_path.write_text(json.dumps({"accepted_steps": ["edit-02"]}), encoding="utf-8")
+    deferred_path = input_dir / "section-03-risk-deferred.json"
+    deferred_path.write_text(json.dumps({"deferred_steps": ["verify-03"]}), encoding="utf-8")
+    align_path = artifacts / "impl-align-03-output.md"
+    align_path.write_text("Aligned\n", encoding="utf-8")
+    recon_dir = artifacts / "reconciliation"
+    recon_dir.mkdir(parents=True, exist_ok=True)
+    recon_path = recon_dir / "section-03-reconciliation.md"
+    recon_path.write_text("Reconciled\n", encoding="utf-8")
+
+    evidence = _collect_roal_evidence(risk_loop.PathRegistry(tmp_path), "section-03", "03")
+
+    assert evidence == [
+        ("Modified-file manifest", manifest_path),
+        ("Alignment check result", align_path),
+        ("Reconciliation result", recon_path),
+        ("Previous risk artifact", accepted_path),
+        ("Previous risk artifact", deferred_path),
+    ]
+
+
+def test_collect_roal_evidence_returns_empty_when_no_artifacts_exist(tmp_path: Path) -> None:
+    evidence = _collect_roal_evidence(risk_loop.PathRegistry(tmp_path), "section-03", "03")
+
+    assert evidence == []
 
 
 def test_parse_risk_assessment_with_valid_json() -> None:
@@ -493,15 +562,19 @@ def _write_artifacts(planspace: Path) -> None:
     readiness = artifacts / "readiness"
     signals = artifacts / "signals"
     notes = artifacts / "notes"
+    inputs = artifacts / "inputs"
     sections.mkdir(parents=True, exist_ok=True)
     proposals.mkdir(parents=True, exist_ok=True)
     readiness.mkdir(parents=True, exist_ok=True)
     signals.mkdir(parents=True, exist_ok=True)
     notes.mkdir(parents=True, exist_ok=True)
+    inputs.mkdir(parents=True, exist_ok=True)
     coordination = artifacts / "coordination"
     risk = artifacts / "risk"
+    reconciliation = artifacts / "reconciliation"
     coordination.mkdir(parents=True, exist_ok=True)
     risk.mkdir(parents=True, exist_ok=True)
+    reconciliation.mkdir(parents=True, exist_ok=True)
 
     (sections / "section-03.md").write_text("Spec body\n", encoding="utf-8")
     (sections / "section-03-proposal-excerpt.md").write_text(
@@ -559,8 +632,12 @@ def _write_artifacts(planspace: Path) -> None:
         json.dumps({"step_thresholds": {"explore": 60, "edit": 45}}),
         encoding="utf-8",
     )
-    (notes / "section-03-consequence.md").write_text(
-        "Consequence note\n",
+    (notes / "from-12-to-03.md").write_text(
+        "Incoming consequence note\n",
+        encoding="utf-8",
+    )
+    (notes / "from-03-to-07.md").write_text(
+        "Outgoing consequence note\n",
         encoding="utf-8",
     )
     (coordination / "section-03-impact.md").write_text(

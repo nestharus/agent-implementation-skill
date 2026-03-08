@@ -243,6 +243,41 @@ class TestInterceptTask:
         assert passed is True
         assert rationale_path is None
 
+    def test_dispatch_uses_model_policy_key(self, tmp_path: Path) -> None:
+        """QA dispatch resolves its model through model-policy.json."""
+        from qa_interceptor import intercept_task
+
+        ps = _setup_planspace(tmp_path)
+        artifacts = ps / "artifacts"
+        (artifacts / "model-policy.json").write_text(
+            json.dumps({"qa_interceptor": "policy-qa-model"}),
+            encoding="utf-8",
+        )
+
+        task = {
+            "id": "99b",
+            "type": "alignment_check",
+            "by": "section-loop",
+            "payload": str(ps / "artifacts" / "test-payload.md"),
+        }
+        (ps / "artifacts" / "test-payload.md").write_text(
+            "# Test\n", encoding="utf-8",
+        )
+
+        mock_output = json.dumps({
+            "verdict": "PASS",
+            "rationale": "Contract compliant",
+        })
+
+        with patch("qa_interceptor.dispatch_agent", return_value=mock_output) as mock_dispatch:
+            passed, rationale_path = intercept_task(
+                task, "alignment-judge.md", ps,
+            )
+
+        assert passed is True
+        assert rationale_path is None
+        assert mock_dispatch.call_args.args[0] == "policy-qa-model"
+
     def test_reject_returns_false_with_rationale(
         self, tmp_path: Path,
     ) -> None:

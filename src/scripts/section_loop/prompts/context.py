@@ -4,6 +4,8 @@ Centralizes the repeated .exists() path resolutions so each prompt writer
 only needs to add prompt-specific keys.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 
 from lib.core.path_registry import PathRegistry
@@ -174,11 +176,54 @@ def build_prompt_context(
     # --- additional inputs (contract deltas, bridge notes, etc.) ---
     inputs_dir = paths.input_refs_dir(sec)
     additional_inputs_block = ""
+    risk_inputs_block = ""
     if inputs_dir.exists():
         ref_files = sorted(inputs_dir.glob("*.ref"))
         if ref_files:
-            input_lines = []
+            risk_ref_prefixes = (
+                "risk-accepted",
+                "risk-deferred",
+                "risk-reopen",
+                "risk-advisory",
+            )
+            risk_refs = []
+            coordination_refs = []
             for ref_file in ref_files:
+                if any(
+                    ref_file.stem.startswith(prefix)
+                    for prefix in risk_ref_prefixes
+                ):
+                    risk_refs.append(ref_file)
+                else:
+                    coordination_refs.append(ref_file)
+
+            risk_lines = []
+            input_lines = []
+            for ref_file in risk_refs:
+                try:
+                    referenced = ref_file.read_text(encoding="utf-8").strip()
+                    if Path(referenced).exists():
+                        risk_lines.append(
+                            f"   - `{referenced}` (from {ref_file.stem})"
+                        )
+                except (OSError, ValueError) as exc:
+                    print(
+                        f"[CONTEXT][WARN] Failed to read ref "
+                        f"{ref_file}: {exc}",
+                    )
+            if risk_lines:
+                risk_inputs_block = (
+                    "\n\n## Risk Inputs (from ROAL)\n\n"
+                    "These artifacts were produced by the "
+                    "Risk-Optimization Adaptive Loop.\n"
+                    "The accepted frontier is your current local execution "
+                    "authority.\n"
+                    "Deferred steps are NOT in scope. Reopened steps are "
+                    "NOT locally solvable.\n"
+                    + "\n".join(risk_lines)
+                )
+
+            for ref_file in coordination_refs:
                 try:
                     referenced = ref_file.read_text(encoding="utf-8").strip()
                     if Path(referenced).exists():
@@ -228,6 +273,7 @@ def build_prompt_context(
         "problem_frame_ref": problem_frame_ref,
         "problem_frame_path": problem_frame_path,
         "files_block": files_block,
+        "risk_inputs_block": risk_inputs_block,
         "additional_inputs_block": additional_inputs_block,
         "intent_problem_ref": intent_problem_ref,
         "intent_rubric_ref": intent_rubric_ref,

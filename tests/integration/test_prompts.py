@@ -218,3 +218,39 @@ class TestTodoExtractionInPrompt:
 
         assert "canonical in-scope microstrategy surface" in content
         assert "reconcile" in content.lower()
+
+
+class TestStrategicImplementationRiskInputs:
+    def test_strategic_impl_prompt_renders_risk_boundary_and_inputs(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        section = Section(
+            number="01",
+            path=planspace / "artifacts" / "sections" / "section-01.md",
+            related_files=["src/main.py"],
+        )
+        section.path.write_text("# Section 01\n\nAuth concern.\n")
+        excerpt = (
+            planspace / "artifacts" / "sections" / "section-01-proposal-excerpt.md"
+        )
+        excerpt.write_text("# Excerpt\nProposal summary.\n")
+
+        inputs_dir = planspace / "artifacts" / "inputs" / "section-01"
+        inputs_dir.mkdir(parents=True, exist_ok=True)
+        risk_payload = inputs_dir / "section-01-risk-accepted-steps.json"
+        risk_payload.write_text('{"accepted_steps": ["edit-02"]}\n')
+        (inputs_dir / "risk-accepted-frontier.ref").write_text(str(risk_payload))
+        coordination_payload = inputs_dir / "section-01-bridge-note.md"
+        coordination_payload.write_text("# Bridge\n\nShared seam details.\n")
+        (inputs_dir / "bridge-note.ref").write_text(str(coordination_payload))
+
+        prompt_path = write_strategic_impl_prompt(section, planspace, codespace)
+        content = prompt_path.read_text()
+
+        assert "### Risk Boundary" in content
+        assert "Risk Inputs (from ROAL)" in content
+        assert str(risk_payload) in content
+        assert "Additional Inputs (from coordination)" in content
+        assert str(coordination_payload) in content
+        assert "fabricated" in content
+        assert "bypassed safety gates" in content
