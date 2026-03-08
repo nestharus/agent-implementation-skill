@@ -665,7 +665,7 @@ def _run_risk_review(
 ) -> RiskPlan | None:
     """Run ROAL risk review for a section before implementation.
 
-    Returns the risk plan, or None if ROAL is skipped (engagement mode = SKIP).
+    Returns the risk plan, or None on failure.
     """
     scope = f"section-{sec_num}"
     paths = PathRegistry(planspace)

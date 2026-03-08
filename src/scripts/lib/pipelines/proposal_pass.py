@@ -121,7 +121,7 @@ def _risk_check_proposal(
     """Optional risk pre-check on a proposal before finalization.
 
     Returns a summary dict with risk_mode, dominant_risks, and recommendation,
-    or None if ROAL is skipped.
+    or None on failure.
     """
     scope = f"section-{sec_num}"
     advisory_scope = f"{scope}-proposal"

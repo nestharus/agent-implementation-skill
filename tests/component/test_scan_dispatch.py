@@ -66,3 +66,9 @@ def test_build_scan_dispatch_command_matches_agents_invocation(tmp_path) -> None
         "--file", str(tmp_path / "prompt.md"),
         "--agent-file", str(tmp_path / "agents" / "scan.md"),
     ]
+
+
+def test_default_scan_models_match_agent_frontmatter() -> None:
+    """Scan defaults for codemap_freshness and validation must match agent files (glm)."""
+    assert DEFAULT_SCAN_MODELS["codemap_freshness"] == "glm"
+    assert DEFAULT_SCAN_MODELS["validation"] == "glm"

@@ -118,7 +118,7 @@ Write a JSON signal to: `{triage_signal_path}`
   "section": "{section_number}",
   "intent_mode": "full"|"lightweight"|"cached",
   "confidence": "high"|"medium"|"low",
-  "risk_mode": "skip"|"light"|"full",
+  "risk_mode": "light"|"full",
   "risk_budget_hint": 0,
   "escalate": false,
   "budgets": {{

@@ -9,9 +9,9 @@ from lib.core.artifact_io import rename_malformed
 
 DEFAULT_SCAN_MODELS: dict[str, str] = {
     "codemap_build": "claude-opus",
-    "codemap_freshness": "claude-opus",
+    "codemap_freshness": "glm",
     "exploration": "claude-opus",
-    "validation": "claude-opus",
+    "validation": "glm",
     "tier_ranking": "glm",
     "deep_analysis": "glm",
     "feedback_updater": "glm",

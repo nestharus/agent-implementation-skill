@@ -17,7 +17,7 @@ def determine_engagement(
     freshness_changed: bool,
     risk_mode_hint: str = "",
 ) -> RiskMode:
-    """Determine whether ROAL can be skipped, run lightly, or run in full."""
+    """Determine whether ROAL runs lightly or in full."""
     normalized_hint = risk_mode_hint.strip().lower()
     skip_floor_hit = (
         has_shared_seams
@@ -29,6 +29,7 @@ def determine_engagement(
         return RiskMode.FULL
     if normalized_hint == RiskMode.LIGHT.value:
         return RiskMode.FULL if skip_floor_hit else RiskMode.LIGHT
+    # Legacy normalization: stale persisted artifacts may contain "skip".
     if normalized_hint == "skip":
         return RiskMode.FULL if skip_floor_hit else RiskMode.LIGHT
 

@@ -14,7 +14,7 @@ UNDERSTANDING intent or FORMULATING questions?
   → Opus (current session)
 
 DESIGNING something new under constraints (primary synthesis)?
-  → gpt-xhigh
+  → gpt-high (escalate to gpt-xhigh on recurrence or stall)
 
 ALIGNMENT CHECKING for coherence or divergence?
   → Opus (default for alignment-judge), GPT-high as fallback

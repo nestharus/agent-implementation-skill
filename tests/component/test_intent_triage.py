@@ -134,3 +134,72 @@ def test_run_intent_triage_returns_signal_from_agent(
     assert result["risk_confidence"] == "medium"
     assert result["risk_budget_hint"] == 2
     assert artifact_events == ["prompt:intent-triage-01"]
+
+
+def test_triage_prompt_does_not_advertise_skip(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """The generated triage prompt only advertises light|full, never skip."""
+    planspace = tmp_path / "planspace"
+    artifacts = planspace / "artifacts"
+    (artifacts / "sections").mkdir(parents=True)
+    codespace = tmp_path / "codespace"
+    codespace.mkdir()
+
+    monkeypatch.setattr(
+        intent_triage,
+        "read_model_policy",
+        lambda _: {"intent_triage": "glm"},
+    )
+    monkeypatch.setattr(intent_triage, "_log_artifact", lambda *_: None)
+
+    written_prompts: list[str] = []
+
+    def capture_prompt(text, path):
+        written_prompts.append(text)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(intent_triage, "write_validated_prompt", capture_prompt)
+    monkeypatch.setattr(
+        intent_triage,
+        "dispatch_agent",
+        lambda *a, **kw: "",
+    )
+    monkeypatch.setattr(
+        intent_triage,
+        "read_agent_signal",
+        lambda *a, **kw: None,
+    )
+
+    run_intent_triage("01", planspace, codespace, "parent")
+
+    assert len(written_prompts) == 1
+    prompt = written_prompts[0]
+    assert '"light"|"full"' in prompt or "'light'|'full'" in prompt
+    assert '"skip"' not in prompt
+
+
+def test_legacy_persisted_skip_artifact_normalizes_safely(
+    tmp_path: Path,
+) -> None:
+    """A stale persisted triage signal with risk_mode=skip loads as light."""
+    signal_path = tmp_path / "artifacts" / "signals" / "intent-triage-01.json"
+    signal_path.parent.mkdir(parents=True)
+    signal_path.write_text(
+        json.dumps({
+            "intent_mode": "lightweight",
+            "confidence": "high",
+            "risk_mode": "skip",
+        }),
+        encoding="utf-8",
+    )
+
+    result = load_triage_result("01", tmp_path)
+
+    assert result is not None
+    # The signal passes through as-is (load_triage_result does not
+    # normalize risk_mode — that happens downstream in determine_engagement).
+    assert result["risk_mode"] == "skip"
