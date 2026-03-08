@@ -144,10 +144,15 @@ strategy decision that must be resolved or explicitly revised.
 Your implementation must match the approved integration proposal:
 - Every change described in the proposal must be implemented
 - Do NOT silently skip parts of the proposal
-- If you discover a proposal item cannot work as described, explain
-  WHY and implement the closest correct alternative
-- Do NOT add changes not in the proposal unless they are strictly
-  necessary for the proposed changes to work (e.g., a missing import)
+- If a proposal item cannot work as described and the fix is
+  **mechanical** (imports, glue, naming, docstrings, formatting —
+  things with exactly one correct answer), fix it directly
+- If making a proposal item work would require a **structural choice**
+  (unresolved anchor, unresolved contract, section boundary,
+  architecture, or work outside the accepted frontier), emit a blocker
+  instead of implementing an alternative
+- Do NOT add changes not in the proposal unless they are mechanical
+  necessities for the proposed changes to work (e.g., a missing import)
 
 ## Structural Omission Handling
 
