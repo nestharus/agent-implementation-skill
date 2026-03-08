@@ -13,7 +13,7 @@ from lib.repositories.proposal_state_repository import load_proposal_state
 from lib.risk.engagement import determine_engagement
 from lib.risk.loop import run_lightweight_risk_check
 from lib.risk.package_builder import build_package_from_proposal
-from lib.risk.serialization import deserialize_assessment, read_risk_artifact
+from lib.risk.serialization import load_risk_assessment
 from lib.risk.types import RiskMode, RiskPackage, RiskType
 from lib.services.alignment_change_tracker import (
     check_and_clear,
@@ -168,8 +168,8 @@ def _risk_check_proposal(
             advisory_package,
             dispatch_fn,
         )
-        assessment_payload = read_risk_artifact(paths.risk_assessment(advisory_scope))
-        if not isinstance(assessment_payload, dict):
+        assessment = load_risk_assessment(paths.risk_assessment(advisory_scope))
+        if assessment is None:
             _refresh_roal_input_index(
                 planspace,
                 sec_num,
@@ -181,8 +181,6 @@ def _risk_check_proposal(
                 "dominant_risks": [],
                 "recommendation": "proceed",
             }
-
-        assessment = deserialize_assessment(assessment_payload)
         dominant_risks = [risk.value for risk in assessment.dominant_risks]
         recommendation = (
             "recommend additional exploration"

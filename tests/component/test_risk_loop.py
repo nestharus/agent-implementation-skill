@@ -101,6 +101,26 @@ def test_build_optimization_prompt_includes_assessment_and_parameters(
     assert '"package_id": "pkg-implementation-section-03"' not in prompt
 
 
+def test_build_optimization_prompt_marks_lightweight_single_pass_mode(
+    tmp_path: Path,
+) -> None:
+    _write_artifacts(tmp_path)
+
+    prompt = build_optimization_prompt(
+        _assessment(),
+        _package(),
+        {"step_thresholds": {"explore": 60}},
+        tmp_path,
+        "section-03",
+        lightweight=True,
+    )
+
+    assert "## Lightweight Mode" in prompt
+    assert "single-pass lightweight risk check" in prompt
+    assert "No iteration, repeated reassessment, or horizon refinement is available." in prompt
+    assert "standard structured risk plan JSON" in prompt
+
+
 def test_prompt_builders_do_not_use_inline_json_blocks(
     tmp_path: Path,
     monkeypatch,
@@ -198,10 +218,13 @@ def test_parse_risk_plan_with_invalid_json_returns_none() -> None:
 def test_run_lightweight_risk_check_with_mocked_dispatch(tmp_path: Path) -> None:
     package = _package()
     _write_artifacts(tmp_path)
+    calls: list[str] = []
 
     def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
-        assert kwargs["agent_file"] == "risk-assessor.md"
-        return json.dumps(serialize_assessment(_assessment()))
+        calls.append(kwargs["agent_file"])
+        if kwargs["agent_file"] == "risk-assessor.md":
+            return json.dumps(serialize_assessment(_assessment()))
+        return json.dumps(serialize_plan(_valid_plan()))
 
     plan = run_lightweight_risk_check(
         tmp_path,
@@ -211,9 +234,39 @@ def test_run_lightweight_risk_check_with_mocked_dispatch(tmp_path: Path) -> None
         _dispatch,
     )
 
+    assert calls == ["risk-assessor.md", "execution-optimizer.md"]
     assert plan.accepted_frontier == ["explore-01"]
     assert plan.deferred_steps == []
     assert plan.step_decisions[0].posture == PostureProfile.P1_LIGHT
+
+
+def test_run_lightweight_risk_check_fails_closed_when_optimizer_parse_fails(
+    tmp_path: Path,
+) -> None:
+    package = _package()
+    _write_artifacts(tmp_path)
+    calls: list[str] = []
+
+    def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
+        calls.append(kwargs["agent_file"])
+        if kwargs["agent_file"] == "risk-assessor.md":
+            return json.dumps(serialize_assessment(_assessment()))
+        return "not valid json"
+
+    plan = run_lightweight_risk_check(
+        tmp_path,
+        "section-03",
+        "implementation",
+        package,
+        _dispatch,
+    )
+
+    assert calls == ["risk-assessor.md", "execution-optimizer.md"]
+    assert plan.accepted_frontier == []
+    assert plan.deferred_steps == ["explore-01"]
+    assert plan.reopen_steps == []
+    assert plan.step_decisions[0].decision == StepDecision.REJECT_DEFER
+    assert plan.step_decisions[0].posture == PostureProfile.P4_REOPEN
 
 
 def test_run_risk_loop_single_iteration_when_plan_passes(tmp_path: Path) -> None:

@@ -11,6 +11,9 @@ from src.scripts.lib.risk.serialization import (
     deserialize_history_entry,
     deserialize_package,
     deserialize_plan,
+    load_risk_assessment,
+    load_risk_package,
+    load_risk_plan,
     read_risk_artifact,
     serialize_assessment,
     serialize_history_entry,
@@ -37,6 +40,100 @@ from src.scripts.lib.risk.types import (
     StepMitigation,
     UnderstandingInventory,
 )
+
+
+def _sample_package() -> RiskPackage:
+    return RiskPackage(
+        package_id="pkg-1",
+        layer="section",
+        scope="section-01",
+        origin_problem_id="prob-1",
+        origin_source="triage",
+        steps=[
+            PackageStep(
+                step_id="step-1",
+                step_class=StepClass.EXPLORE,
+                summary="Inspect current behavior",
+                prerequisites=["ready"],
+                expected_outputs=["notes"],
+                expected_resolutions=["open questions"],
+                mutation_surface=["src/a.py"],
+                verification_surface=["tests/test_a.py"],
+                reversibility="high",
+            )
+        ],
+    )
+
+
+def _sample_assessment() -> RiskAssessment:
+    return RiskAssessment(
+        assessment_id="assess-1",
+        layer="section",
+        package_id="pkg-1",
+        assessment_scope="section-01",
+        understanding_inventory=UnderstandingInventory(
+            confirmed=["a"],
+            assumed=["b"],
+            missing=["c"],
+            stale=["d"],
+        ),
+        package_raw_risk=64,
+        assessment_confidence=0.75,
+        dominant_risks=[RiskType.CONTEXT_ROT, RiskType.SCOPE_CREEP],
+        step_assessments=[
+            StepAssessment(
+                step_id="step-1",
+                step_class=StepClass.STABILIZE,
+                summary="Stabilize inputs",
+                prerequisites=["step-0"],
+                risk_vector=RiskVector(
+                    context_rot=1,
+                    scope_creep=2,
+                    stale_artifact_contamination=3,
+                ),
+                modifiers=RiskModifiers(
+                    blast_radius=2,
+                    reversibility=3,
+                    observability=1,
+                    confidence=0.8,
+                ),
+                raw_risk=55,
+                dominant_risks=[
+                    RiskType.STALE_ARTIFACT_CONTAMINATION,
+                    RiskType.SCOPE_CREEP,
+                ],
+            )
+        ],
+        frontier_candidates=["step-1"],
+        reopen_recommendations=["reassess after fix"],
+        notes=["first pass"],
+    )
+
+
+def _sample_plan() -> RiskPlan:
+    return RiskPlan(
+        plan_id="plan-1",
+        assessment_id="assess-1",
+        package_id="pkg-1",
+        layer="section",
+        step_decisions=[
+            StepMitigation(
+                step_id="step-1",
+                decision=StepDecision.REJECT_REOPEN,
+                posture=PostureProfile.P4_REOPEN,
+                mitigations=["collect more evidence"],
+                residual_risk=82,
+                reason="cross-section mismatch",
+                wait_for=["review"],
+                route_to="coordination",
+                dispatch_shape={"mode": "full"},
+            )
+        ],
+        accepted_frontier=[],
+        deferred_steps=["step-2"],
+        reopen_steps=["step-1"],
+        expected_reassessment_inputs=["updated trace"],
+    )
 
 
 class TestEnums:
@@ -144,26 +241,7 @@ class TestDataclassDefaults:
 
 class TestSerialization:
     def test_package_round_trip(self) -> None:
-        package = RiskPackage(
-            package_id="pkg-1",
-            layer="section",
-            scope="section-01",
-            origin_problem_id="prob-1",
-            origin_source="triage",
-            steps=[
-                PackageStep(
-                    step_id="step-1",
-                    step_class=StepClass.EXPLORE,
-                    summary="Inspect current behavior",
-                    prerequisites=["ready"],
-                    expected_outputs=["notes"],
-                    expected_resolutions=["open questions"],
-                    mutation_surface=["src/a.py"],
-                    verification_surface=["tests/test_a.py"],
-                    reversibility="high",
-                )
-            ],
-        )
+        package = _sample_package()
 
         serialized = serialize_package(package)
         restored = deserialize_package(serialized)
@@ -173,48 +251,7 @@ class TestSerialization:
         assert restored == package
 
     def test_assessment_round_trip(self) -> None:
-        assessment = RiskAssessment(
-            assessment_id="assess-1",
-            layer="section",
-            package_id="pkg-1",
-            assessment_scope="section-01",
-            understanding_inventory=UnderstandingInventory(
-                confirmed=["a"],
-                assumed=["b"],
-                missing=["c"],
-                stale=["d"],
-            ),
-            package_raw_risk=64,
-            assessment_confidence=0.75,
-            dominant_risks=[RiskType.CONTEXT_ROT, RiskType.SCOPE_CREEP],
-            step_assessments=[
-                StepAssessment(
-                    step_id="step-1",
-                    step_class=StepClass.STABILIZE,
-                    summary="Stabilize inputs",
-                    prerequisites=["step-0"],
-                    risk_vector=RiskVector(
-                        context_rot=1,
-                        scope_creep=2,
-                        stale_artifact_contamination=3,
-                    ),
-                    modifiers=RiskModifiers(
-                        blast_radius=2,
-                        reversibility=3,
-                        observability=1,
-                        confidence=0.8,
-                    ),
-                    raw_risk=55,
-                    dominant_risks=[
-                        RiskType.STALE_ARTIFACT_CONTAMINATION,
-                        RiskType.SCOPE_CREEP,
-                    ],
-                )
-            ],
-            frontier_candidates=["step-1"],
-            reopen_recommendations=["reassess after fix"],
-            notes=["first pass"],
-        )
+        assessment = _sample_assessment()
 
         serialized = serialize_assessment(assessment)
         restored = deserialize_assessment(serialized)
@@ -227,29 +264,7 @@ class TestSerialization:
         assert restored == assessment
 
     def test_plan_round_trip(self) -> None:
-        plan = RiskPlan(
-            plan_id="plan-1",
-            assessment_id="assess-1",
-            package_id="pkg-1",
-            layer="section",
-            step_decisions=[
-                StepMitigation(
-                    step_id="step-1",
-                    decision=StepDecision.REJECT_REOPEN,
-                    posture=PostureProfile.P4_REOPEN,
-                    mitigations=["collect more evidence"],
-                    residual_risk=82,
-                    reason="cross-section mismatch",
-                    wait_for=["review"],
-                    route_to="coordination",
-                    dispatch_shape={"mode": "full"},
-                )
-            ],
-            accepted_frontier=[],
-            deferred_steps=["step-2"],
-            reopen_steps=["step-1"],
-            expected_reassessment_inputs=["updated trace"],
-        )
+        plan = _sample_plan()
 
         serialized = serialize_plan(plan)
         restored = deserialize_plan(serialized)
@@ -295,3 +310,98 @@ class TestSerialization:
         artifact_path.write_text("[1, 2, 3]\n", encoding="utf-8")
 
         assert read_risk_artifact(artifact_path) is None
+
+    @pytest.mark.parametrize(
+        ("loader", "serializer", "artifact", "filename"),
+        [
+            (
+                load_risk_package,
+                serialize_package,
+                _sample_package(),
+                "package.json",
+            ),
+            (
+                load_risk_assessment,
+                serialize_assessment,
+                _sample_assessment(),
+                "assessment.json",
+            ),
+            (
+                load_risk_plan,
+                serialize_plan,
+                _sample_plan(),
+                "plan.json",
+            ),
+        ],
+    )
+    def test_typed_loaders_deserialize_valid_artifacts(
+        self,
+        tmp_path: Path,
+        loader,
+        serializer,
+        artifact,
+        filename: str,
+    ) -> None:
+        artifact_path = tmp_path / "risk" / filename
+        write_risk_artifact(artifact_path, serializer(artifact))
+
+        assert loader(artifact_path) == artifact
+
+    @pytest.mark.parametrize(
+        ("loader", "payload", "filename", "message"),
+        [
+            (
+                load_risk_package,
+                {"layer": "section"},
+                "package.json",
+                "Malformed risk package",
+            ),
+            (
+                load_risk_assessment,
+                {"assessment_id": "assess-1"},
+                "assessment.json",
+                "Malformed risk assessment",
+            ),
+            (
+                load_risk_plan,
+                {"plan_id": "plan-1"},
+                "plan.json",
+                "Malformed risk plan",
+            ),
+        ],
+    )
+    def test_typed_loaders_preserve_schema_invalid_artifacts(
+        self,
+        tmp_path: Path,
+        caplog,
+        loader,
+        payload: dict[str, object],
+        filename: str,
+        message: str,
+    ) -> None:
+        artifact_path = tmp_path / "risk" / filename
+        write_risk_artifact(artifact_path, payload)
+
+        with caplog.at_level("WARNING"):
+            assert loader(artifact_path) is None
+
+        assert not artifact_path.exists()
+        assert artifact_path.with_suffix(".malformed.json").exists()
+        assert message in caplog.text
+        assert str(artifact_path) in caplog.text
+
+    @pytest.mark.parametrize(
+        ("loader", "filename"),
+        [
+            (load_risk_package, "package.json"),
+            (load_risk_assessment, "assessment.json"),
+            (load_risk_plan, "plan.json"),
+        ],
+    )
+    def test_typed_loaders_return_none_for_missing_files(
+        self,
+        tmp_path: Path,
+        loader,
+        filename: str,
+    ) -> None:
+        assert loader(tmp_path / "risk" / filename) is None

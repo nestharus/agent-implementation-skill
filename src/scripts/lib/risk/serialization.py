@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
 from enum import Enum
+import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TypeVar, cast
 
-from lib.core.artifact_io import read_json, write_json
+from lib.core.artifact_io import read_json, rename_malformed, write_json
 
 from .types import (
     PackageStep,
@@ -25,6 +26,9 @@ from .types import (
     StepMitigation,
     UnderstandingInventory,
 )
+
+logger = logging.getLogger(__name__)
+_ArtifactT = TypeVar("_ArtifactT")
 
 
 def serialize_assessment(assessment: RiskAssessment) -> dict[str, Any]:
@@ -120,6 +124,34 @@ def read_risk_artifact(path: Path) -> dict[str, Any] | None:
     if isinstance(data, dict):
         return data
     return None
+
+
+def load_risk_package(path: Path) -> RiskPackage | None:
+    return _load_risk_artifact(path, deserialize_package, "risk package")
+
+
+def load_risk_assessment(path: Path) -> RiskAssessment | None:
+    return _load_risk_artifact(path, deserialize_assessment, "risk assessment")
+
+
+def load_risk_plan(path: Path) -> RiskPlan | None:
+    return _load_risk_artifact(path, deserialize_plan, "risk plan")
+
+
+def _load_risk_artifact(
+    path: Path,
+    loader: Callable[[dict[str, Any]], _ArtifactT],
+    artifact_name: str,
+) -> _ArtifactT | None:
+    data = read_json(path)
+    if data is None:
+        return None
+    try:
+        return loader(cast(dict[str, Any], data))
+    except (KeyError, TypeError, ValueError) as exc:
+        rename_malformed(path)
+        logger.warning("Malformed %s at %s: %s", artifact_name, path, exc)
+        return None
 
 
 def _serialize_dataclass(value: Any) -> dict[str, Any]:

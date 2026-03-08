@@ -34,7 +34,6 @@ TASK_ROUTES: dict[str, tuple[str, str, str | None]] = {
     "scan_tier_rank": ("scan-tier-ranker.md", "glm", "scan.tier_ranking"),
     "scan_deep_analyze": ("scan-file-analyzer.md", "glm", "scan.deep_analysis"),
     "state_adjudicate": ("state-adjudicator.md", "glm", None),
-    "exception_handling": ("exception-handler.md", "claude-opus", None),
     "substrate_shard": ("substrate-shard-explorer.md", "gpt-high", None),
     "substrate_prune": ("substrate-pruner.md", "gpt-xhigh", "substrate_pruner"),
     "substrate_seed": ("substrate-seeder.md", "gpt-high", "substrate_seeder"),

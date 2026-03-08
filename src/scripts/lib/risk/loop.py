@@ -31,7 +31,7 @@ from lib.risk.types import (
     StepMitigation,
 )
 from lib.risk.package_builder import write_package
-from lib.risk.quantifier import is_step_acceptable, risk_to_posture
+from lib.risk.quantifier import risk_to_posture
 from prompt_safety import write_validated_prompt
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
@@ -225,61 +225,59 @@ def run_lightweight_risk_check(
     history_entries = read_history(paths.risk_history())
     _apply_history_adjustment(assessment, paths.risk_history(), history_entries, parameters)
     write_risk_artifact(paths.risk_assessment(scope), serialize_assessment(assessment))
-    thresholds = parameters.get("step_thresholds", {})
-    decisions: list[StepMitigation] = []
-
-    for step_assessment in assessment.step_assessments:
-        threshold = thresholds.get(step_assessment.step_class.value)
-        posture = risk_to_posture(step_assessment.raw_risk)
-        acceptable = (
-            step_assessment.raw_risk <= threshold
-            if isinstance(threshold, int)
-            else is_step_acceptable(step_assessment.raw_risk, step_assessment.step_class)
-        )
-        if acceptable:
-            decisions.append(
-                StepMitigation(
-                    step_id=step_assessment.step_id,
-                    decision=StepDecision.ACCEPT,
-                    posture=posture,
-                    mitigations=[],
-                    residual_risk=step_assessment.raw_risk,
-                    reason="mechanical lightweight posture from risk score",
-                )
-            )
-        else:
-            decisions.append(
-                StepMitigation(
-                    step_id=step_assessment.step_id,
-                    decision=StepDecision.REJECT_DEFER,
-                    posture=posture,
-                    mitigations=[],
-                    residual_risk=step_assessment.raw_risk,
-                    reason="lightweight check kept step above threshold",
-                    wait_for=["full-risk-loop"],
-                )
-            )
-
-    plan = RiskPlan(
-        plan_id=f"risk-plan-light-{scope}",
-        assessment_id=assessment.assessment_id,
-        package_id=package.package_id,
-        layer=layer,
-        step_decisions=decisions,
-        accepted_frontier=[
-            decision.step_id
-            for decision in decisions
-            if decision.decision == StepDecision.ACCEPT
-            and decision.step_id in assessment.frontier_candidates
-        ],
-        deferred_steps=[
-            decision.step_id
-            for decision in decisions
-            if decision.decision == StepDecision.REJECT_DEFER
-        ],
-        reopen_steps=[],
-        expected_reassessment_inputs=[],
+    optimization_prompt = build_optimization_prompt(
+        assessment=assessment,
+        package=package,
+        parameters=parameters,
+        planspace=planspace,
+        scope=scope,
+        lightweight=True,
     )
+    optimization_prompt_path = paths.risk_dir() / f"{scope}-light-risk-plan-prompt.md"
+    if not write_validated_prompt(optimization_prompt, optimization_prompt_path):
+        fallback = _lightweight_fallback_plan(
+            package,
+            layer,
+            assessment_id=assessment.assessment_id,
+            reason="fail-closed: lightweight execution optimizer prompt failed safety validation",
+        )
+        write_risk_artifact(paths.risk_plan(scope), serialize_plan(fallback))
+        return fallback
+    optimization_output_path = paths.risk_dir() / f"{scope}-light-risk-plan-output.md"
+    try:
+        optimization_response = dispatch_fn(
+            _execution_optimizer_model(planspace),
+            optimization_prompt_path,
+            optimization_output_path,
+            planspace,
+            None,
+            f"execution-optimizer-light-{scope}",
+            agent_file="execution-optimizer.md",
+        )
+    except Exception as exc:
+        fallback = _lightweight_fallback_plan(
+            package,
+            layer,
+            assessment_id=assessment.assessment_id,
+            reason=(
+                "fail-closed: lightweight execution optimizer dispatch failed"
+                f" ({exc})"
+            ),
+        )
+        write_risk_artifact(paths.risk_plan(scope), serialize_plan(fallback))
+        return fallback
+
+    plan = parse_risk_plan(optimization_response)
+    if plan is None:
+        fallback = _lightweight_fallback_plan(
+            package,
+            layer,
+            assessment_id=assessment.assessment_id,
+            reason="fail-closed: lightweight execution optimizer could not be parsed",
+        )
+        write_risk_artifact(paths.risk_plan(scope), serialize_plan(fallback))
+        return fallback
+
     _apply_posture_hysteresis(
         plan,
         assessment,
@@ -287,8 +285,29 @@ def run_lightweight_risk_check(
         parameters,
         posture_floor=posture_floor,
     )
-    write_risk_artifact(paths.risk_plan(scope), serialize_plan(plan))
-    return plan
+    assessments = {
+        item.step_id: item
+        for item in assessment.step_assessments
+    }
+    enriched_parameters = dict(parameters)
+    enriched_parameters["step_classes"] = {
+        step_id: step_assessment.step_class
+        for step_id, step_assessment in assessments.items()
+    }
+    enforced_plan = enforce_thresholds(plan, assessments, enriched_parameters)
+    violations = validate_risk_plan(enforced_plan, enriched_parameters)
+    if violations:
+        fallback = _lightweight_fallback_plan(
+            package,
+            layer,
+            assessment_id=assessment.assessment_id,
+            reason="fail-closed: lightweight execution optimizer produced invalid plan",
+        )
+        write_risk_artifact(paths.risk_plan(scope), serialize_plan(fallback))
+        return fallback
+
+    write_risk_artifact(paths.risk_plan(scope), serialize_plan(enforced_plan))
+    return enforced_plan
 
 
 def build_risk_assessment_prompt(
@@ -372,8 +391,11 @@ def build_optimization_prompt(
     parameters: dict,
     planspace: Path,
     scope: str,
+    *,
+    lightweight: bool = False,
 ) -> str:
     """Build the prompt for the Tool Agent (Execution Optimizer)."""
+    del assessment, package, parameters
     paths = PathRegistry(planspace)
     lines = [
         "# ROAL Execution Optimization",
@@ -388,6 +410,17 @@ def build_optimization_prompt(
     lines.extend(_json_block("Risk parameters", paths.risk_parameters(), read_json(paths.risk_parameters())))
     lines.extend(_json_block("Tool registry", paths.tool_registry(), read_json(paths.tool_registry())))
     lines.extend(_json_block("Risk history", paths.risk_history(), None))
+    if lightweight:
+        lines.extend(
+            [
+                "",
+                "## Lightweight Mode",
+                "",
+                "This is a single-pass lightweight risk check.",
+                "No iteration, repeated reassessment, or horizon refinement is available.",
+                "Return the standard structured risk plan JSON for the provided assessment.",
+            ]
+        )
     return "\n".join(lines).strip() + "\n"
 
 
@@ -846,6 +879,38 @@ def _fallback_plan(
         accepted_frontier=[],
         deferred_steps=[],
         reopen_steps=[decision.step_id for decision in decisions],
+        expected_reassessment_inputs=[],
+    )
+
+
+def _lightweight_fallback_plan(
+    package: RiskPackage,
+    layer: str,
+    *,
+    assessment_id: str,
+    reason: str,
+) -> RiskPlan:
+    decisions = [
+        StepMitigation(
+            step_id=step.step_id,
+            decision=StepDecision.REJECT_DEFER,
+            posture=PostureProfile.P4_REOPEN,
+            mitigations=[],
+            residual_risk=100,
+            reason=reason,
+            wait_for=["full-risk-loop"],
+        )
+        for step in package.steps
+    ]
+    return RiskPlan(
+        plan_id=f"risk-plan-{package.scope}-lightweight-fallback",
+        assessment_id=assessment_id,
+        package_id=package.package_id,
+        layer=layer,
+        step_decisions=decisions,
+        accepted_frontier=[],
+        deferred_steps=[decision.step_id for decision in decisions],
+        reopen_steps=[],
         expected_reassessment_inputs=[],
     )
 

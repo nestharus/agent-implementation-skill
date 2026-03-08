@@ -9,9 +9,8 @@ from lib.core.artifact_io import read_json, write_json
 from lib.core.path_registry import PathRegistry
 from lib.repositories.decision_repository import load_decisions
 from lib.risk.serialization import (
-    deserialize_assessment,
-    deserialize_plan,
-    read_risk_artifact,
+    load_risk_assessment,
+    load_risk_plan,
 )
 from lib.risk.types import PostureProfile, StepDecision
 
@@ -150,26 +149,8 @@ def _read_risk_summary(
 ) -> tuple[str | None, list[str], bool]:
     paths = PathRegistry(planspace)
     scope = f"section-{sec_num}"
-    assessment_payload = read_risk_artifact(paths.risk_assessment(scope))
-    plan_payload = read_risk_artifact(paths.risk_plan(scope))
-
-    try:
-        assessment = (
-            deserialize_assessment(assessment_payload)
-            if isinstance(assessment_payload, dict)
-            else None
-        )
-    except (KeyError, TypeError, ValueError):
-        assessment = None
-
-    try:
-        plan = (
-            deserialize_plan(plan_payload)
-            if isinstance(plan_payload, dict)
-            else None
-        )
-    except (KeyError, TypeError, ValueError):
-        plan = None
+    assessment = load_risk_assessment(paths.risk_assessment(scope))
+    plan = load_risk_plan(paths.risk_plan(scope))
 
     posture = None
     blocked_by_risk = False

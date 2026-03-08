@@ -22,8 +22,8 @@
 # next/done/fail/retry/skip becomes a timestamped event.
 #
 # DEFERRAL: This is Tier 2 — independent from the core mailbox→db.sh
-# migration. The schedule is a separate concern with its own consumers
-# (state-detector.md) and can migrate after Tier 1.
+# migration. The schedule is a separate concern and can migrate after
+# Tier 1.
 # parse subcommand stays as-is (parses text format, not a storage concern).
 #
 # See: /tmp/pipeline-audit/exploration/event-streams-design-direction.md (D7)

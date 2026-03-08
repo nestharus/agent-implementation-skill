@@ -246,7 +246,7 @@ Step agents receive self-contained prompt files (they cannot read
 1. **Skill section text** — copied verbatim from the referenced skill file
 2. **Planspace path** — so the agent can read/write state and artifacts
 3. **Codespace path** — so the agent knows where source code lives
-4. **Context** — relevant content from `state.md`
+4. **Context** — relevant content from typed artifacts and `run.db`-backed context sidecars
 5. **Output contract** — what the agent should return on success/failure
 
 Written to: `<planspace>/artifacts/step-N-prompt.md`
@@ -255,9 +255,7 @@ Written to: `<planspace>/artifacts/step-N-prompt.md`
 
 Each workflow gets a planspace at `~/.claude/workspaces/<task-slug>/`:
 - `schedule.md` — task queue with status markers (copied from template)
-- `state.md` — current position + accumulated facts
-- `log.md` — append-only execution log
-- `artifacts/` — prompt files, output files, working files for steps
+- `artifacts/` — prompt files, typed JSON artifacts, context sidecars, output files, working files for steps
   - `artifacts/sections/` — section excerpts (proposal + alignment excerpts)
   - `artifacts/proposals/` — integration proposals per section
   - `artifacts/snapshots/` — post-completion file snapshots per section

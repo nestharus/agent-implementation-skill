@@ -10,8 +10,7 @@ from lib.core.artifact_io import read_json
 from lib.core.path_registry import PathRegistry
 from lib.repositories.proposal_state_repository import load_proposal_state
 from lib.risk.serialization import (
-    deserialize_package,
-    read_risk_artifact,
+    load_risk_package,
     serialize_package,
     write_risk_artifact,
 )
@@ -152,13 +151,7 @@ def write_package(paths: PathRegistry, package: RiskPackage) -> Path:
 
 def read_package(paths: PathRegistry, scope: str) -> RiskPackage | None:
     """Read an existing package from the risk directory."""
-    payload = read_risk_artifact(paths.risk_package(scope))
-    if payload is None:
-        return None
-    try:
-        return deserialize_package(payload)
-    except (KeyError, TypeError, ValueError):
-        return None
+    return load_risk_package(paths.risk_package(scope))
 
 
 def _package_id(scope: str, layer: str) -> str:

@@ -18,7 +18,7 @@ from lib.risk.engagement import determine_engagement
 from lib.risk.history import append_history_entry, pattern_signature, read_history
 from lib.risk.loop import run_lightweight_risk_check, run_risk_loop
 from lib.risk.package_builder import build_package_from_proposal, read_package, refresh_package
-from lib.risk.serialization import deserialize_assessment, read_risk_artifact
+from lib.risk.serialization import load_risk_assessment
 from lib.risk.types import (
     PostureProfile,
     RiskHistoryEntry,
@@ -745,16 +745,8 @@ def _append_risk_history(
     scope = f"section-{sec_num}"
     paths = PathRegistry(planspace)
     package = read_package(paths, scope)
-    assessment_payload = read_risk_artifact(paths.risk_assessment(scope))
+    assessment = load_risk_assessment(paths.risk_assessment(scope))
     prior_history = read_history(paths.risk_history())
-    try:
-        assessment = (
-            deserialize_assessment(assessment_payload)
-            if isinstance(assessment_payload, dict)
-            else None
-        )
-    except (KeyError, TypeError, ValueError):
-        assessment = None
 
     package_steps = {
         step.step_id: step

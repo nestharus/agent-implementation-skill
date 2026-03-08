@@ -444,7 +444,24 @@ def test_lightweight_risk_check(
     )
     package = build_package_from_proposal("section-01", planspace)
     assessment = _assessment_for(package, raw_risks=[20])
-    mock_dispatch.return_value = json.dumps(serialize_assessment(assessment))
+    plan_payload = _plan_for(
+        package,
+        assessment.assessment_id,
+        [
+            StepMitigation(
+                step_id=package.steps[0].step_id,
+                decision=StepDecision.ACCEPT,
+                posture=PostureProfile.P1_LIGHT,
+                mitigations=["bounded edit"],
+                residual_risk=20,
+                reason="optimizer accepted after lightweight assessment",
+            ),
+        ],
+    )
+    mock_dispatch.side_effect = [
+        json.dumps(serialize_assessment(assessment)),
+        json.dumps(serialize_plan(plan_payload)),
+    ]
 
     plan = run_lightweight_risk_check(
         planspace,
@@ -458,6 +475,7 @@ def test_lightweight_risk_check(
     assert plan.deferred_steps == []
     assert [call.kwargs["agent_file"] for call in mock_dispatch.call_args_list] == [
         "risk-assessor.md",
+        "execution-optimizer.md",
     ]
 
 
