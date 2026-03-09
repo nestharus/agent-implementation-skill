@@ -32,6 +32,7 @@ def test_build_proposal_context_extras_writes_problem_and_note_artifacts(
         planspace,
         "fix the unresolved contract",
         "note from section 02",
+        base_context={"governance_ref": "gov-packet"},
     )
 
     problems_path = planspace / "artifacts" / "intg-proposal-01-problems.md"
@@ -42,6 +43,7 @@ def test_build_proposal_context_extras_writes_problem_and_note_artifacts(
     assert str(problems_path) in extras["problems_block"]
     assert str(proposal_path) in extras["existing_note"]
     assert str(notes_path) in extras["notes_block"]
+    assert extras["governance_ref"] == "gov-packet"
 
 
 def test_build_proposal_context_extras_returns_empty_blocks_without_inputs(
@@ -56,6 +58,7 @@ def test_build_proposal_context_extras_returns_empty_blocks_without_inputs(
         "problems_block": "",
         "existing_note": "",
         "notes_block": "",
+        "governance_ref": "",
     }
 
 
@@ -85,6 +88,7 @@ def test_build_impl_context_extras_collects_optional_refs_and_tooling(
         section,
         planspace,
         "repair the implementation drift",
+        base_context={"governance_ref": "gov-packet"},
     )
 
     problems_path = artifacts / "impl-01-problems.md"
@@ -98,3 +102,4 @@ def test_build_impl_context_extras_collects_optional_refs_and_tooling(
     assert str(tools_path) in extras["tools_ref"]
     assert "tool-registry.json" in extras["tooling_block"]
     assert "section-01-tool-friction.json" in extras["tooling_block"]
+    assert extras["governance_ref"] == "gov-packet"

@@ -250,3 +250,164 @@ def test_reconcile_task_completion_submits_research_verify_after_synthesis(
         (research_dir / "research-status.json").read_text(encoding="utf-8")
     )
     assert status["status"] == "verifying"
+
+
+def test_reconcile_task_completion_records_post_impl_debt_signal(tmp_path) -> None:
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    _init_db(db_path)
+
+    prompt_path = planspace / "artifacts" / "post-impl-01-prompt.md"
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text("# prompt\n", encoding="utf-8")
+
+    trace_path = planspace / "artifacts" / "trace" / "section-01.json"
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    trace_path.write_text(
+        json.dumps(
+            {
+                "section": "01",
+                "governance": {
+                    "packet_path": "",
+                    "packet_hash": "",
+                    "problem_ids": [],
+                    "pattern_ids": [],
+                    "profile_id": "",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assessment_path = (
+        planspace
+        / "artifacts"
+        / "governance"
+        / "section-01-post-impl-assessment.json"
+    )
+    assessment_path.parent.mkdir(parents=True, exist_ok=True)
+    assessment_path.write_text(
+        json.dumps(
+            {
+                "section": "01",
+                "verdict": "accept_with_debt",
+                "lenses": {},
+                "debt_items": ["watch coupling"],
+                "refactor_reasons": [],
+                "problem_ids_addressed": ["PRB-0009"],
+                "pattern_ids_followed": ["PAT-0003"],
+                "profile_id": "PHI-global",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    [task_id] = submit_chain(
+        db_path,
+        "tester",
+        [
+            TaskSpec(
+                task_type="post_impl_assessment",
+                concern_scope="section-01",
+                payload_path=str(prompt_path),
+            )
+        ],
+        planspace=planspace,
+    )
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    trace = json.loads(trace_path.read_text(encoding="utf-8"))
+    debt_signal = json.loads(
+        (
+            planspace
+            / "artifacts"
+            / "signals"
+            / "section-01-risk-register-signal.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert trace["governance"]["problem_ids"] == ["PRB-0009"]
+    assert trace["governance"]["pattern_ids"] == ["PAT-0003"]
+    assert trace["governance"]["profile_id"] == "PHI-global"
+    assert debt_signal["debt_items"] == ["watch coupling"]
+
+
+def test_reconcile_task_completion_emits_post_impl_refactor_blocker(tmp_path) -> None:
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    _init_db(db_path)
+
+    prompt_path = planspace / "artifacts" / "post-impl-02-prompt.md"
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text("# prompt\n", encoding="utf-8")
+
+    trace_path = planspace / "artifacts" / "trace" / "section-02.json"
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    trace_path.write_text(
+        json.dumps(
+            {
+                "section": "02",
+                "governance": {
+                    "packet_path": "",
+                    "packet_hash": "",
+                    "problem_ids": [],
+                    "pattern_ids": [],
+                    "profile_id": "",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assessment_path = (
+        planspace
+        / "artifacts"
+        / "governance"
+        / "section-02-post-impl-assessment.json"
+    )
+    assessment_path.parent.mkdir(parents=True, exist_ok=True)
+    assessment_path.write_text(
+        json.dumps(
+            {
+                "section": "02",
+                "verdict": "refactor_required",
+                "lenses": {},
+                "debt_items": [],
+                "refactor_reasons": ["pattern drift"],
+                "problem_ids_addressed": ["PRB-0010"],
+                "pattern_ids_followed": [],
+                "profile_id": "PHI-global",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    [task_id] = submit_chain(
+        db_path,
+        "tester",
+        [
+            TaskSpec(
+                task_type="post_impl_assessment",
+                concern_scope="section-02",
+                payload_path=str(prompt_path),
+            )
+        ],
+        planspace=planspace,
+    )
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    blocker = json.loads(
+        (
+            planspace
+            / "artifacts"
+            / "signals"
+            / "section-02-post-impl-blocker.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert blocker["blocker_type"] == "post_impl_refactor_required"
+    assert blocker["refactor_reasons"] == ["pattern drift"]

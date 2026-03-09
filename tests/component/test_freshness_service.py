@@ -129,3 +129,22 @@ def test_compute_section_freshness_changes_when_research_artifact_removed(
     after = compute_section_freshness(planspace, "06")
 
     assert before != after
+
+
+def test_compute_section_freshness_changes_when_governance_packet_changes(
+    tmp_path: Path,
+) -> None:
+    planspace = tmp_path / "planspace"
+    governance_packet = (
+        planspace
+        / "artifacts"
+        / "governance"
+        / "section-07-governance-packet.json"
+    )
+    governance_packet.parent.mkdir(parents=True, exist_ok=True)
+
+    before = compute_section_freshness(planspace, "07")
+    governance_packet.write_text('{"profiles": ["PHI-global"]}', encoding="utf-8")
+    after = compute_section_freshness(planspace, "07")
+
+    assert before != after

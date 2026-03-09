@@ -43,6 +43,7 @@ TASK_ROUTES: dict[str, tuple[str, str, str | None]] = {
     "research_domain_ticket": ("domain-researcher.md", "gpt-high", "research_domain_ticket"),
     "research_synthesis": ("research-synthesizer.md", "gpt-high", "research_synthesis"),
     "research_verify": ("research-verifier.md", "glm", "research_verify"),
+    "post_impl_assessment": ("post-implementation-assessor.md", "glm", None),
 }
 
 

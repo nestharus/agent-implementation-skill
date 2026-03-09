@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from lib.core.path_registry import PathRegistry
+
 
 def parse_context_field(agent_file: str) -> list[str]:
     """Extract the ``context:`` list from an agent file's YAML frontmatter."""
@@ -56,44 +58,43 @@ VALID_CATEGORIES = frozenset({
     "section_output",
     "model_policy",
     "flow_context",
+    "governance",
 })
+
+
+def _read_if_exists(path: Path) -> str:
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    return ""
 
 
 def _resolve_section_spec(planspace: Path, section: str | None) -> str:
     if not section:
         return ""
-    spec_path = planspace / "artifacts" / "sections" / f"section-{section}.md"
-    if spec_path.exists():
-        return spec_path.read_text(encoding="utf-8")
-    return ""
+    return _read_if_exists(PathRegistry(planspace).section_spec(section))
 
 
 def _resolve_decision_history(planspace: Path, section: str | None) -> str:
-    decisions_dir = planspace / "artifacts" / "decisions"
+    paths = PathRegistry(planspace)
+    decisions_dir = paths.decisions_dir()
     if section:
         json_path = decisions_dir / f"section-{section}.json"
     else:
         json_path = decisions_dir / "global.json"
-    if json_path.exists():
-        return json_path.read_text(encoding="utf-8")
-    return ""
+    return _read_if_exists(json_path)
 
 
 def _resolve_strategic_state(planspace: Path, _section: str | None) -> str:
-    state_path = planspace / "artifacts" / "strategic-state.json"
-    if state_path.exists():
-        return state_path.read_text(encoding="utf-8")
-    return ""
+    return _read_if_exists(PathRegistry(planspace).strategic_state())
 
 
 def _resolve_codemap(planspace: Path, _section: str | None) -> str:
-    codemap_path = planspace / "artifacts" / "codemap.md"
+    paths = PathRegistry(planspace)
+    codemap_path = paths.codemap()
     if not codemap_path.exists():
         return ""
     content = codemap_path.read_text(encoding="utf-8")
-    corrections_path = (
-        planspace / "artifacts" / "signals" / "codemap-corrections.json"
-    )
+    corrections_path = paths.corrections()
     if corrections_path.exists():
         corrections_text = corrections_path.read_text(encoding="utf-8")
         content += (
@@ -109,13 +110,12 @@ def _resolve_codemap(planspace: Path, _section: str | None) -> str:
 def _resolve_related_files(planspace: Path, section: str | None) -> str:
     if not section:
         return ""
-    json_path = (
-        planspace / "artifacts" / "signals" / f"related-files-{section}.json"
-    )
+    paths = PathRegistry(planspace)
+    json_path = paths.signals_dir() / f"related-files-{section}.json"
     if json_path.exists():
         return json_path.read_text(encoding="utf-8")
 
-    spec_path = planspace / "artifacts" / "sections" / f"section-{section}.md"
+    spec_path = paths.section_spec(section)
     if spec_path.exists():
         text = spec_path.read_text(encoding="utf-8")
         marker = "## Related Files"
@@ -129,10 +129,9 @@ def _resolve_related_files(planspace: Path, section: str | None) -> str:
 
 
 def _resolve_coordination_state(planspace: Path, _section: str | None) -> str:
-    problems_path = planspace / "artifacts" / "coordination" / "problems.json"
-    if problems_path.exists():
-        return problems_path.read_text(encoding="utf-8")
-    return ""
+    return _read_if_exists(
+        PathRegistry(planspace).coordination_dir() / "problems.json"
+    )
 
 
 def _resolve_allowed_tasks(_planspace: Path, _section: str | None) -> str:
@@ -153,7 +152,7 @@ def _resolve_allowed_tasks(_planspace: Path, _section: str | None) -> str:
 def _resolve_section_output(planspace: Path, section: str | None) -> str:
     if not section:
         return ""
-    artifacts = planspace / "artifacts"
+    artifacts = PathRegistry(planspace).artifacts
     for path in [
         artifacts / f"intg-proposal-{section}-output.md",
         artifacts / f"intg-align-{section}-output.md",
@@ -165,20 +164,23 @@ def _resolve_section_output(planspace: Path, section: str | None) -> str:
 
 
 def _resolve_model_policy(planspace: Path, _section: str | None) -> str:
-    policy_path = planspace / "artifacts" / "model-policy.json"
-    if policy_path.exists():
-        return policy_path.read_text(encoding="utf-8")
-    return ""
+    return _read_if_exists(PathRegistry(planspace).model_policy())
 
 
 def _resolve_flow_context(planspace: Path, _section: str | None) -> str:
-    flows_dir = planspace / "artifacts" / "flows"
+    flows_dir = PathRegistry(planspace).flows_dir()
     if not flows_dir.is_dir():
         return ""
     context_files = sorted(flows_dir.glob("task-*-context.json"))
     if len(context_files) == 1:
         return context_files[0].read_text(encoding="utf-8")
     return ""
+
+
+def _resolve_governance(planspace: Path, section: str | None) -> str:
+    if not section:
+        return ""
+    return _read_if_exists(PathRegistry(planspace).governance_packet(section))
 
 
 _RESOLVERS = {
@@ -192,6 +194,7 @@ _RESOLVERS = {
     "section_output": _resolve_section_output,
     "model_policy": _resolve_model_policy,
     "flow_context": _resolve_flow_context,
+    "governance": _resolve_governance,
 }
 
 

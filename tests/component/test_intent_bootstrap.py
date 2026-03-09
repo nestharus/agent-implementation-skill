@@ -35,6 +35,7 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
     )
     traceability_calls: list[tuple] = []
     intent_pack_calls: list[str] = []
+    governance_calls: list[tuple[str, Path, Path, str]] = []
 
     monkeypatch.setattr(
         intent_bootstrap,
@@ -79,6 +80,13 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
     )
     monkeypatch.setattr(
         intent_bootstrap,
+        "build_section_governance_packet",
+        lambda sec_num, ps, cs, summary="": governance_calls.append(
+            (sec_num, ps, cs, summary)
+        ),
+    )
+    monkeypatch.setattr(
+        intent_bootstrap,
         "generate_intent_pack",
         lambda _section, _planspace, _codespace, _parent, *, incoming_notes: intent_pack_calls.append(incoming_notes),
     )
@@ -99,6 +107,7 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
         "max_new_surfaces_per_cycle": 3,
     }
     assert traceability_calls
+    assert governance_calls == [("01", planspace, codespace, "Problem frame summary")]
     assert intent_pack_calls == ["incoming note"]
     assert (
         planspace / "artifacts" / "todos" / "section-01-todos.md"

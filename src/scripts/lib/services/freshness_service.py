@@ -124,4 +124,8 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
     if research_status.exists():
         hash_parts.append(research_status.read_bytes())
 
+    governance_packet = registry.governance_packet(sec)
+    if governance_packet.exists():
+        hash_parts.append(governance_packet.read_bytes())
+
     return content_hash(b"".join(hash_parts))[:16]

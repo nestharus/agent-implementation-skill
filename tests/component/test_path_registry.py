@@ -100,6 +100,11 @@ class TestDirectoryAccessors:
             tmp_path / "artifacts" / "intent" / "sections"
         )
 
+    def test_governance_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.governance_dir() == (
+            tmp_path / "artifacts" / "governance"
+        )
+
     def test_section_inputs_hashes_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
         assert reg.section_inputs_hashes_dir() == (
             tmp_path / "artifacts" / "section-inputs-hashes"
@@ -243,6 +248,31 @@ class TestSectionScopedAccessors:
             tmp_path / "artifacts" / "phase2-inputs-hashes" / f"{num}.hash"
         )
 
+    @pytest.mark.parametrize("num", ["01", "12"])
+    def test_governance_packet(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
+        assert reg.governance_packet(num) == (
+            tmp_path / "artifacts" / "governance"
+            / f"section-{num}-governance-packet.json"
+        )
+
+    @pytest.mark.parametrize("num", ["01", "12"])
+    def test_post_impl_assessment(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
+        assert reg.post_impl_assessment(num) == (
+            tmp_path / "artifacts" / "governance"
+            / f"section-{num}-post-impl-assessment.json"
+        )
+
+    @pytest.mark.parametrize("num", ["01", "12"])
+    def test_post_impl_assessment_prompt(
+        self,
+        reg: PathRegistry,
+        tmp_path: Path,
+        num: str,
+    ) -> None:
+        assert reg.post_impl_assessment_prompt(num) == (
+            tmp_path / "artifacts" / f"post-impl-{num}-prompt.md"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Global file accessors
@@ -290,6 +320,30 @@ class TestGlobalAccessors:
 
     def test_traceability(self, reg: PathRegistry, tmp_path: Path) -> None:
         assert reg.traceability() == tmp_path / "artifacts" / "traceability.json"
+
+    def test_governance_problem_index(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.governance_problem_index() == (
+            tmp_path / "artifacts" / "governance" / "problem-index.json"
+        )
+
+    def test_governance_pattern_index(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.governance_pattern_index() == (
+            tmp_path / "artifacts" / "governance" / "pattern-index.json"
+        )
+
+    def test_governance_profile_index(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.governance_profile_index() == (
+            tmp_path / "artifacts" / "governance" / "profile-index.json"
+        )
+
+    def test_governance_region_profile_map(
+        self,
+        reg: PathRegistry,
+        tmp_path: Path,
+    ) -> None:
+        assert reg.governance_region_profile_map() == (
+            tmp_path / "artifacts" / "governance" / "region-profile-map.json"
+        )
 
     def test_alignment_changed_flag(self, reg: PathRegistry, tmp_path: Path) -> None:
         assert reg.alignment_changed_flag() == (

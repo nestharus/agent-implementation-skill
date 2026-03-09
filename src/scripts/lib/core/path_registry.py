@@ -90,6 +90,9 @@ class PathRegistry:
     def risk_dir(self) -> Path:
         return self._artifacts / "risk"
 
+    def governance_dir(self) -> Path:
+        return self._artifacts / "governance"
+
     def section_inputs_hashes_dir(self) -> Path:
         return self._artifacts / "section-inputs-hashes"
 
@@ -154,6 +157,45 @@ class PathRegistry:
 
     def phase2_input_hash(self, num: str) -> Path:
         return self.phase2_inputs_hashes_dir() / f"{num}.hash"
+
+    def governance_problem_index(self) -> Path:
+        return self.governance_dir() / "problem-index.json"
+
+    def governance_pattern_index(self) -> Path:
+        return self.governance_dir() / "pattern-index.json"
+
+    def governance_profile_index(self) -> Path:
+        return self.governance_dir() / "profile-index.json"
+
+    def governance_region_profile_map(self) -> Path:
+        return self.governance_dir() / "region-profile-map.json"
+
+    def governance_packet(self, section_number: str) -> Path:
+        return (
+            self.governance_dir()
+            / f"section-{section_number}-governance-packet.json"
+        )
+
+    def post_impl_assessment(self, section_number: str) -> Path:
+        return (
+            self.governance_dir()
+            / f"section-{section_number}-post-impl-assessment.json"
+        )
+
+    def post_impl_assessment_prompt(self, section_number: str) -> Path:
+        return self._artifacts / f"post-impl-{section_number}-prompt.md"
+
+    def post_impl_blocker_signal(self, section_number: str) -> Path:
+        return (
+            self.signals_dir()
+            / f"section-{section_number}-post-impl-blocker.json"
+        )
+
+    def risk_register_signal(self, section_number: str) -> Path:
+        return (
+            self.signals_dir()
+            / f"section-{section_number}-risk-register-signal.json"
+        )
 
     # --- Risk artifact accessors ---
 

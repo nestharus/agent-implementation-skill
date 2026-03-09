@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from lib.services.alignment_change_tracker import check_and_clear
+from lib.governance.loader import build_governance_indexes
 from lib.pipelines.coordination_loop import run_coordination_loop
 from lib.pipelines.global_alignment_recheck import run_global_alignment_recheck
 from lib.pipelines.implementation_pass import (
@@ -85,6 +86,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
               sections_dir: Path, global_proposal: Path,
               global_alignment: Path) -> None:
     paths = PathRegistry(planspace)
+    build_governance_indexes(codespace, planspace)
     project_mode, mode_constraints = resolve_project_mode(planspace, parent)
     write_mode_contract(planspace, project_mode, mode_constraints)
 

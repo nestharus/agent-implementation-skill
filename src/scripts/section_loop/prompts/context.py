@@ -235,6 +235,14 @@ def build_prompt_context(
                     + "\n".join(input_lines)
                 )
 
+    governance_ref = ""
+    gov_packet = paths.governance_packet(sec)
+    if gov_packet.exists():
+        governance_ref = (
+            f"\n   - Governance packet (problems, patterns, philosophy): "
+            f"`{gov_packet}`"
+        )
+
     # --- related files block ---
     file_list = []
     for rel_path in section.related_files:
@@ -264,6 +272,7 @@ def build_prompt_context(
         "problem_frame_ref": problem_frame_ref,
         "problem_frame_path": problem_frame_path,
         "files_block": files_block,
+        "governance_ref": governance_ref,
         "risk_inputs_block": risk_inputs_block,
         "additional_inputs_block": additional_inputs_block,
         "intent_problem_ref": intent_problem_ref,

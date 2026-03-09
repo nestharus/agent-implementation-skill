@@ -129,6 +129,7 @@ def write_integration_proposal_prompt(
             planspace,
             alignment_problems,
             incoming_notes,
+            base_context=ctx,
         )
     )
 
@@ -327,6 +328,7 @@ def write_strategic_impl_prompt(
         section,
         planspace,
         alignment_problems,
+        base_context=ctx,
     )
     ctx.update({
         "proposal_excerpt": proposal_excerpt,
@@ -339,6 +341,7 @@ def write_strategic_impl_prompt(
         "codemap_ref": impl_extras["codemap_ref"],
         "todos_ref": impl_extras["todos_ref"],
         "impl_tools_ref": impl_extras["tools_ref"],
+        "governance_ref": impl_extras["governance_ref"],
         "tooling_block": impl_extras["tooling_block"],
         "micro_ref": impl_micro_ref,
         "proposal_state_ref": proposal_state_ref,

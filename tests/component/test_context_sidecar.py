@@ -139,6 +139,22 @@ def test_resolve_context_flow_context_requires_exactly_one_file(tmp_path) -> Non
     assert resolve_context(str(agent_file), tmp_path)["flow_context"] == ""
 
 
+def test_resolve_context_reads_governance_packet(tmp_path) -> None:
+    governance_dir = tmp_path / "artifacts" / "governance"
+    governance_dir.mkdir(parents=True, exist_ok=True)
+    packet_path = governance_dir / "section-03-governance-packet.json"
+    packet_path.write_text('{"section": "03", "profiles": []}', encoding="utf-8")
+    agent_file = tmp_path / "agent.md"
+    agent_file.write_text(
+        "---\ncontext:\n  - governance\n---\n",
+        encoding="utf-8",
+    )
+
+    result = resolve_context(str(agent_file), tmp_path, section="03")
+
+    assert result["governance"] == '{"section": "03", "profiles": []}'
+
+
 def test_materialize_context_sidecar_writes_pretty_json_with_trailing_newline(tmp_path) -> None:
     artifacts = tmp_path / "artifacts" / "sections"
     artifacts.mkdir(parents=True, exist_ok=True)

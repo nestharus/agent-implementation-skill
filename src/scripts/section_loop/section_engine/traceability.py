@@ -99,11 +99,70 @@ def _write_traceability_index(
         } if problem_frame.exists() else None,
         "modified_files": modified_files,
         "alignment_verdicts": alignment_verdicts,
+        "governance": {
+            "packet_path": str(paths.governance_packet(sec)),
+            "packet_hash": file_hash(paths.governance_packet(sec)),
+            "problem_ids": [],
+            "pattern_ids": [],
+            "profile_id": "",
+        },
     }
 
     trace_path = trace_dir / f"section-{sec}.json"
     write_json(trace_path, index)
     log(f"Section {sec}: traceability index written to {trace_path}")
+
+
+def update_trace_governance(
+    planspace: Path,
+    section_number: str,
+    *,
+    problem_ids: list[str] | None = None,
+    pattern_ids: list[str] | None = None,
+    profile_id: str | None = None,
+) -> bool:
+    """Update governance fields in an existing trace index."""
+    paths = PathRegistry(planspace)
+    trace_path = paths.trace_dir() / f"section-{section_number}.json"
+    data = read_json(trace_path)
+    if not isinstance(data, dict):
+        return False
+
+    governance = data.get("governance", {})
+    if not isinstance(governance, dict):
+        governance = {}
+
+    merged_problem_ids = list(governance.get("problem_ids", []))
+    if not isinstance(merged_problem_ids, list):
+        merged_problem_ids = []
+    merged_pattern_ids = list(governance.get("pattern_ids", []))
+    if not isinstance(merged_pattern_ids, list):
+        merged_pattern_ids = []
+
+    if problem_ids:
+        for problem_id in problem_ids:
+            value = str(problem_id).strip()
+            if value and value not in merged_problem_ids:
+                merged_problem_ids.append(value)
+
+    if pattern_ids:
+        for pattern_id in pattern_ids:
+            value = str(pattern_id).strip()
+            if value and value not in merged_pattern_ids:
+                merged_pattern_ids.append(value)
+
+    governance["packet_path"] = str(paths.governance_packet(section_number))
+    governance["packet_hash"] = file_hash(paths.governance_packet(section_number))
+    governance["problem_ids"] = merged_problem_ids
+    governance["pattern_ids"] = merged_pattern_ids
+    if profile_id is not None:
+        governance["profile_id"] = profile_id
+    else:
+        governance.setdefault("profile_id", "")
+
+    data["governance"] = governance
+    write_json(trace_path, data)
+    return True
 
 
 def _verify_traceability(planspace: Path, section_number: str) -> list[str]:

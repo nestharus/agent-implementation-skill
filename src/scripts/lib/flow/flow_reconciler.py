@@ -33,6 +33,10 @@ from lib.research.plan_executor import (
     execute_research_plan,
     submit_research_verify,
 )
+from lib.governance.assessment import (
+    read_post_impl_assessment,
+    record_assessment_governance,
+)
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
 if str(_SCRIPTS_DIR) not in sys.path:
@@ -139,6 +143,7 @@ def reconcile_task_completion(
         origin_refs,
         codespace,
     )
+    _handle_post_impl_assessment_completion(task, status, planspace, codespace)
 
     if status == "failed":
         if chain_id:
@@ -264,6 +269,11 @@ def reconcile_task_completion(
 
 def _research_section_number(task: dict) -> str | None:
     """Extract a section number from a section-scoped research task."""
+    return _section_number(task)
+
+
+def _section_number(task: dict) -> str | None:
+    """Extract a section number from a section-scoped task."""
     concern_scope = str(task.get("concern_scope") or "")
     match = re.match(r"^section-(\d+)$", concern_scope)
     if match:
@@ -357,6 +367,86 @@ def _handle_research_completion(
             trigger_hash=trigger_hash,
             cycle_id=cycle_id,
         )
+
+
+def _handle_post_impl_assessment_completion(
+    task: dict,
+    status: str,
+    planspace: Path,
+    codespace: Path | None,
+) -> None:
+    """Apply post-implementation assessment results on task completion."""
+    del codespace
+
+    task_type = str(task.get("task_type") or "")
+    if task_type != "post_impl_assessment" or status != "complete":
+        return
+
+    section_number = _section_number(task)
+    if section_number is None:
+        return
+
+    assessment = read_post_impl_assessment(section_number, planspace)
+    if assessment is None:
+        return
+
+    record_assessment_governance(section_number, planspace, assessment)
+
+    verdict = assessment.get("verdict", "accept")
+    if verdict == "accept_with_debt":
+        _emit_risk_register_signal(section_number, planspace, assessment)
+    elif verdict == "refactor_required":
+        _emit_refactor_blocker(section_number, planspace, assessment)
+
+
+def _emit_risk_register_signal(
+    section_number: str,
+    planspace: Path,
+    assessment: dict,
+) -> None:
+    """Emit a debt signal for downstream risk register handling."""
+    paths = PathRegistry(planspace)
+    payload = {
+        "section": section_number,
+        "source": "post_impl_assessment",
+        "profile_id": assessment.get("profile_id", ""),
+        "problem_ids": assessment.get("problem_ids_addressed", []),
+        "pattern_ids": assessment.get("pattern_ids_followed", []),
+        "debt_items": assessment.get("debt_items", []),
+        "verdict": assessment.get("verdict", "accept_with_debt"),
+    }
+    write_json(paths.risk_register_signal(section_number), payload)
+
+
+def _emit_refactor_blocker(
+    section_number: str,
+    planspace: Path,
+    assessment: dict,
+) -> None:
+    """Emit a blocker signal when post-implementation assessment fails."""
+    paths = PathRegistry(planspace)
+    reasons = assessment.get("refactor_reasons", [])
+    if not isinstance(reasons, list):
+        reasons = []
+    detail = (
+        "; ".join(str(reason).strip() for reason in reasons if str(reason).strip())
+        or "post-implementation assessment requires a refactor pass"
+    )
+    payload = {
+        "state": "needs_parent",
+        "blocker_type": "post_impl_refactor_required",
+        "source": "post_impl_assessment",
+        "section": section_number,
+        "scope": f"section-{section_number}",
+        "detail": detail,
+        "why_blocked": detail,
+        "needs": "Re-enter proposal/implementation loop with the flagged refactor reasons",
+        "refactor_reasons": reasons,
+        "profile_id": assessment.get("profile_id", ""),
+        "problem_ids": assessment.get("problem_ids_addressed", []),
+        "pattern_ids": assessment.get("pattern_ids_followed", []),
+    }
+    write_json(paths.post_impl_blocker_signal(section_number), payload)
 
 
 def read_origin_refs(planspace: Path, task_id: int) -> list[str]:

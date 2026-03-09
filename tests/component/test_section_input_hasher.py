@@ -108,6 +108,26 @@ class TestSectionInputsHash:
 
         assert h1 != h2
 
+    def test_changes_when_governance_packet_changes(
+        self,
+        planspace: Path,
+        codespace: Path,
+    ) -> None:
+        sections = self._make_sections_by_num(planspace)
+        packet_path = (
+            planspace
+            / "artifacts"
+            / "governance"
+            / "section-01-governance-packet.json"
+        )
+        packet_path.parent.mkdir(parents=True, exist_ok=True)
+
+        h1 = section_inputs_hash("01", planspace, codespace, sections)
+        packet_path.write_text('{"governing_profile": "PHI-global"}', encoding="utf-8")
+        h2 = section_inputs_hash("01", planspace, codespace, sections)
+
+        assert h1 != h2
+
 
 class TestCoordinationRecheckHash:
     def test_includes_modified_files(self, planspace: Path, codespace: Path) -> None:

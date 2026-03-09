@@ -105,3 +105,23 @@ def test_context_builder_uses_roal_index_without_ref_prefix_inference(
     assert str(risk_payload) in ctx["risk_inputs_block"]
     assert str(risk_payload) not in ctx["additional_inputs_block"]
     assert "stale-risk" not in ctx["additional_inputs_block"]
+
+
+def test_context_builder_includes_governance_packet_reference(
+    planspace: Path,
+    codespace: Path,
+) -> None:
+    section = _make_section(planspace)
+    gov_packet = (
+        planspace
+        / "artifacts"
+        / "governance"
+        / "section-01-governance-packet.json"
+    )
+    gov_packet.parent.mkdir(parents=True, exist_ok=True)
+    gov_packet.write_text('{"section": "01"}\n', encoding="utf-8")
+
+    ctx = build_prompt_context(section, planspace, codespace)
+
+    assert "Governance packet" in ctx["governance_ref"]
+    assert str(gov_packet) in ctx["governance_ref"]

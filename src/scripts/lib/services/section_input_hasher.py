@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from lib.core.hash_service import content_hash
+from lib.core.hash_service import content_hash, file_hash
 from lib.core.path_registry import PathRegistry
 
 
@@ -74,6 +74,10 @@ def section_inputs_hash(
 
     for ms_path in sorted(paths.artifacts.glob(f"microstrategy-{sec_num}*.md")):
         hash_parts.append(ms_path.read_bytes())
+
+    governance_packet = paths.governance_packet(sec_num)
+    if governance_packet.exists():
+        hash_parts.append(file_hash(governance_packet).encode("utf-8"))
 
     inputs_dir = paths.input_refs_dir(sec_num)
     if inputs_dir.exists():

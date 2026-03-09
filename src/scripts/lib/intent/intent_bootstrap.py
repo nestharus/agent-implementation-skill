@@ -6,6 +6,7 @@ from pathlib import Path
 
 from lib.services.alignment_change_tracker import check_pending as alignment_changed_pending
 from lib.core.artifact_io import read_json, write_json
+from lib.governance.packet import build_section_governance_packet
 from lib.core.path_registry import PathRegistry
 from section_loop.communication import _record_traceability, log
 from section_loop.intent import (
@@ -115,6 +116,13 @@ def run_intent_bootstrap(
                 f"{philosophy_result['detail']}",
             )
         return None
+
+    build_section_governance_packet(
+        section.number,
+        planspace,
+        codespace,
+        pf_content[:500] if pf_content else "",
+    )
 
     if intent_mode == "full":
         generate_intent_pack(

@@ -102,6 +102,14 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
         "src.scripts.lib.pipelines.implementation_loop._write_traceability_index",
         lambda *_args, **_kwargs: None,
     )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.implementation_loop.write_post_impl_assessment_prompt",
+        lambda *_args, **_kwargs: planspace / "artifacts" / "post-impl-09-prompt.md",
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.implementation_loop.submit_chain",
+        lambda *_args, **_kwargs: [1],
+    )
 
     result = run_implementation_loop(
         section,
@@ -184,6 +192,14 @@ def test_run_implementation_loop_retries_after_alignment_problems(
     monkeypatch.setattr(
         "src.scripts.lib.pipelines.implementation_loop._write_traceability_index",
         lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.implementation_loop.write_post_impl_assessment_prompt",
+        lambda *_args, **_kwargs: planspace / "artifacts" / "post-impl-09-prompt.md",
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.implementation_loop.submit_chain",
+        lambda *_args, **_kwargs: [1],
     )
 
     result = run_implementation_loop(

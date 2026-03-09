@@ -5,6 +5,9 @@ from pathlib import Path
 
 from lib.services.alignment_change_tracker import check_pending as alignment_changed_pending
 from lib.core.artifact_io import read_json, write_json
+from lib.core.path_registry import PathRegistry
+from lib.flow.flow_submitter import submit_chain
+from lib.governance.assessment import write_post_impl_assessment_prompt
 from section_loop.alignment import _extract_problems, collect_modified_files
 from section_loop.change_detection import diff_files, snapshot_files
 from section_loop.communication import _record_traceability, log, mailbox_send
@@ -14,6 +17,7 @@ from section_loop.pipeline_control import handle_pending_messages, pause_for_par
 from section_loop.prompts import write_impl_alignment_prompt, write_strategic_impl_prompt
 from section_loop.task_ingestion import ingest_and_submit
 from section_loop.section_engine.traceability import _write_traceability_index
+from flow_schema import TaskSpec
 
 
 def run_implementation_loop(
@@ -309,5 +313,45 @@ def run_implementation_loop(
             continue
     write_json(trace_map_path, trace_map)
     log(f"Section {section.number}: trace-map written to {trace_map_path}")
+    _dispatch_post_impl_assessment(section.number, planspace, codespace)
 
     return actually_changed
+
+
+def _dispatch_post_impl_assessment(
+    section_number: str,
+    planspace: Path,
+    codespace: Path,
+) -> None:
+    """Queue a post-implementation governance assessment for a section."""
+    paths = PathRegistry(planspace)
+    prompt_path = write_post_impl_assessment_prompt(
+        section_number,
+        planspace,
+        codespace,
+    )
+    if prompt_path is None:
+        log(
+            f"Section {section_number}: post-implementation assessment "
+            "prompt blocked — skipping dispatch"
+        )
+        return
+
+    submit_chain(
+        planspace / "run.db",
+        f"post-impl-{section_number}",
+        [
+            TaskSpec(
+                task_type="post_impl_assessment",
+                concern_scope=f"section-{section_number}",
+                payload_path=str(prompt_path),
+                problem_id=f"post-impl-{section_number}",
+            )
+        ],
+        origin_refs=[
+            str(paths.trace_dir() / f"section-{section_number}.json"),
+            str(paths.trace_map(section_number)),
+            str(paths.proposal(section_number)),
+        ],
+        planspace=planspace,
+    )
