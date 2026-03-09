@@ -11,7 +11,7 @@ from ..dispatch import dispatch_agent, read_agent_signal, read_model_policy
 from ..pipeline_control import pause_for_parent
 from .surfaces import (
     find_discarded_recurrences,
-    load_intent_surfaces,
+    load_combined_intent_surfaces,
     load_surface_registry,
     mark_surfaces_applied,
     mark_surfaces_discarded,
@@ -29,7 +29,7 @@ def _sync_overrides() -> None:
     _intent_surface.write_validated_prompt = write_validated_prompt
     _intent_surface.pause_for_parent = pause_for_parent
     _intent_surface.find_discarded_recurrences = find_discarded_recurrences
-    _intent_surface.load_intent_surfaces = load_intent_surfaces
+    _intent_surface.load_intent_surfaces = load_combined_intent_surfaces
     _intent_surface.load_surface_registry = load_surface_registry
     _intent_surface.mark_surfaces_applied = mark_surfaces_applied
     _intent_surface.mark_surfaces_discarded = mark_surfaces_discarded

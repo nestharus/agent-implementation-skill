@@ -114,7 +114,10 @@ def write_integration_proposal_prompt(
         "proposal_state_path": proposal_state_path,
         "task_submission_path": str(
             artifacts / "signals" / f"task-requests-proposal-{sec}.json"),
-        "allowed_tasks": "scan_explore, impact_analysis, integration_proposal",
+        "allowed_tasks": (
+            "scan_explore, impact_analysis, "
+            "integration_proposal, research_plan"
+        ),
         "signal_block": signal_instructions(
             artifacts / "signals" / f"proposal-{sec}-signal.json",
         ),
@@ -128,6 +131,22 @@ def write_integration_proposal_prompt(
             incoming_notes,
         )
     )
+
+    # Research context (dossier + addendum from research flow)
+    research_addendum = paths.research_addendum(sec)
+    research_dossier = paths.research_dossier(sec)
+    research_ref = ""
+    if research_addendum.exists():
+        research_ref += (
+            f"\n   - Research addendum (domain knowledge): "
+            f"`{research_addendum}`"
+        )
+    if research_dossier.exists():
+        research_ref += (
+            f"\n   - Research dossier (full findings): "
+            f"`{research_dossier}`"
+        )
+    ctx["research_ref"] = research_ref
 
     # Materialize sidecar BEFORE rendering so it exists at prompt-write time
     sidecar_path = materialize_context_sidecar(
@@ -287,6 +306,22 @@ def write_strategic_impl_prompt(
             f"`{readiness_path}`"
         )
 
+    # Research context for implementation
+    paths = PathRegistry(planspace)
+    research_addendum = paths.research_addendum(sec)
+    research_dossier = paths.research_dossier(sec)
+    research_impl_ref = ""
+    if research_addendum.exists():
+        research_impl_ref += (
+            f"\n   - Research addendum (domain constraints): "
+            f"`{research_addendum}`"
+        )
+    if research_dossier.exists():
+        research_impl_ref += (
+            f"\n   - Research dossier (background knowledge): "
+            f"`{research_dossier}`"
+        )
+
     ctx = build_prompt_context(section, planspace, codespace)
     impl_extras = build_impl_context_extras(
         section,
@@ -309,6 +344,7 @@ def write_strategic_impl_prompt(
         "proposal_state_ref": proposal_state_ref,
         "reconciliation_ref": reconciliation_ref,
         "readiness_ref": readiness_ref,
+        "research_ref": research_impl_ref,
         "task_submission_path": str(
             artifacts / "signals" / f"task-requests-impl-{sec}.json"),
         "allowed_tasks": "scan_explore, scan_deep_analyze, strategic_implementation, alignment_check",
@@ -350,7 +386,8 @@ def write_impl_alignment_prompt(
     section: Section, planspace: Path, codespace: Path,
 ) -> Path:
     """Write the prompt for verifying implementation alignment."""
-    artifacts = PathRegistry(planspace).artifacts
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     sec = section.number
 
     alignment_excerpt = (
@@ -434,6 +471,20 @@ def write_impl_alignment_prompt(
             f"\n10. TODO resolution summary: `{todo_resolution_path}`"
         )
 
+    impl_feedback_path = paths.impl_feedback_surfaces(sec)
+    impl_feedback_block = (
+        "\n\n## Implementation Feedback Surfaces\n\n"
+        "If during your alignment review you discover constraints, "
+        "unexpected behaviors, or problem dimensions that the current "
+        "problem definition does not cover, write them to:\n"
+        f"`{impl_feedback_path}`\n\n"
+        "Use the same surfaces schema as intent surfaces:\n"
+        '```json\n{"problem_surfaces": [...], "philosophy_surfaces": [...]}'
+        "\n```\n"
+        "Only write surfaces for genuinely new problem dimensions, not "
+        "for implementation quality issues.\n"
+    )
+
     ctx = build_prompt_context(section, planspace, codespace)
     ctx.update({
         "proposal_excerpt": proposal_excerpt,
@@ -446,6 +497,7 @@ def write_impl_alignment_prompt(
         "micro_line": impl_micro_line,
         "todo_line": impl_todo_line,
         "todo_resolution_line": impl_todo_resolution_line,
+        "impl_feedback_block": impl_feedback_block,
     })
 
     prompt_path = artifacts / f"impl-align-{sec}-prompt.md"

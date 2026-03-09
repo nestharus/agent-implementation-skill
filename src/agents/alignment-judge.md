@@ -84,6 +84,18 @@ Fields:
 The script reads this JSON to make routing decisions. Your narrative
 verdict is for human review; the JSON is for mechanical dispatch.
 
+## Implementation Feedback Surfaces (When Requested)
+
+If the prompt includes an `Implementation Feedback Surfaces` section,
+you may write a surfaces JSON file to the path it provides using the
+same schema as intent surfaces. Use this only when implementation
+reveals a genuinely new problem/philosophy dimension that the current
+definition does not cover.
+
+Do not write feedback surfaces for ordinary implementation defects,
+missed edits, or proposal-quality issues. Those belong in the normal
+`PROBLEMS:` verdict instead.
+
 ## Proposal Evaluation Rules
 
 ### Alternative Approaches

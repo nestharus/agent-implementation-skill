@@ -62,6 +62,58 @@ def load_intent_surfaces(
     return read_agent_signal(surfaces_path)
 
 
+def load_implementation_feedback_surfaces(
+    section_number: str, planspace: Path,
+) -> dict | None:
+    """Load implementation feedback surfaces for a section."""
+    feedback_path = PathRegistry(planspace).impl_feedback_surfaces(section_number)
+    return read_agent_signal(feedback_path)
+
+
+def load_research_derived_surfaces(
+    section_number: str, planspace: Path,
+) -> dict | None:
+    """Load research-derived surfaces for a section."""
+    research_path = PathRegistry(planspace).research_derived_surfaces(section_number)
+    if not research_path.exists():
+        return None
+    data = read_json(research_path)
+    return data if isinstance(data, dict) else None
+
+
+def merge_surface_payloads(
+    surfaces: dict | None, additional_surfaces: dict | None,
+) -> dict | None:
+    """Merge problem/philosophy surface lists into a single payload."""
+    if not isinstance(additional_surfaces, dict):
+        return surfaces
+    if surfaces is None:
+        return additional_surfaces
+
+    for kind in ("problem_surfaces", "philosophy_surfaces"):
+        existing = list(surfaces.get(kind, []))
+        new = list(additional_surfaces.get(kind, []))
+        surfaces[kind] = existing + new
+
+    return surfaces
+
+
+def load_combined_intent_surfaces(
+    section_number: str, planspace: Path,
+) -> dict | None:
+    """Load and merge all surface sources used by proposal/expansion."""
+    surfaces = load_intent_surfaces(section_number, planspace)
+    surfaces = merge_surface_payloads(
+        surfaces,
+        load_implementation_feedback_surfaces(section_number, planspace),
+    )
+    surfaces = merge_surface_payloads(
+        surfaces,
+        load_research_derived_surfaces(section_number, planspace),
+    )
+    return surfaces
+
+
 def normalize_surface_ids(
     surfaces: dict, registry: dict, section_number: str,
 ) -> dict:

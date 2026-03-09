@@ -195,6 +195,13 @@ class TestSectionScopedAccessors:
         )
 
     @pytest.mark.parametrize("num", ["01", "12"])
+    def test_impl_feedback_surfaces(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
+        assert reg.impl_feedback_surfaces(num) == (
+            tmp_path / "artifacts" / "signals"
+            / f"impl-feedback-surfaces-{num}.json"
+        )
+
+    @pytest.mark.parametrize("num", ["01", "12"])
     def test_todos(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
         assert reg.todos(num) == (
             tmp_path / "artifacts" / "todos" / f"section-{num}-todos.md"

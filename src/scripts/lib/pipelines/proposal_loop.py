@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lib.services.alignment_change_tracker import check_pending as alignment_changed_pending
-from lib.core.artifact_io import read_json, read_json_or_default, write_json
+from lib.core.artifact_io import read_json_or_default, write_json
 from lib.intent.intent_triage import load_triage_result
 from lib.core.path_registry import PathRegistry
 from section_loop.alignment import _extract_problems
@@ -17,7 +17,7 @@ from section_loop.dispatch import (
 )
 from section_loop.intent.expansion import handle_user_gate, run_expansion_cycle
 from section_loop.intent.surfaces import (
-    load_intent_surfaces,
+    load_combined_intent_surfaces,
     load_surface_registry,
     merge_surfaces_into_registry,
     normalize_surface_ids,
@@ -38,6 +38,31 @@ from section_loop.section_engine.blockers import (
 )
 from section_loop.section_engine.reexplore import _write_alignment_surface
 from section_loop.task_ingestion import ingest_and_submit
+
+
+DEFINITION_GAP_KINDS = {
+    "new_axis",
+    "gap",
+    "silence",
+    "ungrounded_assumption",
+}
+
+
+def _load_combined_surfaces(section_number: str, planspace: Path) -> dict | None:
+    """Load and merge all surfaces that can trigger proposal expansion."""
+    return load_combined_intent_surfaces(section_number, planspace)
+
+
+def _has_definition_gap_surfaces(surfaces: dict | None) -> bool:
+    """Return whether any surfaced issue implies definition growth."""
+    if not isinstance(surfaces, dict):
+        return False
+    return any(
+        surface.get("kind") in DEFINITION_GAP_KINDS
+        for kind_key in ("problem_surfaces", "philosophy_surfaces")
+        for surface in surfaces.get(kind_key, [])
+        if isinstance(surface, dict)
+    )
 
 
 def run_proposal_loop(
@@ -365,7 +390,7 @@ def run_proposal_loop(
 
         if problems is None:
             if intent_mode == "full":
-                surfaces = load_intent_surfaces(section.number, planspace)
+                surfaces = _load_combined_surfaces(section.number, planspace)
                 if surfaces:
                     expansion_max = intent_budgets.get("intent_expansion_max", 2)
                     expansion_count = getattr(
@@ -453,7 +478,9 @@ def run_proposal_loop(
             break
 
         if intent_mode == "full":
-            misaligned_surfaces = load_intent_surfaces(section.number, planspace)
+            misaligned_surfaces = _load_combined_surfaces(
+                section.number, planspace,
+            )
             if misaligned_surfaces:
                 registry = load_surface_registry(section.number, planspace)
                 misaligned_surfaces = normalize_surface_ids(
@@ -467,6 +494,49 @@ def run_proposal_loop(
                     f"Section {section.number}: persisted intent "
                     f"surfaces from misaligned pass"
                 )
+                if _has_definition_gap_surfaces(misaligned_surfaces):
+                    expansion_max = intent_budgets.get("intent_expansion_max", 2)
+                    expansion_count = getattr(
+                        run_proposal_loop,
+                        "_expansion_counts",
+                        {},
+                    ).get(section.number, 0)
+                    if expansion_count < expansion_max:
+                        log(
+                            f"Section {section.number}: definition-gap surfaces "
+                            f"found on misaligned pass — running expansion"
+                        )
+                        delta_result = run_expansion_cycle(
+                            section.number,
+                            planspace,
+                            codespace,
+                            parent,
+                            budgets=intent_budgets,
+                        )
+                        if not hasattr(run_proposal_loop, "_expansion_counts"):
+                            run_proposal_loop._expansion_counts = {}
+                        run_proposal_loop._expansion_counts[section.number] = (
+                            expansion_count + 1
+                        )
+                        if delta_result.get("needs_user_input"):
+                            gate_response = handle_user_gate(
+                                section.number,
+                                planspace,
+                                parent,
+                                delta_result,
+                            )
+                            if gate_response and gate_response.startswith("resume"):
+                                payload = gate_response.partition(":")[2].strip()
+                                if payload:
+                                    persist_decision(
+                                        planspace, section.number, payload,
+                                    )
+                    else:
+                        log(
+                            f"Section {section.number}: definition-gap surfaces "
+                            f"found on misaligned pass but expansion budget is "
+                            f"exhausted ({expansion_count}/{expansion_max})"
+                        )
 
         proposal_problems = problems
         short = problems[:200]

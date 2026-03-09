@@ -97,16 +97,112 @@ def test_route_blockers_writes_signals_and_queues_reconciliation(
     assert queued == [(["CacheProtocol"], ["client.cache"])]
 
 
-def test_route_blockers_writes_signals_for_blocking_research_questions(
+def test_route_blockers_dispatches_research_plan_on_first_encounter(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     planspace = tmp_path / "planspace"
     (planspace / "artifacts" / "signals").mkdir(parents=True, exist_ok=True)
+    submitted: list[dict] = []
 
     monkeypatch.setattr(
         "src.scripts.lib.pipelines.readiness_gate._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate.submit_task",
+        lambda db_path, submitted_by, task_type, **kwargs: (
+            submitted.append(
+                {
+                    "db_path": db_path,
+                    "submitted_by": submitted_by,
+                    "task_type": task_type,
+                    **kwargs,
+                }
+            )
+            or 41
+        ),
+    )
+
+    route_blockers(
+        "03",
+        {
+            "blocking_research_questions": [
+                "Should the retry ledger be persisted centrally?"
+            ],
+        },
+        planspace,
+        "parent",
+    )
+
+    trigger_path = (
+        planspace
+        / "artifacts"
+        / "research"
+        / "sections"
+        / "section-03"
+        / "research-trigger.json"
+    )
+    assert trigger_path.exists()
+    trigger = json.loads(trigger_path.read_text(encoding="utf-8"))
+    assert trigger == {
+        "section": "03",
+        "trigger_source": "proposal-state:blocking_research_questions",
+        "questions": ["Should the retry ledger be persisted centrally?"],
+        "timestamp": trigger["timestamp"],
+    }
+    assert trigger["timestamp"].endswith("+00:00")
+    assert submitted == [
+        {
+            "db_path": planspace / "run.db",
+            "submitted_by": "readiness-03",
+            "task_type": "research_plan",
+            "payload_path": str(trigger_path),
+            "problem_id": "research-03",
+        }
+    ]
+    assert not (
+        planspace
+        / "artifacts"
+        / "signals"
+        / "section-03-blocking-research-0-signal.json"
+    ).exists()
+
+
+def test_route_blockers_falls_back_to_needs_parent_after_research_dossier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    planspace = tmp_path / "planspace"
+    dossier_path = (
+        planspace
+        / "artifacts"
+        / "research"
+        / "sections"
+        / "section-03"
+        / "dossier.md"
+    )
+    dossier_path.parent.mkdir(parents=True, exist_ok=True)
+    dossier_path.write_text("# Dossier\n", encoding="utf-8")
+    submitted: list[dict] = []
+
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate._update_blocker_rollup",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate.submit_task",
+        lambda db_path, submitted_by, task_type, **kwargs: (
+            submitted.append(
+                {
+                    "db_path": db_path,
+                    "submitted_by": submitted_by,
+                    "task_type": task_type,
+                    **kwargs,
+                }
+            )
+            or 42
+        ),
     )
 
     route_blockers(
@@ -138,6 +234,67 @@ def test_route_blockers_writes_signals_for_blocking_research_questions(
         ),
         "source": "proposal-state:blocking_research_questions",
     }
+    assert submitted == []
+    assert not (
+        planspace
+        / "artifacts"
+        / "research"
+        / "sections"
+        / "section-03"
+        / "research-trigger.json"
+    ).exists()
+
+
+def test_route_blockers_ignores_empty_blocking_research_questions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    planspace = tmp_path / "planspace"
+    submitted: list[dict] = []
+
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate._update_blocker_rollup",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate.submit_task",
+        lambda db_path, submitted_by, task_type, **kwargs: (
+            submitted.append(
+                {
+                    "db_path": db_path,
+                    "submitted_by": submitted_by,
+                    "task_type": task_type,
+                    **kwargs,
+                }
+            )
+            or 43
+        ),
+    )
+
+    route_blockers(
+        "03",
+        {
+            "blocking_research_questions": [],
+        },
+        planspace,
+        "parent",
+    )
+
+    assert submitted == []
+    assert not (
+        planspace
+        / "artifacts"
+        / "research"
+        / "sections"
+        / "section-03"
+        / "research-trigger.json"
+    ).exists()
+    assert not (
+        planspace
+        / "artifacts"
+        / "signals"
+        / "section-03-blocking-research-0-signal.json"
+    ).exists()
 
 
 def test_resolve_and_route_returns_blocked_proposal_pass_result(

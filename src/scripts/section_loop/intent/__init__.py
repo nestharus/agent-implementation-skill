@@ -8,6 +8,7 @@ from .bootstrap import ensure_global_philosophy, generate_intent_pack
 from .expansion import run_expansion_cycle
 from .surfaces import (
     find_discarded_recurrences,
+    load_implementation_feedback_surfaces,
     load_surface_registry,
     merge_surfaces_into_registry,
     normalize_surface_ids,
@@ -18,6 +19,7 @@ __all__ = [
     "ensure_global_philosophy",
     "find_discarded_recurrences",
     "generate_intent_pack",
+    "load_implementation_feedback_surfaces",
     "load_surface_registry",
     "merge_surfaces_into_registry",
     "normalize_surface_ids",

@@ -133,6 +133,11 @@ pipeline after you write the file.
 If no surfaces were found, do NOT write the file. Do not write an
 empty surfaces block.
 
+If the prompt provides an implementation-feedback surface path instead
+of the standard surfaces signal path, use that path. The schema and
+filtering rules stay the same: only write genuinely new problem or
+philosophy dimensions, not ordinary implementation defects.
+
 ## Anti-Patterns
 
 - **Hunting for surfaces**: You are a judge, not an auditor. Surfaces

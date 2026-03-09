@@ -131,6 +131,9 @@ class PathRegistry:
     def microstrategy_signal(self, num: str) -> Path:
         return self.signals_dir() / f"proposal-{num}-microstrategy.json"
 
+    def impl_feedback_surfaces(self, num: str) -> Path:
+        return self.signals_dir() / f"impl-feedback-surfaces-{num}.json"
+
     def todos(self, num: str) -> Path:
         return self.todos_dir() / f"section-{num}-todos.md"
 
@@ -171,6 +174,38 @@ class PathRegistry:
 
     def risk_parameters(self) -> Path:
         return self.risk_dir() / "risk-parameters.json"
+
+    # --- Research artifact accessors ---
+
+    def research_dir(self) -> Path:
+        return self._artifacts / "research"
+
+    def research_sections_dir(self) -> Path:
+        return self.research_dir() / "sections"
+
+    def research_global_dir(self) -> Path:
+        return self.research_dir() / "global"
+
+    def research_section_dir(self, num: str) -> Path:
+        return self.research_sections_dir() / f"section-{num}"
+
+    def research_plan(self, num: str) -> Path:
+        return self.research_section_dir(num) / "research-plan.json"
+
+    def research_dossier(self, num: str) -> Path:
+        return self.research_section_dir(num) / "dossier.md"
+
+    def research_claims(self, num: str) -> Path:
+        return self.research_section_dir(num) / "dossier-claims.json"
+
+    def research_derived_surfaces(self, num: str) -> Path:
+        return self.research_section_dir(num) / "research-derived-surfaces.json"
+
+    def research_addendum(self, num: str) -> Path:
+        return self.research_section_dir(num) / "proposal-addendum.md"
+
+    def research_tickets_dir(self, num: str) -> Path:
+        return self.research_section_dir(num) / "tickets"
 
     # --- Global file accessors ---
 
