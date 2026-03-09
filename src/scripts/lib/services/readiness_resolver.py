@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from lib.core.artifact_io import write_json
+from lib.core.artifact_io import read_json, write_json
+from lib.core.path_registry import PathRegistry
 from lib.repositories.proposal_state_repository import (
     extract_blockers,
     has_blocking_fields,
@@ -13,6 +14,87 @@ from lib.repositories.proposal_state_repository import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_governance_identity(
+    state: dict,
+    section_dir: Path,
+    section_number: str,
+) -> list[dict]:
+    """Validate governance identity fields against the governance packet.
+
+    Returns a list of governance blockers (empty if valid).
+    """
+    governance_blockers: list[dict] = []
+
+    # Check for unresolved pattern deviations
+    deviations = state.get("pattern_deviations", [])
+    if isinstance(deviations, list) and deviations:
+        governance_blockers.append({
+            "state": "governance_deviation",
+            "detail": (
+                f"{len(deviations)} unresolved pattern deviation(s) — "
+                "pattern delta must be accepted before descent"
+            ),
+            "needs": "pattern delta resolution",
+            "why_blocked": "PAT-0013: pattern change before code change",
+            "source": "governance_identity",
+        })
+
+    # Check for unresolved governance questions
+    questions = state.get("governance_questions", [])
+    if isinstance(questions, list) and questions:
+        governance_blockers.append({
+            "state": "governance_question",
+            "detail": (
+                f"{len(questions)} unresolved governance question(s)"
+            ),
+            "needs": "governance question resolution",
+            "why_blocked": "PAT-0013: unresolved governance questions block descent",
+            "source": "governance_identity",
+        })
+
+    # Validate packet membership when governance IDs are declared
+    problem_ids = state.get("problem_ids", [])
+    pattern_ids = state.get("pattern_ids", [])
+    if isinstance(problem_ids, list) and problem_ids or isinstance(pattern_ids, list) and pattern_ids:
+        paths = PathRegistry(section_dir)
+        packet_path = paths.governance_packet(section_number)
+        packet = read_json(packet_path)
+        if isinstance(packet, dict):
+            packet_problem_ids = {
+                str(p.get("problem_id", ""))
+                for p in packet.get("candidate_problems", [])
+                if isinstance(p, dict)
+            }
+            packet_pattern_ids = {
+                str(p.get("pattern_id", ""))
+                for p in packet.get("candidate_patterns", [])
+                if isinstance(p, dict)
+            }
+            orphan_problems = [
+                pid for pid in (problem_ids or [])
+                if isinstance(pid, str) and pid and pid not in packet_problem_ids
+            ]
+            orphan_patterns = [
+                pid for pid in (pattern_ids or [])
+                if isinstance(pid, str) and pid and pid not in packet_pattern_ids
+            ]
+            if orphan_problems or orphan_patterns:
+                details = []
+                if orphan_problems:
+                    details.append(f"problem_ids {orphan_problems} not in packet")
+                if orphan_patterns:
+                    details.append(f"pattern_ids {orphan_patterns} not in packet")
+                governance_blockers.append({
+                    "state": "governance_membership",
+                    "detail": "; ".join(details),
+                    "needs": "governance ID correction",
+                    "why_blocked": "PAT-0013: IDs must reference packet records",
+                    "source": "governance_identity",
+                })
+
+    return governance_blockers
 
 
 def resolve_readiness(section_dir: Path, section_number: str) -> dict:
@@ -24,6 +106,15 @@ def resolve_readiness(section_dir: Path, section_number: str) -> dict:
 
     ready = state.get("execution_ready") is True and not has_blocking_fields(state)
     blockers = extract_blockers(state)
+
+    # Validate governance identity (PAT-0013)
+    governance_blockers = _validate_governance_identity(
+        state, section_dir, section_number,
+    )
+    if governance_blockers:
+        blockers.extend(governance_blockers)
+        ready = False
+
     rationale = state.get("readiness_rationale", "")
 
     if not ready and not blockers:

@@ -7,7 +7,7 @@
 │   ├── problems/index.md    # Why this code exists (PRB-XXXX)
 │   ├── patterns/index.md    # How we solve recurring problems (PAT-XXXX)
 │   ├── audit/prompt.md      # Audit process for external models
-│   ├── audit/history.md     # Cumulative audit log (103 rounds)
+│   ├── audit/history.md     # Cumulative audit log (104 rounds)
 │   ├── design/              # Design rationale documents
 │   └── risk-register.md     # Landed-code risks and debt
 ├── philosophy/              # Values and principles

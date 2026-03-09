@@ -165,11 +165,25 @@ def record_assessment_governance(
     )
 
 
+def _debt_key(entry: dict) -> str:
+    """Compute a stable key for deduplication of debt entries."""
+    import hashlib
+
+    parts = "|".join([
+        str(entry.get("section", "")),
+        str(entry.get("category", "")),
+        str(entry.get("region", "")),
+        str(entry.get("description", "")),
+    ])
+    return hashlib.sha256(parts.encode()).hexdigest()[:16]
+
+
 def promote_debt_signals(planspace: Path) -> list[dict]:
     """Consume risk-register-signal files and stage them for register promotion.
 
     Reads all risk-register-signal-*.json files, extracts typed debt_items,
-    writes a consolidated staging artifact, and returns the entries.
+    deduplicates against existing staging entries, writes a consolidated
+    staging artifact, and returns only newly promoted entries.
     """
     import logging
 
@@ -179,7 +193,8 @@ def promote_debt_signals(planspace: Path) -> list[dict]:
     if not signals_dir.exists():
         return []
 
-    entries: list[dict] = []
+    candidates: list[dict] = []
+    consumed_signals: list[Path] = []
     for signal_path in sorted(signals_dir.glob("*-risk-register-signal.json")):
         data = read_json(signal_path)
         if not isinstance(data, dict):
@@ -191,7 +206,7 @@ def promote_debt_signals(planspace: Path) -> list[dict]:
         for item in debt_items:
             if not isinstance(item, dict):
                 continue
-            entries.append({
+            candidates.append({
                 "section": section,
                 "category": item.get("category", ""),
                 "region": item.get("region", ""),
@@ -204,12 +219,43 @@ def promote_debt_signals(planspace: Path) -> list[dict]:
                 "pattern_ids": data.get("pattern_ids", []),
                 "profile_id": data.get("profile_id", ""),
             })
+        consumed_signals.append(signal_path)
 
-    if entries:
-        staging = read_json(paths.risk_register_staging())
-        existing = staging if isinstance(staging, list) else []
-        existing.extend(entries)
+    if not candidates:
+        return []
+
+    # Deduplicate against existing staging entries
+    staging = read_json(paths.risk_register_staging())
+    existing = staging if isinstance(staging, list) else []
+    existing_keys = {_debt_key(entry) for entry in existing if isinstance(entry, dict)}
+
+    new_entries: list[dict] = []
+    for candidate in candidates:
+        key = _debt_key(candidate)
+        if key not in existing_keys:
+            candidate["debt_key"] = key
+            new_entries.append(candidate)
+            existing_keys.add(key)
+
+    if new_entries:
+        existing.extend(new_entries)
         write_json(paths.risk_register_staging(), existing)
-        logger.info("Staged %d debt entries for risk register promotion", len(entries))
+        logger.info("Staged %d new debt entries (skipped %d duplicates)",
+                     len(new_entries), len(candidates) - len(new_entries))
 
-    return entries
+    # Record promotion receipts so signals are not re-consumed
+    receipts_path = paths.signals_dir() / "debt-promotion-receipts.json"
+    receipts = read_json(receipts_path)
+    receipt_list = receipts if isinstance(receipts, list) else []
+    for signal_path in consumed_signals:
+        receipt_list.append({
+            "signal": signal_path.name,
+            "entries_promoted": len([
+                e for e in new_entries
+                if any(signal_path.name.startswith(f"section-{e.get('section', '')}")
+                       for _ in [None])
+            ]),
+        })
+    write_json(receipts_path, receipt_list)
+
+    return new_entries

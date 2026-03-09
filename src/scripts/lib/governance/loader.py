@@ -46,10 +46,35 @@ def _split_records(text: str, prefix: str) -> list[tuple[str, str, str]]:
 
 
 def _field_map(body: str) -> dict[str, str]:
+    """Extract bold-label fields, including continuation lines for multiline values."""
     fields: dict[str, str] = {}
-    for match in _FIELD_RE.finditer(body):
-        label = match.group("label").strip().lower()
-        fields[label] = match.group("value").strip()
+    lines = body.splitlines()
+    current_label: str | None = None
+    current_parts: list[str] = []
+
+    for line in lines:
+        match = _FIELD_RE.match(line)
+        if match:
+            if current_label is not None:
+                fields[current_label] = " ".join(current_parts).strip()
+            current_label = match.group("label").strip().lower()
+            current_parts = [match.group("value").strip()]
+        elif current_label is not None:
+            stripped = line.strip()
+            if not stripped:
+                fields[current_label] = " ".join(current_parts).strip()
+                current_label = None
+                current_parts = []
+            elif stripped.startswith(("- ", "* ", "## ", "---")):
+                fields[current_label] = " ".join(current_parts).strip()
+                current_label = None
+                current_parts = []
+            else:
+                current_parts.append(stripped)
+
+    if current_label is not None:
+        fields[current_label] = " ".join(current_parts).strip()
+
     return fields
 
 
@@ -158,6 +183,10 @@ def parse_pattern_index(codespace: Path) -> list[dict]:
         known_instances = _extract_bullets(body, "Known instances")
         if not known_instances:
             known_instances = _comma_list(fields.get("known instances", ""))
+        template_items = _extract_bullets(body, "Template")
+        if not template_items:
+            template_text = fields.get("template", "")
+            template_items = [template_text] if template_text else []
         records.append({
             "pattern_id": pattern_id,
             "title": title,
@@ -165,6 +194,8 @@ def parse_pattern_index(codespace: Path) -> list[dict]:
             "philosophy": fields.get("philosophy", ""),
             "canonical_instance": fields.get("canonical instance", ""),
             "known_instances": known_instances,
+            "template": template_items,
+            "conformance": fields.get("conformance", ""),
         })
     return records
 

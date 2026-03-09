@@ -50,12 +50,18 @@ debugging evidence instead of hiding it.
 - `src/scripts/lib/research/orchestrator.py` — research plan / status loaders
 - `src/scripts/lib/governance/assessment.py` — post-implementation assessment
   reader
-- `src/scripts/lib/repositories/proposal_state_repository.py` — proposal-state
-  loader
+- `src/scripts/lib/repositories/proposal_state_repository.py`,
+  `decision_repository.py`, `reconciliation_queue.py`,
+  `reconciliation_result_repository.py`, and `strategic_state.py`
+- `src/scripts/lib/tools/tool_surface.py` — tool registry and friction signal
+  readers
+- `src/scripts/section_loop/section_engine/blockers.py` and
+  `src/scripts/lib/pipelines/coordination_problem_resolver.py`
 - `src/scripts/lib/risk/serialization.py` — ROAL package / assessment / plan
   loaders
-- `src/scripts/lib/services/signal_reader.py` and
-  `src/scripts/lib/dispatch/dispatch_metadata.py`
+- `src/scripts/lib/services/signal_reader.py`,
+  `src/scripts/lib/dispatch/dispatch_metadata.py`, and
+  `src/scripts/lib/substrate/substrate_policy.py`
 
 **Conformance**: Any new structured artifact reader MUST follow this pattern. No
 silent `json.loads()` with bare except; no alternate corruption filename
@@ -96,10 +102,15 @@ mechanically before dispatch.
 - `src/scripts/lib/governance/assessment.py`
 - `src/scripts/lib/intent/intent_triage.py`, `intent_surface.py`, and
   `philosophy_bootstrap.py`
-- `src/scripts/section_loop/prompts/writers.py`
-- `src/scripts/section_loop/alignment.py` — template-wrapped adjudication prompt
-- `src/scripts/lib/pipelines/reconciliation_adjudicator.py` —
-  template-wrapped adjudication prompt
+- `src/scripts/section_loop/prompts/writers.py` and
+  `src/scripts/section_loop/alignment.py`
+- `src/scripts/lib/pipelines/reconciliation_adjudicator.py`,
+  `microstrategy_orchestrator.py`, `scope_delta_aggregator.py`,
+  `coordination_planner.py`, `coordination_executor.py`, and `impact_triage.py`
+- `src/scripts/lib/services/impact_analyzer.py`
+- `src/scripts/lib/risk/loop.py`
+- `src/scripts/lib/tools/tool_surface.py`
+- `src/scripts/lib/prompts/substrate_prompt_builder.py`
 - `src/scripts/scan/codemap.py`, `exploration.py`, `feedback.py`, `lib/scan/*`
   — validated scan prompts
 - `src/scripts/task_dispatcher.py` and `src/scripts/qa_interceptor.py`
@@ -357,31 +368,40 @@ Context should be minimal but sufficient.
 
 **Template**:
 1. Parse governance archives into structured indexes rich enough for runtime
-   use: problem records, pattern records (including conformance metadata),
-   philosophy profiles, and region/profile mappings.
-2. Build a section packet during bootstrap that contains the section's
-   **applicable or candidate** governance set:
+   use: problem records, pattern records (including template/conformance/change
+   policy summaries), philosophy profiles, and region/profile mappings.
+2. Build a section packet during bootstrap from **multiple applicability
+   signals**, not section-number string matching alone. Inputs may include:
+   - region labels from the archives
+   - section concern summaries / problem-frame language
+   - codespace or synthesis cues that indicate which runtime region the section
+     is operating in
+   - already matched governance IDs when they exist
+3. The packet must contain the section's **applicable or candidate** governance
+   set plus the basis for that judgment:
    - candidate/matched problem IDs
    - governing profile(s)
    - applicable pattern IDs and summaries
    - known exceptions / allowed deviations
    - unresolved governance questions
+   - applicability basis / ambiguity notes
    - references back to the authoritative archive
-3. Do **not** mirror the full governance archive into every section packet
-   unless the catalog is explicitly updated to allow that behavior.
-4. Thread the packet into proposal, microstrategy, implementation, alignment,
+4. Do **not** mirror the full governance archive into every section packet
+   unless the catalog is explicitly updated to allow that behavior. Broad
+   fallback, when unavoidable, must be explicit and justified in the packet.
+5. Thread the packet into proposal, microstrategy, implementation, alignment,
    ROAL, post-implementation assessment, sidecars, freshness hashing, and
    section-input hashing.
-5. When applicability is ambiguous, fail closed by surfacing governance
-   questions or candidate sets rather than silently broadening to the whole
-   archive or silently omitting governance.
+6. When applicability is ambiguous, fail closed by surfacing governance
+   questions or bounded candidate sets rather than silently broadening to the
+   whole archive or silently omitting governance.
 
 **Canonical instance**: `build_governance_indexes()` +
 `build_section_governance_packet()` in `src/scripts/lib/governance/loader.py`
 and `src/scripts/lib/governance/packet.py`
 
 **Known instances**:
-- `src/scripts/section_loop/main.py` — builds governance indexes
+- `src/scripts/section_loop/main.py` — builds governance indexes and packets
 - `src/scripts/lib/governance/loader.py`
 - `src/scripts/lib/governance/packet.py`
 - `src/scripts/lib/intent/intent_bootstrap.py`
@@ -401,7 +421,9 @@ and `src/scripts/lib/governance/packet.py`
 **Conformance**: Any runtime stage that materially depends on governance context
 must consume the packet (or an accessor derived from it) rather than reparsing
 governance markdown ad hoc. A section packet that is only section-labeled but
-not section-scoped is a pattern violation.
+not section-scoped is a pattern violation. Pattern records truncated to shallow
+single-line summaries such that conformance/change-policy data is unavailable at
+runtime are also a pattern violation.
 
 ---
 
@@ -430,9 +452,11 @@ hierarchy that shaped implementation.
    - `accept_with_debt` → emit debt / risk-register promotion signal
    - `refactor_required` → emit structured blocker signal
 5. A bounded stabilization consumer promotes accepted debt into the
-   authoritative risk register (or equivalent governed artifact), deduplicates
-   entries, and records promotion state so debt signals do not orphan or
-   re-promote forever.
+   authoritative risk register (or equivalent governed artifact) and MUST:
+   - deduplicate entries with a stable debt key / content hash
+   - record promotion state or receipts per source signal
+   - only re-promote when the underlying debt payload materially changes
+   - preserve the signal/promotion trail needed for auditability
 6. Post-implementation assessment may enrich, challenge, or append to
    proposal-time governance identity; it must not be the first place governance
    lineage appears.
@@ -448,12 +472,13 @@ with completion handling in `src/scripts/lib/flow/flow_reconciler.py`
 - `src/scripts/section_loop/section_engine/traceability.py`
 - `src/scripts/lib/core/communication.py` — append-log traceability surface
 - `src/scripts/lib/flow/flow_reconciler.py` — assessment completion routing
+- `src/scripts/section_loop/main.py` — stabilization consumer invocation
 - `governance/risk-register.md` — authoritative debt/risk target
 
 **Conformance**: Post-implementation assessment is not complete until debt /
 refactor outcomes enter a governed stabilization surface and all trace surfaces
-carry governance lineage. Orphaned debt signals and assessment-originated
-lineage are pattern violations.
+carry governance lineage. Orphaned debt signals, duplicate re-promotion of
+unchanged debt, and assessment-originated lineage are pattern violations.
 
 ---
 
@@ -474,14 +499,19 @@ decide the actual governance claims.
    - `pattern_ids`
    - `profile_id`
    - `pattern_deviations` and/or `governance_questions` when needed
-2. These IDs must reference records present in the current governance packet.
+2. These IDs must reference records present in the current governance packet,
+   unless the packet explicitly records a bounded no-applicable-governance
+   state.
 3. If the work requires deviating from an established pattern, emit the pattern
    delta first and block structural descent until it is resolved or explicitly
    accepted.
 4. Alignment and readiness gates validate the **presence, coherence, and
    packet-membership** of governance identity; they do not replace agent
    judgment about which IDs apply.
-5. Downstream traceability and post-implementation assessment inherit and verify
+5. Unresolved `governance_questions` or unresolved `pattern_deviations` must
+   block descent or route upward explicitly; they are not informational-only
+   fields.
+6. Downstream traceability and post-implementation assessment inherit and verify
    this identity rather than inventing it from empty state.
 
 **Canonical instance**: `proposal-state.json` plus the integration-proposer
@@ -500,14 +530,18 @@ contract in `src/agents/integration-proposer.md`
 **Conformance**: Structural work cannot descend with empty governance identity
 unless the governance packet explicitly records that no governing problem or
 pattern applies and alignment accepts that state. Pattern deviation without a
-preceding pattern delta is a violation.
+preceding pattern delta is a violation. Runtime gates that treat non-empty
+`pattern_deviations` or unresolved `governance_questions` as advisory-only are
+also a violation.
 
 ---
 
 ## Health Notes
 
-- **PAT-0001 (Corruption Preservation)**: Healthy.
-- **PAT-0002 (Prompt Safety)**: Healthy.
+- **PAT-0001 (Corruption Preservation)**: Healthy. Instance list expanded to
+  reflect current authoritative readers.
+- **PAT-0002 (Prompt Safety)**: Healthy. Instance list expanded to reflect
+  current authoritative prompt-safety sites.
 - **PAT-0003 (Path Registry)**: Healthy.
 - **PAT-0004 (Flow System)**: Healthy.
 - **PAT-0005 (Policy-Driven Models)**: Healthy.
@@ -517,11 +551,12 @@ preceding pattern delta is a violation.
 - **PAT-0008 (Fail-Closed Defaults)**: Healthy.
 - **PAT-0009 (Blocker Taxonomy)**: Healthy.
 - **PAT-0010 (Intent Surfaces)**: Healthy.
-- **PAT-0011 (Applicable Governance Packet Threading)**: Partial. Packet
-  transport exists; packet is section-labeled but not yet fully section-scoped.
-  Alignment/microstrategy/ROAL callsites now wired (R103).
-- **PAT-0012 (Post-Implementation Governance Feedback)**: Partial.
-  Assessment dispatch, signal emission, and bounded debt promotion exist.
-  Trace lineage initialized from proposal-time governance identity (R103).
-- **PAT-0013 (Governed Proposal Identity)**: New in R103. Proposal-state
-  schema, proposer contract, alignment judge, and readiness gate updated.
+- **PAT-0011 (Applicable Governance Packet Threading)**: Improving. Multi-signal
+  applicability resolution and richer pattern indexes added in R104. Broad
+  fallback is now explicit with applicability_basis rather than silent.
+- **PAT-0012 (Post-Implementation Governance Feedback)**: Improving. Debt
+  promotion is now idempotent with deduplication, content hashing, and
+  promotion receipts (R104).
+- **PAT-0013 (Governed Proposal Identity)**: Improving. Readiness now validates
+  governance identity: unresolved deviations/questions block descent, packet
+  membership is checked (R104).

@@ -88,13 +88,13 @@ The execution pipeline itself introduces risk — proposals that don't solve the
 
 ## PRB-0008: Implementation Risk (Post-Landing)
 
-**Status**: active — partially implemented (R101-R103)
+**Status**: active — partially implemented (R101-R104)
 **Provenance**: user-authored (governance gaps analysis)
 **Regions**: post-implementation assessment, governance assessment, flow reconciler, risk register
 
-After code lands, we don't systematically assess what risks the implementation introduced: coupling, security surfaces, scalability bottlenecks, pattern drift, coherence friction. Post-implementation assessment was implemented in R101: queues assessment after implementation, validates result, routes verdict (accept/accept_with_debt/refactor_required) through structured signals. R102 added debt signal staging. R103 wired bounded stabilization consumer (`promote_debt_signals()` called after implementation pass in section-loop main).
+After code lands, we don't systematically assess what risks the implementation introduced: coupling, security surfaces, scalability bottlenecks, pattern drift, coherence friction. Post-implementation assessment was implemented in R101: queues assessment after implementation, validates result, routes verdict (accept/accept_with_debt/refactor_required) through structured signals. R102 added debt signal staging. R103 wired bounded stabilization consumer (`promote_debt_signals()` called after implementation pass in section-loop main). R104 made debt promotion idempotent: stable content-hash dedup keys, skip existing entries, promotion receipts for consumed signals.
 
-**Solution surfaces**: Post-implementation assessment agent + prompt writer, flow reconciler verdict routing, debt signal staging, bounded stabilization consumer (R103), risk register promotion (PAT-0012).
+**Solution surfaces**: Post-implementation assessment agent + prompt writer, flow reconciler verdict routing, debt signal staging, bounded stabilization consumer (R103), idempotent debt promotion with dedup/receipts (R104, PAT-0012).
 
 ---
 
@@ -112,13 +112,13 @@ Code exists but we can't trace it back to the problem it solves. When problems e
 
 ## PRB-0010: Pattern Governance
 
-**Status**: active — partially implemented (R101-R103)
+**Status**: active — partially implemented (R101-R104)
 **Provenance**: user-authored (governance gaps analysis)
 **Regions**: governance layer, audit process, pattern archive, proposal-state
 
-Established patterns exist and are cataloged. The governance loader parses the archive into planspace indexes, builds per-section governance packets, and threads them into prompt context and freshness hashing. R103 added proposal-time governance identity (PAT-0013) so proposals declare which patterns they follow and which deviations they require. Governance packets now thread into microstrategy, alignment, and ROAL prompts (PAT-0011 coverage expansion). Runtime advisory presence is becoming structural through pattern_ids and pattern_deviations in proposal-state. Full enforcement at proposal time remains advisory.
+Established patterns exist and are cataloged. The governance loader parses the archive into planspace indexes, builds per-section governance packets, and threads them into prompt context and freshness hashing. R103 added proposal-time governance identity (PAT-0013) so proposals declare which patterns they follow and which deviations they require. R104 deepened the loader to parse `template` and `conformance` fields from patterns with multiline continuation support, so runtime pattern records carry actionable conformance criteria — not just titles and instances. Governance packets now thread into microstrategy, alignment, and ROAL prompts (PAT-0011 coverage expansion). Runtime advisory presence is becoming structural through pattern_ids and pattern_deviations in proposal-state. Full enforcement at proposal time remains advisory.
 
-**Solution surfaces**: Pattern archive, governance loader, governance packets (PAT-0011), governed proposal identity (PAT-0013), audit process pattern alignment phases.
+**Solution surfaces**: Pattern archive, governance loader (richer records R104), governance packets (PAT-0011), governed proposal identity (PAT-0013), audit process pattern alignment phases.
 
 ---
 
@@ -148,22 +148,22 @@ Agents can discover new problems, new tools, or greenfield territory that cannot
 
 ## PRB-0013: Proposal-State Readiness Before Descent
 
-**Status**: active
+**Status**: active — partially implemented (R104)
 **Provenance**: user-authored
 **Regions**: proposal-state repository, readiness resolver, readiness gate, implementation prompts
 
-Descent into implementation before anchors, contracts, and research are resolved produces brute-force behavior and reopen cycles. The execution-readiness gate is fail-closed: if any blocking field remains unresolved, implementation dispatch is blocked. Proposals are problem-state artifacts, not file-change plans.
+Descent into implementation before anchors, contracts, and research are resolved produces brute-force behavior and reopen cycles. The execution-readiness gate is fail-closed: if any blocking field remains unresolved, implementation dispatch is blocked. R104 added governance identity validation to the readiness resolver: unresolved pattern_deviations and governance_questions now produce executable blockers (not advisory), and orphan problem_ids/pattern_ids not found in the governance packet are caught. Proposals are problem-state artifacts, not file-change plans.
 
-**Solution surfaces**: Proposal-state repository, readiness resolver, readiness gate, integration proposals as problem-state artifacts.
+**Solution surfaces**: Proposal-state repository, readiness resolver (governance validation R104, PAT-0013), readiness gate, integration proposals as problem-state artifacts.
 
 ---
 
 ## PRB-0014: Governance Context Dilution / Packet Overscoping
 
-**Status**: active — partially addressed (R103)
+**Status**: active — partially addressed (R103-R104)
 **Provenance**: audit-inferred (R103)
 **Regions**: governance packets, freshness computation, section-input hashing, prompt context
 
-Governance packets mirror the full problem/pattern/profile archives into every section, regardless of which problems and patterns are actually applicable to that section. This causes: (1) packet-membership checks become vacuous because every ID is in every packet, (2) any governance edit invalidates freshness for all sections instead of only affected ones, (3) context optimization is violated because agents receive irrelevant governance material. R103 added region-based candidate filtering to `build_section_governance_packet()` so packets carry candidate sets rather than full mirrors, with fail-closed fallback to full sets when filtering yields nothing.
+Governance packets mirror the full problem/pattern/profile archives into every section, regardless of which problems and patterns are actually applicable to that section. This causes: (1) packet-membership checks become vacuous because every ID is in every packet, (2) any governance edit invalidates freshness for all sections instead of only affected ones, (3) context optimization is violated because agents receive irrelevant governance material. R103 added region-based candidate filtering. R104 expanded to multi-signal applicability: direct section-number match, keyword overlap between section summary/problem-frame text and archive regions/solution_surfaces, universal inclusion for region-less records, with explicit `applicability_basis` tracking and `broad_fallback` when no signal matches.
 
-**Solution surfaces**: Section-scoped candidate filtering in governance packet builder (PAT-0011), archive refs instead of full duplication, governance questions for ambiguous applicability.
+**Solution surfaces**: Multi-signal section-scoped applicability in governance packet builder (PAT-0011 R104), archive refs instead of full duplication, applicability_basis tracking, governance questions for ambiguous applicability.

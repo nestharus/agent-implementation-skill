@@ -85,6 +85,8 @@ def test_governance_loader_parses_markdown_indexes(tmp_path: Path) -> None:
         "philosophy": "fail closed",
         "canonical_instance": "artifact_io.py",
         "known_instances": ["artifact_io.py", "orchestrator.py"],
+        "template": [],
+        "conformance": "",
     }]
     assert profiles == [{
         "profile_id": "PHI-global",

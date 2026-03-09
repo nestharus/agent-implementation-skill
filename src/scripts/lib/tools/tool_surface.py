@@ -107,7 +107,7 @@ def surface_tool_registry(
             f"tool entries, and write back to the same path.\n",
             repair_prompt,
         ):
-            return friction_signal_path
+            return pre_tool_total
         dispatch_agent(
             policy.get("tool_registrar", "glm"),
             repair_prompt,
