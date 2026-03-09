@@ -326,7 +326,8 @@ def _setup_vacuum(planspace: Path, codespace: Path) -> Path:
         unresolved_contracts, research_questions,
         blocking_research_questions, user_root_questions,
         new_section_candidates, shared_seam_candidates, execution_ready,
-        readiness_rationale.
+        readiness_rationale, problem_ids, pattern_ids, profile_id,
+        pattern_deviations, governance_questions.
 
         This is a greenfield section with NO related files in the codebase.
         Set execution_ready to false if there are any unresolved anchors,
@@ -425,7 +426,8 @@ def _setup_partial_anchors(planspace: Path, codespace: Path) -> Path:
         unresolved_contracts, research_questions,
         blocking_research_questions, user_root_questions,
         new_section_candidates, shared_seam_candidates, execution_ready,
-        readiness_rationale.
+        readiness_rationale, problem_ids, pattern_ids, profile_id,
+        pattern_deviations, governance_questions.
 
         Mark anchors for UserRepository and EventBus integration as resolved.
         Mark anchors for the audit log storage, hash chain, and query API as

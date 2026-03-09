@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lib.core.artifact_io import write_json
+from lib.core.path_registry import PathRegistry
 from section_loop.agent_templates import (
     TASK_SUBMISSION_SEMANTICS,
     validate_dynamic_content,
@@ -59,17 +60,23 @@ def run_microstrategy(
     agent_name = f"microstrategy-{section.number}"
     monitor_name = f"{agent_name}-monitor"
 
+    paths = PathRegistry(planspace)
     file_list = "\n".join(f"- `{codespace / relative_path}`" for relative_path in section.related_files)
     todos_ref = ""
     section_todos = artifacts / "todos" / f"section-{section.number}-todos.md"
     if section_todos.exists():
         todos_ref = f"\nRead the TODO extraction: `{section_todos}`"
 
+    governance_ref = ""
+    governance_packet = paths.governance_packet(section.number)
+    if governance_packet.exists():
+        governance_ref = f"\nRead the governance packet: `{governance_packet}`"
+
     rendered = f"""# Task: Microstrategy for Section {section.number}
 
 ## Context
 Read the integration proposal: `{integration_proposal}`
-Read the alignment excerpt: `{artifacts / "sections" / f"section-{section.number}-alignment-excerpt.md"}`{todos_ref}
+Read the alignment excerpt: `{artifacts / "sections" / f"section-{section.number}-alignment-excerpt.md"}`{todos_ref}{governance_ref}
 
 ## Related Files
 {file_list}

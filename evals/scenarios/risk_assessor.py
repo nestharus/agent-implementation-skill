@@ -278,6 +278,11 @@ def _setup_valid_assessment(planspace: Path, codespace: Path) -> Path:
             "shared_seam_candidates": [],
             "execution_ready": True,
             "readiness_rationale": "ready",
+            "problem_ids": [],
+            "pattern_ids": [],
+            "profile_id": "",
+            "pattern_deviations": [],
+            "governance_questions": [],
         },
         consequence_text="Consequence note: bounded local change.\n",
         impact_text="Impact artifact: no cross-section coordination expected.\n",
@@ -359,6 +364,11 @@ def _setup_high_risk_assessment(planspace: Path, codespace: Path) -> Path:
             "shared_seam_candidates": ["router/service boundary"],
             "execution_ready": False,
             "readiness_rationale": "stale and cross-section-sensitive",
+            "problem_ids": [],
+            "pattern_ids": [],
+            "profile_id": "",
+            "pattern_deviations": [],
+            "governance_questions": [],
         },
         consequence_text=(
             "Consequence note: this section now affects two downstream sections "

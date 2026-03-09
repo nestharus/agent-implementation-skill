@@ -88,37 +88,37 @@ The execution pipeline itself introduces risk — proposals that don't solve the
 
 ## PRB-0008: Implementation Risk (Post-Landing)
 
-**Status**: active — partially implemented (R101)
+**Status**: active — partially implemented (R101-R103)
 **Provenance**: user-authored (governance gaps analysis)
 **Regions**: post-implementation assessment, governance assessment, flow reconciler, risk register
 
-After code lands, we don't systematically assess what risks the implementation introduced: coupling, security surfaces, scalability bottlenecks, pattern drift, coherence friction. Post-implementation assessment was implemented in R101: queues assessment after implementation, validates result, routes verdict (accept/accept_with_debt/refactor_required) through structured signals. Debt signal promotion to the risk register is closing in R102.
+After code lands, we don't systematically assess what risks the implementation introduced: coupling, security surfaces, scalability bottlenecks, pattern drift, coherence friction. Post-implementation assessment was implemented in R101: queues assessment after implementation, validates result, routes verdict (accept/accept_with_debt/refactor_required) through structured signals. R102 added debt signal staging. R103 wired bounded stabilization consumer (`promote_debt_signals()` called after implementation pass in section-loop main).
 
-**Solution surfaces**: Post-implementation assessment agent + prompt writer, flow reconciler verdict routing, debt signal staging, risk register promotion (PAT-0012).
+**Solution surfaces**: Post-implementation assessment agent + prompt writer, flow reconciler verdict routing, debt signal staging, bounded stabilization consumer (R103), risk register promotion (PAT-0012).
 
 ---
 
 ## PRB-0009: Problem Traceability
 
-**Status**: active — partially implemented (R101-R102)
+**Status**: active — partially implemented (R101-R103)
 **Provenance**: user-authored (governance gaps analysis)
-**Regions**: governance layer, traceability artifacts, trace indexes
+**Regions**: governance layer, traceability artifacts, trace indexes, proposal-state
 
-Code exists but we can't trace it back to the problem it solves. When problems evolve or become obsolete, we don't know which code should evolve or be removed with them. R101 added governance enrichment to trace indexes (`trace/section-N.json`) with problem_ids, pattern_ids, and profile_id. R102 extends governance fields to trace-map and traceability.json surfaces.
+Code exists but we can't trace it back to the problem it solves. When problems evolve or become obsolete, we don't know which code should evolve or be removed with them. R101 added governance enrichment to trace indexes (`trace/section-N.json`). R103 added proposal-time governance identity (PAT-0013) so lineage originates at proposal time, not post-implementation inference. Trace index and trace-map now initialize from proposal-state governance IDs. The `traceability.json` append log also carries governance context.
 
-**Solution surfaces**: This archive, governance packets (PAT-0011), traceability enrichment across all three trace surfaces, update_trace_governance().
+**Solution surfaces**: This archive, governance packets (PAT-0011), governed proposal identity (PAT-0013), traceability enrichment across all three trace surfaces, update_trace_governance().
 
 ---
 
 ## PRB-0010: Pattern Governance
 
-**Status**: active — partially implemented (R101-R102)
+**Status**: active — partially implemented (R101-R103)
 **Provenance**: user-authored (governance gaps analysis)
-**Regions**: governance layer, audit process, pattern archive
+**Regions**: governance layer, audit process, pattern archive, proposal-state
 
-Established patterns exist and are cataloged. The governance loader parses the archive into planspace indexes, builds per-section governance packets, and threads them into prompt context and freshness hashing. Runtime doesn't yet enforce pattern conformance at proposal time — currently advisory through governance packets.
+Established patterns exist and are cataloged. The governance loader parses the archive into planspace indexes, builds per-section governance packets, and threads them into prompt context and freshness hashing. R103 added proposal-time governance identity (PAT-0013) so proposals declare which patterns they follow and which deviations they require. Governance packets now thread into microstrategy, alignment, and ROAL prompts (PAT-0011 coverage expansion). Runtime advisory presence is becoming structural through pattern_ids and pattern_deviations in proposal-state. Full enforcement at proposal time remains advisory.
 
-**Solution surfaces**: Pattern archive, governance loader, governance packets (PAT-0011), audit process pattern alignment phases.
+**Solution surfaces**: Pattern archive, governance loader, governance packets (PAT-0011), governed proposal identity (PAT-0013), audit process pattern alignment phases.
 
 ---
 
@@ -155,3 +155,15 @@ Agents can discover new problems, new tools, or greenfield territory that cannot
 Descent into implementation before anchors, contracts, and research are resolved produces brute-force behavior and reopen cycles. The execution-readiness gate is fail-closed: if any blocking field remains unresolved, implementation dispatch is blocked. Proposals are problem-state artifacts, not file-change plans.
 
 **Solution surfaces**: Proposal-state repository, readiness resolver, readiness gate, integration proposals as problem-state artifacts.
+
+---
+
+## PRB-0014: Governance Context Dilution / Packet Overscoping
+
+**Status**: active — partially addressed (R103)
+**Provenance**: audit-inferred (R103)
+**Regions**: governance packets, freshness computation, section-input hashing, prompt context
+
+Governance packets mirror the full problem/pattern/profile archives into every section, regardless of which problems and patterns are actually applicable to that section. This causes: (1) packet-membership checks become vacuous because every ID is in every packet, (2) any governance edit invalidates freshness for all sections instead of only affected ones, (3) context optimization is violated because agents receive irrelevant governance material. R103 added region-based candidate filtering to `build_section_governance_packet()` so packets carry candidate sets rather than full mirrors, with fail-closed fallback to full sets when filtering yields nothing.
+
+**Solution surfaces**: Section-scoped candidate filtering in governance packet builder (PAT-0011), archive refs instead of full duplication, governance questions for ambiguous applicability.

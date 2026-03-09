@@ -98,6 +98,11 @@ def _setup_blocked(planspace: Path, codespace: Path) -> Path:
         "shared_seam_candidates": [],
         "execution_ready": False,
         "readiness_rationale": "Unresolved anchors and contracts remain",
+        "problem_ids": [],
+        "pattern_ids": [],
+        "profile_id": "",
+        "pattern_deviations": [],
+        "governance_questions": [],
     }
     save_proposal_state(state,
                         proposals / "section-20-proposal-state.json")
@@ -147,6 +152,11 @@ def _setup_user_decision(planspace: Path, codespace: Path) -> Path:
             "User must answer root questions before implementation "
             "can proceed"
         ),
+        "problem_ids": [],
+        "pattern_ids": [],
+        "profile_id": "",
+        "pattern_deviations": [],
+        "governance_questions": [],
     }
     save_proposal_state(state,
                         proposals / "section-21-proposal-state.json")
@@ -190,6 +200,11 @@ def _setup_stale_reopen(planspace: Path, codespace: Path) -> Path:
         "shared_seam_candidates": [],
         "execution_ready": True,
         "readiness_rationale": "All integration points resolved",
+        "problem_ids": [],
+        "pattern_ids": [],
+        "profile_id": "",
+        "pattern_deviations": [],
+        "governance_questions": [],
     }
     save_proposal_state(state_22_initial,
                         proposals / "section-22-proposal-state.json")
@@ -212,6 +227,11 @@ def _setup_stale_reopen(planspace: Path, codespace: Path) -> Path:
         "shared_seam_candidates": ["report generation seam"],
         "execution_ready": False,
         "readiness_rationale": "ReportFormat contract needs coordination",
+        "problem_ids": [],
+        "pattern_ids": [],
+        "profile_id": "",
+        "pattern_deviations": [],
+        "governance_questions": [],
     }
     save_proposal_state(state_23,
                         proposals / "section-23-proposal-state.json")
@@ -232,6 +252,11 @@ def _setup_stale_reopen(planspace: Path, codespace: Path) -> Path:
         "readiness_rationale": (
             "Reopened: reconciliation found shared seam with section 23"
         ),
+        "problem_ids": [],
+        "pattern_ids": [],
+        "profile_id": "",
+        "pattern_deviations": [],
+        "governance_questions": [],
     }
     save_proposal_state(state_22_updated,
                         proposals / "section-22-proposal-state.json")
@@ -558,6 +583,11 @@ def _setup_blocking_research(planspace: Path, codespace: Path) -> Path:
             "Blocking research question on architecture style must be "
             "resolved before implementation can descend"
         ),
+        "problem_ids": [],
+        "pattern_ids": [],
+        "profile_id": "",
+        "pattern_deviations": [],
+        "governance_questions": [],
     }
     save_proposal_state(state,
                         proposals / "section-25-proposal-state.json")

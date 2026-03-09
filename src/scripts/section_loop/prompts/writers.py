@@ -213,6 +213,16 @@ def write_integration_alignment_prompt(
             f"`{proposal_state_path}`"
         )
 
+    # Governance packet reference
+    paths = PathRegistry(planspace)
+    governance_packet_path = paths.governance_packet(sec)
+    governance_packet_line = ""
+    if governance_packet_path.exists():
+        governance_packet_line = (
+            f"\n6. Governance packet (applicable problems/patterns/profile): "
+            f"`{governance_packet_path}`"
+        )
+
     ctx.update({
         "proposal_excerpt": (
             artifacts / "sections" / f"section-{sec}-proposal-excerpt.md"
@@ -225,6 +235,7 @@ def write_integration_alignment_prompt(
             / f"section-{sec}-integration-proposal.md"
         ),
         "proposal_state_line": proposal_state_line,
+        "governance_packet_line": governance_packet_line,
         "intent_surfaces_block": intent_surfaces_block,
     })
 
@@ -474,6 +485,15 @@ def write_impl_alignment_prompt(
             f"\n10. TODO resolution summary: `{todo_resolution_path}`"
         )
 
+    # Governance packet reference
+    governance_packet_path = paths.governance_packet(sec)
+    impl_governance_line = ""
+    if governance_packet_path.exists():
+        impl_governance_line = (
+            f"\n11. Governance packet (applicable problems/patterns/profile): "
+            f"`{governance_packet_path}`"
+        )
+
     impl_feedback_path = paths.impl_feedback_surfaces(sec)
     impl_feedback_block = (
         "\n\n## Implementation Feedback Surfaces\n\n"
@@ -500,6 +520,7 @@ def write_impl_alignment_prompt(
         "micro_line": impl_micro_line,
         "todo_line": impl_todo_line,
         "todo_resolution_line": impl_todo_resolution_line,
+        "governance_line": impl_governance_line,
         "impl_feedback_block": impl_feedback_block,
     })
 

@@ -379,6 +379,11 @@ def _write_risk_inputs(
             "shared_seam_candidates": [],
             "execution_ready": True,
             "readiness_rationale": "ready",
+            "problem_ids": [],
+            "pattern_ids": [],
+            "profile_id": "",
+            "pattern_deviations": [],
+            "governance_questions": [],
         },
     )
     write_json(

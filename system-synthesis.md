@@ -157,9 +157,9 @@ Cross-cutting infrastructure: `artifact_io.py` (read_json/write_json/rename_malf
 
 - **Problems solved**: PRB-0008 (Implementation Risk), PRB-0009 (Problem Traceability), PRB-0010 (Pattern Governance)
 - **Philosophy**: PHI-global
-- **Patterns**: PAT-0001, PAT-0002, PAT-0003, PAT-0008, PAT-0011 (Governance Packet Threading), PAT-0012 (Post-Implementation Governance Feedback)
+- **Patterns**: PAT-0001, PAT-0002, PAT-0003, PAT-0008, PAT-0011 (Applicable Governance Packet Threading), PAT-0012 (Post-Implementation Governance Feedback), PAT-0013 (Governed Proposal Identity)
 
-The governance layer makes per-run artifacts cumulative. Codespace holds authoritative documents (problem archive with 13 problems, pattern catalog with 12 patterns, philosophy profiles, risk register). The runtime parses these into planspace JSON indexes, builds per-section governance packets, and threads them into prompt context, sidecars, freshness hashing, section-input hashing, and traceability.
+The governance layer makes per-run artifacts cumulative. Codespace holds authoritative documents (problem archive with 14 problems, pattern catalog with 13 patterns, philosophy profiles, risk register). The runtime parses these into planspace JSON indexes, builds per-section governance packets with section-scoped candidate filtering, and threads them into prompt context, sidecars, freshness hashing, section-input hashing, and traceability.
 
 Post-implementation assessment queues after successful implementation, validates results with PAT-0001, merges governance IDs into trace artifacts, and routes verdicts mechanically: `accept` → record governance IDs, `accept_with_debt` → emit debt signal for risk-register staging, `refactor_required` → emit structured blocker signal.
 
@@ -212,9 +212,10 @@ Agents expand work inside this vocabulary without inventing new execution primit
 
 ## Open tensions
 
-- **PRB-0009 (Problem Traceability)**: Governance enrichment covers trace indexes (`trace/section-N.json`) and trace maps (`trace-map/section-N.json`) with problem_ids, pattern_ids, and profile_id. The `traceability.json` append log also carries governance context. Full round-trip traceability from problem → proposal → code → assessment is mostly wired; problem_ids populated by post-impl assessment, not yet during proposal writing.
-- **PRB-0010 (Pattern Governance)**: Pattern archive (12 patterns) is loaded into governance packets and threaded into prompts and freshness hashing. Runtime doesn't yet enforce pattern conformance at proposal time — currently advisory through governance packets.
-- **Stabilization loop**: Post-impl assessment emits `accept_with_debt` → risk-register staging signal and `refactor_required` → structured blocker signal. Debt signal promotion to the risk register is staged but not yet exercised as a bounded stabilization cycle.
+- **PRB-0009 (Problem Traceability)**: Governance enrichment covers all three trace surfaces (trace index, trace map, traceability.json) with problem_ids, pattern_ids, and profile_id. R103 added proposal-time governance identity (PAT-0013) so lineage originates at proposal time rather than post-implementation inference. Full round-trip traceability from problem → proposal → code → assessment is now wired; post-implementation assessment validates and enriches proposal-time lineage.
+- **PRB-0010 (Pattern Governance)**: Pattern archive (13 patterns) is loaded into governance packets and threaded into prompts, freshness hashing, microstrategy, alignment, and ROAL. R103 added proposal-time pattern_ids and pattern_deviations to proposal-state. Runtime pattern governance is structural but still advisory — proposals declare which patterns they follow, but conformance checking is not yet automated.
+- **PRB-0014 (Governance Context Dilution)**: R103 added region-based candidate filtering to governance packets. Packets now carry candidate sets rather than full archive mirrors, with fail-closed fallback. Full applicability scoping may need further refinement as governance archives grow.
+- **Stabilization loop**: Post-impl assessment emits `accept_with_debt` → risk-register staging signal and `refactor_required` → structured blocker signal. R103 wired bounded stabilization consumer (`promote_debt_signals()`) after implementation pass in section-loop main. Debt signals are now promoted to staging during each pass.
 - **Per-region philosophy**: Region-profile-map exists but all regions currently use PHI-global. The infrastructure supports overrides when materially different values emerge.
 - **Governance bootstrap for new projects**: The governance design describes four entry paths (greenfield, brownfield, PRD, partial governance) but the bootstrap workflow isn't implemented yet.
 

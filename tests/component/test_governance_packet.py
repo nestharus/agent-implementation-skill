@@ -47,10 +47,12 @@ def test_build_section_governance_packet_uses_indexes_and_default_profile(
     packet = json.loads(packet_path.read_text(encoding="utf-8"))
 
     assert packet["section"] == "01"
-    assert packet["problems"][0]["problem_id"] == "PRB-0009"
-    assert packet["patterns"][0]["pattern_id"] == "PAT-0003"
+    assert packet["candidate_problems"][0]["problem_id"] == "PRB-0009"
+    assert packet["candidate_patterns"][0]["pattern_id"] == "PAT-0003"
     assert packet["profiles"][0]["profile_id"] == "PHI-global"
     assert packet["governing_profile"] == "PHI-global"
+    assert "archive_refs" in packet
+    assert "governance_questions" in packet
 
 
 def test_build_section_governance_packet_handles_missing_indexes(
@@ -64,11 +66,11 @@ def test_build_section_governance_packet_handles_missing_indexes(
     packet_path = build_section_governance_packet("02", planspace, codespace)
     packet = json.loads(packet_path.read_text(encoding="utf-8"))
 
-    assert packet == {
-        "section": "02",
-        "problems": [],
-        "patterns": [],
-        "profiles": [],
-        "region_profile_map": {"default": "", "overrides": {}},
-        "governing_profile": "",
-    }
+    assert packet["section"] == "02"
+    assert packet["candidate_problems"] == []
+    assert packet["candidate_patterns"] == []
+    assert packet["profiles"] == []
+    assert packet["region_profile_map"] == {"default": "", "overrides": {}}
+    assert packet["governing_profile"] == ""
+    assert packet["governance_questions"] == []
+    assert "archive_refs" in packet

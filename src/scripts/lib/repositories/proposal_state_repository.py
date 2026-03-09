@@ -21,6 +21,11 @@ PROPOSAL_STATE_SCHEMA: dict[str, type] = {
     "shared_seam_candidates": list,
     "execution_ready": bool,
     "readiness_rationale": str,
+    "problem_ids": list,
+    "pattern_ids": list,
+    "profile_id": str,
+    "pattern_deviations": list,
+    "governance_questions": list,
 }
 
 _BLOCKING_FIELDS: tuple[str, ...] = (
@@ -46,6 +51,11 @@ def _fail_closed_default() -> dict:
         "shared_seam_candidates": [],
         "execution_ready": False,
         "readiness_rationale": "",
+        "problem_ids": [],
+        "pattern_ids": [],
+        "profile_id": "",
+        "pattern_deviations": [],
+        "governance_questions": [],
     }
 
 

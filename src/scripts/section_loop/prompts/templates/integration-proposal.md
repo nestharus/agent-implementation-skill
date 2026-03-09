@@ -173,7 +173,12 @@ This file MUST conform to the canonical proposal-state schema:
     "new_section_candidates": ["<problem region that may need its own section>"],
     "shared_seam_candidates": ["<integration surface shared with other sections>"],
     "execution_ready": false,
-    "readiness_rationale": "<honest explanation of readiness status>"
+    "readiness_rationale": "<honest explanation of readiness status>",
+    "problem_ids": ["<PRB-XXXX IDs from governance packet that this proposal addresses>"],
+    "pattern_ids": ["<PAT-XXXX IDs from governance packet whose patterns this proposal follows>"],
+    "profile_id": "<governing philosophy profile, e.g. PHI-global>",
+    "pattern_deviations": ["<any established patterns deviated from, with rationale>"],
+    "governance_questions": ["<unresolved governance questions discovered during proposal>"]
 }}
 ```
 

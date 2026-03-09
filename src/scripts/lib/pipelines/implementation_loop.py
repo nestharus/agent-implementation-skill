@@ -286,6 +286,12 @@ def run_implementation_loop(
     trace_map_path = paths.trace_map(section.number)
     trace_map_path.parent.mkdir(parents=True, exist_ok=True)
     from lib.core.hash_service import file_hash
+    from lib.repositories.proposal_state_repository import load_proposal_state
+    proposal_state_path = (
+        paths.proposals_dir()
+        / f"section-{section.number}-proposal-state.json"
+    )
+    ps = load_proposal_state(proposal_state_path)
     trace_map = {
         "section": section.number,
         "problems": [],
@@ -295,9 +301,15 @@ def run_implementation_loop(
         "governance": {
             "packet_path": str(paths.governance_packet(section.number)),
             "packet_hash": file_hash(paths.governance_packet(section.number)),
-            "problem_ids": [],
-            "pattern_ids": [],
-            "profile_id": "",
+            "problem_ids": [
+                str(x) for x in ps.get("problem_ids", [])
+                if isinstance(x, str) and x.strip()
+            ],
+            "pattern_ids": [
+                str(x) for x in ps.get("pattern_ids", [])
+                if isinstance(x, str) and x.strip()
+            ],
+            "profile_id": ps.get("profile_id", "") or "",
         },
     }
     problem_frame_path = artifacts / "sections" / f"section-{section.number}-problem-frame.md"

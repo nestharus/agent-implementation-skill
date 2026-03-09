@@ -83,14 +83,34 @@ def _record_traceability(
 ) -> None:
     """Append a traceability entry to artifacts/traceability.json."""
     from lib.core.artifact_io import read_json, write_json
+    from lib.repositories.proposal_state_repository import load_proposal_state
 
-    trace_path = PathRegistry(planspace).traceability()
+    paths = PathRegistry(planspace)
+    trace_path = paths.traceability()
     data = read_json(trace_path)
     entries: list[dict] = data if isinstance(data, list) else []
-    entries.append({
+
+    # Inherit governance identity from proposal-state if available
+    governance: dict = {}
+    state_path = (
+        paths.proposals_dir()
+        / f"section-{section}-proposal-state.json"
+    )
+    if state_path.exists():
+        ps = load_proposal_state(state_path)
+        governance = {
+            "problem_ids": ps.get("problem_ids", []),
+            "pattern_ids": ps.get("pattern_ids", []),
+            "profile_id": ps.get("profile_id", ""),
+        }
+
+    entry: dict = {
         "section": section,
         "artifact": artifact,
         "source": source,
         "detail": detail,
-    })
+    }
+    if governance:
+        entry["governance"] = governance
+    entries.append(entry)
     write_json(trace_path, entries)

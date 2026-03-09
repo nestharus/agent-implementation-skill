@@ -15,6 +15,29 @@ def _file_sha256(path: Path) -> str:
     return file_hash(path)
 
 
+def _proposal_governance_ids(planspace: Path, section_number: str) -> dict:
+    """Extract governance identity from proposal-state if available."""
+    from lib.repositories.proposal_state_repository import load_proposal_state
+
+    paths = PathRegistry(planspace)
+    state_path = (
+        paths.proposals_dir()
+        / f"section-{section_number}-proposal-state.json"
+    )
+    state = load_proposal_state(state_path)
+    return {
+        "problem_ids": [
+            str(x) for x in state.get("problem_ids", [])
+            if isinstance(x, str) and x.strip()
+        ],
+        "pattern_ids": [
+            str(x) for x in state.get("pattern_ids", [])
+            if isinstance(x, str) and x.strip()
+        ],
+        "profile_id": state.get("profile_id", "") or "",
+    }
+
+
 def _write_traceability_index(
     planspace: Path, section: Section, codespace: Path,
     modified_files: list[str],
@@ -102,9 +125,7 @@ def _write_traceability_index(
         "governance": {
             "packet_path": str(paths.governance_packet(sec)),
             "packet_hash": file_hash(paths.governance_packet(sec)),
-            "problem_ids": [],
-            "pattern_ids": [],
-            "profile_id": "",
+            **_proposal_governance_ids(planspace, sec),
         },
     }
 

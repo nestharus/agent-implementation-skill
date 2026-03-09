@@ -145,7 +145,8 @@ Files to Read, verify the following:
    (contains the expected fields: resolved_anchors, unresolved_anchors,
    resolved_contracts, unresolved_contracts, research_questions,
    user_root_questions, new_section_candidates, shared_seam_candidates,
-   execution_ready, readiness_rationale).
+   execution_ready, readiness_rationale, problem_ids, pattern_ids,
+   profile_id, pattern_deviations, governance_questions).
 2. **Coherence with markdown proposal**: The proposal-state fields should
    reflect the same picture as the markdown proposal. If the markdown
    describes unresolved integration points but the state says
@@ -163,6 +164,18 @@ Files to Read, verify the following:
    consistent with the actual state. A rationale claiming "all anchors
    resolved" when `unresolved_anchors` is non-empty is a coherence
    failure.
+
+5. **Governance identity**: If governance fields are present
+   (`problem_ids`, `pattern_ids`, `profile_id`), verify they are
+   coherent with the proposal content. If the proposal mentions solving
+   a particular problem, the corresponding PRB-XXXX should appear in
+   `problem_ids`. If it follows established patterns, the corresponding
+   PAT-XXXX should appear in `pattern_ids`. Empty governance fields are
+   acceptable when governance context is not available, but contradictory
+   governance claims (claiming to follow a pattern while violating it)
+   are a coherence failure.
+6. **Pattern deviations**: If `pattern_deviations` is non-empty, verify
+   that the deviations are justified with rationale, not just listed.
 
 This check is about structural honesty — the machine-readable state
 must not contradict the human-readable proposal. It is NOT about

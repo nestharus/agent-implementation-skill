@@ -463,6 +463,11 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
                 "blocking_research_questions": [],
                 "execution_ready": False,
                 "readiness_rationale": "blocked",
+                "problem_ids": [],
+                "pattern_ids": [],
+                "profile_id": "",
+                "pattern_deviations": [],
+                "governance_questions": [],
             }
         ),
         encoding="utf-8",

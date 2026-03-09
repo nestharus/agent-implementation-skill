@@ -332,6 +332,7 @@ def build_risk_assessment_prompt(
         ("Proposal excerpt", paths.proposal_excerpt(section_number), "text"),
         ("Alignment excerpt", paths.alignment_excerpt(section_number), "text"),
         ("Problem frame", paths.problem_frame(section_number), "text"),
+        ("Governance packet", paths.governance_packet(section_number), "json"),
         ("Microstrategy", paths.microstrategy(section_number), "text"),
         (
             "Proposal state",

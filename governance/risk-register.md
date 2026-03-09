@@ -20,4 +20,4 @@ Post-implementation assessment emits `accept_with_debt` verdicts with typed `deb
 
 ## Entries
 
-_No entries yet. Debt signal staging and promotion pipeline implemented in R102._
+_No entries yet. Debt signal staging (R102) and bounded promotion consumer (R103) are wired. Entries will appear when post-implementation assessments emit `accept_with_debt` verdicts during runtime execution._

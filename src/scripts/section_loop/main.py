@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from lib.services.alignment_change_tracker import check_and_clear
+from lib.governance.assessment import promote_debt_signals
 from lib.governance.loader import build_governance_indexes
 from lib.pipelines.coordination_loop import run_coordination_loop
 from lib.pipelines.global_alignment_recheck import run_global_alignment_recheck
@@ -189,6 +190,12 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
         # Write strategic state snapshot after Phase 1
         decisions_dir = paths.decisions_dir()
         build_strategic_state(decisions_dir, section_results, planspace)
+
+        # Bounded stabilization: promote any debt signals emitted during
+        # post-implementation assessment into risk-register staging.
+        promoted = promote_debt_signals(planspace)
+        if promoted:
+            log(f"Stabilization: promoted {len(promoted)} debt entries to staging")
 
         phase2_status = run_global_alignment_recheck(
             sections_by_num,

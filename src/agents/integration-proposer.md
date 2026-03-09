@@ -51,6 +51,11 @@ The `proposal-state.json` must contain all of these fields:
 | `shared_seam_candidates` | list | Integration surfaces shared with other sections that need coordination |
 | `execution_ready` | bool | `true` ONLY when there are no items in any blocking field (see below) |
 | `readiness_rationale` | string | Honest explanation of why the section is or is not ready |
+| `problem_ids` | list | IDs from the governance packet that this proposal addresses (e.g. `["PRB-0002"]`) |
+| `pattern_ids` | list | IDs from the governance packet whose patterns this proposal follows (e.g. `["PAT-0003"]`) |
+| `profile_id` | string | Governing philosophy profile (e.g. `"PHI-global"`) |
+| `pattern_deviations` | list | Any established patterns the proposal deviates from, with rationale |
+| `governance_questions` | list | Unresolved governance questions discovered during proposal |
 
 **Blocking fields** (any non-empty list here forces `execution_ready = false`):
 - `unresolved_anchors`

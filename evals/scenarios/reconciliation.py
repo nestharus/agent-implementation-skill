@@ -115,11 +115,17 @@ def _setup_shared_seam(planspace: Path, codespace: Path) -> Path:
         "resolved_contracts": [],
         "unresolved_contracts": ["transaction_result_schema"],
         "research_questions": [],
+        "blocking_research_questions": [],
         "user_root_questions": [],
         "new_section_candidates": [],
         "shared_seam_candidates": ["transaction interface seam"],
         "execution_ready": False,
         "readiness_rationale": "Shared seam needs coordination",
+        "problem_ids": [],
+        "pattern_ids": [],
+        "profile_id": "",
+        "pattern_deviations": [],
+        "governance_questions": [],
     }
     state_12 = {
         "resolved_anchors": ["billing.calculator"],
@@ -127,11 +133,17 @@ def _setup_shared_seam(planspace: Path, codespace: Path) -> Path:
         "resolved_contracts": [],
         "unresolved_contracts": ["transaction_result_schema"],
         "research_questions": [],
+        "blocking_research_questions": [],
         "user_root_questions": [],
         "new_section_candidates": [],
         "shared_seam_candidates": ["transaction interface seam"],
         "execution_ready": False,
         "readiness_rationale": "Shared seam needs coordination",
+        "problem_ids": [],
+        "pattern_ids": [],
+        "profile_id": "",
+        "pattern_deviations": [],
+        "governance_questions": [],
     }
 
     save_proposal_state(state_11,
@@ -191,6 +203,7 @@ def _setup_new_section(planspace: Path, codespace: Path) -> Path:
         "resolved_contracts": ["onboarding_steps_protocol"],
         "unresolved_contracts": [],
         "research_questions": [],
+        "blocking_research_questions": [],
         "user_root_questions": [],
         "new_section_candidates": [
             {"title": "email template engine",
@@ -199,6 +212,11 @@ def _setup_new_section(planspace: Path, codespace: Path) -> Path:
         "shared_seam_candidates": [],
         "execution_ready": True,
         "readiness_rationale": "All integration points resolved",
+        "problem_ids": [],
+        "pattern_ids": [],
+        "profile_id": "",
+        "pattern_deviations": [],
+        "governance_questions": [],
     }
     state_14 = {
         "resolved_anchors": ["preferences.store"],
@@ -206,6 +224,7 @@ def _setup_new_section(planspace: Path, codespace: Path) -> Path:
         "resolved_contracts": ["notification_settings_schema"],
         "unresolved_contracts": [],
         "research_questions": [],
+        "blocking_research_questions": [],
         "user_root_questions": [],
         "new_section_candidates": [
             {"title": "email template engine",
@@ -214,6 +233,11 @@ def _setup_new_section(planspace: Path, codespace: Path) -> Path:
         "shared_seam_candidates": [],
         "execution_ready": True,
         "readiness_rationale": "All integration points resolved",
+        "problem_ids": [],
+        "pattern_ids": [],
+        "profile_id": "",
+        "pattern_deviations": [],
+        "governance_questions": [],
     }
 
     save_proposal_state(state_13,
@@ -271,11 +295,17 @@ def _setup_contract_conflict(planspace: Path, codespace: Path) -> Path:
         "resolved_contracts": [],
         "unresolved_contracts": ["InventoryAvailability"],
         "research_questions": [],
+        "blocking_research_questions": [],
         "user_root_questions": [],
         "new_section_candidates": [],
         "shared_seam_candidates": [],
         "execution_ready": False,
         "readiness_rationale": "InventoryAvailability contract unresolved",
+        "problem_ids": [],
+        "pattern_ids": [],
+        "profile_id": "",
+        "pattern_deviations": [],
+        "governance_questions": [],
     }
     state_16 = {
         "resolved_anchors": ["inventory.sync_engine"],
@@ -283,11 +313,17 @@ def _setup_contract_conflict(planspace: Path, codespace: Path) -> Path:
         "resolved_contracts": [],
         "unresolved_contracts": ["InventoryAvailability"],
         "research_questions": [],
+        "blocking_research_questions": [],
         "user_root_questions": [],
         "new_section_candidates": [],
         "shared_seam_candidates": [],
         "execution_ready": False,
         "readiness_rationale": "InventoryAvailability contract unresolved",
+        "problem_ids": [],
+        "pattern_ids": [],
+        "profile_id": "",
+        "pattern_deviations": [],
+        "governance_questions": [],
     }
 
     save_proposal_state(state_15,

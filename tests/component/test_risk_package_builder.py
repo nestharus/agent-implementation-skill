@@ -78,6 +78,11 @@ def test_build_package_from_proposal_with_minimal_proposal(tmp_path: Path) -> No
                 "shared_seam_candidates": [],
                 "execution_ready": True,
                 "readiness_rationale": "ready",
+                "problem_ids": [],
+                "pattern_ids": [],
+                "profile_id": "",
+                "pattern_deviations": [],
+                "governance_questions": [],
             }
         ),
         encoding="utf-8",
