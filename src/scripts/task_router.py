@@ -39,10 +39,10 @@ TASK_ROUTES: dict[str, tuple[str, str, str | None]] = {
     "substrate_seed": ("substrate-seeder.md", "gpt-high", "substrate_seeder"),
     "reconciliation_adjudicate": ("reconciliation-adjudicator.md", "claude-opus", None),
     # Research tasks: research-first intent layer.
-    "research_plan": ("research-planner.md", "claude-opus", None),
-    "research_domain_ticket": ("domain-researcher.md", "gpt-high", None),
-    "research_synthesis": ("research-synthesizer.md", "gpt-high", None),
-    "research_verify": ("research-verifier.md", "glm", None),
+    "research_plan": ("research-planner.md", "claude-opus", "research_plan"),
+    "research_domain_ticket": ("domain-researcher.md", "gpt-high", "research_domain_ticket"),
+    "research_synthesis": ("research-synthesizer.md", "gpt-high", "research_synthesis"),
+    "research_verify": ("research-verifier.md", "glm", "research_verify"),
 }
 
 

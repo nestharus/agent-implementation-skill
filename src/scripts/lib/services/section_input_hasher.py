@@ -57,6 +57,11 @@ def section_inputs_hash(
         paths.reconciliation_dir()
         / f"section-{sec_num}-reconciliation-result.json",
         paths.readiness_dir() / f"section-{sec_num}-execution-ready.json",
+        paths.research_dossier(sec_num),
+        paths.research_addendum(sec_num),
+        paths.research_derived_surfaces(sec_num),
+        paths.impl_feedback_surfaces(sec_num),
+        paths.research_section_dir(sec_num) / "research-status.json",
         paths.intent_global_dir() / "philosophy.md",
         paths.intent_global_dir() / "philosophy-source-manifest.json",
         paths.intent_global_dir() / "philosophy-source-map.json",

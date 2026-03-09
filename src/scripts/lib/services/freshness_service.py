@@ -100,4 +100,28 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
     if readiness_path.exists():
         hash_parts.append(readiness_path.read_bytes())
 
+    # Research artifacts steer proposal/implementation prompts and expansion.
+    research_dossier = registry.research_dossier(sec)
+    if research_dossier.exists():
+        hash_parts.append(research_dossier.read_bytes())
+
+    research_addendum = registry.research_addendum(sec)
+    if research_addendum.exists():
+        hash_parts.append(research_addendum.read_bytes())
+
+    research_derived_surfaces = registry.research_derived_surfaces(sec)
+    if research_derived_surfaces.exists():
+        hash_parts.append(research_derived_surfaces.read_bytes())
+
+    # Implementation feedback surfaces are part of the upward discovery signal.
+    impl_feedback = registry.impl_feedback_surfaces(sec)
+    if impl_feedback.exists():
+        hash_parts.append(impl_feedback.read_bytes())
+
+    research_status = (
+        registry.research_section_dir(sec) / "research-status.json"
+    )
+    if research_status.exists():
+        hash_parts.append(research_status.read_bytes())
+
     return content_hash(b"".join(hash_parts))[:16]

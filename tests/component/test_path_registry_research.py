@@ -50,6 +50,18 @@ def test_research_plan(reg: PathRegistry, tmp_path: Path, num: str) -> None:
 
 
 @pytest.mark.parametrize("num", ["01", "12"])
+def test_research_status(reg: PathRegistry, tmp_path: Path, num: str) -> None:
+    assert reg.research_status(num) == (
+        tmp_path
+        / "artifacts"
+        / "research"
+        / "sections"
+        / f"section-{num}"
+        / "research-status.json"
+    )
+
+
+@pytest.mark.parametrize("num", ["01", "12"])
 def test_research_dossier(reg: PathRegistry, tmp_path: Path, num: str) -> None:
     assert reg.research_dossier(num) == (
         tmp_path
@@ -96,6 +108,18 @@ def test_research_addendum(reg: PathRegistry, tmp_path: Path, num: str) -> None:
         / "sections"
         / f"section-{num}"
         / "proposal-addendum.md"
+    )
+
+
+@pytest.mark.parametrize("num", ["01", "12"])
+def test_research_verify_report(reg: PathRegistry, tmp_path: Path, num: str) -> None:
+    assert reg.research_verify_report(num) == (
+        tmp_path
+        / "artifacts"
+        / "research"
+        / "sections"
+        / f"section-{num}"
+        / "research-verify.json"
     )
 
 

@@ -659,7 +659,9 @@ When an agent signals underspecification, dependency, or needs a decision:
 2. section-loop blocks on its own `recv` (waiting for response)
 3. Parent reads the signal
 4. Parent handles it:
-   - `underspec` -- trigger research/evaluate cycle, or ask user
+   - `underspec` -- first run the bounded in-runtime research flow for
+     `blocking_research_questions`; if research cannot resolve the
+     question, trigger external research/evaluate handling or ask user
    - `need_decision` -- present question to user, collect answer
    - `dependency` -- resolve the dependency, then resume
 5. Parent sends `resume:<answer>` to section-loop's mailbox
@@ -1024,6 +1026,11 @@ The shape is the same regardless of whether the section is greenfield,
 brownfield, or hybrid — only the fill level changes. This is STRATEGIC
 problem-state diagnosis, not line-by-line changes.
 
+Note: `blocking_research_questions` are first resolved through the
+in-runtime research flow (`research_plan` → domain tickets →
+synthesis → verify). Only questions that research cannot resolve
+escalate to `needs_parent` for external handling.
+
 ### Intent layer (conditional, per-section)
 
 Before alignment, the section loop runs intent triage to decide whether
@@ -1208,20 +1215,29 @@ Agent signals: `UNDERSPECIFIED: <what's missing>`
 section-loop sends: `pause:underspec:<section>:<description>`
 
 The parent handles:
-1. **Research**: create a sub-proposal via the research skill
-   (`research.md` Phase C — model per policy; see `models.md`)
-2. **Evaluate**: review the sub-proposal via the evaluate skill
-   (`evaluate.md` — alignment check against design principles)
-3. **Human gate**: present proposal to user for approval
+1. **In-runtime bounded research**: when the proposal carries
+   `blocking_research_questions`, the readiness gate dispatches a
+   `research_plan` task through the queue. The planner decomposes
+   bounded tickets, domain researchers execute them, synthesis produces
+   the dossier + derived surfaces + proposal addendum, and citation
+   verification may run before the section is resumed.
+2. **Escalate only if research cannot answer it**: non-researchable
+   questions (for example internal business policy) escalate to
+   `needs_parent` for external handling.
+3. **External research/evaluate cycle**: create a sub-proposal via the
+   research skill (`research.md` Phase C — model per policy; see
+   `models.md`) and review it via the evaluate skill
+   (`evaluate.md` — alignment check against design principles).
+4. **Human gate**: present proposal to user for approval
    (if parent is orchestrator, bubble up to interactive session)
-4. **Decompose**: the sub-proposal becomes new section files added to
+5. **Decompose**: the sub-proposal becomes new section files added to
    the planspace (same decomposition pipeline as Stage 1)
-5. **Resume**: send `resume:researched` to section-loop's mailbox
-6. section-loop re-runs the current section with updated context
-7. **Important**: newly created section files are NOT visible to the
+6. **Resume**: send `resume:researched` to section-loop's mailbox
+7. section-loop re-runs the current section with updated context
+8. **Important**: newly created section files are NOT visible to the
    running section-loop process (sections are loaded once at startup).
    The parent must **restart** section-loop to pick up new sections.
-8. Original section picks up changes via cross-section communication
+9. Original section picks up changes via cross-section communication
    (consequence notes + snapshots from the new sections)
 
 ### Case 2: Dependency on another section in the queue

@@ -211,8 +211,12 @@ Pre-built schedules in `$WORKFLOW_HOME/templates/`. Each step specifies its mode
 [wait] 1. step-name | model-name -- description (skill-section-reference)
 ```
 - `implement-proposal.md` — full 10-step implementation pipeline
-- `research-cycle.md` — research → evaluate → propose → refine
+- `research-cycle.md` — external research → evaluate → propose → refine (human-facing)
 - `rca-cycle.md` — investigate → plan fix → apply → verify
+
+Note: In-runtime section research (`blocking_research_questions`) is handled
+automatically through queued `research_plan` tasks within the section loop,
+not through this external schedule template.
 
 ### Stage 3 Codemap Exploration
 

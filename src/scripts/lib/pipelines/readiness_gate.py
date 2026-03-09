@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 
 from lib.core.artifact_io import write_json
 from lib.core.hash_service import content_hash
 from lib.core.path_registry import PathRegistry
+from lib.research.orchestrator import (
+    is_research_complete,
+    write_research_status,
+)
+from lib.research.prompt_writer import write_research_plan_prompt
 from lib.repositories.proposal_state_repository import load_proposal_state
+from lib.services.freshness_service import compute_section_freshness
 from lib.services.readiness_resolver import resolve_readiness
 from lib.repositories.reconciliation_queue import queue_reconciliation_request
 from section_loop.communication import mailbox_send, log
@@ -29,6 +34,36 @@ class ReadinessResult:
     ready: bool
     blockers: list[dict]
     proposal_pass_result: ProposalPassResult | None = None
+
+
+def _emit_needs_parent_research_signals(
+    signal_dir: Path,
+    section_number: str,
+    research_questions: list[str],
+    *,
+    needs: str,
+    why_blocked: str,
+    detail_log: str,
+) -> None:
+    """Emit one needs_parent signal per blocking research question."""
+    for i, question in enumerate(research_questions):
+        research_signal = {
+            "state": "needs_parent",
+            "section": section_number,
+            "detail": question,
+            "needs": needs,
+            "why_blocked": why_blocked,
+            "source": "proposal-state:blocking_research_questions",
+        }
+        sig_path = (
+            signal_dir
+            / f"section-{section_number}-blocking-research-{i}-signal.json"
+        )
+        write_json(sig_path, research_signal)
+        log(
+            f"Section {section_number}: {detail_log} "
+            f"for blocking_research_question[{i}]"
+        )
 
 
 def publish_discoveries(
@@ -124,54 +159,69 @@ def route_blockers(
         for question in proposal_state.get("blocking_research_questions", [])
     ]
     if blocking_research_questions:
-        dossier_path = registry.research_dossier(section_number)
-        if dossier_path.exists():
-            for i, question in enumerate(blocking_research_questions):
-                research_signal = {
-                    "state": "needs_parent",
-                    "section": section_number,
-                    "detail": question,
-                    "needs": (
-                        "Parent/coordination answer to this blocking research question"
-                    ),
-                    "why_blocked": (
-                        "Architectural direction depends on resolving this "
-                        "blocking research question before implementation"
-                    ),
-                    "source": "proposal-state:blocking_research_questions",
-                }
-                sig_path = (
-                    signal_dir
-                    / f"section-{section_number}-blocking-research-{i}-signal.json"
-                )
-                write_json(sig_path, research_signal)
-                log(
-                    f"Section {section_number}: emitted NEEDS_PARENT "
-                    f"signal for blocking_research_question[{i}] "
-                    f"after research dossier already existed"
-                )
+        if is_research_complete(section_number, planspace):
+            _emit_needs_parent_research_signals(
+                signal_dir,
+                section_number,
+                blocking_research_questions,
+                needs="Parent/coordination answer — research could not resolve",
+                why_blocked=(
+                    "Research completed but blocking question remains unresolved"
+                ),
+                detail_log=(
+                    "research complete but question unresolved — "
+                    "emitting NEEDS_PARENT signal"
+                ),
+            )
         else:
             research_section_dir = registry.research_section_dir(section_number)
+            research_section_dir.mkdir(parents=True, exist_ok=True)
             trigger_path = research_section_dir / "research-trigger.json"
             trigger = {
                 "section": section_number,
                 "trigger_source": "proposal-state:blocking_research_questions",
                 "questions": blocking_research_questions,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             write_json(trigger_path, trigger)
-            task_id = submit_task(
-                registry.run_db(),
-                f"readiness-{section_number}",
-                "research_plan",
-                payload_path=str(trigger_path),
-                problem_id=f"research-{section_number}",
+            prompt_path = write_research_plan_prompt(
+                section_number,
+                planspace,
+                None,
+                trigger_path,
             )
-            log(
-                f"Section {section_number}: dispatched research_plan "
-                f"task {task_id} for {len(blocking_research_questions)} "
-                "blocking research questions"
-            )
+            if prompt_path is not None:
+                freshness = compute_section_freshness(planspace, section_number)
+                task_id = submit_task(
+                    registry.run_db(),
+                    f"readiness-{section_number}",
+                    "research_plan",
+                    concern_scope=f"section-{section_number}",
+                    payload_path=str(prompt_path),
+                    problem_id=f"research-{section_number}",
+                    freshness_token=freshness,
+                )
+                write_research_status(section_number, planspace, "planned")
+                log(
+                    f"Section {section_number}: dispatched research_plan "
+                    f"task {task_id} with prompt and freshness token"
+                )
+            else:
+                _emit_needs_parent_research_signals(
+                    signal_dir,
+                    section_number,
+                    blocking_research_questions,
+                    needs=(
+                        "Parent/coordination answer to this blocking research question"
+                    ),
+                    why_blocked=(
+                        "Research prompt generation failed validation and "
+                        "cannot be dispatched safely"
+                    ),
+                    detail_log=(
+                        "research prompt blocked by validation — "
+                        "emitting NEEDS_PARENT signal"
+                    ),
+                )
 
     for i, seam in enumerate(proposal_state.get("shared_seam_candidates", [])):
         trigger = {

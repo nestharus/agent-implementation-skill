@@ -37,7 +37,14 @@ def test_resolve_research_task_honors_model_policy_override(
     task_type: str,
     expected_agent: str,
 ) -> None:
-    assert resolve_task(task_type, {task_type: "policy-model"}) == (
+    policy = {
+        "research_plan": "policy-plan",
+        "research_domain_ticket": "policy-domain",
+        "research_synthesis": "policy-synthesis",
+        "research_verify": "policy-verify",
+    }
+
+    assert resolve_task(task_type, policy) == (
         expected_agent,
-        "policy-model",
+        policy[task_type],
     )

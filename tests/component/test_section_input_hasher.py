@@ -63,6 +63,51 @@ class TestSectionInputsHash:
 
         assert h1 != h2
 
+    def test_changes_when_research_artifact_added(
+        self,
+        planspace: Path,
+        codespace: Path,
+    ) -> None:
+        sections = self._make_sections_by_num(planspace)
+        dossier_path = (
+            planspace
+            / "artifacts"
+            / "research"
+            / "sections"
+            / "section-01"
+            / "dossier.md"
+        )
+        dossier_path.parent.mkdir(parents=True, exist_ok=True)
+
+        h1 = section_inputs_hash("01", planspace, codespace, sections)
+        dossier_path.write_text("fresh research", encoding="utf-8")
+        h2 = section_inputs_hash("01", planspace, codespace, sections)
+
+        assert h1 != h2
+
+    def test_changes_when_impl_feedback_surfaces_added(
+        self,
+        planspace: Path,
+        codespace: Path,
+    ) -> None:
+        sections = self._make_sections_by_num(planspace)
+        feedback_path = (
+            planspace
+            / "artifacts"
+            / "signals"
+            / "impl-feedback-surfaces-01.json"
+        )
+        feedback_path.parent.mkdir(parents=True, exist_ok=True)
+
+        h1 = section_inputs_hash("01", planspace, codespace, sections)
+        feedback_path.write_text(
+            '{"problem_surfaces":[{"id":"P-01-0001"}]}',
+            encoding="utf-8",
+        )
+        h2 = section_inputs_hash("01", planspace, codespace, sections)
+
+        assert h1 != h2
+
 
 class TestCoordinationRecheckHash:
     def test_includes_modified_files(self, planspace: Path, codespace: Path) -> None:

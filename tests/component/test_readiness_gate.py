@@ -104,10 +104,44 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
     planspace = tmp_path / "planspace"
     (planspace / "artifacts" / "signals").mkdir(parents=True, exist_ok=True)
     submitted: list[dict] = []
+    prompt_calls: list[dict] = []
+    status_writes: list[tuple[str, Path, str]] = []
+
+    prompt_path = planspace / "artifacts" / "research-plan-03-prompt.md"
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text("# Prompt\n", encoding="utf-8")
 
     monkeypatch.setattr(
         "src.scripts.lib.pipelines.readiness_gate._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate.is_research_complete",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate.write_research_plan_prompt",
+        lambda section_number, ps, codespace, trigger_path: (
+            prompt_calls.append(
+                {
+                    "section_number": section_number,
+                    "planspace": ps,
+                    "codespace": codespace,
+                    "trigger_path": trigger_path,
+                }
+            )
+            or prompt_path
+        ),
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate.compute_section_freshness",
+        lambda ps, sec: "fresh-03",
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate.write_research_status",
+        lambda section_number, ps, status: status_writes.append(
+            (section_number, ps, status)
+        ),
     )
     monkeypatch.setattr(
         "src.scripts.lib.pipelines.readiness_gate.submit_task",
@@ -149,18 +183,27 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
         "section": "03",
         "trigger_source": "proposal-state:blocking_research_questions",
         "questions": ["Should the retry ledger be persisted centrally?"],
-        "timestamp": trigger["timestamp"],
     }
-    assert trigger["timestamp"].endswith("+00:00")
+    assert prompt_calls == [
+        {
+            "section_number": "03",
+            "planspace": planspace,
+            "codespace": None,
+            "trigger_path": trigger_path,
+        }
+    ]
     assert submitted == [
         {
             "db_path": planspace / "run.db",
             "submitted_by": "readiness-03",
             "task_type": "research_plan",
-            "payload_path": str(trigger_path),
+            "concern_scope": "section-03",
+            "payload_path": str(prompt_path),
             "problem_id": "research-03",
+            "freshness_token": "fresh-03",
         }
     ]
+    assert status_writes == [("03", planspace, "planned")]
     assert not (
         planspace
         / "artifacts"
@@ -169,26 +212,20 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
     ).exists()
 
 
-def test_route_blockers_falls_back_to_needs_parent_after_research_dossier(
+def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     planspace = tmp_path / "planspace"
-    dossier_path = (
-        planspace
-        / "artifacts"
-        / "research"
-        / "sections"
-        / "section-03"
-        / "dossier.md"
-    )
-    dossier_path.parent.mkdir(parents=True, exist_ok=True)
-    dossier_path.write_text("# Dossier\n", encoding="utf-8")
     submitted: list[dict] = []
 
     monkeypatch.setattr(
         "src.scripts.lib.pipelines.readiness_gate._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate.is_research_complete",
+        lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
         "src.scripts.lib.pipelines.readiness_gate.submit_task",
@@ -227,10 +264,9 @@ def test_route_blockers_falls_back_to_needs_parent_after_research_dossier(
         "state": "needs_parent",
         "section": "03",
         "detail": "Should the retry ledger be persisted centrally?",
-        "needs": "Parent/coordination answer to this blocking research question",
+        "needs": "Parent/coordination answer — research could not resolve",
         "why_blocked": (
-            "Architectural direction depends on resolving this "
-            "blocking research question before implementation"
+            "Research completed but blocking question remains unresolved"
         ),
         "source": "proposal-state:blocking_research_questions",
     }
@@ -243,6 +279,72 @@ def test_route_blockers_falls_back_to_needs_parent_after_research_dossier(
         / "section-03"
         / "research-trigger.json"
     ).exists()
+
+
+def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    planspace = tmp_path / "planspace"
+    submitted: list[dict] = []
+
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate._update_blocker_rollup",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate.is_research_complete",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate.write_research_plan_prompt",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate.submit_task",
+        lambda db_path, submitted_by, task_type, **kwargs: (
+            submitted.append(
+                {
+                    "db_path": db_path,
+                    "submitted_by": submitted_by,
+                    "task_type": task_type,
+                    **kwargs,
+                }
+            )
+            or 44
+        ),
+    )
+
+    route_blockers(
+        "03",
+        {
+            "blocking_research_questions": [
+                "Should the retry ledger be persisted centrally?"
+            ],
+        },
+        planspace,
+        "parent",
+    )
+
+    signal_path = (
+        planspace
+        / "artifacts"
+        / "signals"
+        / "section-03-blocking-research-0-signal.json"
+    )
+    assert signal_path.exists()
+    assert json.loads(signal_path.read_text(encoding="utf-8")) == {
+        "state": "needs_parent",
+        "section": "03",
+        "detail": "Should the retry ledger be persisted centrally?",
+        "needs": "Parent/coordination answer to this blocking research question",
+        "why_blocked": (
+            "Research prompt generation failed validation and "
+            "cannot be dispatched safely"
+        ),
+        "source": "proposal-state:blocking_research_questions",
+    }
+    assert submitted == []
 
 
 def test_route_blockers_ignores_empty_blocking_research_questions(

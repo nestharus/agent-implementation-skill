@@ -65,6 +65,43 @@ def _has_definition_gap_surfaces(surfaces: dict | None) -> bool:
     )
 
 
+def _count_surfaces(surfaces: dict | None) -> int:
+    """Count all structured surfaces in a payload."""
+    if not isinstance(surfaces, dict):
+        return 0
+    return sum(
+        len(surfaces.get(kind_key, []))
+        for kind_key in ("problem_surfaces", "philosophy_surfaces")
+    )
+
+
+def _persist_surfaces(section_number: str, planspace: Path, surfaces: dict) -> dict:
+    """Normalize and persist discovered surfaces into the section registry."""
+    registry = load_surface_registry(section_number, planspace)
+    surfaces = normalize_surface_ids(surfaces, registry, section_number)
+    merge_surfaces_into_registry(registry, surfaces)
+    save_surface_registry(section_number, planspace, registry)
+    return surfaces
+
+
+def _write_intent_escalation_signal(
+    artifacts: Path,
+    section_number: str,
+    reason: str,
+    surface_count: int,
+) -> None:
+    """Record that lightweight intent escalated after structured discoveries."""
+    escalation_signal = {
+        "section": section_number,
+        "reason": reason,
+        "surface_count": surface_count,
+    }
+    write_json(
+        artifacts / "signals" / f"intent-escalation-{section_number}.json",
+        escalation_signal,
+    )
+
+
 def run_proposal_loop(
     section,
     planspace: Path,
@@ -389,9 +426,30 @@ def run_proposal_loop(
             continue
 
         if problems is None:
-            if intent_mode == "full":
-                surfaces = _load_combined_surfaces(section.number, planspace)
-                if surfaces:
+            surfaces = _load_combined_surfaces(section.number, planspace)
+            surface_count = _count_surfaces(surfaces)
+            if surface_count:
+                if intent_mode != "full":
+                    _persist_surfaces(section.number, planspace, surfaces)
+                    log(
+                        f"Section {section.number}: lightweight mode discovered "
+                        f"{surface_count} structured surfaces — escalating to "
+                        "full intent"
+                    )
+                    _write_intent_escalation_signal(
+                        artifacts,
+                        section.number,
+                        "structured_surfaces_on_lightweight",
+                        surface_count,
+                    )
+                    proposal_problems = (
+                        "Lightweight section discovered structured surfaces; "
+                        "re-propose under full intent mode."
+                    )
+                    intent_mode = "full"
+                    continue
+
+                if intent_mode == "full":
                     expansion_max = intent_budgets.get("intent_expansion_max", 2)
                     expansion_count = getattr(
                         run_proposal_loop,
@@ -477,66 +535,79 @@ def run_proposal_loop(
             _write_alignment_surface(planspace, section)
             break
 
-        if intent_mode == "full":
-            misaligned_surfaces = _load_combined_surfaces(
-                section.number, planspace,
+        misaligned_surfaces = _load_combined_surfaces(
+            section.number, planspace,
+        )
+        misaligned_surface_count = _count_surfaces(misaligned_surfaces)
+        if misaligned_surface_count:
+            misaligned_surfaces = _persist_surfaces(
+                section.number,
+                planspace,
+                misaligned_surfaces,
             )
-            if misaligned_surfaces:
-                registry = load_surface_registry(section.number, planspace)
-                misaligned_surfaces = normalize_surface_ids(
-                    misaligned_surfaces,
-                    registry,
-                    section.number,
-                )
-                merge_surfaces_into_registry(registry, misaligned_surfaces)
-                save_surface_registry(section.number, planspace, registry)
+            log(
+                f"Section {section.number}: persisted intent "
+                f"surfaces from misaligned pass"
+            )
+            if intent_mode != "full":
                 log(
-                    f"Section {section.number}: persisted intent "
-                    f"surfaces from misaligned pass"
+                    f"Section {section.number}: lightweight mode discovered "
+                    f"{misaligned_surface_count} structured surfaces on "
+                    "misaligned pass — upgrading to full"
                 )
-                if _has_definition_gap_surfaces(misaligned_surfaces):
-                    expansion_max = intent_budgets.get("intent_expansion_max", 2)
-                    expansion_count = getattr(
-                        run_proposal_loop,
-                        "_expansion_counts",
-                        {},
-                    ).get(section.number, 0)
-                    if expansion_count < expansion_max:
-                        log(
-                            f"Section {section.number}: definition-gap surfaces "
-                            f"found on misaligned pass — running expansion"
-                        )
-                        delta_result = run_expansion_cycle(
+                _write_intent_escalation_signal(
+                    artifacts,
+                    section.number,
+                    "structured_surfaces_on_lightweight_misaligned",
+                    misaligned_surface_count,
+                )
+                intent_mode = "full"
+
+            if intent_mode == "full" and _has_definition_gap_surfaces(
+                misaligned_surfaces,
+            ):
+                expansion_max = intent_budgets.get("intent_expansion_max", 2)
+                expansion_count = getattr(
+                    run_proposal_loop,
+                    "_expansion_counts",
+                    {},
+                ).get(section.number, 0)
+                if expansion_count < expansion_max:
+                    log(
+                        f"Section {section.number}: definition-gap surfaces "
+                        f"found on misaligned pass — running expansion"
+                    )
+                    delta_result = run_expansion_cycle(
+                        section.number,
+                        planspace,
+                        codespace,
+                        parent,
+                        budgets=intent_budgets,
+                    )
+                    if not hasattr(run_proposal_loop, "_expansion_counts"):
+                        run_proposal_loop._expansion_counts = {}
+                    run_proposal_loop._expansion_counts[section.number] = (
+                        expansion_count + 1
+                    )
+                    if delta_result.get("needs_user_input"):
+                        gate_response = handle_user_gate(
                             section.number,
                             planspace,
-                            codespace,
                             parent,
-                            budgets=intent_budgets,
+                            delta_result,
                         )
-                        if not hasattr(run_proposal_loop, "_expansion_counts"):
-                            run_proposal_loop._expansion_counts = {}
-                        run_proposal_loop._expansion_counts[section.number] = (
-                            expansion_count + 1
-                        )
-                        if delta_result.get("needs_user_input"):
-                            gate_response = handle_user_gate(
-                                section.number,
-                                planspace,
-                                parent,
-                                delta_result,
-                            )
-                            if gate_response and gate_response.startswith("resume"):
-                                payload = gate_response.partition(":")[2].strip()
-                                if payload:
-                                    persist_decision(
-                                        planspace, section.number, payload,
-                                    )
-                    else:
-                        log(
-                            f"Section {section.number}: definition-gap surfaces "
-                            f"found on misaligned pass but expansion budget is "
-                            f"exhausted ({expansion_count}/{expansion_max})"
-                        )
+                        if gate_response and gate_response.startswith("resume"):
+                            payload = gate_response.partition(":")[2].strip()
+                            if payload:
+                                persist_decision(
+                                    planspace, section.number, payload,
+                                )
+                else:
+                    log(
+                        f"Section {section.number}: definition-gap surfaces "
+                        f"found on misaligned pass but expansion budget is "
+                        f"exhausted ({expansion_count}/{expansion_max})"
+                    )
 
         proposal_problems = problems
         short = problems[:200]

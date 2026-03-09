@@ -48,6 +48,11 @@ class ModelPolicy(Mapping[str, Any]):
     substrate_pruner: str = "gpt-xhigh"
     substrate_seeder: str = "gpt-high"
     reconciliation_adjudicate: str = "claude-opus"
+    # Research-first intent layer
+    research_plan: str = "claude-opus"
+    research_domain_ticket: str = "gpt-high"
+    research_synthesis: str = "gpt-high"
+    research_verify: str = "glm"
     escalation_triggers: dict[str, int] = field(default_factory=lambda: {
         "stall_count": 2,
         "max_attempts_before_escalation": 3,

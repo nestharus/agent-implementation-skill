@@ -192,6 +192,9 @@ class PathRegistry:
     def research_plan(self, num: str) -> Path:
         return self.research_section_dir(num) / "research-plan.json"
 
+    def research_status(self, num: str) -> Path:
+        return self.research_section_dir(num) / "research-status.json"
+
     def research_dossier(self, num: str) -> Path:
         return self.research_section_dir(num) / "dossier.md"
 
@@ -203,6 +206,9 @@ class PathRegistry:
 
     def research_addendum(self, num: str) -> Path:
         return self.research_section_dir(num) / "proposal-addendum.md"
+
+    def research_verify_report(self, num: str) -> Path:
+        return self.research_section_dir(num) / "research-verify.json"
 
     def research_tickets_dir(self, num: str) -> Path:
         return self.research_section_dir(num) / "tickets"

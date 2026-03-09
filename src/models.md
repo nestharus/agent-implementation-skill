@@ -101,6 +101,15 @@ configurable in `model-policy.json`:
 |-----|---------|-----|
 | `qa_interceptor` | `claude-opus` | Contract-compliance review between the submitting agent, target agent, and task payload |
 
+### Research-First Intent Layer
+
+| Key | Default | Why |
+|-----|---------|-----|
+| `research_plan` | `claude-opus` | Plans research by decomposing blocking questions into bounded tickets |
+| `research_domain_ticket` | `gpt-high` | Executes web/code research via Firecrawl search + scrape |
+| `research_synthesis` | `gpt-high` | Merges ticket results into dossier + surfaces + proposal addendum |
+| `research_verify` | `glm` | Verifies citation integrity on dossier claims |
+
 ## Pipeline Patterns
 
 ### Implementation Pipeline
