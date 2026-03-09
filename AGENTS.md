@@ -7,7 +7,7 @@
 │   ├── problems/index.md    # Why this code exists (PRB-XXXX)
 │   ├── patterns/index.md    # How we solve recurring problems (PAT-XXXX)
 │   ├── audit/prompt.md      # Audit process for external models
-│   ├── audit/history.md     # Cumulative audit log (100 rounds)
+│   ├── audit/history.md     # Cumulative audit log (101 rounds)
 │   ├── design/              # Design rationale documents
 │   └── risk-register.md     # Landed-code risks and debt
 ├── philosophy/              # Values and principles
@@ -15,9 +15,7 @@
 │   ├── design-philosophy-notes.md
 │   ├── profiles/PHI-global.md
 │   └── region-profile-map.md
-├── system-synthesis.md      # How code connects to problems/patterns/philosophy
-├── codebase_system_design.md # Architecture description
-├── component-architecture.md # Architectural analysis
+├── system-synthesis.md      # Architecture + governance connections
 ├── src/                     # Deployed skill code
 │   ├── agents/              # Agent contract definitions (46 agents)
 │   ├── scripts/             # Runtime orchestration scripts
@@ -38,7 +36,7 @@ These are first-class project artifacts under source control:
 | `governance/patterns/index.md` | Pattern catalog — how we solve things | Audit process |
 | `governance/risk-register.md` | Landed-code risks | Post-impl assessment |
 | `philosophy/` | Design values and principles | User + audit process |
-| `system-synthesis.md` | Connects architecture to governance | Audit process + manual |
+| `system-synthesis.md` | Architecture + governance connections | Audit process + manual |
 
 ### Working with Governance Docs
 
@@ -133,13 +131,6 @@ rm -f ~/work/tmp/execution-philosophy/codebase.zip
 zip -r ~/work/tmp/execution-philosophy/codebase.zip src/ evals/ governance/ philosophy/ system-synthesis.md -x '*__pycache__*'
 ```
 
-Also rezip philosophy:
-```bash
-cd /home/nes/projects/agent-implementation-skill
-rm -f ~/work/tmp/execution-philosophy/philosophy.zip
-zip -r ~/work/tmp/execution-philosophy/philosophy.zip philosophy/
-```
-
 ### Cycle Detection Reference
 
 Common dismissal patterns from history:
@@ -153,8 +144,8 @@ Common dismissal patterns from history:
 | Path | Purpose |
 |------|---------|
 | `~/work/tmp/execution-philosophy/response.md` | Current round's audit response |
+| `~/work/tmp/execution-philosophy/codebase.zip` | Audit bundle (single zip with everything) |
+| `governance/audit/prompt.md` | Audit prompt for external models (in repo) |
 | `governance/audit/history.md` | Authoritative audit history (in repo) |
-| `~/work/tmp/execution-philosophy/codebase.zip` | Audit bundle sent to external model |
-| `~/work/tmp/execution-philosophy/philosophy.zip` | Philosophy bundle sent to external model |
 | `governance/patterns/index.md` | Pattern catalog (in repo) |
-| `governance/audit/prompt.md` | Audit prompt for external models |
+| `governance/problems/index.md` | Problem archive (in repo) |

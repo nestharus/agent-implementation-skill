@@ -258,7 +258,7 @@ def _setup_full_triage(planspace: Path, codespace: Path) -> Path:
           "section": "05",
           "intent_mode": "full"|"lightweight",
           "confidence": "high"|"medium"|"low",
-          "risk_mode": "skip"|"light"|"full",
+          "risk_mode": "light"|"full",
           "risk_budget_hint": 0,
           "escalate": false,
           "budgets": {{
@@ -352,7 +352,7 @@ def _check_triage_has_risk_handoff(
         return False, "Signal file is not valid JSON"
     risk_mode = data.get("risk_mode", "")
     budget_hint = data.get("risk_budget_hint")
-    if risk_mode not in ("skip", "light", "full"):
+    if risk_mode not in ("light", "full"):
         return False, f"risk_mode missing or invalid: '{risk_mode}'"
     if not isinstance(budget_hint, int) or budget_hint < 0:
         return False, f"risk_budget_hint missing or invalid: {budget_hint!r}"

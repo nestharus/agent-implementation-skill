@@ -20,9 +20,9 @@ Coordinating multiple AI agents to work on a codebase introduces risks: race con
 **Provenance**: user-authored
 **Regions**: section loop, integration proposals, alignment checks, consequence propagation
 
-Brute-force implementation (try → fail → retry) wastes tokens, creates churn, and converges slowly. Strategic implementation (understand the problem deeply → design a strategy → implement once) collapses many waves of problems in one pass.
+Brute-force implementation (try → fail → retry) wastes tokens, creates churn, and converges slowly. Strategic implementation (understand the problem deeply → design a strategy → implement once) collapses many waves of problems in one pass. The proposal→TODO→code alignment chain ensures implementations solve what they claim. Concern-based strategy replaces feature-based planning.
 
-**Solution surfaces**: Integration proposals, microstrategy, alignment judges, consequence notes, problem framing.
+**Solution surfaces**: Integration proposals, microstrategy, alignment judges, consequence notes, problem framing, proposal/TODO/code alignment chain.
 
 ---
 
@@ -68,9 +68,9 @@ Implementation sections may require information that isn't available in the code
 **Provenance**: user-authored
 **Regions**: consequence propagation, reconciliation, coordination
 
-Sections implemented independently may create conflicting interfaces, duplicate abstractions, or incompatible assumptions. Cross-section coordination must detect and resolve these tensions without centralizing all decisions.
+Sections implemented independently may create conflicting interfaces, duplicate abstractions, or incompatible assumptions. Friction between isolated islands of concern is a strategic target — coordination must detect and resolve these tensions without centralizing all decisions. Concern interaction and shared seam management drive the coordination layer.
 
-**Solution surfaces**: Consequence notes, reconciliation adjudicator, coordination planner/fixer, substrate discovery.
+**Solution surfaces**: Consequence notes, reconciliation adjudicator, coordination planner/fixer, substrate discovery, concern-based interaction routing.
 
 ---
 
@@ -80,42 +80,78 @@ Sections implemented independently may create conflicting interfaces, duplicate 
 **Provenance**: user-authored
 **Regions**: ROAL, alignment checks, readiness gate
 
-The execution pipeline itself introduces risk — proposals that don't solve the stated problem, implementations that diverge from proposals, dispatch to the wrong model. Execution risk must be bounded at each transition.
+The execution pipeline itself introduces risk — proposals that don't solve the stated problem, implementations that diverge from proposals, dispatch to the wrong model. Risk must be quantified and guardrails proportional to the actual danger. The goal is risk below a defined threshold with effort proportional to actual risk, not blanket maximum process. Brute-force regression, optimization feedback, and convergence criteria matter.
 
-**Solution surfaces**: ROAL (Risk-Optimization Assessment Loop), alignment judges, readiness gates, freshness computation.
+**Solution surfaces**: ROAL (Risk-Optimization Adaptive Loop), alignment judges, readiness gates, freshness computation, proportional posture profiles.
 
 ---
 
 ## PRB-0008: Implementation Risk (Post-Landing)
 
-**Status**: latent — governance design proposed but not yet implemented
+**Status**: active — partially implemented (R101)
 **Provenance**: user-authored (governance gaps analysis)
-**Regions**: TBD (post-implementation assessment stage)
+**Regions**: post-implementation assessment, governance assessment, flow reconciler, risk register
 
-After code lands, we don't systematically assess what risks the implementation introduced: coupling, security surfaces, scalability bottlenecks, pattern drift, coherence friction. Currently this is reactive (someone notices → refactoring cycle). Needs to become a pipeline stage.
+After code lands, we don't systematically assess what risks the implementation introduced: coupling, security surfaces, scalability bottlenecks, pattern drift, coherence friction. Post-implementation assessment was implemented in R101: queues assessment after implementation, validates result, routes verdict (accept/accept_with_debt/refactor_required) through structured signals. Debt signal promotion to the risk register is closing in R102.
 
-**Solution surfaces**: Proposed — post-implementation assessment + risk register + stabilization loop.
+**Solution surfaces**: Post-implementation assessment agent + prompt writer, flow reconciler verdict routing, debt signal staging, risk register promotion (PAT-0012).
 
 ---
 
 ## PRB-0009: Problem Traceability
 
-**Status**: latent — governance design proposed but not yet implemented
+**Status**: active — partially implemented (R101-R102)
 **Provenance**: user-authored (governance gaps analysis)
-**Regions**: TBD (governance layer)
+**Regions**: governance layer, traceability artifacts, trace indexes
 
-Code exists but we can't trace it back to the problem it solves. When problems evolve or become obsolete, we don't know which code should evolve or be removed with them. Problems span layers but there's no way to see the full surface of a problem across its manifestation points.
+Code exists but we can't trace it back to the problem it solves. When problems evolve or become obsolete, we don't know which code should evolve or be removed with them. R101 added governance enrichment to trace indexes (`trace/section-N.json`) with problem_ids, pattern_ids, and profile_id. R102 extends governance fields to trace-map and traceability.json surfaces.
 
-**Solution surfaces**: This archive is the beginning. Full solution requires traceability enrichment (problem_ids in traceability artifacts) and governance packets.
+**Solution surfaces**: This archive, governance packets (PAT-0011), traceability enrichment across all three trace surfaces, update_trace_governance().
 
 ---
 
 ## PRB-0010: Pattern Governance
 
-**Status**: latent — governance design proposed, initial archive created
+**Status**: active — partially implemented (R101-R102)
 **Provenance**: user-authored (governance gaps analysis)
-**Regions**: governance layer, audit process
+**Regions**: governance layer, audit process, pattern archive
 
-Established patterns exist but aren't cataloged. New modules may diverge from templates accidentally. The audit process catches violations ad hoc but doesn't systematically check pattern conformance.
+Established patterns exist and are cataloged. The governance loader parses the archive into planspace indexes, builds per-section governance packets, and threads them into prompt context and freshness hashing. Runtime doesn't yet enforce pattern conformance at proposal time — currently advisory through governance packets.
 
-**Solution surfaces**: Pattern archive (this directory's sibling), pattern alignment audit phase, archive-aware proposals.
+**Solution surfaces**: Pattern archive, governance loader, governance packets (PAT-0011), audit process pattern alignment phases.
+
+---
+
+## PRB-0011: Heuristic Exploration Over Exhaustive Scan
+
+**Status**: active
+**Provenance**: user-authored
+**Regions**: scan/codemap, scan/exploration, lib/scan, substrate
+
+Full-codebase reading is wasteful and misses the point. The system needs just enough skeleton understanding to route deeper work. The codemap is a routing map, not an index of everything. Downstream agents use it for targeted reads, not exhaustive catalogs.
+
+**Solution surfaces**: Scan codemap builder, heuristic exploration, tier ranking, substrate discovery.
+
+---
+
+## PRB-0012: Upward Scope Reframing and New-Ground Escalation
+
+**Status**: active
+**Provenance**: user-authored
+**Regions**: readiness gate, coordination, research routing, intent surfaces
+
+Agents can discover new problems, new tools, or greenfield territory that cannot be solved locally. These must bubble upward instead of being solved locally out of scope. Blocking research questions, root reframing signals, and shared seam candidates all need upward routing to the appropriate resolver.
+
+**Solution surfaces**: Readiness gate blocker taxonomy, blocking_research_questions routing, requires_root_reframing threading, research-first intent layer, coordination problem resolver.
+
+---
+
+## PRB-0013: Proposal-State Readiness Before Descent
+
+**Status**: active
+**Provenance**: user-authored
+**Regions**: proposal-state repository, readiness resolver, readiness gate, implementation prompts
+
+Descent into implementation before anchors, contracts, and research are resolved produces brute-force behavior and reopen cycles. The execution-readiness gate is fail-closed: if any blocking field remains unresolved, implementation dispatch is blocked. Proposals are problem-state artifacts, not file-change plans.
+
+**Solution surfaces**: Proposal-state repository, readiness resolver, readiness gate, integration proposals as problem-state artifacts.

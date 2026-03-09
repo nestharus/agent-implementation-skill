@@ -215,7 +215,7 @@ class TestSectionScopedAccessors:
     @pytest.mark.parametrize("num", ["01", "12"])
     def test_trace_map(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
         assert reg.trace_map(num) == (
-            tmp_path / "artifacts" / f"trace-map-{num}.json"
+            tmp_path / "artifacts" / "trace-map" / f"section-{num}.json"
         )
 
     @pytest.mark.parametrize("num", ["01", "12"])

@@ -141,7 +141,7 @@ class PathRegistry:
         return self.todos_dir() / f"section-{num}-todos.md"
 
     def trace_map(self, num: str) -> Path:
-        return self._artifacts / f"trace-map-{num}.json"
+        return self._artifacts / "trace-map" / f"section-{num}.json"
 
     def impl_modified(self, num: str) -> Path:
         return self._artifacts / f"impl-{num}-modified.txt"
@@ -196,6 +196,9 @@ class PathRegistry:
             self.signals_dir()
             / f"section-{section_number}-risk-register-signal.json"
         )
+
+    def risk_register_staging(self) -> Path:
+        return self._artifacts / "risk-register-staging.json"
 
     # --- Risk artifact accessors ---
 

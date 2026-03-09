@@ -14,6 +14,10 @@ Each entry:
 - **Acceptance rationale**: why it was accepted (if accepted)
 - **Mitigation**: what was done or planned
 
+## Population
+
+Post-implementation assessment emits `accept_with_debt` verdicts with typed `debt_items` into `risk-register-signal.json` files. The `promote_debt_signals()` function in `lib/governance/assessment.py` consumes these signals into a staging artifact (`risk-register-staging.json`). Staged entries are promoted into this register during stabilization or audit rounds.
+
 ## Entries
 
-_No entries yet. Populated by post-implementation assessment (when implemented)._
+_No entries yet. Debt signal staging and promotion pipeline implemented in R102._

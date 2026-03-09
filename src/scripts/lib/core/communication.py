@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
@@ -83,33 +82,15 @@ def _record_traceability(
     detail: str = "",
 ) -> None:
     """Append a traceability entry to artifacts/traceability.json."""
-    trace_path = PathRegistry(planspace).traceability()
-    entries: list[dict] = []
-    if trace_path.exists():
-        try:
-            entries = json.loads(trace_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, ValueError) as exc:
-            import time
+    from lib.core.artifact_io import read_json, write_json
 
-            corrupt_name = f"traceability.corrupt-{int(time.time())}.json"
-            corrupt_path = trace_path.parent / corrupt_name
-            try:
-                trace_path.rename(corrupt_path)
-            except OSError:
-                pass
-            log(
-                f"traceability.json malformed ({exc}) — "
-                f"preserved as {corrupt_name}, starting fresh",
-            )
-            entries = []
+    trace_path = PathRegistry(planspace).traceability()
+    data = read_json(trace_path)
+    entries: list[dict] = data if isinstance(data, list) else []
     entries.append({
         "section": section,
         "artifact": artifact,
         "source": source,
         "detail": detail,
     })
-    trace_path.parent.mkdir(parents=True, exist_ok=True)
-    trace_path.write_text(
-        json.dumps(entries, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    write_json(trace_path, entries)

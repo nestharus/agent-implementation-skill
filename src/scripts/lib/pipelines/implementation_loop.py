@@ -282,15 +282,23 @@ def run_implementation_loop(
 
     _write_traceability_index(planspace, section, codespace, actually_changed)
 
-    trace_map_dir = artifacts / "trace-map"
-    trace_map_dir.mkdir(parents=True, exist_ok=True)
-    trace_map_path = trace_map_dir / f"section-{section.number}.json"
+    paths = PathRegistry(planspace)
+    trace_map_path = paths.trace_map(section.number)
+    trace_map_path.parent.mkdir(parents=True, exist_ok=True)
+    from lib.core.hash_service import file_hash
     trace_map = {
         "section": section.number,
         "problems": [],
         "strategies": [],
         "todo_ids": [],
         "files": list(actually_changed),
+        "governance": {
+            "packet_path": str(paths.governance_packet(section.number)),
+            "packet_hash": file_hash(paths.governance_packet(section.number)),
+            "problem_ids": [],
+            "pattern_ids": [],
+            "profile_id": "",
+        },
     }
     problem_frame_path = artifacts / "sections" / f"section-{section.number}-problem-frame.md"
     if problem_frame_path.exists():

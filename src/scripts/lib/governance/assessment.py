@@ -72,7 +72,16 @@ Required JSON shape:
     "scalability": {{"ok": true, "notes": ""}},
     "operability": {{"ok": true, "notes": ""}}
   }},
-  "debt_items": [],
+  "debt_items": [
+    {{
+      "category": "coupling|security|scalability|pattern-drift|coherence|operability",
+      "region": "affected module or section",
+      "description": "what the risk is",
+      "severity": "low|medium|high",
+      "acceptance_rationale": "why it is acceptable for now",
+      "mitigation": "what was done or is planned"
+    }}
+  ],
   "refactor_reasons": [],
   "problem_ids_addressed": [],
   "pattern_ids_followed": [],
@@ -154,3 +163,53 @@ def record_assessment_governance(
         pattern_ids=[str(item) for item in pattern_ids if str(item).strip()],
         profile_id=profile_id,
     )
+
+
+def promote_debt_signals(planspace: Path) -> list[dict]:
+    """Consume risk-register-signal files and stage them for register promotion.
+
+    Reads all risk-register-signal-*.json files, extracts typed debt_items,
+    writes a consolidated staging artifact, and returns the entries.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    paths = PathRegistry(planspace)
+    signals_dir = paths.signals_dir()
+    if not signals_dir.exists():
+        return []
+
+    entries: list[dict] = []
+    for signal_path in sorted(signals_dir.glob("*-risk-register-signal.json")):
+        data = read_json(signal_path)
+        if not isinstance(data, dict):
+            continue
+        section = data.get("section", "unknown")
+        debt_items = data.get("debt_items", [])
+        if not isinstance(debt_items, list):
+            debt_items = []
+        for item in debt_items:
+            if not isinstance(item, dict):
+                continue
+            entries.append({
+                "section": section,
+                "category": item.get("category", ""),
+                "region": item.get("region", ""),
+                "description": item.get("description", ""),
+                "severity": item.get("severity", "medium"),
+                "acceptance_rationale": item.get("acceptance_rationale", ""),
+                "mitigation": item.get("mitigation", ""),
+                "source": "post_impl_assessment",
+                "problem_ids": data.get("problem_ids", []),
+                "pattern_ids": data.get("pattern_ids", []),
+                "profile_id": data.get("profile_id", ""),
+            })
+
+    if entries:
+        staging = read_json(paths.risk_register_staging())
+        existing = staging if isinstance(staging, list) else []
+        existing.extend(entries)
+        write_json(paths.risk_register_staging(), existing)
+        logger.info("Staged %d debt entries for risk register promotion", len(entries))
+
+    return entries

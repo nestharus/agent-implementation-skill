@@ -1,73 +1,97 @@
 # Pattern Archive
 
-Established solution templates. Each pattern traces to philosophy and has known instances in the codebase.
+Established solution templates. Each pattern traces to philosophy and has known instances in the codebase. Known instances are representative and should include every currently authoritative region using the pattern; they are not required to enumerate every helper callsite.
 
 ## Substrate Invariants
 
 These are foundational invariants, not project-level patterns. They do not change without a fundamental redesign.
 
-- **Scripts dispatch, agents decide** — scripts do mechanical coordination (dispatch, check, log); agents do reasoning (explore, understand, decide). Strategic decisions belong to agents.
+- **Scripts dispatch, agents decide** — scripts do mechanical coordination (dispatch, check, log, persist); agents do reasoning (explore, understand, decide). Strategic decisions belong to agents.
 - **File-path-based prompts** — prompts reference artifacts by file path, not inline content. Agents read what they need.
 - **Task submission, not direct spawning** — agents request follow-on work via structured `TaskSpec`. No direct subprocess spawning.
 - **Bounded typed substrate** — typed data flows with schema validation at boundaries.
+- **Mode is observation, not routing** — greenfield / brownfield / hybrid describe what exploration found; they do not justify divergent proposal artifact shapes or descent rules.
 
 ## PAT-0001: Corruption Preservation
 
 **Problem class**: Structured artifact read/write in a multi-agent system where any writer may produce malformed output.
 
-**Philosophy**: Fail-closed. Evidence preservation over silent discard. Zero risk tolerance.
+**Philosophy**: Fail-closed. Evidence preservation over silent discard. Preserve debugging evidence instead of hiding it.
 
 **Template**:
-1. `read_json(path)` for syntax-level parsing (handles encoding, trailing data, etc.)
-2. If parsed successfully, validate schema shape (required keys, types)
-3. On schema mismatch: `rename_malformed(path)` to preserve the corrupt file for debugging
-4. Return `None` on any failure — caller proceeds fail-closed
+1. Use `read_json(path)` or a typed loader built on it for syntax-level parsing.
+2. If parse succeeds, validate schema shape and semantic invariants.
+3. On malformed JSON or schema mismatch, call `rename_malformed(path)`.
+4. Return `None` or a documented fail-closed default.
+5. Do not invent local corruption-preservation conventions unless the pattern is explicitly updated.
 
 **Canonical instance**: `load_surface_registry()` in `section_loop/intent/surfaces.py`
 
 **Known instances**:
-- `surfaces.py` — surface registry, research surfaces
-- `orchestrator.py` — research status, research plan validation
-- `artifact_io.py` — `read_json()` / `rename_malformed()` primitives
-- All `read_json` callsites follow this pattern
+- `src/scripts/lib/core/artifact_io.py` — `read_json()` / `rename_malformed()` primitives
+- `src/scripts/section_loop/intent/surfaces.py` — surface registry + research surface validation
+- `src/scripts/lib/research/orchestrator.py` — research plan / status loaders
+- `src/scripts/lib/governance/assessment.py` — post-implementation assessment reader
+- `src/scripts/lib/repositories/proposal_state_repository.py` — proposal-state loader
+- `src/scripts/lib/risk/serialization.py` — ROAL package / assessment / plan loaders
+- `src/scripts/lib/services/signal_reader.py` and `src/scripts/lib/dispatch/dispatch_metadata.py`
 
-**Conformance**: Any new structured artifact reader MUST follow this pattern. No silent `json.loads()` with bare except.
+**Conformance**: Any new structured artifact reader MUST follow this pattern. No silent `json.loads()` with bare except; no alternate corruption filename conventions without catalog approval.
 
 ---
 
 ## PAT-0002: Prompt Safety
 
-**Problem class**: Prompt injection, malformed prompt content, untrusted dynamic values in prompt text.
+**Problem class**: Prompt injection, malformed prompt content, untrusted dynamic values in prompt text, and payloadless dispatch drift.
 
-**Philosophy**: Every prompt is a trust boundary. Zero risk tolerance.
+**Philosophy**: Every prompt is a trust boundary. Safety is enforced mechanically before dispatch.
 
 **Template**:
-1. Assemble prompt content as a string
-2. Call `write_validated_prompt(content, path)` which validates and writes atomically
-3. Use the written path as the prompt reference
+1. Identify the dynamic / untrusted portion of the prompt surface.
+2. Use one sanctioned form:
+   - **Direct prompt file**: assemble the full prompt and call `write_validated_prompt(content, path)`.
+   - **Template-wrapped prompt**: validate the dynamic body with `validate_dynamic_content()` before wrapping it in a trusted template, or validate the fully rendered prompt before writing when the builder does not split trusted vs dynamic content.
+   - **Payload-backed dispatch**: validate agent-provided payloads or the assembled prompt before dispatch; do not fall back to metadata-only prompts.
+3. Persist the exact prompt file used for dispatch.
+4. On validation failure, fail closed or preserve the documented safe mechanical baseline.
 
-**Canonical instance**: `write_research_plan_prompt()` in `lib/research/prompt_writer.py`
+**Canonical instance**: `write_research_plan_prompt()` in `src/scripts/lib/research/prompt_writer.py`
 
-**Known instances**: All prompt writers in `prompt_writer.py`, `plan_executor.py`, readiness gate prompt emission.
+**Known instances**:
+- `src/scripts/lib/research/prompt_writer.py` and `src/scripts/lib/research/plan_executor.py`
+- `src/scripts/lib/governance/assessment.py`
+- `src/scripts/lib/intent/intent_triage.py`, `intent_surface.py`, and `philosophy_bootstrap.py`
+- `src/scripts/section_loop/prompts/writers.py`
+- `src/scripts/section_loop/alignment.py` — template-wrapped adjudication prompt
+- `src/scripts/lib/pipelines/reconciliation_adjudicator.py` — template-wrapped adjudication prompt
+- `src/scripts/scan/codemap.py`, `exploration.py`, `feedback.py`, `lib/scan/*` — validated scan prompts
+- `src/scripts/task_dispatcher.py` and `src/scripts/qa_interceptor.py` (trusted-envelope exception documented in history)
 
-**Conformance**: No prompt file may be written without going through `write_validated_prompt()`.
+**Conformance**: Every dispatch must be payload-backed and pass prompt-safety validation through one of the sanctioned forms. Trusted template envelopes are an explicit exception boundary, not a bypass.
 
 ---
 
 ## PAT-0003: Path Registry
 
-**Problem class**: Artifact path proliferation, hardcoded path construction, path inconsistency across modules.
+**Problem class**: Artifact path proliferation, hardcoded path construction, path inconsistency across modules, and reader/writer disagreement.
 
-**Philosophy**: Single source of truth for all artifact locations.
+**Philosophy**: Single source of truth for durable artifact locations.
 
 **Template**:
-1. All artifact paths come from `PathRegistry(planspace)`
-2. New artifact types get a new accessor method on `PathRegistry`
-3. No module constructs paths by string concatenation or `Path(...)` from convention
+1. Durable artifact paths come from `PathRegistry(planspace)`.
+2. New artifact classes get a dedicated accessor before any writer or reader uses them.
+3. Writers, readers, prompts, and origin refs all use the same accessor.
+4. Manual path construction is permitted only for scratch / ephemeral paths or when the accessor intentionally returns a parent directory.
 
-**Canonical instance**: `PathRegistry` in `lib/core/path_registry.py`
+**Canonical instance**: `PathRegistry` in `src/scripts/lib/core/path_registry.py`
 
-**Conformance**: Any new artifact path MUST be added to `PathRegistry`. Grep for raw `Path(` construction in artifact contexts.
+**Known instances**:
+- Research artifact accessors (`research_*`, dossier, addendum, ticket specs, verify report)
+- Governance artifact accessors (`governance_*`, packet, post-implementation assessment, risk-register signal)
+- Readiness / proposal-state / trace / signal / input-ref accessors
+- Prompt writers and dispatchers across `section_loop/`, `lib/research/`, `lib/governance/`, and `task_dispatcher.py`
+
+**Conformance**: No durable artifact path may be reconstructed ad hoc. Any new artifact path MUST be added to `PathRegistry`, and all consumers must use that accessor.
 
 ---
 
@@ -83,9 +107,13 @@ These are foundational invariants, not project-level patterns. They do not chang
 - **Gates** — accumulate branch results, fire synthesis via `GateSpec`
 - **Named packages** — `_PACKAGE_REGISTRY` in `flow_catalog.py` maps names to `TaskSpec` sequences
 
-**Canonical instance**: `execute_research_plan()` in `lib/research/plan_executor.py`
+**Canonical instance**: `execute_research_plan()` in `src/scripts/lib/research/plan_executor.py`
 
-**Known instances**: Research flow (plan→tickets→synthesis→verify), section implementation chains, coordination fix chains.
+**Known instances**:
+- Research flow (plan → tickets → synthesis → verify)
+- Implementation follow-on chain for post-implementation assessment
+- Coordination and reconciliation follow-on chains
+- Named packages in `src/scripts/flow_catalog.py`
 
 **Conformance**: New multi-step workflows MUST use the flow system. No direct multi-agent orchestration outside the flow primitives.
 
@@ -93,33 +121,47 @@ These are foundational invariants, not project-level patterns. They do not chang
 
 ## PAT-0005: Policy-Driven Models
 
-**Problem class**: Model selection hardcoded in dispatch callsites, preventing flexible model rotation.
+**Problem class**: Model selection drifting into arbitrary callsites, making behavior hard to rotate and hard to audit.
 
-**Philosophy**: Configuration over convention. No magic strings in operational code.
+**Philosophy**: Agent files define method-of-thinking; model choice is resolved centrally from policy.
 
 **Template**:
-1. Agent definitions specify model requirements by capability, not by model name
-2. Dispatch resolves model from policy configuration
-3. No hardcoded model strings in script code or prompt text
+1. Agent/task surfaces bind to an `agent_file` plus a policy key (or task type).
+2. Central registries own default model fallbacks (`task_router.py`, `model_policy.py`, specialized policy modules).
+3. Operational callsites request models via policy lookup rather than embedding per-call business logic about model choice.
+4. Prompt text and agent instructions do not tell runtime code which concrete model to use.
 
-**Conformance**: New agents declare capability needs. Dispatch resolves.
+**Canonical instance**: `TASK_ROUTES` in `src/scripts/task_router.py` plus `ModelPolicy` in `src/scripts/lib/core/model_policy.py`
+
+**Known instances**:
+- `src/scripts/task_router.py`
+- `src/scripts/lib/core/model_policy.py`
+- `src/scripts/lib/scan/scan_dispatch.py`
+- `src/scripts/lib/substrate/substrate_policy.py`
+- Policy lookups across `section_loop/`, `lib/pipelines/`, `lib/intent/`, and `lib/research/`
+
+**Conformance**: Model literals are allowed only in central routing / default-policy surfaces. Business logic and prompt builders must not choose concrete models ad hoc.
 
 ---
 
 ## PAT-0006: Freshness Computation
 
-**Problem class**: Stale artifacts causing incorrect dispatch or repeated work.
+**Problem class**: Stale artifacts causing incorrect dispatch, repeated work, or hidden governance drift.
 
 **Philosophy**: Change detection must be deterministic and content-based.
 
 **Template**:
-1. `content_hash()` from `hash_service.py` for fingerprinting inputs
-2. Compare current hash against stored hash to detect staleness
-3. Section-scoped freshness via `compute_section_freshness()`
+1. Use `content_hash()` / `file_hash()` for authoritative input fingerprinting.
+2. Compare current hash against stored hash or trigger hash.
+3. Include every authoritative upstream input that can change the decision, including governance packet inputs when they affect semantics.
 
-**Canonical instance**: `readiness_gate.py` freshness checks
+**Canonical instance**: `compute_section_freshness()` in `src/scripts/lib/services/freshness_service.py`
 
-**Known instances**: Section input hashing, research trigger hashing, codemap freshness.
+**Known instances**:
+- `src/scripts/lib/services/freshness_service.py`
+- `src/scripts/lib/services/section_input_hasher.py`
+- Research trigger hashing in `src/scripts/lib/research/orchestrator.py`
+- Codemap freshness flow
 
 **Conformance**: Any "should we redo this?" decision MUST use content-based hashing, not timestamps or file existence.
 
@@ -127,16 +169,20 @@ These are foundational invariants, not project-level patterns. They do not chang
 
 ## PAT-0007: Cycle-Aware Status
 
-**Problem class**: Re-triggering workflows when inputs change, while avoiding re-triggering when inputs haven't changed.
+**Problem class**: Re-triggering workflows when inputs change, while avoiding re-triggering when inputs have not changed.
 
-**Philosophy**: Precision over coarseness. Don't repeat work that's still valid.
+**Philosophy**: Precision over coarseness. Do not repeat work that is still valid for the same trigger.
 
 **Template**:
-1. Compute `trigger_hash` from the inputs that would cause re-triggering
-2. Store `trigger_hash` + `cycle_id` in status artifact
-3. `is_complete_for_trigger(trigger_hash)` checks both terminal state AND hash match
+1. Compute `trigger_hash` from the inputs that would cause re-triggering.
+2. Store `trigger_hash` plus `cycle_id` in the status artifact.
+3. Gate re-entry on both terminal state and hash match.
 
-**Canonical instance**: `is_research_complete_for_trigger()` in `lib/research/orchestrator.py`
+**Canonical instance**: `is_research_complete_for_trigger()` in `src/scripts/lib/research/orchestrator.py`
+
+**Known instances**:
+- Research orchestration status
+- Research-plan readiness routing / trigger artifacts
 
 **Conformance**: Any retriggerable workflow should adopt this pattern rather than coarse "is it done?" checks.
 
@@ -144,16 +190,19 @@ These are foundational invariants, not project-level patterns. They do not chang
 
 ## PAT-0008: Fail-Closed Defaults
 
-**Problem class**: Parse failures, missing data, unexpected states in a multi-agent pipeline.
+**Problem class**: Parse failures, missing data, unexpected states, and uncertain optimization boundaries in a multi-agent pipeline.
 
-**Philosophy**: Conservative behavior on uncertainty. The cost of doing too much work is lower than the cost of skipping necessary work.
+**Philosophy**: Conservative behavior on uncertainty. Fail closed at decision boundaries; scale process by risk only when the system actually has enough evidence to do so safely.
 
 **Template**:
-- On parse failure: default to the conservative/safe behavior (e.g., `rebuild=True`, `friction=True`)
-- On missing artifact: treat as "not yet done" rather than "already done"
-- On unexpected state: fall through to full processing rather than short-circuiting
+- On parse failure: default to the conservative / safe behavior.
+- On missing artifact: treat as "not yet done" rather than "already done".
+- On unexpected state: fall through to fuller processing rather than short-circuiting.
+- On uncertain optimization: prefer a documented safe baseline over an unverified shortcut.
 
-**Conformance**: Any conditional skip/optimization must have a fail-closed default path.
+**Canonical instance**: readiness and freshness gating across `src/scripts/lib/pipelines/readiness_gate.py` and `src/scripts/lib/services/readiness_resolver.py`
+
+**Conformance**: Any skip, optimization, or early-exit path must have a fail-closed default path.
 
 ---
 
@@ -161,14 +210,21 @@ These are foundational invariants, not project-level patterns. They do not chang
 
 **Problem class**: Work that cannot proceed needs structured routing to the right resolver.
 
-**Philosophy**: Structured signals over freeform text. Route, don't block silently.
+**Philosophy**: Structured signals over freeform text. Route, do not stall silently.
 
 **Template**:
-- Blockers carry: `state` (need_decision / needs_parent / needs_research), `section`, `detail`, `needs`, `why_blocked`, `source`
-- Written as structured JSON to `signals/` directory
-- Rollup function aggregates for visibility
+- Blockers carry: `state`, `section`, `detail`, `needs`, `why_blocked`, `source`
+- Written as structured JSON to `signals/`
+- Rollup / aggregation functions surface them for the next controlling layer
 
-**Canonical instance**: `_emit_not_researchable_signals()` in `lib/research/plan_executor.py`
+**Canonical instance**: `_emit_not_researchable_signals()` in `src/scripts/lib/research/plan_executor.py`
+
+**Known instances**:
+- Research `needs_parent` / `need_decision` routing
+- Readiness-gate blocker emission
+- Coordination problem resolver signals
+- Post-implementation `refactor_required` blocker emission in `flow_reconciler.py`
+- Blocker rollup in `section_loop/section_engine/blockers.py`
 
 **Conformance**: Anything that blocks progress must emit a structured blocker signal, not just log a warning.
 
@@ -176,30 +232,95 @@ These are foundational invariants, not project-level patterns. They do not chang
 
 ## PAT-0010: Intent Surfaces
 
-**Problem class**: Agents need context about section state, problem framing, and accumulated decisions.
+**Problem class**: Agents need context about section state, problem framing, research, and accumulated decisions without being forced into ad hoc prompt assembly.
 
-**Philosophy**: Agents decide based on rich context, not raw artifacts.
+**Philosophy**: Agents decide based on rich context, not raw artifact sprawl.
 
 **Template**:
-1. Load and merge surfaces from multiple sources (problem frame, research, prior decisions)
-2. Package as an intent surface accessible by file path
-3. Include in prompts as context
+1. Load and merge surfaces from multiple sources (problem frame, research, prior decisions, feedback surfaces).
+2. Package the merged view as a durable surface accessible by file path.
+3. Reference that surface from downstream prompts rather than hand-splicing ad hoc context blocks everywhere.
 
-**Canonical instance**: `load_combined_intent_surfaces()` in `section_loop/intent/surfaces.py`
+**Canonical instance**: `load_combined_intent_surfaces()` in `src/scripts/section_loop/intent/surfaces.py`
 
-**Conformance**: New context sources should be merged into the intent surface system, not passed as separate ad hoc prompt sections.
+**Known instances**:
+- `src/scripts/section_loop/intent/surfaces.py`
+- Intent bootstrap and expansion flow
+- Research-derived surfaces and implementation-feedback surfaces
+- Prompt context assembly in `section_loop/prompts/context.py`
+
+**Conformance**: New context sources should merge into the intent-surface system unless they are truly cross-cutting and deserve their own pattern.
+
+---
+
+## PAT-0011: Governance Packet Threading
+
+**Problem class**: Governance archives exist, but proposal / implementation / assessment work needs section-scoped governance context that can be consumed mechanically.
+
+**Philosophy**: Problems, philosophy, and patterns must shape execution at runtime, not only at audit time.
+
+**Template**:
+1. Parse governance archives into structured planspace indexes.
+2. Build a section-scoped governance packet during bootstrap.
+3. Thread that packet into prompt context, sidecars, freshness hashing, and section-input hashing.
+4. Reference the packet by path in downstream proposal / implementation / assessment prompts.
+
+**Canonical instance**: `build_governance_indexes()` + `build_section_governance_packet()` in `src/scripts/lib/governance/loader.py` and `src/scripts/lib/governance/packet.py`
+
+**Known instances**:
+- `src/scripts/section_loop/main.py` — builds governance indexes
+- `src/scripts/lib/governance/loader.py`
+- `src/scripts/lib/governance/packet.py`
+- `src/scripts/lib/intent/intent_bootstrap.py`
+- `src/scripts/section_loop/prompts/context.py` and `src/scripts/lib/prompts/prompt_context_assembler.py`
+- `src/scripts/lib/services/freshness_service.py`
+- `src/scripts/lib/services/section_input_hasher.py`
+- `src/scripts/lib/dispatch/context_sidecar.py`
+
+**Conformance**: Any runtime stage that materially depends on governance context must consume the packet (or an accessor derived from it) rather than reparsing governance markdown ad hoc.
+
+---
+
+## PAT-0012: Post-Implementation Governance Feedback
+
+**Problem class**: Landed changes introduce governance-visible risk that must be assessed, traced, and routed into stabilization without inventing a parallel control loop.
+
+**Philosophy**: Governance continues after code lands. Assessment, risk capture, and stabilization must align with the same problem / pattern / philosophy hierarchy that shaped implementation.
+
+**Template**:
+1. After successful implementation, queue a post-implementation assessment with references to governance packet, trace artifacts, proposal, and problem frame.
+2. Validate the assessment result with PAT-0001.
+3. Merge governance IDs into authoritative trace artifacts.
+4. Route outcomes mechanically:
+   - `accept` → record governance IDs
+   - `accept_with_debt` → emit debt / risk-register promotion signal
+   - `refactor_required` → emit structured blocker signal
+5. A stabilization consumer promotes accepted debt into the authoritative risk register or equivalent governed artifact.
+
+**Canonical instance**: `write_post_impl_assessment_prompt()` / `read_post_impl_assessment()` in `src/scripts/lib/governance/assessment.py` with completion handling in `src/scripts/lib/flow/flow_reconciler.py`
+
+**Known instances**:
+- `src/scripts/lib/pipelines/implementation_loop.py` — queues assessment after implementation
+- `src/scripts/lib/governance/assessment.py`
+- `src/scripts/section_loop/section_engine/traceability.py` — governance ID merge
+- `src/scripts/lib/flow/flow_reconciler.py` — assessment completion routing
+- `governance/risk-register.md` — authoritative debt/risk target
+
+**Conformance**: Post-implementation assessment is not complete until debt / refactor outcomes enter a governed stabilization surface. Orphaned debt signals are pattern violations.
 
 ---
 
 ## Health Notes
 
-- **PAT-0001 (Corruption Preservation)**: Healthy. R99-R100 extended to research surfaces and plan validation.
-- **PAT-0002 (Prompt Safety)**: Healthy. R100 extended to all research prompt writers.
-- **PAT-0003 (Path Registry)**: Healthy. R100 added research artifact accessors.
-- **PAT-0004 (Flow System)**: Healthy. R100 added research packages to catalog.
-- **PAT-0005 (Policy-Driven Models)**: Mostly healthy. Check for any remaining hardcoded model strings in newer agents.
-- **PAT-0006 (Freshness)**: Healthy. Core infrastructure stable.
-- **PAT-0007 (Cycle-Aware Status)**: New pattern (R100). Currently only research. Should extend to other retriggerable workflows.
-- **PAT-0008 (Fail-Closed)**: Healthy. Established across all readers.
-- **PAT-0009 (Blocker Taxonomy)**: Healthy. Used in research and readiness gate.
-- **PAT-0010 (Intent Surfaces)**: Healthy. R100 added research surface merging.
+- **PAT-0001 (Corruption Preservation)**: Mostly healthy. One local variation resolved in R102: `_record_traceability()` now uses `read_json()` instead of custom `traceability.corrupt-*`.
+- **PAT-0002 (Prompt Safety)**: Runtime healthy, catalog updated. The codebase now uses three sanctioned forms; all are documented.
+- **PAT-0003 (Path Registry)**: Resolved in R102. `PathRegistry.trace_map()` now matches the writer location in `implementation_loop.py`.
+- **PAT-0004 (Flow System)**: Healthy. Research and governance follow-on chains use the settled flow substrate.
+- **PAT-0005 (Policy-Driven Models)**: Healthy. Runtime model choice is centralized; catalog wording now matches the actual architecture.
+- **PAT-0006 (Freshness)**: Healthy. Governance packet drift is included in freshness / section-input hashing.
+- **PAT-0007 (Cycle-Aware Status)**: Healthy but intentionally narrow. Currently governs research; extend only when another workflow is truly trigger-reentrant.
+- **PAT-0008 (Fail-Closed Defaults)**: Healthy. Proportional-risk nuance is explicit so fail-closed behavior is not misread as "always use maximum process."
+- **PAT-0009 (Blocker Taxonomy)**: Healthy. Research, readiness, coordination, and post-implementation refactor routing all use structured blockers.
+- **PAT-0010 (Intent Surfaces)**: Healthy. Research-derived and implementation-feedback surfaces are part of the intent context story.
+- **PAT-0011 (Governance Packet Threading)**: Healthy at runtime, now cataloged. Main issue is governance-document drift, not the mechanism.
+- **PAT-0012 (Post-Implementation Governance Feedback)**: Partially implemented. Assessment dispatch and refactor/debt signal emission exist; risk-register promotion and full trace-artifact enrichment are closing in R102.

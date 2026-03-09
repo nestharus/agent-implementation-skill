@@ -1,0 +1,25 @@
+Extracted the six requested orchestration services and rewired both core entrypoints to call them.
+
+New modules:
+- [impact_triage.py](/home/nes/projects/agent-implementation-skill/src/scripts/lib/impact_triage.py)
+- [problem_frame_gate.py](/home/nes/projects/agent-implementation-skill/src/scripts/lib/problem_frame_gate.py)
+- [intent_bootstrap.py](/home/nes/projects/agent-implementation-skill/src/scripts/lib/intent_bootstrap.py)
+- [reconciliation_phase.py](/home/nes/projects/agent-implementation-skill/src/scripts/lib/reconciliation_phase.py)
+- [global_alignment_recheck.py](/home/nes/projects/agent-implementation-skill/src/scripts/lib/global_alignment_recheck.py)
+- [coordination_loop.py](/home/nes/projects/agent-implementation-skill/src/scripts/lib/coordination_loop.py)
+
+Thin orchestrators:
+- [runner.py](/home/nes/projects/agent-implementation-skill/src/scripts/section_loop/section_engine/runner.py) is now 428 lines.
+- [main.py](/home/nes/projects/agent-implementation-skill/src/scripts/section_loop/main.py) is now 221 lines.
+
+Added component coverage for each extraction:
+- [test_impact_triage.py](/home/nes/projects/agent-implementation-skill/tests/component/test_impact_triage.py)
+- [test_problem_frame_gate.py](/home/nes/projects/agent-implementation-skill/tests/component/test_problem_frame_gate.py)
+- [test_intent_bootstrap.py](/home/nes/projects/agent-implementation-skill/tests/component/test_intent_bootstrap.py)
+- [test_reconciliation_phase.py](/home/nes/projects/agent-implementation-skill/tests/component/test_reconciliation_phase.py)
+- [test_global_alignment_recheck.py](/home/nes/projects/agent-implementation-skill/tests/component/test_global_alignment_recheck.py)
+- [test_coordination_loop.py](/home/nes/projects/agent-implementation-skill/tests/component/test_coordination_loop.py)
+
+Verification: `uv run pytest tests/ -q --tb=short` passed with `1208 passed`.
+
+Summary file written to [phase17-results.md](/home/nes/projects/agent-implementation-skill/.tmp/refactor/phase17-results.md).

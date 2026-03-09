@@ -1,25 +1,43 @@
 # Execution Philosophy Audit
 
-You have four inputs:
-- `philosophy.zip` — the user's design philosophy and agent analysis
-- `codebase.zip` — the current implementation being audited
-- `audit-history.md` — log of every previous audit round (what was found, what was implemented, what happened next)
-- `patterns.md` — the established pattern catalog (how the system solves recurring classes of problems)
+You have one input: `codebase.zip` — the complete project including source code, governance, and philosophy.
 
-Unzip both archives. Read ALL files, the audit history, AND the pattern catalog before proceeding.
+Unzip it. The archive contains:
+- `src/` — deployed skill code (agents, scripts, docs)
+- `evals/` — evaluation scenarios
+- `governance/` — problem archive, pattern catalog, audit history, risk register
+- `philosophy/` — design philosophy and analysis
+- `system-synthesis.md` — architecture + governance connections
+
+Key files to read before proceeding:
+- `governance/audit/history.md` — log of every previous audit round
+- `governance/patterns/index.md` — the established pattern catalog
+- `governance/problems/index.md` — the problem archive
+- `philosophy/design-philosophy-notes.md` — the user's verbatim philosophy
+- `philosophy/design-philosophy-analysis.md` — agent analysis of philosophy
+- `philosophy/profiles/PHI-global.md` — distilled global philosophy profile
+- `system-synthesis.md` — how regions connect to problems, patterns, and philosophy
+
+Read ALL of these before proceeding.
 
 ## The Governance Hierarchy
 
-The system has three governance layers:
+The system has eight governance layers, each aligning with the one above:
 
-1. **Philosophy** (why) — the user's design principles and constraints
-2. **Patterns** (how) — established templates for solving recurring problems
-3. **Proposals** (what) — specific changes to the codebase
+1. **Problems** (why this code exists) — `governance/problems/index.md`
+2. **Philosophy** (what values govern it) — `philosophy/`
+3. **Patterns** (how values are operationalized) — `governance/patterns/index.md`
+4. **System synthesis** (how it all connects) — `system-synthesis.md`
+5. **Proposals** (changes designed under these constraints)
+6. **Implementation** (execution under bounded risk)
+7. **Post-implementation assessment** (what risks landed) — `governance/risk-register.md`
+8. **Stabilization** (reduce risks, re-align until stable)
 
 Each layer must align with the one above it:
 - Patterns must embody the philosophy
 - Proposals must follow established patterns
 - A proposal that requires a pattern change must propose the pattern change FIRST
+- Implementation must follow proposals; post-impl assessment checks what actually landed
 
 This ordering is enforced throughout the audit. You cannot propose code changes that violate patterns without first proposing the pattern change and justifying why the pattern should evolve.
 
@@ -47,11 +65,13 @@ remain unresolved.
 Read the philosophy files:
 - `design-philosophy-notes.md` — the user's verbatim words
 - `design-philosophy-analysis.md` — how four agents understood those words
+- `profiles/PHI-global.md` — the distilled global philosophy profile
 
 For each distinct claim, requirement, and constraint the user expressed in the notes:
 - Is it represented in the agent analysis?
 - Did any agent misinterpret it?
 - Are there gaps — things the user said that no agent accounted for?
+- Does PHI-global faithfully capture the priority ordering?
 
 Output a coverage matrix and list of gaps/misalignments.
 
@@ -61,11 +81,14 @@ The philosophy document describes a SOLUTION, not a problem statement. Work back
 
 For each element of the philosophy, ask: what problem does this solve? What pain was the user experiencing that led to this approach?
 
-Cross-reference with the codebase: what in the current code manifests these problems?
+Cross-reference with both the codebase AND the problem archive (`governance/problems/index.md`):
+- What in the current code manifests these problems?
+- Are there problems not yet in the archive?
+- Are archived problems (PRB-XXXX) still accurately described?
 
 Do NOT introduce problems the user did not have. Every problem must trace back to something the user said or something the philosophy implies. An optimization or complexity argument is an excuse about not solving the task.
 
-Output an explicit list of PROBLEMS with evidence trails (philosophy source + codebase manifestation).
+Output an explicit list of PROBLEMS with evidence trails (philosophy source + codebase manifestation), noting which are already in the archive and which are new.
 
 ## Phase 3: Generalization and Research
 
@@ -77,7 +100,7 @@ Output: for each problem, its generalization and whether the philosophy addresse
 
 ## Phase 4: Pattern Alignment Audit
 
-Read `patterns.md` in full. For each pattern in the catalog:
+Read `patterns.md` (governance/patterns/index.md) in full. For each pattern in the catalog:
 
 ### 4a. Pattern-to-philosophy alignment
 Does this pattern still embody the philosophy? Has the philosophy evolved in a way that makes a pattern obsolete or contradictory? Flag any patterns that are no longer aligned with current philosophy.
@@ -101,17 +124,29 @@ Output: pattern violations, new islands, unhealthy patterns, and candidate new p
 Now audit the codebase against BOTH the philosophy AND the patterns. For each principle in the philosophy and each template in the pattern catalog, search the codebase for violations.
 
 Key areas to examine in the codebase:
-- `scripts/scan.sh` — Stage 3 coordinator
-- `scripts/section_loop/` — Stages 4-5 orchestrator (decomposed package)
-- `scripts/workflow.sh` — Schedule driver
-- `scripts/db.sh` — SQLite coordination database
-- `agents/*.md` — Agent definitions
-- `implement.md` — Pipeline documentation
-- `SKILL.md` — Skill entry point
-- `templates/*.md` — Schedule templates
-- `tools/` — Extraction tools
-- `tests/` — Integration test suite
-- `pyproject.toml` — Project configuration and test dependencies
+- `src/scripts/section_loop/` — Stages 4-5 orchestrator (main.py, runner.py, dispatch.py, intent/, coordination/)
+- `src/scripts/lib/` — Core libraries:
+  - `lib/core/` — artifact_io, path_registry, hash_service, freshness_service
+  - `lib/flow/` — flow_schema, task_flow, flow_catalog, flow_reconciler
+  - `lib/risk/` — ROAL (types, serialization, quantifier, posture, loop)
+  - `lib/research/` — research prompt writers, plan executor, orchestrator
+  - `lib/governance/` — loader, packet, assessment
+  - `lib/intent/` — intent bootstrap, surfaces, expansion
+  - `lib/pipelines/` — implementation_loop, coordination pipelines
+  - `lib/services/` — freshness, section_input_hasher
+  - `lib/dispatch/` — context_sidecar, agent_templates
+  - `lib/prompts/` — prompt_context_assembler, prompt_safety
+  - `lib/repositories/` — proposal_state, readiness, reconciliation
+- `src/scripts/scan/` — Stage 3 coordinator (codemap, exploration, deep scan)
+- `src/scripts/substrate/` — Stage 3.5 SIS (shard, prune, seed)
+- `src/scripts/task_router.py` — Task routing and model policy
+- `src/scripts/task_dispatcher.py` — Queue dispatch with freshness/payload/QA checks
+- `src/agents/*.md` — Agent definitions (48 agents)
+- `src/SKILL.md` — Skill entry point
+- `src/implement.md` — Pipeline documentation
+- `evals/` — Evaluation scenarios
+- `governance/` — Problem archive, pattern catalog, risk register
+- `system-synthesis.md` — Architecture + governance connections
 
 **Use your Phase 0 history analysis here.** For each violation you find, check the
 audit history to understand whether this code was introduced by a previous round.
@@ -173,7 +208,7 @@ If conflicts or gaps exist, revise proposals.
 
 ## Phase 8: Pattern Catalog Maintenance
 
-Based on your audit findings and accepted proposals, produce the updated `patterns.md` content. This includes:
+Based on your audit findings and accepted proposals, produce the updated `governance/patterns/index.md` content. This includes:
 
 - **Updated instance lists** — new sites discovered in Phase 4b
 - **Resolved islands** — islands that your proposals will eliminate
@@ -182,7 +217,9 @@ Based on your audit findings and accepted proposals, produce the updated `patter
 - **Deprecated patterns** — removed entries
 - **Updated health assessments** — reflecting current codebase state
 
-Output the complete updated `patterns.md` as a separate artifact, clearly marked. The audit consumer will replace the existing `patterns.md` with this output after implementing the round's proposals.
+Output the complete updated `governance/patterns/index.md` as a separate artifact, clearly marked. The audit consumer will replace the existing pattern catalog with this output after implementing the round's proposals.
+
+If the round's findings affect the problem archive (`governance/problems/index.md`) or risk register (`governance/risk-register.md`), note the recommended updates — the audit consumer will apply them.
 
 ## Output Format
 
@@ -198,7 +235,7 @@ Write your complete audit to stdout. Structure it as:
 [coverage matrix, gaps, misalignments]
 
 ## Phase 2: Problems
-[numbered problem list with evidence]
+[numbered problem list with evidence — note which are in archive vs new]
 
 ## Phase 3: Generalizations
 [problem generalizations and research findings]
@@ -220,11 +257,14 @@ Write your complete audit to stdout. Structure it as:
 ## Phase 7: Integration
 [cross-proposal validation, conflicts, convergence assessment]
 
-## Phase 8: Updated patterns.md
+## Phase 8: Updated governance/patterns/index.md
 [complete updated pattern catalog — ready to replace existing file]
 
+## Governance Updates
+[recommended changes to problems/index.md and risk-register.md, if any]
+
 ## Summary
-- Problems found: N
+- Problems found: N (archived: X, new: Y)
 - Pattern violations found: N
 - Codebase violations found: N
 - Pattern proposals: N (new: X, update: Y, deprecate: Z)

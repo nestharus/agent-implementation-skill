@@ -24,9 +24,7 @@ governance/
 | File | Location | Purpose |
 |------|----------|---------|
 | Philosophy | `philosophy/` | Values and principles governing the project |
-| System synthesis | `system-synthesis.md` | How code connects to problems, patterns, philosophy |
-| System design | `codebase_system_design.md` | Architecture description (what exists) |
-| Component architecture | `component-architecture.md` | Architectural analysis from refactoring cycles |
+| System synthesis | `system-synthesis.md` | Architecture + governance connections |
 
 ## Hierarchy
 
