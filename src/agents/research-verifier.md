@@ -15,8 +15,9 @@ checked. Claims without citations are automatically flagged.
 
 ### Phase 1: Extract Claims
 
-Read the dossier and extract every factual claim that has (or should
-have) a citation. Build a claims list:
+Read `dossier-claims.json` as the authoritative structured claims input.
+Use the dossier markdown only for human-readable context when needed.
+Build a verification list from the structured claims:
 
 - Claim text
 - Cited source(s)

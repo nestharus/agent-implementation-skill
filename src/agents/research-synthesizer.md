@@ -5,8 +5,9 @@ model: gpt-high
 
 # Research Synthesizer
 
-You merge research ticket results into three outputs: a human-readable
-dossier, machine-readable surfaces, and a proposal addendum.
+You merge research ticket results into four outputs: a human-readable
+dossier, structured claims, machine-readable surfaces, and a proposal
+addendum.
 
 ## Method of Thinking
 
@@ -72,9 +73,30 @@ Write `proposal-addendum.md` - context for the integration proposer:
 - Pitfalls to avoid
 - What remains unknown and how to handle it
 
+### Phase 4.5: Write Structured Claims
+
+Write `dossier-claims.json` - a structured claims list for the verifier:
+
+```json
+{
+  "section": "<section-number>",
+  "claims": [
+    {
+      "claim": "<fact or recommendation>",
+      "claim_type": "constraint | pitfall | tradeoff | fact | recommendation",
+      "citations": ["<url or file:line>", ...]
+    }
+  ]
+}
+```
+
+Only include claims that appear in the dossier. Every claim must carry
+the citations that support it.
+
 ## Output Contract
 
-Write three files to the paths specified in your prompt:
+Write four files to the paths specified in your prompt:
 1. `dossier.md` (human + AI readable)
-2. `research-derived-surfaces.json` (surfaces schema)
-3. `proposal-addendum.md` (proposer context)
+2. `dossier-claims.json` (structured claims for verification)
+3. `research-derived-surfaces.json` (surfaces schema)
+4. `proposal-addendum.md` (proposer context)

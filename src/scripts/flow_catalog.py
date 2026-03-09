@@ -93,10 +93,51 @@ def _coordination_fix_package(
     ]
 
 
+def _research_ticket_package(
+    args: dict, origin_refs: list[str]
+) -> list[TaskSpec]:
+    """Single web research ticket."""
+    del origin_refs
+    return [
+        TaskSpec(
+            task_type="research_domain_ticket",
+            concern_scope=args.get("concern_scope", ""),
+            payload_path=args.get("payload_path", ""),
+            priority=args.get("priority", "normal"),
+            problem_id=args.get("problem_id", ""),
+        ),
+    ]
+
+
+def _research_code_ticket_package(
+    args: dict, origin_refs: list[str]
+) -> list[TaskSpec]:
+    """Code research ticket: scan_explore -> research_domain_ticket."""
+    del origin_refs
+    return [
+        TaskSpec(
+            task_type="scan_explore",
+            concern_scope=args.get("concern_scope", ""),
+            payload_path=args.get("scan_payload_path", ""),
+            priority=args.get("priority", "normal"),
+            problem_id=args.get("problem_id", ""),
+        ),
+        TaskSpec(
+            task_type="research_domain_ticket",
+            concern_scope=args.get("concern_scope", ""),
+            payload_path=args.get("payload_path", ""),
+            priority=args.get("priority", "normal"),
+            problem_id=args.get("problem_id", ""),
+        ),
+    ]
+
+
 _PACKAGE_REGISTRY: dict[str, callable] = {
     "proposal_alignment_package": _proposal_alignment_package,
     "implementation_alignment_package": _implementation_alignment_package,
     "coordination_fix_package": _coordination_fix_package,
+    "research_ticket_package": _research_ticket_package,
+    "research_code_ticket_package": _research_code_ticket_package,
 }
 
 KNOWN_PACKAGES: frozenset[str] = frozenset(_PACKAGE_REGISTRY.keys())

@@ -8,7 +8,8 @@ from lib.core.artifact_io import write_json
 from lib.core.hash_service import content_hash
 from lib.core.path_registry import PathRegistry
 from lib.research.orchestrator import (
-    is_research_complete,
+    compute_trigger_hash,
+    is_research_complete_for_trigger,
     write_research_status,
 )
 from lib.research.prompt_writer import write_research_plan_prompt
@@ -127,6 +128,7 @@ def route_blockers(
     proposal_state: dict,
     planspace: Path,
     parent: str,
+    codespace: Path | None = None,
 ) -> None:
     """Route proposal blockers to their downstream consumers."""
     del parent
@@ -159,7 +161,13 @@ def route_blockers(
         for question in proposal_state.get("blocking_research_questions", [])
     ]
     if blocking_research_questions:
-        if is_research_complete(section_number, planspace):
+        trigger_hash = compute_trigger_hash(blocking_research_questions)
+        cycle_id = f"research-{section_number}-{trigger_hash[:12]}"
+        if is_research_complete_for_trigger(
+            section_number,
+            planspace,
+            trigger_hash,
+        ):
             _emit_needs_parent_research_signals(
                 signal_dir,
                 section_number,
@@ -176,17 +184,19 @@ def route_blockers(
         else:
             research_section_dir = registry.research_section_dir(section_number)
             research_section_dir.mkdir(parents=True, exist_ok=True)
-            trigger_path = research_section_dir / "research-trigger.json"
+            trigger_path = registry.research_trigger(section_number)
             trigger = {
                 "section": section_number,
                 "trigger_source": "proposal-state:blocking_research_questions",
                 "questions": blocking_research_questions,
+                "trigger_hash": trigger_hash,
+                "cycle_id": cycle_id,
             }
             write_json(trigger_path, trigger)
             prompt_path = write_research_plan_prompt(
                 section_number,
                 planspace,
-                None,
+                codespace,
                 trigger_path,
             )
             if prompt_path is not None:
@@ -200,7 +210,13 @@ def route_blockers(
                     problem_id=f"research-{section_number}",
                     freshness_token=freshness,
                 )
-                write_research_status(section_number, planspace, "planned")
+                write_research_status(
+                    section_number,
+                    planspace,
+                    "planned",
+                    trigger_hash=trigger_hash,
+                    cycle_id=cycle_id,
+                )
                 log(
                     f"Section {section_number}: dispatched research_plan "
                     f"task {task_id} with prompt and freshness token"
@@ -221,6 +237,14 @@ def route_blockers(
                         "research prompt blocked by validation — "
                         "emitting NEEDS_PARENT signal"
                     ),
+                )
+                write_research_status(
+                    section_number,
+                    planspace,
+                    "failed",
+                    detail="research plan prompt blocked by validation",
+                    trigger_hash=trigger_hash,
+                    cycle_id=cycle_id,
                 )
 
     for i, seam in enumerate(proposal_state.get("shared_seam_candidates", [])):
@@ -282,6 +306,7 @@ def resolve_and_route(
     planspace: Path,
     parent: str,
     pass_mode: str,
+    codespace: Path | None = None,
 ) -> ReadinessResult:
     """Resolve readiness, publish discoveries, and route blockers."""
     artifacts = PathRegistry(planspace).artifacts
@@ -308,7 +333,13 @@ def resolve_and_route(
             f"fail:{section.number}:readiness gate blocked ({rationale})",
         )
 
-        route_blockers(section.number, proposal_state, planspace, parent)
+        route_blockers(
+            section.number,
+            proposal_state,
+            planspace,
+            parent,
+            codespace=codespace,
+        )
 
         proposal_pass_result = None
         if pass_mode == "proposal":

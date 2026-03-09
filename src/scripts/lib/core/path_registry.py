@@ -192,6 +192,9 @@ class PathRegistry:
     def research_plan(self, num: str) -> Path:
         return self.research_section_dir(num) / "research-plan.json"
 
+    def research_trigger(self, num: str) -> Path:
+        return self.research_section_dir(num) / "research-trigger.json"
+
     def research_status(self, num: str) -> Path:
         return self.research_section_dir(num) / "research-status.json"
 
@@ -212,6 +215,60 @@ class PathRegistry:
 
     def research_tickets_dir(self, num: str) -> Path:
         return self.research_section_dir(num) / "tickets"
+
+    def research_plan_prompt(self, num: str) -> Path:
+        return self._artifacts / f"research-plan-{num}-prompt.md"
+
+    def research_synthesis_prompt(self, num: str) -> Path:
+        return self._artifacts / f"research-synthesis-{num}-prompt.md"
+
+    def research_verify_prompt(self, num: str) -> Path:
+        return self._artifacts / f"research-verify-{num}-prompt.md"
+
+    def research_ticket_spec(
+        self,
+        num: str,
+        ticket_index: int,
+        phase: str = "",
+    ) -> Path:
+        suffix = f"-{phase}" if phase else ""
+        return (
+            self.research_tickets_dir(num)
+            / f"ticket-{ticket_index:02d}{suffix}-spec.json"
+        )
+
+    def research_ticket_prompt(
+        self,
+        num: str,
+        ticket_index: int,
+        phase: str = "",
+    ) -> Path:
+        suffix = f"-{phase}" if phase else ""
+        return (
+            self.research_tickets_dir(num)
+            / f"ticket-{ticket_index:02d}{suffix}-prompt.md"
+        )
+
+    def research_ticket_result(
+        self,
+        num: str,
+        ticket_index: int,
+        phase: str = "",
+    ) -> Path:
+        suffix = f"-{phase}" if phase else ""
+        return (
+            self.research_tickets_dir(num)
+            / f"ticket-{ticket_index:02d}{suffix}-result.json"
+        )
+
+    def research_scan_prompt(self, num: str, ticket_index: int) -> Path:
+        return self.research_tickets_dir(num) / f"ticket-{ticket_index:02d}-scan-prompt.md"
+
+    def proposal_state(self, num: str) -> Path:
+        return self.proposals_dir() / f"section-{num}-proposal-state.json"
+
+    def intent_surfaces_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"intent-surfaces-{num}.json"
 
     # --- Global file accessors ---
 

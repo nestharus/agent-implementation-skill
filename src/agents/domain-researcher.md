@@ -28,9 +28,14 @@ Based on `research_type`:
 
 - **web**: Use Firecrawl search and scrape to find documentation, API
   specs, best practices, and design patterns. Cite every source URL.
-- **code**: Read relevant source files in the codespace. Reference
-  specific file paths and line numbers.
-- **both**: Do web research first for context, then verify against code.
+- **code**: Work from the codemap, codemap corrections, and scan
+  evidence provided in your prompt and flow context. Reference the
+  cited file paths and line numbers from that prepared evidence rather
+  than doing ad hoc codebase exploration.
+- **both**: Use the staged web findings plus the codemap, codemap
+  corrections, and scan evidence provided in your prompt and flow
+  context. Verify against the prepared code evidence rather than
+  exploring the codebase from scratch.
 
 ### Phase 3: Produce Result
 
@@ -62,3 +67,5 @@ Write your ticket result to the output path specified in the ticket:
 - If sources conflict, collect both and mark as "conflicting"
 - Do NOT invent answers - "unanswerable" is a valid and correct response
 - Stay within the ticket scope - do not research adjacent topics
+- For code-oriented tickets, treat scan-prepared evidence as the
+  authoritative exploration surface

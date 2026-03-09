@@ -276,7 +276,13 @@ def run_section(
     ) is None:
         return None
 
-    readiness_result = resolve_and_route(section, planspace, parent, pass_mode)
+    readiness_result = resolve_and_route(
+        section,
+        planspace,
+        parent,
+        pass_mode,
+        codespace=codespace,
+    )
     if not readiness_result.ready:
         return readiness_result.proposal_pass_result
     if pass_mode == "proposal":

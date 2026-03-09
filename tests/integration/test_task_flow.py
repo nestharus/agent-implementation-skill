@@ -559,6 +559,38 @@ class TestFlowCatalog:
         assert steps[0].task_type == "strategic_implementation"
         assert steps[1].task_type == "alignment_check"
 
+    def test_research_ticket_package(self) -> None:
+        steps = resolve_chain_ref(
+            "research_ticket_package",
+            {
+                "concern_scope": "section-03",
+                "payload_path": "/tmp/research-ticket.md",
+                "problem_id": "research-03-T-01",
+            },
+            [],
+        )
+        assert len(steps) == 1
+        assert steps[0].task_type == "research_domain_ticket"
+        assert steps[0].payload_path == "/tmp/research-ticket.md"
+        assert steps[0].problem_id == "research-03-T-01"
+
+    def test_research_code_ticket_package(self) -> None:
+        steps = resolve_chain_ref(
+            "research_code_ticket_package",
+            {
+                "concern_scope": "section-03",
+                "scan_payload_path": "/tmp/research-scan.md",
+                "payload_path": "/tmp/research-ticket.md",
+                "problem_id": "research-03-T-02",
+            },
+            [],
+        )
+        assert len(steps) == 2
+        assert steps[0].task_type == "scan_explore"
+        assert steps[0].payload_path == "/tmp/research-scan.md"
+        assert steps[1].task_type == "research_domain_ticket"
+        assert steps[1].payload_path == "/tmp/research-ticket.md"
+
     def test_unknown_package_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown chain_ref"):
             resolve_chain_ref("nonexistent_package", {}, [])

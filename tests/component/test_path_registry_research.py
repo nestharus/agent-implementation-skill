@@ -62,6 +62,18 @@ def test_research_status(reg: PathRegistry, tmp_path: Path, num: str) -> None:
 
 
 @pytest.mark.parametrize("num", ["01", "12"])
+def test_research_trigger(reg: PathRegistry, tmp_path: Path, num: str) -> None:
+    assert reg.research_trigger(num) == (
+        tmp_path
+        / "artifacts"
+        / "research"
+        / "sections"
+        / f"section-{num}"
+        / "research-trigger.json"
+    )
+
+
+@pytest.mark.parametrize("num", ["01", "12"])
 def test_research_dossier(reg: PathRegistry, tmp_path: Path, num: str) -> None:
     assert reg.research_dossier(num) == (
         tmp_path
@@ -132,4 +144,54 @@ def test_research_tickets_dir(reg: PathRegistry, tmp_path: Path, num: str) -> No
         / "sections"
         / f"section-{num}"
         / "tickets"
+    )
+
+
+@pytest.mark.parametrize("num", ["01", "12"])
+def test_research_prompt_paths(reg: PathRegistry, tmp_path: Path, num: str) -> None:
+    assert reg.research_plan_prompt(num) == (
+        tmp_path / "artifacts" / f"research-plan-{num}-prompt.md"
+    )
+    assert reg.research_synthesis_prompt(num) == (
+        tmp_path / "artifacts" / f"research-synthesis-{num}-prompt.md"
+    )
+    assert reg.research_verify_prompt(num) == (
+        tmp_path / "artifacts" / f"research-verify-{num}-prompt.md"
+    )
+
+
+def test_research_ticket_artifact_paths(reg: PathRegistry, tmp_path: Path) -> None:
+    base = tmp_path / "artifacts" / "research" / "sections" / "section-03" / "tickets"
+    assert reg.research_ticket_spec("03", 1) == base / "ticket-01-spec.json"
+    assert reg.research_ticket_prompt("03", 1) == base / "ticket-01-prompt.md"
+    assert reg.research_ticket_result("03", 1) == base / "ticket-01-result.json"
+    assert reg.research_scan_prompt("03", 1) == base / "ticket-01-scan-prompt.md"
+    assert reg.research_ticket_spec("03", 1, "web") == (
+        base / "ticket-01-web-spec.json"
+    )
+    assert reg.research_ticket_prompt("03", 1, "web") == (
+        base / "ticket-01-web-prompt.md"
+    )
+    assert reg.research_ticket_result("03", 1, "web") == (
+        base / "ticket-01-web-result.json"
+    )
+
+
+@pytest.mark.parametrize("num", ["01", "12"])
+def test_proposal_state_and_intent_surfaces_paths(
+    reg: PathRegistry,
+    tmp_path: Path,
+    num: str,
+) -> None:
+    assert reg.proposal_state(num) == (
+        tmp_path
+        / "artifacts"
+        / "proposals"
+        / f"section-{num}-proposal-state.json"
+    )
+    assert reg.intent_surfaces_signal(num) == (
+        tmp_path
+        / "artifacts"
+        / "signals"
+        / f"intent-surfaces-{num}.json"
     )

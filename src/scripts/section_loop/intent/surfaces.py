@@ -73,12 +73,22 @@ def load_implementation_feedback_surfaces(
 def load_research_derived_surfaces(
     section_number: str, planspace: Path,
 ) -> dict | None:
-    """Load research-derived surfaces for a section."""
+    """Load research-derived surfaces with corruption preservation."""
     research_path = PathRegistry(planspace).research_derived_surfaces(section_number)
     if not research_path.exists():
         return None
     data = read_json(research_path)
-    return data if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        if data is not None:
+            rename_malformed(research_path)
+        return None
+    if (
+        "problem_surfaces" not in data
+        and "philosophy_surfaces" not in data
+    ):
+        rename_malformed(research_path)
+        return None
+    return data
 
 
 def merge_surface_payloads(

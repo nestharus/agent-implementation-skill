@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from lib.core.artifact_io import rename_malformed, write_json
+from lib.core.path_registry import PathRegistry
 from lib.flow.flow_context import (
     flow_context_relpath,
     gate_aggregate_relpath,
@@ -21,6 +23,15 @@ from lib.flow.flow_submitter import (
     new_instance_id,
     submit_chain,
     submit_fanout,
+)
+from lib.research.orchestrator import (
+    load_research_status,
+    validate_research_plan,
+    write_research_status,
+)
+from lib.research.plan_executor import (
+    execute_research_plan,
+    submit_research_verify,
 )
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
@@ -80,6 +91,7 @@ def reconcile_task_completion(
     status: str,
     output_path: str | None,
     error: str | None = None,
+    codespace: Path | None = None,
 ) -> None:
     """Called after a task completes or fails."""
     conn = sqlite3.connect(str(db_path), timeout=5.0)
@@ -117,6 +129,16 @@ def reconcile_task_completion(
         write_json(planspace / result_manifest_path, manifest)
 
     origin_refs = read_origin_refs(planspace, task_id)
+    _handle_research_completion(
+        db_path,
+        planspace,
+        task,
+        status,
+        output_path,
+        error,
+        origin_refs,
+        codespace,
+    )
 
     if status == "failed":
         if chain_id:
@@ -238,6 +260,103 @@ def reconcile_task_completion(
                             flow_id,
                             origin_refs,
                         )
+
+
+def _research_section_number(task: dict) -> str | None:
+    """Extract a section number from a section-scoped research task."""
+    concern_scope = str(task.get("concern_scope") or "")
+    match = re.match(r"^section-(\d+)$", concern_scope)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _handle_research_completion(
+    db_path: Path,
+    planspace: Path,
+    task: dict,
+    status: str,
+    output_path: str | None,
+    error: str | None,
+    origin_refs: list[str],
+    codespace: Path | None,
+) -> None:
+    """Apply script-owned research follow-on logic on task completion."""
+    task_type = str(task.get("task_type") or "")
+    if task_type not in {
+        "research_plan",
+        "research_synthesis",
+        "research_verify",
+    }:
+        return
+
+    section_number = _research_section_number(task)
+    if section_number is None:
+        return
+
+    status_data = load_research_status(section_number, planspace) or {}
+    trigger_hash = str(status_data.get("trigger_hash", ""))
+    cycle_id = str(status_data.get("cycle_id", ""))
+
+    if status == "failed":
+        write_research_status(
+            section_number,
+            planspace,
+            "failed",
+            detail=error or f"{task_type} failed",
+            trigger_hash=trigger_hash,
+            cycle_id=cycle_id,
+        )
+        return
+
+    if status != "complete":
+        return
+
+    if task_type == "research_plan":
+        plan_output = Path(output_path) if output_path else PathRegistry(planspace).research_plan(section_number)
+        execute_research_plan(
+            section_number,
+            planspace,
+            codespace,
+            plan_output,
+        )
+        return
+
+    if task_type == "research_synthesis":
+        plan = validate_research_plan(PathRegistry(planspace).research_plan(section_number))
+        verify_claims = bool(
+            isinstance(plan, dict)
+            and isinstance(plan.get("flow"), dict)
+            and plan["flow"].get("verify_claims")
+        )
+        if verify_claims:
+            submit_research_verify(
+                section_number,
+                planspace,
+                db_path=db_path,
+                declared_by_task_id=int(task["id"]),
+                origin_refs=origin_refs + ([output_path] if output_path else []),
+            )
+        else:
+            write_research_status(
+                section_number,
+                planspace,
+                "synthesized",
+                detail="research synthesis complete",
+                trigger_hash=trigger_hash,
+                cycle_id=cycle_id,
+            )
+        return
+
+    if task_type == "research_verify":
+        write_research_status(
+            section_number,
+            planspace,
+            "verified",
+            detail="research verification complete",
+            trigger_hash=trigger_hash,
+            cycle_id=cycle_id,
+        )
 
 
 def read_origin_refs(planspace: Path, task_id: int) -> list[str]:

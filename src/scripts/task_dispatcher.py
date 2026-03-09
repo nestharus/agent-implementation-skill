@@ -313,7 +313,7 @@ def dispatch_task(
             _notify(db_path, submitted_by, task_id, task_type, "failed", err)
             reconcile_task_completion(
                 Path(db_path), planspace, int(task_id),
-                "failed", None, error=err,
+                "failed", None, error=err, codespace=codespace,
             )
             return
 
@@ -341,7 +341,7 @@ def dispatch_task(
         _notify(db_path, submitted_by, task_id, task_type, "failed", err)
         reconcile_task_completion(
             Path(db_path), planspace, int(task_id),
-            "failed", str(output_path), error=err,
+            "failed", str(output_path), error=err, codespace=codespace,
         )
         return
 
@@ -370,7 +370,7 @@ def dispatch_task(
         )
         reconcile_task_completion(
             Path(db_path), planspace, int(task_id),
-            "failed", None, error="Agent timeout (600s)",
+            "failed", None, error="Agent timeout (600s)", codespace=codespace,
         )
     elif agent_failed:
         err = f"Agent exited with return code {rc}"
@@ -379,7 +379,7 @@ def dispatch_task(
         _notify(db_path, submitted_by, task_id, task_type, "failed", err)
         reconcile_task_completion(
             Path(db_path), planspace, int(task_id),
-            "failed", str(output_path), error=err,
+            "failed", str(output_path), error=err, codespace=codespace,
         )
     else:
         _db_cmd(
@@ -393,7 +393,7 @@ def dispatch_task(
         log(f"Task {task_id} complete -> {output_path}")
         reconcile_task_completion(
             Path(db_path), planspace, int(task_id),
-            "complete", str(output_path),
+            "complete", str(output_path), codespace=codespace,
         )
 
 

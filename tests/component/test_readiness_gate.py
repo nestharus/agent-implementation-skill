@@ -116,7 +116,11 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.is_research_complete",
+        "src.scripts.lib.pipelines.readiness_gate.compute_trigger_hash",
+        lambda questions: "hash-03",
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate.is_research_complete_for_trigger",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
@@ -139,8 +143,8 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
     )
     monkeypatch.setattr(
         "src.scripts.lib.pipelines.readiness_gate.write_research_status",
-        lambda section_number, ps, status: status_writes.append(
-            (section_number, ps, status)
+        lambda section_number, ps, status, **kwargs: status_writes.append(
+            (section_number, ps, status, kwargs)
         ),
     )
     monkeypatch.setattr(
@@ -183,6 +187,8 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
         "section": "03",
         "trigger_source": "proposal-state:blocking_research_questions",
         "questions": ["Should the retry ledger be persisted centrally?"],
+        "trigger_hash": "hash-03",
+        "cycle_id": "research-03-hash-03",
     }
     assert prompt_calls == [
         {
@@ -203,7 +209,14 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
             "freshness_token": "fresh-03",
         }
     ]
-    assert status_writes == [("03", planspace, "planned")]
+    assert status_writes == [
+        (
+            "03",
+            planspace,
+            "planned",
+            {"trigger_hash": "hash-03", "cycle_id": "research-03-hash-03"},
+        )
+    ]
     assert not (
         planspace
         / "artifacts"
@@ -224,7 +237,11 @@ def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.is_research_complete",
+        "src.scripts.lib.pipelines.readiness_gate.compute_trigger_hash",
+        lambda questions: "hash-03",
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate.is_research_complete_for_trigger",
         lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
@@ -293,7 +310,11 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.is_research_complete",
+        "src.scripts.lib.pipelines.readiness_gate.compute_trigger_hash",
+        lambda questions: "hash-03",
+    )
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate.is_research_complete_for_trigger",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
@@ -312,6 +333,13 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
                 }
             )
             or 44
+        ),
+    )
+    status_writes: list[tuple[str, Path, str, dict]] = []
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate.write_research_status",
+        lambda section_number, ps, status, **kwargs: status_writes.append(
+            (section_number, ps, status, kwargs)
         ),
     )
 
@@ -345,6 +373,18 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
         "source": "proposal-state:blocking_research_questions",
     }
     assert submitted == []
+    assert status_writes == [
+        (
+            "03",
+            planspace,
+            "failed",
+            {
+                "detail": "research plan prompt blocked by validation",
+                "trigger_hash": "hash-03",
+                "cycle_id": "research-03-hash-03",
+            },
+        )
+    ]
 
 
 def test_route_blockers_ignores_empty_blocking_research_questions(
