@@ -36,6 +36,9 @@ def write_scope_delta(planspace: Path, scope_delta: dict) -> Path:
         "title": scope_delta.get("title", ""),
         "source_sections": scope_delta.get("source_sections", []),
         "candidates": scope_delta.get("candidates", []),
+        "requires_root_reframing": bool(
+            scope_delta.get("requires_root_reframing", False),
+        ),
         "adjudicated": bool(scope_delta.get("adjudicated", False)),
     }
     write_json(path, delta)

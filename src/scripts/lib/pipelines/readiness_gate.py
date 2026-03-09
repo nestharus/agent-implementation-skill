@@ -111,6 +111,30 @@ def route_blockers(
             f"signal for user_root_question[{i}]"
         )
 
+    for i, question in enumerate(
+        proposal_state.get("blocking_research_questions", [])
+    ):
+        research_signal = {
+            "state": "needs_parent",
+            "section": section_number,
+            "detail": str(question),
+            "needs": "Parent/coordination answer to this blocking research question",
+            "why_blocked": (
+                "Architectural direction depends on resolving this "
+                "blocking research question before implementation"
+            ),
+            "source": "proposal-state:blocking_research_questions",
+        }
+        sig_path = (
+            signal_dir
+            / f"section-{section_number}-blocking-research-{i}-signal.json"
+        )
+        write_json(sig_path, research_signal)
+        log(
+            f"Section {section_number}: emitted NEEDS_PARENT "
+            f"signal for blocking_research_question[{i}]"
+        )
+
     for i, seam in enumerate(proposal_state.get("shared_seam_candidates", [])):
         trigger = {
             "section": section_number,

@@ -101,3 +101,55 @@ def test_aggregate_scope_deltas_retries_then_fails_closed_on_bad_output(
         / "coordination"
         / "scope-delta-adjudication-failure.json"
     ).exists()
+
+
+def test_aggregate_scope_deltas_includes_root_reframing_in_prompt_payload(
+    planspace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scope_dir = planspace / "artifacts" / "scope-deltas"
+    scope_dir.mkdir(parents=True, exist_ok=True)
+    (scope_dir / "section-01-scope-delta.json").write_text(
+        json.dumps(
+            {
+                "delta_id": "delta-01",
+                "section": "01",
+                "origin": "proposal",
+                "summary": "Need auth middleware",
+                "requires_root_reframing": True,
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_dispatch(_model, prompt_path, _output_path, *_args, **_kwargs):
+        prompt = prompt_path.read_text(encoding="utf-8")
+        pending = json.loads(
+            (
+                planspace / "artifacts" / "coordination" / "scope-deltas-pending.json"
+            ).read_text(encoding="utf-8"),
+        )
+        assert "requires_root_reframing" in prompt
+        assert pending == [
+            {
+                "delta_id": "delta-01",
+                "section": "01",
+                "origin": "proposal",
+                "summary": "Need auth middleware",
+                "requires_root_reframing": True,
+            },
+        ]
+        return (
+            '{"decisions":[{"delta_id":"delta-01","section":"01",'
+            '"action":"reject","reason":"defer"}]}'
+        )
+
+    monkeypatch.setattr(
+        "lib.pipelines.scope_delta_aggregator.dispatch_agent",
+        fake_dispatch,
+    )
+
+    aggregate_scope_deltas(
+        planspace,
+        "parent",
+        {"coordination_plan": "model-a", "escalation_model": "model-b"},
+    )

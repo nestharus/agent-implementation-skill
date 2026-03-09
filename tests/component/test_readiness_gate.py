@@ -97,6 +97,49 @@ def test_route_blockers_writes_signals_and_queues_reconciliation(
     assert queued == [(["CacheProtocol"], ["client.cache"])]
 
 
+def test_route_blockers_writes_signals_for_blocking_research_questions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    planspace = tmp_path / "planspace"
+    (planspace / "artifacts" / "signals").mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(
+        "src.scripts.lib.pipelines.readiness_gate._update_blocker_rollup",
+        lambda *_args, **_kwargs: None,
+    )
+
+    route_blockers(
+        "03",
+        {
+            "blocking_research_questions": [
+                "Should the retry ledger be persisted centrally?"
+            ],
+        },
+        planspace,
+        "parent",
+    )
+
+    signal_path = (
+        planspace
+        / "artifacts"
+        / "signals"
+        / "section-03-blocking-research-0-signal.json"
+    )
+    assert signal_path.exists()
+    assert json.loads(signal_path.read_text(encoding="utf-8")) == {
+        "state": "needs_parent",
+        "section": "03",
+        "detail": "Should the retry ledger be persisted centrally?",
+        "needs": "Parent/coordination answer to this blocking research question",
+        "why_blocked": (
+            "Architectural direction depends on resolving this "
+            "blocking research question before implementation"
+        ),
+        "source": "proposal-state:blocking_research_questions",
+    }
+
+
 def test_resolve_and_route_returns_blocked_proposal_pass_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

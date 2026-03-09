@@ -26,11 +26,8 @@ from lib.tasks.task_ingestion import (
     ingest_task_requests as _ingest_task_requests,
     parse_signal_file as _parse_signal_file,
 )
-from lib.core.path_registry import PathRegistry
 
-from .agent_templates import validate_dynamic_content
 from .communication import log
-from .dispatch import dispatch_agent, read_model_policy
 
 # task_router and flow_schema live alongside section_loop (in src/scripts/)
 _SCRIPTS_DIR = Path(__file__).resolve().parent.parent
@@ -46,7 +43,6 @@ from task_flow import (  # noqa: E402
     submit_fanout,
 )
 from lib.flow.flow_submitter import new_flow_id  # noqa: E402
-from task_router import resolve_task  # noqa: E402
 
 def ingest_task_requests(signal_path: Path) -> list[dict]:
     """Read and parse a task-request signal file.
@@ -70,109 +66,6 @@ def ingest_task_requests(signal_path: Path) -> list[dict]:
         the queue with flow metadata rather than returning raw dicts.
     """
     return _ingest_task_requests(signal_path, logger=log)
-
-
-def dispatch_ingested_tasks(
-    planspace: Path,
-    tasks: list[dict],
-    section_number: str,
-    parent_queue: str,
-    codespace: Path | None = None,
-) -> list[str]:
-    """Dispatch ingested task requests through the standard pipeline.
-
-    For each task dict, resolves agent_file + model via task_router,
-    writes a task prompt file, and dispatches through dispatch_agent().
-    Returns list of output strings.
-    """
-    if not tasks:
-        return []
-
-    artifacts = PathRegistry(planspace).artifacts
-    artifacts.mkdir(parents=True, exist_ok=True)
-    model_policy = read_model_policy(planspace)
-    outputs: list[str] = []
-
-    for task in tasks:
-        task_type = task["task_type"]
-
-        try:
-            agent_file, model = resolve_task(task_type, model_policy)
-        except ValueError as exc:
-            log(f"  task_ingestion: WARNING — unknown task type "
-                f"{task_type!r}, skipping ({exc})")
-            continue
-
-        # Write a task prompt from the payload or task metadata
-        prompt_path = (
-            artifacts / f"task-{task_type}-{section_number}-prompt.md"
-        )
-        payload_path = task.get("payload_path")
-        if payload_path:
-            # Resolve relative paths against planspace (V5/R77)
-            resolved = Path(payload_path)
-            if not resolved.is_absolute():
-                resolved = planspace / resolved
-            if resolved.exists():
-                # Validate agent-provided payload prompt (V3/R77)
-                payload_content = resolved.read_text(encoding="utf-8")
-                violations = validate_dynamic_content(payload_content)
-                if violations:
-                    log(f"  task_ingestion: ERROR — payload prompt "
-                        f"{resolved} blocked — template violations: "
-                        f"{violations}")
-                    continue
-                prompt_path = resolved
-            else:
-                # Payload declared but missing — fail closed (V5/R77)
-                log(f"  task_ingestion: ERROR — payload declared but "
-                    f"not found: {resolved} — skipping task")
-                continue
-        else:
-            # R80/P1: payload-backed context is mandatory.
-            log(f"  task_ingestion: ERROR — task {task_type} has no "
-                f"payload_path — skipping (agents require concrete context)")
-            continue
-
-        output_path = (
-            artifacts / f"task-{task_type}-{section_number}-output.md"
-        )
-
-        result = dispatch_agent(
-            model, prompt_path, output_path,
-            planspace, parent_queue,
-            section_number=section_number,
-            codespace=codespace,
-            agent_file=agent_file,
-        )
-        outputs.append(result)
-
-    return outputs
-
-
-def ingest_and_dispatch(
-    planspace: Path,
-    signal_path: Path,
-    section_number: str,
-    parent_queue: str,
-    codespace: Path | None = None,
-) -> list[str]:
-    """Legacy wrapper: ingest task requests then dispatch them directly.
-
-    .. deprecated::
-        Use :func:`ingest_and_submit` instead.  This function dispatches
-        tasks immediately rather than submitting them to the queue with
-        flow metadata.
-
-    Reads task-request JSON from signal_path, dispatches each through
-    the standard pipeline. Returns list of output strings.
-    """
-    tasks = ingest_task_requests(signal_path)
-    if not tasks:
-        return []
-    return dispatch_ingested_tasks(
-        planspace, tasks, section_number, parent_queue, codespace,
-    )
 
 
 def ingest_and_submit(

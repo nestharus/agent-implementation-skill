@@ -48,7 +48,14 @@ def _write_adjudication_prompt(
     adjudication_prompt = coord_dir / "scope-delta-prompt.md"
     adjudication_output = coord_dir / "scope-delta-output.md"
     pending_deltas_path = coord_dir / "scope-deltas-pending.json"
-    write_json(pending_deltas_path, pending_deltas)
+    prompt_deltas = []
+    for delta in pending_deltas:
+        prompt_delta = dict(delta)
+        prompt_delta["requires_root_reframing"] = bool(
+            delta.get("requires_root_reframing", False),
+        )
+        prompt_deltas.append(prompt_delta)
+    write_json(pending_deltas_path, prompt_deltas)
 
     prompt_text = f"""# Task: Adjudicate Scope Deltas
 
@@ -68,6 +75,11 @@ designated scope. For each delta, decide:
 1. **accept**: Create new section(s) to handle the out-of-scope work
 2. **reject**: The work is not needed or can be deferred
 3. **absorb**: Expand an existing section's scope to include it
+
+Each delta also includes `requires_root_reframing`:
+- `true`: this concern changes the parent framing and should not be
+  treated as a routine local section split
+- `false`: this can be handled as an ordinary local scope adjustment
 
 Reply with a JSON block:
 

@@ -3,7 +3,6 @@
 Covers:
 - task_dispatcher.dispatch_task rejects tasks with no payload_path
 - task_dispatcher.dispatch_task accepts tasks with valid payload_path
-- task_ingestion.dispatch_ingested_tasks skips tasks without payload_path
 - flow_schema.validate_flow_declaration rejects TaskSpec without payload_path
 - flow_schema.validate_flow_declaration accepts TaskSpec with payload_path
 """
@@ -14,8 +13,6 @@ import json
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
-
-import pytest
 
 from _paths import DB_SH
 
@@ -158,44 +155,6 @@ class TestDispatcherPayloadRequired:
 
         assert row is not None
         assert row[0] == "complete", f"Expected 'complete', got '{row[0]}'"
-
-
-# ---------------------------------------------------------------------------
-# Test: ingestion rejects no payload
-# ---------------------------------------------------------------------------
-
-class TestIngestionPayloadRequired:
-    """R80/P1: dispatch_ingested_tasks skips tasks without payload_path."""
-
-    def test_ingestion_rejects_no_payload(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        """task_ingestion skips tasks without payload_path (check log)."""
-        from section_loop.task_ingestion import dispatch_ingested_tasks
-        import section_loop.dispatch as dispatch_mod
-
-        ps = tmp_path / "planspace"
-        ps.mkdir()
-        (ps / "artifacts").mkdir(parents=True)
-
-        # Task with no payload_path
-        tasks = [{"task_type": "alignment_check"}]
-
-        def fake_dispatch(*args, **kwargs):
-            return "should not be called"
-
-        with patch.object(dispatch_mod, "dispatch_agent", side_effect=fake_dispatch) as mock_dispatch:
-            outputs = dispatch_ingested_tasks(
-                ps, tasks, "01", "test-queue",
-            )
-
-            # dispatch_agent should NOT have been called
-            mock_dispatch.assert_not_called()
-
-        assert outputs == []
-
-        captured = capsys.readouterr()
-        assert "no payload_path" in captured.out or "payload_path" in captured.out
 
 
 # ---------------------------------------------------------------------------

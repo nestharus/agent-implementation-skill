@@ -82,6 +82,7 @@ def test_build_strategic_state_writes_snapshot_and_derives_fields(
     assert snapshot["risk_posture"] == {}
     assert snapshot["dominant_risks_by_section"] == {}
     assert snapshot["blocked_by_risk"] == []
+    assert snapshot["research_questions"] == []
     assert snapshot["key_decisions"] == ["d-global-001"]
     assert snapshot["coordination_rounds"] == 1
     assert snapshot["next_action"] == "resolve blocker for section 03"
@@ -121,7 +122,45 @@ def test_build_strategic_state_fail_closed_on_malformed_blocker(
     assert snapshot["risk_posture"] == {}
     assert snapshot["dominant_risks_by_section"] == {}
     assert snapshot["blocked_by_risk"] == []
+    assert snapshot["research_questions"] == []
     assert snapshot["in_progress"] is None
     assert snapshot["next_action"] == "resolve blocker for section 04"
     assert not blocker_path.exists()
     assert blocker_path.with_suffix(".malformed.json").exists()
+
+
+def test_build_strategic_state_includes_research_question_artifacts(
+    tmp_path: Path,
+) -> None:
+    planspace = tmp_path / "planspace"
+    decisions_dir = planspace / "artifacts" / "decisions"
+    open_problems_dir = planspace / "artifacts" / "open-problems"
+
+    write_json(
+        open_problems_dir / "section-02-research-questions.json",
+        {
+            "section": "02",
+            "research_questions": [
+                "How should retries behave when quota is exhausted?",
+                "Can the cache be warmed asynchronously?",
+            ],
+            "source": "proposal-state",
+        },
+    )
+
+    snapshot = build_strategic_state(
+        decisions_dir,
+        {"02": {"aligned": False, "problems": "Needs follow-up"}},
+        planspace,
+    )
+
+    assert snapshot["research_questions"] == [
+        {
+            "section": "02",
+            "research_questions": [
+                "How should retries behave when quota is exhausted?",
+                "Can the cache be warmed asynchronously?",
+            ],
+            "source": "proposal-state",
+        }
+    ]

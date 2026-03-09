@@ -147,20 +147,7 @@ def _resolve_allowed_tasks(_planspace: Path, _section: str | None) -> str:
     if TASK_ROUTES is not None:
         return json.dumps(sorted(TASK_ROUTES.keys()), indent=2)
 
-    return json.dumps([
-        "alignment_adjudicate", "alignment_check",
-        "consequence_triage", "coordination_fix",
-        "exception_handling", "impact_analysis",
-        "integration_proposal", "microstrategy_decision",
-        "recurrence_adjudication", "scan_adjudicate",
-        "scan_codemap_build", "scan_codemap_freshness",
-        "scan_codemap_verify", "scan_deep_analyze",
-        "scan_explore", "scan_tier_rank",
-        "section_setup", "state_adjudicate",
-        "strategic_implementation",
-        "substrate_prune", "substrate_seed", "substrate_shard",
-        "tool_registry_repair",
-    ], indent=2)
+    return json.dumps([], indent=2)
 
 
 def _resolve_section_output(planspace: Path, section: str | None) -> str:

@@ -181,8 +181,8 @@ agents --model <model> --file <planspace>/artifacts/step-N-prompt.md \
   > <planspace>/artifacts/step-N-output.md 2>&1
 
 # Agent file dispatch — agent instructions prepended to prompt
-agents --agent-file "$WORKFLOW_HOME/agents/exception-handler.md" \
-  --file <planspace>/artifacts/exception-prompt.md
+agents --agent-file "$WORKFLOW_HOME/agents/alignment-judge.md" \
+  --file <planspace>/artifacts/alignment-prompt.md
 
 # Parallel dispatch with db.sh coordination
 (agents --model gpt-high --file <prompt-A.md> && \

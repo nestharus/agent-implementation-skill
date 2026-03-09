@@ -225,3 +225,71 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
         },
     ]
     assert messages[-1] == "fail:coordination_exhausted:outstanding:1"
+
+
+def test_run_coordination_loop_enters_coordination_for_root_reframing_delta(
+    planspace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    section = _make_section(planspace, "01")
+    section.related_files = ["src/main.py"]
+    scope_dir = planspace / "artifacts" / "scope-deltas"
+    scope_dir.mkdir(parents=True, exist_ok=True)
+    (scope_dir / "section-01-scope-delta.json").write_text(
+        json.dumps(
+            {
+                "delta_id": "delta-01",
+                "title": "Shared API reframe",
+                "source": "proposal",
+                "source_sections": ["01"],
+                "requires_root_reframing": True,
+            },
+        ),
+        encoding="utf-8",
+    )
+    messages: list[str] = []
+    snapshots: list[int] = []
+    coordination_calls: list[bool] = []
+
+    monkeypatch.setattr(
+        coordination_loop,
+        "poll_control_messages",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "run_global_coordination",
+        lambda *_args, **_kwargs: coordination_calls.append(True) or True,
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "_check_and_clear_alignment_changed",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "build_strategic_state",
+        lambda _decisions_dir, section_results, _planspace: snapshots.append(
+            len(section_results),
+        ),
+    )
+    monkeypatch.setattr(
+        coordination_loop,
+        "mailbox_send",
+        lambda _planspace, _parent, message: messages.append(message),
+    )
+
+    status = run_coordination_loop(
+        [section],
+        {"01": SectionResult(section_number="01", aligned=True)},
+        {"01": section},
+        planspace,
+        planspace,
+        "parent",
+        {"escalation_model": "stronger-model"},
+    )
+
+    assert status == "complete"
+    assert coordination_calls == [True]
+    assert snapshots == [1]
+    assert messages == ["status:coordination:round-1", "complete"]

@@ -28,9 +28,13 @@ def build_strategic_state(
     in_progress: str | None = None
     blocked: dict[str, dict[str, str]] = {}
     open_problems: list[dict[str, str]] = []
+    research_questions: list[dict[str, Any]] = []
     risk_posture: dict[str, str] = {}
     dominant_risks_by_section: dict[str, list[str]] = {}
     blocked_by_risk: list[str] = []
+
+    if planspace is not None:
+        research_questions = _load_research_questions(planspace)
 
     for sec_num, result in sorted(section_results.items()):
         if isinstance(result, dict):
@@ -105,6 +109,7 @@ def build_strategic_state(
         "in_progress": in_progress,
         "blocked": blocked,
         "open_problems": open_problems,
+        "research_questions": research_questions,
         "key_decisions": key_decision_ids,
         "coordination_rounds": coordination_rounds,
         "risk_posture": risk_posture,
@@ -173,6 +178,37 @@ def _read_risk_summary(
         else []
     )
     return posture, dominant_risks, blocked_by_risk
+
+
+def _load_research_questions(planspace: Path) -> list[dict[str, Any]]:
+    open_problems_dir = PathRegistry(planspace).artifacts / "open-problems"
+    if not open_problems_dir.exists():
+        return []
+
+    aggregated: list[dict[str, Any]] = []
+    for artifact_path in sorted(
+        open_problems_dir.glob("section-*-research-questions.json")
+    ):
+        artifact = read_json(artifact_path)
+        if not isinstance(artifact, dict):
+            continue
+
+        section = str(artifact.get("section", "")).strip()
+        source = str(artifact.get("source", "")).strip()
+        raw_questions = artifact.get("research_questions", [])
+        if not isinstance(raw_questions, list):
+            continue
+
+        questions = [str(question) for question in raw_questions]
+        if not questions:
+            continue
+
+        aggregated.append({
+            "section": section,
+            "research_questions": questions,
+            "source": source,
+        })
+    return aggregated
 
 
 def _posture_rank(posture: PostureProfile) -> int:

@@ -107,6 +107,54 @@ def test_collect_outstanding_problems_tracks_notes_and_ack_states(planspace) -> 
     assert "Conflicts with current API contract." in rejected[0]["description"]
 
 
+def test_collect_outstanding_problems_surfaces_root_reframing_scope_deltas(
+    planspace,
+) -> None:
+    section = Section(
+        number="05",
+        path=planspace / "artifacts" / "sections" / "section-05.md",
+        related_files=["src/service.py"],
+    )
+    section.path.write_text("# Section 05\n", encoding="utf-8")
+    scope_deltas_dir = planspace / "artifacts" / "scope-deltas"
+    scope_deltas_dir.mkdir(parents=True, exist_ok=True)
+    (scope_deltas_dir / "section-05-scope-delta.json").write_text(
+        json.dumps(
+            {
+                "delta_id": "delta-root-05",
+                "title": "Shared API reframe",
+                "source": "proposal",
+                "source_sections": ["05"],
+                "requires_root_reframing": True,
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    problems = _collect_outstanding_problems(
+        {"05": SectionResult(section_number="05", aligned=True)},
+        {"05": section},
+        planspace,
+    )
+
+    assert problems == [
+        {
+            "section": "05",
+            "type": "root_reframing",
+            "description": (
+                "Pending scope delta delta-root-05 from proposal requires root "
+                "reframing: Shared API reframe. Linked sections: 05."
+            ),
+            "files": ["src/service.py"],
+            "delta_id": "delta-root-05",
+            "title": "Shared API reframe",
+            "source": "proposal",
+            "source_sections": ["05"],
+            "requires_root_reframing": True,
+        },
+    ]
+
+
 def test_detect_recurrence_patterns_writes_report_for_active_problems(
     planspace,
 ) -> None:

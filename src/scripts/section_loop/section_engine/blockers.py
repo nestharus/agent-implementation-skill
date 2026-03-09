@@ -3,7 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from lib.core.artifact_io import read_json, rename_malformed
+from lib.core.hash_service import content_hash
 from lib.core.path_registry import PathRegistry
+
+
+_SHARED_SEAM_PREFIX = (
+    "shared seam candidate requires cross-section substrate work:"
+)
 
 
 def _append_open_problem(
@@ -31,6 +37,30 @@ def _append_open_problem(
         # Add new section at the end
         content = content.rstrip() + f"\n\n## Open Problems\n{entry}"
     sec_file.write_text(content, encoding="utf-8")
+
+
+def _dedupe_rollup_blockers(blockers: list[dict]) -> list[dict]:
+    """Collapse duplicated shared-seam blockers across signal/readiness inputs."""
+    deduped: list[dict] = []
+    seen_keys: set[str] = set()
+
+    for blocker in blockers:
+        source = str(blocker.get("source", ""))
+        if source == "proposal-state:shared_seam_candidates":
+            detail = str(blocker.get("detail", "")).strip()
+            if detail.lower().startswith(_SHARED_SEAM_PREFIX):
+                detail = detail[len(_SHARED_SEAM_PREFIX):].strip()
+            normalized = " ".join(detail.lower().split())
+            seam_key = content_hash(
+                f"{blocker.get('section', 'unknown')}::{normalized}"
+            )[:12]
+            dedupe_key = f"shared-seam::{seam_key}"
+            if dedupe_key in seen_keys:
+                continue
+            seen_keys.add(dedupe_key)
+        deduped.append(blocker)
+
+    return deduped
 
 
 def _update_blocker_rollup(planspace: Path) -> None:
@@ -69,6 +99,7 @@ def _update_blocker_rollup(planspace: Path) -> None:
                         "signal_file": sig_path.name,
                         "state": state,
                         "category": category,
+                        "source": data.get("source", ""),
                         "section": data.get("section", "unknown"),
                         "detail": data.get("detail", ""),
                         "needs": data.get("needs", ""),
@@ -112,7 +143,7 @@ def _update_blocker_rollup(planspace: Path) -> None:
                 elif btype == "unresolved_anchors":
                     category = "dependency"
                 elif btype == "shared_seam_candidates":
-                    category = "scope_expansion"
+                    category = "needs_parent"
                 else:
                     category = "missing_info"
                 # Extract section number from filename
@@ -123,6 +154,7 @@ def _update_blocker_rollup(planspace: Path) -> None:
                     "signal_file": rdy_path.name,
                     "state": f"proposal-state:{btype}",
                     "category": category,
+                    "source": f"proposal-state:{btype}",
                     "section": sec_match,
                     "detail": desc,
                     "needs": "",
@@ -131,6 +163,8 @@ def _update_blocker_rollup(planspace: Path) -> None:
                         f"unresolved items"
                     ),
                 })
+
+    blockers = _dedupe_rollup_blockers(blockers)
 
     if not blockers:
         return
@@ -156,7 +190,7 @@ def _update_blocker_rollup(planspace: Path) -> None:
         "decision_required": "Decisions Required (NEED_DECISION)",
         "dependency": "Dependencies (DEPENDENCY)",
         "scope_expansion": "Scope Expansion (OUT_OF_SCOPE)",
-        "needs_parent": "Parent Decision Required (NEEDS_PARENT)",
+        "needs_parent": "Parent Coordination / Decision Required (NEEDS_PARENT)",
         "malformed_signal": "Malformed Signal Files (parse error)",
     }
 

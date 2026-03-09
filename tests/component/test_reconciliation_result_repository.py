@@ -44,6 +44,7 @@ def test_write_scope_delta_preserves_adjudicated_flag(tmp_path: Path) -> None:
             "title": "Shared cache subsystem",
             "source_sections": ["01", "02"],
             "candidates": [{"section": "01", "candidate": "Shared cache subsystem"}],
+            "requires_root_reframing": True,
             "adjudicated": True,
         },
     )
@@ -51,8 +52,23 @@ def test_write_scope_delta_preserves_adjudicated_flag(tmp_path: Path) -> None:
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["source"] == "reconciliation"
     assert payload["source_sections"] == ["01", "02"]
+    assert payload["requires_root_reframing"] is True
     assert payload["adjudicated"] is True
     assert payload["delta_id"].startswith("delta-recon-01-02-")
+
+
+def test_write_scope_delta_defaults_root_reframing_to_false(tmp_path: Path) -> None:
+    path = write_scope_delta(
+        tmp_path,
+        {
+            "title": "Shared cache subsystem",
+            "source_sections": ["01", "02"],
+            "candidates": [],
+        },
+    )
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["requires_root_reframing"] is False
 
 
 def test_write_substrate_trigger_writes_signal_payload(tmp_path: Path) -> None:

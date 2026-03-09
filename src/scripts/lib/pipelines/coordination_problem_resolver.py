@@ -155,6 +155,71 @@ def _collect_outstanding_problems(
             ),
             "files": files,
         })
+
+    scope_deltas_dir = paths.scope_deltas_dir()
+    if not scope_deltas_dir.exists():
+        return problems
+
+    for delta_path in sorted(scope_deltas_dir.iterdir()):
+        if delta_path.suffix != ".json" or delta_path.name.endswith(".malformed.json"):
+            continue
+
+        delta = read_json(delta_path)
+        if delta is None:
+            log(
+                f"  coordinator: WARNING — malformed scope-delta "
+                f"{delta_path.name}, preserving as .malformed.json",
+            )
+            continue
+        if not isinstance(delta, dict):
+            log(
+                f"  coordinator: WARNING — invalid scope-delta "
+                f"{delta_path.name} (expected object), preserving as .malformed.json",
+            )
+            rename_malformed(delta_path)
+            continue
+        if delta.get("adjudicated") or not delta.get("requires_root_reframing", False):
+            continue
+
+        linked_sections = [
+            str(section)
+            for section in delta.get("source_sections", [])
+            if str(section).strip()
+        ]
+        if not linked_sections:
+            section = str(delta.get("section", "")).strip()
+            if section:
+                linked_sections.append(section)
+        linked_sections = sorted(set(linked_sections))
+        if not linked_sections:
+            log(
+                f"  coordinator: WARNING — root-reframing scope-delta "
+                f"{delta_path.name} has no linked sections; leaving it pending",
+            )
+            continue
+
+        delta_id = str(delta.get("delta_id", delta_path.stem))
+        title = str(delta.get("title") or delta.get("summary") or delta_id)
+        source = str(delta.get("source") or delta.get("origin") or "unknown")
+        source_sections = ", ".join(linked_sections)
+        for sec_num in linked_sections:
+            section = sections_by_num.get(sec_num)
+            files = list(section.related_files) if section else []
+            problems.append({
+                "section": sec_num,
+                "type": "root_reframing",
+                "description": (
+                    f"Pending scope delta {delta_id} from {source} "
+                    f"requires root reframing: {title}. "
+                    f"Linked sections: {source_sections}."
+                ),
+                "files": files,
+                "delta_id": delta_id,
+                "title": title,
+                "source": source,
+                "source_sections": linked_sections,
+                "requires_root_reframing": True,
+            })
     return problems
 
 
