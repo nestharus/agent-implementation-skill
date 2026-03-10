@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 from lib.core.artifact_io import read_json, read_json_or_default, write_json
+from lib.core.model_policy import resolve
 from lib.core.path_registry import PathRegistry
 from prompt_safety import write_validated_prompt
 from section_loop.alignment import (
@@ -95,7 +96,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
     _log_artifact(planspace, f"prompt:triage-{section.number}")
 
     dispatch_agent(
-        policy.get("triage", "glm"),
+        resolve(policy, "triage"),
         triage_prompt_path,
         triage_output_path,
         planspace,
@@ -150,8 +151,8 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         parent,
         section.number,
         output_prefix="triage-align",
-        model=policy["alignment"],
-        adjudicator_model=policy.get("adjudicator", "glm"),
+        model=resolve(policy, "alignment"),
+        adjudicator_model=resolve(policy, "adjudicator"),
     )
     if verify_result == "ALIGNMENT_CHANGED_PENDING":
         return ("abort", None)

@@ -9,6 +9,7 @@ from typing import Any
 
 from lib.core.artifact_io import read_json, write_json
 from lib.core.hash_service import content_hash
+from lib.core.model_policy import resolve
 from lib.core.path_registry import PathRegistry
 from prompt_safety import write_validated_prompt
 from section_loop.communication import log, mailbox_send
@@ -231,7 +232,7 @@ def _run_bridge_for_group(
         f"{group_index} ({group_sections}) — reason: {bridge_reason}",
     )
 
-    bridge_model = policy.get("coordination_bridge", "gpt-xhigh")
+    bridge_model = resolve(policy, "coordination_bridge")
     dispatch_agent(
         bridge_model,
         bridge_prompt,
@@ -365,7 +366,7 @@ def execute_coordination_plan(
             else:
                 _write_overlap_stats(coord_dir, group_index, group)
 
-        fix_model_default = policy["coordination_fix"]
+        fix_model_default = resolve(policy, "coordination_fix")
         if len(batch) == 1:
             group_index = batch[0]
             _, modified = _dispatch_fix_group(

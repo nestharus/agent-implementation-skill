@@ -98,8 +98,8 @@ def run_tier_ranking(
         return None
     tier_prompt.write_text(prompt, encoding="utf-8")
 
-    tier_model = model_policy.get("tier_ranking", "glm")
-    escalation_model = model_policy.get("exploration", "claude-opus")
+    tier_model = model_policy["tier_ranking"]
+    escalation_model = model_policy["exploration"]
     result = dispatch_agent(
         model=tier_model,
         project=codespace,

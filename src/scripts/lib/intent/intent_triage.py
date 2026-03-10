@@ -6,6 +6,7 @@ from pathlib import Path
 
 from prompt_safety import write_validated_prompt
 
+from lib.core.model_policy import resolve
 from lib.core.path_registry import PathRegistry
 from lib.risk.history import read_history
 from lib.risk.types import PostureProfile
@@ -144,7 +145,7 @@ Write a JSON signal to: `{triage_signal_path}`
     _log_artifact(planspace, f"prompt:intent-triage-{section_number}")
 
     result = dispatch_agent(
-        policy.get("intent_triage", "glm"),
+        resolve(policy, "intent_triage"),
         triage_prompt_path,
         triage_output_path,
         planspace,

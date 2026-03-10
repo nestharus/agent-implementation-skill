@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any
 
 from lib.core.artifact_io import read_json
+from lib.core.model_policy import resolve
 from lib.core.path_registry import PathRegistry
 
 from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
@@ -248,7 +249,7 @@ def _dispatch_fix_group(
 
     # Check for model escalation (triggered by coordination churn)
     if not default_fix_model:
-        default_fix_model = policy["coordination_fix"]
+        default_fix_model = resolve(policy, "coordination_fix")
     fix_model = default_fix_model
     coord_escalated_from = None
     escalation_file = artifacts / "model-escalation.txt"

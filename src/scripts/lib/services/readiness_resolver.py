@@ -78,16 +78,42 @@ def _validate_governance_identity(
         packet_problems = packet.get("candidate_problems", [])
         packet_patterns = packet.get("candidate_patterns", [])
         governing_profile = packet.get("governing_profile", "")
+        packet_applicability = packet.get("applicability_state", "")
+        packet_questions = packet.get("governance_questions", [])
         if not isinstance(packet_problems, list):
             packet_problems = []
         if not isinstance(packet_patterns, list):
             packet_patterns = []
         if not isinstance(governing_profile, str):
             governing_profile = ""
+        if not isinstance(packet_questions, list):
+            packet_questions = []
 
         has_governance_candidates = bool(
             packet_problems or packet_patterns or governing_profile
         )
+
+        # CP-3 (R107): packet ambiguity must be carried in proposal-state
+        # or explicitly resolved — it cannot silently vanish before descent.
+        if packet_applicability == "ambiguous_applicability" and packet_questions:
+            state_questions = state.get("governance_questions", [])
+            if not isinstance(state_questions, list):
+                state_questions = []
+            if not state_questions:
+                governance_blockers.append({
+                    "state": "governance_ambiguity_unresolved",
+                    "detail": (
+                        f"governance packet has {len(packet_questions)} "
+                        "ambiguity question(s) but proposal-state does not "
+                        "carry or resolve them"
+                    ),
+                    "needs": "governance question resolution or narrowed selection",
+                    "why_blocked": (
+                        "PAT-0011: packet ambiguity must be resolved or "
+                        "carried forward before descent"
+                    ),
+                    "source": "governance_identity",
+                })
 
         # PAT-0013 step 6: empty identity is illegal when packet has candidates
         if has_governance_candidates and not has_declared_ids:

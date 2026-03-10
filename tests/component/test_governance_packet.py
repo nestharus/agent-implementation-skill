@@ -107,17 +107,21 @@ def test_build_section_governance_packet_filters_patterns_by_regions(
     )
     packet = json.loads(packet_path.read_text(encoding="utf-8"))
 
-    # Universal pattern (no regions) should always be included
+    # PAT-0001 (no regions) should be included but marked as ambiguous
+    # per PAT-0011: missing applicability metadata = ambiguity, not universal
     pattern_ids = [p["pattern_id"] for p in packet["candidate_patterns"]]
     assert "PAT-0001" in pattern_ids
 
+    basis = packet.get("applicability_basis", {}).get("patterns", "")
+    # Basis must reflect that PAT-0001 has no_regions (ambiguous)
+    assert "no_regions" in basis
+    # Packet must flag ambiguity
+    assert packet["applicability_state"] == "ambiguous_applicability"
+    assert len(packet["governance_questions"]) > 0
+
     # PAT-0007 has regions=["research", "retriggerable workflows"] —
-    # if the summary doesn't overlap, it should be filtered out or
-    # marked as broad fallback (ambiguous)
-    if "PAT-0007" in pattern_ids:
-        # If it IS included, the basis must indicate broad fallback / ambiguity
-        basis = packet.get("applicability_basis", {}).get("patterns", "")
-        assert "broad_fallback" in basis or "ambiguous" in basis
+    # summary is about "governance", so it should be filtered out
+    assert "PAT-0007" not in pattern_ids
 
 
 def test_build_section_governance_packet_handles_missing_indexes(

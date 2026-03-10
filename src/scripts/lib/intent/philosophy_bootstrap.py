@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from lib.core.artifact_io import read_json, rename_malformed, write_json
 from lib.core.hash_service import content_hash, file_hash
+from lib.core.model_policy import resolve
 from lib.core.path_registry import PathRegistry
 from prompt_safety import write_validated_prompt
 from section_loop.communication import _log_artifact, log
@@ -661,7 +662,7 @@ Write JSON to: `{guidance_path}`
 
     guidance_path.unlink(missing_ok=True)
     result = dispatch_agent(
-        policy.get("intent_philosophy_bootstrap_prompter", "glm"),
+        resolve(policy, "intent_philosophy_bootstrap_prompter"),
         prompt_path,
         output_path,
         planspace,
@@ -1255,9 +1256,9 @@ If NO files contain cross-cutting reasoning philosophy, write:
         _log_artifact(planspace, "prompt:philosophy-select")
 
         selector_models = [
-            policy.get("intent_philosophy_selector", "gpt-high"),
-            policy.get("intent_philosophy_selector", "gpt-high"),
-            policy.get("intent_philosophy_selector_escalation", "claude-opus"),
+            resolve(policy, "intent_philosophy_selector"),
+            resolve(policy, "intent_philosophy_selector"),
+            resolve(policy, "intent_philosophy_selector_escalation"),
         ]
         selector_run = _dispatch_classified_signal_stage(
             stage_name="selector",
@@ -1512,7 +1513,7 @@ Write a JSON signal to: `{verify_signal}`
             models=[
                 verifier_model,
                 verifier_model,
-                policy.get("intent_philosophy_selector_escalation", "claude-opus"),
+                resolve(policy, "intent_philosophy_selector_escalation"),
             ],
             classifier=_classify_verifier_result,
             planspace=planspace,
@@ -1736,7 +1737,7 @@ genuinely ambiguous, do NOT invent filler. Instead:
         )
     _log_artifact(planspace, "prompt:philosophy-distill")
 
-    distiller_model = policy.get("intent_philosophy", "claude-opus")
+    distiller_model = resolve(policy, "intent_philosophy")
     distill_classification: dict[str, Any] = {"state": "missing_signal", "data": None}
     for attempt in (1, 2):
         result = dispatch_agent(

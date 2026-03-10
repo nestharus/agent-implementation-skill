@@ -263,8 +263,8 @@ def _apply_feedback(
             continue
         updater_prompt.write_text(prompt)
 
-        updater_model = model_policy.get("feedback_updater", "glm")
-        escalation_model = model_policy.get("exploration", "claude-opus")
+        updater_model = model_policy["feedback_updater"]
+        escalation_model = model_policy["exploration"]
         result = dispatch_agent(
             model=updater_model,
             project=codespace,

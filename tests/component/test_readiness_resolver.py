@@ -170,3 +170,52 @@ def test_correct_identity_with_packet_passes(tmp_path: Path) -> None:
 
     assert result["ready"] is True
     assert result["blockers"] == []
+
+
+def test_packet_ambiguity_without_proposal_questions_blocks(tmp_path: Path) -> None:
+    """PAT-0011/R107: packet ambiguity must be carried in proposal-state."""
+    planspace = tmp_path / "planspace"
+    _make_proposal_state(
+        planspace, "14",
+        problem_ids=["PRB-0001"],
+        pattern_ids=["PAT-0001"],
+        profile_id="PHI-global",
+        governance_questions=[],  # empty — ambiguity not carried
+    )
+    _make_packet(
+        planspace, "14",
+        applicability_state="ambiguous_applicability",
+        governance_questions=["Which patterns apply?"],
+    )
+
+    result = resolve_readiness(planspace, "14")
+
+    assert result["ready"] is False
+    blocker_states = [b["state"] for b in result["blockers"]]
+    assert "governance_ambiguity_unresolved" in blocker_states
+
+
+def test_packet_ambiguity_with_proposal_questions_passes(tmp_path: Path) -> None:
+    """PAT-0011/R107: carried ambiguity does not block (questions route upward)."""
+    planspace = tmp_path / "planspace"
+    _make_proposal_state(
+        planspace, "15",
+        problem_ids=["PRB-0001"],
+        pattern_ids=["PAT-0001"],
+        profile_id="PHI-global",
+        governance_questions=["Which patterns apply?"],  # carried forward
+    )
+    _make_packet(
+        planspace, "15",
+        applicability_state="ambiguous_applicability",
+        governance_questions=["Which patterns apply?"],
+    )
+
+    result = resolve_readiness(planspace, "15")
+
+    # Governance questions in proposal-state DO block via the existing
+    # _validate_governance_identity check, but that's the correct behavior —
+    # the ambiguity is surfaced structurally, not silently dropped.
+    blocker_states = [b["state"] for b in result["blockers"]]
+    assert "governance_ambiguity_unresolved" not in blocker_states
+    assert "governance_question" in blocker_states

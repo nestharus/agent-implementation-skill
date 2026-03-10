@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lib.core.artifact_io import read_json, rename_malformed, write_json
+from lib.core.model_policy import resolve
 from lib.repositories.decision_repository import Decision, load_decisions, record_decision
 from lib.core.path_registry import PathRegistry
 from lib.services.scope_delta_parser import (
@@ -112,7 +113,7 @@ def _dispatch_adjudication(
     _log_artifact(planspace, "prompt:scope-delta-adjudication")
 
     adjudication_result = dispatch_agent(
-        policy["coordination_plan"],
+        resolve(policy, "coordination_plan"),
         adjudication_prompt,
         adjudication_output,
         planspace,
@@ -136,7 +137,7 @@ def _dispatch_adjudication(
     )
     retry_output = adjudication_output.with_name("scope-delta-output-retry.md")
     retry_result = dispatch_agent(
-        policy["escalation_model"],
+        resolve(policy, "escalation_model"),
         retry_prompt,
         retry_output,
         planspace,

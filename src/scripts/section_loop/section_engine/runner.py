@@ -11,6 +11,7 @@ from lib.pipelines.impact_triage import run_impact_triage
 from lib.intent.intent_bootstrap import run_intent_bootstrap
 from lib.pipelines.problem_frame_gate import validate_problem_frame
 from lib.repositories.note_repository import write_consequence_note
+from lib.core.model_policy import resolve
 from lib.core.path_registry import PathRegistry
 from lib.pipelines.microstrategy_orchestrator import run_microstrategy
 from lib.pipelines.proposal_loop import run_proposal_loop
@@ -427,8 +428,8 @@ def _run_section_implementation_steps(
         post_section_completion(
             section, actually_changed, all_sections,
             planspace, codespace, parent,
-            impact_model=policy.get("impact_analysis", "glm"),
-            normalizer_model=policy.get("impact_normalizer", "glm"),
+            impact_model=resolve(policy, "impact_analysis"),
+            normalizer_model=resolve(policy, "impact_normalizer"),
         )
 
     return actually_changed

@@ -121,7 +121,7 @@ def analyze_file(
     prompt_file.write_text(prompt, encoding="utf-8")
 
     result = dispatch_agent(
-        model=model_policy.get("deep_analysis", "glm"),
+        model=model_policy["deep_analysis"],
         project=codespace,
         prompt_file=prompt_file,
         agent_file="scan-file-analyzer.md",

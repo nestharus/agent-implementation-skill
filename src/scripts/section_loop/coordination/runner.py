@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any
 
 from lib.core.artifact_io import write_json
+from lib.core.model_policy import resolve
 from lib.pipelines.coordination_executor import (
     CoordinationExecutionExit,
     execute_coordination_plan,
@@ -96,9 +97,9 @@ def run_global_coordination(
     if recurrence:
         escalation_file = coord_dir / "model-escalation.txt"
         escalation_file.write_text(
-            policy["escalation_model"], encoding="utf-8")
+            resolve(policy, "escalation_model"), encoding="utf-8")
         log(f"  coordinator: recurrence escalation — setting model to "
-            f"{policy['escalation_model']} for "
+            f"{resolve(policy, 'escalation_model')} for "
             f"{recurrence['recurring_problem_count']} recurring problems "
             f"across sections {recurrence['recurring_sections']}")
 
@@ -126,7 +127,7 @@ def run_global_coordination(
     plan_output = coord_dir / "coordination-plan-output.md"
     log("  coordinator: dispatching coordination-planner agent")
     plan_result = dispatch_agent(
-        policy["coordination_plan"], plan_prompt, plan_output,
+        resolve(policy, "coordination_plan"), plan_prompt, plan_output,
         planspace, parent, agent_file="coordination-planner.md",
     )
     if plan_result == "ALIGNMENT_CHANGED_PENDING":
@@ -141,7 +142,7 @@ def run_global_coordination(
             "escalation model")
         plan_output_retry = coord_dir / "coordination-plan-output-retry.md"
         retry_result = dispatch_agent(
-            policy["escalation_model"], plan_prompt, plan_output_retry,
+            resolve(policy, "escalation_model"), plan_prompt, plan_output_retry,
             planspace, parent, agent_file="coordination-planner.md",
         )
         if retry_result == "ALIGNMENT_CHANGED_PENDING":
@@ -265,8 +266,8 @@ def run_global_coordination(
         align_result = _run_alignment_check_with_retries(
             section, planspace, codespace, parent, sec_num,
             output_prefix="coord-align",
-            model=policy["alignment"],
-            adjudicator_model=policy.get("adjudicator", "glm"),
+            model=resolve(policy, "alignment"),
+            adjudicator_model=resolve(policy, "adjudicator"),
         )
         if align_result == "ALIGNMENT_CHANGED_PENDING":
             return False  # Let outer loop restart Phase 1
@@ -303,7 +304,7 @@ def run_global_coordination(
         align_problems = _extract_problems(
             align_result, output_path=coord_align_output,
             planspace=planspace, parent=parent, codespace=codespace,
-            adjudicator_model=policy.get("adjudicator", "glm"),
+            adjudicator_model=resolve(policy, "adjudicator"),
         )
         coord_signal_dir = coord_dir / "signals"
         coord_signal_dir.mkdir(parents=True, exist_ok=True)
@@ -345,7 +346,7 @@ def run_global_coordination(
                         f"## Resolution\n\n"
                         f"Resolved during coordination round via "
                         f"coordinated fix with escalated model "
-                        f"({policy['escalation_model']}). Section is now ALIGNED.\n\n"
+                        f"({resolve(policy, 'escalation_model')}). Section is now ALIGNED.\n\n"
                         f"## Files Involved\n\n"
                         + "\n".join(
                             f"- `{f}`"

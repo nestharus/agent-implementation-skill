@@ -290,7 +290,7 @@ def _run_verification(
     verifier_prompt.write_text(prompt)
 
     result = dispatch_agent(
-        model=model_policy.get("validation", "glm"),
+        model=model_policy["validation"],
         project=codespace,
         prompt_file=verifier_prompt,
         agent_file="scan-codemap-verifier.md",

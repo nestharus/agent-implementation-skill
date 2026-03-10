@@ -8,6 +8,7 @@ from typing import Any
 
 from lib.core.artifact_io import read_json, write_json
 from lib.core.hash_service import file_hash
+from lib.core.model_policy import resolve
 from prompt_safety import write_validated_prompt
 
 
@@ -109,7 +110,7 @@ def surface_tool_registry(
         ):
             return pre_tool_total
         dispatch_agent(
-            policy.get("tool_registrar", "glm"),
+            resolve(policy, "tool_registrar"),
             repair_prompt,
             repair_output,
             planspace,
@@ -229,7 +230,7 @@ def validate_tool_registry_after_implementation(
             )
             registrar_output = artifacts / f"tool-registrar-{section_number}-output.md"
             dispatch_agent(
-                policy.get("tool_registrar", "glm"),
+                resolve(policy, "tool_registrar"),
                 registrar_prompt,
                 registrar_output,
                 planspace,
@@ -262,7 +263,7 @@ def validate_tool_registry_after_implementation(
             repair_prompt,
         )
         dispatch_agent(
-            policy.get("tool_registrar", "glm"),
+            resolve(policy, "tool_registrar"),
             repair_prompt,
             repair_output,
             planspace,
@@ -388,7 +389,7 @@ with JSON:
         pre_bridge_registry_hash = file_hash(tool_registry_path)
 
     dispatch_agent(
-        policy.get("bridge_tools", "gpt-high"),
+        resolve(policy, "bridge_tools"),
         bridge_tools_prompt,
         bridge_tools_output,
         planspace,
@@ -418,7 +419,7 @@ with JSON:
             artifacts / f"bridge-tools-{section_number}-escalation-output.md"
         )
         dispatch_agent(
-            policy["escalation_model"],
+            resolve(policy, "escalation_model"),
             bridge_tools_prompt,
             escalation_output,
             planspace,
@@ -488,7 +489,7 @@ with JSON:
                 digest_prompt,
             )
             dispatch_agent(
-                policy.get("tool_registrar", "glm"),
+                resolve(policy, "tool_registrar"),
                 digest_prompt,
                 digest_output,
                 planspace,

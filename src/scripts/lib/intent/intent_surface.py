@@ -9,6 +9,7 @@ from lib.core.path_registry import PathRegistry
 from lib.intent.philosophy_bootstrap import validate_philosophy_grounding
 from prompt_safety import write_validated_prompt
 from section_loop.communication import _log_artifact, log, mailbox_send
+from lib.core.model_policy import resolve
 from section_loop.dispatch import (
     dispatch_agent,
     read_agent_signal,
@@ -398,7 +399,7 @@ materially changed (new constraints, new success criteria).
     _log_artifact(planspace, f"prompt:problem-expand-{section_number}")
 
     result = dispatch_agent(
-        policy.get("intent_problem_expander", "claude-opus"),
+        resolve(policy, "intent_problem_expander"),
         prompt_path,
         output_path,
         planspace,
@@ -488,7 +489,7 @@ Validate each philosophy surface and classify it:
     _log_artifact(planspace, f"prompt:philosophy-expand-{section_number}")
 
     result = dispatch_agent(
-        policy.get("intent_philosophy_expander", "claude-opus"),
+        resolve(policy, "intent_philosophy_expander"),
         prompt_path,
         output_path,
         planspace,
@@ -585,7 +586,7 @@ Write a JSON signal to: `{adjudication_path}`
     _log_artifact(planspace, f"prompt:recurrence-adjudicate-{section_number}")
 
     dispatch_agent(
-        policy.get("intent_recurrence_adjudicator", "glm"),
+        resolve(policy, "intent_recurrence_adjudicator"),
         prompt_path,
         output_path,
         planspace,

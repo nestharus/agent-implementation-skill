@@ -4,6 +4,7 @@ from pathlib import Path
 
 from lib.services.alignment_change_tracker import check_pending as alignment_changed_pending
 from lib.core.artifact_io import read_json_or_default, write_json
+from lib.core.model_policy import resolve
 from lib.intent.intent_triage import load_triage_result
 from lib.core.path_registry import PathRegistry
 from section_loop.alignment import _extract_problems
@@ -179,7 +180,7 @@ def run_proposal_loop(
             f"(attempt {proposal_attempt})"
         )
 
-        proposal_model = policy["proposal"]
+        proposal_model = resolve(policy, "proposal")
         notes_count = 0
         notes_dir = paths.notes_dir()
         if notes_dir.exists():
@@ -190,7 +191,7 @@ def run_proposal_loop(
         stall_threshold = triggers.get("stall_count", 2)
         if proposal_attempt >= max_attempts or notes_count >= stall_threshold:
             escalated_from = proposal_model
-            proposal_model = policy["escalation_model"]
+            proposal_model = resolve(policy, "escalation_model")
             log(
                 f"Section {section.number}: escalating to "
                 f"{proposal_model} (attempt={proposal_attempt}, notes={notes_count})"
@@ -368,9 +369,9 @@ def run_proposal_loop(
             "intent-judge.md" if has_intent_artifacts else "alignment-judge.md"
         )
         alignment_model = (
-            policy.get("intent_judge", policy["alignment"])
+            policy.get("intent_judge", resolve(policy, "alignment"))
             if has_intent_artifacts
-            else policy["alignment"]
+            else resolve(policy, "alignment")
         )
         align_result = dispatch_agent(
             alignment_model,
@@ -399,7 +400,7 @@ def run_proposal_loop(
             planspace=planspace,
             parent=parent,
             codespace=codespace,
-            adjudicator_model=policy.get("adjudicator", "glm"),
+            adjudicator_model=resolve(policy, "adjudicator"),
         )
 
         signal, detail = check_agent_signals(

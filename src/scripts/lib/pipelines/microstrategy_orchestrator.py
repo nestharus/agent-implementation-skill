@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lib.core.artifact_io import write_json
+from lib.core.model_policy import resolve
 from lib.core.path_registry import PathRegistry
 from section_loop.agent_templates import (
     TASK_SUBMISSION_SEMANTICS,
@@ -36,8 +37,8 @@ def run_microstrategy(
             section.number,
             parent,
             codespace=codespace,
-            model=policy.get("microstrategy_decider", "glm"),
-            escalation_model=policy["escalation_model"],
+            model=resolve(policy, "microstrategy_decider"),
+            escalation_model=resolve(policy, "escalation_model"),
         )
         and not microstrategy_path.exists()
     )
@@ -121,7 +122,7 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
     if ctrl == "alignment_changed":
         return None
     micro_result = dispatch_agent(
-        policy.get("implementation", "gpt-high"),
+        resolve(policy, "implementation"),
         micro_prompt_path,
         micro_output_path,
         planspace,
@@ -149,7 +150,7 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
         )
         escalation_output = artifacts / f"microstrategy-{section.number}-escalation-output.md"
         escalated_result = dispatch_agent(
-            policy["escalation_model"],
+            resolve(policy, "escalation_model"),
             micro_prompt_path,
             escalation_output,
             planspace,

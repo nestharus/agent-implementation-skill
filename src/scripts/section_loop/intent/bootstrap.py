@@ -6,6 +6,7 @@ from typing import Any
 from lib.core.artifact_io import write_json
 from lib.core.hash_service import content_hash, file_hash
 from lib.intent import philosophy_bootstrap as _philosophy_bootstrap
+from lib.core.model_policy import resolve
 from lib.core.path_registry import PathRegistry
 
 from ..communication import _log_artifact, log
@@ -295,7 +296,7 @@ Write an empty surface registry to: `{intent_sec / "surface-registry.json"}`
     _log_artifact(planspace, f"prompt:intent-pack-{sec}")
 
     result = dispatch_agent(
-        policy.get("intent_pack", "gpt-high"),
+        resolve(policy, "intent_pack"),
         prompt_path,
         output_path,
         planspace,

@@ -65,12 +65,14 @@ def _filter_by_regions(
     Uses multiple signals:
     1. Direct section-number match in regions text
     2. Keyword overlap between section_summary and regions/solution_surfaces
-    3. Records with no regions are always included (universal applicability)
+    3. Records with no regions are treated as ambiguous (PAT-0011) — missing
+       applicability metadata does not imply universal applicability.
 
     Returns (matched_records, applicability_basis).
     """
     summary_terms = _normalize_terms(section_summary) if section_summary else set()
     matched: list[dict] = []
+    ambiguous: list[dict] = []
     basis_parts: list[str] = []
 
     for record in records:
@@ -79,9 +81,11 @@ def _filter_by_regions(
             regions = []
         region_text = " ".join(str(r) for r in regions).lower()
 
-        # Universal: no region specified
+        # Missing regions: treat as ambiguous per PAT-0011
         if not region_text:
-            matched.append(record)
+            ambiguous.append(record)
+            rec_id = record.get(id_key, "unknown")
+            basis_parts.append(f"{rec_id}:no_regions")
             continue
 
         # Direct section-number match
@@ -100,9 +104,16 @@ def _filter_by_regions(
                 rec_id = record.get(id_key, "unknown")
                 basis_parts.append(f"{rec_id}:keyword({','.join(sorted(overlap)[:3])})")
 
-    if matched:
-        basis = "region_match" if not basis_parts else f"region_match+keyword({';'.join(basis_parts[:5])})"
-        return matched, basis
+    # Include ambiguous records in results but mark basis explicitly
+    all_matched = matched + ambiguous
+    if all_matched:
+        if ambiguous and not matched:
+            basis = f"ambiguous_only:{';'.join(basis_parts[:5])}"
+        elif ambiguous:
+            basis = f"region_match+ambiguous({';'.join(basis_parts[:5])})"
+        else:
+            basis = "region_match" if not basis_parts else f"region_match+keyword({';'.join(basis_parts[:5])})"
+        return all_matched, basis
 
     # Fail-closed: broad fallback with explicit reason and ambiguity flag
     return records, "broad_fallback:no_region_or_keyword_match:ambiguous"
@@ -167,14 +178,24 @@ def build_section_governance_packet(
     pattern_ambiguous = "ambiguous" in pattern_basis and candidate_patterns
     if problem_ambiguous or pattern_ambiguous:
         if problem_ambiguous:
+            reason = (
+                "some problems have missing applicability metadata"
+                if "no_regions" in problem_basis
+                else "broad fallback used"
+            )
             governance_questions.append(
                 f"Section {section_number}: problem applicability is ambiguous — "
-                "broad fallback used. Which problems apply?"
+                f"{reason}. Which problems apply?"
             )
         if pattern_ambiguous:
+            reason = (
+                "some patterns have missing applicability metadata"
+                if "no_regions" in pattern_basis
+                else "broad fallback used"
+            )
             governance_questions.append(
                 f"Section {section_number}: pattern applicability is ambiguous — "
-                "broad fallback used. Which patterns apply?"
+                f"{reason}. Which patterns apply?"
             )
 
     # Determine explicit applicability state

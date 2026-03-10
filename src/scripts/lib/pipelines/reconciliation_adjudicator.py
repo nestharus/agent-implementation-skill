@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 
 from lib.core.artifact_io import write_json
+from lib.core.model_policy import resolve
 from lib.core.path_registry import PathRegistry
 from lib.prompts.prompt_template import render_template
 from prompt_safety import validate_dynamic_content
@@ -75,7 +76,7 @@ group's `members` array or in the `separate` array.
     )
 
     policy = read_model_policy(planspace)
-    model = policy.get("reconciliation_adjudicate", "claude-opus")
+    model = resolve(policy, "reconciliation_adjudicate")
 
     try:
         result = dispatch_agent(

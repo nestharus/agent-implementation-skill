@@ -107,7 +107,7 @@ def _explore_section(
     prompt_file.write_text(prompt)
 
     result = dispatch_agent(
-        model=model_policy.get("exploration", "claude-opus"),
+        model=model_policy["exploration"],
         project=codespace,
         prompt_file=prompt_file,
         agent_file="scan-related-files-explorer.md",

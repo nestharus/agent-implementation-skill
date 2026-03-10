@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lib.core.artifact_io import write_json
+from lib.core.model_policy import resolve
 from lib.pipelines.coordination_problem_resolver import _collect_outstanding_problems
 from lib.core.path_registry import PathRegistry
 from lib.repositories.strategic_state import build_strategic_state
@@ -134,7 +135,7 @@ def run_coordination_loop(
                 )
                 escalation_file = paths.coordination_dir() / "model-escalation.txt"
                 escalation_file.write_text(
-                    policy["escalation_model"],
+                    resolve(policy, "escalation_model"),
                     encoding="utf-8",
                 )
                 mailbox_send(

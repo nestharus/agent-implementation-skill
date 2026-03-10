@@ -28,6 +28,11 @@ change without a fundamental redesign.
 **Problem class**: Structured artifact read/write in a multi-agent system where
 any writer may produce malformed output.
 
+**Regions**: all artifact readers, JSON parsing, prompt output consumption
+
+**Solution surfaces**: Corruption preservation, fail-closed defaults, structured
+validation, malformed-file renaming.
+
 **Philosophy**: Fail-closed. Evidence preservation over silent discard. Preserve
 debugging evidence instead of hiding it.
 
@@ -73,6 +78,12 @@ conventions without catalog approval.
 
 **Problem class**: Prompt injection, malformed prompt content, untrusted dynamic
 values in prompt text, and payloadless dispatch drift.
+
+**Regions**: prompt builders, dispatch surfaces, template rendering, agent
+dispatch
+
+**Solution surfaces**: write_validated_prompt, validate_dynamic_content,
+payload-backed dispatch, prompt file persistence.
 
 **Philosophy**: Every prompt is a trust boundary. Safety is enforced
 mechanically before dispatch.
@@ -124,6 +135,12 @@ validation through one of the sanctioned forms.
 
 **Problem class**: Artifact path proliferation, hardcoded path construction,
 path inconsistency across modules, and reader/writer disagreement.
+
+**Regions**: artifact paths, path construction, planspace layout, readers and
+writers
+
+**Solution surfaces**: PathRegistry, planspace-rooted accessors, runtime-shape
+tests.
 
 **Philosophy**: Single source of truth for durable artifact locations.
 
@@ -203,6 +220,11 @@ multi-agent orchestration outside the flow primitives.
 **Problem class**: Model selection drifting into arbitrary callsites, making
 behavior hard to rotate and hard to audit.
 
+**Regions**: model selection, dispatch, task routing, policy loading
+
+**Solution surfaces**: ModelPolicy dataclass, task_router, scan_dispatch,
+substrate_policy, resolve().
+
 **Philosophy**: Agent files define method-of-thinking; model choice is resolved
 centrally from policy.
 
@@ -220,7 +242,11 @@ centrally from policy.
    snapshot that goes stale during a long poll loop is a violation.
 6. Local fallback literals must be sourced from the authoritative default
    module (e.g., `DEFAULT_SCAN_MODELS` in `scan_dispatch.py`), not retyped
-   ad hoc at the callsite.
+   ad hoc at the callsite. Operational callsites must not use
+   `policy.get("key", "literal")` with a retyped literal that duplicates
+   the authoritative default — use `policy["key"]` or `resolve(policy, key)`
+   instead. The authoritative default lives in `ModelPolicy` (for main
+   policy) or `DEFAULT_SCAN_MODELS` (for scan policy), not at the callsite.
 
 **Canonical instance**: `TASK_ROUTES` in `src/scripts/task_router.py` plus
 `ModelPolicy` in `src/scripts/lib/core/model_policy.py`
@@ -309,6 +335,12 @@ than coarse "is it done?" checks.
 
 **Problem class**: Parse failures, missing data, unexpected states, and
 uncertain optimization boundaries in a multi-agent pipeline.
+
+**Regions**: readiness gate, freshness computation, artifact parsing, eval
+harness, optimization boundaries
+
+**Solution surfaces**: Fail-closed defaults, conservative baselines, eval
+harness exit codes, readiness gating.
 
 **Philosophy**: Conservative behavior on uncertainty. Fail closed at decision
 boundaries; scale process by risk only when the system actually has enough
@@ -494,9 +526,14 @@ and `src/scripts/lib/governance/packet.py`
 - `src/scripts/lib/services/section_input_hasher.py`
 - `src/scripts/lib/services/readiness_resolver.py`
 - `src/scripts/lib/dispatch/context_sidecar.py`
+- `src/scripts/section_loop/prompts/writers.py`
 
-**Conformance**: Any runtime stage that materially depends on governance context
-must consume the packet (or an accessor derived from it) rather than reparsing
+**Conformance**: Every pattern record in the catalog must carry `Regions` and
+`Solution surfaces` (or equivalent explicit applicability cues). Missing
+applicability metadata must be treated as ambiguity or catalog defect by packet
+builders, fixtures, and tests — never as universal applicability. Any runtime
+stage that materially depends on governance context must consume the packet (or
+an accessor derived from it) rather than reparsing
 governance markdown ad hoc. A section packet that is only section-labeled but
 not section-scoped is a pattern violation. Pattern records truncated to shallow
 single-line summaries such that conformance/change-policy data is unavailable at
@@ -640,34 +677,29 @@ also a violation.
   reflect current authoritative readers.
 - **PAT-0002 (Prompt Safety)**: Healthy. Instance list expanded to reflect
   current authoritative prompt-safety sites.
-- **PAT-0003 (Path Registry)**: Unhealthy. Durable-path islands remain in
-  model_policy.py, scan_dispatch.py, substrate_policy.py,
-  microstrategy_orchestrator.py, and implementation_loop.py. Readiness resolver
-  mixed planspace/artifacts root semantics fixed in R106. Template updated to
-  require declared root semantics and runtime-shape tests.
+- **PAT-0003 (Path Registry)**: Healthy. Path islands in model_policy.py,
+  scan_dispatch.py, substrate_policy.py, microstrategy_orchestrator.py, and
+  implementation_loop.py fixed in R106 via PathRegistry accessors. Readiness
+  resolver root semantics fixed in R106.
 - **PAT-0004 (Flow System)**: Healthy.
-- **PAT-0005 (Policy-Driven Models)**: Healthy. Scan fallback and per-dispatch
-  refresh fixed in R105.
+- **PAT-0005 (Policy-Driven Models)**: Unhealthy. Scan fallback and per-dispatch
+  refresh fixed in R105. R107 strengthened conformance to ban retyped
+  `.get("key", "literal")` fallbacks. Duplicated callsites being collapsed.
 - **PAT-0006 (Freshness Computation)**: Healthy in mechanism, but governance
   packet overscoping currently causes avoidable invalidation pressure.
 - **PAT-0007 (Cycle-Aware Status)**: Healthy and intentionally narrow.
-- **PAT-0008 (Fail-Closed Defaults)**: Unhealthy. Eval harness fails open on
-  scenario import failure. Template updated (R106) to include declared eval
-  coverage.
-- **PAT-0009 (Blocker Taxonomy)**: Unhealthy. Governance blockers degrade to
-  `unknown` type in blocker rollup because blockers.py only reads
-  `type`/`description` keys while governance emits `state`/`detail`. Template
-  updated (R106) to require blocker normalization at readiness-artifact
-  boundaries.
+- **PAT-0008 (Fail-Closed Defaults)**: Healthy. Eval harness fails closed on
+  scenario import failure (R106). Template includes declared eval coverage.
+- **PAT-0009 (Blocker Taxonomy)**: Healthy. Governance blocker normalization
+  fixed in R106 — blockers.py handles both proposal-state and governance blocker
+  shapes.
 - **PAT-0010 (Intent Surfaces)**: Healthy.
-- **PAT-0011 (Applicable Governance Packet Threading)**: Unhealthy. Pattern
-  applicability metadata was not parsed by the loader — all patterns were
-  universal regardless of section context. R106 adds regions/solution_surfaces
-  parsing and treats missing metadata as ambiguity. Template updated to require
-  explicit pattern applicability metadata.
+- **PAT-0011 (Applicable Governance Packet Threading)**: Unhealthy. Loader
+  parses regions/solution_surfaces (R106). Catalog metadata completed (R107).
+  Runtime `_filter_by_regions()` updated to treat missing metadata as ambiguity
+  (R107). Readiness resolver bridges packet ambiguity to descent gating (R107).
 - **PAT-0012 (Post-Implementation Governance Feedback)**: Healthy. Debt
   promotion is idempotent with material-payload-aware dedup (R105).
-- **PAT-0013 (Governed Proposal Identity)**: Unhealthy. Governance identity
-  validation exists but R104/R105 implementation mixed path-root semantics,
-  producing false `governance_packet_missing` blockers under the real runtime
-  layout. Fixed in R106. Runtime gate logic is now correct.
+- **PAT-0013 (Governed Proposal Identity)**: Healthy. Root semantics fixed in
+  R106, runtime gate logic correct. Packet ambiguity bridged to readiness in
+  R107.

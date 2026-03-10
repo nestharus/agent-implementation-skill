@@ -141,7 +141,7 @@ Key areas to examine in the codebase:
 - `src/scripts/substrate/` — Stage 3.5 SIS (shard, prune, seed)
 - `src/scripts/task_router.py` — Task routing and model policy
 - `src/scripts/task_dispatcher.py` — Queue dispatch with freshness/payload/QA checks
-- `src/agents/*.md` — Agent definitions (48 agents)
+- `src/agents/*.md` — Agent definitions (47 agents)
 - `src/SKILL.md` — Skill entry point
 - `src/implement.md` — Pipeline documentation
 - `evals/` — Evaluation scenarios

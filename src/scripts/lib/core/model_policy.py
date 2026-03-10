@@ -127,12 +127,23 @@ def load_model_policy(planspace: Path) -> ModelPolicy:
     return defaults
 
 
-def resolve(policy: ModelPolicy, key: str) -> str:
-    """Resolve a string-valued policy key, including dotted scan lookups."""
+_DEFAULTS = ModelPolicy()
+
+
+def resolve(policy: Mapping[str, Any], key: str) -> str:
+    """Resolve a string-valued policy key with authoritative defaults.
+
+    Works with both ``ModelPolicy`` instances and plain dicts.  When a key
+    is missing from *policy*, the authoritative default from ``ModelPolicy``
+    is returned.  This keeps default knowledge centralized (PAT-0005).
+    """
     head, sep, tail = key.partition(".")
     if sep:
-        nested = policy[head]
+        nested = policy.get(head) if not isinstance(policy, ModelPolicy) else policy[head]
         if isinstance(nested, Mapping) and tail in nested:
             return cast(str, nested[tail])
         raise KeyError(key)
-    return cast(str, policy[key])
+    val = policy.get(key)
+    if val is not None:
+        return cast(str, val)
+    return cast(str, getattr(_DEFAULTS, key))

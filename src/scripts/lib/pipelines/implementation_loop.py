@@ -5,6 +5,7 @@ from pathlib import Path
 
 from lib.services.alignment_change_tracker import check_pending as alignment_changed_pending
 from lib.core.artifact_io import read_json, write_json
+from lib.core.model_policy import resolve
 from lib.core.path_registry import PathRegistry
 from lib.flow.flow_submitter import submit_chain
 from lib.governance.assessment import write_post_impl_assessment_prompt
@@ -108,7 +109,7 @@ def run_implementation_loop(
         impl_output = artifacts / f"impl-{section.number}-output.md"
         impl_agent = f"impl-{section.number}"
         impl_result = dispatch_agent(
-            policy.get("implementation", "gpt-high"),
+            resolve(policy, "implementation"),
             impl_prompt,
             impl_output,
             planspace,
@@ -176,7 +177,7 @@ def run_implementation_loop(
         )
         impl_align_output = artifacts / f"impl-align-{section.number}-output.md"
         impl_align_result = dispatch_agent(
-            policy["alignment"],
+            resolve(policy, "alignment"),
             impl_align_prompt,
             impl_align_output,
             planspace,
@@ -202,7 +203,7 @@ def run_implementation_loop(
             planspace=planspace,
             parent=parent,
             codespace=codespace,
-            adjudicator_model=policy.get("adjudicator", "glm"),
+            adjudicator_model=resolve(policy, "adjudicator"),
         )
 
         signal, detail = check_agent_signals(
