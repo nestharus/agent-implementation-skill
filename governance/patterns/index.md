@@ -199,6 +199,12 @@ centrally from policy.
    per-call business logic about model choice.
 4. Prompt text and agent instructions do not tell runtime code which concrete
    model to use.
+5. Long-lived controllers (dispatchers, orchestrators) must refresh policy per
+   dispatch cycle or use content-hash invalidation. A startup-only policy
+   snapshot that goes stale during a long poll loop is a violation.
+6. Local fallback literals must be sourced from the authoritative default
+   module (e.g., `DEFAULT_SCAN_MODELS` in `scan_dispatch.py`), not retyped
+   ad hoc at the callsite.
 
 **Canonical instance**: `TASK_ROUTES` in `src/scripts/task_router.py` plus
 `ModelPolicy` in `src/scripts/lib/core/model_policy.py`
@@ -208,12 +214,15 @@ centrally from policy.
 - `src/scripts/lib/core/model_policy.py`
 - `src/scripts/lib/scan/scan_dispatch.py`
 - `src/scripts/lib/substrate/substrate_policy.py`
+- `src/scripts/task_dispatcher.py` — long-lived dispatcher poll loop
+- `src/scripts/section_loop/main.py` — outer orchestration loop
 - Policy lookups across `section_loop/`, `lib/pipelines/`, `lib/intent/`, and
   `lib/research/`
 
 **Conformance**: Model literals are allowed only in central routing /
 default-policy surfaces. Business logic and prompt builders must not choose
-concrete models ad hoc.
+concrete models ad hoc. Long-lived controllers must not cache policy at
+startup and reuse it indefinitely.
 
 ---
 
@@ -388,13 +397,20 @@ Context should be minimal but sufficient.
    - references back to the authoritative archive
 4. Do **not** mirror the full governance archive into every section packet
    unless the catalog is explicitly updated to allow that behavior. Broad
-   fallback, when unavoidable, must be explicit and justified in the packet.
+   fallback, when unavoidable, must be explicit and justified in the packet
+   with an `applicability_basis` of `broad_fallback` and a reason.
 5. Thread the packet into proposal, microstrategy, implementation, alignment,
    ROAL, post-implementation assessment, sidecars, freshness hashing, and
    section-input hashing.
 6. When applicability is ambiguous, fail closed by surfacing governance
    questions or bounded candidate sets rather than silently broadening to the
-   whole archive or silently omitting governance.
+   whole archive or silently omitting governance. The packet must distinguish
+   three explicit states: `matched` (signals resolved), `ambiguous_applicability`
+   (signals inconclusive — emit `governance_questions`), and
+   `no_applicable_governance` (explicit no-match after signal evaluation).
+7. Narrow profile scope: the packet should carry the section's governing
+   profile (or bounded candidate set) rather than mirroring all profiles from
+   the archive.
 
 **Canonical instance**: `build_governance_indexes()` +
 `build_section_governance_packet()` in `src/scripts/lib/governance/loader.py`
@@ -416,6 +432,7 @@ and `src/scripts/lib/governance/packet.py`
 - `src/scripts/lib/governance/assessment.py`
 - `src/scripts/lib/services/freshness_service.py`
 - `src/scripts/lib/services/section_input_hasher.py`
+- `src/scripts/lib/services/readiness_resolver.py`
 - `src/scripts/lib/dispatch/context_sidecar.py`
 
 **Conformance**: Any runtime stage that materially depends on governance context
@@ -453,9 +470,14 @@ hierarchy that shaped implementation.
    - `refactor_required` → emit structured blocker signal
 5. A bounded stabilization consumer promotes accepted debt into the
    authoritative risk register (or equivalent governed artifact) and MUST:
-   - deduplicate entries with a stable debt key / content hash
+   - deduplicate entries with a stable debt key computed from a **normalized
+     material-payload hash** that includes all fields whose change should
+     trigger re-promotion (identity fields like section/category/region/
+     description, plus materiality fields like severity, mitigation,
+     acceptance_rationale, and governance lineage)
    - record promotion state or receipts per source signal
-   - only re-promote when the underlying debt payload materially changes
+   - only re-promote when the material-payload hash changes (unchanged
+     signals remain idempotent)
    - preserve the signal/promotion trail needed for auditability
 6. Post-implementation assessment may enrich, challenge, or append to
    proposal-time governance identity; it must not be the first place governance
@@ -511,7 +533,13 @@ decide the actual governance claims.
 5. Unresolved `governance_questions` or unresolved `pattern_deviations` must
    block descent or route upward explicitly; they are not informational-only
    fields.
-6. Downstream traceability and post-implementation assessment inherit and verify
+6. When the governance packet provides candidate problems, patterns, or a
+   governing profile, empty governance identity (`problem_ids`, `pattern_ids`,
+   `profile_id` all empty) is illegal unless the packet explicitly records a
+   `no_applicable_governance` state. Declared `profile_id` must be compatible
+   with the packet's `governing_profile` or bounded candidate set. Declared
+   governance IDs with a missing or malformed packet must fail closed.
+7. Downstream traceability and post-implementation assessment inherit and verify
    this identity rather than inventing it from empty state.
 
 **Canonical instance**: `proposal-state.json` plus the integration-proposer
@@ -544,7 +572,10 @@ also a violation.
   current authoritative prompt-safety sites.
 - **PAT-0003 (Path Registry)**: Healthy.
 - **PAT-0004 (Flow System)**: Healthy.
-- **PAT-0005 (Policy-Driven Models)**: Healthy.
+- **PAT-0005 (Policy-Driven Models)**: Unhealthy. One scan callsite
+  reintroduced a superseded fallback literal; two long-lived controllers cache
+  policy at startup only. Template updated (R105) to require per-dispatch
+  refresh and authoritative fallback sourcing.
 - **PAT-0006 (Freshness Computation)**: Healthy in mechanism, but governance
   packet overscoping currently causes avoidable invalidation pressure.
 - **PAT-0007 (Cycle-Aware Status)**: Healthy and intentionally narrow.
@@ -553,10 +584,14 @@ also a violation.
 - **PAT-0010 (Intent Surfaces)**: Healthy.
 - **PAT-0011 (Applicable Governance Packet Threading)**: Improving. Multi-signal
   applicability resolution and richer pattern indexes added in R104. Broad
-  fallback is now explicit with applicability_basis rather than silent.
+  fallback is now explicit with applicability_basis. R105 template adds explicit
+  ambiguity states and narrower profile scope requirement.
 - **PAT-0012 (Post-Implementation Governance Feedback)**: Improving. Debt
-  promotion is now idempotent with deduplication, content hashing, and
-  promotion receipts (R104).
-- **PAT-0013 (Governed Proposal Identity)**: Improving. Readiness now validates
-  governance identity: unresolved deviations/questions block descent, packet
-  membership is checked (R104).
+  promotion is now idempotent with deduplication and promotion receipts (R104).
+  R105 template requires material-payload-aware dedup key covering severity,
+  mitigation, rationale, and governance lineage — not just identity fields.
+- **PAT-0013 (Governed Proposal Identity)**: Improving. Readiness validates
+  governance identity: deviations/questions block descent, packet membership
+  checked (R104). R105 template adds profile_id compatibility check, requires
+  non-empty identity when packet provides candidates, and fail-closed on
+  packet absence with declared IDs.

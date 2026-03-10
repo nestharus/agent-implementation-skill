@@ -103,13 +103,13 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
 
     log(f"Loaded {len(all_sections)} sections")
 
-    # Read model policy once — used for re-exploration dispatch.
-    policy = read_model_policy(planspace)
-
     # Outer loop: alignment_changed during Phase 2 restarts from Phase 1.
     # Each iteration runs Phase 1 (per-section) then Phase 2 (global).
     # The loop exits on: complete, fail, abort, or exhaustion.
     while True:
+
+        # PAT-0005: refresh policy per iteration (not startup-only)
+        policy = read_model_policy(planspace)
 
         # -----------------------------------------------------------------
         # Phase 1a: Proposal pass — all sections

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.artifact_io import read_json, rename_malformed
+from lib.core.artifact_io import read_json, rename_malformed, write_json
 from lib.core.path_registry import PathRegistry
 from prompt_safety import write_validated_prompt
 from section_loop.section_engine.traceability import update_trace_governance
@@ -166,7 +166,12 @@ def record_assessment_governance(
 
 
 def _debt_key(entry: dict) -> str:
-    """Compute a stable key for deduplication of debt entries."""
+    """Compute a stable key from the material payload of a debt entry.
+
+    Includes identity fields (section, category, region, description) plus
+    materiality fields (severity, mitigation, acceptance_rationale, governance
+    lineage). A change in any of these triggers re-promotion per PAT-0012.
+    """
     import hashlib
 
     parts = "|".join([
@@ -174,6 +179,12 @@ def _debt_key(entry: dict) -> str:
         str(entry.get("category", "")),
         str(entry.get("region", "")),
         str(entry.get("description", "")),
+        str(entry.get("severity", "")),
+        str(entry.get("mitigation", "")),
+        str(entry.get("acceptance_rationale", "")),
+        ",".join(str(x) for x in entry.get("problem_ids", []) if x),
+        ",".join(str(x) for x in entry.get("pattern_ids", []) if x),
+        str(entry.get("profile_id", "")),
     ])
     return hashlib.sha256(parts.encode()).hexdigest()[:16]
 

@@ -34,7 +34,7 @@ Brute-force implementation (try → fail → retry) wastes tokens, creates churn
 
 In a multi-pass pipeline, artifacts from earlier passes may be stale when later passes reference them. Stale artifacts lead to incorrect decisions — skipping necessary work or repeating completed work.
 
-**Solution surfaces**: Content-based hashing (PAT-0006), cycle-aware status (PAT-0007), readiness gate freshness checks.
+**Solution surfaces**: Content-based hashing (PAT-0006), cycle-aware status (PAT-0007), readiness gate freshness checks, per-dispatch policy refresh in long-lived controllers (PAT-0005 R105).
 
 ---
 
@@ -88,13 +88,13 @@ The execution pipeline itself introduces risk — proposals that don't solve the
 
 ## PRB-0008: Implementation Risk (Post-Landing)
 
-**Status**: active — partially implemented (R101-R104)
+**Status**: active — partially implemented (R101-R105)
 **Provenance**: user-authored (governance gaps analysis)
 **Regions**: post-implementation assessment, governance assessment, flow reconciler, risk register
 
-After code lands, we don't systematically assess what risks the implementation introduced: coupling, security surfaces, scalability bottlenecks, pattern drift, coherence friction. Post-implementation assessment was implemented in R101: queues assessment after implementation, validates result, routes verdict (accept/accept_with_debt/refactor_required) through structured signals. R102 added debt signal staging. R103 wired bounded stabilization consumer (`promote_debt_signals()` called after implementation pass in section-loop main). R104 made debt promotion idempotent: stable content-hash dedup keys, skip existing entries, promotion receipts for consumed signals.
+After code lands, we don't systematically assess what risks the implementation introduced: coupling, security surfaces, scalability bottlenecks, pattern drift, coherence friction. Post-implementation assessment was implemented in R101: queues assessment after implementation, validates result, routes verdict (accept/accept_with_debt/refactor_required) through structured signals. R102 added debt signal staging. R103 wired bounded stabilization consumer (`promote_debt_signals()` called after implementation pass in section-loop main). R104 made debt promotion idempotent. R105 made dedup material-payload-aware: key now covers severity, mitigation, acceptance_rationale, and governance lineage so changed risk re-promotes while unchanged debt stays idempotent.
 
-**Solution surfaces**: Post-implementation assessment agent + prompt writer, flow reconciler verdict routing, debt signal staging, bounded stabilization consumer (R103), idempotent debt promotion with dedup/receipts (R104, PAT-0012).
+**Solution surfaces**: Post-implementation assessment agent + prompt writer, flow reconciler verdict routing, debt signal staging, bounded stabilization consumer (R103), material-payload-aware idempotent debt promotion (R105, PAT-0012).
 
 ---
 
@@ -148,22 +148,22 @@ Agents can discover new problems, new tools, or greenfield territory that cannot
 
 ## PRB-0013: Proposal-State Readiness Before Descent
 
-**Status**: active — partially implemented (R104)
+**Status**: active — partially implemented (R104-R105)
 **Provenance**: user-authored
 **Regions**: proposal-state repository, readiness resolver, readiness gate, implementation prompts
 
-Descent into implementation before anchors, contracts, and research are resolved produces brute-force behavior and reopen cycles. The execution-readiness gate is fail-closed: if any blocking field remains unresolved, implementation dispatch is blocked. R104 added governance identity validation to the readiness resolver: unresolved pattern_deviations and governance_questions now produce executable blockers (not advisory), and orphan problem_ids/pattern_ids not found in the governance packet are caught. Proposals are problem-state artifacts, not file-change plans.
+Descent into implementation before anchors, contracts, and research are resolved produces brute-force behavior and reopen cycles. The execution-readiness gate is fail-closed: if any blocking field remains unresolved, implementation dispatch is blocked. R104 added initial governance identity validation. R105 made it genuinely fail-closed: empty governance identity with a populated packet now blocks descent, profile_id mismatch with governing_profile blocks, declared governance IDs with a missing/malformed packet block. Alignment-judge contract narrowed to require non-empty identity when governance applies. Proposals are problem-state artifacts, not file-change plans.
 
-**Solution surfaces**: Proposal-state repository, readiness resolver (governance validation R104, PAT-0013), readiness gate, integration proposals as problem-state artifacts.
+**Solution surfaces**: Proposal-state repository, readiness resolver (full fail-closed governance validation R105, PAT-0013), readiness gate, alignment-judge contract, integration proposals as problem-state artifacts.
 
 ---
 
 ## PRB-0014: Governance Context Dilution / Packet Overscoping
 
-**Status**: active — partially addressed (R103-R104)
+**Status**: active — partially addressed (R103-R105)
 **Provenance**: audit-inferred (R103)
 **Regions**: governance packets, freshness computation, section-input hashing, prompt context
 
-Governance packets mirror the full problem/pattern/profile archives into every section, regardless of which problems and patterns are actually applicable to that section. This causes: (1) packet-membership checks become vacuous because every ID is in every packet, (2) any governance edit invalidates freshness for all sections instead of only affected ones, (3) context optimization is violated because agents receive irrelevant governance material. R103 added region-based candidate filtering. R104 expanded to multi-signal applicability: direct section-number match, keyword overlap between section summary/problem-frame text and archive regions/solution_surfaces, universal inclusion for region-less records, with explicit `applicability_basis` tracking and `broad_fallback` when no signal matches.
+Governance packets mirror the full problem/pattern/profile archives into every section, regardless of which problems and patterns are actually applicable to that section. This causes: (1) packet-membership checks become vacuous because every ID is in every packet, (2) any governance edit invalidates freshness for all sections instead of only affected ones, (3) context optimization is violated because agents receive irrelevant governance material. R103 added region-based candidate filtering. R104 expanded to multi-signal applicability. R105 added explicit applicability states (`matched`/`ambiguous_applicability`/`no_applicable_governance`), narrowed profile scope to governing profile only, and populated `governance_questions` when applicability is ambiguous rather than silently broadening.
 
-**Solution surfaces**: Multi-signal section-scoped applicability in governance packet builder (PAT-0011 R104), archive refs instead of full duplication, applicability_basis tracking, governance questions for ambiguous applicability.
+**Solution surfaces**: Multi-signal section-scoped applicability with explicit ambiguity states (PAT-0011 R105), bounded profile scope, archive refs instead of full duplication, governance_questions populated on ambiguity.

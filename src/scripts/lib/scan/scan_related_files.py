@@ -7,6 +7,7 @@ from pathlib import Path
 
 from lib.core.artifact_io import read_json, write_json
 from lib.core.hash_service import content_hash, file_hash
+from lib.scan.scan_dispatch import DEFAULT_SCAN_MODELS
 from lib.scan.scan_phase_logger import log_phase_failure
 from lib.scan.scan_template_loader import load_scan_template
 from prompt_safety import validate_dynamic_content
@@ -154,7 +155,7 @@ def validate_existing_related_files(
     validate_prompt.write_text(prompt)
 
     result = dispatch_agent(
-        model=model_policy.get("validation", "claude-opus"),
+        model=model_policy.get("validation", DEFAULT_SCAN_MODELS["validation"]),
         project=codespace,
         prompt_file=validate_prompt,
         agent_file="scan-related-files-adjudicator.md",

@@ -169,7 +169,7 @@ The governance hierarchy: problems (why) → philosophy (values) → patterns (h
 
 ## Agent system
 
-48 agents organized by epistemic operations, not engineering domains.
+47 agents organized by epistemic operations, not engineering domains.
 
 | Category | Agents | Function |
 |----------|--------|----------|
@@ -213,9 +213,9 @@ Agents expand work inside this vocabulary without inventing new execution primit
 ## Open tensions
 
 - **PRB-0009 (Problem Traceability)**: Governance enrichment covers all three trace surfaces (trace index, trace map, traceability.json) with problem_ids, pattern_ids, and profile_id. R103 added proposal-time governance identity (PAT-0013) so lineage originates at proposal time rather than post-implementation inference. Full round-trip traceability from problem → proposal → code → assessment is now wired; post-implementation assessment validates and enriches proposal-time lineage.
-- **PRB-0010 (Pattern Governance)**: Pattern archive (13 patterns) is loaded into governance packets and threaded into prompts, freshness hashing, microstrategy, alignment, and ROAL. R103 added proposal-time pattern_ids and pattern_deviations to proposal-state. R104 deepened the loader to parse template and conformance fields from pattern records with multiline continuation support, so runtime pattern records carry actionable conformance criteria. Runtime pattern governance is structural but still advisory — proposals declare which patterns they follow, but conformance checking is not yet automated.
-- **PRB-0014 (Governance Context Dilution)**: R103 added region-based candidate filtering. R104 expanded to multi-signal applicability: keyword overlap between section summary/problem-frame text and archive regions/solution_surfaces, explicit applicability_basis tracking, broad_fallback annotation when no signal matches. Packets now carry section-scoped candidate sets with auditable applicability rationale.
-- **Stabilization loop**: Post-impl assessment emits `accept_with_debt` → risk-register staging signal and `refactor_required` → structured blocker signal. R103 wired bounded stabilization consumer (`promote_debt_signals()`) after implementation pass in section-loop main. R104 made promotion idempotent: stable content-hash dedup keys, existing-entry skip, promotion receipts for consumed signals. Debt signals are now promoted to staging with deduplication during each pass.
+- **PRB-0010 (Pattern Governance)**: Pattern archive (13 patterns) is loaded into governance packets and threaded into prompts, freshness hashing, microstrategy, alignment, and ROAL. R103 added proposal-time pattern_ids and pattern_deviations to proposal-state. R104 deepened the loader to parse template and conformance fields. R105 updated PAT-0005 (long-lived policy refresh), PAT-0011 (explicit ambiguity states), PAT-0012 (material-payload dedup), and PAT-0013 (profile compatibility, non-empty identity requirement). Runtime pattern governance is increasingly structural — proposals must declare governance identity when packets provide candidates, and conformance criteria are now available at runtime.
+- **PRB-0014 (Governance Context Dilution)**: R103 added region-based candidate filtering. R104 expanded to multi-signal applicability. R105 added explicit applicability states (matched/ambiguous_applicability/no_applicable_governance), narrowed profile scope to governing profile, and populated governance_questions on ambiguity rather than silently broadening. Packets now carry section-scoped candidate sets with explicit applicability state.
+- **Stabilization loop**: Post-impl assessment emits `accept_with_debt` → risk-register staging signal and `refactor_required` → structured blocker signal. R103 wired bounded stabilization consumer. R104 made promotion idempotent. R105 made dedup material-payload-aware: severity, mitigation, rationale, and governance lineage now affect the dedup key so changed risk re-promotes while unchanged debt stays idempotent.
 - **Per-region philosophy**: Region-profile-map exists but all regions currently use PHI-global. The infrastructure supports overrides when materially different values emerge.
 - **Governance bootstrap for new projects**: The governance design describes four entry paths (greenfield, brownfield, PRD, partial governance) but the bootstrap workflow isn't implemented yet.
 

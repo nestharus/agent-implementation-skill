@@ -104,8 +104,8 @@ def _filter_by_regions(
         basis = "region_match" if not basis_parts else f"region_match+keyword({';'.join(basis_parts[:5])})"
         return matched, basis
 
-    # Fail-closed: broad fallback with explicit reason
-    return records, "broad_fallback:no_region_or_keyword_match"
+    # Fail-closed: broad fallback with explicit reason and ambiguity flag
+    return records, "broad_fallback:no_region_or_keyword_match:ambiguous"
 
 
 def build_section_governance_packet(
@@ -150,11 +150,46 @@ def build_section_governance_packet(
         all_patterns, section_number, "pattern_id", combined_summary,
     )
 
+    governing_profile = _resolve_governing_profile(
+        section_number,
+        region_profile_map,
+    )
+
+    # Narrow profile scope: include only governing profile or bounded candidates
+    bounded_profiles = [
+        p for p in all_profiles
+        if isinstance(p, dict) and p.get("profile_id") == governing_profile
+    ] if governing_profile else all_profiles
+
+    # Determine applicability state and governance questions
+    governance_questions: list[str] = []
+    problem_ambiguous = "ambiguous" in problem_basis and candidate_problems
+    pattern_ambiguous = "ambiguous" in pattern_basis and candidate_patterns
+    if problem_ambiguous or pattern_ambiguous:
+        if problem_ambiguous:
+            governance_questions.append(
+                f"Section {section_number}: problem applicability is ambiguous — "
+                "broad fallback used. Which problems apply?"
+            )
+        if pattern_ambiguous:
+            governance_questions.append(
+                f"Section {section_number}: pattern applicability is ambiguous — "
+                "broad fallback used. Which patterns apply?"
+            )
+
+    # Determine explicit applicability state
+    if not candidate_problems and not candidate_patterns and not governing_profile:
+        applicability_state = "no_applicable_governance"
+    elif governance_questions:
+        applicability_state = "ambiguous_applicability"
+    else:
+        applicability_state = "matched"
+
     packet = {
         "section": section_number,
         "candidate_problems": candidate_problems,
         "candidate_patterns": candidate_patterns,
-        "profiles": all_profiles,
+        "profiles": bounded_profiles,
         "region_profile_map": region_profile_map,
         "archive_refs": {
             "problem_index": str(paths.governance_problem_index()),
@@ -165,12 +200,10 @@ def build_section_governance_packet(
             "problems": problem_basis,
             "patterns": pattern_basis,
         },
-        "governance_questions": [],
+        "applicability_state": applicability_state,
+        "governance_questions": governance_questions,
+        "governing_profile": governing_profile,
     }
-    packet["governing_profile"] = _resolve_governing_profile(
-        section_number,
-        region_profile_map,
-    )
 
     try:
         write_json(packet_path, packet)

@@ -171,9 +171,12 @@ Files to Read, verify the following:
    a particular problem, the corresponding PRB-XXXX should appear in
    `problem_ids`. If it follows established patterns, the corresponding
    PAT-XXXX should appear in `pattern_ids`. Empty governance fields are
-   acceptable when governance context is not available, but contradictory
-   governance claims (claiming to follow a pattern while violating it)
-   are a coherence failure.
+   acceptable only when the governance packet explicitly indicates no
+   applicable governance exists for this section. When the packet
+   provides candidate problems, patterns, or a governing profile, empty
+   governance identity is a coherence failure. Contradictory governance
+   claims (claiming to follow a pattern while violating it) are also a
+   coherence failure.
 6. **Pattern deviations**: If `pattern_deviations` is non-empty, verify
    that the deviations are justified with rationale, not just listed.
 

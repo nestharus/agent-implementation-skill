@@ -426,13 +426,13 @@ def main() -> None:
         log(f"ERROR: Database not found at {db_path}")
         sys.exit(1)
 
-    # V6: Load model policy once at startup for policy-driven dispatch
-    model_policy = read_model_policy(planspace)
-
     log(f"Starting dispatcher (planspace={planspace}, poll={args.poll_interval}s)")
 
     while True:
         try:
+            # PAT-0005: refresh policy per dispatch cycle (not startup-only)
+            model_policy = read_model_policy(planspace)
+
             output = _db_cmd(db_path, "next-task")
             task = parse_next_task(output)
 

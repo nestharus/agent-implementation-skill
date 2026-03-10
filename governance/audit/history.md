@@ -1,6 +1,6 @@
 # Audit History
 
-Concern-based audit log. 104 rounds completed in the philosophy audit cycle.
+Concern-based audit log. 105 rounds completed in the philosophy audit cycle.
 Rounds 1-20 are summarized as conclusions. Rounds 21-50 aggregated as settled
 concerns. Rounds 52-91 aggregated as settled concern threads with established
 patterns. Rounds 92+ are recent with full detail.
@@ -252,5 +252,6 @@ Intent layer audited normally from R52 onward as part of codebase.
 | 102 | 826355d | 1489 | 8 | Governance closure: pattern catalog (PAT-0011/0012 added, PAT-0002/0003/0005 refined), trace_map path fix, traceability enrichment, debt signal promotion, corruption preservation normalization, eval contract sync, PHI-global proportional risk, PRB-0011/0012/0013 added |
 | 103 | d8cb68a | 1489 | 5 | Governance control-loop closure: PAT-0013 (Governed Proposal Identity), PAT-0011 updated (Applicable Governance Packet Threading with section-scoped candidates), PAT-0012 updated (full trace enrichment + bounded stabilization consumer), CP-1 proposal-state governance fields, CP-2 governance packet candidate filtering + downstream wiring (microstrategy/alignment/ROAL), CP-3 trace lineage from proposal-time, CP-4 bounded debt promotion consumer, PRB-0014 added |
 | 104 | c6756f0 | 1489 | 6 | Governance depth: CP-1 multi-signal packet applicability (keyword overlap + problem-frame text + applicability_basis tracking), CP-2 multiline field parsing + template/conformance extraction in loader, CP-3 governance identity validation in readiness resolver (deviations/questions block, orphan IDs caught), CP-4 idempotent debt promotion (content-hash dedup + receipts), CP-5 tool_surface.py NameError fix (fail-closed), pattern catalog full rewrite (PAT-0001/0002 instance lists expanded, PAT-0011/0012/0013 templates deepened) |
+| 105 | — | 1496 | 8 | Governance enforcement: TP-1 PAT-0005 (long-lived policy refresh + authoritative fallback sourcing), TP-2 PAT-0011 (explicit ambiguity states + bounded profile scope), TP-3 PAT-0012 (material-payload-aware dedup), TP-4 PAT-0013 (profile compatibility + non-empty identity when governance applies), CP-1 scan fallback regression + per-dispatch policy refresh in dispatcher/section-loop, CP-2 fail-closed readiness governance (empty identity/profile mismatch/missing packet all block) + alignment-judge contract, CP-3 packet applicability states + bounded profiles + governance_questions on ambiguity, CP-4 material-payload dedup key, CP-5 governance contract component tests (7 new), agent count corrected 48→47 |
 
-**Current state**: 1489 tests, ~380 files in codebase zip.
+**Current state**: 1496 tests, ~380 files in codebase zip.

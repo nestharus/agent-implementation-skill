@@ -53,6 +53,7 @@ def test_build_section_governance_packet_uses_indexes_and_default_profile(
     assert packet["governing_profile"] == "PHI-global"
     assert "archive_refs" in packet
     assert "governance_questions" in packet
+    assert "applicability_state" in packet
 
 
 def test_build_section_governance_packet_handles_missing_indexes(
@@ -73,4 +74,5 @@ def test_build_section_governance_packet_handles_missing_indexes(
     assert packet["region_profile_map"] == {"default": "", "overrides": {}}
     assert packet["governing_profile"] == ""
     assert packet["governance_questions"] == []
+    assert packet["applicability_state"] == "no_applicable_governance"
     assert "archive_refs" in packet

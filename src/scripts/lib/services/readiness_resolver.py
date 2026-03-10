@@ -54,30 +54,82 @@ def _validate_governance_identity(
             "source": "governance_identity",
         })
 
-    # Validate packet membership when governance IDs are declared
+    # Load governance packet for validation
+    paths = PathRegistry(section_dir)
+    packet_path = paths.governance_packet(section_number)
+    packet = read_json(packet_path)
+
     problem_ids = state.get("problem_ids", [])
     pattern_ids = state.get("pattern_ids", [])
-    if isinstance(problem_ids, list) and problem_ids or isinstance(pattern_ids, list) and pattern_ids:
-        paths = PathRegistry(section_dir)
-        packet_path = paths.governance_packet(section_number)
-        packet = read_json(packet_path)
-        if isinstance(packet, dict):
+    profile_id = state.get("profile_id", "")
+    if not isinstance(problem_ids, list):
+        problem_ids = []
+    if not isinstance(pattern_ids, list):
+        pattern_ids = []
+    if not isinstance(profile_id, str):
+        profile_id = ""
+
+    has_declared_ids = bool(problem_ids or pattern_ids or profile_id)
+
+    if isinstance(packet, dict):
+        packet_problems = packet.get("candidate_problems", [])
+        packet_patterns = packet.get("candidate_patterns", [])
+        governing_profile = packet.get("governing_profile", "")
+        if not isinstance(packet_problems, list):
+            packet_problems = []
+        if not isinstance(packet_patterns, list):
+            packet_patterns = []
+        if not isinstance(governing_profile, str):
+            governing_profile = ""
+
+        has_governance_candidates = bool(
+            packet_problems or packet_patterns or governing_profile
+        )
+
+        # PAT-0013 step 6: empty identity is illegal when packet has candidates
+        if has_governance_candidates and not has_declared_ids:
+            governance_blockers.append({
+                "state": "governance_identity_missing",
+                "detail": (
+                    "governance packet provides candidates but proposal "
+                    "declares no problem_ids, pattern_ids, or profile_id"
+                ),
+                "needs": "governance identity declaration",
+                "why_blocked": "PAT-0013: non-empty identity required when governance applies",
+                "source": "governance_identity",
+            })
+
+        # Validate profile_id compatibility with governing profile
+        if profile_id and governing_profile and profile_id != governing_profile:
+            governance_blockers.append({
+                "state": "governance_profile_mismatch",
+                "detail": (
+                    f"profile_id '{profile_id}' does not match "
+                    f"governing_profile '{governing_profile}'"
+                ),
+                "needs": "profile_id correction",
+                "why_blocked": "PAT-0013: profile_id must match governing profile",
+                "source": "governance_identity",
+            })
+
+        # Validate packet membership for declared IDs
+        if problem_ids or pattern_ids:
             packet_problem_ids = {
                 str(p.get("problem_id", ""))
-                for p in packet.get("candidate_problems", [])
+                for p in packet_problems
                 if isinstance(p, dict)
             }
             packet_pattern_ids = {
                 str(p.get("pattern_id", ""))
-                for p in packet.get("candidate_patterns", [])
+                for p in packet_patterns
                 if isinstance(p, dict)
             }
             orphan_problems = [
-                pid for pid in (problem_ids or [])
+                pid for pid in problem_ids
                 if isinstance(pid, str) and pid and pid not in packet_problem_ids
             ]
             orphan_patterns = [
-                pid for pid in (pattern_ids or [])
+                pid for pid in pattern_ids
                 if isinstance(pid, str) and pid and pid not in packet_pattern_ids
             ]
             if orphan_problems or orphan_patterns:
@@ -93,6 +145,18 @@ def _validate_governance_identity(
                     "why_blocked": "PAT-0013: IDs must reference packet records",
                     "source": "governance_identity",
                 })
+    elif has_declared_ids:
+        # PAT-0013 step 6: declared IDs with missing/malformed packet → block
+        governance_blockers.append({
+            "state": "governance_packet_missing",
+            "detail": (
+                "governance IDs declared but governance packet is "
+                "missing or malformed"
+            ),
+            "needs": "governance packet rebuild",
+            "why_blocked": "PAT-0013: packet required when IDs are declared",
+            "source": "governance_identity",
+        })
 
     return governance_blockers
 
