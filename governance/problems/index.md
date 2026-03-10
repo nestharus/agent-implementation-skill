@@ -112,13 +112,13 @@ Code exists but we can't trace it back to the problem it solves. When problems e
 
 ## PRB-0010: Pattern Governance
 
-**Status**: active — partially implemented (R101-R104)
+**Status**: active — partially implemented (R101-R107)
 **Provenance**: user-authored (governance gaps analysis)
-**Regions**: governance layer, audit process, pattern archive, proposal-state
+**Regions**: governance layer, audit process, pattern archive, proposal-state, model policy
 
-Established patterns exist and are cataloged. The governance loader parses the archive into planspace indexes, builds per-section governance packets, and threads them into prompt context and freshness hashing. R103 added proposal-time governance identity (PAT-0013) so proposals declare which patterns they follow and which deviations they require. R104 deepened the loader to parse `template` and `conformance` fields from patterns with multiline continuation support, so runtime pattern records carry actionable conformance criteria — not just titles and instances. Governance packets now thread into microstrategy, alignment, and ROAL prompts (PAT-0011 coverage expansion). Runtime advisory presence is becoming structural through pattern_ids and pattern_deviations in proposal-state. Full enforcement at proposal time remains advisory.
+Established patterns exist and are cataloged. The governance loader parses the archive into planspace indexes, builds per-section governance packets, and threads them into prompt context and freshness hashing. R103 added proposal-time governance identity (PAT-0013) so proposals declare which patterns they follow and which deviations they require. R104 deepened the loader to parse `template` and `conformance` fields from patterns with multiline continuation support, so runtime pattern records carry actionable conformance criteria — not just titles and instances. Governance packets now thread into microstrategy, alignment, and ROAL prompts (PAT-0011 coverage expansion). R107 completed catalog metadata (all patterns carry Regions/Solution surfaces), made runtime packet filtering applicability-aware (missing metadata = ambiguity), collapsed ~47 duplicated model-policy fallback literals into centralized `resolve()` calls, and bridged packet ambiguity to descent readiness gating. Runtime advisory presence is becoming structural through pattern_ids and pattern_deviations in proposal-state. Full enforcement at proposal time remains advisory.
 
-**Solution surfaces**: Pattern archive, governance loader (richer records R104), governance packets (PAT-0011), governed proposal identity (PAT-0013), audit process pattern alignment phases.
+**Solution surfaces**: Pattern archive, governance loader (richer records R104), governance packets (PAT-0011 applicability-aware R107), governed proposal identity (PAT-0013), centralized model policy resolver (PAT-0005 R107), audit process pattern alignment phases.
 
 ---
 

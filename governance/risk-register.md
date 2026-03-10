@@ -20,4 +20,24 @@ Post-implementation assessment emits `accept_with_debt` verdicts with typed `deb
 
 ## Entries
 
-_No entries yet. Debt signal staging (R102) and bounded promotion consumer (R103) are wired. Entries will appear when post-implementation assessments emit `accept_with_debt` verdicts during runtime execution._
+### RISK-0001: Stricter packet ambiguity gating transitional noise
+
+- **Category**: operability
+- **Region**: governance packets, readiness gate
+- **Description**: R107 changed missing pattern applicability metadata from universal match to ambiguity. Until all governance contexts provide complete metadata, packet ambiguity will generate governance blockers that must be resolved or carried forward in proposal-state.
+- **Severity**: low
+- **Status**: accepted
+- **Acceptance rationale**: Catalog metadata is complete as of R107. Transitional noise only applies to new patterns added without Regions/Solution surfaces.
+- **Mitigation**: PAT-0011 conformance now requires metadata on all patterns. Audit catches missing metadata.
+
+---
+
+### RISK-0002: Policy resolver refactor model assignment regression
+
+- **Category**: coupling
+- **Region**: model policy, dispatch surfaces
+- **Description**: R107 replaced ~47 `policy.get("key", "literal")` callsites with `resolve(policy, "key")`. If `resolve()` has a bug or if a key is missing from ModelPolicy, the wrong model (or None) could be dispatched.
+- **Severity**: low
+- **Status**: mitigated
+- **Acceptance rationale**: All 1499 tests pass. `resolve()` falls back to ModelPolicy defaults which are the same values the literals used.
+- **Mitigation**: ModelPolicy dataclass defines all known keys with defaults. Tests cover all dispatch paths with mocked agents.

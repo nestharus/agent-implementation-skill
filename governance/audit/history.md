@@ -1,6 +1,6 @@
 # Audit History
 
-Concern-based audit log. 106 rounds completed in the philosophy audit cycle.
+Concern-based audit log. 107 rounds completed in the philosophy audit cycle.
 Rounds 1-20 are summarized as conclusions. Rounds 21-50 aggregated as settled
 concerns. Rounds 52-91 aggregated as settled concern threads with established
 patterns. Rounds 92+ are recent with full detail.
@@ -255,4 +255,6 @@ Intent layer audited normally from R52 onward as part of codebase.
 | 105 | 6ac9a3a | 1496 | 8 | Governance enforcement: TP-1 PAT-0005 (long-lived policy refresh + authoritative fallback sourcing), TP-2 PAT-0011 (explicit ambiguity states + bounded profile scope), TP-3 PAT-0012 (material-payload-aware dedup), TP-4 PAT-0013 (profile compatibility + non-empty identity when governance applies), CP-1 scan fallback regression + per-dispatch policy refresh in dispatcher/section-loop, CP-2 fail-closed readiness governance (empty identity/profile mismatch/missing packet all block) + alignment-judge contract, CP-3 packet applicability states + bounded profiles + governance_questions on ambiguity, CP-4 material-payload dedup key, CP-5 governance contract component tests (7 new), agent count corrected 48→47 |
 | 106 | da09b8f | 1497 | 8 | Path root contracts and governance runtime: CP-1 resolve_readiness mixed-root fix (planspace not artifacts, 4 callsites + tests), CP-2 parse_pattern_index regions/solution_surfaces extraction (PAT-0011 scoping), CP-3 eval scenario stale imports fixed (readiness_gate + reconciliation), CP-4 eval harness fail-closed on import errors (PAT-0008), CP-5 PathRegistry path-island elimination in 5 modules (model_policy, scan_dispatch, substrate_policy, microstrategy_orchestrator, implementation_loop), CP-6 blocker normalization (dual-schema field access in readiness_gate + blockers.py) + system-synthesis proportional-risk alignment, TP-1 PAT-0003 root-semantics template steps + 6 instances, TP-2 PAT-0008 eval-scenario import failure bullet, TP-3 PAT-0009 blocker normalization bullet, TP-4 PAT-0011 applicability metadata requirement + Regions/Solution surfaces on 7 patterns |
 
-**Current state**: 1497 tests, ~380 files in codebase zip.
+| 107 | e5381fd | 1499 | 5 | Governance applicability and policy centralization: TP-1 PAT-0011 conformance (missing metadata = ambiguity not universal, catalog completeness required), TP-2 PAT-0005 conformance (ban retyped `.get("key", "literal")` fallbacks), CP-1 catalog metadata completion (Regions/Solution surfaces on PAT-0001/0002/0003/0005/0008), CP-2 packet.py `_filter_by_regions()` treats no-regions as ambiguous (not universal), CP-3 readiness resolver bridges packet ambiguity to descent gating, CP-4 ~47 duplicated model-policy fallbacks collapsed into `resolve()` with authoritative ModelPolicy defaults across 17 production files, CP-5 health notes synced (PAT-0003/0008/0009/0013 → healthy, PAT-0005/0011 → unhealthy), system-synthesis problem count 14→15, audit prompt agent count 48→47 |
+
+**Current state**: 1499 tests, ~380 files in codebase zip.
