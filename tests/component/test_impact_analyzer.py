@@ -83,6 +83,8 @@ def test_analyze_impacts_parses_material_impacts_from_primary_output(
         codespace,
         "parent-task",
         summary_reader=lambda path: path.read_text(encoding="utf-8"),
+        impact_model="glm",
+        normalizer_model="glm",
     )
 
     assert impacts == [("02", "Changed API", True, "Update consumer")]
@@ -130,6 +132,8 @@ def test_analyze_impacts_falls_back_to_normalizer_when_primary_is_invalid(
         codespace,
         "parent-task",
         summary_reader=lambda path: path.read_text(encoding="utf-8"),
+        impact_model="glm",
+        normalizer_model="glm",
     )
 
     assert impacts == [("03", "Normalized reason", False, "Normalized note")]

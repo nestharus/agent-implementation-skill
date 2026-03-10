@@ -31,6 +31,7 @@ from typing import Callable
 # ---------------------------------------------------------------------------
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src" / "scripts"))
 
+from lib.core.model_policy import resolve  # noqa: E402
 from section_loop.dispatch import dispatch_agent, read_model_policy  # noqa: E402
 
 
@@ -142,7 +143,7 @@ def _run_scenario(scenario: Scenario) -> ScenarioResult:
 
         # Write a default model policy so read_model_policy works
         policy = read_model_policy(planspace)
-        model = policy.get(scenario.model_policy_key, "glm")
+        model = resolve(policy, scenario.model_policy_key)
 
         # Run scenario setup -- creates fixtures and returns prompt path
         prompt_path = scenario.setup(planspace, codespace)

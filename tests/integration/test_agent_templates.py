@@ -203,6 +203,7 @@ class TestAdjudicatePromptIntegration:
 
             adjudicate_agent_output(
                 output_path, planspace, "test-parent",
+                model="glm",
             )
 
         adj_prompt_path = artifacts / "adjudicate-prompt.md"

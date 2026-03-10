@@ -160,13 +160,13 @@ Descent into implementation before anchors, contracts, and research are resolved
 
 ## PRB-0014: Governance Context Dilution / Packet Overscoping
 
-**Status**: active — partially addressed (R103-R106)
+**Status**: active — substantially addressed (R103-R108)
 **Provenance**: audit-inferred (R103)
 **Regions**: governance packets, freshness computation, section-input hashing, prompt context
 
-Governance packets mirror the full problem/pattern/profile archives into every section, regardless of which problems and patterns are actually applicable to that section. This causes: (1) packet-membership checks become vacuous because every ID is in every packet, (2) any governance edit invalidates freshness for all sections instead of only affected ones, (3) context optimization is violated because agents receive irrelevant governance material. R103 added region-based candidate filtering. R104 expanded to multi-signal applicability. R105 added explicit applicability states (`matched`/`ambiguous_applicability`/`no_applicable_governance`), narrowed profile scope to governing profile only, and populated `governance_questions` when applicability is ambiguous rather than silently broadening. R106 fixed the pattern side: `parse_pattern_index()` now extracts `regions` and `solution_surfaces` fields, so `_filter_by_regions()` can actually scope patterns instead of treating all as universal.
+Governance packets mirror the full problem/pattern/profile archives into every section, regardless of which problems and patterns are actually applicable to that section. This causes: (1) packet-membership checks become vacuous because every ID is in every packet, (2) any governance edit invalidates freshness for all sections instead of only affected ones, (3) context optimization is violated because agents receive irrelevant governance material. R103 added region-based candidate filtering. R104 expanded to multi-signal applicability. R105 added explicit applicability states (`matched`/`ambiguous_applicability`/`no_applicable_governance`), narrowed profile scope to governing profile only, and populated `governance_questions` when applicability is ambiguous rather than silently broadening. R106 fixed the pattern side: `parse_pattern_index()` now extracts `regions` and `solution_surfaces` fields, so `_filter_by_regions()` can actually scope patterns instead of treating all as universal. R108 removed the full-archive no-match fallback: `_filter_by_regions()` now returns empty candidates when nothing matches, and `build_section_governance_packet()` emits governance questions distinguishing "nothing matched" from "governance doesn't apply." Remaining gap: packet builder does not yet consume synthesis/runtime-region cues from `system-synthesis.md`.
 
-**Solution surfaces**: Multi-signal section-scoped applicability with explicit ambiguity states (PAT-0011 R105), pattern applicability metadata extraction (R106), bounded profile scope, archive refs instead of full duplication, governance_questions populated on ambiguity.
+**Solution surfaces**: Multi-signal section-scoped applicability with explicit ambiguity states (PAT-0011 R105), pattern applicability metadata extraction (R106), bounded profile scope, archive refs instead of full duplication, governance_questions populated on ambiguity, no-match bounded to empty candidates with explicit questions (PAT-0011 R108).
 
 ---
 
@@ -179,3 +179,15 @@ Governance packets mirror the full problem/pattern/profile archives into every s
 Declared eval scenario modules can drift to stale import paths without detection. The eval harness caught ImportError and continued with a warning, silently narrowing scenario coverage. Two scenario modules (readiness_gate, reconciliation) imported from a dead path (`lib.proposal_state_repository`). R106 fixed the stale imports, and made the harness fail-closed: `_load_all_scenarios()` now accumulates import failures and `main()` exits nonzero when any declared scenario fails to load.
 
 **Solution surfaces**: Eval harness fail-closed on import errors (PAT-0008 R106), corrected scenario imports, harness exit code enforcement.
+
+---
+
+## PRB-0016: Advisory Surface Degradation Visibility
+
+**Status**: active — pattern established (R108), code changes pending
+**Provenance**: audit-inferred (R108)
+**Regions**: QA interceptor, QA verdict parser, task dispatcher, lifecycle logging, reconciliation adjudicator
+
+Advisory surfaces (QA interception, reconciliation adjudication) are deliberately fail-open: when they encounter internal errors, missing targets, or unparseable output, they fall back to baseline dispatch behavior. This is correct — advisory gates should not block execution. However, the degraded outcome is currently logged identically to genuine approval: QA parse failures map to PASS, QA exceptions are logged as `qa:passed`, and reconciliation fallback is invisible in lifecycle events. This erases the distinction between "the advisory surface evaluated and approved" and "the advisory surface failed, so dispatch fell back to baseline." Evidence preservation requires this distinction to be visible.
+
+**Solution surfaces**: PAT-0014 (Advisory Gate Transparency), advisory status taxonomy (PASS/REJECT/ADVISORY_ERROR/UNPARSEABLE/TARGET_UNAVAILABLE), distinct lifecycle logging for degraded outcomes, reconciliation fallback visibility.

@@ -1501,10 +1501,7 @@ Write a JSON signal to: `{verify_signal}`
             )
         _log_artifact(planspace, "prompt:philosophy-verify")
 
-        verifier_model = policy.get(
-            "intent_philosophy_verifier",
-            "claude-opus",
-        )
+        verifier_model = resolve(policy, "intent_philosophy_verifier")
         verify_run = _dispatch_classified_signal_stage(
             stage_name="verifier",
             prompt_path=verify_prompt,

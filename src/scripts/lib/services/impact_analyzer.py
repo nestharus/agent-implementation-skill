@@ -130,8 +130,8 @@ def analyze_impacts(
     parent: str,
     *,
     summary_reader: Callable[[Path], str],
-    impact_model: str = "glm",
-    normalizer_model: str = "glm",
+    impact_model: str,
+    normalizer_model: str,
 ) -> list[MaterialImpact]:
     """Run the full impact analysis pipeline and return material impacts."""
     artifacts = PathRegistry(planspace).artifacts

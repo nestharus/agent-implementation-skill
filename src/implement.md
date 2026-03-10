@@ -935,7 +935,7 @@ recorded as telemetry only.
 | Key | Default | Role |
 |-----|---------|------|
 | `substrate_shard` | `gpt-high` | Per-section dependency exploration |
-| `substrate_pruner` | `gpt-GPT-xhigh` | Strategic cross-section convergence |
+| `substrate_pruner` | `gpt-xhigh` | Strategic cross-section convergence |
 | `substrate_seeder` | `gpt-high` | Anchor creation from seed plan |
 
 ### CLI

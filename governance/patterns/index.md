@@ -247,6 +247,11 @@ centrally from policy.
    the authoritative default — use `policy["key"]` or `resolve(policy, key)`
    instead. The authoritative default lives in `ModelPolicy` (for main
    policy) or `DEFAULT_SCAN_MODELS` (for scan policy), not at the callsite.
+7. Helper functions must not carry concrete model defaults in their
+   signatures (e.g., `model: str = "glm"`). Callers must pass
+   policy-resolved values; helpers must require the parameter. This applies
+   to helper functions, eval/dev harnesses that dispatch real agents, and
+   any function that ultimately feeds a model name into `dispatch_agent()`.
 
 **Canonical instance**: `TASK_ROUTES` in `src/scripts/task_router.py` plus
 `ModelPolicy` in `src/scripts/lib/core/model_policy.py`
@@ -260,11 +265,13 @@ centrally from policy.
 - `src/scripts/section_loop/main.py` — outer orchestration loop
 - Policy lookups across `section_loop/`, `lib/pipelines/`, `lib/intent/`, and
   `lib/research/`
+- `evals/harness.py` — live scenario eval model lookup
 
 **Conformance**: Model literals are allowed only in central routing /
-default-policy surfaces. Business logic and prompt builders must not choose
-concrete models ad hoc. Long-lived controllers must not cache policy at
-startup and reuse it indefinitely.
+default-policy surfaces. Business logic, prompt builders, helper functions,
+and eval/dev harnesses must not choose concrete models ad hoc. Long-lived
+controllers must not cache policy at startup and reuse it indefinitely.
+Helper function signatures must not carry concrete model defaults.
 
 ---
 
@@ -331,20 +338,29 @@ than coarse "is it done?" checks.
 
 ---
 
-## PAT-0008: Fail-Closed Defaults
+## PAT-0008: Fail-Closed Defaults (Authoritative Surfaces)
 
 **Problem class**: Parse failures, missing data, unexpected states, and
-uncertain optimization boundaries in a multi-agent pipeline.
+uncertain optimization boundaries at **authoritative** control, verification,
+and parsing surfaces in a multi-agent pipeline.
 
 **Regions**: readiness gate, freshness computation, artifact parsing, eval
-harness, optimization boundaries
+harness, optimization boundaries, governance index loading
 
 **Solution surfaces**: Fail-closed defaults, conservative baselines, eval
-harness exit codes, readiness gating.
+harness exit codes, readiness gating, governance index status.
 
-**Philosophy**: Conservative behavior on uncertainty. Fail closed at decision
-boundaries; scale process by risk only when the system actually has enough
-evidence to do so safely.
+**Philosophy**: Conservative behavior on uncertainty at authoritative
+boundaries. Fail closed at decision boundaries; scale process by risk only
+when the system actually has enough evidence to do so safely.
+
+**Scope**: This pattern governs **authoritative** surfaces — those whose
+failure changes the correctness of downstream decisions. Advisory surfaces
+that are deliberately fail-open (e.g., QA interception, reconciliation
+adjudication) are governed by PAT-0014, not this pattern. The distinction
+matters: authoritative fail-closed prevents silent corruption; advisory
+fail-open preserves liveness. Treating advisory surfaces as PAT-0008
+violations erases the intentional design boundary.
 
 **Template**:
 - On parse failure: default to the conservative / safe behavior.
@@ -355,6 +371,10 @@ evidence to do so safely.
   unverified shortcut.
 - On declared eval-scenario or registry import failure: fail the harness,
   do not silently narrow coverage.
+- On authoritative governance index parse failure: record the failure in a
+  structured status artifact and surface it to downstream consumers (packet
+  builder, readiness resolver) rather than writing empty indexes and
+  returning success.
 
 **Canonical instance**: readiness and freshness gating across
 `src/scripts/lib/pipelines/readiness_gate.py` and
@@ -363,10 +383,14 @@ evidence to do so safely.
 **Known instances**:
 - Readiness and freshness gating
 - `evals/harness.py` — live-eval scenario loading boundary
+- `src/scripts/lib/governance/loader.py` — governance index build with
+  structured parse-failure status
 
-**Conformance**: Any skip, optimization, or early-exit path must have a
-fail-closed default path. A declared verification surface that silently
-degrades on import failure is a violation.
+**Conformance**: Any skip, optimization, or early-exit path at an
+authoritative surface must have a fail-closed default path. A declared
+verification surface that silently degrades on import failure is a violation.
+Authoritative governance parsing that swallows errors and writes empty
+indexes without surfacing the failure is a violation.
 
 ---
 
@@ -487,10 +511,12 @@ context assembly, freshness service, section-input hasher.
    - unresolved governance questions
    - applicability basis / ambiguity notes
    - references back to the authoritative archive
-4. Do **not** mirror the full governance archive into every section packet
-   unless the catalog is explicitly updated to allow that behavior. Broad
-   fallback, when unavoidable, must be explicit and justified in the packet
-   with an `applicability_basis` of `broad_fallback` and a reason.
+4. Do **not** mirror the full governance archive into any section packet.
+   When no records match by region or keyword, the packet must contain empty
+   candidate lists plus explicit governance questions and archive references
+   — not the full record set. The distinction between "nothing matched" and
+   "governance doesn't apply" must be preserved: archives exist but nothing
+   matched is `ambiguous_applicability`, not `no_applicable_governance`.
 5. Thread the packet into proposal, microstrategy, implementation, alignment,
    ROAL, post-implementation assessment, sidecars, freshness hashing, and
    section-input hashing.
@@ -671,6 +697,60 @@ also a violation.
 
 ---
 
+## PAT-0014: Advisory Gate Transparency
+
+**Problem class**: Advisory surfaces (QA interception, reconciliation
+adjudication) that are deliberately fail-open may silently degrade — merging
+internal errors, missing targets, and parse failures into a PASS outcome
+that is observationally identical to genuine approval.
+
+**Regions**: QA interceptor, QA verdict parser, task dispatcher QA lifecycle,
+reconciliation adjudicator
+
+**Solution surfaces**: Advisory status taxonomy, distinct lifecycle logging,
+degraded-outcome preservation.
+
+**Philosophy**: Evidence preservation. Partial solutions must explain why.
+Unresolved states bubble upward rather than collapsing into success. Advisory
+authority must be explicit — fail-open-to-baseline is allowed; evidence
+erasure is not.
+
+**Template**:
+1. Advisory surfaces must declare their authority level explicitly. Fail-open
+   behavior must be documented and intentional, not a side effect of bare
+   exception handling.
+2. Advisory outcomes must distinguish at minimum:
+   - genuine approval (the advisory surface evaluated and approved)
+   - genuine rejection (the advisory surface evaluated and rejected)
+   - degraded/error (the advisory surface failed internally — dispatch fell
+     back to baseline behavior)
+3. Degraded advisory outcomes must be logged with a distinct status (not
+   merged into PASS). Lifecycle events, telemetry, and audit surfaces must
+   preserve the distinction between approved and degraded.
+4. Advisory surfaces must not become sole authoritative readiness or coverage
+   gates. If an advisory surface's output is later consumed as an
+   authoritative signal, it must be promoted to PAT-0008 governance or the
+   consuming surface must handle the degraded case explicitly.
+
+**Canonical instance**: `src/scripts/qa_interceptor.py` — QA dispatch
+interception with deliberate fail-open behavior.
+
+**Known instances**:
+- `src/scripts/qa_interceptor.py` — QA interception
+- `src/scripts/lib/services/qa_verdict_parser.py` — QA verdict parsing
+- `src/scripts/task_dispatcher.py` — QA lifecycle event logging
+- `src/scripts/lib/tasks/task_notifier.py` — QA result notification
+- `src/scripts/lib/pipelines/reconciliation_adjudicator.py` — reconciliation
+  fail-open behavior
+
+**Conformance**: Advisory fail-open behavior is permitted only when the
+degraded outcome is recorded distinctly from genuine approval. Logging a
+QA error as `qa:passed` or mapping a malformed verdict to PASS are violations.
+The fail-open/fail-closed distinction must be explicit in the code and
+documented in the agent file or function docstring.
+
+---
+
 ## Health Notes
 
 - **PAT-0001 (Corruption Preservation)**: Healthy. Instance list expanded to
@@ -682,24 +762,30 @@ also a violation.
   implementation_loop.py fixed in R106 via PathRegistry accessors. Readiness
   resolver root semantics fixed in R106.
 - **PAT-0004 (Flow System)**: Healthy.
-- **PAT-0005 (Policy-Driven Models)**: Unhealthy. Scan fallback and per-dispatch
-  refresh fixed in R105. R107 strengthened conformance to ban retyped
-  `.get("key", "literal")` fallbacks. Duplicated callsites being collapsed.
-- **PAT-0006 (Freshness Computation)**: Healthy in mechanism, but governance
-  packet overscoping currently causes avoidable invalidation pressure.
+- **PAT-0005 (Policy-Driven Models)**: Healthy. R108 removed all remaining
+  helper signature defaults and `policy.get()` fallback literals. Eval harness
+  now uses `resolve()`. Conformance extended to cover helper signatures.
+- **PAT-0006 (Freshness Computation)**: Healthy in mechanism. Governance packet
+  overscoping fixed in R108 (no-match returns empty candidates, not full
+  archive), reducing avoidable invalidation pressure.
 - **PAT-0007 (Cycle-Aware Status)**: Healthy and intentionally narrow.
-- **PAT-0008 (Fail-Closed Defaults)**: Healthy. Eval harness fails closed on
-  scenario import failure (R106). Template includes declared eval coverage.
+- **PAT-0008 (Fail-Closed Defaults)**: Healthy. Narrowed to authoritative
+  surfaces in R108. Governance index loading now writes structured
+  parse-failure status (R108). Advisory surfaces governed by PAT-0014.
 - **PAT-0009 (Blocker Taxonomy)**: Healthy. Governance blocker normalization
   fixed in R106 — blockers.py handles both proposal-state and governance blocker
   shapes.
 - **PAT-0010 (Intent Surfaces)**: Healthy.
-- **PAT-0011 (Applicable Governance Packet Threading)**: Unhealthy. Loader
-  parses regions/solution_surfaces (R106). Catalog metadata completed (R107).
-  Runtime `_filter_by_regions()` updated to treat missing metadata as ambiguity
-  (R107). Readiness resolver bridges packet ambiguity to descent gating (R107).
+- **PAT-0011 (Applicable Governance Packet Threading)**: Healthy. No-match
+  behavior reworked in R108: returns empty candidates with governance questions
+  and archive refs instead of full-archive fallback. Packet builder checks
+  index parse-failure status. Loader parses regions/solution_surfaces (R106).
+  Catalog metadata completed (R107). Ambiguity gated at readiness (R107).
 - **PAT-0012 (Post-Implementation Governance Feedback)**: Healthy. Debt
   promotion is idempotent with material-payload-aware dedup (R105).
 - **PAT-0013 (Governed Proposal Identity)**: Healthy. Root semantics fixed in
   R106, runtime gate logic correct. Packet ambiguity bridged to readiness in
   R107.
+- **PAT-0014 (Advisory Gate Transparency)**: Unhealthy. Pattern established in
+  R108 but QA/reconciliation code still merges degraded outcomes into PASS.
+  Code changes deferred to R109.

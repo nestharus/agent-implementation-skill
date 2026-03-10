@@ -31,8 +31,8 @@ def post_section_completion(
     planspace: Path,
     codespace: Path,
     parent: str,
-    impact_model: str = "glm",
-    normalizer_model: str = "glm",
+    impact_model: str,
+    normalizer_model: str,
 ) -> None:
     """Post-completion steps after a section is aligned."""
     artifacts = PathRegistry(planspace).artifacts

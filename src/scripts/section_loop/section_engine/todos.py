@@ -107,8 +107,9 @@ def _extract_todos_from_files(
 def _check_needs_microstrategy(
     proposal_path: Path, planspace: Path, section_number: str,
     parent: str = "", codespace: Path | None = None,
-    model: str = "glm",
-    escalation_model: str = "gpt-xhigh",
+    *,
+    model: str,
+    escalation_model: str,
 ) -> bool:
     """Check if the microstrategy decider requests a microstrategy.
 
@@ -117,9 +118,6 @@ def _check_needs_microstrategy(
 
     If the signal cannot be produced after retries (including escalation),
     defaults to True (fail-closed: prefer more strategy over silent skip).
-
-    The ``model`` parameter defaults to ``"glm"`` but callers should
-    pass ``policy["microstrategy_decider"]`` for policy-driven selection.
     """
     # Primary: structured JSON signal
     paths = PathRegistry(planspace)

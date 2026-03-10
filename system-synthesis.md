@@ -157,9 +157,9 @@ Cross-cutting infrastructure: `artifact_io.py` (read_json/write_json/rename_malf
 
 - **Problems solved**: PRB-0008 (Implementation Risk), PRB-0009 (Problem Traceability), PRB-0010 (Pattern Governance)
 - **Philosophy**: PHI-global
-- **Patterns**: PAT-0001, PAT-0002, PAT-0003, PAT-0008, PAT-0011 (Applicable Governance Packet Threading), PAT-0012 (Post-Implementation Governance Feedback), PAT-0013 (Governed Proposal Identity)
+- **Patterns**: PAT-0001, PAT-0002, PAT-0003, PAT-0005, PAT-0008, PAT-0011 (Applicable Governance Packet Threading), PAT-0012 (Post-Implementation Governance Feedback), PAT-0013 (Governed Proposal Identity), PAT-0014 (Advisory Gate Transparency)
 
-The governance layer makes per-run artifacts cumulative. Codespace holds authoritative documents (problem archive with 15 problems, pattern catalog with 13 patterns, philosophy profiles, risk register). The runtime parses these into planspace JSON indexes, builds per-section governance packets with section-scoped candidate filtering (including applicability-aware pattern scoping), and threads them into prompt context, sidecars, freshness hashing, section-input hashing, and traceability.
+The governance layer makes per-run artifacts cumulative. Codespace holds authoritative documents (problem archive with 16 problems, pattern catalog with 14 patterns, philosophy profiles, risk register). The runtime parses these into planspace JSON indexes, builds per-section governance packets with section-scoped candidate filtering (including applicability-aware pattern scoping and bounded no-match behavior), and threads them into prompt context, sidecars, freshness hashing, section-input hashing, and traceability.
 
 Post-implementation assessment queues after successful implementation, validates results with PAT-0001, merges governance IDs into trace artifacts, and routes verdicts mechanically: `accept` → record governance IDs, `accept_with_debt` → emit debt signal for risk-register staging, `refactor_required` → emit structured blocker signal.
 

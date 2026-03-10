@@ -135,14 +135,14 @@ class TestParseAlignmentVerdict:
 class TestExtractProblems:
     def test_aligned_verdict_returns_none(self) -> None:
         result = '{"frame_ok": true, "aligned": true, "problems": []}'
-        assert _extract_problems(result) is None
+        assert _extract_problems(result, adjudicator_model="glm") is None
 
     def test_misaligned_verdict_returns_problems(self) -> None:
         result = (
             '{"frame_ok": true, "aligned": false, '
             '"problems": ["auth bypass", "missing validation"]}'
         )
-        problems = _extract_problems(result)
+        problems = _extract_problems(result, adjudicator_model="glm")
         assert problems is not None
         assert "auth bypass" in problems
         assert "missing validation" in problems
@@ -152,20 +152,20 @@ class TestExtractProblems:
             '{"frame_ok": true, "aligned": false, '
             '"problems": "Single problem description"}'
         )
-        problems = _extract_problems(result)
+        problems = _extract_problems(result, adjudicator_model="glm")
         assert problems == "Single problem description"
 
     def test_misaligned_empty_problems_list(self) -> None:
         """Empty problems list falls through to descriptive message."""
         result = '{"frame_ok": true, "aligned": false, "problems": []}'
-        problems = _extract_problems(result)
+        problems = _extract_problems(result, adjudicator_model="glm")
         assert problems is not None
         assert "misaligned" in problems.lower()
 
     def test_misaligned_no_problems_field(self) -> None:
         """Missing problems field falls through to descriptive message."""
         result = '{"frame_ok": true, "aligned": false}'
-        problems = _extract_problems(result)
+        problems = _extract_problems(result, adjudicator_model="glm")
         assert problems is not None
         assert "misaligned" in problems.lower()
 
@@ -192,6 +192,7 @@ class TestExtractProblems:
                 planspace=planspace,
                 parent="orchestrator",
                 codespace=codespace,
+                adjudicator_model="glm",
             )
         assert problems is not None
         assert "Adjudicator found divergence" in problems
@@ -218,12 +219,13 @@ class TestExtractProblems:
                 planspace=planspace,
                 parent="orchestrator",
                 codespace=codespace,
+                adjudicator_model="glm",
             )
         assert problems is None
 
     def test_no_verdict_no_adjudicator_returns_missing(self) -> None:
         """Without output_path/planspace, can't dispatch adjudicator."""
-        problems = _extract_problems("No JSON output here")
+        problems = _extract_problems("No JSON output here", adjudicator_model="glm")
         assert problems is not None
         assert "MISSING_JSON_VERDICT" in problems
 
@@ -233,6 +235,6 @@ class TestExtractProblems:
             '{"frame_ok": false, "aligned": false, '
             '"problems": ["Invalid frame: treated as feature coverage audit"]}'
         )
-        problems = _extract_problems(result)
+        problems = _extract_problems(result, adjudicator_model="glm")
         assert problems is not None
         assert "feature coverage" in problems.lower() or isinstance(problems, list)

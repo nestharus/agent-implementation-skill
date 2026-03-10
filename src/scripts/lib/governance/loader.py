@@ -256,7 +256,13 @@ def parse_region_profile_map(codespace: Path) -> dict:
 
 
 def build_governance_indexes(codespace: Path, planspace: Path) -> bool:
-    """Parse governance docs and mirror advisory JSON indexes into planspace."""
+    """Parse governance docs and mirror advisory JSON indexes into planspace.
+
+    Returns True only if all authoritative indexes parsed successfully.
+    Returns False when any parse failed — the index status artifact records
+    which indexes failed so downstream consumers can distinguish parse
+    failure from true no-governance (PAT-0008 R108).
+    """
     paths = PathRegistry(planspace)
     paths.governance_dir().mkdir(parents=True, exist_ok=True)
 
@@ -264,29 +270,51 @@ def build_governance_indexes(codespace: Path, planspace: Path) -> bool:
     pattern_index: list[dict] = []
     profile_index: list[dict] = []
     region_profile_map: dict = {"default": "", "overrides": {}}
+    parse_failures: list[str] = []
 
     try:
         problem_index = parse_problem_index(codespace)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to parse governance problem index: %s", exc)
+        parse_failures.append(f"problem_index: {exc}")
 
     try:
         pattern_index = parse_pattern_index(codespace)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to parse governance pattern index: %s", exc)
+        parse_failures.append(f"pattern_index: {exc}")
 
     try:
         profile_index = parse_philosophy_profiles(codespace)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to parse philosophy profiles: %s", exc)
+        parse_failures.append(f"profile_index: {exc}")
 
     try:
         region_profile_map = parse_region_profile_map(codespace)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to parse region-profile map: %s", exc)
+        parse_failures.append(f"region_profile_map: {exc}")
 
     write_json(paths.governance_problem_index(), problem_index)
     write_json(paths.governance_pattern_index(), pattern_index)
     write_json(paths.governance_profile_index(), profile_index)
     write_json(paths.governance_region_profile_map(), region_profile_map)
+
+    # Write index status so downstream consumers can distinguish parse
+    # failure from true no-governance
+    status = {
+        "ok": len(parse_failures) == 0,
+        "parse_failures": parse_failures,
+    }
+    write_json(paths.governance_dir() / "index-status.json", status)
+
+    if parse_failures:
+        logger.warning(
+            "Governance index build completed with %d parse failure(s) — "
+            "downstream consumers should check index-status.json",
+            len(parse_failures),
+        )
+        return False
+
     return True

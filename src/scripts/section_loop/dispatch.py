@@ -223,15 +223,13 @@ Do NOT send loop signals via mailbox — only log signal events as above.
 def adjudicate_agent_output(
     output_path: Path, planspace: Path, parent: str,
     codespace: Path | None = None,
-    model: str = "glm",
+    *,
+    model: str,
 ) -> tuple[str | None, str]:
     """Dispatch state-adjudicator to classify ambiguous agent output.
 
     Used when structured signal file is absent but output may contain
     signals. Returns (signal_type, detail) or (None, "").
-
-    The ``model`` parameter defaults to ``"glm"`` but callers should
-    pass ``policy["adjudicator"]`` for policy-driven selection.
     """
     paths = PathRegistry(planspace)
     artifacts = paths.artifacts

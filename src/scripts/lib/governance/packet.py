@@ -115,8 +115,9 @@ def _filter_by_regions(
             basis = "region_match" if not basis_parts else f"region_match+keyword({';'.join(basis_parts[:5])})"
         return all_matched, basis
 
-    # Fail-closed: broad fallback with explicit reason and ambiguity flag
-    return records, "broad_fallback:no_region_or_keyword_match:ambiguous"
+    # No-match: return empty candidates with explicit governance questions
+    # PAT-0011 (R108): no-match must NOT hydrate the full archive
+    return [], "no_match:no_region_or_keyword_match"
 
 
 def build_section_governance_packet(
@@ -153,7 +154,16 @@ def build_section_governance_packet(
     all_profiles = _list_index(paths.governance_profile_index())
     region_profile_map = _dict_index(paths.governance_region_profile_map())
 
-    # Candidate filtering: prefer section-matched items, fall back to all
+    # Check for authoritative parse failures (PAT-0008 R108)
+    index_status_path = paths.governance_dir() / "index-status.json"
+    index_parse_failures: list[str] = []
+    index_status = read_json(index_status_path)
+    if isinstance(index_status, dict):
+        index_parse_failures = index_status.get("parse_failures", [])
+        if not isinstance(index_parse_failures, list):
+            index_parse_failures = []
+
+    # Candidate filtering: section-scoped matching
     candidate_problems, problem_basis = _filter_by_regions(
         all_problems, section_number, "problem_id", combined_summary,
     )
@@ -174,33 +184,63 @@ def build_section_governance_packet(
 
     # Determine applicability state and governance questions
     governance_questions: list[str] = []
+
+    # Parse failure questions (PAT-0008 R108)
+    if index_parse_failures:
+        governance_questions.append(
+            f"Section {section_number}: governance index has "
+            f"{len(index_parse_failures)} parse failure(s) — "
+            "authoritative governance docs may be corrupt. "
+            "Resolve parse errors before trusting governance state."
+        )
+
     problem_ambiguous = "ambiguous" in problem_basis and candidate_problems
     pattern_ambiguous = "ambiguous" in pattern_basis and candidate_patterns
-    if problem_ambiguous or pattern_ambiguous:
-        if problem_ambiguous:
+
+    # No-match questions (PAT-0011 R108): empty candidates with archives
+    # present means applicability could not be determined, not that
+    # governance doesn't apply
+    problem_no_match = "no_match" in problem_basis and not candidate_problems and all_problems
+    pattern_no_match = "no_match" in pattern_basis and not candidate_patterns and all_patterns
+
+    if problem_ambiguous or problem_no_match:
+        if problem_no_match:
             reason = (
-                "some problems have missing applicability metadata"
-                if "no_regions" in problem_basis
-                else "broad fallback used"
+                "no problems matched this section by region or keyword — "
+                f"{len(all_problems)} problem(s) exist in the archive"
             )
-            governance_questions.append(
-                f"Section {section_number}: problem applicability is ambiguous — "
-                f"{reason}. Which problems apply?"
-            )
-        if pattern_ambiguous:
+        elif "no_regions" in problem_basis:
+            reason = "some problems have missing applicability metadata"
+        else:
+            reason = "broad fallback used"
+        governance_questions.append(
+            f"Section {section_number}: problem applicability is ambiguous — "
+            f"{reason}. Which problems apply?"
+        )
+    if pattern_ambiguous or pattern_no_match:
+        if pattern_no_match:
             reason = (
-                "some patterns have missing applicability metadata"
-                if "no_regions" in pattern_basis
-                else "broad fallback used"
+                "no patterns matched this section by region or keyword — "
+                f"{len(all_patterns)} pattern(s) exist in the archive"
             )
-            governance_questions.append(
-                f"Section {section_number}: pattern applicability is ambiguous — "
-                f"{reason}. Which patterns apply?"
-            )
+        elif "no_regions" in pattern_basis:
+            reason = "some patterns have missing applicability metadata"
+        else:
+            reason = "broad fallback used"
+        governance_questions.append(
+            f"Section {section_number}: pattern applicability is ambiguous — "
+            f"{reason}. Which patterns apply?"
+        )
 
     # Determine explicit applicability state
-    if not candidate_problems and not candidate_patterns and not governing_profile:
-        applicability_state = "no_applicable_governance"
+    if index_parse_failures:
+        applicability_state = "ambiguous_applicability"
+    elif not candidate_problems and not candidate_patterns and not governing_profile:
+        if all_problems or all_patterns:
+            # Archives exist but nothing matched — ambiguous, not absent
+            applicability_state = "ambiguous_applicability"
+        else:
+            applicability_state = "no_applicable_governance"
     elif governance_questions:
         applicability_state = "ambiguous_applicability"
     else:

@@ -32,7 +32,8 @@ def _extract_problems(
     planspace: Path | None = None,
     parent: str | None = None,
     codespace: Path | None = None,
-    adjudicator_model: str = "glm",
+    *,
+    adjudicator_model: str,
 ) -> str | None:
     """Extract problem list from an alignment check result.
 
@@ -41,9 +42,6 @@ def _extract_problems(
     when available.  When no JSON verdict is found, dispatches a GLM
     adjudicator to classify the raw output — scripts never interpret
     meaning from text.
-
-    The ``adjudicator_model`` parameter defaults to ``"glm"`` but callers
-    should pass ``policy["adjudicator"]`` for policy-driven selection.
     """
     import json as _json
 
@@ -137,19 +135,15 @@ def _run_alignment_check_with_retries(
     sec_num: str,
     output_prefix: str = "align",
     max_retries: int = 2,
-    model: str = "claude-opus",
-    adjudicator_model: str = "glm",
+    *,
+    model: str,
+    adjudicator_model: str,
 ) -> str | None:
     """Run an alignment check with TIMEOUT retry logic.
 
     Dispatches the specified model for an implementation alignment check.
     If the agent times out, retries up to max_retries times. Returns the
     alignment result text, or None if all retries exhausted.
-
-    The ``model`` parameter defaults to ``"claude-opus"`` but callers
-    should pass ``policy["alignment"]`` for policy-driven selection.
-    The ``adjudicator_model`` defaults to ``"glm"`` but callers should
-    pass ``policy["adjudicator"]``.
     """
     from .prompts import write_impl_alignment_prompt
 

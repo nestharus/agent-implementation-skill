@@ -43,11 +43,18 @@ def test_build_section_governance_packet_uses_indexes_and_default_profile(
 
     build_governance_indexes(codespace, planspace)
 
-    packet_path = build_section_governance_packet("01", planspace, codespace)
+    # Pass a section summary that keyword-matches "governance" in the
+    # problem's regions, so _filter_by_regions() can match
+    packet_path = build_section_governance_packet(
+        "01", planspace, codespace,
+        section_summary="governance layer traceability",
+    )
     packet = json.loads(packet_path.read_text(encoding="utf-8"))
 
     assert packet["section"] == "01"
+    # Problem matches via keyword overlap with section summary
     assert packet["candidate_problems"][0]["problem_id"] == "PRB-0009"
+    # Pattern has no regions — should be included as ambiguous
     assert packet["candidate_patterns"][0]["pattern_id"] == "PAT-0003"
     assert packet["profiles"][0]["profile_id"] == "PHI-global"
     assert packet["governing_profile"] == "PHI-global"

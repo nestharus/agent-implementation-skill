@@ -175,10 +175,7 @@ Write a JSON signal to: `{triage_signal_path}`
                 f"Section {section_number}: triage flagged escalation — "
                 f"re-dispatching with stronger model",
             )
-            escalation_model = policy.get(
-                "intent_triage_escalation",
-                "claude-opus",
-            )
+            escalation_model = resolve(policy, "intent_triage_escalation")
             dispatch_agent(
                 escalation_model,
                 triage_prompt_path,

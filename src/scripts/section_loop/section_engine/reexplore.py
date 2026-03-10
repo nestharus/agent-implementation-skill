@@ -12,7 +12,7 @@ from ..types import Section
 
 def _reexplore_section(
     section: Section, planspace: Path, codespace: Path, parent: str,
-    model: str = "claude-opus",
+    model: str,
 ) -> str | None:
     """Dispatch a re-explorer when a section has no related files.
 
@@ -22,9 +22,6 @@ def _reexplore_section(
 
     Returns the raw agent output, or "ALIGNMENT_CHANGED_PENDING" if
     alignment changed during dispatch.
-
-    The ``model`` parameter defaults to ``"claude-opus"`` but callers
-    should pass ``policy["setup"]`` for policy-driven selection.
 
     Exploration model selection is delegated to ``task_router`` via the
     ``scan.exploration`` policy key when queued ``scan_explore`` tasks
