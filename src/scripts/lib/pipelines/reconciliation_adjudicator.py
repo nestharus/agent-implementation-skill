@@ -65,7 +65,7 @@ group's `members` array or in the `separate` array.
     if violations:
         logger.warning(
             "Reconciliation adjudicate prompt safety violation: %s "
-            "— skipping dispatch (fail-open: returning empty list)",
+            "— failing open with degraded advisory (PAT-0014: safety_blocked)",
             violations,
         )
         return []
@@ -89,7 +89,7 @@ group's `members` array or in the `separate` array.
     except Exception:
         logger.warning(
             "Reconciliation adjudication dispatch failed for %s "
-            "— falling back to exact-match only",
+            "— failing open with degraded advisory (PAT-0014: dispatch_error)",
             candidate_type,
             exc_info=True,
         )
@@ -106,7 +106,7 @@ group's `members` array or in the `separate` array.
     except (json.JSONDecodeError, KeyError, TypeError):
         logger.warning(
             "Reconciliation adjudication returned malformed JSON for "
-            "%s — falling back to exact-match only",
+            "%s — failing open with degraded advisory (PAT-0014: unparseable)",
             candidate_type,
         )
     return []

@@ -167,7 +167,8 @@ def test_materialize_context_sidecar_writes_pretty_json_with_trailing_newline(tm
 
     sidecar = materialize_context_sidecar(str(agent_file), tmp_path, section="11")
 
-    assert sidecar == tmp_path / "artifacts" / "context-section-agent.json"
+    from src.scripts.lib.core.path_registry import PathRegistry
+    assert sidecar == PathRegistry(tmp_path).context_sidecar("section-agent")
     assert sidecar is not None
     assert sidecar.read_text(encoding="utf-8").endswith("\n")
     assert json.loads(sidecar.read_text(encoding="utf-8")) == {

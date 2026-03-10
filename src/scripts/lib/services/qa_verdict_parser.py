@@ -8,8 +8,9 @@ import json
 def parse_qa_verdict(output: str) -> tuple[str, str, list[str]]:
     """Return ``(verdict, rationale, violations)`` from QA output.
 
-    Parsing is fail-open. Any malformed output yields a PASS verdict with
-    a parse-failure rationale and no violations.
+    Parsing is fail-open. Any malformed or unrecognised output yields a
+    DEGRADED verdict (PAT-0014) so downstream consumers can distinguish
+    genuine approval from parse-failure fallback.
     """
     try:
         json_start = output.find("{")
@@ -21,8 +22,8 @@ def parse_qa_verdict(output: str) -> tuple[str, str, list[str]]:
             violations = data.get("violations", [])
             if verdict in ("PASS", "REJECT"):
                 return verdict, rationale, violations
-            return "PASS", f"Unknown verdict '{verdict}' — defaulting to PASS", []
+            return "DEGRADED", f"Unknown verdict '{verdict}' — failing open", []
     except (json.JSONDecodeError, KeyError, TypeError):
         pass
 
-    return "PASS", "QA agent output could not be parsed — defaulting to PASS", []
+    return "DEGRADED", "QA agent output could not be parsed — failing open", []

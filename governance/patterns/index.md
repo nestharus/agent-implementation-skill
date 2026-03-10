@@ -90,6 +90,9 @@ mechanically before dispatch.
 
 **Template**:
 1. Identify the dynamic / untrusted portion of the prompt surface.
+   Payload-file **contents** are untrusted dynamic content even when the
+   file path arrived through an internal task — the trust boundary is the
+   content, not the delivery mechanism.
 2. Use one sanctioned form:
    - **Direct prompt file**: assemble the full prompt and call
      `write_validated_prompt(content, path)`.
@@ -174,6 +177,8 @@ tests.
 - `src/scripts/lib/pipelines/microstrategy_orchestrator.py`
 - `src/scripts/lib/pipelines/implementation_loop.py`
 - `src/scripts/lib/services/readiness_resolver.py`
+- `src/scripts/lib/dispatch/context_sidecar.py` — context sidecar
+  materialization via `PathRegistry.context_sidecar()` accessor (R109)
 
 **Conformance**: No durable artifact path may be reconstructed ad hoc. Any new
 artifact path MUST be added to `PathRegistry`, and all consumers must use that
@@ -500,7 +505,9 @@ context assembly, freshness service, section-input hasher.
    - region labels from the archives
    - section concern summaries / problem-frame language
    - codespace or synthesis cues that indicate which runtime region the section
-     is operating in
+     is operating in — synthesis cues **must be consumed** when available
+     (e.g., `synthesis-cues.json` parsed from `system-synthesis.md` Regions
+     block)
    - already matched governance IDs when they exist
 3. The packet must contain the section's **applicable or candidate** governance
    set plus the basis for that judgment:
@@ -720,13 +727,19 @@ erasure is not.
    behavior must be documented and intentional, not a side effect of bare
    exception handling.
 2. Advisory outcomes must distinguish at minimum:
-   - genuine approval (the advisory surface evaluated and approved)
-   - genuine rejection (the advisory surface evaluated and rejected)
+   - genuine approval (the advisory surface evaluated and approved) —
+     `reason_code: None`
+   - genuine rejection (the advisory surface evaluated and rejected) —
+     `reason_code: None`
    - degraded/error (the advisory surface failed internally — dispatch fell
-     back to baseline behavior)
+     back to baseline behavior) — `reason_code` carries the specific
+     degradation cause: `unparseable`, `dispatch_error`,
+     `target_unavailable`, `safety_blocked`
 3. Degraded advisory outcomes must be logged with a distinct status (not
    merged into PASS). Lifecycle events, telemetry, and audit surfaces must
-   preserve the distinction between approved and degraded.
+   preserve the distinction between approved and degraded. The `reason_code`
+   must flow through all layers: parser → interceptor → dispatcher →
+   notifier.
 4. Advisory surfaces must not become sole authoritative readiness or coverage
    gates. If an advisory surface's output is later consumed as an
    authoritative signal, it must be promoted to PAT-0008 governance or the
@@ -751,16 +764,64 @@ documented in the agent file or function docstring.
 
 ---
 
+## PAT-0015: Positive Contract Testing
+
+**Problem class**: Test regressions expressed as source-text archaeology
+(grepping codebase files to confirm deleted strings are absent) rather than
+positive assertions about current system behavior.
+
+**Regions**: integration tests, regression tests, component tests
+
+**Solution surfaces**: Positive behavioral assertions, output-shape contracts,
+presence tests over absence tests.
+
+**Philosophy**: Tests assert what the system *does*, not what it *used to
+contain*. Grepping source files for absent strings is repository archaeology,
+not a behavioral contract. When source text changes, the grep breaks or becomes
+a false pass — either way it says nothing about whether the behavior is correct.
+
+**Template**:
+1. Express the desired invariant as a **positive assertion** about current
+   system outputs, return values, or observable behavior.
+2. If verifying that a routing/branching path was removed, test the positive
+   contract that replaced it (e.g., "mode is observation" means assert
+   `resolve_project_mode` and `write_mode_contract` are present — not that
+   `if mode == 'greenfield'` is absent).
+3. If verifying that a heuristic was replaced by agent judgment, assert the
+   current mechanism's keywords (e.g., "heuristic", "judgment", "evidence")
+   rather than grepping for the old rule text.
+4. Source-text grep tests are permitted only when the invariant genuinely
+   requires source-level verification (e.g., "no hardcoded model literals in
+   prompt builders" — PAT-0005 sweep guards). Even then, prefer positive
+   contract tests where possible.
+
+**Canonical instance**: `test_mode_is_observation_in_main()` in
+`tests/integration/test_main_greenfield.py`
+
+**Known instances**:
+- `tests/integration/test_main_greenfield.py` — mode-is-observation contract
+- `tests/integration/test_intent_layer.py` — 4 positive contract tests
+  replacing source-grep absence tests (heuristic judgment, evidence-driven
+  axes, agent-adjudicated recurrence, dynamic philosophy source discovery)
+
+**Conformance**: New regression tests MUST express invariants as positive
+assertions about current behavior. Source-text grep for absent strings is a
+violation unless the invariant genuinely requires source-level verification.
+Converting existing source-grep tests to positive contracts is encouraged
+during audit rounds.
+
+---
+
 ## Health Notes
 
 - **PAT-0001 (Corruption Preservation)**: Healthy. Instance list expanded to
   reflect current authoritative readers.
-- **PAT-0002 (Prompt Safety)**: Healthy. Instance list expanded to reflect
-  current authoritative prompt-safety sites.
-- **PAT-0003 (Path Registry)**: Healthy. Path islands in model_policy.py,
-  scan_dispatch.py, substrate_policy.py, microstrategy_orchestrator.py, and
-  implementation_loop.py fixed in R106 via PathRegistry accessors. Readiness
-  resolver root semantics fixed in R106.
+- **PAT-0002 (Prompt Safety)**: Healthy. R109 clarified that payload-file
+  contents are untrusted dynamic content even when delivered through internal
+  tasks. QA interceptor now validates payload content before dispatch.
+- **PAT-0003 (Path Registry)**: Healthy. R109 added `context_sidecar()`
+  accessor; `context_sidecar.py` now uses PathRegistry instead of ad-hoc
+  path construction.
 - **PAT-0004 (Flow System)**: Healthy.
 - **PAT-0005 (Policy-Driven Models)**: Healthy. R108 removed all remaining
   helper signature defaults and `policy.get()` fallback literals. Eval harness
@@ -776,16 +837,22 @@ documented in the agent file or function docstring.
   fixed in R106 — blockers.py handles both proposal-state and governance blocker
   shapes.
 - **PAT-0010 (Intent Surfaces)**: Healthy.
-- **PAT-0011 (Applicable Governance Packet Threading)**: Healthy. No-match
-  behavior reworked in R108: returns empty candidates with governance questions
-  and archive refs instead of full-archive fallback. Packet builder checks
-  index parse-failure status. Loader parses regions/solution_surfaces (R106).
-  Catalog metadata completed (R107). Ambiguity gated at readiness (R107).
+- **PAT-0011 (Applicable Governance Packet Threading)**: Healthy. R109 added
+  synthesis cue extraction from `system-synthesis.md` Regions block and
+  consumption in packet builder. Synthesis cues boost records that were not
+  already matched by region/keyword. Conformance language strengthened: cues
+  "must be consumed" when available.
 - **PAT-0012 (Post-Implementation Governance Feedback)**: Healthy. Debt
   promotion is idempotent with material-payload-aware dedup (R105).
 - **PAT-0013 (Governed Proposal Identity)**: Healthy. Root semantics fixed in
   R106, runtime gate logic correct. Packet ambiguity bridged to readiness in
   R107.
-- **PAT-0014 (Advisory Gate Transparency)**: Unhealthy. Pattern established in
-  R108 but QA/reconciliation code still merges degraded outcomes into PASS.
-  Code changes deferred to R109.
+- **PAT-0014 (Advisory Gate Transparency)**: Healthy. R109 implemented
+  structured advisory status model: QA verdict parser returns DEGRADED (not
+  PASS) for malformed/unknown output; interceptor returns 3-tuple with
+  reason_code (`unparseable`, `dispatch_error`, `target_unavailable`,
+  `safety_blocked`); dispatcher logs `qa:degraded` distinctly from
+  `qa:passed`; notifier carries reason_code through lifecycle events;
+  reconciliation adjudicator references PAT-0014 degraded states in warnings.
+- **PAT-0015 (Positive Contract Testing)**: Healthy. Established in R109.
+  Five source-grep absence tests converted to positive contract assertions.

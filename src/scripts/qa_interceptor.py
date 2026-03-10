@@ -220,17 +220,20 @@ def intercept_task(
     task: dict[str, str],
     agent_file: str,
     planspace: Path,
-) -> tuple[bool, str | None]:
+) -> tuple[bool, str | None, str | None]:
     """Evaluate a task against submitter and target agent contracts.
 
-    Returns ``(passed, rationale_path)``:
+    Returns ``(passed, rationale_path, reason_code)``:
 
-    - ``(True, None)`` — task passed QA, proceed with dispatch.
-    - ``(False, "/path/to/rationale.json")`` — task rejected.
+    - ``(True, None, None)`` — task genuinely passed QA.
+    - ``(False, "/path/to/rationale.json", None)`` — task rejected.
+    - ``(True, path_or_None, "reason_code")`` — degraded advisory
+      (PAT-0014): QA failed internally, dispatch falls back to baseline.
 
     Fail-OPEN: any error during QA evaluation (timeout, parse failure,
-    import error, missing files) results in the task passing.  Only an
-    explicit REJECT from the QA agent blocks dispatch.
+    import error, missing files) results in the task passing with a
+    degraded reason_code.  Only an explicit REJECT from the QA agent
+    blocks dispatch.
     """
     task_id = task.get("id", "?")
     submitted_by = task.get("by", "unknown")
@@ -241,10 +244,10 @@ def intercept_task(
         if not target_path.exists():
             print(
                 f"[qa-interceptor] WARNING: Target agent file not found: "
-                f"{target_path} — passing task {task_id}",
+                f"{target_path} — failing open (task {task_id})",
                 flush=True,
             )
-            return True, None
+            return True, None, "target_unavailable"
         target_contract = target_path.read_text(encoding="utf-8")
 
         # 2. Resolve submitter contract.
@@ -265,16 +268,26 @@ def intercept_task(
             task, target_contract, submitter_contract, payload_content,
         )
 
-        # 5. Write prompt to artifacts.
-        # QA prompt embeds full agent contracts as reference material,
-        # which legitimately contain agent-related terminology. The
-        # prompt is already wrapped via render_template (immutable
-        # envelope). Write directly — the embedded content is from
-        # trusted agent files, not user-supplied dynamic content.
+        # 5. Validate and write prompt to artifacts.
+        # PAT-0002 (R109): payload_content is untrusted dynamic content
+        # even though the payload path arrived through an internal task.
+        # Agent contracts are trusted but payload is not — validate the
+        # full rendered prompt before dispatch.
+        from prompt_safety import validate_dynamic_content as _validate
         intercepts_dir = PathRegistry(planspace).qa_intercepts_dir()
         intercepts_dir.mkdir(parents=True, exist_ok=True)
         prompt_path = intercepts_dir / f"qa-{task_id}-prompt.md"
         prompt_path.write_text(qa_prompt_text, encoding="utf-8")
+
+        safety_violations = _validate(payload_content)
+        if safety_violations:
+            print(
+                f"[qa-interceptor] Prompt safety violation in payload "
+                f"for task {task_id}: {safety_violations} — "
+                f"failing open (PAT-0014 degraded)",
+                flush=True,
+            )
+            return True, None, "safety_blocked"
 
         output_path = intercepts_dir / f"qa-{task_id}-output.md"
 
@@ -298,16 +311,25 @@ def intercept_task(
                 planspace, task, agent_file,
                 verdict, rationale, violations,
             )
-            return False, str(rationale_path)
+            return False, str(rationale_path), None
 
-        # PASS — no rationale file needed.
-        return True, None
+        if verdict == "DEGRADED":
+            # PAT-0014: QA parse failure — fail open but preserve evidence
+            rationale_path = _write_rationale(
+                planspace, task, agent_file,
+                verdict, rationale, violations,
+            )
+            return True, str(rationale_path), "unparseable"
+
+        # Genuine PASS
+        return True, None, None
 
     except Exception as exc:
         # Fail-OPEN: any error during QA means the task passes.
+        # PAT-0014: preserve degraded status distinctly from genuine PASS.
         print(
             f"[qa-interceptor] ERROR during QA evaluation for task "
-            f"{task_id}: {exc} — failing open (task passes)",
+            f"{task_id}: {exc} — failing open (degraded)",
             flush=True,
         )
-        return True, None
+        return True, None, "dispatch_error"

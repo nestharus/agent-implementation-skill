@@ -106,6 +106,8 @@ def _record_qa_intercept(
     task_id: str,
     task_type: str,
     rejection_reason: str | None,
+    *,
+    reason_code: str | None = None,
 ) -> None:
     """Compatibility shim for dispatcher-local QA logging."""
     record_qa_intercept(
@@ -114,6 +116,7 @@ def _record_qa_intercept(
         task_type,
         rejection_reason,
         db_path=db_path,
+        reason_code=reason_code,
     )
 
 
@@ -236,12 +239,13 @@ def dispatch_task(
     if qa_params.get("qa_mode"):
         log(f"QA intercept: evaluating task {task_id} ({task_type})")
         try:
-            passed, rationale_path = intercept_task(task, agent_file, planspace)
+            passed, rationale_path, reason_code = intercept_task(task, agent_file, planspace)
         except Exception as exc:
             # Fail-OPEN: QA errors must not block dispatch.
-            log(f"QA ERROR for task {task_id}: {exc} — failing open")
+            log(f"QA ERROR for task {task_id}: {exc} — failing open (degraded)")
             passed = True
             rationale_path = None
+            reason_code = "dispatch_error"
 
         _record_qa_intercept(
             db_path,
@@ -249,6 +253,7 @@ def dispatch_task(
             task_id,
             task_type,
             None if passed else rationale_path,
+            reason_code=reason_code,
         )
 
         if not passed:
@@ -257,7 +262,11 @@ def dispatch_task(
             _db_cmd(db_path, "fail-task", task_id, "--error", err)
             _notify(db_path, submitted_by, task_id, task_type, "failed", err)
             return
-        log(f"QA PASS: task {task_id}")
+        # PAT-0014: distinguish genuine approval from degraded fallback
+        if reason_code:
+            log(f"QA DEGRADED: task {task_id} (reason: {reason_code}) — failing open")
+        else:
+            log(f"QA PASS: task {task_id}")
 
     # --- Flow context wrapping (Task 5) ---
     # If the task has flow metadata, create a wrapper prompt that

@@ -132,7 +132,13 @@ def build_section_governance_packet(
     Full archive references are available via archive_refs for agents that
     need the complete picture.
     """
-    del codespace  # reserved for future codespace-aware filtering
+    del codespace  # codespace docs are parsed into planspace indexes
+
+    # Load synthesis cues for additional matching signal (PAT-0011 R109)
+    synthesis_cues_path = PathRegistry(planspace).governance_dir() / "synthesis-cues.json"
+    synthesis_cues = read_json(synthesis_cues_path)
+    if not isinstance(synthesis_cues, dict):
+        synthesis_cues = {}
 
     # Load problem-frame text as additional summary signal
     problem_frame_text = ""
@@ -163,6 +169,16 @@ def build_section_governance_packet(
         if not isinstance(index_parse_failures, list):
             index_parse_failures = []
 
+    # Collect synthesis-cue IDs that match the section summary terms
+    # PAT-0011 (R109): synthesis cues must be consumed when available
+    synthesis_ids: set[str] = set()
+    if synthesis_cues and combined_summary:
+        summary_terms = _normalize_terms(combined_summary)
+        for region_name, ref_ids in synthesis_cues.items():
+            region_terms = _normalize_terms(region_name)
+            if summary_terms & region_terms:
+                synthesis_ids.update(ref_ids)
+
     # Candidate filtering: section-scoped matching
     candidate_problems, problem_basis = _filter_by_regions(
         all_problems, section_number, "problem_id", combined_summary,
@@ -170,6 +186,25 @@ def build_section_governance_packet(
     candidate_patterns, pattern_basis = _filter_by_regions(
         all_patterns, section_number, "pattern_id", combined_summary,
     )
+
+    # Boost: add any records whose IDs appear in synthesis cues but
+    # were not already matched by region/keyword (bounded: no full archive)
+    if synthesis_ids:
+        matched_problem_ids = {r.get("problem_id") for r in candidate_problems}
+        for rec in all_problems:
+            pid = rec.get("problem_id", "")
+            if pid in synthesis_ids and pid not in matched_problem_ids:
+                candidate_problems.append(rec)
+                problem_basis += f"+synthesis({pid})"
+                matched_problem_ids.add(pid)
+
+        matched_pattern_ids = {r.get("pattern_id") for r in candidate_patterns}
+        for rec in all_patterns:
+            pid = rec.get("pattern_id", "")
+            if pid in synthesis_ids and pid not in matched_pattern_ids:
+                candidate_patterns.append(rec)
+                pattern_basis += f"+synthesis({pid})"
+                matched_pattern_ids.add(pid)
 
     governing_profile = _resolve_governing_profile(
         section_number,

@@ -61,16 +61,29 @@ def record_qa_intercept(
     rejection_reason: str | None,
     *,
     db_path: str | Path | None = None,
+    reason_code: str | None = None,
 ) -> None:
-    """Record a QA intercept event for observability."""
+    """Record a QA intercept event for observability.
+
+    PAT-0014: degraded advisory outcomes are logged distinctly from
+    genuine approval.  When *reason_code* is set and *rejection_reason*
+    is None, the verdict is ``degraded`` (not ``passed``).
+    """
     del task_type
     resolved_db_path = (
         str(db_path) if db_path is not None else str(PathRegistry(planspace).run_db())
     )
-    verdict = "rejected" if rejection_reason else "passed"
+    if rejection_reason:
+        verdict = "rejected"
+    elif reason_code:
+        verdict = "degraded"
+    else:
+        verdict = "passed"
     body = f"qa:{verdict}:{task_id}"
     if rejection_reason:
         body += f":{rejection_reason}"
+    elif reason_code:
+        body += f":{reason_code}"
     try:
         subprocess.run(  # noqa: S603, S607
             [

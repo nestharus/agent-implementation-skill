@@ -180,27 +180,30 @@ class TestParseVerdict:
         verdict, rationale, violations = _parse_verdict(output)
         assert verdict == "PASS"
 
-    def test_garbage_output_defaults_to_pass(self) -> None:
+    def test_garbage_output_degrades(self) -> None:
+        """PAT-0014: garbage output maps to DEGRADED, not PASS."""
         from qa_interceptor import _parse_verdict
 
         output = "This is total garbage with no JSON at all"
         verdict, rationale, violations = _parse_verdict(output)
-        assert verdict == "PASS"
+        assert verdict == "DEGRADED"
         assert "could not be parsed" in rationale
 
-    def test_unknown_verdict_defaults_to_pass(self) -> None:
+    def test_unknown_verdict_degrades(self) -> None:
+        """PAT-0014: unknown verdict maps to DEGRADED, not PASS."""
         from qa_interceptor import _parse_verdict
 
         output = '{"verdict": "MAYBE", "rationale": "dunno"}'
         verdict, rationale, violations = _parse_verdict(output)
-        assert verdict == "PASS"
+        assert verdict == "DEGRADED"
         assert "Unknown verdict" in rationale
 
-    def test_empty_output_defaults_to_pass(self) -> None:
+    def test_empty_output_degrades(self) -> None:
+        """PAT-0014: empty output maps to DEGRADED, not PASS."""
         from qa_interceptor import _parse_verdict
 
         verdict, rationale, violations = _parse_verdict("")
-        assert verdict == "PASS"
+        assert verdict == "DEGRADED"
 
 
 # ---------------------------------------------------------------------------
@@ -210,8 +213,8 @@ class TestParseVerdict:
 class TestInterceptTask:
     """Tests for the intercept_task function with mocked agent dispatch."""
 
-    def test_pass_returns_true_none(self, tmp_path: Path) -> None:
-        """PASS verdict returns (True, None)."""
+    def test_pass_returns_true_none_none(self, tmp_path: Path) -> None:
+        """PASS verdict returns (True, None, None)."""
         from qa_interceptor import intercept_task
 
         ps = _setup_planspace(tmp_path)
@@ -236,12 +239,13 @@ class TestInterceptTask:
         })
 
         with patch("qa_interceptor.dispatch_agent", return_value=mock_output):
-            passed, rationale_path = intercept_task(
+            passed, rationale_path, reason_code = intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
         assert passed is True
         assert rationale_path is None
+        assert reason_code is None
 
     def test_dispatch_uses_model_policy_key(self, tmp_path: Path) -> None:
         """QA dispatch resolves its model through model-policy.json."""
@@ -270,7 +274,7 @@ class TestInterceptTask:
         })
 
         with patch("qa_interceptor.dispatch_agent", return_value=mock_output) as mock_dispatch:
-            passed, rationale_path = intercept_task(
+            passed, rationale_path, reason_code = intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
@@ -303,7 +307,7 @@ class TestInterceptTask:
         })
 
         with patch("qa_interceptor.dispatch_agent", return_value=mock_output):
-            passed, rationale_path = intercept_task(
+            passed, rationale_path, reason_code = intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
@@ -318,8 +322,8 @@ class TestInterceptTask:
         assert rationale["violations"] == ["v1"]
         assert rationale["target_agent"] == "alignment-judge.md"
 
-    def test_dispatch_error_fails_open(self, tmp_path: Path) -> None:
-        """Exception during dispatch -> task passes (fail-open)."""
+    def test_dispatch_error_fails_open_with_degraded(self, tmp_path: Path) -> None:
+        """Exception during dispatch -> passes with degraded reason_code."""
         from qa_interceptor import intercept_task
 
         ps = _setup_planspace(tmp_path)
@@ -338,15 +342,16 @@ class TestInterceptTask:
             "qa_interceptor.dispatch_agent",
             side_effect=RuntimeError("agent crashed"),
         ):
-            passed, rationale_path = intercept_task(
+            passed, rationale_path, reason_code = intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
         assert passed is True
         assert rationale_path is None
+        assert reason_code == "dispatch_error"
 
-    def test_garbage_output_fails_open(self, tmp_path: Path) -> None:
-        """Unparseable QA output -> task passes (fail-open)."""
+    def test_garbage_output_fails_open_with_degraded(self, tmp_path: Path) -> None:
+        """Unparseable QA output -> passes with degraded reason_code."""
         from qa_interceptor import intercept_task
 
         ps = _setup_planspace(tmp_path)
@@ -365,15 +370,16 @@ class TestInterceptTask:
             "qa_interceptor.dispatch_agent",
             return_value="This is not JSON at all",
         ):
-            passed, rationale_path = intercept_task(
+            passed, rationale_path, reason_code = intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
         assert passed is True
-        assert rationale_path is None
+        assert rationale_path is not None  # degraded writes rationale
+        assert reason_code == "unparseable"
 
-    def test_missing_target_agent_fails_open(self, tmp_path: Path) -> None:
-        """Missing target agent file -> task passes (fail-open)."""
+    def test_missing_target_agent_fails_open_with_degraded(self, tmp_path: Path) -> None:
+        """Missing target agent file -> passes with degraded reason_code."""
         from qa_interceptor import intercept_task
 
         ps = _setup_planspace(tmp_path)
@@ -389,12 +395,13 @@ class TestInterceptTask:
         )
 
         with patch("qa_interceptor.dispatch_agent") as mock_da:
-            passed, rationale_path = intercept_task(
+            passed, rationale_path, reason_code = intercept_task(
                 task, "nonexistent-agent-xyz.md", ps,
             )
 
         assert passed is True
         assert rationale_path is None
+        assert reason_code == "target_unavailable"
         # dispatch_agent should NOT have been called.
         mock_da.assert_not_called()
 

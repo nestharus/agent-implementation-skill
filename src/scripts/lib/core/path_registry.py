@@ -350,6 +350,9 @@ class PathRegistry:
     def traceability(self) -> Path:
         return self._artifacts / "traceability.json"
 
+    def context_sidecar(self, agent_stem: str) -> Path:
+        return self._artifacts / f"context-{agent_stem}.json"
+
     def alignment_changed_flag(self) -> Path:
         return self._artifacts / "alignment-changed-pending"
 

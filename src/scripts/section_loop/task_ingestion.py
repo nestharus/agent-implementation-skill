@@ -37,11 +37,6 @@ from flow_schema import (  # noqa: E402
     ChainAction,
     FanoutAction,
 )
-from task_flow import (  # noqa: E402
-    compute_section_freshness,
-    submit_chain,
-    submit_fanout,
-)
 from lib.flow.flow_submitter import new_flow_id  # noqa: E402
 
 def ingest_task_requests(signal_path: Path) -> list[dict]:
@@ -96,6 +91,15 @@ def ingest_and_submit(
     decl = _parse_signal_file(signal_path, logger=log)
     if decl is None:
         return []
+
+    # Lazy import to break circular dependency:
+    # task_dispatcher → task_flow → flow_reconciler → plan_executor
+    # → section_engine → reexplore → task_ingestion → task_flow
+    from task_flow import (  # noqa: E402
+        compute_section_freshness,
+        submit_chain,
+        submit_fanout,
+    )
 
     all_task_ids: list[int] = []
     refs = origin_refs or []

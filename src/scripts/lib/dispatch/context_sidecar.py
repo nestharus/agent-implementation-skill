@@ -228,9 +228,8 @@ def materialize_context_sidecar(
     agent_context = resolve_context(agent_file_path, planspace, section=section)
     if not agent_context:
         return None
-    ctx_dir = planspace / "artifacts"
-    ctx_dir.mkdir(parents=True, exist_ok=True)
-    ctx_path = ctx_dir / f"context-{Path(agent_file_path).stem}.json"
+    ctx_path = PathRegistry(planspace).context_sidecar(Path(agent_file_path).stem)
+    ctx_path.parent.mkdir(parents=True, exist_ok=True)
     ctx_path.write_text(
         json.dumps(agent_context, indent=2) + "\n",
         encoding="utf-8",

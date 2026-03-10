@@ -39,19 +39,21 @@ def test_parse_qa_verdict_extracts_json_from_code_fence() -> None:
     assert violations == []
 
 
-def test_parse_qa_verdict_defaults_to_pass_for_unknown_verdict() -> None:
+def test_parse_qa_verdict_degrades_for_unknown_verdict() -> None:
+    """PAT-0014: unknown verdict maps to DEGRADED, not PASS."""
     verdict, rationale, violations = parse_qa_verdict(
         '{"verdict": "MAYBE", "rationale": "dunno"}',
     )
 
-    assert verdict == "PASS"
+    assert verdict == "DEGRADED"
     assert "Unknown verdict" in rationale
     assert violations == []
 
 
-def test_parse_qa_verdict_defaults_to_pass_for_garbage() -> None:
+def test_parse_qa_verdict_degrades_for_garbage() -> None:
+    """PAT-0014: unparseable output maps to DEGRADED, not PASS."""
     verdict, rationale, violations = parse_qa_verdict("not json")
 
-    assert verdict == "PASS"
+    assert verdict == "DEGRADED"
     assert "could not be parsed" in rationale
     assert violations == []

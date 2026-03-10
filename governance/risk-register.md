@@ -59,9 +59,9 @@ Post-implementation assessment emits `accept_with_debt` verdicts with typed `deb
 ### RISK-0004: Advisory QA degradation misreported as pass
 
 - **Category**: coherence / operability
-- **Region**: QA interceptor, task dispatcher, QA verdict parser, lifecycle logging
-- **Description**: When QA interception encounters internal errors, missing targets, or unparseable output, the degraded outcome is logged identically to genuine approval (`qa:passed`). QA verdict parser maps malformed output to PASS. Task dispatcher treats QA exceptions as `passed = True`. This erases the evidence distinction between "QA evaluated and approved" and "QA failed, dispatch fell back to baseline."
+- **Region**: QA interceptor, task dispatcher, QA verdict parser, lifecycle logging, reconciliation adjudicator
+- **Description**: When QA interception encounters internal errors, missing targets, or unparseable output, the degraded outcome was logged identically to genuine approval (`qa:passed`). QA verdict parser mapped malformed output to PASS. Task dispatcher treated QA exceptions as `passed = True`. This erased the evidence distinction between "QA evaluated and approved" and "QA failed, dispatch fell back to baseline." Reconciliation adjudicator had similar degradation visibility issues.
 - **Severity**: low
-- **Status**: open
-- **Acceptance rationale**: QA fail-open is deliberate and tested (confirmed in R108 audit). The violation is evidence erasure, not fail-open itself. PAT-0014 established to govern this class.
-- **Mitigation**: PAT-0014 (Advisory Gate Transparency) added in R108. Code changes to implement advisory status taxonomy deferred to R109.
+- **Status**: resolved
+- **Acceptance rationale**: N/A — resolved.
+- **Mitigation**: R109 implemented full advisory status taxonomy per PAT-0014: QA verdict parser returns DEGRADED (not PASS) for malformed/unknown output; interceptor returns 3-tuple `(passed, rationale_path, reason_code)` with codes `unparseable`/`dispatch_error`/`target_unavailable`/`safety_blocked`; dispatcher logs `qa:degraded:{task_id}:{reason_code}` distinctly from `qa:passed`; notifier carries reason_code through lifecycle events; reconciliation adjudicator references PAT-0014 degraded states.

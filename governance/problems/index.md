@@ -184,10 +184,22 @@ Declared eval scenario modules can drift to stale import paths without detection
 
 ## PRB-0016: Advisory Surface Degradation Visibility
 
-**Status**: active — pattern established (R108), code changes pending
+**Status**: active — resolved (R109)
 **Provenance**: audit-inferred (R108)
 **Regions**: QA interceptor, QA verdict parser, task dispatcher, lifecycle logging, reconciliation adjudicator
 
 Advisory surfaces (QA interception, reconciliation adjudication) are deliberately fail-open: when they encounter internal errors, missing targets, or unparseable output, they fall back to baseline dispatch behavior. This is correct — advisory gates should not block execution. However, the degraded outcome is currently logged identically to genuine approval: QA parse failures map to PASS, QA exceptions are logged as `qa:passed`, and reconciliation fallback is invisible in lifecycle events. This erases the distinction between "the advisory surface evaluated and approved" and "the advisory surface failed, so dispatch fell back to baseline." Evidence preservation requires this distinction to be visible.
 
-**Solution surfaces**: PAT-0014 (Advisory Gate Transparency), advisory status taxonomy (PASS/REJECT/ADVISORY_ERROR/UNPARSEABLE/TARGET_UNAVAILABLE), distinct lifecycle logging for degraded outcomes, reconciliation fallback visibility.
+**Solution surfaces**: PAT-0014 (Advisory Gate Transparency), structured 3-tuple advisory result with reason_codes (`unparseable`/`dispatch_error`/`target_unavailable`/`safety_blocked`), DEGRADED verdict in QA parser, distinct lifecycle logging (`qa:degraded` vs `qa:passed`), reconciliation fallback PAT-0014 references.
+
+---
+
+## PRB-0017: Testing Philosophy Drift / Historical Regression Oracles
+
+**Status**: active — substantially addressed (R109)
+**Provenance**: audit-inferred (R109)
+**Regions**: integration tests, regression tests, component tests
+
+Tests written as source-text archaeology (grepping codebase files for absent strings to confirm deleted code stays deleted) create fragile regressions that break when source text changes and say nothing about whether the behavior is correct. The test asserts "this string is not in the file" rather than "the system behaves correctly." When the code evolves, these tests either false-pass (the string changes form but the behavior returns) or false-fail (the string reappears in a different context). This testing philosophy drifts from behavioral contracts toward repository archaeology.
+
+**Solution surfaces**: PAT-0015 (Positive Contract Testing), positive behavioral assertions over source-grep absence tests, output-shape contracts.

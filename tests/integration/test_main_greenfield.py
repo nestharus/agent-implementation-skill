@@ -16,16 +16,26 @@ from section_loop.types import Section
 
 
 class TestNoModeRouting:
-    """Sections with no related files use the same path as all sections."""
+    """Sections with no related files use the same path as all sections.
 
-    def test_no_greenfield_shortcircuit_in_main(self) -> None:
-        """main.py must not short-circuit based on project_mode == greenfield."""
+    PAT-0015: positive contract test — asserts current mode-is-observation
+    behavior rather than grepping for deleted source text.
+    """
+
+    def test_mode_is_observation_in_main(self) -> None:
+        """main.py treats mode as observation, not routing key.
+
+        The runtime resolves project_mode for telemetry only — it does not
+        branch on the value to skip proposal or readiness paths.
+        """
         main_path = (SRC_DIR / "scripts" / "section_loop" / "main.py")
         content = main_path.read_text()
-        # The old greenfield short-circuit checked project_mode and wrote
-        # a blocker signal directly. This should no longer exist.
-        assert 'project_mode == "greenfield"' not in content, (
-            "main.py must not route based on project_mode == greenfield"
+        # Positive assertion: mode is resolved but only for contract writing
+        assert "resolve_project_mode" in content, (
+            "main.py must resolve project mode (mode-is-observation contract)"
+        )
+        assert "write_mode_contract" in content, (
+            "main.py must write mode contract for downstream consumers"
         )
 
 

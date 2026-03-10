@@ -255,6 +255,49 @@ def parse_region_profile_map(codespace: Path) -> dict:
     return {"default": default_profile, "overrides": overrides}
 
 
+def parse_synthesis_cues(codespace: Path) -> dict[str, list[str]]:
+    """Extract bounded runtime-region cues from system-synthesis.md.
+
+    Returns a mapping of region names to associated problem IDs, pattern
+    IDs, and philosophy profiles mentioned in that region's section.
+    Bounded: only parses the ``## Regions`` block and extracts structured
+    cross-references (PRB-*, PAT-*, PHI-*).  Does not mirror the full
+    document.
+
+    PAT-0011 (R109): synthesis cues must be consumed when available.
+    """
+    path = codespace / "system-synthesis.md"
+    text = _read_if_exists(path)
+    if not text:
+        return {}
+
+    # Find the Regions block
+    regions_match = re.search(r"^## Regions\s*$", text, re.MULTILINE)
+    if regions_match is None:
+        return {}
+
+    # End at the next top-level heading (## but not ###)
+    remainder = text[regions_match.end():]
+    next_top = re.search(r"^## (?!#)", remainder, re.MULTILINE)
+    regions_block = remainder[:next_top.start()] if next_top else remainder
+
+    # Parse ### subsections as region names
+    cues: dict[str, list[str]] = {}
+    subsection_re = re.compile(r"^### (.+?)\s*$", re.MULTILINE)
+    sub_matches = list(subsection_re.finditer(regions_block))
+    for idx, sub in enumerate(sub_matches):
+        region_name = sub.group(1).strip()
+        start = sub.end()
+        end = sub_matches[idx + 1].start() if idx + 1 < len(sub_matches) else len(regions_block)
+        section_text = regions_block[start:end]
+        # Extract cross-references
+        refs = re.findall(r"\b(PRB-\d+|PAT-\d+|PHI-\w+)\b", section_text)
+        if refs:
+            cues[region_name.lower()] = sorted(set(refs))
+
+    return cues
+
+
 def build_governance_indexes(codespace: Path, planspace: Path) -> bool:
     """Parse governance docs and mirror advisory JSON indexes into planspace.
 
@@ -296,10 +339,18 @@ def build_governance_indexes(codespace: Path, planspace: Path) -> bool:
         logger.warning("Failed to parse region-profile map: %s", exc)
         parse_failures.append(f"region_profile_map: {exc}")
 
+    synthesis_cues: dict[str, list[str]] = {}
+    try:
+        synthesis_cues = parse_synthesis_cues(codespace)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to parse synthesis cues: %s", exc)
+        parse_failures.append(f"synthesis_cues: {exc}")
+
     write_json(paths.governance_problem_index(), problem_index)
     write_json(paths.governance_pattern_index(), pattern_index)
     write_json(paths.governance_profile_index(), profile_index)
     write_json(paths.governance_region_profile_map(), region_profile_map)
+    write_json(paths.governance_dir() / "synthesis-cues.json", synthesis_cues)
 
     # Write index status so downstream consumers can distinguish parse
     # failure from true no-governance
