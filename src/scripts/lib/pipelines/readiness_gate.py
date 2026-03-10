@@ -317,7 +317,7 @@ def resolve_and_route(
 
     publish_discoveries(section.number, proposal_state, planspace)
 
-    readiness = resolve_readiness(artifacts, section.number)
+    readiness = resolve_readiness(planspace, section.number)
     if not readiness.get("ready"):
         blockers = readiness.get("blockers", [])
         rationale = readiness.get("rationale", "unknown")
@@ -326,7 +326,11 @@ def resolve_and_route(
             f"readiness=false, rationale={rationale}, blockers={len(blockers)}"
         )
         for blocker in blockers:
-            log(f"  blocker: {blocker.get('type')}: {blocker.get('description')}")
+            # PAT-0009: normalize both proposal-state (type/description) and
+            # governance (state/detail) blocker shapes for logging
+            btype = blocker.get("type") or blocker.get("state", "unknown")
+            bdesc = blocker.get("description") or blocker.get("detail", "")
+            log(f"  blocker: {btype}: {bdesc}")
         mailbox_send(
             planspace,
             parent,

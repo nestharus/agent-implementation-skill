@@ -26,8 +26,8 @@ from evals.harness import Check, Scenario
 
 # Import the readiness and proposal-state machinery for mechanical setup.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src" / "scripts"))
-from lib.proposal_state_repository import save_proposal_state  # noqa: E402
-from section_loop.readiness import resolve_readiness  # noqa: E402
+from lib.repositories.proposal_state_repository import save_proposal_state  # noqa: E402
+from lib.services.readiness_resolver import resolve_readiness  # noqa: E402
 from section_loop.reconciliation import run_reconciliation  # noqa: E402
 
 
@@ -108,7 +108,7 @@ def _setup_blocked(planspace: Path, codespace: Path) -> Path:
                         proposals / "section-20-proposal-state.json")
 
     # Run readiness resolver mechanically
-    resolve_readiness(artifacts, "20")
+    resolve_readiness(planspace, "20")
 
     # Codespace (minimal)
     (codespace / "cache").mkdir(parents=True, exist_ok=True)
@@ -162,7 +162,7 @@ def _setup_user_decision(planspace: Path, codespace: Path) -> Path:
                         proposals / "section-21-proposal-state.json")
 
     # Run readiness resolver mechanically
-    resolve_readiness(artifacts, "21")
+    resolve_readiness(planspace, "21")
 
     # Codespace (minimal)
     (codespace / "api").mkdir(parents=True, exist_ok=True)
@@ -210,7 +210,7 @@ def _setup_stale_reopen(planspace: Path, codespace: Path) -> Path:
                         proposals / "section-22-proposal-state.json")
 
     # First readiness check: should be ready
-    readiness_1 = resolve_readiness(artifacts, "22")
+    readiness_1 = resolve_readiness(planspace, "22")
     # Persist the initial readiness result for later comparison
     initial_ready = readiness_1.get("ready")
 
@@ -269,7 +269,7 @@ def _setup_stale_reopen(planspace: Path, codespace: Path) -> Path:
     run_reconciliation(planspace, proposal_results)
 
     # Step 4: Re-resolve readiness for section 22
-    readiness_2 = resolve_readiness(artifacts, "22")
+    readiness_2 = resolve_readiness(planspace, "22")
 
     # Store the before/after for the check to inspect
     check_meta = {
@@ -307,7 +307,7 @@ def _setup_missing_artifact(planspace: Path, codespace: Path) -> Path:
 
     # Intentionally do NOT create a proposal-state artifact for section 24
     # Run readiness resolver -- it should fail closed
-    resolve_readiness(artifacts, "24")
+    resolve_readiness(planspace, "24")
 
     # Codespace (minimal)
     (codespace / "src").mkdir(parents=True, exist_ok=True)
@@ -591,7 +591,7 @@ def _setup_blocking_research(planspace: Path, codespace: Path) -> Path:
     }
     save_proposal_state(state,
                         proposals / "section-25-proposal-state.json")
-    resolve_readiness(artifacts, "25")
+    resolve_readiness(planspace, "25")
 
     (codespace / "api").mkdir(parents=True, exist_ok=True)
     (codespace / "api" / "__init__.py").write_text("", encoding="utf-8")

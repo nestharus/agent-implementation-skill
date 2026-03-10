@@ -914,7 +914,7 @@ def run_implementation_pass(
             text=True,
         )
 
-        readiness = resolve_readiness(paths.artifacts, sec_num)
+        readiness = resolve_readiness(planspace, sec_num)
         if not readiness.get("ready"):
             log(
                 f"Section {sec_num}: implementation pass skipped — "

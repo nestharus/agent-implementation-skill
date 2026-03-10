@@ -579,12 +579,15 @@ class TestScanModelPolicy:
         """model-policy.json overrides default scan models."""
         from scan.dispatch import read_scan_model_policy
 
-        policy_file = tmp_path / "model-policy.json"
+        planspace = tmp_path / "planspace"
+        artifacts_dir = planspace / "artifacts"
+        artifacts_dir.mkdir(parents=True)
+        policy_file = artifacts_dir / "model-policy.json"
         policy_file.write_text(json.dumps({
             "scan": {"tier_ranking": "custom-model"},
         }))
 
-        policy = read_scan_model_policy(tmp_path)
+        policy = read_scan_model_policy(artifacts_dir)
         assert policy["tier_ranking"] == "custom-model"
         # Other keys remain defaults
         assert policy["codemap_build"] == "claude-opus"

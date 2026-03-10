@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from lib.core.artifact_io import rename_malformed
+from lib.core.path_registry import PathRegistry
 
 DEFAULT_SCAN_MODELS: dict[str, str] = {
     "codemap_build": "claude-opus",
@@ -21,7 +22,7 @@ DEFAULT_SCAN_MODELS: dict[str, str] = {
 def read_scan_model_policy(artifacts_dir: Path) -> dict[str, str]:
     """Read scan-stage model policy from ``model-policy.json``."""
     policy = dict(DEFAULT_SCAN_MODELS)
-    policy_path = artifacts_dir / "model-policy.json"
+    policy_path = PathRegistry(artifacts_dir.parent).model_policy()
     if policy_path.is_file():
         try:
             data = json.loads(policy_path.read_text())

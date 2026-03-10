@@ -18,10 +18,13 @@ logger = logging.getLogger(__name__)
 
 def _validate_governance_identity(
     state: dict,
-    section_dir: Path,
+    planspace: Path,
     section_number: str,
 ) -> list[dict]:
     """Validate governance identity fields against the governance packet.
+
+    *planspace* is the root planspace directory.  PathRegistry is used for
+    all artifact path construction (PAT-0003).
 
     Returns a list of governance blockers (empty if valid).
     """
@@ -55,7 +58,7 @@ def _validate_governance_identity(
         })
 
     # Load governance packet for validation
-    paths = PathRegistry(section_dir)
+    paths = PathRegistry(planspace)
     packet_path = paths.governance_packet(section_number)
     packet = read_json(packet_path)
 
@@ -161,11 +164,14 @@ def _validate_governance_identity(
     return governance_blockers
 
 
-def resolve_readiness(section_dir: Path, section_number: str) -> dict:
-    """Resolve whether *section_number* is ready for implementation."""
-    proposal_state_path = (
-        section_dir / "proposals" / f"section-{section_number}-proposal-state.json"
-    )
+def resolve_readiness(planspace: Path, section_number: str) -> dict:
+    """Resolve whether *section_number* is ready for implementation.
+
+    *planspace* is the root planspace directory (NOT the artifacts subdirectory).
+    PathRegistry is used for all artifact path construction (PAT-0003).
+    """
+    paths = PathRegistry(planspace)
+    proposal_state_path = paths.proposal_state(section_number)
     state = load_proposal_state(proposal_state_path)
 
     ready = state.get("execution_ready") is True and not has_blocking_fields(state)
@@ -173,7 +179,7 @@ def resolve_readiness(section_dir: Path, section_number: str) -> dict:
 
     # Validate governance identity (PAT-0013)
     governance_blockers = _validate_governance_identity(
-        state, section_dir, section_number,
+        state, planspace, section_number,
     )
     if governance_blockers:
         blockers.extend(governance_blockers)
@@ -193,7 +199,7 @@ def resolve_readiness(section_dir: Path, section_number: str) -> dict:
         "rationale": rationale,
     }
 
-    readiness_dir = section_dir / "readiness"
+    readiness_dir = paths.readiness_dir()
     readiness_dir.mkdir(parents=True, exist_ok=True)
     artifact_path = readiness_dir / f"section-{section_number}-execution-ready.json"
     try:

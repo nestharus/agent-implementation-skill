@@ -16,23 +16,31 @@ from src.scripts.lib.scan.scan_dispatch import (
 
 
 def test_read_scan_model_policy_uses_defaults_and_overrides(tmp_path) -> None:
-    policy_path = tmp_path / "model-policy.json"
+    """Uses runtime layout: artifacts_dir = planspace / 'artifacts'."""
+    planspace = tmp_path / "planspace"
+    artifacts_dir = planspace / "artifacts"
+    artifacts_dir.mkdir(parents=True)
+    policy_path = artifacts_dir / "model-policy.json"
     policy_path.write_text(
         json.dumps({"scan": {"tier_ranking": "custom-model"}}),
         encoding="utf-8",
     )
 
-    policy = read_scan_model_policy(tmp_path)
+    policy = read_scan_model_policy(artifacts_dir)
 
     assert policy["tier_ranking"] == "custom-model"
     assert policy["codemap_build"] == DEFAULT_SCAN_MODELS["codemap_build"]
 
 
 def test_read_scan_model_policy_renames_malformed_json(tmp_path) -> None:
-    policy_path = tmp_path / "model-policy.json"
+    """Uses runtime layout: artifacts_dir = planspace / 'artifacts'."""
+    planspace = tmp_path / "planspace"
+    artifacts_dir = planspace / "artifacts"
+    artifacts_dir.mkdir(parents=True)
+    policy_path = artifacts_dir / "model-policy.json"
     policy_path.write_text("{bad json", encoding="utf-8")
 
-    policy = read_scan_model_policy(tmp_path)
+    policy = read_scan_model_policy(artifacts_dir)
 
     assert policy == DEFAULT_SCAN_MODELS
     assert not policy_path.exists()

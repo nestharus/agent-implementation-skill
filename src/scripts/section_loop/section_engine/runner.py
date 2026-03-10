@@ -119,7 +119,7 @@ def _run_implementation_pass(
             f"reconciliation result marks section as affected")
         return None
 
-    readiness = resolve_readiness(artifacts, section.number)
+    readiness = resolve_readiness(planspace, section.number)
     if not readiness.get("ready"):
         log(f"Section {section.number}: implementation pass skipped — "
             f"execution_ready is false")
@@ -314,7 +314,7 @@ def _run_section_implementation_steps(
     # If a reconciliation result or readiness artifact has changed
     # since this implementation was queued, the section may have been
     # reopened.  Re-resolve readiness and block if no longer ready.
-    readiness = resolve_readiness(artifacts, section.number)
+    readiness = resolve_readiness(planspace, section.number)
     if not readiness.get("ready"):
         log(f"Section {section.number}: implementation steps blocked — "
             f"upstream freshness check failed (execution_ready is false)")

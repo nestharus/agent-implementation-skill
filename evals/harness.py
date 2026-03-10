@@ -88,21 +88,26 @@ _SCENARIO_MODULES = [
 ]
 
 
-def _load_all_scenarios() -> dict[str, Scenario]:
-    """Import all scenario modules and collect their SCENARIOS lists."""
+def _load_all_scenarios() -> tuple[dict[str, Scenario], list[str]]:
+    """Import all scenario modules and collect their SCENARIOS lists.
+
+    Returns (registry, import_failures).  PAT-0008: import failures are
+    accumulated and reported — the harness does not silently narrow coverage.
+    """
     registry: dict[str, Scenario] = {}
+    import_failures: list[str] = []
     for mod_name in _SCENARIO_MODULES:
         try:
             mod = importlib.import_module(mod_name)
         except ImportError as exc:
-            print(f"[WARN] Could not import {mod_name}: {exc}")
+            import_failures.append(f"{mod_name}: {exc}")
             continue
         scenarios = getattr(mod, "SCENARIOS", [])
         for s in scenarios:
             if s.name in registry:
                 print(f"[WARN] Duplicate scenario name: {s.name}")
             registry[s.name] = s
-    return registry
+    return registry, import_failures
 
 
 # ---------------------------------------------------------------------------
@@ -260,7 +265,16 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    registry = _load_all_scenarios()
+    registry, import_failures = _load_all_scenarios()
+
+    # PAT-0008: fail closed when declared scenario modules cannot be loaded
+    if import_failures:
+        print("\n[FAIL] Scenario import failures (PAT-0008 fail-closed):")
+        for failure in import_failures:
+            print(f"  - {failure}")
+        print(f"\n  {len(import_failures)} declared scenario module(s) "
+              f"failed to import.\n")
+        sys.exit(1)
 
     if args.list:
         print("\nAvailable scenarios:\n")

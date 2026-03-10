@@ -82,6 +82,8 @@ def test_governance_loader_parses_markdown_indexes(tmp_path: Path) -> None:
         "pattern_id": "PAT-0001",
         "title": "Corruption Preservation",
         "problem_class": "malformed JSON",
+        "regions": [],
+        "solution_surfaces": "",
         "philosophy": "fail closed",
         "canonical_instance": "artifact_io.py",
         "known_instances": ["artifact_io.py", "orchestrator.py"],

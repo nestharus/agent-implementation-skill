@@ -191,6 +191,8 @@ def parse_pattern_index(codespace: Path) -> list[dict]:
             "pattern_id": pattern_id,
             "title": title,
             "problem_class": fields.get("problem class", ""),
+            "regions": _comma_list(fields.get("regions", "")),
+            "solution_surfaces": fields.get("solution surfaces", ""),
             "philosophy": fields.get("philosophy", ""),
             "canonical_instance": fields.get("canonical instance", ""),
             "known_instances": known_instances,

@@ -23,7 +23,7 @@ def _registry_for_artifacts(artifacts_dir: Path) -> PathRegistry:
 def read_substrate_model_policy(artifacts_dir: Path) -> dict[str, str]:
     """Read substrate model assignments from ``model-policy.json``."""
     policy = dict(DEFAULT_SUBSTRATE_MODELS)
-    policy_path = artifacts_dir / "model-policy.json"
+    policy_path = _registry_for_artifacts(artifacts_dir).model_policy()
     if policy_path.is_file():
         data = read_json(policy_path)
         if isinstance(data, dict):
@@ -65,7 +65,7 @@ def read_trigger_signals(artifacts_dir: Path) -> list[str]:
 
 def read_trigger_threshold(artifacts_dir: Path) -> int:
     """Read the vacuum section threshold from policy config."""
-    policy_path = artifacts_dir / "model-policy.json"
+    policy_path = _registry_for_artifacts(artifacts_dir).model_policy()
     if policy_path.is_file():
         data = read_json(policy_path)
         if isinstance(data, dict):

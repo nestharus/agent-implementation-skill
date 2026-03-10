@@ -29,8 +29,9 @@ def run_implementation_loop(
     cycle_budget: dict,
 ) -> list[str] | None:
     """Run strategic implementation until aligned, then return changed files."""
-    artifacts = planspace / "artifacts"
-    cycle_budget_path = artifacts / "signals" / f"section-{section.number}-cycle-budget.json"
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
+    cycle_budget_path = paths.cycle_budget(section.number)
 
     all_known_paths = list(section.related_files)
     pre_hashes = snapshot_files(codespace, all_known_paths)

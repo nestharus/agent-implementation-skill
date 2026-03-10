@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping, cast
 
 from lib.core.artifact_io import read_json, rename_malformed
+from lib.core.path_registry import PathRegistry
 
 
 @dataclass
@@ -91,7 +92,7 @@ _FIELD_NAMES = tuple(
 
 def load_model_policy(planspace: Path) -> ModelPolicy:
     """Read ``artifacts/model-policy.json`` with current defaults."""
-    policy_path = planspace / "artifacts" / "model-policy.json"
+    policy_path = PathRegistry(planspace).model_policy()
     defaults = ModelPolicy()
 
     if not policy_path.exists():

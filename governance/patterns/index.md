@@ -134,6 +134,11 @@ path inconsistency across modules, and reader/writer disagreement.
 3. Writers, readers, prompts, and origin refs all use the same accessor.
 4. Manual path construction is permitted only for scratch / ephemeral paths or
    when the accessor intentionally returns a parent directory.
+5. Every durable-path consumer must declare which root kind it accepts
+   (planspace or artifacts_dir) and normalize immediately to one internal
+   contract. Mixed root semantics in a single function are a violation.
+6. Tests for path-sensitive surfaces must use the runtime directory layout,
+   not a simplified hybrid layout that conflates planspace with artifacts.
 
 **Canonical instance**: `PathRegistry` in
 `src/scripts/lib/core/path_registry.py`
@@ -146,6 +151,12 @@ path inconsistency across modules, and reader/writer disagreement.
 - Readiness / proposal-state / trace / signal / input-ref accessors
 - Prompt writers and dispatchers across `section_loop/`, `lib/research/`,
   `lib/governance/`, and `task_dispatcher.py`
+- `src/scripts/lib/core/model_policy.py`
+- `src/scripts/lib/scan/scan_dispatch.py`
+- `src/scripts/lib/substrate/substrate_policy.py`
+- `src/scripts/lib/pipelines/microstrategy_orchestrator.py`
+- `src/scripts/lib/pipelines/implementation_loop.py`
+- `src/scripts/lib/services/readiness_resolver.py`
 
 **Conformance**: No durable artifact path may be reconstructed ad hoc. Any new
 artifact path MUST be added to `PathRegistry`, and all consumers must use that
@@ -157,6 +168,11 @@ accessor.
 
 **Problem class**: Multi-step, multi-agent task orchestration with dependencies,
 parallelism, and accumulation.
+
+**Regions**: flow system, task orchestration, research, coordination
+
+**Solution surfaces**: Flow schema, task flow, flow catalog, research plan
+executor, coordination planner.
 
 **Philosophy**: Scripts dispatch, agents decide. Structured submission over ad
 hoc spawning.
@@ -231,6 +247,12 @@ startup and reuse it indefinitely.
 **Problem class**: Stale artifacts causing incorrect dispatch, repeated work, or
 hidden governance drift.
 
+**Regions**: freshness computation, change detection, hash computation, section
+loop
+
+**Solution surfaces**: Freshness service, section-input hasher, research trigger
+hashing, codemap freshness.
+
 **Philosophy**: Change detection must be deterministic and content-based.
 
 **Template**:
@@ -258,6 +280,10 @@ hashing, not timestamps or file existence.
 
 **Problem class**: Re-triggering workflows when inputs change, while avoiding
 re-triggering when inputs have not changed.
+
+**Regions**: research, retriggerable workflows, status tracking
+
+**Solution surfaces**: Research orchestration status, research trigger artifacts.
 
 **Philosophy**: Precision over coarseness. Do not repeat work that is still
 valid for the same trigger.
@@ -295,13 +321,20 @@ evidence to do so safely.
   short-circuiting.
 - On uncertain optimization: prefer a documented safe baseline over an
   unverified shortcut.
+- On declared eval-scenario or registry import failure: fail the harness,
+  do not silently narrow coverage.
 
 **Canonical instance**: readiness and freshness gating across
 `src/scripts/lib/pipelines/readiness_gate.py` and
 `src/scripts/lib/services/readiness_resolver.py`
 
+**Known instances**:
+- Readiness and freshness gating
+- `evals/harness.py` — live-eval scenario loading boundary
+
 **Conformance**: Any skip, optimization, or early-exit path must have a
-fail-closed default path.
+fail-closed default path. A declared verification surface that silently
+degrades on import failure is a violation.
 
 ---
 
@@ -309,6 +342,11 @@ fail-closed default path.
 
 **Problem class**: Work that cannot proceed needs structured routing to the
 right resolver.
+
+**Regions**: readiness gate, coordination, blocker signals, section loop
+
+**Solution surfaces**: Research plan executor, readiness gate, coordination
+problem resolver, flow reconciler, blocker rollup.
 
 **Philosophy**: Structured signals over freeform text. Route, do not stall
 silently.
@@ -318,20 +356,28 @@ silently.
   `source`
 - Written as structured JSON to `signals/`
 - Rollup / aggregation functions surface them for the next controlling layer
+- Any local blocker representation persisted to a durable artifact must be
+  normalized back to canonical blocker keys (`type`/`description` for
+  proposal-state origin, `state`/`detail`/`needs`/`why_blocked`/`source`
+  for governance origin) before logging, rollup, or downstream routing.
 
 **Canonical instance**: `_emit_not_researchable_signals()` in
 `src/scripts/lib/research/plan_executor.py`
 
 **Known instances**:
 - Research `needs_parent` / `need_decision` routing
-- Readiness-gate blocker emission
+- Readiness-gate blocker emission and logging
 - Coordination problem resolver signals
 - Post-implementation `refactor_required` blocker emission in
   `flow_reconciler.py`
 - Blocker rollup in `section_loop/section_engine/blockers.py`
+- Readiness resolver governance blockers in
+  `src/scripts/lib/services/readiness_resolver.py`
 
 **Conformance**: Anything that blocks progress must emit a structured blocker
-signal, not just log a warning.
+signal, not just log a warning. Downstream consumers that read blockers must
+handle both proposal-state and governance blocker shapes, not silently degrade
+governance blockers to `unknown`.
 
 ---
 
@@ -340,6 +386,11 @@ signal, not just log a warning.
 **Problem class**: Agents need context about section state, problem framing,
 research, and accumulated decisions without being forced into ad hoc prompt
 assembly.
+
+**Regions**: intent, surfaces, context assembly, section loop
+
+**Solution surfaces**: Intent surfaces loader, intent bootstrap, research-derived
+surfaces, prompt context assembly.
 
 **Philosophy**: Agents decide based on rich context, not raw artifact sprawl.
 
@@ -375,10 +426,19 @@ alignment, risk assessment, and assessment.
 runtime, not only at audit time. Sections are concerns, not file bundles.
 Context should be minimal but sufficient.
 
+**Regions**: governance, packets, readiness, freshness, section-input hashing
+
+**Solution surfaces**: Governance loader, governance packet builder, prompt
+context assembly, freshness service, section-input hasher.
+
 **Template**:
 1. Parse governance archives into structured indexes rich enough for runtime
-   use: problem records, pattern records (including template/conformance/change
-   policy summaries), philosophy profiles, and region/profile mappings.
+   use: problem records, pattern records (including regions, solution surfaces,
+   template/conformance/change policy summaries), philosophy profiles, and
+   region/profile mappings. Every pattern record must carry `regions` and
+   `solution_surfaces` (or equivalent explicit applicability cues); missing
+   metadata in a scoped-packet regime counts as ambiguity, not universal
+   applicability.
 2. Build a section packet during bootstrap from **multiple applicability
    signals**, not section-number string matching alone. Inputs may include:
    - region labels from the archives
@@ -450,6 +510,11 @@ runtime are also a pattern violation.
 assessed, traced, and routed into stabilization without inventing a parallel
 control loop.
 
+**Regions**: governance, assessment, trace, flow reconciler, stabilization
+
+**Solution surfaces**: Post-implementation assessment, flow reconciler, debt
+signal staging, risk register, traceability enrichment.
+
 **Philosophy**: Governance continues after code lands. Assessment, risk capture,
 and stabilization must align with the same problem / pattern / philosophy
 hierarchy that shaped implementation.
@@ -509,6 +574,11 @@ unchanged debt, and assessment-originated lineage are pattern violations.
 **Problem class**: Runtime proposal artifacts need an explicit governance
 identity so the system can enforce "pattern change before code change" and
 preserve problem→proposal→implementation→assessment lineage.
+
+**Regions**: proposals, readiness gate, alignment, governance
+
+**Solution surfaces**: Proposal-state repository, readiness resolver, readiness
+gate, alignment judge, integration proposer, traceability.
 
 **Philosophy**: Proposals are problem-state artifacts, not file-change plans.
 Patterns operationalize philosophy. If code needs a pattern change, that pattern
@@ -570,28 +640,34 @@ also a violation.
   reflect current authoritative readers.
 - **PAT-0002 (Prompt Safety)**: Healthy. Instance list expanded to reflect
   current authoritative prompt-safety sites.
-- **PAT-0003 (Path Registry)**: Healthy.
+- **PAT-0003 (Path Registry)**: Unhealthy. Durable-path islands remain in
+  model_policy.py, scan_dispatch.py, substrate_policy.py,
+  microstrategy_orchestrator.py, and implementation_loop.py. Readiness resolver
+  mixed planspace/artifacts root semantics fixed in R106. Template updated to
+  require declared root semantics and runtime-shape tests.
 - **PAT-0004 (Flow System)**: Healthy.
-- **PAT-0005 (Policy-Driven Models)**: Unhealthy. One scan callsite
-  reintroduced a superseded fallback literal; two long-lived controllers cache
-  policy at startup only. Template updated (R105) to require per-dispatch
-  refresh and authoritative fallback sourcing.
+- **PAT-0005 (Policy-Driven Models)**: Healthy. Scan fallback and per-dispatch
+  refresh fixed in R105.
 - **PAT-0006 (Freshness Computation)**: Healthy in mechanism, but governance
   packet overscoping currently causes avoidable invalidation pressure.
 - **PAT-0007 (Cycle-Aware Status)**: Healthy and intentionally narrow.
-- **PAT-0008 (Fail-Closed Defaults)**: Healthy.
-- **PAT-0009 (Blocker Taxonomy)**: Healthy.
+- **PAT-0008 (Fail-Closed Defaults)**: Unhealthy. Eval harness fails open on
+  scenario import failure. Template updated (R106) to include declared eval
+  coverage.
+- **PAT-0009 (Blocker Taxonomy)**: Unhealthy. Governance blockers degrade to
+  `unknown` type in blocker rollup because blockers.py only reads
+  `type`/`description` keys while governance emits `state`/`detail`. Template
+  updated (R106) to require blocker normalization at readiness-artifact
+  boundaries.
 - **PAT-0010 (Intent Surfaces)**: Healthy.
-- **PAT-0011 (Applicable Governance Packet Threading)**: Improving. Multi-signal
-  applicability resolution and richer pattern indexes added in R104. Broad
-  fallback is now explicit with applicability_basis. R105 template adds explicit
-  ambiguity states and narrower profile scope requirement.
-- **PAT-0012 (Post-Implementation Governance Feedback)**: Improving. Debt
-  promotion is now idempotent with deduplication and promotion receipts (R104).
-  R105 template requires material-payload-aware dedup key covering severity,
-  mitigation, rationale, and governance lineage — not just identity fields.
-- **PAT-0013 (Governed Proposal Identity)**: Improving. Readiness validates
-  governance identity: deviations/questions block descent, packet membership
-  checked (R104). R105 template adds profile_id compatibility check, requires
-  non-empty identity when packet provides candidates, and fail-closed on
-  packet absence with declared IDs.
+- **PAT-0011 (Applicable Governance Packet Threading)**: Unhealthy. Pattern
+  applicability metadata was not parsed by the loader — all patterns were
+  universal regardless of section context. R106 adds regions/solution_surfaces
+  parsing and treats missing metadata as ambiguity. Template updated to require
+  explicit pattern applicability metadata.
+- **PAT-0012 (Post-Implementation Governance Feedback)**: Healthy. Debt
+  promotion is idempotent with material-payload-aware dedup (R105).
+- **PAT-0013 (Governed Proposal Identity)**: Unhealthy. Governance identity
+  validation exists but R104/R105 implementation mixed path-root semantics,
+  producing false `governance_packet_missing` blockers under the real runtime
+  layout. Fixed in R106. Runtime gate logic is now correct.

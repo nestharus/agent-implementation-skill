@@ -11,7 +11,7 @@ These are substrate invariants, not project-level patterns. They trace to PHI-gl
 1. **Alignment over audit** — check directional coherence between adjacent layers, never feature coverage against a checklist. The system is never "done" in the checklist sense. *(PHI-global: accuracy over shortcuts)*
 2. **Problems, not features** — recursive problem decomposition all the way down. Explore → recognize → propose → align → descend only as far as necessary → signal upward if the local layer cannot contain the problem. *(PHI-global: strategy over brute force)*
 3. **Scripts dispatch, agents decide** — scripts handle queueing, dispatch, retries, pausing, cleanup, monitoring, artifact persistence, event logging, task routing, fail-closed recovery. Agents handle exploration, classification, strategy, interpretation, grouping, proposal writing, implementation decisions, alignment decisions, coordination decisions, scope escalation. *(Substrate invariant)*
-4. **Zero-risk tolerance** — every shortcut introduces risk. The system earns simplicity through confirmation, not assumption. *(PHI-global: accuracy over shortcuts)*
+4. **Proportional risk tolerance** — risk scales with evidence, not blanket maximalism. Shortcuts earn trust through confirmation; the system uses process proportional to actual danger. *(PHI-global: accuracy over shortcuts, proportional risk)*
 5. **Heuristic exploration, not exhaustive scanning** — the codemap is a routing map, not an index of everything. Downstream agents use it for targeted reads. *(PHI-global: strategy over brute force)*
 6. **Sections are concerns, not file bundles** — a section is a problem region. Related files are a working hypothesis. *(Problem-oriented architecture)*
 7. **Short-lived agents; persist decisions** — avoid long-lived reasoning sessions. Persist what was learned so fresh agents can resume with bounded context. *(PHI-global: bounded autonomy)*
@@ -101,7 +101,7 @@ Research orchestration uses the flow system: plan_executor.py translates semanti
 ### ROAL (Risk-Optimization Adaptive Loop)
 
 - **Problems solved**: PRB-0007 (Execution Risk)
-- **Philosophy**: PHI-global (zero-risk tolerance, accuracy over shortcuts)
+- **Philosophy**: PHI-global (proportional risk, accuracy over shortcuts)
 - **Patterns**: PAT-0008 (Fail-Closed)
 
 ROAL scales execution guardrails to actual local risk. It packages work as RiskPackages with typed steps (explore/stabilize/edit/coordinate/verify), assesses seven risk types scored 0-4 (context rot, silent drift, scope creep, brute-force regression, cross-section incoherence, tool island isolation, stale artifact contamination), and selects posture profiles P0-P4.
@@ -115,7 +115,7 @@ ROAL is additive — it sits beside the existing readiness gate, not replacing i
 ### Post-Implementation Assessment
 
 - **Problems solved**: PRB-0008 (Implementation Risk)
-- **Philosophy**: PHI-global (zero-risk tolerance)
+- **Philosophy**: PHI-global (proportional risk, accuracy over shortcuts)
 - **Patterns**: PAT-0001 (Corruption Preservation), PAT-0002 (Prompt Safety), PAT-0009 (Blocker Taxonomy)
 
 After implementation, a bounded assessment inspects landed code through: coupling/cohesion, pattern conformance, coherence with neighbors, security surface, scalability, operability. Verdicts: accept, accept_with_debt (→ risk register signal), refactor_required (→ structured blocker signal re-entering the proposal loop).

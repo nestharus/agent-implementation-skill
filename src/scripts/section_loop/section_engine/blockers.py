@@ -133,8 +133,11 @@ def _update_blocker_rollup(planspace: Path) -> None:
             if rdy.get("ready"):
                 continue
             for b in rdy.get("blockers", []):
-                btype = b.get("type", "unknown")
-                desc = b.get("description", "")
+                # PAT-0009: normalize both proposal-state (type/description)
+                # and governance (state/detail/needs/why_blocked/source)
+                # blocker shapes
+                btype = b.get("type") or b.get("state", "unknown")
+                desc = b.get("description") or b.get("detail", "")
                 # Map proposal-state blocker types to categories
                 if btype == "user_root_questions":
                     category = "decision_required"
@@ -144,24 +147,30 @@ def _update_blocker_rollup(planspace: Path) -> None:
                     category = "dependency"
                 elif btype == "shared_seam_candidates":
                     category = "needs_parent"
+                elif btype.startswith("governance_"):
+                    category = "governance"
                 else:
                     category = "missing_info"
                 # Extract section number from filename
                 sec_match = rdy_path.stem.replace(
                     "section-", "").replace(
                     "-execution-ready", "")
+                # Preserve governance blocker fields when available
+                source = b.get("source", f"proposal-state:{btype}")
+                needs = b.get("needs", "")
+                why_blocked = b.get("why_blocked",
+                    f"Proposal-state field '{btype}' has "
+                    f"unresolved items"
+                )
                 blockers.append({
                     "signal_file": rdy_path.name,
-                    "state": f"proposal-state:{btype}",
+                    "state": b.get("state", f"proposal-state:{btype}"),
                     "category": category,
-                    "source": f"proposal-state:{btype}",
+                    "source": source,
                     "section": sec_match,
                     "detail": desc,
-                    "needs": "",
-                    "why_blocked": (
-                        f"Proposal-state field '{btype}' has "
-                        f"unresolved items"
-                    ),
+                    "needs": needs,
+                    "why_blocked": why_blocked,
                 })
 
     blockers = _dedupe_rollup_blockers(blockers)

@@ -24,13 +24,10 @@ def run_microstrategy(
     policy: dict,
 ) -> Path | None:
     """Run the microstrategy decider and generation flow when needed."""
-    artifacts = planspace / "artifacts"
-    integration_proposal = (
-        artifacts / "proposals" / f"section-{section.number}-integration-proposal.md"
-    )
-    microstrategy_path = (
-        artifacts / "proposals" / f"section-{section.number}-microstrategy.md"
-    )
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
+    integration_proposal = paths.proposal(section.number)
+    microstrategy_path = paths.microstrategy(section.number)
 
     needs_microstrategy = (
         _check_needs_microstrategy(

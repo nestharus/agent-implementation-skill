@@ -56,6 +56,70 @@ def test_build_section_governance_packet_uses_indexes_and_default_profile(
     assert "applicability_state" in packet
 
 
+def test_build_section_governance_packet_filters_patterns_by_regions(
+    tmp_path: Path,
+) -> None:
+    """V3/V4 regression: patterns with regions should be filtered, not universal."""
+    codespace = tmp_path / "codespace"
+    planspace = tmp_path / "planspace"
+    (codespace / "governance" / "problems").mkdir(parents=True, exist_ok=True)
+    (codespace / "governance" / "patterns").mkdir(parents=True, exist_ok=True)
+    (codespace / "philosophy" / "profiles").mkdir(parents=True, exist_ok=True)
+
+    (codespace / "governance" / "problems" / "index.md").write_text(
+        "## PRB-0001: Test Problem\n\n"
+        "**Status**: active\n"
+        "**Regions**: governance layer\n",
+        encoding="utf-8",
+    )
+    # Two patterns: one universal (no regions), one scoped to 'research'
+    (codespace / "governance" / "patterns" / "index.md").write_text(
+        "## PAT-0001: Universal Pattern\n\n"
+        "**Problem class**: all\n"
+        "**Philosophy**: always applies\n"
+        "**Canonical instance**: everywhere.py\n\n---\n\n"
+        "## PAT-0007: Scoped Pattern\n\n"
+        "**Problem class**: status tracking\n"
+        "**Regions**: research, retriggerable workflows\n"
+        "**Solution surfaces**: Research orchestration status.\n"
+        "**Philosophy**: precision over coarseness\n"
+        "**Canonical instance**: orchestrator.py\n",
+        encoding="utf-8",
+    )
+    (codespace / "philosophy" / "profiles" / "PHI-global.md").write_text(
+        "## Values (priority order)\n\n1. Accuracy\n\n"
+        "## Preferred Failure Mode\n\nFail closed.\n\n"
+        "## Risk Posture\n\nConservative.\n\n"
+        "## Anti-Patterns\n\n- Silent discard\n",
+        encoding="utf-8",
+    )
+    (codespace / "philosophy" / "region-profile-map.md").write_text(
+        "## Default\n\nAll regions: `PHI-global`\n",
+        encoding="utf-8",
+    )
+
+    build_governance_indexes(codespace, planspace)
+
+    # Section summary about "governance" — should not match "research" pattern
+    packet_path = build_section_governance_packet(
+        "01", planspace, codespace,
+        section_summary="governance packet builder for advisory context",
+    )
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+
+    # Universal pattern (no regions) should always be included
+    pattern_ids = [p["pattern_id"] for p in packet["candidate_patterns"]]
+    assert "PAT-0001" in pattern_ids
+
+    # PAT-0007 has regions=["research", "retriggerable workflows"] —
+    # if the summary doesn't overlap, it should be filtered out or
+    # marked as broad fallback (ambiguous)
+    if "PAT-0007" in pattern_ids:
+        # If it IS included, the basis must indicate broad fallback / ambiguity
+        basis = packet.get("applicability_basis", {}).get("patterns", "")
+        assert "broad_fallback" in basis or "ambiguous" in basis
+
+
 def test_build_section_governance_packet_handles_missing_indexes(
     tmp_path: Path,
 ) -> None:
