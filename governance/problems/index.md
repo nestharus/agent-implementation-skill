@@ -148,22 +148,34 @@ Agents can discover new problems, new tools, or greenfield territory that cannot
 
 ## PRB-0013: Proposal-State Readiness Before Descent
 
-**Status**: active — partially implemented (R104-R105)
+**Status**: active — partially implemented (R104-R106)
 **Provenance**: user-authored
 **Regions**: proposal-state repository, readiness resolver, readiness gate, implementation prompts
 
-Descent into implementation before anchors, contracts, and research are resolved produces brute-force behavior and reopen cycles. The execution-readiness gate is fail-closed: if any blocking field remains unresolved, implementation dispatch is blocked. R104 added initial governance identity validation. R105 made it genuinely fail-closed: empty governance identity with a populated packet now blocks descent, profile_id mismatch with governing_profile blocks, declared governance IDs with a missing/malformed packet block. Alignment-judge contract narrowed to require non-empty identity when governance applies. Proposals are problem-state artifacts, not file-change plans.
+Descent into implementation before anchors, contracts, and research are resolved produces brute-force behavior and reopen cycles. The execution-readiness gate is fail-closed: if any blocking field remains unresolved, implementation dispatch is blocked. R104 added initial governance identity validation. R105 made it genuinely fail-closed: empty governance identity with a populated packet now blocks descent, profile_id mismatch with governing_profile blocks, declared governance IDs with a missing/malformed packet block. R106 fixed the mixed-root contract: resolve_readiness now takes planspace (not artifacts), uses PathRegistry for all path construction, and all 4 callsites updated. Tests now use runtime-shape layout. Alignment-judge contract narrowed to require non-empty identity when governance applies. Proposals are problem-state artifacts, not file-change plans.
 
-**Solution surfaces**: Proposal-state repository, readiness resolver (full fail-closed governance validation R105, PAT-0013), readiness gate, alignment-judge contract, integration proposals as problem-state artifacts.
+**Solution surfaces**: Proposal-state repository, readiness resolver (planspace root contract R106, full fail-closed governance validation R105, PAT-0013), readiness gate, alignment-judge contract, integration proposals as problem-state artifacts.
 
 ---
 
 ## PRB-0014: Governance Context Dilution / Packet Overscoping
 
-**Status**: active — partially addressed (R103-R105)
+**Status**: active — partially addressed (R103-R106)
 **Provenance**: audit-inferred (R103)
 **Regions**: governance packets, freshness computation, section-input hashing, prompt context
 
-Governance packets mirror the full problem/pattern/profile archives into every section, regardless of which problems and patterns are actually applicable to that section. This causes: (1) packet-membership checks become vacuous because every ID is in every packet, (2) any governance edit invalidates freshness for all sections instead of only affected ones, (3) context optimization is violated because agents receive irrelevant governance material. R103 added region-based candidate filtering. R104 expanded to multi-signal applicability. R105 added explicit applicability states (`matched`/`ambiguous_applicability`/`no_applicable_governance`), narrowed profile scope to governing profile only, and populated `governance_questions` when applicability is ambiguous rather than silently broadening.
+Governance packets mirror the full problem/pattern/profile archives into every section, regardless of which problems and patterns are actually applicable to that section. This causes: (1) packet-membership checks become vacuous because every ID is in every packet, (2) any governance edit invalidates freshness for all sections instead of only affected ones, (3) context optimization is violated because agents receive irrelevant governance material. R103 added region-based candidate filtering. R104 expanded to multi-signal applicability. R105 added explicit applicability states (`matched`/`ambiguous_applicability`/`no_applicable_governance`), narrowed profile scope to governing profile only, and populated `governance_questions` when applicability is ambiguous rather than silently broadening. R106 fixed the pattern side: `parse_pattern_index()` now extracts `regions` and `solution_surfaces` fields, so `_filter_by_regions()` can actually scope patterns instead of treating all as universal.
 
-**Solution surfaces**: Multi-signal section-scoped applicability with explicit ambiguity states (PAT-0011 R105), bounded profile scope, archive refs instead of full duplication, governance_questions populated on ambiguity.
+**Solution surfaces**: Multi-signal section-scoped applicability with explicit ambiguity states (PAT-0011 R105), pattern applicability metadata extraction (R106), bounded profile scope, archive refs instead of full duplication, governance_questions populated on ambiguity.
+
+---
+
+## PRB-0015: Evaluation Surface Drift / Silent Coverage Loss
+
+**Status**: resolved (R106)
+**Provenance**: audit-inferred (R106)
+**Regions**: evals harness, eval scenarios, import validation
+
+Declared eval scenario modules can drift to stale import paths without detection. The eval harness caught ImportError and continued with a warning, silently narrowing scenario coverage. Two scenario modules (readiness_gate, reconciliation) imported from a dead path (`lib.proposal_state_repository`). R106 fixed the stale imports, and made the harness fail-closed: `_load_all_scenarios()` now accumulates import failures and `main()` exits nonzero when any declared scenario fails to load.
+
+**Solution surfaces**: Eval harness fail-closed on import errors (PAT-0008 R106), corrected scenario imports, harness exit code enforcement.
