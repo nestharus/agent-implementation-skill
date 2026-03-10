@@ -159,6 +159,10 @@ tests.
    contract. Mixed root semantics in a single function are a violation.
 6. Tests for path-sensitive surfaces must use the runtime directory layout,
    not a simplified hybrid layout that conflates planspace with artifacts.
+7. Semantically related but distinct durable signal families must have
+   explicit, separately named accessor methods. Two families using the same
+   conceptual label but different directory layouts are a migration-ambiguity
+   risk and must be registry-distinguished.
 
 **Canonical instance**: `PathRegistry` in
 `src/scripts/lib/core/path_registry.py`
@@ -179,6 +183,12 @@ tests.
 - `src/scripts/lib/services/readiness_resolver.py`
 - `src/scripts/lib/dispatch/context_sidecar.py` — context sidecar
   materialization via `PathRegistry.context_sidecar()` accessor (R109)
+- `src/scripts/lib/scan/scan_related_files.py` and `src/scripts/scan/feedback.py`
+  — scan-stage related-files update signals via
+  `scan_related_files_update_signal()` (R110)
+- `src/scripts/substrate/related_files.py` and
+  `src/scripts/lib/prompts/substrate_prompt_builder.py` — substrate-stage
+  related-files update signals via `related_files_update_dir()` (R110)
 
 **Conformance**: No durable artifact path may be reconstructed ad hoc. Any new
 artifact path MUST be added to `PathRegistry`, and all consumers must use that
@@ -803,12 +813,18 @@ a false pass — either way it says nothing about whether the behavior is correc
 - `tests/integration/test_intent_layer.py` — 4 positive contract tests
   replacing source-grep absence tests (heuristic judgment, evidence-driven
   axes, agent-adjudicated recurrence, dynamic philosophy source discovery)
+- `tests/component/test_governance_loader.py` — representative wrapped-bullet
+  and numbered-template fixture for governance loader projection (R110)
+- `tests/component/test_governance_loader.py` — related-files signal path
+  distinctness contract (R110)
 
 **Conformance**: New regression tests MUST express invariants as positive
 assertions about current behavior. Source-text grep for absent strings is a
 violation unless the invariant genuinely requires source-level verification.
 Converting existing source-grep tests to positive contracts is encouraged
-during audit rounds.
+during audit rounds. High-risk archive→runtime projection contracts and
+writer→reader handoff contracts should have at least one representative
+round-trip test with realistic fixture shapes.
 
 ---
 
@@ -819,13 +835,16 @@ during audit rounds.
 - **PAT-0002 (Prompt Safety)**: Healthy. R109 clarified that payload-file
   contents are untrusted dynamic content even when delivered through internal
   tasks. QA interceptor now validates payload content before dispatch.
-- **PAT-0003 (Path Registry)**: Healthy. R109 added `context_sidecar()`
-  accessor; `context_sidecar.py` now uses PathRegistry instead of ad-hoc
-  path construction.
+- **PAT-0003 (Path Registry)**: Healthy. R110 added
+  `scan_related_files_update_signal()` accessor and documented substrate
+  `related_files_update_dir()`, making the two related-files signal families
+  explicitly registry-distinguished. Template extended with rule 7 (distinct
+  accessor names for related signal families).
 - **PAT-0004 (Flow System)**: Healthy.
-- **PAT-0005 (Policy-Driven Models)**: Healthy. R108 removed all remaining
-  helper signature defaults and `policy.get()` fallback literals. Eval harness
-  now uses `resolve()`. Conformance extended to cover helper signatures.
+- **PAT-0005 (Policy-Driven Models)**: Healthy. R110 replaced the last two
+  local `policy.get()` fallback sites (`proposal_loop.py` intent_judge,
+  `scan_related_files.py` validation) with `resolve()` / direct key access.
+  Stale GPT/Opus docstrings rewritten to policy-based language.
 - **PAT-0006 (Freshness Computation)**: Healthy in mechanism. Governance packet
   overscoping fixed in R108 (no-match returns empty candidates, not full
   archive), reducing avoidable invalidation pressure.
@@ -837,11 +856,10 @@ during audit rounds.
   fixed in R106 — blockers.py handles both proposal-state and governance blocker
   shapes.
 - **PAT-0010 (Intent Surfaces)**: Healthy.
-- **PAT-0011 (Applicable Governance Packet Threading)**: Healthy. R109 added
-  synthesis cue extraction from `system-synthesis.md` Regions block and
-  consumption in packet builder. Synthesis cues boost records that were not
-  already matched by region/keyword. Conformance language strengthened: cues
-  "must be consumed" when available.
+- **PAT-0011 (Applicable Governance Packet Threading)**: Healthy. R110 fixed
+  governance loader to preserve wrapped bullet continuation lines and parse
+  numbered template items as individual array entries. Runtime pattern records
+  now carry full template/conformance/instance data from the real catalog.
 - **PAT-0012 (Post-Implementation Governance Feedback)**: Healthy. Debt
   promotion is idempotent with material-payload-aware dedup (R105).
 - **PAT-0013 (Governed Proposal Identity)**: Healthy. Root semantics fixed in
@@ -854,5 +872,7 @@ during audit rounds.
   `safety_blocked`); dispatcher logs `qa:degraded` distinctly from
   `qa:passed`; notifier carries reason_code through lifecycle events;
   reconciliation adjudicator references PAT-0014 degraded states in warnings.
-- **PAT-0015 (Positive Contract Testing)**: Healthy. Established in R109.
-  Five source-grep absence tests converted to positive contract assertions.
+- **PAT-0015 (Positive Contract Testing)**: Healthy. R110 added
+  representative contract tests: governance loader with wrapped bullets and
+  numbered templates, related-files signal path distinctness. Conformance
+  extended to require representative round-trip tests for high-risk contracts.

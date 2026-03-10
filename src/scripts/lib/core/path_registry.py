@@ -100,7 +100,12 @@ class PathRegistry:
         return self._artifacts / "phase2-inputs-hashes"
 
     def related_files_update_dir(self) -> Path:
+        """Substrate-stage related-files update signals directory."""
         return self.signals_dir() / "related-files-update"
+
+    def scan_related_files_update_signal(self, section_name: str) -> Path:
+        """Scan-stage related-files update signal for a section."""
+        return self.signals_dir() / f"{section_name}-related-files-update.json"
 
     # --- Section-scoped file accessors ---
 

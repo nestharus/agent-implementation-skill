@@ -155,7 +155,7 @@ def validate_existing_related_files(
     validate_prompt.write_text(prompt)
 
     result = dispatch_agent(
-        model=model_policy.get("validation", DEFAULT_SCAN_MODELS["validation"]),
+        model=model_policy["validation"],
         project=codespace,
         prompt_file=validate_prompt,
         agent_file="scan-related-files-adjudicator.md",

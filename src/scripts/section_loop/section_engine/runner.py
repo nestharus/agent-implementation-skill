@@ -146,8 +146,8 @@ def run_section(
 
     0. Read incoming notes from other sections (pre-section)
     1. Section setup (once) — extract proposal/alignment excerpts
-    2. Integration proposal loop — GPT proposes, Opus checks alignment
-    3. Strategic implementation — GPT implements, Opus checks alignment
+    2. Integration proposal loop — proposer writes, alignment judge checks
+    3. Strategic implementation — implementor writes, alignment judge checks
     4. Post-completion — snapshot, impact analysis, consequence notes
 
     Parameters

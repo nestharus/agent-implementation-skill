@@ -65,3 +65,27 @@ Post-implementation assessment emits `accept_with_debt` verdicts with typed `deb
 - **Status**: resolved
 - **Acceptance rationale**: N/A — resolved.
 - **Mitigation**: R109 implemented full advisory status taxonomy per PAT-0014: QA verdict parser returns DEGRADED (not PASS) for malformed/unknown output; interceptor returns 3-tuple `(passed, rationale_path, reason_code)` with codes `unparseable`/`dispatch_error`/`target_unavailable`/`safety_blocked`; dispatcher logs `qa:degraded:{task_id}:{reason_code}` distinctly from `qa:passed`; notifier carries reason_code through lifecycle events; reconciliation adjudicator references PAT-0014 degraded states.
+
+---
+
+### RISK-0005: Governance pattern projection truncation
+
+- **Category**: pattern-drift / operability
+- **Region**: governance loader, packet builder
+- **Description**: The governance loader's `_extract_bullets` stopped on continuation lines (wrapped bullet items) and did not parse numbered template lists, causing `pattern-index.json` to lose structure from the real catalog. PAT-0001 was reduced from 9 known instances to 1 and 5 template items to 1; PAT-0011 dropped from 17 known instances to 5 and 7 template items to 3.
+- **Severity**: medium
+- **Status**: resolved
+- **Acceptance rationale**: N/A — resolved.
+- **Mitigation**: R110 fixed `_extract_bullets` to join continuation lines and parse numbered items. Representative contract test added with wrapped bullets and numbered templates from the real catalog shape.
+
+---
+
+### RISK-0006: Related-files signal-family ambiguity
+
+- **Category**: coherence / operability
+- **Region**: scan related-files surfaces, substrate wiring surfaces, PathRegistry
+- **Description**: Scan-stage and substrate-stage related-files update signals used different durable layouts (`signals/{name}-related-files-update.json` vs `signals/related-files-update/section-{num}.json`), but only the substrate path had a PathRegistry accessor. The scan path was constructed ad-hoc, creating migration-ambiguity risk.
+- **Severity**: low
+- **Status**: resolved
+- **Acceptance rationale**: N/A — resolved.
+- **Mitigation**: R110 added `scan_related_files_update_signal()` accessor to PathRegistry, documented `related_files_update_dir()` as substrate-specific, extended PAT-0003 template with rule 7, and added a contract test verifying path distinctness.

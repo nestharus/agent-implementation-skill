@@ -105,8 +105,17 @@ def _extract_bullets(body: str, label: str) -> list[str]:
         if line.startswith(("- ", "* ")):
             items.append(line[2:].strip())
             continue
-        if items:
-            break
+        # Numbered list items (e.g., "1. Use content_hash()...")
+        numbered = re.match(r"^\d+\.\s+(.*)$", line)
+        if numbered is not None:
+            items.append(numbered.group(1).strip())
+            continue
+        # Continuation line — append to the current bullet/numbered item
+        if items and line:
+            items[-1] = items[-1] + " " + line
+            continue
+        if not items:
+            continue
     return items
 
 

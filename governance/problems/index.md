@@ -112,13 +112,13 @@ Code exists but we can't trace it back to the problem it solves. When problems e
 
 ## PRB-0010: Pattern Governance
 
-**Status**: active — partially implemented (R101-R107)
+**Status**: active — partially implemented (R101-R110)
 **Provenance**: user-authored (governance gaps analysis)
-**Regions**: governance layer, audit process, pattern archive, proposal-state, model policy
+**Regions**: governance layer, audit process, pattern archive, proposal-state, model policy, path registry
 
-Established patterns exist and are cataloged. The governance loader parses the archive into planspace indexes, builds per-section governance packets, and threads them into prompt context and freshness hashing. R103 added proposal-time governance identity (PAT-0013) so proposals declare which patterns they follow and which deviations they require. R104 deepened the loader to parse `template` and `conformance` fields from patterns with multiline continuation support, so runtime pattern records carry actionable conformance criteria — not just titles and instances. Governance packets now thread into microstrategy, alignment, and ROAL prompts (PAT-0011 coverage expansion). R107 completed catalog metadata (all patterns carry Regions/Solution surfaces), made runtime packet filtering applicability-aware (missing metadata = ambiguity), collapsed ~47 duplicated model-policy fallback literals into centralized `resolve()` calls, and bridged packet ambiguity to descent readiness gating. Runtime advisory presence is becoming structural through pattern_ids and pattern_deviations in proposal-state. Full enforcement at proposal time remains advisory.
+Established patterns exist and are cataloged. The governance loader parses the archive into planspace indexes, builds per-section governance packets, and threads them into prompt context and freshness hashing. R103 added proposal-time governance identity (PAT-0013) so proposals declare which patterns they follow and which deviations they require. R104 deepened the loader to parse `template` and `conformance` fields from patterns with multiline continuation support, so runtime pattern records carry actionable conformance criteria — not just titles and instances. Governance packets now thread into microstrategy, alignment, and ROAL prompts (PAT-0011 coverage expansion). R107 completed catalog metadata (all patterns carry Regions/Solution surfaces), made runtime packet filtering applicability-aware (missing metadata = ambiguity), collapsed ~47 duplicated model-policy fallback literals into centralized `resolve()` calls, and bridged packet ambiguity to descent readiness gating. R110 fixed archive→runtime projection fidelity: wrapped bullet continuation lines are now preserved, numbered template lists are parsed as individual array entries, and representative contract tests cover the real catalog shape. R110 also made scan-stage and substrate-stage related-files signal families explicitly registry-distinguished (PAT-0003) and completed the last two local model-policy fallback sites (PAT-0005). Runtime advisory presence is becoming structural through pattern_ids and pattern_deviations in proposal-state. Full enforcement at proposal time remains advisory.
 
-**Solution surfaces**: Pattern archive, governance loader (richer records R104), governance packets (PAT-0011 applicability-aware R107), governed proposal identity (PAT-0013), centralized model policy resolver (PAT-0005 R107), audit process pattern alignment phases.
+**Solution surfaces**: Pattern archive, governance loader (projection fidelity R110), governance packets (PAT-0011 applicability-aware R107), governed proposal identity (PAT-0013), centralized model policy resolver (PAT-0005 R110), audit process pattern alignment phases, registry-distinguished signal families (PAT-0003 R110).
 
 ---
 
@@ -196,10 +196,10 @@ Advisory surfaces (QA interception, reconciliation adjudication) are deliberatel
 
 ## PRB-0017: Testing Philosophy Drift / Historical Regression Oracles
 
-**Status**: active — substantially addressed (R109)
+**Status**: active — substantially addressed (R109-R110)
 **Provenance**: audit-inferred (R109)
 **Regions**: integration tests, regression tests, component tests
 
-Tests written as source-text archaeology (grepping codebase files for absent strings to confirm deleted code stays deleted) create fragile regressions that break when source text changes and say nothing about whether the behavior is correct. The test asserts "this string is not in the file" rather than "the system behaves correctly." When the code evolves, these tests either false-pass (the string changes form but the behavior returns) or false-fail (the string reappears in a different context). This testing philosophy drifts from behavioral contracts toward repository archaeology.
+Tests written as source-text archaeology (grepping codebase files for absent strings to confirm deleted code stays deleted) create fragile regressions that break when source text changes and say nothing about whether the behavior is correct. The test asserts "this string is not in the file" rather than "the system behaves correctly." When the code evolves, these tests either false-pass (the string changes form but the behavior returns) or false-fail (the string reappears in a different context). This testing philosophy drifts from behavioral contracts toward repository archaeology. R110 extended PAT-0015 to require representative round-trip contract tests for high-risk archive→runtime projection and writer→reader handoff contracts, and added governance-loader and related-files signal path contract tests as instances.
 
-**Solution surfaces**: PAT-0015 (Positive Contract Testing), positive behavioral assertions over source-grep absence tests, output-shape contracts.
+**Solution surfaces**: PAT-0015 (Positive Contract Testing), positive behavioral assertions over source-grep absence tests, output-shape contracts, representative round-trip contract tests for high-risk handoffs (R110).

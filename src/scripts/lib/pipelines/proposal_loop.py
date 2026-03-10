@@ -369,7 +369,7 @@ def run_proposal_loop(
             "intent-judge.md" if has_intent_artifacts else "alignment-judge.md"
         )
         alignment_model = (
-            policy.get("intent_judge", resolve(policy, "alignment"))
+            resolve(policy, "intent_judge")
             if has_intent_artifacts
             else resolve(policy, "alignment")
         )
