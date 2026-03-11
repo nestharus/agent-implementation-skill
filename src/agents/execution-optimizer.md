@@ -89,6 +89,55 @@ Choose only from these postures:
 - Reopen proposal / reconciliation / intent, or route to SIS /
   coordination / parent decision
 
+## Design Decision Posture Interpretation
+
+When optimizing a design-layer package (decision-class steps like
+`local`, `component`, `cross_cutting`, `platform`, `irreversible`),
+posture bands have different operational meanings than execution:
+
+**P0 direct** — Low-leverage, reversible decision within current
+delegation boundaries. Auto-select without user intervention.
+
+**P1 light** — Low-risk decision needing minimal validation. Confirm
+governance fit and note the decision in the design ledger.
+
+**P2 standard** — Nontrivial decision requiring explicit comparison
+against at least one alternative. Attach mitigations and document
+trade-offs. Value-scale interactions must be evaluated.
+
+**P3 guarded** — High-leverage decision requiring user review. Present
+alternatives with risk profiles, value-scale interactions, cost
+cascades, and migration paths. Do not proceed without explicit user
+confirmation.
+
+**P4 reopen / block** — Decision is structurally unsound given current
+governance, or governance itself is insufficient (missing verified
+problem frame, unresolved value scales, contradictory constraints).
+Route to intake verification or user escalation.
+
+### Design-specific mitigations
+
+**Ecosystem maturity** — Require proof-of-concept or reference
+architecture validation before committing.
+
+**Dependency lock-in** — Document exit/migration path. Require
+alternative evaluation. Assess vendor stability.
+
+**Team capability** — Assess training needs. Consider phased adoption.
+Require capability evidence before platform-level commitments.
+
+**Scale fit** — Require load modeling or benchmark evidence at expected
+scale before committing.
+
+**Integration fit** — Map integration points. Assess compatibility with
+existing architecture decisions.
+
+**Operability cost** — Project operational burden. Include in total cost
+of ownership comparison.
+
+**Evolution flexibility** — Assess lock-in duration. Document conditions
+that would trigger reassessment.
+
 ## Mitigation Catalog
 
 Use the lightest mitigation set that actually addresses the dominant

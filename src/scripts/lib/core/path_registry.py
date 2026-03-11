@@ -228,6 +228,40 @@ class PathRegistry:
     def risk_parameters(self) -> Path:
         return self.risk_dir() / "risk-parameters.json"
 
+    # --- Intake artifact accessors ---
+
+    def intake_dir(self) -> Path:
+        return self._artifacts / "intake"
+
+    def intake_session_dir(self, session_id: str) -> Path:
+        return self.intake_dir() / "sessions" / session_id
+
+    def source_inventory(self, session_id: str) -> Path:
+        return self.intake_session_dir(session_id) / "source-inventory.json"
+
+    def candidate_claims(self, session_id: str) -> Path:
+        return self.intake_session_dir(session_id) / "candidate-claims.json"
+
+    def hypothesis_sets(self, session_id: str) -> Path:
+        return self.intake_session_dir(session_id) / "hypothesis-sets.json"
+
+    def verification_packet_json(self, session_id: str) -> Path:
+        return self.intake_session_dir(session_id) / "verification-packet.json"
+
+    def verification_packet_md(self, session_id: str) -> Path:
+        return self.intake_session_dir(session_id) / "verification-packet.md"
+
+    def verification_receipts(self) -> Path:
+        return self.intake_dir() / "verification-receipts.jsonl"
+
+    # --- Value scale and stack eval accessors ---
+
+    def value_scales(self, scope: str) -> Path:
+        return self.risk_dir() / f"{scope}-value-scales.json"
+
+    def stack_eval(self, scope: str) -> Path:
+        return self.risk_dir() / f"{scope}-stack-eval.json"
+
     # --- Research artifact accessors ---
 
     def research_dir(self) -> Path:

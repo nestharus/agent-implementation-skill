@@ -16,6 +16,8 @@ def determine_engagement(
     triage_confidence: str,
     freshness_changed: bool,
     risk_mode_hint: str = "",
+    has_decision_classes: bool = False,
+    has_unresolved_value_scales: bool = False,
 ) -> RiskMode:
     """Determine whether ROAL runs lightly or in full."""
     normalized_hint = risk_mode_hint.strip().lower()
@@ -32,6 +34,10 @@ def determine_engagement(
     # Legacy normalization: stale persisted artifacts may contain "skip".
     if normalized_hint == "skip":
         return RiskMode.FULL if skip_floor_hit else RiskMode.LIGHT
+
+    # Design decisions always require full assessment
+    if has_decision_classes or has_unresolved_value_scales:
+        return RiskMode.FULL
 
     should_run_full = (
         has_shared_seams

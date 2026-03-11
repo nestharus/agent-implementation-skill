@@ -54,6 +54,14 @@ class ModelPolicy(Mapping[str, Any]):
     research_domain_ticket: str = "gpt-high"
     research_synthesis: str = "gpt-high"
     research_verify: str = "glm"
+    # Intake / trust / verification layer
+    intake_triage: str = "gpt-high"
+    claim_extractor: str = "gpt-high"
+    hypothesis_builder: str = "claude-opus"
+    verification_builder: str = "gpt-high"
+    codebase_governance_assessor: str = "claude-opus"
+    value_scale_enumerator: str = "gpt-high"
+    stack_evaluator: str = "gpt-high"
     escalation_triggers: dict[str, int] = field(default_factory=lambda: {
         "stall_count": 2,
         "max_attempts_before_escalation": 3,

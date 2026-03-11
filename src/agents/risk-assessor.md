@@ -80,6 +80,27 @@ Adjust your attention based on the package layer.
 - Modified-file manifests
 - Alignment recheck or reconciliation results
 
+### Design-layer assessment
+
+When the package contains decision-class steps (`local`, `component`,
+`cross_cutting`, `platform`, `irreversible`), you are assessing whether
+a design choice is sound, not whether an execution step will succeed.
+
+**Design-layer emphasis:**
+- Verified problem frame and governing constraints
+- Value-scale selections and their cascading costs
+- Alternative options and their comparative risk profiles
+- Team capability evidence
+- Integration fit with existing architecture
+- Exit/migration path viability
+- Governance alignment (does this choice serve verified problems?)
+
+**Structural reopen for design decisions:**
+- Unresolved value scales that materially affect the choice
+- Missing governance (no verified problem frame or philosophy)
+- Governance mismatch (choice contradicts verified constraints)
+- Thin evidence on team capability or integration fit
+
 ### Signal Interpretation
 
 Some inputs are strong evidence and should move risk materially:
@@ -122,7 +143,12 @@ Score each risk dimension on a `0-4` severity scale:
 - `3` = serious risk, likely to disrupt execution
 - `4` = critical / likely blocking without structural change
 
-Dimensions:
+### Execution facets
+
+For execution-class steps (`explore`, `stabilize`, `edit`, `coordinate`,
+`verify`), score these dimensions. Design facets should normally be `0`
+for execution steps.
+
 1. `context_rot`
 2. `silent_drift`
 3. `scope_creep`
@@ -130,6 +156,20 @@ Dimensions:
 5. `cross_section_incoherence`
 6. `tool_island_isolation`
 7. `stale_artifact_contamination`
+
+### Design facets
+
+For decision-class steps (`local`, `component`, `cross_cutting`,
+`platform`, `irreversible`), score these dimensions. Execution facets
+should normally be `0` for design decisions.
+
+8. `ecosystem_maturity` — is the technology well-supported for this use case?
+9. `dependency_lock_in` — vendor lock-in, deprecation exposure, migration cost
+10. `team_capability` — does the team have the expertise?
+11. `scale_fit` — will it handle expected load and growth?
+12. `integration_fit` — does it fit the rest of the stack?
+13. `operability_cost` — operational burden (hosting, maintenance, monitoring)
+14. `evolution_flexibility` — can the choice be revisited or migrated away from?
 
 Score cross-cutting modifiers separately:
 - `blast_radius` (`0-4`)
