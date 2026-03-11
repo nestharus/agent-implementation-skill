@@ -43,11 +43,11 @@ The task queue is not a workflow ladder. It is a typed blackboard of discovered 
 - **Philosophy**: PHI-global (bounded autonomy, fail-closed)
 - **Patterns**: PAT-0004 (Flow System), PAT-0005 (Policy-Driven Models), PAT-0006 (Freshness)
 
-The flow system expresses multi-step agent work as chains (sequential), fanout (parallel branches with gates), and named packages. `task_router.py` maps the typed task vocabulary to agent files and default models. `task_dispatcher.py` polls the queue, resolves task types, claims work, dispatches agents, and records completion. `flow_reconciler.py` handles task completion hooks — research flow, post-implementation assessment, gate synthesis.
+The flow system expresses multi-step agent work as chains (sequential), fanout (parallel branches with gates), and named packages. ``src/flow/types/routing.py`` maps the typed task vocabulary to agent files and default models. ``src/flow/engine/dispatcher.py`` polls the queue, resolves task types, claims work, dispatches agents, and records completion. ``src/flow/engine/reconciler.py`` handles task completion hooks — research flow, post-implementation assessment, gate synthesis.
 
 Agents say what they need. The substrate decides how that need is executed. Task submission (not direct spawning) keeps agents short-lived, ensures every dispatch uses an approved agent file, keeps execution observable and resumable, and prevents arbitrary social behavior between agents.
 
-**Key modules**: `flow_schema.py`, `flow_catalog.py`, `task_router.py`, `task_dispatcher.py`, `lib/flow/`
+**Key modules**: `src/flow/`, `src/taskrouter/`
 
 ### Section Loop
 
@@ -55,13 +55,13 @@ Agents say what they need. The substrate decides how that need is executed. Task
 - **Philosophy**: PHI-global (strategy over brute force, alignment over audit)
 - **Patterns**: PAT-0010 (Intent Surfaces), PAT-0009 (Blocker Taxonomy)
 
-The section loop is a multi-pass orchestrator. `section_loop/main.py` orders: proposal pass → reconciliation → implementation pass → global alignment recheck → coordination. Per-section execution in `section_engine/runner.py` sequences: impact triage → excerpt extraction → problem-frame validation → intent bootstrap → proposal writing → readiness routing → microstrategy → implementation → tool validation → post-completion work.
+The section loop is a multi-pass orchestrator. `src/orchestrator/engine/main.py` orders: proposal pass → reconciliation → implementation pass → global alignment recheck → coordination. Per-section execution sequences: impact triage → excerpt extraction → problem-frame validation → intent bootstrap → proposal writing → readiness routing → microstrategy → implementation → tool validation → post-completion work.
 
 Integration proposals are problem-state artifacts, not file-change plans. They emit resolved/unresolved anchors, contracts, research questions, user questions, new-section candidates, shared seam candidates, and execution readiness declarations.
 
 The execution-readiness gate is fail-closed: if any blocking field remains unresolved, implementation dispatch is blocked. Non-blocking unknowns don't hold the gate. Structural unknowns do.
 
-**Key modules**: `section_loop/`, `lib/pipelines/`, `lib/services/`, `lib/repositories/`
+**Key modules**: `src/orchestrator/`, `src/proposal/`, `src/implementation/`, `src/reconciliation/`
 
 ### Scan & Codemap
 
@@ -70,7 +70,7 @@ The execution-readiness gate is fail-closed: if any blocking field remains unres
 
 The scan stage builds the codemap (a structured routing map of subsystems, entry points, interfaces, unknowns, and confidence levels), per-section related-files hypotheses, and project-mode signals (brownfield/greenfield/hybrid). Mode is an observation, not a routing key — the same proposer, artifact shape, and gates apply regardless.
 
-**Key modules**: `scan/deep_scan.py`, `lib/scan/`
+**Key modules**: `src/scan/`
 
 ### Intent & Philosophy
 
@@ -84,7 +84,7 @@ Philosophy bootstrap is a gated workflow: it scaffolds user input for greenfield
 
 Intent surfaces are passively discovered during alignment: missing axes, tensions, ungrounded assumptions, philosophy silence. These surfaces are normalized, registered, expanded, or reopened through recurrence adjudication. Research-derived and implementation-feedback surfaces feed the same expansion cycle.
 
-**Key modules**: `lib/intent/`, `section_loop/intent/`
+**Key modules**: `src/intent/`
 
 ### Research
 
@@ -96,7 +96,7 @@ When proposals emit blocking_research_questions, the readiness gate dispatches a
 
 Research orchestration uses the flow system: plan_executor.py translates semantic plans into fanout branches with gates. Status is cycle-aware (trigger_hash + cycle_id) so new questions trigger new cycles without re-running stale ones.
 
-**Key modules**: `lib/research/`, `lib/governance/` (assessment), agents: research-planner, domain-researcher, research-synthesizer, research-verifier
+**Key modules**: `src/research/`, `src/intake/` (assessment), agents: research-planner, domain-researcher, research-synthesizer, research-verifier
 
 ### ROAL (Risk-Optimization Adaptive Loop)
 
@@ -110,7 +110,7 @@ The loop: build package → dispatch risk-assessor → dispatch execution-optimi
 
 ROAL is additive — it sits beside the existing readiness gate, not replacing it. Readiness decides whether implementation may be considered. ROAL decides how cautiously to proceed.
 
-**Key modules**: `lib/risk/`, agents: risk-assessor, execution-optimizer
+**Key modules**: `src/risk/`, agents: risk-assessor, execution-optimizer
 
 ### Post-Implementation Assessment
 
@@ -122,7 +122,7 @@ After implementation, a bounded assessment inspects landed code through: couplin
 
 Assessment records governance IDs (problem_ids, pattern_ids, profile_id) into traceability, closing the loop from "what problems/patterns governed this work" to "what was actually addressed."
 
-**Key modules**: `lib/governance/assessment.py`, agents: post-implementation-assessor
+**Key modules**: `src/intake/service/assessment.py`, agents: post-implementation-assessor
 
 ### Coordination
 
@@ -133,7 +133,7 @@ The coordination layer handles non-locality: contracts, side effects, shared int
 
 Reconciliation runs after all proposals before implementation begins. It normalizes shared anchors, contracts, section boundaries, and shared seam candidates. It prevents independent proposals from silently diverging on shared assumptions.
 
-**Key modules**: `section_loop/coordination/`, `lib/pipelines/coordination_*`
+**Key modules**: `src/coordination/engine/`, `src/coordination/service/`, `src/intent/service/triage.py`, `src/intent/service/recurrence.py`
 
 ### SIS (Shared Integration Substrate)
 
@@ -141,7 +141,7 @@ Reconciliation runs after all proposals before implementation begins. It normali
 
 When sections lack enough shared structure for meaningful proposals, SIS activates: per-section shards describe needs/provides/seams → pruner identifies convergence/contradictions → seed plan defines minimal shared anchors → seeder creates anchor files. Sections then propose against real seams instead of inventing independent local structure.
 
-**Key modules**: `substrate/runner.py`, `lib/substrate/`
+**Key modules**: `src/scan/substrate/runner.py`, `src/scan/substrate/`
 
 ### Artifact Infrastructure
 
@@ -151,7 +151,7 @@ When sections lack enough shared structure for meaningful proposals, SIS activat
 
 Cross-cutting infrastructure: `artifact_io.py` (read_json/write_json/rename_malformed), `path_registry.py` (all artifact paths from a single source), `hash_service.py` (content-based hashing), `freshness_service.py` (section freshness tokens from 18+ input categories), `section_input_hasher.py` (full section input hash including governance).
 
-**Key modules**: `lib/core/`
+**Key modules**: `src/signals/repository/artifact_io.py`, `src/orchestrator/path_registry.py`, `src/staleness/service/freshness.py`, `src/staleness/service/input_hasher.py`
 
 ### Governance Layer
 
@@ -165,11 +165,11 @@ Post-implementation assessment queues after successful implementation, validates
 
 The governance hierarchy: problems (why) → philosophy (values) → patterns (how) → synthesis (connections) → proposals (changes under constraints) → implementation (bounded execution) → assessment (what risks landed) → stabilization (remove risks, re-align).
 
-**Key modules**: `lib/governance/`, `governance/`, `philosophy/`
+**Key modules**: `governance/`, `philosophy/`, `src/intake/service/packet.py`, `src/intake/repository/loader.py`, `src/implementation/service/traceability.py`
 
 ## Agent system
 
-47 agents organized by epistemic operations, not engineering domains.
+52 agents organized by epistemic operations, not engineering domains.
 
 | Category | Agents | Function |
 |----------|--------|----------|
@@ -204,7 +204,19 @@ The system spends more wall-clock time internally — exploring, aligning, propa
 
 ## Task vocabulary
 
-General routed tasks: alignment_check, alignment_adjudicate, impact_analysis, coordination_fix, consequence_triage, microstrategy_decision, recurrence_adjudication, tool_registry_repair, integration_proposal, strategic_implementation, section_setup, scan_codemap_build, scan_codemap_freshness, scan_codemap_verify, scan_explore, scan_adjudicate, scan_tier_rank, scan_deep_analyze, research_plan, research_domain_ticket, research_synthesis, research_verify, substrate_shard, substrate_prune, substrate_seed, reconciliation_adjudicate, post_impl_assessment.
+28 routed tasks across 9 system namespaces, using qualified names (`namespace.task`):
+
+- **scan** (10): `scan.codemap_build`, `scan.codemap_freshness`, `scan.codemap_verify`, `scan.explore`, `scan.adjudicate`, `scan.tier_rank`, `scan.deep_analyze`, `scan.substrate_shard`, `scan.substrate_prune`, `scan.substrate_seed`
+- **staleness** (3): `staleness.alignment_check`, `staleness.alignment_adjudicate`, `staleness.state_adjudicate`
+- **research** (4): `research.plan`, `research.domain_ticket`, `research.synthesis`, `research.verify`
+- **proposal** (2): `proposal.integration`, `proposal.section_setup`
+- **implementation** (3): `implementation.strategic`, `implementation.post_assessment`, `implementation.microstrategy_decision`
+- **coordination** (3): `coordination.fix`, `coordination.consequence_triage`, `coordination.recurrence_adjudication`
+- **reconciliation** (1): `reconciliation.adjudicate`
+- **dispatch** (1): `dispatch.tool_registry_repair`
+- **signals** (1): `signals.impact_analysis`
+
+Routes are declared per-system in `<system>/routes.py` and collected by `taskrouter.discovery.discover()`. Each route specifies agent file, default model, and optional policy key for model overrides.
 
 ROAL adds two inline bounded operations: risk_assessment and risk_optimization.
 

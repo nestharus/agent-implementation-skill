@@ -45,28 +45,28 @@ debugging evidence instead of hiding it.
    explicitly updated.
 
 **Canonical instance**: `load_surface_registry()` in
-`section_loop/intent/surfaces.py`
+`src/intent/engine/surface.py`
 
 **Known instances**:
-- `src/scripts/lib/core/artifact_io.py` — `read_json()` / `rename_malformed()`
+- `src/signals/repository/artifact_io.py` — `read_json()` / `rename_malformed()`
   primitives
-- `src/scripts/section_loop/intent/surfaces.py` — surface registry + research
+- `src/intent/engine/surface.py` — surface registry + research
   surface validation
-- `src/scripts/lib/research/orchestrator.py` — research plan / status loaders
-- `src/scripts/lib/governance/assessment.py` — post-implementation assessment
+- `src/research/engine/orchestrator.py` — research plan / status loaders
+- `src/intake/service/assessment.py` — post-implementation assessment
   reader
-- `src/scripts/lib/repositories/proposal_state_repository.py`,
+- `src/proposal/repository/state.py`,
   `decision_repository.py`, `reconciliation_queue.py`,
   `reconciliation_result_repository.py`, and `strategic_state.py`
-- `src/scripts/lib/tools/tool_surface.py` — tool registry and friction signal
+- `src/dispatch/service/tool_surface.py` — tool registry and friction signal
   readers
-- `src/scripts/section_loop/section_engine/blockers.py` and
-  `src/scripts/lib/pipelines/coordination_problem_resolver.py`
-- `src/scripts/lib/risk/serialization.py` — ROAL package / assessment / plan
+- `src/signals/service/blockers.py` and
+  `src/coordination/service/problem_resolver.py`
+- `src/risk/repository/serialization.py` — ROAL package / assessment / plan
   loaders
-- `src/scripts/lib/services/signal_reader.py`,
-  `src/scripts/lib/dispatch/dispatch_metadata.py`, and
-  `src/scripts/lib/substrate/substrate_policy.py`
+- `src/signals/repository/signal_reader.py`,
+  `src/dispatch/repository/metadata.py`, and
+  `src/scan/substrate/policy.py`
 
 **Conformance**: Any new structured artifact reader MUST follow this pattern. No
 silent `json.loads()` with bare except; no alternate corruption filename
@@ -108,26 +108,26 @@ mechanically before dispatch.
    mechanical baseline.
 
 **Canonical instance**: `write_research_plan_prompt()` in
-`src/scripts/lib/research/prompt_writer.py`
+`src/research/prompt/writer.py`
 
 **Known instances**:
-- `src/scripts/lib/research/prompt_writer.py` and
-  `src/scripts/lib/research/plan_executor.py`
-- `src/scripts/lib/governance/assessment.py`
-- `src/scripts/lib/intent/intent_triage.py`, `intent_surface.py`, and
+- `src/research/prompt/writer.py` and
+  `src/research/engine/executor.py`
+- `src/intake/service/assessment.py`
+- `src/intent/service/triage.py`, `intent_surface.py`, and
   `philosophy_bootstrap.py`
-- `src/scripts/section_loop/prompts/writers.py` and
-  `src/scripts/section_loop/alignment.py`
-- `src/scripts/lib/pipelines/reconciliation_adjudicator.py`,
+- `src/dispatch/prompt/writers.py` and
+  `src/staleness/service/section_alignment.py`
+- `src/reconciliation/service/adjudicator.py`,
   `microstrategy_orchestrator.py`, `scope_delta_aggregator.py`,
   `coordination_planner.py`, `coordination_executor.py`, and `impact_triage.py`
-- `src/scripts/lib/services/impact_analyzer.py`
-- `src/scripts/lib/risk/loop.py`
-- `src/scripts/lib/tools/tool_surface.py`
-- `src/scripts/lib/prompts/substrate_prompt_builder.py`
-- `src/scripts/scan/codemap.py`, `exploration.py`, `feedback.py`, `lib/scan/*`
+- `src/implementation/service/impact_analyzer.py`
+- `src/risk/engine/loop.py`
+- `src/dispatch/service/tool_surface.py`
+- `src/scan/substrate/prompt_builder.py`
+- `src/scan/codemap/lifecycle.py`, `exploration.py`, `feedback.py`
   — validated scan prompts
-- `src/scripts/task_dispatcher.py` and `src/scripts/qa_interceptor.py`
+- `src/flow/engine/dispatcher.py` and `src/dispatch/service/qa_interceptor.py`
 
 **Conformance**: Every dispatch must be payload-backed and pass prompt-safety
 validation through one of the sanctioned forms.
@@ -173,7 +173,7 @@ consumer migration, runtime-shape tests.
    family spreads further.
 
 **Canonical instance**: `PathRegistry` in
-`src/scripts/lib/core/path_registry.py`
+`src/orchestrator/path_registry.py`
 
 **Known instances**:
 - Research artifact accessors (`research_*`, dossier, addendum, ticket specs,
@@ -181,32 +181,32 @@ consumer migration, runtime-shape tests.
 - Governance artifact accessors (`governance_*`, packet,
   post-implementation assessment, risk-register signal)
 - Readiness / proposal-state / trace / signal / input-ref accessors
-- `src/scripts/lib/core/model_policy.py`
-- `src/scripts/lib/scan/scan_dispatch.py`
-- `src/scripts/lib/substrate/substrate_policy.py`
-- `src/scripts/lib/pipelines/microstrategy_orchestrator.py`
-- `src/scripts/lib/pipelines/implementation_loop.py`
-- `src/scripts/lib/services/readiness_resolver.py`
-- `src/scripts/lib/dispatch/context_sidecar.py` — context sidecar
+- `src/dispatch/service/model_policy.py`
+- `src/scan/service/scan_dispatch.py`
+- `src/scan/substrate/policy.py`
+- `src/implementation/service/microstrategy.py`
+- `src/implementation/engine/loop.py`
+- `src/proposal/service/readiness_resolver.py`
+- `src/dispatch/service/context_sidecar.py` — context sidecar
   materialization via `PathRegistry.context_sidecar()` accessor (R109)
 - Scan-stage durable-path consumers in
-  `src/scripts/lib/scan/scan_related_files.py` and
+  `src/scan/related/discovery.py` and
   `src/scripts/scan/{codemap,exploration,deep_scan,feedback}.py`
 - Intent/prompt durable-path consumers in
-  `src/scripts/lib/intent/intent_triage.py`,
-  `src/scripts/lib/prompts/prompt_context_assembler.py`,
-  `src/scripts/section_loop/intent/bootstrap.py`, and
-  `src/scripts/section_loop/prompts/writers.py`
+  `src/intent/service/triage.py`,
+  `src/dispatch/prompt/context_assembler.py`,
+  `src/intent/engine/bootstrap.py`, and
+  `src/dispatch/prompt/writers.py`
 - Coordination / proposal / problem-frame prompt surfaces in
-  `src/scripts/section_loop/coordination/execution.py`,
-  `src/scripts/lib/pipelines/coordination_executor.py`,
-  `src/scripts/lib/pipelines/problem_frame_gate.py`, and
-  `src/scripts/lib/pipelines/implementation_loop.py`
-- Tool-surface blocker writers in `src/scripts/lib/tools/tool_surface.py`
-- Freshness/hash consumers in `src/scripts/lib/services/freshness_service.py`
-  and `src/scripts/lib/services/section_input_hasher.py`
-- `src/scripts/substrate/related_files.py` and
-  `src/scripts/lib/prompts/substrate_prompt_builder.py` — substrate-stage
+  `src/coordination/engine/execution.py`,
+  `src/coordination/engine/execution.py`,
+  `src/proposal/service/problem_frame_gate.py`, and
+  `src/implementation/engine/loop.py`
+- Tool-surface blocker writers in `src/dispatch/service/tool_surface.py`
+- Freshness/hash consumers in `src/staleness/service/freshness.py`
+  and `src/staleness/service/input_hasher.py`
+- `src/scan/substrate/related_files.py` and
+  `src/scan/substrate/prompt_builder.py` — substrate-stage
   related-files update signals via `related_files_update_dir()`
 
 **Conformance**: No durable artifact path may be reconstructed ad hoc. Any new
@@ -233,17 +233,17 @@ hoc spawning.
 - **Chains** — sequential task lists via `submit_chain()`
 - **Fanout** — parallel branches via `submit_fanout()` with `BranchSpec`
 - **Gates** — accumulate branch results, fire synthesis via `GateSpec`
-- **Named packages** — `_PACKAGE_REGISTRY` in `flow_catalog.py` maps names to
+- **Named packages** — `_PACKAGE_REGISTRY` in ``src/flow/repository/catalog.py`` maps names to
   `TaskSpec` sequences
 
 **Canonical instance**: `execute_research_plan()` in
-`src/scripts/lib/research/plan_executor.py`
+`src/research/engine/executor.py`
 
 **Known instances**:
 - Research flow (plan → tickets → synthesis → verify)
 - Implementation follow-on chain for post-implementation assessment
 - Coordination and reconciliation follow-on chains
-- Named packages in `src/scripts/flow_catalog.py`
+- Named packages in `src/flow/repository/catalog.py`
 
 **Conformance**: New multi-step workflows MUST use the flow system. No direct
 multi-agent orchestration outside the flow primitives.
@@ -266,7 +266,7 @@ centrally from policy.
 **Template**:
 1. Agent/task surfaces bind to an `agent_file` plus a policy key (or task
    type).
-2. Central registries own default model fallbacks (`task_router.py`,
+2. Central registries own default model fallbacks (``src/flow/types/routing.py``,
    `model_policy.py`, specialized policy modules).
 3. Operational callsites request models via policy lookup rather than embedding
    per-call business logic about model choice.
@@ -288,18 +288,17 @@ centrally from policy.
    to helper functions, eval/dev harnesses that dispatch real agents, and
    any function that ultimately feeds a model name into `dispatch_agent()`.
 
-**Canonical instance**: `TASK_ROUTES` in `src/scripts/task_router.py` plus
-`ModelPolicy` in `src/scripts/lib/core/model_policy.py`
+**Canonical instance**: `TASK_ROUTES` in `src/flow/types/routing.py` plus
+`ModelPolicy` in `src/dispatch/service/model_policy.py`
 
 **Known instances**:
-- `src/scripts/task_router.py`
-- `src/scripts/lib/core/model_policy.py`
-- `src/scripts/lib/scan/scan_dispatch.py`
-- `src/scripts/lib/substrate/substrate_policy.py`
-- `src/scripts/task_dispatcher.py` — long-lived dispatcher poll loop
-- `src/scripts/section_loop/main.py` — outer orchestration loop
-- Policy lookups across `section_loop/`, `lib/pipelines/`, `lib/intent/`, and
-  `lib/research/`
+- `src/flow/types/routing.py`
+- `src/dispatch/service/model_policy.py`
+- `src/scan/service/scan_dispatch.py`
+- `src/scan/substrate/policy.py`
+- `src/flow/engine/dispatcher.py` — long-lived dispatcher poll loop
+- `src/orchestrator/engine/main.py` — outer orchestration loop
+- Policy lookups across `src/intent/`, `src/research/`, `src/coordination/`
 - `evals/harness.py` — live scenario eval model lookup
 
 **Conformance**: Model literals are allowed only in central routing /
@@ -331,12 +330,12 @@ hashing, codemap freshness.
    including governance packet inputs when they affect semantics.
 
 **Canonical instance**: `compute_section_freshness()` in
-`src/scripts/lib/services/freshness_service.py`
+`src/staleness/service/freshness.py`
 
 **Known instances**:
-- `src/scripts/lib/services/freshness_service.py`
-- `src/scripts/lib/services/section_input_hasher.py`
-- Research trigger hashing in `src/scripts/lib/research/orchestrator.py`
+- `src/staleness/service/freshness.py`
+- `src/staleness/service/input_hasher.py`
+- Research trigger hashing in `src/research/engine/orchestrator.py`
 - Codemap freshness flow
 
 **Conformance**: Any "should we redo this?" decision MUST use content-based
@@ -362,7 +361,7 @@ valid for the same trigger.
 3. Gate re-entry on both terminal state and hash match.
 
 **Canonical instance**: `is_research_complete_for_trigger()` in
-`src/scripts/lib/research/orchestrator.py`
+`src/research/engine/orchestrator.py`
 
 **Known instances**:
 - Research orchestration status
@@ -412,13 +411,13 @@ violations erases the intentional design boundary.
   returning success.
 
 **Canonical instance**: readiness and freshness gating across
-`src/scripts/lib/pipelines/readiness_gate.py` and
-`src/scripts/lib/services/readiness_resolver.py`
+`src/proposal/engine/readiness_gate.py` and
+`src/proposal/service/readiness_resolver.py`
 
 **Known instances**:
 - Readiness and freshness gating
 - `evals/harness.py` — live-eval scenario loading boundary
-- `src/scripts/lib/governance/loader.py` — governance index build with
+- `src/intake/repository/loader.py` — governance index build with
   structured parse-failure status
 
 **Conformance**: Any skip, optimization, or early-exit path at an
@@ -453,17 +452,17 @@ silently.
   for governance origin) before logging, rollup, or downstream routing.
 
 **Canonical instance**: `_emit_not_researchable_signals()` in
-`src/scripts/lib/research/plan_executor.py`
+`src/research/engine/executor.py`
 
 **Known instances**:
 - Research `needs_parent` / `need_decision` routing
 - Readiness-gate blocker emission and logging
 - Coordination problem resolver signals
 - Post-implementation `refactor_required` blocker emission in
-  `flow_reconciler.py`
-- Blocker rollup in `section_loop/section_engine/blockers.py`
+  ``src/flow/engine/reconciler.py``
+- Blocker rollup in `src/signals/service/blockers.py`
 - Readiness resolver governance blockers in
-  `src/scripts/lib/services/readiness_resolver.py`
+  `src/proposal/service/readiness_resolver.py`
 
 **Conformance**: Anything that blocks progress must emit a structured blocker
 signal, not just log a warning. Downstream consumers that read blockers must
@@ -493,13 +492,13 @@ surfaces, prompt context assembly.
    hoc context blocks everywhere.
 
 **Canonical instance**: `load_combined_intent_surfaces()` in
-`src/scripts/section_loop/intent/surfaces.py`
+`src/intent/engine/surface.py`
 
 **Known instances**:
-- `src/scripts/section_loop/intent/surfaces.py`
+- `src/intent/engine/surface.py`
 - Intent bootstrap and expansion flow
 - Research-derived surfaces and implementation-feedback surfaces
-- Prompt context assembly in `section_loop/prompts/context.py`
+- Prompt context assembly in `src/dispatch/prompt/context_assembler.py`
 
 **Conformance**: New context sources should merge into the intent-surface system
 unless they are truly cross-cutting and deserve their own pattern.
@@ -568,28 +567,28 @@ context assembly, freshness service, section-input hasher.
    the archive.
 
 **Canonical instance**: `build_governance_indexes()` +
-`build_section_governance_packet()` in `src/scripts/lib/governance/loader.py`
-and `src/scripts/lib/governance/packet.py`
+`build_section_governance_packet()` in `src/intake/repository/loader.py`
+and `src/intake/service/packet.py`
 
 **Known instances**:
-- `src/scripts/section_loop/main.py` — builds governance indexes and packets
-- `src/scripts/lib/governance/loader.py`
-- `src/scripts/lib/governance/packet.py`
-- `src/scripts/lib/intent/intent_bootstrap.py`
-- `src/scripts/section_loop/prompts/context.py` and
-  `src/scripts/lib/prompts/prompt_context_assembler.py`
-- `src/scripts/section_loop/prompts/templates/integration-proposal.md`
-- `src/scripts/lib/pipelines/microstrategy_orchestrator.py`
-- `src/scripts/section_loop/prompts/templates/strategic-implementation.md`
-- `src/scripts/section_loop/prompts/templates/integration-alignment.md`
-- `src/scripts/section_loop/prompts/templates/implementation-alignment.md`
-- `src/scripts/lib/risk/loop.py`
-- `src/scripts/lib/governance/assessment.py`
-- `src/scripts/lib/services/freshness_service.py`
-- `src/scripts/lib/services/section_input_hasher.py`
-- `src/scripts/lib/services/readiness_resolver.py`
-- `src/scripts/lib/dispatch/context_sidecar.py`
-- `src/scripts/section_loop/prompts/writers.py`
+- `src/orchestrator/engine/main.py` — builds governance indexes and packets
+- `src/intake/repository/loader.py`
+- `src/intake/service/packet.py`
+- `src/intent/engine/bootstrap.py`
+- `src/dispatch/prompt/context.py` and
+  `src/dispatch/prompt/context_assembler.py`
+- `src/dispatch/templates/integration-proposal.md`
+- `src/implementation/service/microstrategy.py`
+- `src/dispatch/templates/strategic-implementation.md`
+- `src/dispatch/templates/integration-alignment.md`
+- `src/dispatch/templates/implementation-alignment.md`
+- `src/risk/engine/loop.py`
+- `src/intake/service/assessment.py`
+- `src/staleness/service/freshness.py`
+- `src/staleness/service/input_hasher.py`
+- `src/proposal/service/readiness_resolver.py`
+- `src/dispatch/service/context_sidecar.py`
+- `src/dispatch/prompt/writers.py`
 
 **Conformance**: Every pattern record in the catalog must carry `Regions` and
 `Solution surfaces` (or equivalent explicit applicability cues). Missing
@@ -649,17 +648,17 @@ hierarchy that shaped implementation.
    lineage appears.
 
 **Canonical instance**: `write_post_impl_assessment_prompt()` /
-`read_post_impl_assessment()` in `src/scripts/lib/governance/assessment.py`
-with completion handling in `src/scripts/lib/flow/flow_reconciler.py`
+`read_post_impl_assessment()` in `src/intake/service/assessment.py`
+with completion handling in `src/flow/engine/reconciler.py`
 
 **Known instances**:
-- `src/scripts/lib/pipelines/implementation_loop.py` — queues assessment and
+- `src/implementation/engine/loop.py` — queues assessment and
   writes trace artifacts
-- `src/scripts/lib/governance/assessment.py`
-- `src/scripts/section_loop/section_engine/traceability.py`
-- `src/scripts/lib/core/communication.py` — append-log traceability surface
-- `src/scripts/lib/flow/flow_reconciler.py` — assessment completion routing
-- `src/scripts/section_loop/main.py` — stabilization consumer invocation
+- `src/intake/service/assessment.py`
+- `src/implementation/service/traceability.py`
+- `src/signals/service/communication.py` — append-log traceability surface
+- `src/flow/engine/reconciler.py` — assessment completion routing
+- `src/orchestrator/engine/main.py` — stabilization consumer invocation
 - `governance/risk-register.md` — authoritative debt/risk target
 
 **Conformance**: Post-implementation assessment is not complete until debt /
@@ -716,14 +715,14 @@ decide the actual governance claims.
 contract in `src/agents/integration-proposer.md`
 
 **Known instances**:
-- `src/scripts/lib/repositories/proposal_state_repository.py`
+- `src/proposal/repository/state.py`
 - `src/agents/integration-proposer.md`
-- `src/scripts/section_loop/prompts/templates/integration-proposal.md`
+- `src/dispatch/templates/integration-proposal.md`
 - `src/agents/alignment-judge.md`
-- `src/scripts/lib/pipelines/readiness_gate.py`
-- `src/scripts/lib/services/readiness_resolver.py`
-- `src/scripts/lib/pipelines/implementation_loop.py`
-- `src/scripts/section_loop/section_engine/traceability.py`
+- `src/proposal/engine/readiness_gate.py`
+- `src/proposal/service/readiness_resolver.py`
+- `src/implementation/engine/loop.py`
+- `src/implementation/service/traceability.py`
 
 **Conformance**: Structural work cannot descend with empty governance identity
 unless the governance packet explicitly records that no governing problem or
@@ -775,15 +774,15 @@ erasure is not.
    authoritative signal, it must be promoted to PAT-0008 governance or the
    consuming surface must handle the degraded case explicitly.
 
-**Canonical instance**: `src/scripts/qa_interceptor.py` — QA dispatch
+**Canonical instance**: `src/dispatch/service/qa_interceptor.py` — QA dispatch
 interception with deliberate fail-open behavior.
 
 **Known instances**:
-- `src/scripts/qa_interceptor.py` — QA interception
-- `src/scripts/lib/services/qa_verdict_parser.py` — QA verdict parsing
-- `src/scripts/task_dispatcher.py` — QA lifecycle event logging
-- `src/scripts/lib/tasks/task_notifier.py` — QA result notification
-- `src/scripts/lib/pipelines/reconciliation_adjudicator.py` — reconciliation
+- `src/dispatch/service/qa_interceptor.py` — QA interception
+- `src/proposal/helpers/qa_verdict.py` — QA verdict parsing
+- `src/flow/engine/dispatcher.py` — QA lifecycle event logging
+- `src/flow/service/notifier.py` — QA result notification
+- `src/reconciliation/service/adjudicator.py` — reconciliation
   fail-open behavior
 
 **Conformance**: Advisory fail-open behavior is permitted only when the
