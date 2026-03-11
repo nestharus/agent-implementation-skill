@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.scan.scan_dispatch import DEFAULT_SCAN_MODELS
+from src.scan.service.scan_dispatch import DEFAULT_SCAN_MODELS
 
 
 def test_scan_validation_default_is_glm() -> None:

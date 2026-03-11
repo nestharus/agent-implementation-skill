@@ -5,7 +5,7 @@ Pure file I/O — no mocks needed.
 
 from pathlib import Path
 
-from staleness.change_detection import diff_files, hash_file, snapshot_files
+from staleness.helpers.detection import diff_files, hash_file, snapshot_files
 
 
 class TestHashFile:

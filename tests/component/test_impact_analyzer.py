@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.implementation import impact_analyzer
+from src.implementation.service import impact_analyzer
 from src.orchestrator.types import Section
 
 

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from src.proposal import problem_frame_gate
-from src.proposal.problem_frame_gate import validate_problem_frame
+from src.proposal.service import problem_frame_gate
+from src.proposal.service.problem_frame_gate import validate_problem_frame
 from orchestrator.types import Section
 
 

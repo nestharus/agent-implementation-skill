@@ -21,13 +21,13 @@ import pytest
 
 from _paths import DB_SH
 
-from flow.flow_catalog import (
+from flow.repository.catalog import (
     KNOWN_PACKAGES,
     build_coordination_branches,
     resolve_chain_ref,
 )
-from flow.flow_schema import BranchSpec, GateSpec, TaskSpec
-from flow.task_flow import (
+from flow.types.schema import BranchSpec, GateSpec, TaskSpec
+from flow.service.task_flow import (
     reconcile_task_completion,
     submit_chain,
     submit_fanout,

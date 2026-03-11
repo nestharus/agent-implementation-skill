@@ -20,15 +20,15 @@ import pytest
 
 from _paths import DB_SH
 
-from flow.flow_schema import TaskSpec
-from flow.task_flow import (
+from flow.types.schema import TaskSpec
+from flow.service.task_flow import (
     FlowCorruptionError,
     build_flow_context,
     submit_chain,
     submit_fanout,
     write_dispatch_prompt,
 )
-from flow.flow_schema import BranchSpec, GateSpec
+from flow.types.schema import BranchSpec, GateSpec
 
 
 # ---------------------------------------------------------------------------
@@ -356,14 +356,14 @@ class TestDispatcherFlowIntegration:
             "payload": str(prompt),
         }
 
-        with patch("flow.task_dispatcher.dispatch_agent") as mock_dispatch, \
-             patch("flow.task_dispatcher.resolve_task") as mock_resolve, \
-             patch("flow.task_dispatcher._db_cmd") as mock_db, \
-             patch("flow.task_dispatcher._notify"):
+        with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
+             patch("flow.engine.dispatcher.resolve_task") as mock_resolve, \
+             patch("flow.engine.dispatcher._db_cmd") as mock_db, \
+             patch("flow.engine.dispatcher._notify"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
             mock_dispatch.return_value = "done"
 
-            from flow.task_dispatcher import dispatch_task
+            from flow.engine.dispatcher import dispatch_task
             dispatch_task(str(db_path), planspace, task)
 
             # dispatch_agent should be called with the original prompt path
@@ -400,14 +400,14 @@ class TestDispatcherFlowIntegration:
             "continuation": "artifacts/flows/task-1-continuation.json",
         }
 
-        with patch("flow.task_dispatcher.dispatch_agent") as mock_dispatch, \
-             patch("flow.task_dispatcher.resolve_task") as mock_resolve, \
-             patch("flow.task_dispatcher._db_cmd") as mock_db, \
-             patch("flow.task_dispatcher._notify"):
+        with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
+             patch("flow.engine.dispatcher.resolve_task") as mock_resolve, \
+             patch("flow.engine.dispatcher._db_cmd") as mock_db, \
+             patch("flow.engine.dispatcher._notify"):
             mock_resolve.return_value = ("impact-analyzer.md", "glm")
             mock_dispatch.return_value = "done"
 
-            from flow.task_dispatcher import dispatch_task
+            from flow.engine.dispatcher import dispatch_task
             dispatch_task(str(db_path), planspace, task)
 
             # dispatch_agent should be called with a wrapper prompt
@@ -451,14 +451,14 @@ class TestDispatcherFlowIntegration:
             "continuation": "artifacts/flows/task-2-continuation.json",
         }
 
-        with patch("flow.task_dispatcher.dispatch_agent") as mock_dispatch, \
-             patch("flow.task_dispatcher.resolve_task") as mock_resolve, \
-             patch("flow.task_dispatcher._db_cmd"), \
-             patch("flow.task_dispatcher._notify"):
+        with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
+             patch("flow.engine.dispatcher.resolve_task") as mock_resolve, \
+             patch("flow.engine.dispatcher._db_cmd"), \
+             patch("flow.engine.dispatcher._notify"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
             mock_dispatch.return_value = "done"
 
-            from flow.task_dispatcher import dispatch_task
+            from flow.engine.dispatcher import dispatch_task
             dispatch_task(str(db_path), planspace, task)
 
         # Original file must be unchanged.
@@ -473,14 +473,14 @@ class TestContextAssemblyFlowContext:
     """Verify flow_context is a valid context category."""
 
     def test_flow_context_in_valid_categories(self) -> None:
-        from orchestrator.context_assembly import VALID_CATEGORIES
+        from orchestrator.service.context_assembly import VALID_CATEGORIES
         assert "flow_context" in VALID_CATEGORIES
 
     def test_flow_context_resolver_returns_empty_without_files(
         self, planspace: Path,
     ) -> None:
         """No flow context files -> empty string."""
-        from orchestrator.context_assembly import _resolve_flow_context
+        from orchestrator.service.context_assembly import _resolve_flow_context
         result = _resolve_flow_context(planspace, None)
         assert result == ""
 
@@ -488,7 +488,7 @@ class TestContextAssemblyFlowContext:
         self, planspace: Path,
     ) -> None:
         """Single flow context file -> returns its content."""
-        from orchestrator.context_assembly import _resolve_flow_context
+        from orchestrator.service.context_assembly import _resolve_flow_context
 
         flows_dir = planspace / "artifacts" / "flows"
         flows_dir.mkdir(parents=True, exist_ok=True)
@@ -507,7 +507,7 @@ class TestContextAssemblyFlowContext:
         self, planspace: Path,
     ) -> None:
         """Multiple flow context files -> empty (ambiguous)."""
-        from orchestrator.context_assembly import _resolve_flow_context
+        from orchestrator.service.context_assembly import _resolve_flow_context
 
         flows_dir = planspace / "artifacts" / "flows"
         flows_dir.mkdir(parents=True, exist_ok=True)
@@ -522,7 +522,7 @@ class TestContextAssemblyFlowContext:
         self, planspace: Path, tmp_path: Path,
     ) -> None:
         """An agent file declaring flow_context gets it resolved."""
-        from orchestrator.context_assembly import resolve_context
+        from orchestrator.service.context_assembly import resolve_context
 
         # Create an agent file with flow_context in its context list.
         agent_file = tmp_path / "test-agent.md"
@@ -616,7 +616,7 @@ class TestEndToEndFlowContext:
         self, db_path: Path, planspace: Path,
     ) -> None:
         """Synthesis task can discover its gate aggregate manifest."""
-        from flow.task_flow import reconcile_task_completion
+        from flow.service.task_flow import reconcile_task_completion
 
         # Create a fanout with a synthesis gate.
         branches = [

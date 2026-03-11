@@ -8,8 +8,8 @@ import subprocess
 from pathlib import Path
 
 from _paths import DB_SH
-from src.signals.database_client import DatabaseClient
-from src.dispatch.monitor_service import MonitorHandle, MonitorService
+from src.signals.service.database_client import DatabaseClient
+from src.dispatch.service.monitor_service import MonitorHandle, MonitorService
 
 
 class _FakeProcess:

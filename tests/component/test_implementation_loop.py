@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.implementation.implementation_loop import run_implementation_loop
+from src.implementation.engine.loop import run_implementation_loop
 from src.orchestrator.types import Section
 
 
@@ -51,19 +51,19 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
     impl_modified = planspace / "artifacts" / "impl-09-modified.txt"
 
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.handle_pending_messages",
+        "src.implementation.engine.loop.handle_pending_messages",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.alignment_changed_pending",
+        "src.implementation.engine.loop.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.write_strategic_impl_prompt",
+        "src.implementation.engine.loop.write_strategic_impl_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "impl-prompt.md",
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.write_impl_alignment_prompt",
+        "src.implementation.engine.loop.write_impl_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "impl-align-prompt.md",
     )
 
@@ -77,37 +77,37 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
             return "implementation output"
         return "alignment output"
 
-    monkeypatch.setattr("src.implementation.implementation_loop.dispatch_agent", _dispatch)
+    monkeypatch.setattr("src.implementation.engine.loop.dispatch_agent", _dispatch)
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.check_agent_signals",
+        "src.implementation.engine.loop.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop._extract_problems",
+        "src.implementation.engine.loop._extract_problems",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.mailbox_send",
+        "src.implementation.engine.loop.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.ingest_and_submit",
+        "src.implementation.engine.loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop._record_traceability",
+        "src.implementation.engine.loop._record_traceability",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop._write_traceability_index",
+        "src.implementation.engine.loop._write_traceability_index",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.write_post_impl_assessment_prompt",
+        "src.implementation.engine.loop.write_post_impl_assessment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "post-impl-09-prompt.md",
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.submit_chain",
+        "src.implementation.engine.loop.submit_chain",
         lambda *_args, **_kwargs: [1],
     )
 
@@ -141,19 +141,19 @@ def test_run_implementation_loop_retries_after_alignment_problems(
     impl_calls = {"count": 0}
 
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.handle_pending_messages",
+        "src.implementation.engine.loop.handle_pending_messages",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.alignment_changed_pending",
+        "src.implementation.engine.loop.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.write_strategic_impl_prompt",
+        "src.implementation.engine.loop.write_strategic_impl_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "impl-prompt.md",
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.write_impl_alignment_prompt",
+        "src.implementation.engine.loop.write_impl_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "impl-align-prompt.md",
     )
 
@@ -168,37 +168,37 @@ def test_run_implementation_loop_retries_after_alignment_problems(
             return "implementation output"
         return "alignment output"
 
-    monkeypatch.setattr("src.implementation.implementation_loop.dispatch_agent", _dispatch)
+    monkeypatch.setattr("src.implementation.engine.loop.dispatch_agent", _dispatch)
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.check_agent_signals",
+        "src.implementation.engine.loop.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop._extract_problems",
+        "src.implementation.engine.loop._extract_problems",
         lambda *_args, **_kwargs: next(problems),
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.mailbox_send",
+        "src.implementation.engine.loop.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.ingest_and_submit",
+        "src.implementation.engine.loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop._record_traceability",
+        "src.implementation.engine.loop._record_traceability",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop._write_traceability_index",
+        "src.implementation.engine.loop._write_traceability_index",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.write_post_impl_assessment_prompt",
+        "src.implementation.engine.loop.write_post_impl_assessment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "post-impl-09-prompt.md",
     )
     monkeypatch.setattr(
-        "src.implementation.implementation_loop.submit_chain",
+        "src.implementation.engine.loop.submit_chain",
         lambda *_args, **_kwargs: [1],
     )
 

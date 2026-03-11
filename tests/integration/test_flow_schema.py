@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from flow.flow_schema import (
+from flow.types.schema import (
     BranchSpec,
     ChainAction,
     FanoutAction,
@@ -485,7 +485,7 @@ class TestTaskIngestionIntegration:
 
     def test_legacy_single_task_ingest(self, tmp_path: Path) -> None:
         """Legacy single-task JSON still returns a valid task list."""
-        from flow.section_task_ingestion import ingest_task_requests
+        from flow.service.section_ingestion import ingest_task_requests
 
         sig = tmp_path / "task.json"
         sig.write_text(json.dumps({
@@ -501,7 +501,7 @@ class TestTaskIngestionIntegration:
 
     def test_legacy_jsonl_ingest(self, tmp_path: Path) -> None:
         """Legacy JSONL still returns valid task list."""
-        from flow.section_task_ingestion import ingest_task_requests
+        from flow.service.section_ingestion import ingest_task_requests
 
         sig = tmp_path / "tasks.jsonl"
         lines = [
@@ -514,7 +514,7 @@ class TestTaskIngestionIntegration:
 
     def test_legacy_json_array_ingest(self, tmp_path: Path) -> None:
         """Legacy JSON array still returns valid task list."""
-        from flow.section_task_ingestion import ingest_task_requests
+        from flow.service.section_ingestion import ingest_task_requests
 
         sig = tmp_path / "tasks.json"
         sig.write_text(json.dumps([
@@ -526,7 +526,7 @@ class TestTaskIngestionIntegration:
 
     def test_v2_declaration_skipped(self, tmp_path: Path) -> None:
         """v2 flow declarations are validated but not dispatched."""
-        from flow.section_task_ingestion import ingest_task_requests
+        from flow.service.section_ingestion import ingest_task_requests
 
         sig = tmp_path / "flow.json"
         sig.write_text(json.dumps({
@@ -545,7 +545,7 @@ class TestTaskIngestionIntegration:
 
     def test_v2_invalid_declaration_rejected(self, tmp_path: Path) -> None:
         """Invalid v2 declarations are rejected and renamed."""
-        from flow.section_task_ingestion import ingest_task_requests
+        from flow.service.section_ingestion import ingest_task_requests
 
         sig = tmp_path / "bad-flow.json"
         sig.write_text(json.dumps({
@@ -564,7 +564,7 @@ class TestTaskIngestionIntegration:
 
     def test_malformed_json_rejected(self, tmp_path: Path) -> None:
         """Malformed JSON is renamed to .malformed.json."""
-        from flow.section_task_ingestion import ingest_task_requests
+        from flow.service.section_ingestion import ingest_task_requests
 
         sig = tmp_path / "broken.json"
         sig.write_text("{not valid json at all")
@@ -574,14 +574,14 @@ class TestTaskIngestionIntegration:
 
     def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
         """Non-existent file returns empty list."""
-        from flow.section_task_ingestion import ingest_task_requests
+        from flow.service.section_ingestion import ingest_task_requests
 
         tasks = ingest_task_requests(tmp_path / "nonexistent.json")
         assert tasks == []
 
     def test_empty_file_returns_empty(self, tmp_path: Path) -> None:
         """Empty file returns empty list and is cleaned up."""
-        from flow.section_task_ingestion import ingest_task_requests
+        from flow.service.section_ingestion import ingest_task_requests
 
         sig = tmp_path / "empty.json"
         sig.write_text("")
@@ -590,7 +590,7 @@ class TestTaskIngestionIntegration:
 
     def test_legacy_preserves_optional_fields(self, tmp_path: Path) -> None:
         """Legacy tasks with priority and problem_id are preserved."""
-        from flow.section_task_ingestion import ingest_task_requests
+        from flow.service.section_ingestion import ingest_task_requests
 
         sig = tmp_path / "task.json"
         sig.write_text(json.dumps({
@@ -611,7 +611,7 @@ class TestTaskIngestionIntegration:
 
     def test_legacy_normal_priority_not_included(self, tmp_path: Path) -> None:
         """Normal priority is the default and not explicitly included."""
-        from flow.section_task_ingestion import ingest_task_requests
+        from flow.service.section_ingestion import ingest_task_requests
 
         sig = tmp_path / "task.json"
         sig.write_text(json.dumps({

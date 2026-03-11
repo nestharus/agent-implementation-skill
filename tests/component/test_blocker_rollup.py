@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from signals.blockers import _update_blocker_rollup
+from signals.service.blockers import _update_blocker_rollup
 
 
 def test_blocker_rollup_formats_global_philosophy_heading(

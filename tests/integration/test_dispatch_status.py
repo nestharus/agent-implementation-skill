@@ -19,8 +19,8 @@ import pytest
 
 from _paths import DB_SH
 
-import dispatch.section_dispatch as dispatch_mod
-from dispatch.section_dispatch import dispatch_agent
+import dispatch.engine.section_dispatch as dispatch_mod
+from dispatch.engine.section_dispatch import dispatch_agent
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +183,7 @@ class TestDispatcherReadsMetaSidecar:
             encoding="utf-8",
         )
 
-        import task_dispatcher
+        from flow.engine import dispatcher as task_dispatcher
 
         # Mock dispatch_agent to return the output (files already written)
         def fake_dispatch(*args, **kwargs):
@@ -231,7 +231,7 @@ class TestDispatcherReadsMetaSidecar:
             encoding="utf-8",
         )
 
-        import task_dispatcher
+        from flow.engine import dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             return "success output"
@@ -276,7 +276,7 @@ class TestDispatcherReadsMetaSidecar:
             encoding="utf-8",
         )
 
-        import task_dispatcher
+        from flow.engine import dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             return "error output preserved"

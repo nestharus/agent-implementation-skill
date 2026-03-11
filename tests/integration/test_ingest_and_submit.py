@@ -21,7 +21,7 @@ import pytest
 
 from _paths import DB_SH
 
-from flow.section_task_ingestion import ingest_and_submit
+from flow.service.section_ingestion import ingest_and_submit
 
 
 # ---------------------------------------------------------------------------

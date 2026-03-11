@@ -17,7 +17,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from scan.scan_dispatch import (
+from scan.service.scan_dispatch import (
     DEFAULT_SCAN_MODELS,
     build_scan_dispatch_command,
     read_scan_model_policy,

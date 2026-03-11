@@ -10,8 +10,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from staleness.hash_service import file_hash
-from implementation.engine_runner import run_section
+from staleness.helpers.hashing import file_hash
+from implementation.engine.runner import run_section
 from orchestrator.types import Section
 
 

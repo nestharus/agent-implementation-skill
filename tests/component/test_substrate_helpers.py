@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.scan.substrate_helpers import (
+from src.scan.substrate.helpers import (
     count_existing_related,
     list_section_files,
     read_project_mode,

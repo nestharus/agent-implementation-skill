@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from src.staleness import global_alignment_recheck
-from src.staleness.global_alignment_recheck import run_global_alignment_recheck
+from src.staleness.service import global_recheck
+from src.staleness.service.global_recheck import run_global_alignment_recheck
 from orchestrator.types import Section, SectionResult
 
 
@@ -27,12 +27,12 @@ def test_run_global_alignment_recheck_skips_unchanged_aligned_sections(
     hash_path.write_text("hash-1", encoding="utf-8")
 
     monkeypatch.setattr(
-        global_alignment_recheck,
+        global_recheck,
         "_section_inputs_hash",
         lambda *_args, **_kwargs: "hash-1",
     )
     monkeypatch.setattr(
-        global_alignment_recheck,
+        global_recheck,
         "_run_alignment_check_with_retries",
         lambda *_args, **_kwargs: pytest.fail("alignment check should not run"),
     )
@@ -65,27 +65,27 @@ def test_run_global_alignment_recheck_marks_invalid_frame_and_preserves_files(
     messages: list[str] = []
 
     monkeypatch.setattr(
-        global_alignment_recheck,
+        global_recheck,
         "_section_inputs_hash",
         lambda *_args, **_kwargs: "hash-1",
     )
     monkeypatch.setattr(
-        global_alignment_recheck,
+        global_recheck,
         "poll_control_messages",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        global_alignment_recheck,
+        global_recheck,
         "read_incoming_notes",
         lambda *_args, **_kwargs: "",
     )
     monkeypatch.setattr(
-        global_alignment_recheck,
+        global_recheck,
         "_run_alignment_check_with_retries",
         lambda *_args, **_kwargs: "INVALID_FRAME",
     )
     monkeypatch.setattr(
-        global_alignment_recheck,
+        global_recheck,
         "mailbox_send",
         lambda _planspace, _parent, message: messages.append(message),
     )
@@ -113,12 +113,12 @@ def test_run_global_alignment_recheck_restarts_when_control_message_arrives(
     section = _make_section(planspace, "01")
 
     monkeypatch.setattr(
-        global_alignment_recheck,
+        global_recheck,
         "_section_inputs_hash",
         lambda *_args, **_kwargs: "hash-1",
     )
     monkeypatch.setattr(
-        global_alignment_recheck,
+        global_recheck,
         "poll_control_messages",
         lambda *_args, **_kwargs: "alignment_changed",
     )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.dispatch.prompt_template import (
+from src.dispatch.prompt.template import (
     SYSTEM_CONSTRAINTS,
     TASK_SUBMISSION_SEMANTICS,
     load_template,

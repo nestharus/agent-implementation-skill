@@ -64,7 +64,7 @@ class TestReadQaParameters:
 
     def test_returns_default_when_file_absent(self, tmp_path: Path) -> None:
         """No parameters.json -> qa_mode False."""
-        from dispatch.qa_interceptor import read_qa_parameters
+        from dispatch.service.qa_interceptor import read_qa_parameters
 
         ps = tmp_path / "planspace"
         ps.mkdir()
@@ -75,7 +75,7 @@ class TestReadQaParameters:
 
     def test_returns_parsed_dict_when_valid(self, tmp_path: Path) -> None:
         """Valid parameters.json returns parsed content."""
-        from dispatch.qa_interceptor import read_qa_parameters
+        from dispatch.service.qa_interceptor import read_qa_parameters
 
         ps = tmp_path / "planspace"
         ps.mkdir()
@@ -92,7 +92,7 @@ class TestReadQaParameters:
 
     def test_renames_malformed_to_dotmalformed(self, tmp_path: Path) -> None:
         """Malformed JSON is renamed and defaults returned."""
-        from dispatch.qa_interceptor import read_qa_parameters
+        from dispatch.service.qa_interceptor import read_qa_parameters
 
         ps = tmp_path / "planspace"
         ps.mkdir()
@@ -108,7 +108,7 @@ class TestReadQaParameters:
 
     def test_renames_non_dict_to_dotmalformed(self, tmp_path: Path) -> None:
         """Non-dict JSON (e.g., array) is treated as malformed."""
-        from dispatch.qa_interceptor import read_qa_parameters
+        from dispatch.service.qa_interceptor import read_qa_parameters
 
         ps = tmp_path / "planspace"
         ps.mkdir()
@@ -125,7 +125,7 @@ class TestReadQaParameters:
         self, tmp_path: Path,
     ) -> None:
         """Valid JSON without qa_mode key gets default False."""
-        from dispatch.qa_interceptor import read_qa_parameters
+        from dispatch.service.qa_interceptor import read_qa_parameters
 
         ps = tmp_path / "planspace"
         ps.mkdir()
@@ -149,7 +149,7 @@ class TestParseVerdict:
     """Tests for QA verdict parsing."""
 
     def test_pass_verdict(self) -> None:
-        from dispatch.qa_interceptor import _parse_verdict
+        from dispatch.service.qa_interceptor import _parse_verdict
 
         output = '{"verdict": "PASS", "rationale": "All good"}'
         verdict, rationale, violations = _parse_verdict(output)
@@ -158,7 +158,7 @@ class TestParseVerdict:
         assert violations == []
 
     def test_reject_verdict(self) -> None:
-        from dispatch.qa_interceptor import _parse_verdict
+        from dispatch.service.qa_interceptor import _parse_verdict
 
         output = json.dumps({
             "verdict": "REJECT",
@@ -171,7 +171,7 @@ class TestParseVerdict:
         assert violations == ["v1", "v2"]
 
     def test_verdict_in_code_fences(self) -> None:
-        from dispatch.qa_interceptor import _parse_verdict
+        from dispatch.service.qa_interceptor import _parse_verdict
 
         output = (
             "Here is my verdict:\n"
@@ -182,7 +182,7 @@ class TestParseVerdict:
 
     def test_garbage_output_degrades(self) -> None:
         """PAT-0014: garbage output maps to DEGRADED, not PASS."""
-        from dispatch.qa_interceptor import _parse_verdict
+        from dispatch.service.qa_interceptor import _parse_verdict
 
         output = "This is total garbage with no JSON at all"
         verdict, rationale, violations = _parse_verdict(output)
@@ -191,7 +191,7 @@ class TestParseVerdict:
 
     def test_unknown_verdict_degrades(self) -> None:
         """PAT-0014: unknown verdict maps to DEGRADED, not PASS."""
-        from dispatch.qa_interceptor import _parse_verdict
+        from dispatch.service.qa_interceptor import _parse_verdict
 
         output = '{"verdict": "MAYBE", "rationale": "dunno"}'
         verdict, rationale, violations = _parse_verdict(output)
@@ -200,7 +200,7 @@ class TestParseVerdict:
 
     def test_empty_output_degrades(self) -> None:
         """PAT-0014: empty output maps to DEGRADED, not PASS."""
-        from dispatch.qa_interceptor import _parse_verdict
+        from dispatch.service.qa_interceptor import _parse_verdict
 
         verdict, rationale, violations = _parse_verdict("")
         assert verdict == "DEGRADED"
@@ -215,7 +215,7 @@ class TestInterceptTask:
 
     def test_pass_returns_true_none_none(self, tmp_path: Path) -> None:
         """PASS verdict returns (True, None, None)."""
-        from dispatch.qa_interceptor import intercept_task
+        from dispatch.service.qa_interceptor import intercept_task
 
         ps = _setup_planspace(tmp_path)
 
@@ -238,7 +238,7 @@ class TestInterceptTask:
             "rationale": "Contract compliant",
         })
 
-        with patch("dispatch.qa_interceptor.dispatch_agent", return_value=mock_output):
+        with patch("dispatch.service.qa_interceptor.dispatch_agent", return_value=mock_output):
             passed, rationale_path, reason_code = intercept_task(
                 task, "alignment-judge.md", ps,
             )
@@ -249,7 +249,7 @@ class TestInterceptTask:
 
     def test_dispatch_uses_model_policy_key(self, tmp_path: Path) -> None:
         """QA dispatch resolves its model through model-policy.json."""
-        from dispatch.qa_interceptor import intercept_task
+        from dispatch.service.qa_interceptor import intercept_task
 
         ps = _setup_planspace(tmp_path)
         artifacts = ps / "artifacts"
@@ -273,7 +273,7 @@ class TestInterceptTask:
             "rationale": "Contract compliant",
         })
 
-        with patch("dispatch.qa_interceptor.dispatch_agent", return_value=mock_output) as mock_dispatch:
+        with patch("dispatch.service.qa_interceptor.dispatch_agent", return_value=mock_output) as mock_dispatch:
             passed, rationale_path, reason_code = intercept_task(
                 task, "alignment-judge.md", ps,
             )
@@ -286,7 +286,7 @@ class TestInterceptTask:
         self, tmp_path: Path,
     ) -> None:
         """REJECT verdict returns (False, rationale_path) and writes file."""
-        from dispatch.qa_interceptor import intercept_task
+        from dispatch.service.qa_interceptor import intercept_task
 
         ps = _setup_planspace(tmp_path)
 
@@ -306,7 +306,7 @@ class TestInterceptTask:
             "violations": ["v1"],
         })
 
-        with patch("dispatch.qa_interceptor.dispatch_agent", return_value=mock_output):
+        with patch("dispatch.service.qa_interceptor.dispatch_agent", return_value=mock_output):
             passed, rationale_path, reason_code = intercept_task(
                 task, "alignment-judge.md", ps,
             )
@@ -324,7 +324,7 @@ class TestInterceptTask:
 
     def test_dispatch_error_fails_open_with_degraded(self, tmp_path: Path) -> None:
         """Exception during dispatch -> passes with degraded reason_code."""
-        from dispatch.qa_interceptor import intercept_task
+        from dispatch.service.qa_interceptor import intercept_task
 
         ps = _setup_planspace(tmp_path)
 
@@ -339,7 +339,7 @@ class TestInterceptTask:
         )
 
         with patch(
-            "dispatch.qa_interceptor.dispatch_agent",
+            "dispatch.service.qa_interceptor.dispatch_agent",
             side_effect=RuntimeError("agent crashed"),
         ):
             passed, rationale_path, reason_code = intercept_task(
@@ -352,7 +352,7 @@ class TestInterceptTask:
 
     def test_garbage_output_fails_open_with_degraded(self, tmp_path: Path) -> None:
         """Unparseable QA output -> passes with degraded reason_code."""
-        from dispatch.qa_interceptor import intercept_task
+        from dispatch.service.qa_interceptor import intercept_task
 
         ps = _setup_planspace(tmp_path)
 
@@ -367,7 +367,7 @@ class TestInterceptTask:
         )
 
         with patch(
-            "dispatch.qa_interceptor.dispatch_agent",
+            "dispatch.service.qa_interceptor.dispatch_agent",
             return_value="This is not JSON at all",
         ):
             passed, rationale_path, reason_code = intercept_task(
@@ -380,7 +380,7 @@ class TestInterceptTask:
 
     def test_missing_target_agent_fails_open_with_degraded(self, tmp_path: Path) -> None:
         """Missing target agent file -> passes with degraded reason_code."""
-        from dispatch.qa_interceptor import intercept_task
+        from dispatch.service.qa_interceptor import intercept_task
 
         ps = _setup_planspace(tmp_path)
 
@@ -394,7 +394,7 @@ class TestInterceptTask:
             "# Test\n", encoding="utf-8",
         )
 
-        with patch("dispatch.qa_interceptor.dispatch_agent") as mock_da:
+        with patch("dispatch.service.qa_interceptor.dispatch_agent") as mock_da:
             passed, rationale_path, reason_code = intercept_task(
                 task, "nonexistent-agent-xyz.md", ps,
             )
@@ -407,7 +407,7 @@ class TestInterceptTask:
 
     def test_prompt_written_to_qa_intercepts(self, tmp_path: Path) -> None:
         """QA prompt file is written to artifacts/qa-intercepts/."""
-        from dispatch.qa_interceptor import intercept_task
+        from dispatch.service.qa_interceptor import intercept_task
 
         ps = _setup_planspace(tmp_path)
 
@@ -422,7 +422,7 @@ class TestInterceptTask:
         )
 
         mock_output = '{"verdict": "PASS", "rationale": "OK"}'
-        with patch("dispatch.qa_interceptor.dispatch_agent", return_value=mock_output):
+        with patch("dispatch.service.qa_interceptor.dispatch_agent", return_value=mock_output):
             intercept_task(task, "alignment-judge.md", ps)
 
         prompt_path = ps / "artifacts" / "qa-intercepts" / "qa-104-prompt.md"
@@ -450,7 +450,7 @@ class TestDispatcherQaIntegration:
         payload = artifacts / "test-payload.md"
         payload.write_text("# Test\n", encoding="utf-8")
 
-        import flow.task_dispatcher as task_dispatcher
+        import flow.engine.dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             return "normal output"
@@ -492,8 +492,8 @@ class TestDispatcherQaIntegration:
             json.dumps({"qa_mode": True}), encoding="utf-8",
         )
 
-        from dispatch import qa_interceptor
-        import flow.task_dispatcher as task_dispatcher
+        from dispatch.service import qa_interceptor
+        import flow.engine.dispatcher as task_dispatcher
 
         call_count = {"n": 0}
 
@@ -543,8 +543,8 @@ class TestDispatcherQaIntegration:
             json.dumps({"qa_mode": True}), encoding="utf-8",
         )
 
-        from dispatch import qa_interceptor
-        import flow.task_dispatcher as task_dispatcher
+        from dispatch.service import qa_interceptor
+        import flow.engine.dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             agent_file = kwargs.get("agent_file", "")
@@ -594,8 +594,8 @@ class TestDispatcherQaIntegration:
             json.dumps({"qa_mode": True}), encoding="utf-8",
         )
 
-        from dispatch import qa_interceptor
-        import flow.task_dispatcher as task_dispatcher
+        from dispatch.service import qa_interceptor
+        import flow.engine.dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             agent_file = kwargs.get("agent_file", "")
@@ -643,8 +643,8 @@ class TestDispatcherQaIntegration:
             json.dumps({"qa_mode": True}), encoding="utf-8",
         )
 
-        from dispatch import qa_interceptor
-        import flow.task_dispatcher as task_dispatcher
+        from dispatch.service import qa_interceptor
+        import flow.engine.dispatcher as task_dispatcher
 
         call_count = {"n": 0}
 
@@ -692,8 +692,8 @@ class TestDispatcherQaIntegration:
             json.dumps({"qa_mode": True}), encoding="utf-8",
         )
 
-        from dispatch import qa_interceptor
-        import flow.task_dispatcher as task_dispatcher
+        from dispatch.service import qa_interceptor
+        import flow.engine.dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             agent_file = kwargs.get("agent_file", "")
@@ -734,14 +734,14 @@ class TestInterceptDispatch:
         self, tmp_path: Path,
     ) -> None:
         """intercept_dispatch creates a task dict and delegates to intercept_task."""
-        from dispatch.qa_interceptor import intercept_dispatch
+        from dispatch.service.qa_interceptor import intercept_dispatch
 
         ps = _setup_planspace(tmp_path)
         prompt = ps / "artifacts" / "test-prompt.md"
         prompt.write_text("# Test prompt\n", encoding="utf-8")
 
         mock_output = '{"verdict": "PASS", "rationale": "OK"}'
-        with patch("dispatch.qa_interceptor.dispatch_agent", return_value=mock_output):
+        with patch("dispatch.service.qa_interceptor.dispatch_agent", return_value=mock_output):
             passed, rationale_path, reason_code = intercept_dispatch(
                 agent_file="alignment-judge.md",
                 prompt_path=prompt,
@@ -756,7 +756,7 @@ class TestInterceptDispatch:
         self, tmp_path: Path,
     ) -> None:
         """intercept_dispatch returns (False, path, None) on REJECT."""
-        from dispatch.qa_interceptor import intercept_dispatch
+        from dispatch.service.qa_interceptor import intercept_dispatch
 
         ps = _setup_planspace(tmp_path)
         prompt = ps / "artifacts" / "test-prompt.md"
@@ -767,7 +767,7 @@ class TestInterceptDispatch:
             "rationale": "Contract violation",
             "violations": ["scope"],
         })
-        with patch("dispatch.qa_interceptor.dispatch_agent", return_value=mock_output):
+        with patch("dispatch.service.qa_interceptor.dispatch_agent", return_value=mock_output):
             passed, rationale_path, reason_code = intercept_dispatch(
                 agent_file="alignment-judge.md",
                 prompt_path=prompt,
@@ -782,13 +782,13 @@ class TestInterceptDispatch:
         self, tmp_path: Path,
     ) -> None:
         """Missing agent file fails open with target_unavailable reason."""
-        from dispatch.qa_interceptor import intercept_dispatch
+        from dispatch.service.qa_interceptor import intercept_dispatch
 
         ps = _setup_planspace(tmp_path)
         prompt = ps / "artifacts" / "test-prompt.md"
         prompt.write_text("# Test\n", encoding="utf-8")
 
-        with patch("dispatch.qa_interceptor.dispatch_agent") as mock_da:
+        with patch("dispatch.service.qa_interceptor.dispatch_agent") as mock_da:
             passed, rationale_path, reason_code = intercept_dispatch(
                 agent_file="nonexistent-agent-xyz.md",
                 prompt_path=prompt,

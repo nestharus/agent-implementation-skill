@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from src.reconciliation import reconciliation_phase
-from src.reconciliation.reconciliation_phase import (
+from src.reconciliation.engine import phase
+from src.reconciliation.engine.phase import (
     ReconciliationPhaseExit,
     run_reconciliation_phase,
 )
@@ -32,7 +32,7 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
     messages: list[str] = []
 
     monkeypatch.setattr(
-        reconciliation_phase,
+        phase,
         "run_reconciliation",
         lambda *_args, **_kwargs: {
             "conflicts_found": 1,
@@ -42,22 +42,22 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
         },
     )
     monkeypatch.setattr(
-        reconciliation_phase,
+        phase,
         "handle_pending_messages",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        reconciliation_phase,
+        phase,
         "alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        reconciliation_phase,
+        phase,
         "_check_and_clear_alignment_changed",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        reconciliation_phase,
+        phase,
         "run_section",
         lambda *_args, **_kwargs: ProposalPassResult(
             section_number="01",
@@ -65,7 +65,7 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
         ),
     )
     monkeypatch.setattr(
-        reconciliation_phase,
+        phase,
         "mailbox_send",
         lambda _planspace, _parent, message: messages.append(message),
     )
@@ -97,7 +97,7 @@ def test_run_reconciliation_phase_restarts_on_alignment_change(
     }
 
     monkeypatch.setattr(
-        reconciliation_phase,
+        phase,
         "run_reconciliation",
         lambda *_args, **_kwargs: {
             "conflicts_found": 1,
@@ -107,17 +107,17 @@ def test_run_reconciliation_phase_restarts_on_alignment_change(
         },
     )
     monkeypatch.setattr(
-        reconciliation_phase,
+        phase,
         "handle_pending_messages",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        reconciliation_phase,
+        phase,
         "alignment_changed_pending",
         lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
-        reconciliation_phase,
+        phase,
         "_check_and_clear_alignment_changed",
         lambda *_args, **_kwargs: True,
     )
@@ -149,7 +149,7 @@ def test_run_reconciliation_phase_exits_when_parent_aborts(
     messages: list[str] = []
 
     monkeypatch.setattr(
-        reconciliation_phase,
+        phase,
         "run_reconciliation",
         lambda *_args, **_kwargs: {
             "conflicts_found": 1,
@@ -159,12 +159,12 @@ def test_run_reconciliation_phase_exits_when_parent_aborts(
         },
     )
     monkeypatch.setattr(
-        reconciliation_phase,
+        phase,
         "handle_pending_messages",
         lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
-        reconciliation_phase,
+        phase,
         "mailbox_send",
         lambda _planspace, _parent, message: messages.append(message),
     )

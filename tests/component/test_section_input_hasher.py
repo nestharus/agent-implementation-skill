@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.staleness.section_input_hasher import (
+from src.staleness.service.input_hasher import (
     coordination_recheck_hash,
     section_inputs_hash,
 )

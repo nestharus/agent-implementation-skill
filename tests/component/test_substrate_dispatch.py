@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from src.scan import substrate_dispatch
+from src.scan.substrate import dispatch
 
 
 def _make_agent_home(tmp_path: Path) -> Path:
@@ -23,7 +23,7 @@ def _make_agent_home(tmp_path: Path) -> Path:
 
 def test_dispatch_substrate_agent_requires_agent_file(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
-        substrate_dispatch.dispatch_substrate_agent(
+        dispatch.dispatch_substrate_agent(
             model="model",
             prompt_path=tmp_path / "prompt.md",
             output_path=tmp_path / "output.txt",
@@ -35,10 +35,10 @@ def test_dispatch_substrate_agent_validates_agent_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(substrate_dispatch, "WORKFLOW_HOME", tmp_path / "src")
+    monkeypatch.setattr(dispatch, "WORKFLOW_HOME", tmp_path / "src")
 
     with pytest.raises(FileNotFoundError):
-        substrate_dispatch.dispatch_substrate_agent(
+        dispatch.dispatch_substrate_agent(
             model="model",
             prompt_path=tmp_path / "prompt.md",
             output_path=tmp_path / "output.txt",
@@ -51,7 +51,7 @@ def test_dispatch_substrate_agent_writes_combined_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workflow_home = _make_agent_home(tmp_path)
-    monkeypatch.setattr(substrate_dispatch, "WORKFLOW_HOME", workflow_home)
+    monkeypatch.setattr(dispatch, "WORKFLOW_HOME", workflow_home)
     prompt_path = tmp_path / "prompt.md"
     prompt_path.write_text("prompt", encoding="utf-8")
     output_path = tmp_path / "logs" / "output.txt"
@@ -72,9 +72,9 @@ def test_dispatch_substrate_agent_writes_combined_output(
             stderr="stderr\n",
         )
 
-    monkeypatch.setattr(substrate_dispatch.subprocess, "run", fake_run)
+    monkeypatch.setattr(dispatch.subprocess, "run", fake_run)
 
-    ok = substrate_dispatch.dispatch_substrate_agent(
+    ok = dispatch.dispatch_substrate_agent(
         model="gpt-high",
         prompt_path=prompt_path,
         output_path=output_path,
@@ -98,7 +98,7 @@ def test_dispatch_substrate_agent_handles_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workflow_home = _make_agent_home(tmp_path)
-    monkeypatch.setattr(substrate_dispatch, "WORKFLOW_HOME", workflow_home)
+    monkeypatch.setattr(dispatch, "WORKFLOW_HOME", workflow_home)
     prompt_path = tmp_path / "prompt.md"
     prompt_path.write_text("prompt", encoding="utf-8")
     output_path = tmp_path / "output.txt"
@@ -106,9 +106,9 @@ def test_dispatch_substrate_agent_handles_timeout(
     def fake_run(*_args, **_kwargs):
         raise subprocess.TimeoutExpired(cmd="agents", timeout=600)
 
-    monkeypatch.setattr(substrate_dispatch.subprocess, "run", fake_run)
+    monkeypatch.setattr(dispatch.subprocess, "run", fake_run)
 
-    ok = substrate_dispatch.dispatch_substrate_agent(
+    ok = dispatch.dispatch_substrate_agent(
         model="gpt-high",
         prompt_path=prompt_path,
         output_path=output_path,

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from dispatch.prompts_writers import (
+from dispatch.prompt.writers import (
     write_integration_proposal_prompt,
     write_strategic_impl_prompt,
 )
@@ -52,11 +52,11 @@ def _write_research_artifacts(planspace: Path, number: str = "01") -> tuple[Path
 @pytest.fixture(autouse=True)
 def _prompt_writer_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "dispatch.prompts_writers.materialize_context_sidecar",
+        "dispatch.prompt.writers.materialize_context_sidecar",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "dispatch.prompts_writers._log_artifact",
+        "dispatch.prompt.writers._log_artifact",
         lambda *_args, **_kwargs: None,
     )
 

@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import subprocess
 
-from src.staleness.hash_service import content_hash
-from src.scan.tier_ranking import run_tier_ranking, validate_tier_file
-from src.scan.cli_cache import strip_scan_summaries
+from src.staleness.helpers.hashing import content_hash
+from src.scan.explore.tier_ranking import run_tier_ranking, validate_tier_file
+from src.scan.codemap.cache import strip_scan_summaries
 
 
 def test_validate_tier_file_accepts_required_shape(tmp_path) -> None:
@@ -57,7 +57,7 @@ def test_run_tier_ranking_reuses_matching_existing_tier_file(
     def fail_dispatch(**_kwargs):
         raise AssertionError("dispatch_agent should not run when inputs match")
 
-    monkeypatch.setattr("src.scan.tier_ranking.dispatch_agent", fail_dispatch)
+    monkeypatch.setattr("src.scan.explore.tier_ranking.dispatch_agent", fail_dispatch)
 
     result = run_tier_ranking(
         section_file,
@@ -88,11 +88,11 @@ def test_run_tier_ranking_dispatches_and_writes_sidecar(
     codespace.mkdir()
 
     monkeypatch.setattr(
-        "src.scan.tier_ranking.load_scan_template",
+        "src.scan.explore.tier_ranking.load_scan_template",
         lambda _name: "{section_file}\n{file_list_text}\n{tier_file}",
     )
     monkeypatch.setattr(
-        "src.scan.tier_ranking.validate_dynamic_content",
+        "src.scan.explore.tier_ranking.validate_dynamic_content",
         lambda _prompt: [],
     )
 
@@ -105,7 +105,7 @@ def test_run_tier_ranking_dispatches_and_writes_sidecar(
         kwargs["stdout_file"].write_text("ranked", encoding="utf-8")
         return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr("src.scan.tier_ranking.dispatch_agent", fake_dispatch)
+    monkeypatch.setattr("src.scan.explore.tier_ranking.dispatch_agent", fake_dispatch)
 
     result = run_tier_ranking(
         section_file,

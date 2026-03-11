@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from risk.quantifier import (
+from risk.service.quantifier import (
     CLASS_WEIGHTS,
     compute_raw_risk,
     is_acceptable,

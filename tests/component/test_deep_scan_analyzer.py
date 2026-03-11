@@ -4,8 +4,8 @@ import hashlib
 import json
 import subprocess
 
-from src.scan.deep_scan_analyzer import analyze_file, safe_name
-from src.scan.cli_cache import FileCardCache
+from src.scan.explore.analyzer import analyze_file, safe_name
+from src.scan.codemap.cache import FileCardCache
 
 
 def test_safe_name_matches_bash_compatible_scheme() -> None:
@@ -71,11 +71,11 @@ def test_analyze_file_uses_cached_response_and_feedback(
         return True
 
     monkeypatch.setattr(
-        "src.scan.deep_scan_analyzer.update_match",
+        "src.scan.explore.analyzer.update_match",
         fake_update_match,
     )
     monkeypatch.setattr(
-        "src.scan.deep_scan_analyzer.dispatch_agent",
+        "src.scan.explore.analyzer.dispatch_agent",
         lambda **_kwargs: (_ for _ in ()).throw(
             AssertionError("dispatch_agent should not run on cache hit"),
         ),
@@ -113,15 +113,15 @@ def test_analyze_file_dispatches_and_caches_response(
     scan_log_dir = tmp_path / "scan-logs"
 
     monkeypatch.setattr(
-        "src.scan.deep_scan_analyzer.load_scan_template",
+        "src.scan.explore.analyzer.load_scan_template",
         lambda _name: "{section_file}\n{abs_source}\n{feedback_file}",
     )
     monkeypatch.setattr(
-        "src.scan.deep_scan_analyzer.validate_dynamic_content",
+        "src.scan.explore.analyzer.validate_dynamic_content",
         lambda _prompt: [],
     )
     monkeypatch.setattr(
-        "src.scan.deep_scan_analyzer.update_match",
+        "src.scan.explore.analyzer.update_match",
         lambda *_args, **_kwargs: True,
     )
 
@@ -138,7 +138,7 @@ def test_analyze_file_dispatches_and_caches_response(
         return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(
-        "src.scan.deep_scan_analyzer.dispatch_agent",
+        "src.scan.explore.analyzer.dispatch_agent",
         fake_dispatch,
     )
 

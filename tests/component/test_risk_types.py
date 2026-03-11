@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from src.risk.serialization import (
+from src.risk.repository.serialization import (
     deserialize_assessment,
     deserialize_history_entry,
     deserialize_package,
@@ -21,7 +21,7 @@ from src.risk.serialization import (
     serialize_plan,
     write_risk_artifact,
 )
-from src.risk.types import (
+from risk.types import (
     DecisionClass,
     IntentRiskHint,
     PackageStep,

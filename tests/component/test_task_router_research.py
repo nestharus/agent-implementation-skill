@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.flow.task_router import resolve_task
+from src.flow.types.routing import resolve_task
 
 
 @pytest.mark.parametrize(

@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 from _paths import DB_SH
 
-from flow.flow_schema import (
+from flow.types.schema import (
     BranchSpec,
     ChainAction,
     FanoutAction,
@@ -75,7 +75,7 @@ class TestDispatcherPayloadRequired:
         db_path = str(ps / "run.db")
         task_id = _submit_task(db_path)
 
-        import task_dispatcher
+        from flow.engine import dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             return "should not be called"
@@ -123,7 +123,7 @@ class TestDispatcherPayloadRequired:
             encoding="utf-8",
         )
 
-        import task_dispatcher
+        from flow.engine import dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             return "ok"

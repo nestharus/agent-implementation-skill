@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.implementation.microstrategy_orchestrator import run_microstrategy
+from src.implementation.service.microstrategy import run_microstrategy
 from src.orchestrator.types import Section
 
 
@@ -52,7 +52,7 @@ def test_run_microstrategy_returns_none_when_decider_skips(
     section = _section(planspace)
 
     monkeypatch.setattr(
-        "src.implementation.microstrategy_orchestrator._check_needs_microstrategy",
+        "src.implementation.service.microstrategy._check_needs_microstrategy",
         lambda *_args, **_kwargs: False,
     )
 
@@ -77,19 +77,19 @@ def test_run_microstrategy_retries_with_escalation_and_returns_path(
     dispatch_calls: list[str] = []
 
     monkeypatch.setattr(
-        "src.implementation.microstrategy_orchestrator._check_needs_microstrategy",
+        "src.implementation.service.microstrategy._check_needs_microstrategy",
         lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
-        "src.implementation.microstrategy_orchestrator.validate_dynamic_content",
+        "src.implementation.service.microstrategy.validate_dynamic_content",
         lambda *_args, **_kwargs: [],
     )
     monkeypatch.setattr(
-        "src.implementation.microstrategy_orchestrator._log_artifact",
+        "src.implementation.service.microstrategy._log_artifact",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.implementation.microstrategy_orchestrator.poll_control_messages",
+        "src.implementation.service.microstrategy.poll_control_messages",
         lambda *_args, **_kwargs: "",
     )
 
@@ -100,19 +100,19 @@ def test_run_microstrategy_retries_with_escalation_and_returns_path(
         return "ok"
 
     monkeypatch.setattr(
-        "src.implementation.microstrategy_orchestrator.dispatch_agent",
+        "src.implementation.service.microstrategy.dispatch_agent",
         _dispatch,
     )
     monkeypatch.setattr(
-        "src.implementation.microstrategy_orchestrator.ingest_and_submit",
+        "src.implementation.service.microstrategy.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.implementation.microstrategy_orchestrator._record_traceability",
+        "src.implementation.service.microstrategy._record_traceability",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.implementation.microstrategy_orchestrator.mailbox_send",
+        "src.implementation.service.microstrategy.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
 

@@ -7,9 +7,9 @@ from pathlib import Path
 
 from _paths import DB_SH
 from src.orchestrator.path_registry import PathRegistry
-from src.signals.artifact_io import write_json
-from src.research.orchestrator import write_research_status
-from src.research.plan_executor import execute_research_plan
+from src.signals.repository.artifact_io import write_json
+from src.research.engine.orchestrator import write_research_status
+from src.research.engine.executor import execute_research_plan
 
 
 def _init_db(db_path: Path) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.signals.artifact_io import (
+from src.signals.repository.artifact_io import (
     read_json,
     read_json_or_default,
     rename_malformed,

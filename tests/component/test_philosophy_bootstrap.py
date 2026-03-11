@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.intent.philosophy_bootstrap import (
+from src.intent.service.philosophy import (
     build_philosophy_catalog,
     validate_philosophy_grounding,
     walk_md_bounded,

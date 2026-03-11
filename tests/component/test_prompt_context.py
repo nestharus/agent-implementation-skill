@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dispatch.prompts_context import build_prompt_context
+from dispatch.prompt.context import build_prompt_context
 from orchestrator.types import Section
 
 

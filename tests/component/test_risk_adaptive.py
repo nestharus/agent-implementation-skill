@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from risk.history import append_history_entry
-from risk.loop import run_risk_loop
-from risk.serialization import read_risk_artifact, serialize_assessment, serialize_plan
+from risk.repository.history import append_history_entry
+from risk.engine.loop import run_risk_loop
+from risk.repository.serialization import read_risk_artifact, serialize_assessment, serialize_plan
 from risk.types import (
     PackageStep,
     PostureProfile,

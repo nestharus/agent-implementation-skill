@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from src.implementation import impact_triage
-from src.implementation.impact_triage import run_impact_triage
+from src.implementation.service import impact_triage
+from src.implementation.service.impact_triage import run_impact_triage
 from orchestrator.types import Section
 
 

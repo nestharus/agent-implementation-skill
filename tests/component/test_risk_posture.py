@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from risk.posture import (
+from risk.service.posture import (
     apply_one_step_rule,
     can_relax_posture,
     select_posture,

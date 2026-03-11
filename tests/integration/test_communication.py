@@ -7,7 +7,7 @@ Mailbox functions use real db.sh (SQLite).
 import json
 from pathlib import Path
 
-from signals.section_loop_communication import (
+from signals.service.communication import (
     _record_traceability,
     _summary_tag,
     mailbox_drain,

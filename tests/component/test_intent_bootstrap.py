@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from src.intent import intent_bootstrap
-from src.intent.intent_bootstrap import run_intent_bootstrap
+from src.intent.engine import bootstrap
+from src.intent.engine.bootstrap import run_intent_bootstrap
 from orchestrator.types import Section
 
 
@@ -38,7 +38,7 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
     governance_calls: list[tuple[str, Path, Path, str]] = []
 
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "run_intent_triage",
         lambda *args, **kwargs: {
             "intent_mode": "full",
@@ -52,17 +52,17 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
         },
     )
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "_extract_todos_from_files",
         lambda *_args, **_kwargs: "- TODO: preserve invariant\n",
     )
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "_record_traceability",
         lambda *args: traceability_calls.append(args),
     )
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "ensure_global_philosophy",
         lambda *_args, **_kwargs: {
             "status": "ready",
@@ -74,19 +74,19 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
         },
     )
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "build_section_governance_packet",
         lambda sec_num, ps, cs, summary="": governance_calls.append(
             (sec_num, ps, cs, summary)
         ),
     )
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "generate_intent_pack",
         lambda _section, _planspace, _codespace, _parent, *, incoming_notes: intent_pack_calls.append(incoming_notes),
     )
@@ -122,17 +122,17 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
     section = _make_section(planspace)
 
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "run_intent_triage",
         lambda *args, **kwargs: {"intent_mode": "lightweight", "budgets": {}},
     )
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "_extract_todos_from_files",
         lambda *_args, **_kwargs: "",
     )
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "ensure_global_philosophy",
         lambda *_args, **_kwargs: {
             "status": "needs_user_input",
@@ -142,19 +142,19 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
         },
     )
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
     blocker_rollups: list[Path] = []
     pauses: list[tuple[Path, str, str]] = []
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "_update_blocker_rollup",
         lambda current_planspace: blocker_rollups.append(current_planspace),
     )
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "pause_for_parent",
         lambda current_planspace, parent, signal: pauses.append(
             (current_planspace, parent, signal),
@@ -190,17 +190,17 @@ def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
     section = _make_section(planspace)
 
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "run_intent_triage",
         lambda *args, **kwargs: {"intent_mode": "full", "budgets": {}},
     )
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "_extract_todos_from_files",
         lambda *_args, **_kwargs: "",
     )
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "ensure_global_philosophy",
         lambda *_args, **_kwargs: {
             "status": "ready",
@@ -213,12 +213,12 @@ def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
     )
     alignment_states = iter([True])
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "alignment_changed_pending",
         lambda *_args, **_kwargs: next(alignment_states),
     )
     monkeypatch.setattr(
-        intent_bootstrap,
+        bootstrap,
         "generate_intent_pack",
         lambda *_args, **_kwargs: pytest.fail("intent pack should not run"),
     )

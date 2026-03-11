@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.proposal.verdict_parsers import parse_alignment_verdict
+from src.proposal.helpers.verdict_parsers import parse_alignment_verdict
 
 
 # --- parse single-line JSON with frame_ok ---

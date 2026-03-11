@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from staleness.section_alignment import (
+from staleness.service.section_alignment import (
     _extract_problems,
     _parse_alignment_verdict,
     collect_modified_files,
@@ -183,7 +183,7 @@ class TestExtractProblems:
         })
 
         with patch(
-            "staleness.section_alignment.dispatch_agent",
+            "staleness.service.section_alignment.dispatch_agent",
             return_value=adjudicator_response,
         ):
             problems = _extract_problems(
@@ -210,7 +210,7 @@ class TestExtractProblems:
         })
 
         with patch(
-            "staleness.section_alignment.dispatch_agent",
+            "staleness.service.section_alignment.dispatch_agent",
             return_value=adjudicator_response,
         ):
             problems = _extract_problems(

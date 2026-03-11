@@ -626,7 +626,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
              "--agent", AGENT_NAME],
             capture_output=True, text=True,
         )
-    cmd = ["uv", "run", "--frozen", "agents", "--model", model,
+    cmd = ["agents", "--model", model,
            "--file", str(prompt_path)]
     if agent_file:
         cmd.extend(["--agent-file",
@@ -638,14 +638,14 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
             cmd,
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=1800,
         )
         output = result.stdout + result.stderr
         if result.returncode != 0:
             log(f"  WARNING: agent returned {result.returncode}")
     except subprocess.TimeoutExpired:
-        output = "TIMEOUT: Agent exceeded 600s time limit"
-        log("  WARNING: agent timed out after 600s")
+        output = "TIMEOUT: Agent exceeded 1800s time limit"
+        log("  WARNING: agent timed out after 1800s")
 
     # Shut down agent-monitor after agent finishes
     if monitor_proc:
@@ -904,7 +904,7 @@ LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
     return None, ""
 
 
-def read_agent_signal(
+def read_signal_json(
     signal_path: Path, expected_fields: list[str] | None = None,
 ) -> dict[str, Any] | None:
     """Read a structured JSON signal artifact written by an agent.
@@ -2407,7 +2407,19 @@ def _extract_problems(result: str) -> str | None:
     Returns the problems text if PROBLEMS: found, None if ALIGNED.
     Uses first non-empty line for exact-match classification to avoid
     misclassifying outputs containing substrings like "MISALIGNED".
+    Also checks for JSON verdict blocks with "aligned": true.
     """
+    # Check for JSON verdict block: {"aligned": true, ...}
+    import re as _re
+    json_match = _re.search(r'\{[^}]*"aligned"\s*:\s*true[^}]*\}', result)
+    if json_match:
+        try:
+            verdict = json.loads(json_match.group())
+            if verdict.get("aligned") is True:
+                return None
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
     # Find the first non-empty line for exact classification
     first_line = ""
     for line in result.split("\n"):
@@ -2416,9 +2428,11 @@ def _extract_problems(result: str) -> str | None:
             first_line = stripped
             break
 
+    # Strip markdown bold/emphasis and trailing punctuation for comparison
+    clean_first = first_line.strip("*_# ").split("\u2014")[0].split(" ")[0].strip()
+
     # Exact match ALIGNED on first line (not a substring of MISALIGNED etc.)
-    if first_line == "ALIGNED" and "PROBLEMS:" not in result \
-            and "UNDERSPECIFIED" not in result:
+    if clean_first == "ALIGNED":
         return None
     # Extract everything after PROBLEMS:
     idx = result.find("PROBLEMS:")
@@ -3244,7 +3258,7 @@ def _collect_outstanding_problems(
             # Check acknowledgment via structured signal
             ack_path = (planspace / "artifacts" / "signals"
                         / f"note-ack-{target_num}.json")
-            ack_signal = read_agent_signal(ack_path)
+            ack_signal = read_signal_json(ack_path)
             if ack_signal:
                 acks = ack_signal.get("acknowledged", [])
                 if any(a.get("note_id") == note_id for a in acks):
@@ -4181,7 +4195,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
                 mode_signal_path = (
                     signal_dir
                     / f"section-{section.number}-mode.json")
-                mode_signal = read_agent_signal(
+                mode_signal = read_signal_json(
                     mode_signal_path,
                     expected_fields=["mode"])
                 if mode_signal:

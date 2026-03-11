@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.research.prompt_writer import (
+from src.research.prompt.writer import (
     write_research_plan_prompt,
     write_research_synthesis_prompt,
     write_research_ticket_prompt,
@@ -147,7 +147,7 @@ def test_write_research_plan_prompt_returns_none_when_prompt_safety_blocks(
         return False
 
     monkeypatch.setattr(
-        "src.research.prompt_writer.write_validated_prompt",
+        "src.research.prompt.writer.write_validated_prompt",
         _block_prompt,
     )
 

@@ -6,7 +6,7 @@ import pytest
 
 from orchestrator.types import Section
 
-from src.scan import section_notes
+from src.scan.service import section_notes
 
 
 def _make_section(tmp_path: Path, number: str = "01") -> tuple[Path, Path, Section]:

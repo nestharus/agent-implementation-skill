@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.proposal.proposal_state_repository import (
+from src.proposal.repository.state import (
     _fail_closed_default,
     extract_blockers,
     has_blocking_fields,

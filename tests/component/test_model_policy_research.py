@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 
-from src.dispatch.model_policy import ModelPolicy, load_model_policy
-from src.flow.task_router import resolve_task
+from src.dispatch.service.model_policy import ModelPolicy, load_model_policy
+from src.flow.types.routing import resolve_task
 
 
 def test_model_policy_defaults_include_research_keys() -> None:

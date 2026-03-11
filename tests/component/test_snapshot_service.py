@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.implementation.snapshot_service import (
+from src.implementation.service.snapshot import (
     compute_text_diff,
     snapshot_modified_files,
 )

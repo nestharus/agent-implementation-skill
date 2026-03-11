@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.intake.governance_assessment import (
+from src.intake.service.assessment import (
     read_post_impl_assessment,
     record_assessment_governance,
     write_post_impl_assessment_prompt,

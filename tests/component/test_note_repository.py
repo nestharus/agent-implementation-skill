@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.coordination.note_repository import (
+from src.coordination.repository.notes import (
     read_incoming_notes,
     write_consequence_note,
 )

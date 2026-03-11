@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from orchestrator.types import Section
-from src.dispatch.prompt_context_assembler import (
+from src.dispatch.prompt.context_assembler import (
     build_impl_context_extras,
     build_proposal_context_extras,
 )

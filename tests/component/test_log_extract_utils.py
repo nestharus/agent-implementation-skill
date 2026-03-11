@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.dispatch.log_extract_utils import (
+from src.dispatch.helpers.log_extract import (
     infer_section,
     parse_timestamp,
     prompt_signature,

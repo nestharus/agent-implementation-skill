@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from risk import loop as risk_loop
-from risk.history import append_history_entry
-from risk.loop import (
+from risk.engine import loop as risk_loop
+from risk.repository.history import append_history_entry
+from risk.engine.loop import (
     _collect_roal_evidence,
     build_optimization_prompt,
     build_risk_assessment_prompt,
@@ -16,7 +16,7 @@ from risk.loop import (
     run_lightweight_risk_check,
     run_risk_loop,
 )
-from risk.serialization import read_risk_artifact, serialize_assessment, serialize_plan
+from risk.repository.serialization import read_risk_artifact, serialize_assessment, serialize_plan
 from risk.types import (
     PackageStep,
     PostureProfile,
@@ -446,7 +446,7 @@ def test_run_risk_loop_calls_prompt_safety_validation(
         path.write_text(content, encoding="utf-8")
         return True
 
-    monkeypatch.setattr("risk.loop.write_validated_prompt", _validate)
+    monkeypatch.setattr("risk.engine.loop.write_validated_prompt", _validate)
 
     def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
         if kwargs["agent_file"] == "risk-assessor.md":
@@ -473,7 +473,7 @@ def test_run_risk_loop_falls_back_when_prompt_safety_fails(
 ) -> None:
     package = _package()
     _write_artifacts(tmp_path)
-    monkeypatch.setattr("risk.loop.write_validated_prompt", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr("risk.engine.loop.write_validated_prompt", lambda *_args, **_kwargs: False)
 
     def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
         raise AssertionError("dispatch should not be called when prompt validation fails")

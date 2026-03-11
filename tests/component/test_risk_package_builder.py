@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
-from risk.package_builder import (
+from risk.service.package_builder import (
     _materialize_steps,
     _positional_assessment_class,
     build_package,

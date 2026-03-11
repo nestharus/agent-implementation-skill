@@ -7,7 +7,7 @@ import logging
 from dataclasses import asdict
 from pathlib import Path
 
-from signals.artifact_io import read_json, write_json
+from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
 from intake.types import (
     GovernanceClaim,

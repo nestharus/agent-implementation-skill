@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.reconciliation.reconciliation_result_repository import (
+from src.reconciliation.repository.results import (
     load_result,
     was_section_affected,
     write_result,

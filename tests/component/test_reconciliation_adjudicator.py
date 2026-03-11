@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.reconciliation import reconciliation_adjudicator as adjudicator
+from src.reconciliation.service import adjudicator
 
 
 def test_adjudicate_ungrouped_candidates_returns_empty_for_singleton(

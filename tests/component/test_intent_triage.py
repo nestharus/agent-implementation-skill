@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.intent import intent_triage
-from src.intent.intent_triage import (
+from src.intent.service import triage
+from src.intent.service.triage import (
     _augment_risk_hints,
     _full_default,
     load_triage_result,
@@ -96,14 +96,14 @@ def test_run_intent_triage_returns_signal_from_agent(
     codespace.mkdir()
 
     monkeypatch.setattr(
-        intent_triage,
+        triage,
         "read_model_policy",
         lambda _: {"intent_triage": "glm"},
     )
-    monkeypatch.setattr(intent_triage, "write_validated_prompt", lambda *_: True)
+    monkeypatch.setattr(triage, "write_validated_prompt", lambda *_: True)
     artifact_events: list[str] = []
     monkeypatch.setattr(
-        intent_triage,
+        triage,
         "_log_artifact",
         lambda _planspace, name: artifact_events.append(name),
     )
@@ -125,7 +125,7 @@ def test_run_intent_triage_returns_signal_from_agent(
         )
         return ""
 
-    monkeypatch.setattr(intent_triage, "dispatch_agent", fake_dispatch)
+    monkeypatch.setattr(triage, "dispatch_agent", fake_dispatch)
 
     result = run_intent_triage("01", planspace, codespace, "parent")
 
@@ -148,11 +148,11 @@ def test_triage_prompt_does_not_advertise_skip(
     codespace.mkdir()
 
     monkeypatch.setattr(
-        intent_triage,
+        triage,
         "read_model_policy",
         lambda _: {"intent_triage": "glm"},
     )
-    monkeypatch.setattr(intent_triage, "_log_artifact", lambda *_: None)
+    monkeypatch.setattr(triage, "_log_artifact", lambda *_: None)
 
     written_prompts: list[str] = []
 
@@ -162,14 +162,14 @@ def test_triage_prompt_does_not_advertise_skip(
         path.write_text(text, encoding="utf-8")
         return True
 
-    monkeypatch.setattr(intent_triage, "write_validated_prompt", capture_prompt)
+    monkeypatch.setattr(triage, "write_validated_prompt", capture_prompt)
     monkeypatch.setattr(
-        intent_triage,
+        triage,
         "dispatch_agent",
         lambda *a, **kw: "",
     )
     monkeypatch.setattr(
-        intent_triage,
+        triage,
         "read_agent_signal",
         lambda *a, **kw: None,
     )

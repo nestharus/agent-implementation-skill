@@ -14,5 +14,5 @@ import _pyc_loader
 _pyc_loader.install(scripts_dir)
 
 # Now import and run the section loop
-from orchestrator.main import main
+from orchestrator.engine.main import main
 main()

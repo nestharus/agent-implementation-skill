@@ -3,8 +3,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from src.flow.task_db_client import db_cmd
-from src.flow.task_notifier import (
+from src.flow.service.task_db_client import db_cmd
+from src.flow.service.notifier import (
     notify_task_result,
     record_qa_intercept,
     record_task_routing,

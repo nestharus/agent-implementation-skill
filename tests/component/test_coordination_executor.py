@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from src.coordination import coordination_executor
-from src.coordination.coordination_executor import (
+from src.coordination.engine import executor
+from src.coordination.engine.executor import (
     CoordinationExecutionExit,
     execute_coordination_plan,
     read_execution_modified_files,
@@ -38,12 +38,12 @@ def test_execute_coordination_plan_runs_fix_groups_and_persists_modified_files(
     }
 
     monkeypatch.setattr(
-        coordination_executor,
+        executor,
         "poll_control_messages",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
-        coordination_executor,
+        executor,
         "_dispatch_fix_group",
         lambda group, group_index, *args, **kwargs: (group_index, [group[0]["files"][0]]),
     )
@@ -105,22 +105,22 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
         return "ok"
 
     monkeypatch.setattr(
-        coordination_executor,
+        executor,
         "poll_control_messages",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
-        coordination_executor,
+        executor,
         "dispatch_agent",
         _dispatch_agent,
     )
     monkeypatch.setattr(
-        coordination_executor,
+        executor,
         "_dispatch_fix_group",
         lambda group, group_index, *args, **kwargs: (group_index, ["src/a.py"]),
     )
     monkeypatch.setattr(
-        coordination_executor,
+        executor,
         "content_hash",
         lambda payload: "abcdef1234567890",
     )
@@ -173,12 +173,12 @@ def test_execute_coordination_plan_raises_on_fix_group_sentinel(
     }
 
     monkeypatch.setattr(
-        coordination_executor,
+        executor,
         "poll_control_messages",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
-        coordination_executor,
+        executor,
         "_dispatch_fix_group",
         lambda *args, **kwargs: (0, None),
     )

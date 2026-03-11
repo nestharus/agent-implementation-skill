@@ -3,16 +3,16 @@ from typing import Callable
 
 import pytest
 
-from signals.artifact_io import read_json, write_json
-from implementation.implementation_pass import (
+from signals.repository.artifact_io import read_json, write_json
+from implementation.engine.implementation_pass import (
     ImplementationPassExit,
     ImplementationPassRestart,
     _append_risk_history,
     _read_roal_input_index,
     run_implementation_pass,
 )
-from risk.history import read_history
-from risk.serialization import serialize_assessment, serialize_package
+from risk.repository.history import read_history
+from risk.repository.serialization import serialize_assessment, serialize_package
 from risk.types import (
     PackageStep,
     PostureProfile,
@@ -160,16 +160,16 @@ def _patch_implementation_pass_basics(
     alignment_checks: list[bool] | None = None,
 ) -> None:
     monkeypatch.setattr(
-        "implementation.implementation_pass.handle_pending_messages",
+        "implementation.engine.implementation_pass.handle_pending_messages",
         lambda *args: False,
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.alignment_changed_pending",
+        "implementation.engine.implementation_pass.alignment_changed_pending",
         lambda *args: False,
     )
     if alignment_checks is None:
         monkeypatch.setattr(
-            "implementation.implementation_pass._check_and_clear_alignment_changed",
+            "implementation.engine.implementation_pass._check_and_clear_alignment_changed",
             lambda *args: False,
         )
     else:
@@ -181,41 +181,41 @@ def _patch_implementation_pass_basics(
             return False
 
         monkeypatch.setattr(
-            "implementation.implementation_pass._check_and_clear_alignment_changed",
+            "implementation.engine.implementation_pass._check_and_clear_alignment_changed",
             _check_alignment,
         )
     monkeypatch.setattr(
-        "implementation.implementation_pass.resolve_readiness",
+        "implementation.engine.implementation_pass.resolve_readiness",
         lambda *_args, **_kwargs: {"ready": True},
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass._run_risk_review",
+        "implementation.engine.implementation_pass._run_risk_review",
         lambda *_args, **_kwargs: risk_plan,
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.run_section",
+        "implementation.engine.implementation_pass.run_section",
         run_section_fn,
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass._section_inputs_hash",
+        "implementation.engine.implementation_pass._section_inputs_hash",
         lambda *args: "hash-123",
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.mailbox_send",
+        "implementation.engine.implementation_pass.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.subprocess.run",
+        "implementation.engine.implementation_pass.subprocess.run",
         lambda *args, **kwargs: None,
     )
     if reassess_fn is not None:
         monkeypatch.setattr(
-            "implementation.implementation_pass._maybe_reassess_deferred_steps",
+            "implementation.engine.implementation_pass._maybe_reassess_deferred_steps",
             reassess_fn,
         )
     if append_history_fn is not None:
         monkeypatch.setattr(
-            "implementation.implementation_pass._append_risk_history",
+            "implementation.engine.implementation_pass._append_risk_history",
             append_history_fn,
         )
 
@@ -227,39 +227,39 @@ def test_run_implementation_pass_records_results_and_hashes(
     messages: list[str] = []
 
     monkeypatch.setattr(
-        "implementation.implementation_pass.handle_pending_messages",
+        "implementation.engine.implementation_pass.handle_pending_messages",
         lambda *args: False,
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.alignment_changed_pending",
+        "implementation.engine.implementation_pass.alignment_changed_pending",
         lambda *args: False,
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass._check_and_clear_alignment_changed",
+        "implementation.engine.implementation_pass._check_and_clear_alignment_changed",
         lambda *args: False,
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.resolve_readiness",
+        "implementation.engine.implementation_pass.resolve_readiness",
         lambda *_args, **_kwargs: {"ready": True},
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass._run_risk_review",
+        "implementation.engine.implementation_pass._run_risk_review",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.run_section",
+        "implementation.engine.implementation_pass.run_section",
         lambda *args, **kwargs: ["src/app.py"],
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass._section_inputs_hash",
+        "implementation.engine.implementation_pass._section_inputs_hash",
         lambda *args: "hash-123",
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.mailbox_send",
+        "implementation.engine.implementation_pass.mailbox_send",
         lambda _planspace, _parent, message: messages.append(message),
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.subprocess.run",
+        "implementation.engine.implementation_pass.subprocess.run",
         lambda *args, **kwargs: None,
     )
 
@@ -306,16 +306,16 @@ def test_run_implementation_pass_writes_accepted_steps_artifact(
         ],
     )
 
-    monkeypatch.setattr("implementation.implementation_pass.handle_pending_messages", lambda *args: False)
-    monkeypatch.setattr("implementation.implementation_pass.alignment_changed_pending", lambda *args: False)
-    monkeypatch.setattr("implementation.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
-    monkeypatch.setattr("implementation.implementation_pass._run_risk_review", lambda *_args, **_kwargs: plan)
-    monkeypatch.setattr("implementation.implementation_pass.run_section", lambda *args, **kwargs: ["src/app.py"])
-    monkeypatch.setattr("implementation.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
-    monkeypatch.setattr("implementation.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("implementation.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
-    monkeypatch.setattr("implementation.implementation_pass._append_risk_history", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass.handle_pending_messages", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_pass.alignment_changed_pending", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_pass._run_risk_review", lambda *_args, **_kwargs: plan)
+    monkeypatch.setattr("implementation.engine.implementation_pass.run_section", lambda *args, **kwargs: ["src/app.py"])
+    monkeypatch.setattr("implementation.engine.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
+    monkeypatch.setattr("implementation.engine.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass._append_risk_history", lambda *args, **kwargs: None)
 
     run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
@@ -382,16 +382,16 @@ def test_run_implementation_pass_writes_deferred_steps_artifact(
         ],
     )
 
-    monkeypatch.setattr("implementation.implementation_pass.handle_pending_messages", lambda *args: False)
-    monkeypatch.setattr("implementation.implementation_pass.alignment_changed_pending", lambda *args: False)
-    monkeypatch.setattr("implementation.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
-    monkeypatch.setattr("implementation.implementation_pass._run_risk_review", lambda *_args, **_kwargs: plan)
-    monkeypatch.setattr("implementation.implementation_pass.run_section", lambda *args, **kwargs: ["src/app.py"])
-    monkeypatch.setattr("implementation.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
-    monkeypatch.setattr("implementation.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("implementation.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
-    monkeypatch.setattr("implementation.implementation_pass._append_risk_history", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass.handle_pending_messages", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_pass.alignment_changed_pending", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_pass._run_risk_review", lambda *_args, **_kwargs: plan)
+    monkeypatch.setattr("implementation.engine.implementation_pass.run_section", lambda *args, **kwargs: ["src/app.py"])
+    monkeypatch.setattr("implementation.engine.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
+    monkeypatch.setattr("implementation.engine.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass._append_risk_history", lambda *args, **kwargs: None)
 
     run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
@@ -461,17 +461,17 @@ def test_run_implementation_pass_writes_reopen_blocker_and_skips(
         ],
     )
 
-    monkeypatch.setattr("implementation.implementation_pass.handle_pending_messages", lambda *args: False)
-    monkeypatch.setattr("implementation.implementation_pass.alignment_changed_pending", lambda *args: False)
-    monkeypatch.setattr("implementation.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
-    monkeypatch.setattr("implementation.implementation_pass._run_risk_review", lambda *_args, **_kwargs: plan)
+    monkeypatch.setattr("implementation.engine.implementation_pass.handle_pending_messages", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_pass.alignment_changed_pending", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_pass._run_risk_review", lambda *_args, **_kwargs: plan)
     monkeypatch.setattr(
-        "implementation.implementation_pass.run_section",
+        "implementation.engine.implementation_pass.run_section",
         lambda *args, **kwargs: run_calls.append("run") or ["src/app.py"],
     )
-    monkeypatch.setattr("implementation.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("implementation.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
 
     results = run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
@@ -517,20 +517,20 @@ def test_run_implementation_pass_fail_closed_on_roal_failure(
     section = _make_section(planspace, "01")
     run_calls: list[str] = []
 
-    monkeypatch.setattr("implementation.implementation_pass.handle_pending_messages", lambda *args: False)
-    monkeypatch.setattr("implementation.implementation_pass.alignment_changed_pending", lambda *args: False)
-    monkeypatch.setattr("implementation.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_pass.handle_pending_messages", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_pass.alignment_changed_pending", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
     monkeypatch.setattr(
-        "implementation.implementation_pass._run_risk_review",
+        "implementation.engine.implementation_pass._run_risk_review",
         lambda *_args, **_kwargs: _plan(accepted_frontier=[]),
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.run_section",
+        "implementation.engine.implementation_pass.run_section",
         lambda *args, **kwargs: run_calls.append("run") or ["src/app.py"],
     )
-    monkeypatch.setattr("implementation.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("implementation.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
 
     results = run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
@@ -549,15 +549,15 @@ def test_run_implementation_pass_skip_mode_proceeds_without_risk_artifacts(
 ) -> None:
     section = _make_section(planspace, "01")
 
-    monkeypatch.setattr("implementation.implementation_pass.handle_pending_messages", lambda *args: False)
-    monkeypatch.setattr("implementation.implementation_pass.alignment_changed_pending", lambda *args: False)
-    monkeypatch.setattr("implementation.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
-    monkeypatch.setattr("implementation.implementation_pass._run_risk_review", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("implementation.implementation_pass.run_section", lambda *args, **kwargs: ["src/app.py"])
-    monkeypatch.setattr("implementation.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
-    monkeypatch.setattr("implementation.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("implementation.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass.handle_pending_messages", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_pass.alignment_changed_pending", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_pass._run_risk_review", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass.run_section", lambda *args, **kwargs: ["src/app.py"])
+    monkeypatch.setattr("implementation.engine.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
+    monkeypatch.setattr("implementation.engine.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
 
     results = run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
@@ -578,15 +578,15 @@ def test_run_implementation_pass_restarts_on_alignment_change(
     section = _make_section(planspace, "01")
 
     monkeypatch.setattr(
-        "implementation.implementation_pass.handle_pending_messages",
+        "implementation.engine.implementation_pass.handle_pending_messages",
         lambda *args: False,
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.alignment_changed_pending",
+        "implementation.engine.implementation_pass.alignment_changed_pending",
         lambda *args: True,
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass._check_and_clear_alignment_changed",
+        "implementation.engine.implementation_pass._check_and_clear_alignment_changed",
         lambda *args: True,
     )
 
@@ -1075,11 +1075,11 @@ def test_run_implementation_pass_exits_when_parent_aborts(
     messages: list[str] = []
 
     monkeypatch.setattr(
-        "implementation.implementation_pass.handle_pending_messages",
+        "implementation.engine.implementation_pass.handle_pending_messages",
         lambda *args: True,
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.mailbox_send",
+        "implementation.engine.implementation_pass.mailbox_send",
         lambda _planspace, _parent, message: messages.append(message),
     )
 
@@ -1104,41 +1104,41 @@ def test_run_implementation_pass_invokes_roal_when_section_is_ready(
     risk_plans: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
-        "implementation.implementation_pass.handle_pending_messages",
+        "implementation.engine.implementation_pass.handle_pending_messages",
         lambda *args: False,
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.alignment_changed_pending",
+        "implementation.engine.implementation_pass.alignment_changed_pending",
         lambda *args: False,
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass._check_and_clear_alignment_changed",
+        "implementation.engine.implementation_pass._check_and_clear_alignment_changed",
         lambda *args: False,
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.resolve_readiness",
+        "implementation.engine.implementation_pass.resolve_readiness",
         lambda *_args, **_kwargs: {"ready": True},
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass._run_risk_review",
+        "implementation.engine.implementation_pass._run_risk_review",
         lambda planspace_arg, sec_num, section_arg, _dispatch: (
             risk_plans.append((sec_num, section_arg.number)) or None
         ),
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.run_section",
+        "implementation.engine.implementation_pass.run_section",
         lambda *args, **kwargs: ["src/app.py"],
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass._section_inputs_hash",
+        "implementation.engine.implementation_pass._section_inputs_hash",
         lambda *args: "hash-123",
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.mailbox_send",
+        "implementation.engine.implementation_pass.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "implementation.implementation_pass.subprocess.run",
+        "implementation.engine.implementation_pass.subprocess.run",
         lambda *args, **kwargs: None,
     )
 

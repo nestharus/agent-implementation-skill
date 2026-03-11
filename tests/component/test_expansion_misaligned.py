@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.proposal.proposal_loop import run_proposal_loop
+from src.proposal.engine.loop import run_proposal_loop
 from src.orchestrator.types import Section
 
 
@@ -40,58 +40,58 @@ def _install_common_patches(
     proposal_path: Path,
 ) -> None:
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.load_triage_result",
+        "src.proposal.engine.loop.load_triage_result",
         lambda *_args, **_kwargs: {
             "intent_mode": "full",
             "budgets": {"intent_expansion_max": 2},
         },
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.handle_pending_messages",
+        "src.proposal.engine.loop.handle_pending_messages",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.alignment_changed_pending",
+        "src.proposal.engine.loop.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.write_model_choice_signal",
+        "src.proposal.engine.loop.write_model_choice_signal",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.write_integration_proposal_prompt",
+        "src.proposal.engine.loop.write_integration_proposal_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.write_integration_alignment_prompt",
+        "src.proposal.engine.loop.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.check_agent_signals",
+        "src.proposal.engine.loop.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.mailbox_send",
+        "src.proposal.engine.loop.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.ingest_and_submit",
+        "src.proposal.engine.loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.load_reconciliation_result",
+        "src.proposal.engine.loop.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop._write_alignment_surface",
+        "src.proposal.engine.loop._write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.persist_decision",
+        "src.proposal.engine.loop.persist_decision",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.handle_user_gate",
+        "src.proposal.engine.loop.handle_user_gate",
         lambda *_args, **_kwargs: None,
     )
 
@@ -102,7 +102,7 @@ def _install_common_patches(
         return "alignment output"
 
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.dispatch_agent",
+        "src.proposal.engine.loop.dispatch_agent",
         _dispatch,
     )
 
@@ -137,15 +137,15 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
     expansion_calls: list[str] = []
 
     monkeypatch.setattr(
-        "src.proposal.proposal_loop._extract_problems",
+        "src.proposal.engine.loop._extract_problems",
         lambda *_args, **_kwargs: next(problems),
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.load_combined_intent_surfaces",
+        "src.proposal.engine.loop.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.run_expansion_cycle",
+        "src.proposal.engine.loop.run_expansion_cycle",
         lambda *args, **kwargs: expansion_calls.append(args[0]) or {
             "needs_user_input": False,
             "restart_required": False,
@@ -204,15 +204,15 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
     expansion_calls: list[str] = []
 
     monkeypatch.setattr(
-        "src.proposal.proposal_loop._extract_problems",
+        "src.proposal.engine.loop._extract_problems",
         lambda *_args, **_kwargs: next(problems),
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.load_combined_intent_surfaces",
+        "src.proposal.engine.loop.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.run_expansion_cycle",
+        "src.proposal.engine.loop.run_expansion_cycle",
         lambda *args, **kwargs: expansion_calls.append(args[0]) or {
             "needs_user_input": False,
             "restart_required": False,
@@ -271,22 +271,22 @@ def test_misaligned_definition_gap_expansion_respects_budget(
     expansion_calls: list[str] = []
 
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.load_triage_result",
+        "src.proposal.engine.loop.load_triage_result",
         lambda *_args, **_kwargs: {
             "intent_mode": "full",
             "budgets": {"intent_expansion_max": 1},
         },
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop._extract_problems",
+        "src.proposal.engine.loop._extract_problems",
         lambda *_args, **_kwargs: next(problems),
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.load_combined_intent_surfaces",
+        "src.proposal.engine.loop.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
-        "src.proposal.proposal_loop.run_expansion_cycle",
+        "src.proposal.engine.loop.run_expansion_cycle",
         lambda *args, **kwargs: expansion_calls.append(args[0]) or {
             "needs_user_input": False,
             "restart_required": False,

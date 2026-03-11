@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.coordination.coordination_planner import (
+from src.coordination.service.planner import (
     _parse_coordination_plan,
     write_coordination_plan_prompt,
 )

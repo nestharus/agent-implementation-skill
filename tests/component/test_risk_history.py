@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from risk.history import (
+from risk.repository.history import (
     append_history_entry,
     compute_history_adjustment,
     pattern_signature,

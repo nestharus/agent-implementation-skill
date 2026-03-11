@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from src.proposal import proposal_pass
-from src.proposal.proposal_pass import ProposalPassExit, run_proposal_pass
+from src.proposal.engine import proposal_pass
+from src.proposal.engine.proposal_pass import ProposalPassExit, run_proposal_pass
 from orchestrator.types import ProposalPassResult, Section
 
 

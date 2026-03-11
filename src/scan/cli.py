@@ -14,12 +14,12 @@ import sys
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
-from scan.scan_related_files import list_section_files
+from scan.related.discovery import list_section_files
 
-from .codemap import run_codemap_build
-from scan.cli_deep_scan import run_deep_scan
+from scan.codemap.lifecycle import run_codemap_build
+from scan.explore.deep_scan import run_deep_scan
 from scan.cli_dispatch import read_scan_model_policy
-from .exploration import run_section_exploration
+from scan.explore.exploration import run_section_exploration
 
 
 def validate_preflight(

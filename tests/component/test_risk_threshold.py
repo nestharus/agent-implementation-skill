@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from risk.threshold import (
+from risk.service.threshold import (
     enforce_thresholds,
     load_default_parameters,
     validate_risk_plan,

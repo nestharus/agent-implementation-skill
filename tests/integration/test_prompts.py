@@ -6,7 +6,7 @@ Uses real file I/O — no LLM mocks needed (prompts are string templates).
 
 from pathlib import Path
 
-from dispatch.prompts_writers import (
+from dispatch.prompt.writers import (
     agent_mail_instructions,
     signal_instructions,
     write_integration_proposal_prompt,

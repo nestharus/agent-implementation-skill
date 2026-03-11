@@ -10,7 +10,7 @@ import pytest
 
 from _paths import SRC_DIR
 
-from coordination.cross_section import (
+from coordination.service.cross_section import (
     build_section_number_map,
     compute_text_diff,
     extract_section_summary,

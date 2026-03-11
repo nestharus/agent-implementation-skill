@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.flow.task_db_client import db_cmd
+from src.flow.service.task_db_client import db_cmd
 
 
 def test_db_cmd_init_and_log_round_trip(tmp_path: Path) -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.orchestrator.decision_repository import (
+from src.orchestrator.repository.decisions import (
     Decision,
     load_decisions,
     record_decision,

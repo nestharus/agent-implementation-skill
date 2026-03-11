@@ -5,8 +5,8 @@ import subprocess
 from pathlib import Path
 
 from _paths import DB_SH
-from flow.flow_schema import BranchSpec, GateSpec, TaskSpec
-from src.flow.flow_submitter import (
+from flow.types.schema import BranchSpec, GateSpec, TaskSpec
+from src.flow.engine.submitter import (
     new_chain_id,
     new_flow_id,
     new_gate_id,

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from src.coordination import coordination_loop
-from src.coordination.coordination_loop import run_coordination_loop
+from src.coordination.engine import loop
+from src.coordination.engine.loop import run_coordination_loop
 from orchestrator.types import Section, SectionResult
 
 
@@ -25,29 +25,29 @@ def test_run_coordination_loop_completes_when_everything_is_aligned(
     snapshots: list[int] = []
 
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "_collect_outstanding_problems",
         lambda *_args, **_kwargs: [],
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "poll_control_messages",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "build_strategic_state",
         lambda _decisions_dir, section_results, _planspace: snapshots.append(
             len(section_results),
         ),
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "mailbox_send",
         lambda _planspace, _parent, message: messages.append(message),
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "run_global_coordination",
         lambda *_args, **_kwargs: pytest.fail("coordination should not run"),
     )
@@ -74,7 +74,7 @@ def test_run_coordination_loop_restarts_when_control_message_arrives(
     section = _make_section(planspace, "01")
 
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "poll_control_messages",
         lambda *_args, **_kwargs: "alignment_changed",
     )
@@ -100,32 +100,32 @@ def test_run_coordination_loop_stalls_and_reports_remaining_sections(
     messages: list[str] = []
     snapshots: list[int] = []
 
-    monkeypatch.setattr(coordination_loop, "MAX_COORDINATION_ROUNDS", 5)
-    monkeypatch.setattr(coordination_loop, "MIN_COORDINATION_ROUNDS", 1)
+    monkeypatch.setattr(loop, "MAX_COORDINATION_ROUNDS", 5)
+    monkeypatch.setattr(loop, "MIN_COORDINATION_ROUNDS", 1)
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "poll_control_messages",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "run_global_coordination",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "_check_and_clear_alignment_changed",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "build_strategic_state",
         lambda _decisions_dir, section_results, _planspace: snapshots.append(
             len(section_results),
         ),
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "mailbox_send",
         lambda _planspace, _parent, message: messages.append(message),
     )
@@ -165,37 +165,37 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
     ]
     calls = iter([outstanding, outstanding, outstanding])
 
-    monkeypatch.setattr(coordination_loop, "MAX_COORDINATION_ROUNDS", 1)
-    monkeypatch.setattr(coordination_loop, "MIN_COORDINATION_ROUNDS", 1)
+    monkeypatch.setattr(loop, "MAX_COORDINATION_ROUNDS", 1)
+    monkeypatch.setattr(loop, "MIN_COORDINATION_ROUNDS", 1)
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "_collect_outstanding_problems",
         lambda *_args, **_kwargs: next(calls),
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "poll_control_messages",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "run_global_coordination",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "_check_and_clear_alignment_changed",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "build_strategic_state",
         lambda _decisions_dir, section_results, _planspace: snapshots.append(
             len(section_results),
         ),
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "mailbox_send",
         lambda _planspace, _parent, message: messages.append(message),
     )
@@ -252,29 +252,29 @@ def test_run_coordination_loop_enters_coordination_for_root_reframing_delta(
     coordination_calls: list[bool] = []
 
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "poll_control_messages",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "run_global_coordination",
         lambda *_args, **_kwargs: coordination_calls.append(True) or True,
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "_check_and_clear_alignment_changed",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "build_strategic_state",
         lambda _decisions_dir, section_results, _planspace: snapshots.append(
             len(section_results),
         ),
     )
     monkeypatch.setattr(
-        coordination_loop,
+        loop,
         "mailbox_send",
         lambda _planspace, _parent, message: messages.append(message),
     )

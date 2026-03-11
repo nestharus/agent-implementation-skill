@@ -6,7 +6,7 @@ Uses real file I/O and real db.sh for pipeline state queries.
 
 from pathlib import Path
 
-from orchestrator.pipeline_control import (
+from orchestrator.service.pipeline_control import (
     _check_and_clear_alignment_changed,
     _invalidate_excerpts,
     _section_inputs_hash,

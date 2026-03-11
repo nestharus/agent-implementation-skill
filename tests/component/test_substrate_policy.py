@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.scan.substrate_policy import (
+from src.scan.substrate.policy import (
     DEFAULT_SUBSTRATE_MODELS,
     DEFAULT_TRIGGER_THRESHOLD,
     read_substrate_model_policy,

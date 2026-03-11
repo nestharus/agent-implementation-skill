@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.intent import intent_surface
+from src.intent.engine import surface
 
 
 def test_build_pending_surface_payload_reconstructs_backlog_entries() -> None:
-    payload = intent_surface.build_pending_surface_payload(
+    payload = surface.build_pending_surface_payload(
         [
             {"id": "P-01-0001", "kind": "gap"},
             {
@@ -58,10 +58,10 @@ def test_run_expansion_cycle_returns_no_work_when_no_surfaces(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(intent_surface, "read_model_policy", lambda _: {})
-    monkeypatch.setattr(intent_surface, "load_intent_surfaces", lambda *_: None)
+    monkeypatch.setattr(surface, "read_model_policy", lambda _: {})
+    monkeypatch.setattr(surface, "load_intent_surfaces", lambda *_: None)
 
-    result = intent_surface.run_expansion_cycle(
+    result = surface.run_expansion_cycle(
         "01",
         tmp_path,
         tmp_path / "codespace",
@@ -86,9 +86,9 @@ def test_handle_user_gate_writes_philosophy_specific_blocker(
         pause_calls.append(message)
         return "ack"
 
-    monkeypatch.setattr(intent_surface, "pause_for_parent", _pause)
+    monkeypatch.setattr(surface, "pause_for_parent", _pause)
 
-    response = intent_surface.handle_user_gate(
+    response = surface.handle_user_gate(
         "01",
         tmp_path,
         "parent",
