@@ -1,0 +1,65 @@
+"""Task routes for the scan system."""
+
+from taskrouter import TaskRouter
+
+router = TaskRouter("scan")
+
+router.route(
+    "codemap_build",
+    agent="scan-codemap-builder.md",
+    model="claude-opus",
+    policy_key="scan.codemap_build",
+)
+router.route(
+    "codemap_freshness",
+    agent="scan-codemap-freshness-judge.md",
+    model="glm",
+    policy_key="scan.codemap_freshness",
+)
+router.route(
+    "codemap_verify",
+    agent="scan-codemap-verifier.md",
+    model="glm",
+    policy_key="scan.validation",
+)
+router.route(
+    "explore",
+    agent="scan-related-files-explorer.md",
+    model="claude-opus",
+    policy_key="scan.exploration",
+)
+router.route(
+    "adjudicate",
+    agent="scan-related-files-adjudicator.md",
+    model="glm",
+    policy_key="scan.validation",
+)
+router.route(
+    "tier_rank",
+    agent="scan-tier-ranker.md",
+    model="glm",
+    policy_key="scan.tier_ranking",
+)
+router.route(
+    "deep_analyze",
+    agent="scan-file-analyzer.md",
+    model="glm",
+    policy_key="scan.deep_analysis",
+)
+router.route(
+    "substrate_shard",
+    agent="substrate-shard-explorer.md",
+    model="gpt-high",
+)
+router.route(
+    "substrate_prune",
+    agent="substrate-pruner.md",
+    model="gpt-xhigh",
+    policy_key="substrate_pruner",
+)
+router.route(
+    "substrate_seed",
+    agent="substrate-seeder.md",
+    model="gpt-high",
+    policy_key="substrate_seeder",
+)
