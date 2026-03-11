@@ -26,6 +26,9 @@ PROPOSAL_STATE_SCHEMA: dict[str, type] = {
     "profile_id": str,
     "pattern_deviations": list,
     "governance_questions": list,
+    "constraint_ids": list,
+    "governance_candidate_refs": list,
+    "design_decision_refs": list,
 }
 
 _BLOCKING_FIELDS: tuple[str, ...] = (
@@ -56,6 +59,9 @@ def _fail_closed_default() -> dict:
         "profile_id": "",
         "pattern_deviations": [],
         "governance_questions": [],
+        "constraint_ids": [],
+        "governance_candidate_refs": [],
+        "design_decision_refs": [],
     }
 
 

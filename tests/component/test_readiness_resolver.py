@@ -33,6 +33,9 @@ def test_resolve_readiness_writes_ready_artifact(tmp_path: Path) -> None:
         "profile_id": "",
         "pattern_deviations": [],
         "governance_questions": [],
+        "constraint_ids": [],
+        "governance_candidate_refs": [],
+        "design_decision_refs": [],
     }), encoding="utf-8")
 
     result = resolve_readiness(planspace, "03")
@@ -76,6 +79,9 @@ def _make_proposal_state(planspace: Path, section: str, **overrides) -> None:
         "profile_id": "",
         "pattern_deviations": [],
         "governance_questions": [],
+        "constraint_ids": [],
+        "governance_candidate_refs": [],
+        "design_decision_refs": [],
     }
     state.update(overrides)
     proposal = (

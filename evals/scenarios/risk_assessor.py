@@ -283,6 +283,9 @@ def _setup_valid_assessment(planspace: Path, codespace: Path) -> Path:
             "profile_id": "",
             "pattern_deviations": [],
             "governance_questions": [],
+            "constraint_ids": [],
+            "governance_candidate_refs": [],
+            "design_decision_refs": [],
         },
         consequence_text="Consequence note: bounded local change.\n",
         impact_text="Impact artifact: no cross-section coordination expected.\n",
@@ -369,6 +372,9 @@ def _setup_high_risk_assessment(planspace: Path, codespace: Path) -> Path:
             "profile_id": "",
             "pattern_deviations": [],
             "governance_questions": [],
+            "constraint_ids": [],
+            "governance_candidate_refs": [],
+            "design_decision_refs": [],
         },
         consequence_text=(
             "Consequence note: this section now affects two downstream sections "

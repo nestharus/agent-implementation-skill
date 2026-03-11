@@ -15,6 +15,10 @@ _HEADER_RE = re.compile(
     r"^##\s+(?P<identifier>(?:PRB|PAT)-\d+):\s*(?P<title>.+?)\s*$",
     re.MULTILINE,
 )
+_CONSTRAINT_HEADER_RE = re.compile(
+    r"^##\s+(?P<identifier>CON-\d+):\s*(?P<title>.+?)\s*$",
+    re.MULTILINE,
+)
 _FIELD_RE = re.compile(
     r"^\*\*(?P<label>[^*]+)\*\*:\s*(?P<value>.*)$",
     re.MULTILINE,
@@ -211,6 +215,36 @@ def parse_pattern_index(codespace: Path) -> list[dict]:
     return records
 
 
+def parse_constraint_index(codespace: Path) -> list[dict]:
+    """Parse governance/constraints/index.md into structured records."""
+    text = _read_if_exists(codespace / "governance" / "constraints" / "index.md")
+    if not text:
+        return []
+
+    records: list[dict] = []
+    matches = [
+        m for m in _CONSTRAINT_HEADER_RE.finditer(text)
+    ]
+    for index, match in enumerate(matches):
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        constraint_id = match.group("identifier").strip()
+        title = match.group("title").strip()
+        body = text[start:end].strip()
+        fields = _field_map(body)
+        records.append({
+            "constraint_id": constraint_id,
+            "title": title,
+            "status": fields.get("status", ""),
+            "provenance": fields.get("provenance", ""),
+            "scope": fields.get("scope", "global"),
+            "enforcement": fields.get("enforcement", ""),
+            "related_problems": _comma_list(fields.get("related problems", "")),
+            "related_patterns": _comma_list(fields.get("related patterns", "")),
+        })
+    return records
+
+
 def parse_philosophy_profiles(codespace: Path) -> list[dict]:
     """Parse philosophy/profiles/*.md into structured records."""
     profiles_dir = codespace / "philosophy" / "profiles"
@@ -347,6 +381,15 @@ def bootstrap_governance_if_missing(codespace: Path, planspace: Path) -> bool:
             encoding="utf-8",
         )
 
+    constraints_path = codespace / "governance" / "constraints" / "index.md"
+    if not constraints_path.exists():
+        constraints_path.parent.mkdir(parents=True, exist_ok=True)
+        constraints_path.write_text(
+            "# Constraint Archive\n\n"
+            "Verified constraints and value-scale commitments are documented here.\n",
+            encoding="utf-8",
+        )
+
     synthesis_path = codespace / "system-synthesis.md"
     if not synthesis_path.exists():
         synthesis_path.write_text(
@@ -407,11 +450,19 @@ def build_governance_indexes(codespace: Path, planspace: Path) -> bool:
         logger.warning("Failed to parse synthesis cues: %s", exc)
         parse_failures.append(f"synthesis_cues: {exc}")
 
+    constraint_index: list[dict] = []
+    try:
+        constraint_index = parse_constraint_index(codespace)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to parse governance constraint index: %s", exc)
+        parse_failures.append(f"constraint_index: {exc}")
+
     write_json(paths.governance_problem_index(), problem_index)
     write_json(paths.governance_pattern_index(), pattern_index)
     write_json(paths.governance_profile_index(), profile_index)
     write_json(paths.governance_region_profile_map(), region_profile_map)
     write_json(paths.governance_dir() / "synthesis-cues.json", synthesis_cues)
+    write_json(paths.governance_constraint_index(), constraint_index)
 
     # Write index status so downstream consumers can distinguish parse
     # failure from true no-governance

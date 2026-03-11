@@ -178,6 +178,9 @@ class PathRegistry:
     def governance_region_profile_map(self) -> Path:
         return self.governance_dir() / "region-profile-map.json"
 
+    def governance_constraint_index(self) -> Path:
+        return self.governance_dir() / "constraint-index.json"
+
     def governance_packet(self, section_number: str) -> Path:
         return (
             self.governance_dir()

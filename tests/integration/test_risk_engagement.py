@@ -81,6 +81,9 @@ def _write_risk_inputs(
             "profile_id": "",
             "pattern_deviations": [],
             "governance_questions": [],
+            "constraint_ids": [],
+            "governance_candidate_refs": [],
+            "design_decision_refs": [],
         },
     )
     write_json(

@@ -83,6 +83,9 @@ def test_build_package_from_proposal_with_minimal_proposal(tmp_path: Path) -> No
                 "profile_id": "",
                 "pattern_deviations": [],
                 "governance_questions": [],
+                "constraint_ids": [],
+                "governance_candidate_refs": [],
+                "design_decision_refs": [],
             }
         ),
         encoding="utf-8",

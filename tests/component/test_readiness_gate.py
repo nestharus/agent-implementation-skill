@@ -468,6 +468,9 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
                 "profile_id": "",
                 "pattern_deviations": [],
                 "governance_questions": [],
+                "constraint_ids": [],
+                "governance_candidate_refs": [],
+                "design_decision_refs": [],
             }
         ),
         encoding="utf-8",

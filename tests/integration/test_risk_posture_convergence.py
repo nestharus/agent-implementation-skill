@@ -72,6 +72,9 @@ def _write_risk_inputs(planspace: Path, sec_num: str) -> None:
             "profile_id": "",
             "pattern_deviations": [],
             "governance_questions": [],
+            "constraint_ids": [],
+            "governance_candidate_refs": [],
+            "design_decision_refs": [],
         },
     )
     write_json(
