@@ -1,0 +1,55 @@
+id: scan-brownfield-related-files-revalidation
+name: Scan adjudicator repairs brownfield section with stale Related Files
+category: brownfield-greenfield
+system: scan
+cost_tier: moderate
+wave: 1
+tags: [scan, brownfield, related-files, revalidation]
+
+seed:
+  init_db: false
+  planspace_files:
+    - path: artifacts/sections/section-01.md
+      source: planspace/artifacts/sections/section-01.md
+  codespace_files:
+    - path: src/payments/refund_service.py
+      source: codespace/src/payments/refund_service.py
+    - path: src/payments/approvals.py
+      source: codespace/src/payments/approvals.py
+    - path: src/payments/ledger.py
+      source: codespace/src/payments/ledger.py
+    - path: src/common/strings.py
+      source: codespace/src/common/strings.py
+  sql: []
+  pre_signals: []
+
+trigger:
+  kind: python_sequence
+  steps:
+    - adapter: scan_quick
+
+collect:
+  file_globs:
+    - artifacts/codemap.md
+    - artifacts/sections/section-01.md
+    - artifacts/signals/**
+  db_queries: []
+
+checks:
+  structural:
+    - type: exists
+      path: artifacts/codemap.md
+      required: true
+    - type: markdown_has_heading
+      path: artifacts/sections/section-01.md
+      heading: "## Related Files"
+      required: true
+  semantic:
+    - id: AK1
+      assertion: "The stale entries (legacy_refunds.py, old_rules.py) are removed from the Related Files block."
+    - id: AK2
+      assertion: "Current relevant entries like src/payments/refund_service.py and src/payments/approvals.py are present."
+    - id: AK3
+      assertion: "The brownfield path produced evidence of stale-list adjudication (update signal or rewritten section)."
+  absence: []
+  signals: []

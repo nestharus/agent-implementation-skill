@@ -92,6 +92,11 @@ def test_validate_existing_related_files_skips_when_inputs_unchanged(
     section_log = scan_log_dir / "section-07"
     section_log.mkdir(parents=True, exist_ok=True)
 
+    # Create the codespace file so it passes existence check
+    codespace = tmp_path / "codespace"
+    (codespace / "src").mkdir(parents=True, exist_ok=True)
+    (codespace / "src" / "app.py").write_text("# app\n", encoding="utf-8")
+
     combined_hash = content_hash(
         ":".join(
             [
@@ -102,6 +107,14 @@ def test_validate_existing_related_files_skips_when_inputs_unchanged(
         ),
     )
     (section_log / "codemap-hash.txt").write_text(combined_hash, encoding="utf-8")
+
+    # Seed a valid cached signal so skip gate accepts the cached hash
+    signals_dir = artifacts_dir / "signals"
+    signals_dir.mkdir(parents=True, exist_ok=True)
+    write_json(
+        signals_dir / "section-07-related-files-update.json",
+        {"status": "current", "additions": [], "removals": [], "reason": "ok"},
+    )
 
     def fail_dispatch(**kwargs):
         raise AssertionError("dispatch_agent should not run when hash matches")
@@ -115,7 +128,7 @@ def test_validate_existing_related_files_skips_when_inputs_unchanged(
         section_file=section_file,
         section_name="section-07",
         codemap_path=codemap_path,
-        codespace=tmp_path / "codespace",
+        codespace=codespace,
         artifacts_dir=artifacts_dir,
         scan_log_dir=scan_log_dir,
         corrections_file=corrections_file,
@@ -144,6 +157,9 @@ def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
     (artifacts_dir / "signals").mkdir(parents=True, exist_ok=True)
     scan_log_dir = tmp_path / "scan-logs"
     codespace = tmp_path / "codespace"
+    # Create the addition target so normalizer accepts it
+    (codespace / "src").mkdir(parents=True, exist_ok=True)
+    (codespace / "src" / "new.py").write_text("# new\n", encoding="utf-8")
     update_signal = (
         artifacts_dir / "signals" / "section-08-related-files-update.json"
     )
@@ -162,6 +178,7 @@ def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
             "Section: {section_file}\n"
             "Codemap: {codemap_path}\n"
             "{corrections_ref}\n"
+            "{missing_existing_section}\n"
             "Signal: {update_signal}\n"
         ),
     )
@@ -169,9 +186,21 @@ def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
         "src.scripts.lib.scan.scan_related_files.validate_dynamic_content",
         lambda prompt: [],
     )
+    def mock_dispatch(**kwargs):
+        # Simulate agent writing the signal file
+        write_json(
+            update_signal,
+            {
+                "status": "stale",
+                "removals": ["src/old.py"],
+                "additions": ["src/new.py"],
+            },
+        )
+        return SimpleNamespace(returncode=0)
+
     monkeypatch.setattr(
         "src.scripts.lib.scan.scan_related_files.dispatch_agent",
-        lambda **kwargs: SimpleNamespace(returncode=0),
+        mock_dispatch,
     )
 
     validate_existing_related_files(

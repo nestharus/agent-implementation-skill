@@ -1,0 +1,92 @@
+id: research-flow-synthesizes-dossier
+name: Research plan drives fanout, aggregation gate, synthesis
+category: cross-system-handoffs
+system: research-flow
+cost_tier: expensive
+wave: 1
+tags: [research, flow, fanout, gate, synthesis]
+
+seed:
+  init_db: true
+  planspace_files:
+    - path: artifacts/sections/section-01.md
+      source: planspace/artifacts/sections/section-01.md
+    - path: artifacts/sections/section-01-problem-frame.md
+      source: planspace/artifacts/sections/section-01-problem-frame.md
+    - path: artifacts/sections/section-01-proposal-excerpt.md
+      source: planspace/artifacts/sections/section-01-proposal-excerpt.md
+    - path: artifacts/sections/section-01-alignment-excerpt.md
+      source: planspace/artifacts/sections/section-01-alignment-excerpt.md
+    - path: artifacts/proposals/section-01-proposal-state.json
+      source: planspace/artifacts/proposals/section-01-proposal-state.json
+    - path: artifacts/signals/project-mode.json
+      source: planspace/artifacts/signals/project-mode.json
+    - path: artifacts/project-mode.txt
+      source: planspace/artifacts/project-mode.txt
+  codespace_files:
+    - path: README.md
+      source: codespace/README.md
+    - path: src/payments/confirm.py
+      source: codespace/src/payments/confirm.py
+    - path: src/payments/gateway_client.py
+      source: codespace/src/payments/gateway_client.py
+    - path: src/payments/idempotency.py
+      source: codespace/src/payments/idempotency.py
+  sql: []
+  pre_signals: []
+
+trigger:
+  kind: python_sequence
+  steps:
+    - adapter: readiness_route
+      kwargs:
+        section_number: "01"
+        parent: eval-harness
+        pass_mode: proposal
+    - adapter: dispatcher_until_quiescent
+      kwargs:
+        max_iterations: 50
+
+collect:
+  file_globs:
+    - artifacts/research/sections/section-01/**
+    - artifacts/flows/**
+    - artifacts/signals/**
+  db_queries:
+    - name: tasks
+      sql: "SELECT id, task_type, status, concern_scope, error FROM tasks ORDER BY id"
+    - name: gates
+      sql: "SELECT * FROM gates ORDER BY created_at"
+    - name: gate_members
+      sql: "SELECT * FROM gate_members ORDER BY gate_id, slot_label"
+
+checks:
+  structural:
+    - type: exists
+      path: artifacts/research/sections/section-01/research-plan.json
+      required: true
+    - type: exists
+      path: artifacts/research/sections/section-01/dossier.md
+      required: true
+    - type: exists
+      path: artifacts/research/sections/section-01/dossier-claims.json
+      required: true
+    - type: exists
+      path: artifacts/research/sections/section-01/research-derived-surfaces.json
+      required: true
+    - type: exists
+      path: artifacts/research/sections/section-01/proposal-addendum.md
+      required: true
+    - type: glob_min_count
+      pattern: artifacts/research/sections/section-01/tickets/T-*-result.json
+      min: 1
+      required: true
+  semantic:
+    - id: AK1
+      assertion: "The dossier materially aggregates ticket findings into actionable guidance — it is not just a copy of the trigger questions."
+    - id: AK2
+      assertion: "The addendum and/or surfaces are actionable for the original section (payment confirmation reliability)."
+    - id: AK3
+      assertion: "The synthesis consumes branch outputs rather than hallucinating unrelated research."
+  absence: []
+  signals: []

@@ -76,7 +76,11 @@ def dispatch_agent(
         agent_path=agent_path,
     )
 
-    result = subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603
+    # Strip CLAUDECODE to prevent nested-session detection when running
+    # inside Claude Code or another agents session.
+    import os
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env)  # noqa: S603
 
     if stdout_file is not None:
         stdout_file.parent.mkdir(parents=True, exist_ok=True)

@@ -67,7 +67,10 @@ def test_validate_philosophy_grounding_renames_malformed_source_map(
     intent_global.mkdir(parents=True)
     philosophy_path = intent_global / "philosophy.md"
     source_map_path = intent_global / "philosophy-source-map.json"
-    philosophy_path.write_text("# Philosophy\n## P1: Test\n", encoding="utf-8")
+    philosophy_path.write_text(
+        "# Philosophy\n\n## Principles\n\n### P1: Test\n",
+        encoding="utf-8",
+    )
     source_map_path.write_text("{not json", encoding="utf-8")
 
     result = validate_philosophy_grounding(
@@ -95,7 +98,10 @@ def test_validate_philosophy_grounding_rejects_legacy_source_map_shape(
     intent_global.mkdir(parents=True)
     philosophy_path = intent_global / "philosophy.md"
     source_map_path = intent_global / "philosophy-source-map.json"
-    philosophy_path.write_text("# Philosophy\n## P1: Test\n", encoding="utf-8")
+    philosophy_path.write_text(
+        "# Philosophy\n\n## Principles\n\n### P1: Test\n",
+        encoding="utf-8",
+    )
     source_map_path.write_text(
         json.dumps({"P1": "legacy string"}),
         encoding="utf-8",

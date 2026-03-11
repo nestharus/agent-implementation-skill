@@ -1,0 +1,21 @@
+{
+  "resolved_anchors": [],
+  "unresolved_anchors": [],
+  "resolved_contracts": [],
+  "unresolved_contracts": [],
+  "research_questions": [],
+  "blocking_research_questions": [
+    "What retry/backoff behavior does the upstream gateway recommend for idempotent payment confirmation failures?",
+    "What token-refresh and clock-skew handling is required when the gateway rejects a near-expiry access token?"
+  ],
+  "user_root_questions": [],
+  "new_section_candidates": [],
+  "shared_seam_candidates": [],
+  "execution_ready": false,
+  "readiness_rationale": "Need external guidance on retry/backoff and token-refresh handling before implementation.",
+  "problem_ids": [],
+  "pattern_ids": [],
+  "profile_id": "",
+  "pattern_deviations": [],
+  "governance_questions": []
+}

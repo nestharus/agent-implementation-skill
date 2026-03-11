@@ -200,6 +200,16 @@ def route_blockers(
                 trigger_path,
             )
             if prompt_path is not None:
+                # Write status BEFORE computing freshness so the hash
+                # includes research-status.json at both submission and
+                # dispatch time (prevents stale-alignment false positives).
+                write_research_status(
+                    section_number,
+                    planspace,
+                    "planned",
+                    trigger_hash=trigger_hash,
+                    cycle_id=cycle_id,
+                )
                 freshness = compute_section_freshness(planspace, section_number)
                 task_id = submit_task(
                     registry.run_db(),
@@ -209,13 +219,6 @@ def route_blockers(
                     payload_path=str(prompt_path),
                     problem_id=f"research-{section_number}",
                     freshness_token=freshness,
-                )
-                write_research_status(
-                    section_number,
-                    planspace,
-                    "planned",
-                    trigger_hash=trigger_hash,
-                    cycle_id=cycle_id,
                 )
                 log(
                     f"Section {section_number}: dispatched research_plan "

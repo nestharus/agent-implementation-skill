@@ -15,7 +15,6 @@ from lib.core.model_policy import resolve
 from lib.core.path_registry import PathRegistry
 from lib.pipelines.microstrategy_orchestrator import run_microstrategy
 from lib.pipelines.proposal_loop import run_proposal_loop
-from lib.pipelines.readiness_gate import resolve_and_route
 from lib.services.readiness_resolver import resolve_readiness
 from lib.pipelines.excerpt_extractor import extract_excerpts
 from lib.pipelines.implementation_loop import run_implementation_loop
@@ -276,6 +275,8 @@ def run_section(
         incoming_notes,
     ) is None:
         return None
+
+    from lib.pipelines.readiness_gate import resolve_and_route  # noqa: E402 — lazy to break circular import
 
     readiness_result = resolve_and_route(
         section,

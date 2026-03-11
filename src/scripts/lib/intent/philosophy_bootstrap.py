@@ -905,6 +905,63 @@ def build_philosophy_catalog(
     return candidates
 
 
+def _declared_principle_ids(philosophy_text: str) -> set[str]:
+    """Extract principle IDs only from ### headings inside ## Principles."""
+    ids: set[str] = set()
+    in_principles = False
+    in_fence = False
+
+    for raw_line in philosophy_text.splitlines():
+        line = raw_line.lstrip()
+
+        if line.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+
+        if re.fullmatch(r"##\s+Principles\s*", line):
+            in_principles = True
+            continue
+
+        if in_principles and line.startswith("## ") and not line.startswith("### "):
+            break
+
+        if not in_principles:
+            continue
+
+        match = re.match(r"^###\s+(P\d+)\b", line)
+        if match is not None:
+            ids.add(match.group(1))
+
+    return ids
+
+
+def _grounding_failure_source_mode(
+    paths: PathRegistry,
+    source_map: dict[str, Any] | None,
+) -> str:
+    """Infer the correct source_mode for grounding failure metadata."""
+    if isinstance(source_map, dict) and source_map:
+        source_types = {
+            entry.get("source_type")
+            for entry in source_map.values()
+            if isinstance(entry, dict)
+        }
+        if source_types == {"user_source"}:
+            return "user_source"
+        if source_types:
+            return "repo_sources"
+
+    status = read_json(_bootstrap_status_path(paths))
+    if isinstance(status, dict):
+        mode = status.get("source_mode")
+        if mode in {"user_source", "repo_sources"}:
+            return mode
+
+    return "repo_sources"
+
+
 def validate_philosophy_grounding(
     philosophy_path: Path,
     source_map_path: Path,
@@ -914,6 +971,7 @@ def validate_philosophy_grounding(
     paths = PathRegistry(artifacts.parent)
     detail: str | None = None
     extras: dict[str, Any] | None = None
+    failure_source_mode = "repo_sources"
 
     if not source_map_path.exists() or source_map_path.stat().st_size == 0:
         detail = (
@@ -939,12 +997,16 @@ def validate_philosophy_grounding(
             )
             extras = {}
         else:
+            failure_source_mode = _grounding_failure_source_mode(
+                paths,
+                source_map,
+            )
             try:
                 philosophy_text = philosophy_path.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 return False
 
-            principle_ids = set(re.findall(r"\bP\d+\b", philosophy_text))
+            principle_ids = _declared_principle_ids(philosophy_text)
             if not principle_ids:
                 return True
 
@@ -991,7 +1053,7 @@ def validate_philosophy_grounding(
             paths,
             bootstrap_state="failed",
             blocking_state="NEEDS_PARENT",
-            source_mode="repo_sources",
+            source_mode=failure_source_mode,
             detail=detail,
         )
         return False

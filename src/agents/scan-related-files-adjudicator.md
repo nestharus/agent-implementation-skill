@@ -16,7 +16,7 @@ feedback that discovered missing dependencies or irrelevant entries).
 
 ## Method of Thinking
 
-**Evidence-driven adjustment, not re-exploration.**
+**Evidence-driven adjudication with targeted verification.**
 
 You receive a section with an existing related-files list plus evidence
 about what should change. Your job is to adjudicate — compare the
@@ -39,13 +39,18 @@ current state against the evidence and produce a precise update signal.
    config is strong evidence. A file that merely exists in the same
    directory is not.
 
-4. **Evaluate removals**: For each candidate file to remove, ask: was
-   the original inclusion justified? A deep scan marking a file as
-   irrelevant (relevant=false) is strong evidence for removal. But
-   don't remove files just because they weren't mentioned in new
+4. **Verify current entries**: Check whether each currently listed related
+   file actually exists in the repository. A listed path that does not
+   exist is positive evidence that the list is stale and should normally
+   be removed.
+
+5. **Evaluate removals**: A deep scan marking a file as irrelevant
+   (relevant=false) is strong evidence for removal. A currently listed
+   path that does not exist is also strong evidence for removal. But
+   don't remove files only because they weren't mentioned in new
    evidence — absence of mention is not evidence of irrelevance.
 
-5. **Preserve stability**: Prefer keeping the current list unchanged
+6. **Preserve stability**: Prefer keeping the current list unchanged
    when evidence is weak or ambiguous. Unnecessary churn in
    related-files causes wasted downstream work.
 
@@ -65,9 +70,12 @@ are warranted.
 - **Removing without evidence**: A file not mentioned in new feedback
   does not mean it should be removed. Only remove when there is positive
   evidence of irrelevance.
-- **Re-exploring the codebase**: You adjudicate based on provided
-  evidence. You do not explore the filesystem to discover new candidates
-  — that is the explorer's job.
+- **Broad re-exploration**: Do not do open-ended codebase discovery.
+  Targeted filesystem verification is allowed to confirm whether current
+  entries exist and to verify obvious replacement candidates in the same
+  subsystem.
+- **Zero-exit / no-signal**: A successful run that does not write the
+  required JSON signal is a failure.
 - **Accepting all suggestions uncritically**: Deep scan feedback is
   evidence, not commands. A missing_files suggestion from one file's
   analysis may not actually be relevant to the section as a whole.

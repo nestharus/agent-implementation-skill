@@ -13,6 +13,7 @@ from flow_schema import BranchSpec, GateSpec, TaskSpec
 from lib.core.artifact_io import write_json
 from lib.core.path_registry import PathRegistry
 from lib.flow.flow_submitter import new_flow_id, submit_chain, submit_fanout
+from lib.services.freshness_service import compute_section_freshness
 from lib.research.orchestrator import load_research_status, validate_research_plan, write_research_status
 from lib.research.prompt_writer import (
     write_research_synthesis_prompt,
@@ -352,6 +353,21 @@ def execute_research_plan(
         )
         return False
 
+    # Write status BEFORE computing freshness so the hash includes
+    # research-status.json at both submission and dispatch time.
+    write_research_status(
+        section_number,
+        planspace,
+        "tickets_submitted",
+        detail=f"submitted {len(branches)} research ticket branches",
+        trigger_hash=trigger_hash,
+        cycle_id=cycle_id,
+    )
+
+    # Compute freshness AFTER all writes (prompts, specs, status) so
+    # the token matches what the dispatcher will see.
+    post_write_freshness = compute_section_freshness(planspace, section_number)
+
     flow_id = new_flow_id()
     gate = GateSpec(
         mode="all",
@@ -373,15 +389,7 @@ def execute_research_plan(
         origin_refs=origin_refs,
         gate=gate,
         planspace=planspace,
-    )
-
-    write_research_status(
-        section_number,
-        planspace,
-        "tickets_submitted",
-        detail=f"submitted {len(branches)} research ticket branches",
-        trigger_hash=trigger_hash,
-        cycle_id=cycle_id,
+        freshness_token=post_write_freshness,
     )
     return True
 

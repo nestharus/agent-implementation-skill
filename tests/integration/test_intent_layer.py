@@ -2895,7 +2895,8 @@ class TestR59PhilosophyGroundingValidation:
                 return ""
             if agent_file == "philosophy-distiller.md":
                 (intent_global / "philosophy.md").write_text(
-                    "# Philosophy\n## P1: One\n## P2: Two\n## P3: Three\n")
+                    "# Philosophy\n\n## Principles\n\n"
+                    "### P1: One\n\n### P2: Two\n\n### P3: Three\n")
                 # Source map only covers P1
                 (intent_global / "philosophy-source-map.json").write_text(
                     json.dumps({

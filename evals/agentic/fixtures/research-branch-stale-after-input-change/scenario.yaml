@@ -1,0 +1,81 @@
+id: research-branch-stale-after-input-change
+name: Research branch tasks become stale after section input change
+category: freshness-staleness
+system: flow-dispatcher
+cost_tier: cheap
+wave: 1
+tags: [freshness, research, dispatcher, stale]
+
+seed:
+  init_db: true
+  planspace_files:
+    - path: artifacts/sections/section-01.md
+      source: planspace/artifacts/sections/section-01.md
+    - path: artifacts/sections/section-01-problem-frame.md
+      source: planspace/artifacts/sections/section-01-problem-frame.md
+    - path: artifacts/sections/section-01-proposal-excerpt.md
+      source: planspace/artifacts/sections/section-01-proposal-excerpt.md
+    - path: artifacts/sections/section-01-alignment-excerpt.md
+      source: planspace/artifacts/sections/section-01-alignment-excerpt.md
+    - path: artifacts/proposals/section-01-proposal-state.json
+      source: planspace/artifacts/proposals/section-01-proposal-state.json
+    - path: artifacts/signals/project-mode.json
+      source: planspace/artifacts/signals/project-mode.json
+    - path: artifacts/project-mode.txt
+      source: planspace/artifacts/project-mode.txt
+  codespace_files:
+    - path: README.md
+      source: codespace/README.md
+    - path: src/payments/confirm.py
+      source: codespace/src/payments/confirm.py
+    - path: src/payments/gateway_client.py
+      source: codespace/src/payments/gateway_client.py
+    - path: src/payments/idempotency.py
+      source: codespace/src/payments/idempotency.py
+  sql: []
+  pre_signals: []
+
+trigger:
+  kind: python_sequence
+  steps:
+    - adapter: readiness_route
+      kwargs:
+        section_number: "01"
+        parent: eval-harness
+        pass_mode: proposal
+    - adapter: dispatcher_once
+    - adapter: append_to_file
+      kwargs:
+        path: artifacts/sections/section-01-problem-frame.md
+        text: "\nUpdate after planning: the gateway may also reject requests when client clock skew exceeds 90 seconds.\n"
+    - adapter: dispatcher_once
+
+collect:
+  file_globs:
+    - artifacts/research/sections/section-01/**
+    - artifacts/signals/**
+  db_queries:
+    - name: tasks
+      sql: "SELECT id, task_type, status, error FROM tasks ORDER BY id"
+
+checks:
+  structural:
+    - type: db_min_rows
+      query: tasks
+      where:
+        task_type: research_domain_ticket
+        status: failed
+      min: 1
+      required: true
+  semantic:
+    - id: AK1
+      assertion: "The branch task fails BEFORE producing agent output."
+    - id: AK2
+      assertion: "The error text contains stale-alignment evidence — a freshness mismatch between submitted and current tokens."
+    - id: AK3
+      assertion: "No ticket result JSON exists for the rejected task."
+  absence:
+    - id: AK4
+      path_glob: "artifacts/research/sections/section-01/tickets/ticket-*-result.json"
+      should_exist: false
+  signals: []

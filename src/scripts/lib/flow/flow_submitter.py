@@ -133,6 +133,7 @@ def submit_fanout(
     origin_refs: list[str] | None = None,
     gate: GateSpec | None = None,
     planspace: Path | None = None,
+    freshness_token: str | None = None,
 ) -> str | None:
     """Submit parallel branches, optionally under a gate."""
     if not branches:
@@ -153,8 +154,8 @@ def submit_fanout(
         else:
             steps = branch.steps
 
-        branch_freshness: str | None = None
-        if planspace is not None:
+        branch_freshness: str | None = freshness_token
+        if branch_freshness is None and planspace is not None:
             for step in steps:
                 if step.concern_scope:
                     match = re.match(r"^section-(\d+)$", step.concern_scope)

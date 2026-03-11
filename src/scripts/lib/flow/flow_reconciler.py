@@ -201,7 +201,7 @@ def reconcile_task_completion(
                             )
                     return
 
-        if continuation is not None:
+        if continuation is not None and continuation.actions:
             for action in continuation.actions:
                 if isinstance(action, ChainAction) and action.steps:
                     new_ids = submit_chain(

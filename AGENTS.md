@@ -131,6 +131,97 @@ rm -f ~/work/tmp/execution-philosophy/codebase.zip
 zip -r ~/work/tmp/execution-philosophy/codebase.zip src/ evals/ governance/ philosophy/ system-synthesis.md -x '*__pycache__*'
 ```
 
+---
+
+## Agentic Eval QA Process
+
+End-to-end behavioral testing of the multi-agent workflow system. Evals pre-seed
+realistic workspace state, trigger real workflows with QA interception, and validate
+outcomes with structural checks + an LLM judge.
+
+### Running Evals
+
+```bash
+cd /home/nes/projects/agent-implementation-skill
+
+# List all scenarios
+uv run agentic-evals --list
+
+# Run one scenario (cheap → moderate → expensive)
+uv run agentic-evals --scenario <id> --keep-failed
+
+# Run by cost tier
+uv run agentic-evals --max-cost-tier cheap --keep-failed
+
+# Run all
+uv run agentic-evals --keep-all
+```
+
+Scenarios live in `evals/agentic/fixtures/*/scenario.yaml`. Each has a cost tier
+(cheap=180s, moderate=600s, expensive=1500s timeout).
+
+### Eval Flow
+
+1. **Seed** — isolated temp planspace/codespace from fixture files, `parameters.json`
+   with `qa_mode: true` auto-injected
+2. **Trigger** — run real workflow entry points (readiness gate, dispatcher, scan,
+   philosophy bootstrap) via trigger adapters
+3. **Collect** — gather output files, JSON, DB rows
+4. **Structural checks** — file existence, JSON validity, DB row counts, heading checks
+5. **Semantic judge** — GLM judge via `agents --model glm --agent-file agents/eval-judge.md`
+   compares outputs against answer key
+
+### Investigating Failures
+
+When evals expose behavioral gaps:
+
+1. **Observe and report** — document the exact failure from the eval report
+2. **Dispatch investigation agents** — use `agents --model gpt-high --file <prompt.md>`
+   to investigate root causes in the production code
+3. **Build design prompt** — combine investigation findings into a design request with
+   exact file paths, root causes, and constraints
+4. **Get design response** — pass the design prompt to an external model for solution design
+5. **Implement fixes** — apply the design to production code
+6. **Re-run eval** — verify the fix by re-running the specific scenario
+
+Investigation prompts and findings go in `.tmp/agentic-evals/`.
+
+### Important Rules
+
+- **QA mode is mandatory** — all eval runs use `qa_mode: true` so dispatched agents
+  are intercepted, not live
+- **Observe, report, stop** — when monitoring an eval: do NOT manually write artifacts
+  to unblock a stuck pipeline, do NOT send resume signals, do NOT pre-seed files that
+  agents should have produced
+- **CLAUDECODE must be stripped** — trigger adapters and scan dispatch strip the
+  `CLAUDECODE` env var so nested `agents` calls can launch
+- **Real agent calls** — evals exercise real LLM calls via the `agents` binary; cost
+  and latency are real
+
+### Current Wave 1 Results (7 scenarios)
+
+| Scenario | Tier | Result | Notes |
+|----------|------|--------|-------|
+| readiness-triggers-research-planner | cheap | PASS | |
+| research-planner-routes-value-choice-upward | cheap | PASS | |
+| research-branch-stale-after-input-change | cheap | PASS | |
+| scan-quick-greenfield-related-files | moderate | PASS | |
+| scan-brownfield-related-files-revalidation | moderate | PASS | Fixed: fail-closed signal handling + deterministic stale detection |
+| philosophy-bootstrap-from-user-source | moderate | PASS | Fixed: principle extraction scoped to ## Principles headings |
+| research-flow-synthesizes-dossier | expensive | PENDING | Not yet run at full timeout |
+
+### Files
+
+| Path | Purpose |
+|------|---------|
+| `evals/agentic/` | Harness package (11 modules) |
+| `evals/agentic/fixtures/` | Scenario fixtures (YAML + seed files) |
+| `agents/eval-judge.md` | GLM judge agent definition |
+| `.tmp/agentic-evals/` | Investigation prompts and findings |
+| `~/work/tmp/execution-philosophy/combined-design-prompt.md` | Current design request for fixes |
+
+---
+
 ### Cycle Detection Reference
 
 Common dismissal patterns from history:

@@ -1,0 +1,91 @@
+id: readiness-triggers-research-planner
+name: Readiness triggers research planning and flow submission
+category: happy-path
+system: research-flow
+cost_tier: cheap
+wave: 1
+tags: [readiness, research, dispatcher, flow]
+
+seed:
+  init_db: true
+  planspace_files:
+    - path: artifacts/sections/section-01.md
+      source: planspace/artifacts/sections/section-01.md
+    - path: artifacts/sections/section-01-problem-frame.md
+      source: planspace/artifacts/sections/section-01-problem-frame.md
+    - path: artifacts/sections/section-01-proposal-excerpt.md
+      source: planspace/artifacts/sections/section-01-proposal-excerpt.md
+    - path: artifacts/sections/section-01-alignment-excerpt.md
+      source: planspace/artifacts/sections/section-01-alignment-excerpt.md
+    - path: artifacts/proposals/section-01-proposal-state.json
+      source: planspace/artifacts/proposals/section-01-proposal-state.json
+    - path: artifacts/signals/project-mode.json
+      source: planspace/artifacts/signals/project-mode.json
+    - path: artifacts/project-mode.txt
+      source: planspace/artifacts/project-mode.txt
+  codespace_files:
+    - path: README.md
+      source: codespace/README.md
+    - path: src/payments/confirm.py
+      source: codespace/src/payments/confirm.py
+    - path: src/payments/gateway_client.py
+      source: codespace/src/payments/gateway_client.py
+    - path: src/payments/idempotency.py
+      source: codespace/src/payments/idempotency.py
+  sql: []
+  pre_signals: []
+
+trigger:
+  kind: python_sequence
+  steps:
+    - adapter: readiness_route
+      kwargs:
+        section_number: "01"
+        parent: eval-harness
+        pass_mode: proposal
+    - adapter: dispatcher_once
+
+collect:
+  file_globs:
+    - artifacts/research/sections/section-01/**
+    - artifacts/flows/**
+    - artifacts/signals/**
+  db_queries:
+    - name: tasks
+      sql: "SELECT id, task_type, status, concern_scope, error FROM tasks ORDER BY id"
+    - name: gates
+      sql: "SELECT * FROM gates ORDER BY created_at"
+
+checks:
+  structural:
+    - type: exists
+      path: artifacts/research/sections/section-01/research-trigger.json
+      required: true
+    - type: exists
+      path: artifacts/research/sections/section-01/research-plan.json
+      required: true
+    - type: json_has_keys
+      path: artifacts/research/sections/section-01/research-plan.json
+      keys: [section, tickets]
+      required: true
+    - type: exists
+      path: artifacts/research/sections/section-01/research-status.json
+      required: true
+    - type: db_min_rows
+      query: tasks
+      where:
+        task_type: research_domain_ticket
+      min: 1
+      required: true
+  semantic:
+    - id: AK1
+      assertion: "The research plan addresses both seeded blocking questions: retry/backoff behavior for payment confirmation failures AND token-refresh/clock-skew handling."
+    - id: AK2
+      assertion: "At least one ticket is researchable and runnable; the planner does not declare everything not_researchable."
+    - id: AK3
+      assertion: "No implementation tasks are emitted — only research tickets."
+  absence:
+    - id: AK4
+      path_glob: "artifacts/signals/*post-impl*"
+      should_exist: false
+  signals: []

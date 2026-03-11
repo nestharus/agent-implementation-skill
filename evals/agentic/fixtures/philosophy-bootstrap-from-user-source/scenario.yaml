@@ -1,0 +1,61 @@
+id: philosophy-bootstrap-from-user-source
+name: Philosophy bootstrap distills a ready philosophy from user source
+category: happy-path
+system: intent-bootstrap
+cost_tier: moderate
+wave: 1
+tags: [philosophy, bootstrap, intent, user-source]
+
+seed:
+  init_db: true
+  planspace_files:
+    - path: artifacts/intent/global/philosophy-source-user.md
+      source: planspace/artifacts/intent/global/philosophy-source-user.md
+  codespace_files:
+    - path: README.md
+      source: codespace/README.md
+    - path: src/app.py
+      source: codespace/src/app.py
+  sql: []
+  pre_signals: []
+
+trigger:
+  kind: python_sequence
+  steps:
+    - adapter: ensure_global_philosophy
+      kwargs:
+        parent: eval-harness
+
+collect:
+  file_globs:
+    - artifacts/intent/global/**
+  db_queries: []
+
+checks:
+  structural:
+    - type: exists
+      path: artifacts/intent/global/philosophy.md
+      required: true
+    - type: exists
+      path: artifacts/intent/global/philosophy-source-map.json
+      required: true
+    - type: exists
+      path: artifacts/intent/global/philosophy-bootstrap-status.json
+      required: true
+    - type: json_has_keys
+      path: artifacts/intent/global/philosophy-bootstrap-status.json
+      keys: [bootstrap_state, source_mode]
+      required: true
+  semantic:
+    - id: AK1
+      assertion: "The distilled philosophy preserves the user seed's major rules: upward signaling over guessing, fail-closed corruption handling, and script-owned workflow rails."
+    - id: AK2
+      assertion: "Every principle in the source map is grounded to philosophy-source-user.md."
+    - id: AK3
+      assertion: "No NEED_DECISION/NEEDS_PARENT bootstrap signal remains active."
+  absence: []
+  signals:
+    - id: AK4
+      path: artifacts/intent/global/philosophy-bootstrap-status.json
+      expected_state: ready
+      required_fields: [bootstrap_state, source_mode]

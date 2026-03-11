@@ -290,10 +290,13 @@ def dispatch_task(
             return
 
         if flow_ctx is not None:
+            # Don't expose continuation_path to agents — if they see it,
+            # they write junk files that the reconciler treats as malformed
+            # continuations, failing the gate member.  Continuation is a
+            # system-level mechanism, not an agent instruction.
             prompt_path = write_dispatch_prompt(
                 planspace, int(task_id), prompt_path,
                 flow_context_path=flow_context_relpath,
-                continuation_path=continuation_relpath,
             )
             log(f"  flow context wrapped -> {prompt_path.name}")
 

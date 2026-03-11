@@ -1,0 +1,53 @@
+id: scan-quick-greenfield-related-files
+name: Scan quick populates a greenfield section's Related Files
+category: happy-path
+system: scan
+cost_tier: moderate
+wave: 1
+tags: [scan, greenfield, related-files, codemap]
+
+seed:
+  init_db: false
+  planspace_files:
+    - path: artifacts/sections/section-01.md
+      source: planspace/artifacts/sections/section-01.md
+  codespace_files:
+    - path: src/payments/refund_service.py
+      source: codespace/src/payments/refund_service.py
+    - path: src/payments/approvals.py
+      source: codespace/src/payments/approvals.py
+    - path: src/payments/ledger.py
+      source: codespace/src/payments/ledger.py
+    - path: src/common/strings.py
+      source: codespace/src/common/strings.py
+  sql: []
+  pre_signals: []
+
+trigger:
+  kind: python_sequence
+  steps:
+    - adapter: scan_quick
+
+collect:
+  file_globs:
+    - artifacts/codemap.md
+    - artifacts/sections/section-01.md
+    - artifacts/signals/**
+  db_queries: []
+
+checks:
+  structural:
+    - type: exists
+      path: artifacts/codemap.md
+      required: true
+    - type: markdown_has_heading
+      path: artifacts/sections/section-01.md
+      heading: "## Related Files"
+      required: true
+  semantic:
+    - id: AK1
+      assertion: "The Related Files block contains src/payments/refund_service.py and src/payments/approvals.py."
+    - id: AK2
+      assertion: "The Related Files list is consistent with the section objective (refund approvals) — not a random file dump."
+  absence: []
+  signals: []

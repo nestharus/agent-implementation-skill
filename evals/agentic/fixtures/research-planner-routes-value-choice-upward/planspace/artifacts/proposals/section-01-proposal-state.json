@@ -1,0 +1,21 @@
+{
+  "resolved_anchors": [],
+  "unresolved_anchors": [],
+  "resolved_contracts": [],
+  "unresolved_contracts": [],
+  "research_questions": [],
+  "blocking_research_questions": [
+    "What retention window is recommended for refund idempotency keys in payment webhooks?",
+    "For our product, should refunds over $5,000 optimize for operator convenience or strict four-eyes approval?"
+  ],
+  "user_root_questions": [],
+  "new_section_candidates": [],
+  "shared_seam_candidates": [],
+  "execution_ready": false,
+  "readiness_rationale": "Need one factual answer and one explicit product-value decision before implementation.",
+  "problem_ids": [],
+  "pattern_ids": [],
+  "profile_id": "",
+  "pattern_deviations": [],
+  "governance_questions": []
+}

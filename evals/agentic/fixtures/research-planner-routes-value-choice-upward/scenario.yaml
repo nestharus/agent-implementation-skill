@@ -1,0 +1,74 @@
+id: research-planner-routes-value-choice-upward
+name: Research planner routes irreducible value choice upward
+category: upward-signaling
+system: research-flow
+cost_tier: cheap
+wave: 1
+tags: [readiness, research, upward-signal, value-choice]
+
+seed:
+  init_db: true
+  planspace_files:
+    - path: artifacts/sections/section-01.md
+      source: planspace/artifacts/sections/section-01.md
+    - path: artifacts/sections/section-01-problem-frame.md
+      source: planspace/artifacts/sections/section-01-problem-frame.md
+    - path: artifacts/sections/section-01-proposal-excerpt.md
+      source: planspace/artifacts/sections/section-01-proposal-excerpt.md
+    - path: artifacts/sections/section-01-alignment-excerpt.md
+      source: planspace/artifacts/sections/section-01-alignment-excerpt.md
+    - path: artifacts/proposals/section-01-proposal-state.json
+      source: planspace/artifacts/proposals/section-01-proposal-state.json
+    - path: artifacts/signals/project-mode.json
+      source: planspace/artifacts/signals/project-mode.json
+    - path: artifacts/project-mode.txt
+      source: planspace/artifacts/project-mode.txt
+  codespace_files:
+    - path: README.md
+      source: codespace/README.md
+    - path: src/payments/refund_service.py
+      source: codespace/src/payments/refund_service.py
+    - path: src/payments/approvals.py
+      source: codespace/src/payments/approvals.py
+  sql: []
+  pre_signals: []
+
+trigger:
+  kind: python_sequence
+  steps:
+    - adapter: readiness_route
+      kwargs:
+        section_number: "01"
+        parent: eval-harness
+        pass_mode: proposal
+    - adapter: dispatcher_once
+
+collect:
+  file_globs:
+    - artifacts/research/sections/section-01/**
+    - artifacts/signals/**
+  db_queries:
+    - name: tasks
+      sql: "SELECT id, task_type, status, concern_scope, error FROM tasks ORDER BY id"
+
+checks:
+  structural:
+    - type: exists
+      path: artifacts/research/sections/section-01/research-plan.json
+      required: true
+    - type: json_valid
+      path: artifacts/research/sections/section-01/research-plan.json
+      required: true
+  semantic:
+    - id: AK1
+      assertion: "The value-choice question about refunds over $5,000 is NOT converted into a normal research ticket. It appears in not_researchable or equivalent."
+    - id: AK2
+      assertion: "A blocker signal exists with state in {need_decision, needs_parent}."
+    - id: AK3
+      assertion: "The planner still advances factual researchable work (the retention window question)."
+  absence: []
+  signals:
+    - id: AK4
+      path: artifacts/signals/section-01-research-blocker-0.json
+      expected_state: need_decision
+      required_fields: [state, detail]

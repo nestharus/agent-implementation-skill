@@ -14,54 +14,42 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
     registry = PathRegistry(planspace)
     sec = section_number
 
+    def _add(path: Path) -> None:
+        if path.exists():
+            hash_parts.append(path.read_bytes())
+
     for path in (
         registry.alignment_excerpt(sec),
         registry.proposal_excerpt(sec),
         registry.section_spec(sec),
         registry.proposal(sec),
     ):
-        if path.exists():
-            hash_parts.append(path.read_bytes())
+        _add(path)
 
     notes_dir = registry.notes_dir()
     if notes_dir.exists():
         for note in sorted(notes_dir.glob(f"from-*-to-{sec}.md")):
             hash_parts.append(note.read_bytes())
 
-    tools_path = registry.tool_registry()
-    if tools_path.exists():
-        hash_parts.append(tools_path.read_bytes())
+    _add(registry.tool_registry())
 
     decisions_path = registry.decisions_dir() / f"section-{sec}.md"
-    if decisions_path.exists():
-        hash_parts.append(decisions_path.read_bytes())
+    _add(decisions_path)
 
-    microstrategy_path = registry.microstrategy(sec)
-    if microstrategy_path.exists():
-        hash_parts.append(microstrategy_path.read_bytes())
+    _add(registry.microstrategy(sec))
+    _add(registry.todos(sec))
 
-    todos_path = registry.todos(sec)
-    if todos_path.exists():
-        hash_parts.append(todos_path.read_bytes())
-
-    codemap_path = registry.codemap()
-    if codemap_path.exists():
-        hash_parts.append(codemap_path.read_bytes())
-    corrections_path = registry.corrections()
-    if corrections_path.exists():
-        hash_parts.append(corrections_path.read_bytes())
+    _add(registry.codemap())
+    _add(registry.corrections())
 
     for mode_file in (
         registry.project_mode_txt(),
         registry.project_mode_json(),
         registry.sections_dir() / f"section-{sec}-mode.txt",
     ):
-        if mode_file.exists():
-            hash_parts.append(mode_file.read_bytes())
+        _add(mode_file)
 
-    problem_frame = registry.problem_frame(sec)
-    if problem_frame.exists():
-        hash_parts.append(problem_frame.read_bytes())
+    _add(registry.problem_frame(sec))
 
     intent_global = registry.intent_global_dir()
     for intent_file in (
@@ -69,63 +57,45 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
         intent_global / "philosophy-source-manifest.json",
         intent_global / "philosophy-source-map.json",
     ):
-        if intent_file.exists():
-            hash_parts.append(intent_file.read_bytes())
+        _add(intent_file)
     intent_sec_dir = registry.intent_section_dir(sec)
     for intent_file in (
         intent_sec_dir / "problem.md",
         intent_sec_dir / "problem-alignment.md",
         intent_sec_dir / "philosophy-excerpt.md",
     ):
-        if intent_file.exists():
-            hash_parts.append(intent_file.read_bytes())
+        _add(intent_file)
 
     proposal_state_path = (
         registry.proposals_dir() / f"section-{sec}-proposal-state.json"
     )
-    if proposal_state_path.exists():
-        hash_parts.append(proposal_state_path.read_bytes())
+    _add(proposal_state_path)
 
     reconciliation_path = (
         registry.reconciliation_dir()
         / f"section-{sec}-reconciliation-result.json"
     )
-    if reconciliation_path.exists():
-        hash_parts.append(reconciliation_path.read_bytes())
+    _add(reconciliation_path)
 
     readiness_path = (
         registry.readiness_dir()
         / f"section-{sec}-execution-ready.json"
     )
-    if readiness_path.exists():
-        hash_parts.append(readiness_path.read_bytes())
+    _add(readiness_path)
 
     # Research artifacts steer proposal/implementation prompts and expansion.
-    research_dossier = registry.research_dossier(sec)
-    if research_dossier.exists():
-        hash_parts.append(research_dossier.read_bytes())
-
-    research_addendum = registry.research_addendum(sec)
-    if research_addendum.exists():
-        hash_parts.append(research_addendum.read_bytes())
-
-    research_derived_surfaces = registry.research_derived_surfaces(sec)
-    if research_derived_surfaces.exists():
-        hash_parts.append(research_derived_surfaces.read_bytes())
+    _add(registry.research_dossier(sec))
+    _add(registry.research_addendum(sec))
+    _add(registry.research_derived_surfaces(sec))
 
     # Implementation feedback surfaces are part of the upward discovery signal.
-    impl_feedback = registry.impl_feedback_surfaces(sec)
-    if impl_feedback.exists():
-        hash_parts.append(impl_feedback.read_bytes())
+    _add(registry.impl_feedback_surfaces(sec))
 
     research_status = (
         registry.research_section_dir(sec) / "research-status.json"
     )
-    if research_status.exists():
-        hash_parts.append(research_status.read_bytes())
+    _add(research_status)
 
-    governance_packet = registry.governance_packet(sec)
-    if governance_packet.exists():
-        hash_parts.append(governance_packet.read_bytes())
+    _add(registry.governance_packet(sec))
 
     return content_hash(b"".join(hash_parts))[:16]

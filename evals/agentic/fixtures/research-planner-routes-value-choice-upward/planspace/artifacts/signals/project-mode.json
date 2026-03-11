@@ -1,0 +1,7 @@
+{
+  "mode": "brownfield",
+  "confidence": "high",
+  "evidence": [
+    "existing payment confirmation code detected in src/payments"
+  ]
+}
