@@ -30,13 +30,11 @@ class _FakeProcess:
 
 
 def _monitor_service(tmp_path: Path) -> tuple[MonitorService, DatabaseClient, Path]:
-    workflow_home = tmp_path / "workflow"
-    (workflow_home / "agents").mkdir(parents=True)
     db_path = tmp_path / "run.db"
     client = DatabaseClient(DB_SH, db_path)
     client.execute("init")
     logs: list[str] = []
-    service = MonitorService(client, workflow_home, "section-loop", logs.append)
+    service = MonitorService(client, "section-loop", logs.append)
     return service, client, db_path
 
 

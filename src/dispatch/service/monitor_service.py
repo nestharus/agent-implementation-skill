@@ -28,12 +28,10 @@ class MonitorService:
     def __init__(
         self,
         db: DatabaseClient,
-        workflow_home: Path,
         controller_name: str,
         logger: Callable[[str], None] | None = None,
     ) -> None:
         self._db = db
-        self._workflow_home = workflow_home
         self._controller_name = controller_name
         self._logger = logger
 

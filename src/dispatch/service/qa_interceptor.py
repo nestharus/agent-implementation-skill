@@ -16,7 +16,6 @@ explicit REJECT blocks dispatch.
 
 from __future__ import annotations
 
-import os
 import time
 from pathlib import Path
 
@@ -24,10 +23,6 @@ from signals.repository.artifact_io import read_json, rename_malformed, write_js
 from dispatch.service.model_policy import load_model_policy, resolve
 from orchestrator.path_registry import PathRegistry
 from proposal.helpers.qa_verdict import parse_qa_verdict
-
-# Resolve paths relative to this script's location.
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent
-WORKFLOW_HOME = Path(os.environ.get("WORKFLOW_HOME", SCRIPTS_DIR.parent))
 
 # dispatch_agent is imported at module level so it can be patched in
 # tests.  This module is itself lazy-imported by the dispatcher inside

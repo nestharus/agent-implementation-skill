@@ -20,7 +20,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import sys
 import time
@@ -35,13 +34,6 @@ from flow.service.notifier import (
     record_task_routing,
 )
 from flow.helpers.task_parser import parse_task_output
-
-# Resolve paths relative to this script's location.
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent
-WORKFLOW_HOME = Path(os.environ.get("WORKFLOW_HOME", SCRIPTS_DIR.parent))
-
-# Import task_router and task_flow from the same directory.
-sys.path.insert(0, str(SCRIPTS_DIR))
 from flow.service.task_flow import (  # noqa: E402
     FlowCorruptionError,
     build_flow_context,

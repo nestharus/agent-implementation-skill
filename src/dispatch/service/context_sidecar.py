@@ -135,18 +135,9 @@ def _resolve_coordination_state(planspace: Path, _section: str | None) -> str:
 
 
 def _resolve_allowed_tasks(_planspace: Path, _section: str | None) -> str:
-    try:
-        from src.scripts.task_router import TASK_ROUTES
-    except ImportError:
-        try:
-            from flow.types.routing import TASK_ROUTES  # type: ignore[import-not-found]
-        except ImportError:
-            TASK_ROUTES = None
+    from flow.types.routing import TASK_ROUTES
 
-    if TASK_ROUTES is not None:
-        return json.dumps(sorted(TASK_ROUTES.keys()), indent=2)
-
-    return json.dumps([], indent=2)
+    return json.dumps(sorted(TASK_ROUTES.keys()), indent=2)
 
 
 def _resolve_section_output(planspace: Path, section: str | None) -> str:

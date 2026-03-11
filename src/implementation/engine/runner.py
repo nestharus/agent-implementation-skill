@@ -33,7 +33,6 @@ from staleness.helpers.detection import diff_files, snapshot_files
 from signals.service.communication import (
     AGENT_NAME,
     DB_SH,
-    WORKFLOW_HOME,
     log,
     mailbox_send,
 )

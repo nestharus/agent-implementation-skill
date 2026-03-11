@@ -9,40 +9,20 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-try:
-    from dispatch.service.prompt_safety import validate_dynamic_content, write_validated_prompt
-except ModuleNotFoundError:  # pragma: no cover - test package import path
-    from src.scripts.prompt_safety import validate_dynamic_content, write_validated_prompt
-
-try:
-    from signals.service.communication import (
-        AGENT_NAME,
-        DB_SH,
-        WORKFLOW_HOME,
-        _log_artifact,
-        log,
-    )
-    from orchestrator.service.context_assembly import materialize_context_sidecar
-    from dispatch.engine.section_dispatch import dispatch_agent
-except ModuleNotFoundError:  # pragma: no cover - test package import path
-    from src.signals.section_loop_communication import (
-        AGENT_NAME,
-        DB_SH,
-        WORKFLOW_HOME,
-        _log_artifact,
-        log,
-    )
-    from src.orchestrator.context_assembly import materialize_context_sidecar
-    from src.dispatch.section_dispatch import dispatch_agent
-
+from dispatch.service.prompt_safety import validate_dynamic_content, write_validated_prompt
+from signals.service.communication import (
+    AGENT_NAME,
+    DB_SH,
+    _log_artifact,
+    log,
+)
+from orchestrator.service.context_assembly import materialize_context_sidecar
+from dispatch.engine.section_dispatch import dispatch_agent
 from orchestrator.path_registry import PathRegistry
 from taskrouter.agents import resolve_agent_path
 
 if TYPE_CHECKING:
-    try:
-        from orchestrator.types import Section
-    except ModuleNotFoundError:  # pragma: no cover - test package import path
-        from src.orchestrator.types import Section
+    from orchestrator.types import Section
 
 MaterialImpact = tuple[str, str, bool, str]
 

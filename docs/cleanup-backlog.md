@@ -5,14 +5,25 @@ Each item describes a structural mess, why it's a problem, and where it lives.
 
 ---
 
-## IN PROGRESS
+## DONE
 
 ### 1. Agent files in shared `src/agents/` instead of per-system ownership
-- **Status**: Migration in progress
-- **Problem**: 52 agent .md files were in a flat `src/agents/` directory instead of owned by their systems
-- **Fix**: Move to `src/<system>/agents/`, create `taskrouter/agents.py` resolver
-- **Files changed**: agent_executor.py, section_dispatch.py, substrate/dispatch.py, scan_dispatch.py, monitor_service.py, qa_interceptor.py, writers.py, execution.py, impact_analyzer.py, section-loop.py
-- **Remaining**: Update docstring in `scan/cli_dispatch.py:53`, run tests, commit
+- **Status**: DONE — 53 agents in `src/<system>/agents/`, resolver in `taskrouter/agents.py`
+
+### 8. 7 redundant WORKFLOW_HOME definitions
+- **Status**: DONE — removed dead definitions from 5 files, removed dead `workflow_home` param from MonitorService, removed dead `agent_executor.WORKFLOW_HOME` assignment. Only 2 live uses remain: `communication.py` and `section-loop.py` (both derive DB_SH).
+
+### 9. `artifacts/flows/` runtime state was committed to git
+- **Status**: DONE — added to `.gitignore`, untracked
+
+### 10. `.tmp/` scratch files were committed to git
+- **Status**: DONE — added to `.gitignore`, untracked
+
+### 16. Backwards-compat try/except import fallbacks
+- **Status**: DONE — removed from `impact_analyzer.py` (3 blocks) and `context_sidecar.py` (1 block). No compat fallbacks remain in `src/`.
+
+### 17. `scan/cli_dispatch.py` stale WORKFLOW_HOME comment
+- **Status**: DONE — removed stale `# WORKFLOW_HOME` comment from `cli_dispatch.py`
 
 ---
 
@@ -49,19 +60,6 @@ Each item describes a structural mess, why it's a problem, and where it lives.
 - **Problem**: Three files with overlapping names. Pipeline is runner → executor → execution, but names don't communicate that hierarchy. `execution.py` has prompt writing + dispatch. `executor.py` has batch building + plan execution. `runner.py` has the top-level coordination function.
 - **Fix**: Rename to reflect pipeline stages clearly
 
-### 8. 7 redundant WORKFLOW_HOME definitions
-- **Where**: `signals/service/communication.py`, `flow/engine/dispatcher.py`, `dispatch/engine/agent_executor.py`, `scripts/section-loop.py`, `dispatch/service/qa_interceptor.py`, `scan/substrate/runner.py`, `scan/substrate/dispatch.py`
-- **Problem**: Same `Path(os.environ.get("WORKFLOW_HOME", ...))` pattern in 7 files with slightly different fallback logic. Single source of truth violated.
-- **Fix**: Centralize in one module (e.g., `taskrouter` or a config module), import everywhere else
-
-### 9. `artifacts/flows/` runtime state was committed to git
-- **Status**: FIXED — added to `.gitignore`, untracked
-- **Problem**: Task continuation JSON files from runtime executions were in the repo
-
-### 10. `.tmp/` scratch files were committed to git
-- **Status**: FIXED — added to `.gitignore`, untracked
-- **Problem**: Refactor prompts, zip files, and scratch scripts were tracked
-
 ### 11. `intent` and `risk` systems missing `routes.py`
 - **Where**: `src/intent/`, `src/risk/`
 - **Problem**: These systems have agents (8 for intent, 3 for risk) dispatched via hardcoded `agent_file=` strings, bypassing the TaskRouter policy system entirely. No model policy override possible.
@@ -86,13 +84,3 @@ Each item describes a structural mess, why it's a problem, and where it lives.
 - **Where**: `src/dispatch/service/context_sidecar.py`
 - **Problem**: `_resolve_allowed_tasks()` dumps all `TASK_ROUTES` keys. Should use scoped allowed_tasks from taskrouter.
 - **Fix**: Replace with `taskrouter.registry.allowed_tasks_for(scope)`
-
-### 16. Backwards-compat try/except import fallbacks
-- **Where**: `src/implementation/service/impact_analyzer.py` (lines 12-36), likely others
-- **Problem**: `try: from signals.service... except ModuleNotFoundError: from src.scripts...` — dual import paths for "test package import path". Indicates the test setup is wrong, not that production code needs fallbacks.
-- **Fix**: Fix test `sys.path` setup, remove all try/except import fallbacks
-
-### 17. `scan/cli_dispatch.py` docstring references old `src/agents/` path
-- **Where**: `src/scan/cli_dispatch.py:53`
-- **Problem**: Stale doc reference to `src/agents/` after agent relocation
-- **Fix**: Update docstring

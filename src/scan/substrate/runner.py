@@ -41,9 +41,6 @@ from scan.substrate.prompt_builder import (
 from scan.substrate.related_files import apply_related_files_updates
 from scan.substrate.schemas import read_seed_plan_failclosed, read_shard_failclosed
 
-# WORKFLOW_HOME: scan/ -> src/
-WORKFLOW_HOME = Path(__file__).resolve().parent.parent.parent
-
 def _registry_for_artifacts(artifacts_dir: Path) -> PathRegistry:
     return PathRegistry(artifacts_dir.parent)
 

@@ -22,7 +22,6 @@ from dispatch.service.prompt_safety import validate_dynamic_content
 from signals.service.communication import (
     AGENT_NAME,
     DB_SH,
-    WORKFLOW_HOME,
     _log_artifact,
     log,
 )
@@ -38,7 +37,6 @@ def _database_client(planspace: Path) -> DatabaseClient:
 def _monitor_service(planspace: Path) -> MonitorService:
     return MonitorService(
         _database_client(planspace),
-        Path(WORKFLOW_HOME),
         AGENT_NAME,
         logger=log,
     )
@@ -148,7 +146,6 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
             agent=AGENT_NAME,
             check=False,
         )
-    agent_executor.WORKFLOW_HOME = Path(WORKFLOW_HOME)
     run_result = agent_executor.run_agent(
         model,
         prompt_path,
