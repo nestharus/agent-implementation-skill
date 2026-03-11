@@ -3,7 +3,7 @@ from typing import Any
 
 from signals.repository.artifact_io import write_json
 from dispatch.service.model_policy import resolve
-from coordination.engine.executor import (
+from coordination.engine.plan_executor import (
     CoordinationExecutionExit,
     execute_coordination_plan,
     read_execution_modified_files,

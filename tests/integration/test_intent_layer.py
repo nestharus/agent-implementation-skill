@@ -2311,7 +2311,7 @@ class TestR58ScopeDeltaAdjudicationFailClosed:
 
     def test_malformed_delta_preserved_and_replaced(self, tmp_path):
         """Malformed delta → .malformed.json + valid replacement."""
-        from coordination.engine.runner import (
+        from coordination.engine.global_coordinator import (
             _normalize_section_id,
         )
 
@@ -2384,7 +2384,7 @@ class TestR58ToolRegistryCoordinationPreservation:
 
     def test_malformed_tool_registry_preserved(self, tmp_path):
         """Malformed tool-registry → .malformed.json copy exists."""
-        from coordination.engine.execution import (
+        from coordination.engine.fix_dispatch import (
             write_coordinator_fix_prompt,
         )
 

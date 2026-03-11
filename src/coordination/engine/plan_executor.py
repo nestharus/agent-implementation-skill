@@ -13,7 +13,7 @@ from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
 from dispatch.service.prompt_safety import write_validated_prompt
 from signals.service.communication import log, mailbox_send
-from coordination.engine.execution import _dispatch_fix_group
+from coordination.engine.fix_dispatch import _dispatch_fix_group
 from dispatch.engine.section_dispatch import dispatch_agent
 from orchestrator.service.pipeline_control import poll_control_messages
 from orchestrator.types import Section

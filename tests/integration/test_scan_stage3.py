@@ -553,7 +553,7 @@ class TestBridgeDirectiveTypeSafety:
     def test_non_dict_bridge_defaults_to_disabled(self) -> None:
         """Runner defends against non-dict bridge directive."""
         import inspect
-        from coordination.engine.runner import run_global_coordination
+        from coordination.engine.global_coordinator import run_global_coordination
         src = inspect.getsource(run_global_coordination)
         assert "isinstance(bridge_directive, dict)" in src, (
             "Runner must check bridge_directive is dict"

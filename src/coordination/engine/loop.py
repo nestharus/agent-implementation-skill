@@ -10,7 +10,7 @@ from coordination.service.problem_resolver import _collect_outstanding_problems
 from orchestrator.path_registry import PathRegistry
 from orchestrator.engine.strategic_state import build_strategic_state
 from signals.service.communication import log, mailbox_send
-from coordination.engine.runner import (
+from coordination.engine.global_coordinator import (
     MAX_COORDINATION_ROUNDS,
     MIN_COORDINATION_ROUNDS,
     run_global_coordination,

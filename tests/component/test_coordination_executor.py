@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from src.coordination.engine import executor
-from src.coordination.engine.executor import (
+from src.coordination.engine import plan_executor as executor
+from src.coordination.engine.plan_executor import (
     CoordinationExecutionExit,
     execute_coordination_plan,
     read_execution_modified_files,

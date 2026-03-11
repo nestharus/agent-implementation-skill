@@ -25,6 +25,12 @@ Each item describes a structural mess, why it's a problem, and where it lives.
 ### 17. `scan/cli_dispatch.py` stale WORKFLOW_HOME comment
 - **Status**: DONE — removed stale `# WORKFLOW_HOME` comment from `cli_dispatch.py`
 
+### 4. `FlowCorruptionError` in wrong module
+- **Status**: DONE — moved to `flow/exceptions.py`, updated all 6 import sites
+
+### 7. `execution.py` / `executor.py` / `runner.py` naming confusion
+- **Status**: DONE — renamed to `fix_dispatch.py`, `plan_executor.py`, `global_coordinator.py`
+
 ---
 
 ## IDENTIFIED — NOT YET STARTED
@@ -40,11 +46,6 @@ Each item describes a structural mess, why it's a problem, and where it lives.
 - **Key files**: `src/flow/repository/context.py`, `src/coordination/engine/executor.py`, `src/coordination/engine/runner.py`
 - **Fix**: Introduce domain dataclasses. Start with FlowContext (most contained).
 
-### 4. `FlowCorruptionError` in wrong module
-- **Where**: `src/flow/repository/context.py`
-- **Problem**: Exception class lives in a helper file about flow context. Should be in a shared exceptions module or the flow package root.
-- **Fix**: Move to `src/flow/exceptions.py` or `src/flow/__init__.py`
-
 ### 5. Prompts inlined as f-strings in Python code
 - **Where**: `src/coordination/engine/execution.py` (60-line prompt), `src/dispatch/engine/section_dispatch.py` (50-line monitor prompt), `src/coordination/engine/executor.py` (bridge prompt)
 - **Problem**: Prompt templates embedded as massive f-strings. Can't be reviewed, tested, or versioned independently. Mixing content with logic.
@@ -54,11 +55,6 @@ Each item describes a structural mess, why it's a problem, and where it lives.
 - **Where**: `src/flow/repository/context.py:88`
 - **Problem**: Reads an original prompt file as raw text, prepends a `<flow-context>` header (also raw text), writes a new file. No typed FlowContext, no structured prompt object, no path abstraction. `flow_context_path` is a relative path string baked into prompt text.
 - **Fix**: Create a proper PromptBuilder or FlowContext type
-
-### 7. `execution.py` / `executor.py` / `runner.py` naming confusion
-- **Where**: `src/coordination/engine/`
-- **Problem**: Three files with overlapping names. Pipeline is runner → executor → execution, but names don't communicate that hierarchy. `execution.py` has prompt writing + dispatch. `executor.py` has batch building + plan execution. `runner.py` has the top-level coordination function.
-- **Fix**: Rename to reflect pipeline stages clearly
 
 ### 11. `intent` and `risk` systems missing `routes.py`
 - **Where**: `src/intent/`, `src/risk/`
