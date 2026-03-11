@@ -9,6 +9,7 @@ from pathlib import Path
 
 from _paths import DB_SH
 from src.signals.service.database_client import DatabaseClient
+from src.dispatch.service import monitor_service as monitor_service_mod
 from src.dispatch.service.monitor_service import MonitorHandle, MonitorService
 
 
@@ -53,6 +54,10 @@ def test_start_registers_agent_and_spawns_monitor(
     agents_path.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
 
+    # resolve_agent_path returns the real discovered path
+    from src.taskrouter.agents import resolve_agent_path
+    resolved_monitor_path = resolve_agent_path("agent-monitor.md")
+
     handle = service.start("impl-01", prompt_path)
 
     assert handle.agent_name == "impl-01"
@@ -61,7 +66,7 @@ def test_start_registers_agent_and_spawns_monitor(
     assert handle.process.args == [
         "agents",
         "--agent-file",
-        str(tmp_path / "workflow" / "agents" / "agent-monitor.md"),
+        str(resolved_monitor_path),
         "--file",
         str(prompt_path),
     ]

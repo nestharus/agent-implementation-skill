@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from signals.service.database_client import DatabaseClient
+from taskrouter.agents import resolve_agent_path
 
 
 @dataclass
@@ -55,7 +56,7 @@ class MonitorService:
             [
                 "agents",
                 "--agent-file",
-                str(self._workflow_home / "agents" / "agent-monitor.md"),
+                str(resolve_agent_path("agent-monitor.md")),
                 "--file",
                 str(prompt_path),
             ],

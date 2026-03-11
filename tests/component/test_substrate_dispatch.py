@@ -8,17 +8,7 @@ from pathlib import Path
 import pytest
 
 from src.scan.substrate import dispatch
-
-
-def _make_agent_home(tmp_path: Path) -> Path:
-    workflow_home = tmp_path / "src"
-    agents_dir = workflow_home / "agents"
-    agents_dir.mkdir(parents=True)
-    (agents_dir / "substrate-shard-explorer.md").write_text(
-        "agent prompt",
-        encoding="utf-8",
-    )
-    return workflow_home
+from src.taskrouter.agents import resolve_agent_path
 
 
 def test_dispatch_substrate_agent_requires_agent_file(tmp_path: Path) -> None:
@@ -35,7 +25,10 @@ def test_dispatch_substrate_agent_validates_agent_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(dispatch, "WORKFLOW_HOME", tmp_path / "src")
+    monkeypatch.setattr(
+        dispatch, "resolve_agent_path",
+        lambda name: (_ for _ in ()).throw(FileNotFoundError(name)),
+    )
 
     with pytest.raises(FileNotFoundError):
         dispatch.dispatch_substrate_agent(
@@ -50,8 +43,11 @@ def test_dispatch_substrate_agent_writes_combined_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    workflow_home = _make_agent_home(tmp_path)
-    monkeypatch.setattr(dispatch, "WORKFLOW_HOME", workflow_home)
+    resolved_path = resolve_agent_path("substrate-shard-explorer.md")
+    monkeypatch.setattr(
+        dispatch, "resolve_agent_path",
+        lambda name: resolved_path,
+    )
     prompt_path = tmp_path / "prompt.md"
     prompt_path.write_text("prompt", encoding="utf-8")
     output_path = tmp_path / "logs" / "output.txt"
@@ -88,7 +84,7 @@ def test_dispatch_substrate_agent_writes_combined_output(
         "agents",
         "--model", "gpt-high",
         "--file", str(prompt_path),
-        "--agent-file", str(workflow_home / "agents" / "substrate-shard-explorer.md"),
+        "--agent-file", str(resolved_path),
         "--project", str(codespace),
     ]]
 
@@ -97,8 +93,11 @@ def test_dispatch_substrate_agent_handles_timeout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    workflow_home = _make_agent_home(tmp_path)
-    monkeypatch.setattr(dispatch, "WORKFLOW_HOME", workflow_home)
+    resolved_path = resolve_agent_path("substrate-shard-explorer.md")
+    monkeypatch.setattr(
+        dispatch, "resolve_agent_path",
+        lambda name: resolved_path,
+    )
     prompt_path = tmp_path / "prompt.md"
     prompt_path.write_text("prompt", encoding="utf-8")
     output_path = tmp_path / "output.txt"

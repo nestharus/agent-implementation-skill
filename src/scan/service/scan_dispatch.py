@@ -7,6 +7,7 @@ from pathlib import Path
 
 from signals.repository.artifact_io import rename_malformed
 from orchestrator.path_registry import PathRegistry
+from taskrouter.agents import resolve_agent_path as _resolve_agent_path
 
 DEFAULT_SCAN_MODELS: dict[str, str] = {
     "codemap_build": "claude-opus",
@@ -41,16 +42,12 @@ def read_scan_model_policy(artifacts_dir: Path) -> dict[str, str]:
 
 
 def resolve_scan_agent_path(workflow_home: Path, agent_file: str) -> Path:
-    """Resolve a scan agent definition path from the workflow root."""
-    if not agent_file:
-        raise ValueError(
-            "agent_file is required - every dispatch must have "
-            "behavioral constraints"
-        )
-    agent_path = workflow_home / "agents" / agent_file
-    if not agent_path.exists():
-        raise FileNotFoundError(f"Agent file not found: {agent_path}")
-    return agent_path
+    """Resolve a scan agent definition path.
+
+    The ``workflow_home`` parameter is kept for call-site compatibility
+    but is ignored — resolution goes through the central agent index.
+    """
+    return _resolve_agent_path(agent_file)
 
 
 def build_scan_dispatch_command(

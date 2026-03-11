@@ -36,6 +36,7 @@ except ModuleNotFoundError:  # pragma: no cover - test package import path
     from src.dispatch.section_dispatch import dispatch_agent
 
 from orchestrator.path_registry import PathRegistry
+from taskrouter.agents import resolve_agent_path
 
 if TYPE_CHECKING:
     try:
@@ -226,7 +227,7 @@ This is the primary content of the consequence note the target receives.
         return []
 
     sidecar_path = materialize_context_sidecar(
-        str(Path(WORKFLOW_HOME) / "agents" / "impact-analyzer.md"),
+        str(resolve_agent_path("impact-analyzer.md")),
         planspace,
         section=section_number,
     )

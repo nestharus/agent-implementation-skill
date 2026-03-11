@@ -7,12 +7,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-WORKFLOW_HOME = Path(
-    os.environ.get(
-        "WORKFLOW_HOME",
-        Path(__file__).resolve().parent.parent.parent,
-    )
-)
+from taskrouter.agents import resolve_agent_path
 
 
 @dataclass
@@ -40,9 +35,7 @@ def run_agent(
             "behavioral constraints"
         )
 
-    agent_path = WORKFLOW_HOME / "agents" / agent_file
-    if not agent_path.exists():
-        raise FileNotFoundError(f"Agent file not found: {agent_path}")
+    agent_path = resolve_agent_path(agent_file)
 
     cmd = [
         "agents",

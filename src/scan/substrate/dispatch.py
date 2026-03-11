@@ -5,8 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-# scan/ -> src/
-WORKFLOW_HOME = Path(__file__).resolve().parent.parent.parent
+from taskrouter.agents import resolve_agent_path
 
 
 def dispatch_substrate_agent(
@@ -24,9 +23,7 @@ def dispatch_substrate_agent(
             "behavioral constraints"
         )
 
-    agent_path = WORKFLOW_HOME / "agents" / agent_file
-    if not agent_path.exists():
-        raise FileNotFoundError(f"Agent file not found: {agent_path}")
+    agent_path = resolve_agent_path(agent_file)
 
     cmd = [
         "agents",

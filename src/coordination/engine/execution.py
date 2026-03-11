@@ -7,8 +7,9 @@ from orchestrator.path_registry import PathRegistry
 
 from dispatch.prompt.template import TASK_SUBMISSION_SEMANTICS
 from dispatch.service.prompt_safety import validate_dynamic_content
-from signals.service.communication import WORKFLOW_HOME, _log_artifact, log
+from signals.service.communication import _log_artifact, log
 from orchestrator.service.context_assembly import materialize_context_sidecar
+from taskrouter.agents import resolve_agent_path
 from dispatch.engine.section_dispatch import dispatch_agent, write_model_choice_signal
 from flow.service.section_ingestion import ingest_and_submit
 
@@ -203,7 +204,7 @@ Include all files modified during this implementation.
 
     # Materialize sidecar BEFORE writing prompt so it exists at prompt-write time
     sidecar_path = materialize_context_sidecar(
-        str(Path(WORKFLOW_HOME) / "agents" / "coordination-fixer.md"),
+        str(resolve_agent_path("coordination-fixer.md")),
         planspace,
     )
 

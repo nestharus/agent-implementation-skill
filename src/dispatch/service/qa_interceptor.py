@@ -33,6 +33,7 @@ WORKFLOW_HOME = Path(os.environ.get("WORKFLOW_HOME", SCRIPTS_DIR.parent))
 # tests.  This module is itself lazy-imported by the dispatcher inside
 # a try/except, so import failures here do not break non-QA dispatch.
 from dispatch.engine.section_dispatch import dispatch_agent  # noqa: E402
+from taskrouter.agents import resolve_agent_path
 
 # Infrastructure submitters that are not agent files.
 _INFRA_SUBMITTERS: dict[str, str] = {
@@ -93,9 +94,11 @@ def _resolve_submitter_contract(submitter: str) -> str:
     string for infrastructure submitters or an unknown-submitter note.
     """
     # Try direct agent file lookup.
-    agent_path = WORKFLOW_HOME / "agents" / f"{submitter}.md"
-    if agent_path.exists():
+    try:
+        agent_path = resolve_agent_path(f"{submitter}.md")
         return agent_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        pass
 
     # Infrastructure submitters get a description string.
     if submitter in _INFRA_SUBMITTERS:
@@ -264,8 +267,11 @@ def intercept_task(
 
     try:
         # 1. Read target agent contract.
-        target_path = WORKFLOW_HOME / "agents" / agent_file
-        if not target_path.exists():
+        try:
+            target_path = resolve_agent_path(agent_file)
+        except FileNotFoundError:
+            target_path = None
+        if target_path is None:
             print(
                 f"[qa-interceptor] WARNING: Target agent file not found: "
                 f"{target_path} — failing open (task {task_id})",

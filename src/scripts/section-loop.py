@@ -608,8 +608,8 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
             planspace, agent_name, monitor_name,
         )
         monitor_proc = subprocess.Popen(  # noqa: S603
-            ["uv", "run", "--frozen", "agents", "--agent-file",  # noqa: S607
-             str(WORKFLOW_HOME / "agents" / "agent-monitor.md"),
+            ["agents", "--model", "glm", "--agent-file",  # noqa: S607
+             str(resolve_agent_path("agent-monitor.md")),
              "--file", str(monitor_prompt)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
@@ -630,7 +630,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
            "--file", str(prompt_path)]
     if agent_file:
         cmd.extend(["--agent-file",
-                     str(WORKFLOW_HOME / "agents" / agent_file)])
+                     str(resolve_agent_path(agent_file))])
     if codespace:
         cmd.extend(["--project", str(codespace)])
     try:

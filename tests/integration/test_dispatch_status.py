@@ -19,6 +19,7 @@ import pytest
 
 from _paths import DB_SH
 
+import dispatch.engine.agent_executor as executor_mod
 import dispatch.engine.section_dispatch as dispatch_mod
 from dispatch.engine.section_dispatch import dispatch_agent
 
@@ -42,13 +43,16 @@ def _init_db(db_path: Path) -> None:
 def dispatch_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Set up a minimal dispatch environment.
 
-    Creates an agents/ dir under tmp_path with a test-agent.md,
-    patches WORKFLOW_HOME in the dispatch module, and returns tmp_path.
+    Patches resolve_agent_path in the dispatch module to find test-agent.md
+    in a tmp_path agents/ dir.
     """
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir()
-    (agents_dir / "test-agent.md").write_text("# Test Agent\nDo nothing.\n")
-    monkeypatch.setattr(dispatch_mod, "WORKFLOW_HOME", tmp_path)
+    agent_path = agents_dir / "test-agent.md"
+    agent_path.write_text("# Test Agent\nDo nothing.\n")
+    resolver = lambda name: agent_path if name == "test-agent.md" else (_ for _ in ()).throw(FileNotFoundError(name))
+    monkeypatch.setattr(dispatch_mod, "resolve_agent_path", resolver)
+    monkeypatch.setattr(executor_mod, "resolve_agent_path", resolver)
     return tmp_path
 
 

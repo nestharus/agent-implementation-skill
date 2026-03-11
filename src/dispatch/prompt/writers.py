@@ -21,7 +21,8 @@ from dispatch.prompt.helpers import (
 from dispatch.service.prompt_safety import validate_dynamic_content
 from dispatch.service.prompt_safety import write_validated_prompt
 from staleness.service.section_alignment import collect_modified_files
-from signals.service.communication import WORKFLOW_HOME, _log_artifact, log
+from signals.service.communication import _log_artifact, log
+from taskrouter.agents import resolve_agent_path
 from orchestrator.service.context_assembly import materialize_context_sidecar
 from orchestrator.types import Section
 from dispatch.prompt.context import build_prompt_context
@@ -137,7 +138,7 @@ def write_integration_proposal_prompt(
 
     # Materialize sidecar BEFORE rendering so it exists at prompt-write time
     sidecar_path = materialize_context_sidecar(
-        str(Path(WORKFLOW_HOME) / "agents" / "integration-proposer.md"),
+        str(resolve_agent_path("integration-proposer.md")),
         planspace, section=section.number,
     )
 
@@ -343,7 +344,7 @@ def write_strategic_impl_prompt(
 
     # Materialize sidecar BEFORE rendering so it exists at prompt-write time
     sidecar_path = materialize_context_sidecar(
-        str(Path(WORKFLOW_HOME) / "agents" / "implementation-strategist.md"),
+        str(resolve_agent_path("implementation-strategist.md")),
         planspace, section=section.number,
     )
 

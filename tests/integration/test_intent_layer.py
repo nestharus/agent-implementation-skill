@@ -15,6 +15,7 @@ import pytest
 
 from _paths import SRC_DIR
 from staleness.helpers.hashing import file_hash
+from taskrouter.agents import resolve_agent_path
 
 from intent.service.surfaces import (
     find_discarded_recurrences,
@@ -997,10 +998,7 @@ class TestIntentConventions:
 
     def test_agent_contract_triager_budget_keys(self) -> None:
         """intent-triager.md contains cycle-budget schema keys (V1/R53)."""
-        agent = (SRC_DIR
-                 / "agents" / "intent-triager.md")
-        if not agent.exists():
-            pytest.skip("intent-triager.md not found")
+        agent = resolve_agent_path("intent-triager.md")
         text = agent.read_text(encoding="utf-8")
         for key in ("proposal_max", "implementation_max",
                      "intent_expansion_max", "max_new_surfaces_per_cycle",
@@ -1009,10 +1007,7 @@ class TestIntentConventions:
 
     def test_agent_contract_problem_expander_delta_keys(self) -> None:
         """problem-expander.md delta matches expansion.py schema (V2/R53)."""
-        agent = (SRC_DIR
-                 / "agents" / "problem-expander.md")
-        if not agent.exists():
-            pytest.skip("problem-expander.md not found")
+        agent = resolve_agent_path("problem-expander.md")
         text = agent.read_text(encoding="utf-8")
         for key in ("applied_surface_ids", "discarded_surface_ids",
                      "problem_definition_updated", "restart_required"):
@@ -1021,10 +1016,7 @@ class TestIntentConventions:
 
     def test_agent_contract_philosophy_expander_delta_keys(self) -> None:
         """philosophy-expander.md delta matches expansion.py schema (V3/R53)."""
-        agent = (SRC_DIR
-                 / "agents" / "philosophy-expander.md")
-        if not agent.exists():
-            pytest.skip("philosophy-expander.md not found")
+        agent = resolve_agent_path("philosophy-expander.md")
         text = agent.read_text(encoding="utf-8")
         for key in ("applied_surface_ids", "discarded_surface_ids",
                      "philosophy_updated", "needs_user_input"):
@@ -1033,10 +1025,7 @@ class TestIntentConventions:
 
     def test_agent_contract_pack_generator_registry_schema(self) -> None:
         """intent-pack-generator.md defines dedupe registry, not axis metadata (V4/R53)."""
-        agent = (SRC_DIR
-                 / "agents" / "intent-pack-generator.md")
-        if not agent.exists():
-            pytest.skip("intent-pack-generator.md not found")
+        agent = resolve_agent_path("intent-pack-generator.md")
         text = agent.read_text(encoding="utf-8")
         assert "next_id" in text, (
             "intent-pack-generator.md must define registry with next_id")
@@ -1394,10 +1383,7 @@ class TestIntentConventions:
         PAT-0015: positive contract — verifies the agent file describes
         evidence-driven judgment rather than grepping for absent phrases.
         """
-        agent = (SRC_DIR
-                 / "agents" / "intent-triager.md")
-        if not agent.exists():
-            pytest.skip("intent-triager.md not found")
+        agent = resolve_agent_path("intent-triager.md")
         text = agent.read_text(encoding="utf-8").lower()
         assert any(term in text for term in ("heuristic", "judgment", "evidence")), (
             "intent-triager.md must describe heuristic/evidence-driven triage"
@@ -1676,10 +1662,7 @@ class TestR56AgentSelectedSources:
 
     def test_selector_agent_file_exists(self) -> None:
         """philosophy-source-selector.md agent file must exist."""
-        agent = (SRC_DIR
-                 / "agents" / "philosophy-source-selector.md")
-        if not agent.exists():
-            pytest.skip("philosophy-source-selector.md not found")
+        agent = resolve_agent_path("philosophy-source-selector.md")
         text = agent.read_text(encoding="utf-8")
         assert "sources" in text, (
             "Agent must define 'sources' in its output schema")

@@ -47,16 +47,21 @@ def test_read_scan_model_policy_renames_malformed_json(tmp_path) -> None:
     assert policy_path.with_suffix(".malformed.json").exists()
 
 
-def test_resolve_scan_agent_path_validates_presence(tmp_path) -> None:
-    workflow_home = tmp_path
-    agent_path = workflow_home / "agents" / "scan-test.md"
+def test_resolve_scan_agent_path_validates_presence(tmp_path, monkeypatch) -> None:
+    agent_path = tmp_path / "scan" / "agents" / "scan-test.md"
     agent_path.parent.mkdir(parents=True, exist_ok=True)
     agent_path.write_text("prompt", encoding="utf-8")
 
-    assert resolve_scan_agent_path(workflow_home, "scan-test.md") == agent_path
+    from src.scan.service import scan_dispatch as sd_mod
+    monkeypatch.setattr(
+        sd_mod, "_resolve_agent_path",
+        lambda name: agent_path if name == "scan-test.md" else (_ for _ in ()).throw(FileNotFoundError(name)),
+    )
+
+    assert resolve_scan_agent_path(tmp_path, "scan-test.md") == agent_path
 
     with pytest.raises(FileNotFoundError):
-        resolve_scan_agent_path(workflow_home, "missing.md")
+        resolve_scan_agent_path(tmp_path, "missing.md")
 
 
 def test_build_scan_dispatch_command_matches_agents_invocation(tmp_path) -> None:

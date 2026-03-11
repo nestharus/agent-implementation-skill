@@ -219,9 +219,9 @@ class TestInterceptTask:
 
         ps = _setup_planspace(tmp_path)
 
-        # Create a dummy target agent file.
-        agents_dir = WORKFLOW_HOME / "agents"
-        assert agents_dir.exists(), f"agents dir not found: {agents_dir}"
+        # Verify agent resolution works.
+        from taskrouter.agents import resolve_agent_path
+        resolve_agent_path("alignment-judge.md")  # just verify it resolves
 
         task = {
             "id": "99",
@@ -808,13 +808,15 @@ class TestQaAgentDefinition:
     """Validate the QA interceptor agent definition file."""
 
     def test_agent_file_exists(self) -> None:
-        """qa-interceptor.md exists in agents directory."""
-        agent_path = WORKFLOW_HOME / "agents" / "qa-interceptor.md"
+        """qa-interceptor.md exists in system agents directory."""
+        from taskrouter.agents import resolve_agent_path
+        agent_path = resolve_agent_path("qa-interceptor.md")
         assert agent_path.exists(), f"Agent file not found: {agent_path}"
 
     def test_agent_file_has_frontmatter(self) -> None:
         """qa-interceptor.md has YAML frontmatter with required fields."""
-        agent_path = WORKFLOW_HOME / "agents" / "qa-interceptor.md"
+        from taskrouter.agents import resolve_agent_path
+        agent_path = resolve_agent_path("qa-interceptor.md")
         content = agent_path.read_text(encoding="utf-8")
         assert content.startswith("---")
         # Extract frontmatter.

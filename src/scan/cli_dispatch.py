@@ -49,8 +49,8 @@ def dispatch_agent(
     agent_file:
         REQUIRED basename of the agent definition file (e.g.
         ``"scan-codemap-builder.md"``).  Every dispatch must have
-        behavioral constraints.  The file is resolved relative to
-        ``src/agents/``.
+        behavioral constraints.  Resolved via
+        ``taskrouter.agents.resolve_agent_path()``.
     stdout_file:
         If given, stdout is written to this path.
     stderr_file:

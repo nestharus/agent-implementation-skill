@@ -17,7 +17,7 @@
 │   └── region-profile-map.md
 ├── system-synthesis.md      # Architecture + governance connections
 ├── src/                     # Deployed skill code
-│   ├── agents/              # Agent contract definitions (46 agents)
+│   ├── <system>/agents/     # Agent definitions owned by each system (53 agents across 11 systems)
 │   ├── scripts/             # Runtime orchestration scripts
 │   ├── SKILL.md             # Skill entry point
 │   ├── implement.md         # Implementation pipeline
@@ -25,6 +25,12 @@
 ├── evals/                   # Evaluation scenarios
 └── tests/                   # Test suite
 ```
+
+## Cleanup Backlog
+
+**`docs/cleanup-backlog.md`** — Tracked structural issues discovered during reorganization. 17 items covering: agent ownership, dispatch concerns, missing types, inlined prompts, redundant WORKFLOW_HOME, old routing table, hardcoded task names. Check this file before starting any cleanup work.
+
+---
 
 ## Governance Documents
 

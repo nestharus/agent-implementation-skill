@@ -13,9 +13,9 @@ def test_run_agent_invokes_agents_binary_with_expected_args(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    workflow_home = tmp_path / "workflow"
-    agent_path = workflow_home / "agents" / "test-agent.md"
-    agent_path.parent.mkdir(parents=True)
+    agent_dir = tmp_path / "scan" / "agents"
+    agent_dir.mkdir(parents=True)
+    agent_path = agent_dir / "test-agent.md"
     agent_path.write_text("# test\n", encoding="utf-8")
     prompt_path = tmp_path / "prompt.md"
     prompt_path.write_text("# prompt\n", encoding="utf-8")
@@ -28,7 +28,10 @@ def test_run_agent_invokes_agents_binary_with_expected_args(
         calls.append((cmd, kwargs["timeout"]))
         return SimpleNamespace(stdout="out", stderr="err", returncode=3)
 
-    monkeypatch.setattr(agent_executor, "WORKFLOW_HOME", workflow_home)
+    monkeypatch.setattr(
+        agent_executor, "resolve_agent_path",
+        lambda name: agent_path,
+    )
     monkeypatch.setattr(agent_executor.subprocess, "run", fake_run)
 
     result = agent_executor.run_agent(
@@ -65,9 +68,9 @@ def test_run_agent_returns_timeout_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    workflow_home = tmp_path / "workflow"
-    agent_path = workflow_home / "agents" / "test-agent.md"
-    agent_path.parent.mkdir(parents=True)
+    agent_dir = tmp_path / "scan" / "agents"
+    agent_dir.mkdir(parents=True)
+    agent_path = agent_dir / "test-agent.md"
     agent_path.write_text("# test\n", encoding="utf-8")
     prompt_path = tmp_path / "prompt.md"
     prompt_path.write_text("# prompt\n", encoding="utf-8")
@@ -75,7 +78,10 @@ def test_run_agent_returns_timeout_result(
     def fake_run(*args, **kwargs):
         raise subprocess.TimeoutExpired(cmd="agents", timeout=45)
 
-    monkeypatch.setattr(agent_executor, "WORKFLOW_HOME", workflow_home)
+    monkeypatch.setattr(
+        agent_executor, "resolve_agent_path",
+        lambda name: agent_path,
+    )
     monkeypatch.setattr(agent_executor.subprocess, "run", fake_run)
 
     result = agent_executor.run_agent(
@@ -95,7 +101,10 @@ def test_run_agent_requires_existing_agent_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(agent_executor, "WORKFLOW_HOME", tmp_path / "workflow")
+    monkeypatch.setattr(
+        agent_executor, "resolve_agent_path",
+        lambda name: (_ for _ in ()).throw(FileNotFoundError(name)),
+    )
 
     with pytest.raises(FileNotFoundError):
         agent_executor.run_agent(

@@ -28,6 +28,7 @@ from signals.service.communication import (
 )
 from orchestrator.service.context_assembly import materialize_context_sidecar
 from orchestrator.service.pipeline_control import wait_if_paused
+from taskrouter.agents import resolve_agent_path
 
 
 def _database_client(planspace: Path) -> DatabaseClient:
@@ -72,9 +73,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
             "agent_file is required — every dispatch must have "
             "behavioral constraints"
         )
-    agent_path = Path(WORKFLOW_HOME) / "agents" / agent_file
-    if not agent_path.exists():
-        raise FileNotFoundError(f"Agent file not found: {agent_path}")
+    agent_path = resolve_agent_path(agent_file)
     if planspace and parent:
         wait_if_paused(planspace, parent)
         # If alignment_changed was received during the pause (or was
