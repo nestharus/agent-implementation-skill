@@ -1,1 +1,0 @@
-/home/nes/projects/agent-implementation-skill/src/scripts/section_loop/prompts/templates/__init__.py

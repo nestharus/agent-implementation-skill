@@ -62,13 +62,7 @@ TASK_SUBMISSION_SEMANTICS = (
     "The dispatcher handles agent selection and model choice."
 )
 
-DEFAULT_TEMPLATE_DIR = (
-    Path(__file__).resolve().parent.parent
-    / "scripts"
-    / "section_loop"
-    / "prompts"
-    / "templates"
-)
+DEFAULT_TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
 
 def load_template(name: str, template_dir: Path | None = None) -> str:
