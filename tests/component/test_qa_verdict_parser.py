@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.scripts.lib.services.qa_verdict_parser import parse_qa_verdict
+from src.proposal.qa_verdict_parser import parse_qa_verdict
 
 
 def test_parse_qa_verdict_accepts_pass_json() -> None:

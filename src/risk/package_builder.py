@@ -6,15 +6,15 @@ import json
 import re
 from pathlib import Path
 
-from lib.core.artifact_io import read_json
-from lib.core.path_registry import PathRegistry
-from lib.repositories.proposal_state_repository import load_proposal_state
-from lib.risk.serialization import (
+from signals.artifact_io import read_json
+from orchestrator.path_registry import PathRegistry
+from proposal.proposal_state_repository import load_proposal_state
+from risk.serialization import (
     load_risk_package,
     serialize_package,
     write_risk_artifact,
 )
-from lib.risk.types import AssessmentClass, DecisionClass, PackageStep, RiskPackage, StepClass
+from risk.types import AssessmentClass, DecisionClass, PackageStep, RiskPackage, StepClass
 
 _MICROSTRATEGY_LINE_RE = re.compile(r"^(?:[-*+]|\d+\.)\s+(.+)$")
 _MICROSTRATEGY_HEADING_RE = re.compile(r"^#{1,6}\s+(.+)$")

@@ -31,8 +31,8 @@ from typing import Callable
 # ---------------------------------------------------------------------------
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src" / "scripts"))
 
-from lib.core.model_policy import resolve  # noqa: E402
-from section_loop.dispatch import dispatch_agent, read_model_policy  # noqa: E402
+from dispatch.model_policy import resolve  # noqa: E402
+from dispatch.section_dispatch import dispatch_agent, read_model_policy  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

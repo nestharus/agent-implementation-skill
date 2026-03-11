@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.hash_service import content_hash
-from lib.core.path_registry import PathRegistry
+from staleness.hash_service import content_hash
+from orchestrator.path_registry import PathRegistry
 
 
 def compute_section_freshness(planspace: Path, section_number: str) -> str:

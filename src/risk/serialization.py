@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Any, Callable, TypeVar, cast
 
-from lib.core.artifact_io import read_json, rename_malformed, write_json
+from signals.artifact_io import read_json, rename_malformed, write_json
 
 from .types import (
     AssessmentClass,

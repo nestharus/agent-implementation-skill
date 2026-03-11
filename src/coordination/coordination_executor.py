@@ -7,16 +7,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from lib.core.artifact_io import read_json, write_json
-from lib.core.hash_service import content_hash
-from lib.core.model_policy import resolve
-from lib.core.path_registry import PathRegistry
-from prompt_safety import write_validated_prompt
-from section_loop.communication import log, mailbox_send
-from section_loop.coordination.execution import _dispatch_fix_group
-from section_loop.dispatch import dispatch_agent
-from section_loop.pipeline_control import poll_control_messages
-from section_loop.types import Section
+from signals.artifact_io import read_json, write_json
+from staleness.hash_service import content_hash
+from dispatch.model_policy import resolve
+from orchestrator.path_registry import PathRegistry
+from dispatch.prompt_safety import write_validated_prompt
+from signals.section_loop_communication import log, mailbox_send
+from coordination.loop_execution import _dispatch_fix_group
+from dispatch.section_dispatch import dispatch_agent
+from orchestrator.pipeline_control import poll_control_messages
+from orchestrator.types import Section
 
 
 class CoordinationExecutionExit(Exception):

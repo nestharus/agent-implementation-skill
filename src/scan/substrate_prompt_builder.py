@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.path_registry import PathRegistry
-from prompt_safety import write_validated_prompt
+from orchestrator.path_registry import PathRegistry
+from dispatch.prompt_safety import write_validated_prompt
 
 
 def write_shard_prompt(

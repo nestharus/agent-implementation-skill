@@ -21,8 +21,8 @@ import pytest
 
 from _paths import DB_SH
 
-from flow_schema import BranchSpec, GateSpec, TaskSpec
-from task_flow import (
+from flow.flow_schema import BranchSpec, GateSpec, TaskSpec
+from flow.task_flow import (
     FlowCorruptionError,
     _read_flow_json,
     _read_origin_refs,
@@ -493,14 +493,14 @@ class TestDispatcherFlowCorruption:
             "flow_context": ctx_relpath,
         }
 
-        with patch("task_dispatcher.dispatch_agent") as mock_dispatch, \
-             patch("task_dispatcher.resolve_task") as mock_resolve, \
-             patch("task_dispatcher._db_cmd") as mock_db, \
-             patch("task_dispatcher._notify") as mock_notify:
+        with patch("flow.task_dispatcher.dispatch_agent") as mock_dispatch, \
+             patch("flow.task_dispatcher.resolve_task") as mock_resolve, \
+             patch("flow.task_dispatcher._db_cmd") as mock_db, \
+             patch("flow.task_dispatcher._notify") as mock_notify:
             mock_resolve.return_value = ("alignment-judge.md", "glm")
             mock_dispatch.return_value = "done"
 
-            from task_dispatcher import dispatch_task
+            from flow.task_dispatcher import dispatch_task
             dispatch_task(str(db_path), planspace, task)
 
             # dispatch_agent should NOT have been called
@@ -533,13 +533,13 @@ class TestDispatcherFlowCorruption:
             "flow_context": "artifacts/flows/task-2-context.json",
         }
 
-        with patch("task_dispatcher.dispatch_agent") as mock_dispatch, \
-             patch("task_dispatcher.resolve_task") as mock_resolve, \
-             patch("task_dispatcher._db_cmd") as mock_db, \
-             patch("task_dispatcher._notify"):
+        with patch("flow.task_dispatcher.dispatch_agent") as mock_dispatch, \
+             patch("flow.task_dispatcher.resolve_task") as mock_resolve, \
+             patch("flow.task_dispatcher._db_cmd") as mock_db, \
+             patch("flow.task_dispatcher._notify"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 
-            from task_dispatcher import dispatch_task
+            from flow.task_dispatcher import dispatch_task
             dispatch_task(str(db_path), planspace, task)
 
             mock_dispatch.assert_not_called()
@@ -575,14 +575,14 @@ class TestDispatcherFlowCorruption:
             "continuation": "artifacts/flows/task-3-continuation.json",
         }
 
-        with patch("task_dispatcher.dispatch_agent") as mock_dispatch, \
-             patch("task_dispatcher.resolve_task") as mock_resolve, \
-             patch("task_dispatcher._db_cmd"), \
-             patch("task_dispatcher._notify"):
+        with patch("flow.task_dispatcher.dispatch_agent") as mock_dispatch, \
+             patch("flow.task_dispatcher.resolve_task") as mock_resolve, \
+             patch("flow.task_dispatcher._db_cmd"), \
+             patch("flow.task_dispatcher._notify"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
             mock_dispatch.return_value = "done"
 
-            from task_dispatcher import dispatch_task
+            from flow.task_dispatcher import dispatch_task
             dispatch_task(str(db_path), planspace, task)
 
             # dispatch_agent SHOULD have been called

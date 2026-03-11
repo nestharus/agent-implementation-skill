@@ -5,14 +5,14 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from lib.core.database_client import DatabaseClient
-from lib.dispatch.mailbox_service import MailboxService, summary_tag
-from lib.core.path_registry import PathRegistry
+from signals.database_client import DatabaseClient
+from signals.mailbox_service import MailboxService, summary_tag
+from orchestrator.path_registry import PathRegistry
 
 WORKFLOW_HOME = Path(
     os.environ.get(
         "WORKFLOW_HOME",
-        Path(__file__).resolve().parent.parent.parent.parent,
+        Path(__file__).resolve().parent.parent,
     ),
 )
 DB_SH = WORKFLOW_HOME / "scripts" / "db.sh"
@@ -82,8 +82,8 @@ def _record_traceability(
     detail: str = "",
 ) -> None:
     """Append a traceability entry to artifacts/traceability.json."""
-    from lib.core.artifact_io import read_json, write_json
-    from lib.repositories.proposal_state_repository import load_proposal_state
+    from signals.artifact_io import read_json, write_json
+    from proposal.proposal_state_repository import load_proposal_state
 
     paths = PathRegistry(planspace)
     trace_path = paths.traceability()

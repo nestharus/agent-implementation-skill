@@ -5,7 +5,7 @@ dispatch.  Used by both ``section_loop`` and ``scan`` prompt builders
 to enforce the same prohibited-pattern rules across all dynamic
 prompt surfaces.
 
-R83/P2: Extracted from ``section_loop.agent_templates`` so scan
+R83/P2: Extracted from ``dispatch.agent_templates`` so scan
 builders can reuse the same mechanical guard without coupling to
 section-loop internals.
 """

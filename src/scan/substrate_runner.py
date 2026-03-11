@@ -16,33 +16,33 @@ import argparse
 import sys
 from pathlib import Path
 
-from lib.core.artifact_io import read_json
-from lib.core.path_registry import PathRegistry
-from lib.substrate.substrate_dispatch import dispatch_substrate_agent as _dispatch_agent
-from lib.substrate.substrate_helpers import (
+from signals.artifact_io import read_json
+from orchestrator.path_registry import PathRegistry
+from scan.substrate_dispatch import dispatch_substrate_agent as _dispatch_agent
+from scan.substrate_helpers import (
     count_existing_related as _count_existing_related,
     list_section_files as _list_section_files,
     read_project_mode as _read_project_mode,
     section_number as _section_number,
     write_status as _write_status,
 )
-from lib.substrate.substrate_policy import (
+from scan.substrate_policy import (
     DEFAULT_TRIGGER_THRESHOLD as _DEFAULT_TRIGGER_THRESHOLD,
     read_substrate_model_policy as _read_model_policy,
     read_trigger_signals as _read_trigger_signals,
     read_trigger_threshold as _read_trigger_threshold,
 )
 
-from lib.prompts.substrate_prompt_builder import (
+from scan.substrate_prompt_builder import (
     write_pruner_prompt,
     write_seeder_prompt,
     write_shard_prompt,
 )
-from .related_files import apply_related_files_updates
-from .schemas import read_seed_plan_failclosed, read_shard_failclosed
+from scan.substrate_related_files import apply_related_files_updates
+from scan.substrate_schemas import read_seed_plan_failclosed, read_shard_failclosed
 
-# WORKFLOW_HOME: scripts/substrate -> scripts -> src
-WORKFLOW_HOME = Path(__file__).resolve().parent.parent.parent
+# WORKFLOW_HOME: scan/ -> src/
+WORKFLOW_HOME = Path(__file__).resolve().parent.parent
 
 def _registry_for_artifacts(artifacts_dir: Path) -> PathRegistry:
     return PathRegistry(artifacts_dir.parent)

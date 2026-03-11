@@ -4,12 +4,12 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from lib.core.artifact_io import write_json
-from lib.risk.loop import run_risk_loop
-from lib.risk.package_builder import build_package_from_proposal
-from lib.risk.posture import select_posture
-from lib.risk.serialization import serialize_assessment, serialize_plan
-from lib.risk.types import (
+from signals.artifact_io import write_json
+from risk.loop import run_risk_loop
+from risk.package_builder import build_package_from_proposal
+from risk.posture import select_posture
+from risk.serialization import serialize_assessment, serialize_plan
+from risk.types import (
     PostureProfile,
     RiskAssessment,
     RiskModifiers,

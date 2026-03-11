@@ -31,7 +31,7 @@ def readiness_route(planspace: Path, codespace: Path, project_root: Path, **kwar
 
     script = (
         "from types import SimpleNamespace; "
-        "from lib.pipelines.readiness_gate import resolve_and_route; "
+        "from proposal.readiness_gate import resolve_and_route; "
         "from pathlib import Path; "
         f"resolve_and_route("
         f"SimpleNamespace(number={section_number!r}), "
@@ -101,7 +101,7 @@ def ensure_global_philosophy(
     """Call ensure_global_philosophy via subprocess."""
     parent = kwargs.get("parent", "eval-harness")
     script = (
-        "from lib.intent.philosophy_bootstrap import ensure_global_philosophy; "
+        "from intent.philosophy_bootstrap import ensure_global_philosophy; "
         "from pathlib import Path; "
         f"ensure_global_philosophy("
         f"Path({str(planspace)!r}), "
@@ -163,7 +163,7 @@ def qa_dispatch_intercept(
     model = kwargs.get("model", "glm")
     script = (
         "from pathlib import Path; "
-        "from section_loop.dispatch import dispatch_agent; "
+        "from dispatch.section_dispatch import dispatch_agent; "
         f"planspace = Path({str(planspace)!r}); "
         f"codespace = Path({str(codespace)!r}); "
         "prompt = planspace / 'artifacts' / 'qa-test-prompt.md'; "
@@ -187,7 +187,7 @@ def governance_bootstrap(
     """Call bootstrap_governance_if_missing + build_governance_indexes."""
     del kwargs
     script = (
-        "from lib.governance.loader import bootstrap_governance_if_missing, build_governance_indexes; "
+        "from intake.governance_loader import bootstrap_governance_if_missing, build_governance_indexes; "
         "from pathlib import Path; "
         f"bootstrap_governance_if_missing(Path({str(codespace)!r}), Path({str(planspace)!r})); "
         f"build_governance_indexes(Path({str(codespace)!r}), Path({str(planspace)!r}))"

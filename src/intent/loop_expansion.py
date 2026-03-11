@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.intent import intent_surface as _intent_surface
-from prompt_safety import write_validated_prompt
+from intent import intent_surface as _intent_surface
+from dispatch.prompt_safety import write_validated_prompt
 
-from ..dispatch import dispatch_agent, read_agent_signal, read_model_policy
-from ..pipeline_control import pause_for_parent
-from .surfaces import (
+from dispatch.section_dispatch import dispatch_agent, read_agent_signal, read_model_policy
+from orchestrator.pipeline_control import pause_for_parent
+from intent.loop_surfaces import (
     find_discarded_recurrences,
     load_combined_intent_surfaces,
     load_surface_registry,

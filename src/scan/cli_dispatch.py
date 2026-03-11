@@ -1,13 +1,13 @@
 """Thin subprocess wrapper for ``agents`` binary dispatch.
 
-This is intentionally separate from ``section_loop.dispatch``.
+This is intentionally separate from ``dispatch.section_dispatch``.
 Stage 3 scan is a different execution stage with simpler needs:
 no monitoring, no pause/resume, no mailbox integration.  Keeping
 a thin boundary here avoids coupling scan to the section-loop
 orchestration layer.
 
 For testing, mock ``scan.dispatch.dispatch_agent`` the same way
-``section_loop.dispatch.dispatch_agent`` is mocked — both are the
+``dispatch.section_dispatch.dispatch_agent`` is mocked — both are the
 single LLM boundary for their respective stages.
 """
 
@@ -17,7 +17,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from lib.scan.scan_dispatch import (
+from scan.scan_dispatch import (
     DEFAULT_SCAN_MODELS,
     build_scan_dispatch_command,
     read_scan_model_policy,
@@ -66,8 +66,8 @@ def dispatch_agent(
             "agent_file is required — every dispatch must have "
             "behavioral constraints"
         )
-    # WORKFLOW_HOME: scripts/scan -> scripts -> src
-    workflow_home = Path(__file__).resolve().parent.parent.parent
+    # WORKFLOW_HOME: scan/ -> src/
+    workflow_home = Path(__file__).resolve().parent.parent
     agent_path = resolve_scan_agent_path(workflow_home, agent_file)
     cmd = build_scan_dispatch_command(
         model=model,

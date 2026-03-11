@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from lib.core.path_registry import PathRegistry
+from orchestrator.path_registry import PathRegistry
 
 
 def _note_path(planspace: Path, from_section: str, to_section: str) -> Path:

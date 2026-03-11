@@ -6,15 +6,15 @@ import subprocess
 from pathlib import Path
 
 from _paths import DB_SH
-from flow_schema import TaskSpec
-from src.scripts.lib.core.artifact_io import write_json
-from src.scripts.lib.research.orchestrator import write_research_status
-from src.scripts.lib.flow.flow_reconciler import (
+from flow.flow_schema import TaskSpec
+from src.signals.artifact_io import write_json
+from src.research.orchestrator import write_research_status
+from src.flow.flow_reconciler import (
     build_gate_aggregate_manifest,
     build_result_manifest,
     reconcile_task_completion,
 )
-from src.scripts.lib.flow.flow_submitter import submit_chain
+from src.flow.flow_submitter import submit_chain
 
 
 def _init_db(db_path: Path) -> None:
@@ -166,7 +166,7 @@ def test_reconcile_task_completion_runs_research_plan_executor(
     called: list[tuple[str, Path | None]] = []
 
     monkeypatch.setattr(
-        "src.scripts.lib.flow.flow_reconciler.execute_research_plan",
+        "src.flow.flow_reconciler.execute_research_plan",
         lambda section_number, ps, codespace, plan_output_path: (
             called.append((section_number, codespace)) or True
         ),

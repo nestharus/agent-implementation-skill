@@ -6,8 +6,8 @@ import logging
 import re
 from pathlib import Path
 
-from lib.core.artifact_io import write_json
-from lib.core.path_registry import PathRegistry
+from signals.artifact_io import write_json
+from orchestrator.path_registry import PathRegistry
 
 logger = logging.getLogger(__name__)
 

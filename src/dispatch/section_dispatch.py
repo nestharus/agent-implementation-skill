@@ -3,30 +3,30 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from lib.dispatch import agent_executor
-from lib.services.alignment_change_tracker import check_pending as alignment_changed_pending
-from lib.core.database_client import DatabaseClient
-from lib.dispatch.dispatch_helpers import (
+from dispatch import agent_executor
+from staleness.alignment_change_tracker import check_pending as alignment_changed_pending
+from signals.database_client import DatabaseClient
+from dispatch.dispatch_helpers import (
     check_agent_signals,
     summarize_output,
     write_model_choice_signal,
 )
-from lib.dispatch.dispatch_metadata import write_dispatch_metadata
-from lib.core.model_policy import load_model_policy
-from lib.dispatch.monitor_service import MonitorService
-from lib.core.path_registry import PathRegistry
-from lib.services.signal_reader import read_agent_signal, read_signal_tuple
+from dispatch.dispatch_metadata import write_dispatch_metadata
+from dispatch.model_policy import load_model_policy
+from dispatch.monitor_service import MonitorService
+from orchestrator.path_registry import PathRegistry
+from signals.signal_reader import read_agent_signal, read_signal_tuple
 
 from .agent_templates import render_template, validate_dynamic_content
-from .communication import (
+from signals.section_loop_communication import (
     AGENT_NAME,
     DB_SH,
     WORKFLOW_HOME,
     _log_artifact,
     log,
 )
-from .context_assembly import materialize_context_sidecar
-from .pipeline_control import wait_if_paused
+from orchestrator.context_assembly import materialize_context_sidecar
+from orchestrator.pipeline_control import wait_if_paused
 
 
 def _database_client(planspace: Path) -> DatabaseClient:
@@ -109,7 +109,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
     # Skip for qa-interceptor.md to prevent infinite recursion.
     if planspace and agent_file != "qa-interceptor.md":
         try:
-            from qa_interceptor import intercept_dispatch, read_qa_parameters
+            from dispatch.qa_interceptor import intercept_dispatch, read_qa_parameters
             qa_params = read_qa_parameters(planspace)
         except Exception:
             qa_params = {}
@@ -242,7 +242,7 @@ Do NOT send loop signals via mailbox — only log signal events as above.
 """
     violations = validate_dynamic_content(dynamic_body)
     if violations:
-        from .communication import log
+        from signals.section_loop_communication import log
         log(f"  ERROR: monitor prompt blocked — dynamic violations: {violations}")
         return prompt_path
     prompt_path.write_text(
@@ -293,7 +293,7 @@ LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
 """
     violations = validate_dynamic_content(dynamic_body)
     if violations:
-        from .communication import log
+        from signals.section_loop_communication import log
         log(f"  ERROR: adjudicate prompt blocked — dynamic violations: {violations}")
         return None, ""
     adj_prompt.write_text(

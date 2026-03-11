@@ -10,38 +10,38 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 try:
-    from prompt_safety import validate_dynamic_content, write_validated_prompt
+    from dispatch.prompt_safety import validate_dynamic_content, write_validated_prompt
 except ModuleNotFoundError:  # pragma: no cover - test package import path
     from src.scripts.prompt_safety import validate_dynamic_content, write_validated_prompt
 
 try:
-    from section_loop.communication import (
+    from signals.section_loop_communication import (
         AGENT_NAME,
         DB_SH,
         WORKFLOW_HOME,
         _log_artifact,
         log,
     )
-    from section_loop.context_assembly import materialize_context_sidecar
-    from section_loop.dispatch import dispatch_agent
+    from orchestrator.context_assembly import materialize_context_sidecar
+    from dispatch.section_dispatch import dispatch_agent
 except ModuleNotFoundError:  # pragma: no cover - test package import path
-    from src.scripts.section_loop.communication import (
+    from src.signals.section_loop_communication import (
         AGENT_NAME,
         DB_SH,
         WORKFLOW_HOME,
         _log_artifact,
         log,
     )
-    from src.scripts.section_loop.context_assembly import materialize_context_sidecar
-    from src.scripts.section_loop.dispatch import dispatch_agent
+    from src.orchestrator.context_assembly import materialize_context_sidecar
+    from src.dispatch.section_dispatch import dispatch_agent
 
-from lib.core.path_registry import PathRegistry
+from orchestrator.path_registry import PathRegistry
 
 if TYPE_CHECKING:
     try:
-        from section_loop.types import Section
+        from orchestrator.types import Section
     except ModuleNotFoundError:  # pragma: no cover - test package import path
-        from src.scripts.section_loop.types import Section
+        from src.orchestrator.types import Section
 
 MaterialImpact = tuple[str, str, bool, str]
 

@@ -6,11 +6,11 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from lib.repositories.decision_repository import Decision, load_decisions, record_decision
-from lib.core.path_registry import PathRegistry
+from orchestrator.decision_repository import Decision, load_decisions, record_decision
+from orchestrator.path_registry import PathRegistry
 
 if TYPE_CHECKING:
-    from section_loop.types import Section
+    from orchestrator.types import Section
 
 
 def read_decisions(planspace: Path, section_number: str) -> str:

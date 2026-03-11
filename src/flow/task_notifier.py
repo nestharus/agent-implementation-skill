@@ -6,8 +6,8 @@ import sqlite3
 import subprocess
 from pathlib import Path
 
-from lib.core.path_registry import PathRegistry
-from lib.tasks.task_db_client import DB_SH, db_cmd
+from orchestrator.path_registry import PathRegistry
+from flow.task_db_client import DB_SH, db_cmd
 
 DISPATCHER_NAME = "task-dispatcher"
 

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from section_loop.types import Section
+from orchestrator.types import Section
 
-from lib.core.path_registry import PathRegistry
+from orchestrator.path_registry import PathRegistry
 
 
 def build_proposal_context_extras(

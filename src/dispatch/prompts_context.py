@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.artifact_io import read_json
-from lib.core.path_registry import PathRegistry
+from signals.artifact_io import read_json
+from orchestrator.path_registry import PathRegistry
 
-from ..cross_section import extract_section_summary
-from ..types import Section
+from coordination.cross_section import extract_section_summary
+from orchestrator.types import Section
 
 
 def build_prompt_context(

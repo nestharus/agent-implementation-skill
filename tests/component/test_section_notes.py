@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from section_loop.types import Section
+from orchestrator.types import Section
 
-from src.scripts.lib.sections import section_notes
+from src.scan import section_notes
 
 
 def _make_section(tmp_path: Path, number: str = "01") -> tuple[Path, Path, Section]:

@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.intent import intent_bootstrap
-from src.scripts.lib.intent.intent_bootstrap import run_intent_bootstrap
-from section_loop.types import Section
+from src.intent import intent_bootstrap
+from src.intent.intent_bootstrap import run_intent_bootstrap
+from orchestrator.types import Section
 
 
 def _make_section(planspace: Path) -> Section:

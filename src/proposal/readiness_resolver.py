@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from lib.core.artifact_io import read_json, write_json
-from lib.core.path_registry import PathRegistry
-from lib.repositories.proposal_state_repository import (
+from signals.artifact_io import read_json, write_json
+from orchestrator.path_registry import PathRegistry
+from proposal.proposal_state_repository import (
     extract_blockers,
     has_blocking_fields,
     load_proposal_state,

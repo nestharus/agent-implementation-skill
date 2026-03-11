@@ -2,12 +2,12 @@
 
 from pathlib import Path
 
-from lib.core.artifact_io import read_json, rename_malformed, write_json
-from lib.core.hash_service import content_hash
-from lib.core.path_registry import PathRegistry
+from signals.artifact_io import read_json, rename_malformed, write_json
+from staleness.hash_service import content_hash
+from orchestrator.path_registry import PathRegistry
 
-from ..communication import log
-from ..dispatch import read_agent_signal
+from signals.section_loop_communication import log
+from dispatch.section_dispatch import read_agent_signal
 
 
 def load_surface_registry(

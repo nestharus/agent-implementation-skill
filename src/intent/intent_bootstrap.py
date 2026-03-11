@@ -4,19 +4,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.services.alignment_change_tracker import check_pending as alignment_changed_pending
-from lib.core.artifact_io import read_json, write_json
-from lib.governance.packet import build_section_governance_packet
-from lib.core.path_registry import PathRegistry
-from section_loop.communication import _record_traceability, log
-from section_loop.intent import (
+from staleness.alignment_change_tracker import check_pending as alignment_changed_pending
+from signals.artifact_io import read_json, write_json
+from intake.governance_packet import build_section_governance_packet
+from orchestrator.path_registry import PathRegistry
+from signals.section_loop_communication import _record_traceability, log
+from intent.loop_bootstrap import (
     ensure_global_philosophy,
     generate_intent_pack,
-    run_intent_triage,
 )
-from section_loop.pipeline_control import pause_for_parent
-from section_loop.section_engine.blockers import _update_blocker_rollup
-from section_loop.types import Section
+from intent.intent_triage import run_intent_triage
+from orchestrator.pipeline_control import pause_for_parent
+from signals.blockers import _update_blocker_rollup
+from orchestrator.types import Section
 
 
 def run_intent_bootstrap(
@@ -168,7 +168,7 @@ def run_intent_bootstrap(
 
 
 def _extract_todos_from_files(codespace: Path, related_files: list[str]) -> str:
-    from section_loop.section_engine.todos import (
+    from implementation.engine_todos import (
         _extract_todos_from_files as extract_todos,
     )
 

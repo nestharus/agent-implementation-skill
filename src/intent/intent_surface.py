@@ -4,18 +4,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.artifact_io import write_json
-from lib.core.path_registry import PathRegistry
-from lib.intent.philosophy_bootstrap import validate_philosophy_grounding
-from prompt_safety import write_validated_prompt
-from section_loop.communication import _log_artifact, log, mailbox_send
-from lib.core.model_policy import resolve
-from section_loop.dispatch import (
+from signals.artifact_io import write_json
+from orchestrator.path_registry import PathRegistry
+from intent.philosophy_bootstrap import validate_philosophy_grounding
+from dispatch.prompt_safety import write_validated_prompt
+from signals.section_loop_communication import _log_artifact, log, mailbox_send
+from dispatch.model_policy import resolve
+from dispatch.section_dispatch import (
     dispatch_agent,
     read_agent_signal,
     read_model_policy,
 )
-from section_loop.intent.surfaces import (
+from intent.loop_surfaces import (
     find_discarded_recurrences,
     load_intent_surfaces,
     load_surface_registry,
@@ -25,7 +25,7 @@ from section_loop.intent.surfaces import (
     normalize_surface_ids,
     save_surface_registry,
 )
-from section_loop.pipeline_control import pause_for_parent
+from orchestrator.pipeline_control import pause_for_parent
 
 
 def build_pending_surface_payload(worklist: list[dict], surfaces: dict) -> dict:

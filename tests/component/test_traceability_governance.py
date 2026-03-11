@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from section_loop.types import Section
-from src.scripts.section_loop.section_engine.traceability import (
+from orchestrator.types import Section
+from src.implementation.engine_traceability import (
     _write_traceability_index,
     update_trace_governance,
 )

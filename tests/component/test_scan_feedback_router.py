@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.scripts.lib.scan.scan_feedback_router import (
+from src.scan.scan_feedback_router import (
     _append_to_log,
     _extract_section_number,
     _is_valid_updater_signal,

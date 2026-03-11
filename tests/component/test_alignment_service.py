@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.scripts.lib.services.alignment_service import collect_modified_files, extract_problems
-from src.scripts.section_loop.types import Section
+from src.staleness.alignment_service import collect_modified_files, extract_problems
+from src.orchestrator.types import Section
 
 
 def _section(planspace: Path) -> Section:

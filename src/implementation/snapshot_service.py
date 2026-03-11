@@ -7,7 +7,7 @@ import shutil
 from collections.abc import Callable
 from pathlib import Path
 
-from lib.core.path_registry import PathRegistry
+from orchestrator.path_registry import PathRegistry
 
 
 def snapshot_modified_files(

@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from lib.core.hash_service import content_hash, file_hash
-from lib.core.path_registry import PathRegistry
+from staleness.hash_service import content_hash, file_hash
+from orchestrator.path_registry import PathRegistry
 
 
 def section_inputs_hash(

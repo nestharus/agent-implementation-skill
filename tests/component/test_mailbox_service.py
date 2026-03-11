@@ -6,8 +6,8 @@ import sqlite3
 from pathlib import Path
 
 from _paths import DB_SH
-from src.scripts.lib.core.database_client import DatabaseClient
-from src.scripts.lib.dispatch.mailbox_service import MailboxService, summary_tag
+from src.signals.database_client import DatabaseClient
+from src.signals.mailbox_service import MailboxService, summary_tag
 
 
 def _mailbox(tmp_path: Path, agent_name: str = "section-loop") -> tuple[MailboxService, DatabaseClient, Path]:

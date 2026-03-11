@@ -6,26 +6,26 @@ render → write file → log artifact.
 
 from pathlib import Path
 
-from lib.prompts.prompt_context_assembler import (
+from dispatch.prompt_context_assembler import (
     build_impl_context_extras,
     build_proposal_context_extras,
 )
-from lib.core.path_registry import PathRegistry
-from lib.prompts.prompt_helpers import (
+from orchestrator.path_registry import PathRegistry
+from dispatch.prompt_helpers import (
     agent_mail_instructions,
     format_existing_file_listing,
     scoped_context_block,
     signal_instructions,
 )
 
-from ..agent_templates import validate_dynamic_content
-from prompt_safety import write_validated_prompt
-from ..alignment import collect_modified_files
-from ..communication import WORKFLOW_HOME, _log_artifact, log
-from ..context_assembly import materialize_context_sidecar
-from ..types import Section
-from .context import build_prompt_context
-from .renderer import load_template, render
+from dispatch.agent_templates import validate_dynamic_content
+from dispatch.prompt_safety import write_validated_prompt
+from staleness.section_alignment import collect_modified_files
+from signals.section_loop_communication import WORKFLOW_HOME, _log_artifact, log
+from orchestrator.context_assembly import materialize_context_sidecar
+from orchestrator.types import Section
+from dispatch.prompts_context import build_prompt_context
+from dispatch.prompts_renderer import load_template, render
 
 
 # ---------------------------------------------------------------------------

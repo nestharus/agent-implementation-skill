@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.pipelines import reconciliation_phase
-from src.scripts.lib.pipelines.reconciliation_phase import (
+from src.reconciliation import reconciliation_phase
+from src.reconciliation.reconciliation_phase import (
     ReconciliationPhaseExit,
     run_reconciliation_phase,
 )
-from section_loop.types import ProposalPassResult, Section
+from orchestrator.types import ProposalPassResult, Section
 
 
 def _make_section(planspace: Path, number: str) -> Section:

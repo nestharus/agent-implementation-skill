@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from lib.core.database_client import DatabaseClient
+from signals.database_client import DatabaseClient
 
 
 @dataclass

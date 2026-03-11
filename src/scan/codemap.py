@@ -7,14 +7,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.artifact_io import read_json, rename_malformed
-from lib.core.path_registry import PathRegistry
-from lib.scan.scan_phase_logger import log_phase_failure
-from lib.scan.scan_template_loader import load_scan_template
+from signals.artifact_io import read_json, rename_malformed
+from orchestrator.path_registry import PathRegistry
+from scan.scan_phase_logger import log_phase_failure
+from scan.scan_template_loader import load_scan_template
 
-from prompt_safety import validate_dynamic_content
+from dispatch.prompt_safety import validate_dynamic_content
 
-from .dispatch import dispatch_agent, read_scan_model_policy
+from scan.cli_dispatch import dispatch_agent, read_scan_model_policy
 from .fingerprint import NON_GIT_SENTINEL, compute_codespace_fingerprint
 
 def run_codemap_build(

@@ -14,11 +14,11 @@ import json
 import re
 from pathlib import Path
 
-from lib.core.path_registry import PathRegistry
+from orchestrator.path_registry import PathRegistry
 
 # Reuse the shared related_files parser from the scan package.
 # Both scan and substrate need identical parsing logic.
-from scan.related_files import block_insert_position, extract_related_files
+from scan.cli_related_files import block_insert_position, extract_related_files
 
 
 def _read_signal_failclosed(path: Path) -> dict | None:

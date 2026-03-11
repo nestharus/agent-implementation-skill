@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from lib.risk.quantifier import (
+from risk.quantifier import (
     CLASS_WEIGHTS,
     compute_raw_risk,
     is_acceptable,
     risk_to_posture,
 )
-from lib.risk.types import PostureProfile, RiskModifiers, RiskType, RiskVector, StepClass
+from risk.types import PostureProfile, RiskModifiers, RiskType, RiskVector, StepClass
 
 
 def test_compute_raw_risk_zero_vector_returns_low_score() -> None:

@@ -20,10 +20,10 @@ import os
 import time
 from pathlib import Path
 
-from lib.core.artifact_io import read_json, rename_malformed, write_json
-from lib.core.model_policy import load_model_policy, resolve
-from lib.core.path_registry import PathRegistry
-from lib.services.qa_verdict_parser import parse_qa_verdict
+from signals.artifact_io import read_json, rename_malformed, write_json
+from dispatch.model_policy import load_model_policy, resolve
+from orchestrator.path_registry import PathRegistry
+from proposal.qa_verdict_parser import parse_qa_verdict
 
 # Resolve paths relative to this script's location.
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -32,7 +32,7 @@ WORKFLOW_HOME = Path(os.environ.get("WORKFLOW_HOME", SCRIPTS_DIR.parent))
 # dispatch_agent is imported at module level so it can be patched in
 # tests.  This module is itself lazy-imported by the dispatcher inside
 # a try/except, so import failures here do not break non-QA dispatch.
-from section_loop.dispatch import dispatch_agent  # noqa: E402
+from dispatch.section_dispatch import dispatch_agent  # noqa: E402
 
 # Infrastructure submitters that are not agent files.
 _INFRA_SUBMITTERS: dict[str, str] = {
@@ -121,7 +121,7 @@ def _build_qa_prompt(
     Uses ``render_template`` from ``agent_templates`` to wrap with
     system constraints.
     """
-    from section_loop.agent_templates import render_template
+    from dispatch.agent_templates import render_template
 
     task_id = task.get("id", "?")
     task_type = task.get("type", "?")
@@ -226,7 +226,7 @@ def intercept_dispatch(
     """Evaluate a direct dispatch against agent contracts.
 
     Creates a synthetic task dict and delegates to ``intercept_task()``.
-    Used by ``section_loop.dispatch.dispatch_agent()`` to intercept
+    Used by ``dispatch.section_dispatch.dispatch_agent()`` to intercept
     dispatches that bypass the task queue.
     """
     task = {
@@ -297,7 +297,7 @@ def intercept_task(
         # even though the payload path arrived through an internal task.
         # Agent contracts are trusted but payload is not — validate the
         # full rendered prompt before dispatch.
-        from prompt_safety import validate_dynamic_content as _validate
+        from dispatch.prompt_safety import validate_dynamic_content as _validate
         intercepts_dir = PathRegistry(planspace).qa_intercepts_dir()
         intercepts_dir.mkdir(parents=True, exist_ok=True)
         prompt_path = intercepts_dir / f"qa-{task_id}-prompt.md"

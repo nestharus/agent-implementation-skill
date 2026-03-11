@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from section_loop.prompts.context import build_prompt_context
-from section_loop.types import Section
+from dispatch.prompts_context import build_prompt_context
+from orchestrator.types import Section
 
 
 def _make_section(planspace: Path, number: str = "01") -> Section:

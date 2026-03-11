@@ -4,19 +4,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.artifact_io import write_json
-from lib.core.model_policy import resolve
-from lib.pipelines.coordination_problem_resolver import _collect_outstanding_problems
-from lib.core.path_registry import PathRegistry
-from lib.repositories.strategic_state import build_strategic_state
-from section_loop.communication import log, mailbox_send
-from section_loop.coordination import (
+from signals.artifact_io import write_json
+from dispatch.model_policy import resolve
+from coordination.coordination_problem_resolver import _collect_outstanding_problems
+from orchestrator.path_registry import PathRegistry
+from orchestrator.strategic_state import build_strategic_state
+from signals.section_loop_communication import log, mailbox_send
+from coordination.loop_runner import (
     MAX_COORDINATION_ROUNDS,
     MIN_COORDINATION_ROUNDS,
     run_global_coordination,
 )
-from section_loop.pipeline_control import poll_control_messages
-from section_loop.types import Section, SectionResult
+from orchestrator.pipeline_control import poll_control_messages
+from orchestrator.types import Section, SectionResult
 
 
 def run_coordination_loop(
@@ -208,6 +208,6 @@ def run_coordination_loop(
 
 
 def _check_and_clear_alignment_changed(planspace: Path) -> bool:
-    from section_loop.main import _check_and_clear_alignment_changed as check_and_clear
+    from orchestrator.main import _check_and_clear_alignment_changed as check_and_clear
 
     return check_and_clear(planspace)

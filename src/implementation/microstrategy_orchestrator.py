@@ -2,19 +2,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.artifact_io import write_json
-from lib.core.model_policy import resolve
-from lib.core.path_registry import PathRegistry
-from section_loop.agent_templates import (
+from signals.artifact_io import write_json
+from dispatch.model_policy import resolve
+from orchestrator.path_registry import PathRegistry
+from dispatch.agent_templates import (
     TASK_SUBMISSION_SEMANTICS,
     validate_dynamic_content,
 )
-from section_loop.communication import _log_artifact, _record_traceability, log, mailbox_send
-from section_loop.dispatch import dispatch_agent
-from section_loop.pipeline_control import poll_control_messages
-from section_loop.prompts import agent_mail_instructions
-from section_loop.task_ingestion import ingest_and_submit
-from section_loop.section_engine.todos import _check_needs_microstrategy
+from signals.section_loop_communication import _log_artifact, _record_traceability, log, mailbox_send
+from dispatch.section_dispatch import dispatch_agent
+from orchestrator.pipeline_control import poll_control_messages
+from dispatch.prompts_writers import agent_mail_instructions
+from flow.section_task_ingestion import ingest_and_submit
+from implementation.engine_todos import _check_needs_microstrategy
 
 
 def run_microstrategy(

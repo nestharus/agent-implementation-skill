@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.scripts.lib.services.section_input_hasher import (
+from src.staleness.section_input_hasher import (
     coordination_recheck_hash,
     section_inputs_hash,
 )
-from src.scripts.section_loop.types import Section
+from src.orchestrator.types import Section
 
 
 class TestSectionInputsHash:

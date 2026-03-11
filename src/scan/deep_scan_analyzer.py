@@ -7,12 +7,12 @@ import re
 import shutil
 from pathlib import Path
 
-from lib.scan.scan_phase_logger import log_phase_failure
-from lib.scan.scan_template_loader import load_scan_template
-from lib.scan.scan_match_updater import update_match
-from prompt_safety import validate_dynamic_content
-from scan.cache import FileCardCache, is_valid_cached_feedback
-from scan.dispatch import dispatch_agent
+from scan.scan_phase_logger import log_phase_failure
+from scan.scan_template_loader import load_scan_template
+from scan.scan_match_updater import update_match
+from dispatch.prompt_safety import validate_dynamic_content
+from scan.cli_cache import FileCardCache, is_valid_cached_feedback
+from scan.cli_dispatch import dispatch_agent
 
 
 def safe_name(source_file: str) -> str:

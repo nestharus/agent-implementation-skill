@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.core.path_registry import PathRegistry
+from src.orchestrator.path_registry import PathRegistry
 
 
 @pytest.fixture()

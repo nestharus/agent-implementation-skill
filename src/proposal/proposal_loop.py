@@ -2,43 +2,43 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.services.alignment_change_tracker import check_pending as alignment_changed_pending
-from lib.core.artifact_io import read_json_or_default, write_json
-from lib.core.model_policy import resolve
-from lib.intent.intent_triage import load_triage_result
-from lib.core.path_registry import PathRegistry
-from section_loop.alignment import _extract_problems
-from section_loop.communication import mailbox_send, log
-from section_loop.cross_section import persist_decision
-from section_loop.dispatch import (
+from staleness.alignment_change_tracker import check_pending as alignment_changed_pending
+from signals.artifact_io import read_json_or_default, write_json
+from dispatch.model_policy import resolve
+from intent.intent_triage import load_triage_result
+from orchestrator.path_registry import PathRegistry
+from staleness.section_alignment import _extract_problems
+from signals.section_loop_communication import mailbox_send, log
+from coordination.cross_section import persist_decision
+from dispatch.section_dispatch import (
     check_agent_signals,
     dispatch_agent,
     summarize_output,
     write_model_choice_signal,
 )
-from section_loop.intent.expansion import handle_user_gate, run_expansion_cycle
-from section_loop.intent.surfaces import (
+from intent.loop_expansion import handle_user_gate, run_expansion_cycle
+from intent.loop_surfaces import (
     load_combined_intent_surfaces,
     load_surface_registry,
     merge_surfaces_into_registry,
     normalize_surface_ids,
     save_surface_registry,
 )
-from section_loop.pipeline_control import (
+from orchestrator.pipeline_control import (
     handle_pending_messages,
     pause_for_parent,
 )
-from section_loop.prompts import (
+from dispatch.prompts_writers import (
     write_integration_alignment_prompt,
     write_integration_proposal_prompt,
 )
-from section_loop.reconciliation import load_reconciliation_result
-from section_loop.section_engine.blockers import (
+from reconciliation.loop_reconciliation import load_reconciliation_result
+from signals.blockers import (
     _append_open_problem,
     _update_blocker_rollup,
 )
-from section_loop.section_engine.reexplore import _write_alignment_surface
-from section_loop.task_ingestion import ingest_and_submit
+from implementation.engine_reexplore import _write_alignment_surface
+from flow.section_task_ingestion import ingest_and_submit
 
 
 DEFINITION_GAP_KINDS = {

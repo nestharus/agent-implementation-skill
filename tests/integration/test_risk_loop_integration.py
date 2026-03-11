@@ -4,18 +4,18 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from lib.core.artifact_io import read_json, write_json
-from lib.pipelines.implementation_pass import (
+from signals.artifact_io import read_json, write_json
+from implementation.implementation_pass import (
     _append_risk_history,
     _read_roal_input_index,
     _run_risk_review,
     run_implementation_pass,
 )
-from lib.risk.history import append_history_entry, read_history
-from lib.risk.loop import run_lightweight_risk_check, run_risk_loop
-from lib.risk.package_builder import build_package_from_proposal
-from lib.risk.serialization import serialize_assessment, serialize_plan
-from lib.risk.types import (
+from risk.history import append_history_entry, read_history
+from risk.loop import run_lightweight_risk_check, run_risk_loop
+from risk.package_builder import build_package_from_proposal
+from risk.serialization import serialize_assessment, serialize_plan
+from risk.types import (
     PackageStep,
     PostureProfile,
     RiskAssessment,
@@ -31,7 +31,7 @@ from lib.risk.types import (
     StepMitigation,
     UnderstandingInventory,
 )
-from section_loop.types import ProposalPassResult, Section
+from orchestrator.types import ProposalPassResult, Section
 
 
 def _write_risk_inputs(
@@ -700,16 +700,16 @@ def test_reassessment_executes_newly_accepted_frontier_end_to_end(
     reassessment_packages: list[list[str]] = []
     run_calls: list[list[str]] = []
 
-    monkeypatch.setattr("lib.pipelines.implementation_pass.handle_pending_messages", lambda *args: False)
-    monkeypatch.setattr("lib.pipelines.implementation_pass.alignment_changed_pending", lambda *args: False)
-    monkeypatch.setattr("lib.pipelines.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("lib.pipelines.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
-    monkeypatch.setattr("lib.pipelines.implementation_pass._run_risk_review", lambda *_args, **_kwargs: initial_plan)
-    monkeypatch.setattr("lib.pipelines.implementation_pass._append_risk_history", lambda *args, **kwargs: None)
-    monkeypatch.setattr("lib.pipelines.implementation_pass.read_package", lambda *_args, **_kwargs: package)
-    monkeypatch.setattr("lib.pipelines.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
-    monkeypatch.setattr("lib.pipelines.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("lib.pipelines.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.implementation_pass.handle_pending_messages", lambda *args: False)
+    monkeypatch.setattr("implementation.implementation_pass.alignment_changed_pending", lambda *args: False)
+    monkeypatch.setattr("implementation.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
+    monkeypatch.setattr("implementation.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.implementation_pass._run_risk_review", lambda *_args, **_kwargs: initial_plan)
+    monkeypatch.setattr("implementation.implementation_pass._append_risk_history", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.implementation_pass.read_package", lambda *_args, **_kwargs: package)
+    monkeypatch.setattr("implementation.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
+    monkeypatch.setattr("implementation.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("implementation.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
 
     def _run_section(*_args, **_kwargs) -> list[str]:
         files = (
@@ -728,8 +728,8 @@ def test_reassessment_executes_newly_accepted_frontier_end_to_end(
         reassessment_packages.append([step.step_id for step in args[3].steps])
         return reassessed_plan
 
-    monkeypatch.setattr("lib.pipelines.implementation_pass.run_section", _run_section)
-    monkeypatch.setattr("lib.pipelines.implementation_pass.run_risk_loop", _reassess)
+    monkeypatch.setattr("implementation.implementation_pass.run_section", _run_section)
+    monkeypatch.setattr("implementation.implementation_pass.run_risk_loop", _reassess)
 
     results = run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},

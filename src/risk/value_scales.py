@@ -47,8 +47,8 @@ def save_value_scales(
     planspace: Path,
 ) -> Path:
     """Persist value scales to the risk directory."""
-    from lib.core.artifact_io import write_json
-    from lib.core.path_registry import PathRegistry
+    from signals.artifact_io import write_json
+    from orchestrator.path_registry import PathRegistry
 
     paths = PathRegistry(planspace)
     path = paths.value_scales(scope)
@@ -62,8 +62,8 @@ def load_value_scales(
     planspace: Path,
 ) -> list[ValueScale]:
     """Load value scales from the risk directory."""
-    from lib.core.artifact_io import read_json
-    from lib.core.path_registry import PathRegistry
+    from signals.artifact_io import read_json
+    from orchestrator.path_registry import PathRegistry
 
     paths = PathRegistry(planspace)
     data = read_json(paths.value_scales(scope))

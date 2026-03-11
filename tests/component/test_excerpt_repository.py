@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.repositories.excerpt_repository import (
+from src.proposal.excerpt_repository import (
     exists,
     invalidate_all,
     read,

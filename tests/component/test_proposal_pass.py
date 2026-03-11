@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.pipelines import proposal_pass
-from src.scripts.lib.pipelines.proposal_pass import ProposalPassExit, run_proposal_pass
-from section_loop.types import ProposalPassResult, Section
+from src.proposal import proposal_pass
+from src.proposal.proposal_pass import ProposalPassExit, run_proposal_pass
+from orchestrator.types import ProposalPassResult, Section
 
 
 def _planspace(tmp_path: Path) -> Path:

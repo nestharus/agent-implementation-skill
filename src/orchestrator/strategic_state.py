@@ -5,14 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from lib.core.artifact_io import read_json, write_json
-from lib.core.path_registry import PathRegistry
-from lib.repositories.decision_repository import load_decisions
-from lib.risk.serialization import (
+from signals.artifact_io import read_json, write_json
+from orchestrator.path_registry import PathRegistry
+from orchestrator.decision_repository import load_decisions
+from risk.serialization import (
     load_risk_assessment,
     load_risk_plan,
 )
-from lib.risk.types import PostureProfile, StepDecision
+from risk.types import PostureProfile, StepDecision
 
 
 def build_strategic_state(

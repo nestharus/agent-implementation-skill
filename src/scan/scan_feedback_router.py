@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from lib.core.artifact_io import read_json, write_json
+from signals.artifact_io import read_json, write_json
 
 
 def _is_valid_updater_signal(signal_path: Path) -> bool:

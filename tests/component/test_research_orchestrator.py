@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.scripts.lib.core.artifact_io import write_json
-from src.scripts.lib.research.orchestrator import (
+from src.signals.artifact_io import write_json
+from src.research.orchestrator import (
     compute_trigger_hash,
     is_research_complete,
     is_research_complete_for_trigger,

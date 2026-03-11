@@ -1,0 +1,6 @@
+{
+  "task_id": "task-3",
+  "status": "completed",
+  "output_path": "artifacts/research/sections/section-01/tickets/ticket-01-scan-result.md",
+  "summary": "Scan identified 3 primary files (confirm.py, gateway_client.py, idempotency.py) in src/payments/ with modify targets, interface dependencies, and design seams. Web research findings mapped to code gaps: missing retry loop, missing status-code classification, missing dead-letter escalation. Codemap was empty (greenfield)."
+}

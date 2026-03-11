@@ -170,7 +170,7 @@ class TestComputeSectionFreshness:
         ps = _setup_planspace(tmp_path)
         _create_section_artifacts(ps, "01")
 
-        from task_flow import compute_section_freshness
+        from flow.task_flow import compute_section_freshness
 
         t1 = compute_section_freshness(ps, "01")
         t2 = compute_section_freshness(ps, "01")
@@ -182,7 +182,7 @@ class TestComputeSectionFreshness:
         ps = _setup_planspace(tmp_path)
         _create_section_artifacts(ps, "02")
 
-        from task_flow import compute_section_freshness
+        from flow.task_flow import compute_section_freshness
 
         t_before = compute_section_freshness(ps, "02")
 
@@ -198,7 +198,7 @@ class TestComputeSectionFreshness:
         """No artifacts exist — still returns a valid 16-char hex hash."""
         ps = _setup_planspace(tmp_path)
 
-        from task_flow import compute_section_freshness
+        from flow.task_flow import compute_section_freshness
 
         token = compute_section_freshness(ps, "99")
         assert len(token) == 16
@@ -211,7 +211,7 @@ class TestComputeSectionFreshness:
         _create_section_artifacts(ps, "01")
         _create_section_artifacts(ps, "02")
 
-        from task_flow import compute_section_freshness
+        from flow.task_flow import compute_section_freshness
 
         t1 = compute_section_freshness(ps, "01")
         t2 = compute_section_freshness(ps, "02")
@@ -230,7 +230,7 @@ class TestDispatcherFreshnessGate:
         ps = _setup_planspace(tmp_path)
         _create_section_artifacts(ps, "03")
 
-        from task_flow import compute_section_freshness
+        from flow.task_flow import compute_section_freshness
 
         token = compute_section_freshness(ps, "03")
 
@@ -250,7 +250,7 @@ class TestDispatcherFreshnessGate:
         ps = _setup_planspace(tmp_path)
         _create_section_artifacts(ps, "04")
 
-        from task_flow import compute_section_freshness
+        from flow.task_flow import compute_section_freshness
 
         old_token = compute_section_freshness(ps, "04")
 

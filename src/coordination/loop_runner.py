@@ -1,50 +1,50 @@
 from pathlib import Path
 from typing import Any
 
-from lib.core.artifact_io import write_json
-from lib.core.model_policy import resolve
-from lib.pipelines.coordination_executor import (
+from signals.artifact_io import write_json
+from dispatch.model_policy import resolve
+from coordination.coordination_executor import (
     CoordinationExecutionExit,
     execute_coordination_plan,
     read_execution_modified_files,
 )
-from lib.pipelines.coordination_planner import (
+from coordination.coordination_planner import (
     _parse_coordination_plan,
     write_coordination_plan_prompt,
 )
-from lib.pipelines.coordination_problem_resolver import (
+from coordination.coordination_problem_resolver import (
     _collect_outstanding_problems,
     _detect_recurrence_patterns,
 )
-from lib.core.path_registry import PathRegistry
-from lib.pipelines.scope_delta_aggregator import (
+from orchestrator.path_registry import PathRegistry
+from implementation.scope_delta_aggregator import (
     ScopeDeltaAggregationExit,
     aggregate_scope_deltas,
 )
 
-from ..alignment import (
+from staleness.section_alignment import (
     _extract_problems,
     _parse_alignment_verdict,
     _run_alignment_check_with_retries,
 )
-from ..communication import (
+from signals.section_loop_communication import (
     _log_artifact,
     log,
     mailbox_send,
 )
-from ..cross_section import read_incoming_notes
-from ..dispatch import (
+from coordination.cross_section import read_incoming_notes
+from dispatch.section_dispatch import (
     check_agent_signals,
     dispatch_agent,
     read_model_policy,
 )
-from ..pipeline_control import coordination_recheck_hash, poll_control_messages
-from ..types import Section, SectionResult
+from orchestrator.pipeline_control import coordination_recheck_hash, poll_control_messages
+from orchestrator.types import Section, SectionResult
 
 
 def _normalize_section_id(value: str, scope_deltas_dir: Path) -> str:
     """Backward-compatible private alias used by older tests."""
-    from lib.services.scope_delta_parser import normalize_section_id
+    from implementation.scope_delta_parser import normalize_section_id
 
     return normalize_section_id(value, scope_deltas_dir)
 

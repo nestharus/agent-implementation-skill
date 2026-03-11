@@ -1,0 +1,8 @@
+{
+  "task_id": 4,
+  "status": "completed",
+  "output_artifacts": [
+    "/tmp/agentic-eval-research-flow-synthesizes-dossier-6wmrpynr/planspace/artifacts/research/sections/section-01/tickets/T-03-scan.md"
+  ],
+  "follow_up_tasks": []
+}

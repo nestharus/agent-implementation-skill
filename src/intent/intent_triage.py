@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from prompt_safety import write_validated_prompt
+from dispatch.prompt_safety import write_validated_prompt
 
-from lib.core.model_policy import resolve
-from lib.core.path_registry import PathRegistry
-from lib.risk.history import read_history
-from lib.risk.types import PostureProfile
-from section_loop.communication import _log_artifact, log
-from section_loop.dispatch import (
+from dispatch.model_policy import resolve
+from orchestrator.path_registry import PathRegistry
+from risk.history import read_history
+from risk.types import PostureProfile
+from signals.section_loop_communication import _log_artifact, log
+from dispatch.section_dispatch import (
     dispatch_agent,
     read_agent_signal,
     read_model_policy,

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from lib.risk.engagement import determine_engagement
-from lib.risk.types import RiskMode
+from risk.engagement import determine_engagement
+from risk.types import RiskMode
 
 
 def test_single_bounded_step_with_high_confidence_returns_light() -> None:

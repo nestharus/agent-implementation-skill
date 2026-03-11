@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.scripts.lib.scan.scan_phase_logger import log_phase_failure
+from src.scan.scan_phase_logger import log_phase_failure
 
 
 def test_log_phase_failure_appends_failure_line_and_stderr(capsys, tmp_path) -> None:

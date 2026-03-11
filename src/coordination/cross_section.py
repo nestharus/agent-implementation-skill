@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from lib.sections.section_decisions import (
+from orchestrator.section_decisions import (
     build_section_number_map,
     extract_section_summary,
     normalize_section_number,
     persist_decision as _persist_decision,
     read_decisions,
 )
-from lib.sections.section_notes import post_section_completion, read_incoming_notes
-from lib.services.snapshot_service import compute_text_diff
+from scan.section_notes import post_section_completion, read_incoming_notes
+from implementation.snapshot_service import compute_text_diff
 
-from .communication import _log_artifact
+from signals.section_loop_communication import _log_artifact
 
 
 def persist_decision(planspace, section_number: str, payload: str) -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from lib.core.artifact_io import read_json, rename_malformed
+from signals.artifact_io import read_json, rename_malformed
 
 
 def read_signal_tuple(signal_path: Path) -> tuple[str | None, str]:

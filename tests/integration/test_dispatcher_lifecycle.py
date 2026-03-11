@@ -16,8 +16,8 @@ import pytest
 
 from _paths import DB_SH
 
-from flow_schema import TaskSpec
-from task_flow import (
+from flow.flow_schema import TaskSpec
+from flow.task_flow import (
     compute_section_freshness,
     reconcile_task_completion,
     submit_chain,

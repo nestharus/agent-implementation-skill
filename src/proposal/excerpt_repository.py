@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.path_registry import PathRegistry
+from orchestrator.path_registry import PathRegistry
 
 
 def _excerpt_path(planspace: Path, section: str, excerpt_type: str) -> Path:

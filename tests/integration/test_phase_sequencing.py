@@ -16,15 +16,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lib.core.artifact_io import write_json
-from lib.core.path_registry import PathRegistry
-from lib.pipelines.implementation_pass import (
+from signals.artifact_io import write_json
+from orchestrator.path_registry import PathRegistry
+from implementation.implementation_pass import (
     ImplementationPassRestart,
     run_implementation_pass,
 )
-from lib.pipelines.proposal_pass import ProposalPassExit, run_proposal_pass
-from lib.pipelines.reconciliation_phase import run_reconciliation_phase
-from section_loop.types import ProposalPassResult, Section, SectionResult
+from proposal.proposal_pass import ProposalPassExit, run_proposal_pass
+from reconciliation.reconciliation_phase import run_reconciliation_phase
+from orchestrator.types import ProposalPassResult, Section, SectionResult
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +228,7 @@ class TestProposalPassExitSignal:
         all_sections = [section]
 
         with patch(
-            "lib.pipelines.proposal_pass.handle_pending_messages",
+            "proposal.proposal_pass.handle_pending_messages",
             return_value=True,
         ):
             with pytest.raises(ProposalPassExit):
@@ -286,10 +286,10 @@ class TestBlockedSectionsExcludedFromImplementation:
             return ["src/main.py"]  # modified files
 
         with patch(
-            "lib.pipelines.implementation_pass.run_section",
+            "implementation.implementation_pass.run_section",
             side_effect=track_run_section,
         ), patch(
-            "lib.pipelines.implementation_pass._run_risk_review",
+            "implementation.implementation_pass._run_risk_review",
             return_value=None,
         ):
             results = run_implementation_pass(
@@ -344,7 +344,7 @@ class TestBlockedSectionsExcludedFromImplementation:
             return _make_proposal_result(sec.number, execution_ready=True)
 
         with patch(
-            "lib.pipelines.reconciliation_phase.run_section",
+            "reconciliation.reconciliation_phase.run_section",
             side_effect=mock_run_section,
         ):
             ready, blocked, restart = run_reconciliation_phase(
@@ -392,10 +392,10 @@ class TestImplementationPassRestartOnAlignmentChange:
 
         # Mock alignment_changed_pending to return True
         with patch(
-            "lib.pipelines.implementation_pass.alignment_changed_pending",
+            "implementation.implementation_pass.alignment_changed_pending",
             return_value=True,
         ), patch(
-            "lib.pipelines.implementation_pass._check_and_clear_alignment_changed",
+            "implementation.implementation_pass._check_and_clear_alignment_changed",
             return_value=True,
         ):
             with pytest.raises(ImplementationPassRestart):
@@ -464,10 +464,10 @@ class TestFullPhaseSequence:
             return [f"src/feature_{section.number}.py"]
 
         with patch(
-            "lib.pipelines.implementation_pass.run_section",
+            "implementation.implementation_pass.run_section",
             side_effect=mock_run_section,
         ), patch(
-            "lib.pipelines.implementation_pass._run_risk_review",
+            "implementation.implementation_pass._run_risk_review",
             return_value=None,
         ):
             section_results = run_implementation_pass(
@@ -532,10 +532,10 @@ class TestFullPhaseSequence:
             return [f"src/feature_{section.number}.py"]
 
         with patch(
-            "lib.pipelines.implementation_pass.run_section",
+            "implementation.implementation_pass.run_section",
             side_effect=mock_run_section,
         ), patch(
-            "lib.pipelines.implementation_pass._run_risk_review",
+            "implementation.implementation_pass._run_risk_review",
             return_value=None,
         ):
             section_results = run_implementation_pass(
@@ -570,10 +570,10 @@ class TestFullPhaseSequence:
             return None  # implementation failed
 
         with patch(
-            "lib.pipelines.implementation_pass.run_section",
+            "implementation.implementation_pass.run_section",
             side_effect=mock_run_section,
         ), patch(
-            "lib.pipelines.implementation_pass._run_risk_review",
+            "implementation.implementation_pass._run_risk_review",
             return_value=None,
         ):
             section_results = run_implementation_pass(

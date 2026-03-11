@@ -13,24 +13,24 @@ Entry point: ``run_reconciliation(run_dir, proposal_results)``.
 import logging
 from pathlib import Path
 
-from lib.core.artifact_io import write_json
-from lib.core.path_registry import PathRegistry
-from lib.repositories.proposal_state_repository import load_proposal_state
-from lib.pipelines.reconciliation_adjudicator import adjudicate_ungrouped_candidates
-from lib.services.reconciliation_detectors import (
+from signals.artifact_io import write_json
+from orchestrator.path_registry import PathRegistry
+from proposal.proposal_state_repository import load_proposal_state
+from reconciliation.reconciliation_adjudicator import adjudicate_ungrouped_candidates
+from reconciliation.reconciliation_detectors import (
     aggregate_shared_seams,
     consolidate_new_section_candidates,
     detect_anchor_overlaps,
     detect_contract_conflicts,
 )
-from lib.repositories.reconciliation_result_repository import (
+from reconciliation.reconciliation_result_repository import (
     load_result,
     was_section_affected as repository_was_section_affected,
     write_result,
     write_scope_delta,
     write_substrate_trigger,
 )
-from lib.repositories.reconciliation_queue import load_reconciliation_requests
+from reconciliation.reconciliation_queue import load_reconciliation_requests
 
 logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------

@@ -24,8 +24,8 @@ import pytest
 
 from _paths import DB_SH
 
-from flow_schema import BranchSpec, GateSpec, TaskSpec
-from task_flow import (
+from flow.flow_schema import BranchSpec, GateSpec, TaskSpec
+from flow.task_flow import (
     build_gate_aggregate_manifest,
     build_result_manifest,
     reconcile_task_completion,
@@ -913,7 +913,7 @@ class TestEdgeCases:
         self, db_path: Path, planspace: Path,
     ) -> None:
         """A task without flow/chain IDs reconciles safely (writes manifest only)."""
-        from task_router import submit_task as _submit
+        from flow.task_router import submit_task as _submit
 
         tid = _submit(db_path, "test", "alignment_check")
         _mark_task_running(db_path, tid)

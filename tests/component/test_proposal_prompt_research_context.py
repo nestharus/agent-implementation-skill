@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from section_loop.prompts.writers import (
+from dispatch.prompts_writers import (
     write_integration_proposal_prompt,
     write_strategic_impl_prompt,
 )
-from section_loop.types import Section
+from orchestrator.types import Section
 
 
 def _section(planspace: Path, number: str = "01") -> Section:
@@ -52,11 +52,11 @@ def _write_research_artifacts(planspace: Path, number: str = "01") -> tuple[Path
 @pytest.fixture(autouse=True)
 def _prompt_writer_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "section_loop.prompts.writers.materialize_context_sidecar",
+        "dispatch.prompts_writers.materialize_context_sidecar",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "section_loop.prompts.writers._log_artifact",
+        "dispatch.prompts_writers._log_artifact",
         lambda *_args, **_kwargs: None,
     )
 

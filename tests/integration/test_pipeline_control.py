@@ -6,14 +6,14 @@ Uses real file I/O and real db.sh for pipeline state queries.
 
 from pathlib import Path
 
-from section_loop.pipeline_control import (
+from orchestrator.pipeline_control import (
     _check_and_clear_alignment_changed,
     _invalidate_excerpts,
     _section_inputs_hash,
     alignment_changed_pending,
     check_pipeline_state,
 )
-from section_loop.types import Section
+from orchestrator.types import Section
 
 
 class TestAlignmentChangedFlag:

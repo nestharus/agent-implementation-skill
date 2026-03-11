@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from lib.prompts.prompt_template import (
+from dispatch.prompt_template import (
     SYSTEM_CONSTRAINTS,
     TASK_SUBMISSION_SEMANTICS,
     render_template,
 )
-from prompt_safety import validate_dynamic_content  # noqa: F401 — re-export
+from dispatch.prompt_safety import validate_dynamic_content  # noqa: F401 — re-export

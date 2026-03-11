@@ -1,4 +1,4 @@
-"""Cross-section note helpers extracted from section_loop.cross_section."""
+"""Cross-section note helpers extracted from coordination.cross_section."""
 
 from __future__ import annotations
 
@@ -6,22 +6,22 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from lib.services.alignment_change_tracker import set_flag
-from lib.core.artifact_io import read_json, rename_malformed
-from lib.core.hash_service import content_hash, file_hash as hash_file
-from lib.services.impact_analyzer import analyze_impacts
-from lib.repositories.note_repository import (
+from staleness.alignment_change_tracker import set_flag
+from signals.artifact_io import read_json, rename_malformed
+from staleness.hash_service import content_hash, file_hash as hash_file
+from implementation.impact_analyzer import analyze_impacts
+from coordination.note_repository import (
     read_incoming_notes as load_incoming_notes,
     write_consequence_note,
 )
-from lib.core.path_registry import PathRegistry
-from lib.sections.section_decisions import extract_section_summary
-from lib.services.snapshot_service import compute_text_diff, snapshot_modified_files
+from orchestrator.path_registry import PathRegistry
+from orchestrator.section_decisions import extract_section_summary
+from implementation.snapshot_service import compute_text_diff, snapshot_modified_files
 
-from section_loop.communication import AGENT_NAME, DB_SH, _log_artifact, log
+from signals.section_loop_communication import AGENT_NAME, DB_SH, _log_artifact, log
 
 if TYPE_CHECKING:
-    from section_loop.types import Section
+    from orchestrator.types import Section
 
 
 def post_section_completion(

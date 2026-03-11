@@ -6,8 +6,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from lib.core.artifact_io import read_json
-from lib.risk.types import (
+from signals.artifact_io import read_json
+from risk.types import (
     AssessmentClass,
     DecisionClass,
     PostureProfile,

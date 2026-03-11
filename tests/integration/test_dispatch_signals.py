@@ -7,7 +7,7 @@ No LLM mocks needed — these are pure file I/O and JSON parsing.
 import json
 from pathlib import Path
 
-from section_loop.dispatch import (
+from dispatch.section_dispatch import (
     check_agent_signals,
     read_agent_signal,
     read_model_policy,

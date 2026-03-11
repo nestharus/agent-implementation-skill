@@ -5,18 +5,18 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from lib.core.artifact_io import read_json, read_json_or_default, write_json
-from lib.core.model_policy import resolve
-from lib.core.path_registry import PathRegistry
-from prompt_safety import write_validated_prompt
-from section_loop.alignment import (
+from signals.artifact_io import read_json, read_json_or_default, write_json
+from dispatch.model_policy import resolve
+from orchestrator.path_registry import PathRegistry
+from dispatch.prompt_safety import write_validated_prompt
+from staleness.section_alignment import (
     _parse_alignment_verdict,
     _run_alignment_check_with_retries,
     collect_modified_files,
 )
-from section_loop.communication import _log_artifact, log
-from section_loop.dispatch import dispatch_agent
-from section_loop.types import Section
+from signals.section_loop_communication import _log_artifact, log
+from dispatch.section_dispatch import dispatch_agent
+from orchestrator.types import Section
 
 
 def run_impact_triage(

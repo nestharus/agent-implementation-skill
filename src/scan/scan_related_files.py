@@ -6,15 +6,15 @@ import re
 from pathlib import Path
 from typing import Any
 
-from lib.core.artifact_io import read_json, write_json
-from lib.core.hash_service import content_hash, file_hash
-from lib.core.path_registry import PathRegistry
-from lib.scan.scan_dispatch import DEFAULT_SCAN_MODELS
-from lib.scan.scan_phase_logger import log_phase_failure
-from lib.scan.scan_template_loader import load_scan_template
-from prompt_safety import validate_dynamic_content
-from scan.cache import strip_scan_summaries
-from scan.dispatch import dispatch_agent
+from signals.artifact_io import read_json, write_json
+from staleness.hash_service import content_hash, file_hash
+from orchestrator.path_registry import PathRegistry
+from scan.scan_dispatch import DEFAULT_SCAN_MODELS
+from scan.scan_phase_logger import log_phase_failure
+from scan.scan_template_loader import load_scan_template
+from dispatch.prompt_safety import validate_dynamic_content
+from scan.cli_cache import strip_scan_summaries
+from scan.cli_dispatch import dispatch_agent
 
 
 def list_section_files(sections_dir: Path) -> list[Path]:
@@ -44,7 +44,7 @@ def apply_related_files_update(section_file: Path, signal_file: Path) -> bool:
     if signal.get("status") != "stale":
         return False
 
-    from scan.related_files import block_insert_position, find_entry_span
+    from scan.cli_related_files import block_insert_position, find_entry_span
 
     section = section_file.read_text()
     removals = signal.get("removals", [])
@@ -99,7 +99,7 @@ def _missing_existing_related_files(
     section_text: str,
     codespace: Path,
 ) -> list[str]:
-    from scan.related_files import extract_related_files
+    from scan.cli_related_files import extract_related_files
 
     missing: list[str] = []
     seen: set[str] = set()

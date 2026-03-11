@@ -2,5 +2,5 @@
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
-from section_loop.main import main
+from orchestrator.main import main
 main()

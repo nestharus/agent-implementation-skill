@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from lib.risk.threshold import (
+from risk.threshold import (
     enforce_thresholds,
     load_default_parameters,
     validate_risk_plan,
 )
-from lib.risk.types import (
+from risk.types import (
     PostureProfile,
     RiskModifiers,
     RiskPlan,

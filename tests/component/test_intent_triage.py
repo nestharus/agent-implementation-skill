@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.scripts.lib.intent import intent_triage
-from src.scripts.lib.intent.intent_triage import (
+from src.intent import intent_triage
+from src.intent.intent_triage import (
     _augment_risk_hints,
     _full_default,
     load_triage_result,

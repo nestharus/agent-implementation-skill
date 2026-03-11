@@ -17,9 +17,9 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from lib.core.artifact_io import write_json
-from lib.core.path_registry import PathRegistry
-from lib.intake.types import (
+from signals.artifact_io import write_json
+from orchestrator.path_registry import PathRegistry
+from intake.types import (
     GovernanceClaim,
     HypothesisSet,
     TensionRecord,

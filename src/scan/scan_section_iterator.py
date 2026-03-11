@@ -5,12 +5,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from lib.core.artifact_io import read_json
-from lib.scan.deep_scan_analyzer import analyze_file
-from lib.scan.scan_match_updater import deep_scan_related_files
-from lib.scan.scan_phase_logger import log_phase_failure
-from lib.scan.tier_ranking import run_tier_ranking
-from scan.cache import FileCardCache
+from signals.artifact_io import read_json
+from scan.deep_scan_analyzer import analyze_file
+from scan.scan_match_updater import deep_scan_related_files
+from scan.scan_phase_logger import log_phase_failure
+from scan.tier_ranking import run_tier_ranking
+from scan.cli_cache import FileCardCache
 
 
 def _get_scan_files(tier_file: Path) -> tuple[list[str], str]:

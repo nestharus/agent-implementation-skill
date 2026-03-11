@@ -19,8 +19,8 @@ import pytest
 
 from _paths import DB_SH
 
-import section_loop.dispatch as dispatch_mod
-from section_loop.dispatch import dispatch_agent
+import dispatch.section_dispatch as dispatch_mod
+from dispatch.section_dispatch import dispatch_agent
 
 
 # ---------------------------------------------------------------------------

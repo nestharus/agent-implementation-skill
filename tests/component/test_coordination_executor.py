@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.pipelines import coordination_executor
-from src.scripts.lib.pipelines.coordination_executor import (
+from src.coordination import coordination_executor
+from src.coordination.coordination_executor import (
     CoordinationExecutionExit,
     execute_coordination_plan,
     read_execution_modified_files,
 )
-from section_loop.types import Section
+from orchestrator.types import Section
 
 
 def _planspace(tmp_path: Path) -> Path:

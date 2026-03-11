@@ -7,11 +7,11 @@ P4: Coordination prompt writes to artifact file (no inline JSON)
 import json
 from pathlib import Path
 
-from section_loop.coordination import (
+from coordination.loop_runner import (
     _collect_outstanding_problems,
     write_coordination_plan_prompt,
 )
-from section_loop.types import Section, SectionResult
+from orchestrator.types import Section, SectionResult
 
 
 class TestCollectOutstandingProblemsBlockerSignal:

@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.artifact_io import write_json
-from lib.repositories.excerpt_repository import exists as excerpt_exists
-from lib.core.hash_service import file_hash
-from lib.core.path_registry import PathRegistry
-from section_loop.communication import _record_traceability, log, mailbox_send
-from section_loop.dispatch import dispatch_agent
-from section_loop.prompts import write_section_setup_prompt
-from section_loop.section_engine.blockers import _update_blocker_rollup
-from section_loop.section_engine.reexplore import _write_alignment_surface
-from section_loop.types import Section
+from signals.artifact_io import write_json
+from proposal.excerpt_repository import exists as excerpt_exists
+from staleness.hash_service import file_hash
+from orchestrator.path_registry import PathRegistry
+from signals.section_loop_communication import _record_traceability, log, mailbox_send
+from dispatch.section_dispatch import dispatch_agent
+from dispatch.prompts_writers import write_section_setup_prompt
+from signals.blockers import _update_blocker_rollup
+from implementation.engine_reexplore import _write_alignment_surface
+from orchestrator.types import Section
 
 
 def validate_problem_frame(

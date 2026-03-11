@@ -3,47 +3,47 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from lib.intent import intent_bootstrap as intent_bootstrap_module
-from lib.core.artifact_io import read_json, write_json
-from lib.services.alignment_change_tracker import check_pending as alignment_changed_pending
-from lib.core.hash_service import content_hash
-from lib.pipelines.impact_triage import run_impact_triage
-from lib.intent.intent_bootstrap import run_intent_bootstrap
-from lib.pipelines.problem_frame_gate import validate_problem_frame
-from lib.repositories.note_repository import write_consequence_note
-from lib.core.model_policy import resolve
-from lib.core.path_registry import PathRegistry
-from lib.pipelines.microstrategy_orchestrator import run_microstrategy
-from lib.pipelines.proposal_loop import run_proposal_loop
-from lib.services.readiness_resolver import resolve_readiness
-from lib.pipelines.excerpt_extractor import extract_excerpts
-from lib.pipelines.implementation_loop import run_implementation_loop
-from lib.pipelines.recurrence_emitter import emit_recurrence_signal
-from lib.tools.tool_surface import (
+from intent import intent_bootstrap as intent_bootstrap_module
+from signals.artifact_io import read_json, write_json
+from staleness.alignment_change_tracker import check_pending as alignment_changed_pending
+from staleness.hash_service import content_hash
+from implementation.impact_triage import run_impact_triage
+from intent.intent_bootstrap import run_intent_bootstrap
+from proposal.problem_frame_gate import validate_problem_frame
+from coordination.note_repository import write_consequence_note
+from dispatch.model_policy import resolve
+from orchestrator.path_registry import PathRegistry
+from implementation.microstrategy_orchestrator import run_microstrategy
+from proposal.proposal_loop import run_proposal_loop
+from proposal.readiness_resolver import resolve_readiness
+from proposal.excerpt_extractor import extract_excerpts
+from implementation.implementation_loop import run_implementation_loop
+from intent.recurrence_emitter import emit_recurrence_signal
+from dispatch.tool_surface import (
     handle_tool_friction,
     surface_tool_registry,
     validate_tool_registry_after_implementation,
 )
 
-from ..alignment import (
+from staleness.section_alignment import (
     _extract_problems,
     _run_alignment_check_with_retries,
 )
-from ..change_detection import diff_files, snapshot_files
-from ..communication import (
+from staleness.change_detection import diff_files, snapshot_files
+from signals.section_loop_communication import (
     AGENT_NAME,
     DB_SH,
     WORKFLOW_HOME,
     log,
     mailbox_send,
 )
-from ..cross_section import (
+from coordination.cross_section import (
     extract_section_summary,
     persist_decision,
     post_section_completion,
     read_incoming_notes,
 )
-from ..dispatch import (
+from dispatch.section_dispatch import (
     check_agent_signals,
     dispatch_agent,
     read_agent_signal,
@@ -51,14 +51,14 @@ from ..dispatch import (
     summarize_output,
     write_model_choice_signal,
 )
-from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
-from ..task_ingestion import ingest_and_submit
-from ..pipeline_control import (
+from dispatch.agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
+from flow.section_task_ingestion import ingest_and_submit
+from orchestrator.pipeline_control import (
     handle_pending_messages,
     pause_for_parent,
     poll_control_messages,
 )
-from ..prompts import (
+from dispatch.prompts_writers import (
     agent_mail_instructions,
     signal_instructions,
     write_impl_alignment_prompt,
@@ -66,26 +66,23 @@ from ..prompts import (
     write_integration_proposal_prompt,
     write_strategic_impl_prompt,
 )
-from ..types import ProposalPassResult, Section
-from ..intent import (
-    ensure_global_philosophy,
-    generate_intent_pack,
-    run_intent_triage,
-)
-from ..intent.expansion import handle_user_gate, run_expansion_cycle
-from ..intent.surfaces import (
+from orchestrator.types import ProposalPassResult, Section
+from intent.loop_bootstrap import ensure_global_philosophy, generate_intent_pack
+from intent.intent_triage import run_intent_triage
+from intent.loop_expansion import handle_user_gate, run_expansion_cycle
+from intent.loop_surfaces import (
     load_intent_surfaces,
     load_surface_registry,
     merge_surfaces_into_registry,
     normalize_surface_ids,
     save_surface_registry,
 )
-from ..reconciliation import load_reconciliation_result
-from lib.repositories.proposal_state_repository import load_proposal_state
-from lib.repositories.reconciliation_queue import queue_reconciliation_request
-from .blockers import _update_blocker_rollup
-from .todos import _extract_todos_from_files
-from .traceability import _file_sha256, _write_traceability_index
+from reconciliation.loop_reconciliation import load_reconciliation_result
+from proposal.proposal_state_repository import load_proposal_state
+from reconciliation.reconciliation_queue import queue_reconciliation_request
+from signals.blockers import _update_blocker_rollup
+from implementation.engine_todos import _extract_todos_from_files
+from implementation.engine_traceability import _file_sha256, _write_traceability_index
 
 
 def _run_implementation_pass(
@@ -276,7 +273,7 @@ def run_section(
     ) is None:
         return None
 
-    from lib.pipelines.readiness_gate import resolve_and_route  # noqa: E402 — lazy to break circular import
+    from proposal.readiness_gate import resolve_and_route  # noqa: E402 — lazy to break circular import
 
     readiness_result = resolve_and_route(
         section,

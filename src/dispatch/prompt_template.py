@@ -63,7 +63,8 @@ TASK_SUBMISSION_SEMANTICS = (
 )
 
 DEFAULT_TEMPLATE_DIR = (
-    Path(__file__).resolve().parent.parent.parent
+    Path(__file__).resolve().parent.parent
+    / "scripts"
     / "section_loop"
     / "prompts"
     / "templates"

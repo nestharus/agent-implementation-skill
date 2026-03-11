@@ -6,12 +6,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-from lib.core.artifact_io import read_json, rename_malformed, write_json
-from lib.repositories.note_repository import read_incoming_notes as load_incoming_notes
-from lib.core.path_registry import PathRegistry
-from section_loop.communication import _log_artifact, log
-from section_loop.dispatch import read_agent_signal
-from section_loop.types import Section, SectionResult
+from signals.artifact_io import read_json, rename_malformed, write_json
+from coordination.note_repository import read_incoming_notes as load_incoming_notes
+from orchestrator.path_registry import PathRegistry
+from signals.section_loop_communication import _log_artifact, log
+from dispatch.section_dispatch import read_agent_signal
+from orchestrator.types import Section, SectionResult
 
 
 def build_file_to_sections(sections: list[Section]) -> dict[str, list[str]]:

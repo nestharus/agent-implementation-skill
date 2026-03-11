@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.pipelines import coordination_loop
-from src.scripts.lib.pipelines.coordination_loop import run_coordination_loop
-from section_loop.types import Section, SectionResult
+from src.coordination import coordination_loop
+from src.coordination.coordination_loop import run_coordination_loop
+from orchestrator.types import Section, SectionResult
 
 
 def _make_section(planspace: Path, number: str) -> Section:

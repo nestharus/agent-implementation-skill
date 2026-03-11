@@ -22,7 +22,7 @@ from pathlib import Path
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
-from task_router import TASK_ROUTES  # noqa: E402
+from flow.task_router import TASK_ROUTES  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +349,7 @@ def validate_flow_declaration(decl: FlowDeclaration) -> list[str]:
                         )
                 # Validate chain_ref if present — check against catalog.
                 if has_ref:
-                    from flow_catalog import KNOWN_PACKAGES
+                    from flow.flow_catalog import KNOWN_PACKAGES
                     if branch.chain_ref not in KNOWN_PACKAGES:
                         errors.append(
                             f"actions[{i}].branches[{k}]: unknown chain_ref "

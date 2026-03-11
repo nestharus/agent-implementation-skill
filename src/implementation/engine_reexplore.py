@@ -1,13 +1,13 @@
 from pathlib import Path
 
-from lib.core.path_registry import PathRegistry
+from orchestrator.path_registry import PathRegistry
 
-from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
-from ..communication import _log_artifact, log
-from ..cross_section import extract_section_summary
-from ..dispatch import dispatch_agent
-from ..task_ingestion import ingest_and_submit
-from ..types import Section
+from dispatch.agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
+from signals.section_loop_communication import _log_artifact, log
+from coordination.cross_section import extract_section_summary
+from dispatch.section_dispatch import dispatch_agent
+from flow.section_task_ingestion import ingest_and_submit
+from orchestrator.types import Section
 
 
 def _reexplore_section(

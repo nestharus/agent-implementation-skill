@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 
-from lib.core.database_client import DatabaseClient
+from signals.database_client import DatabaseClient
 
 _SUMMARY_PREFIXES = (
     "summary:",

@@ -5,12 +5,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from section_loop.types import Section
+from orchestrator.types import Section
 
 
 def parse_related_files(section_path: Path) -> list[str]:
     """Extract file paths from a section spec's related-files block."""
-    from scan.related_files import extract_related_files
+    from scan.cli_related_files import extract_related_files
 
     return extract_related_files(section_path.read_text(encoding="utf-8"))
 

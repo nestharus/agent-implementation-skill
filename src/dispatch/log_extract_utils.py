@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
-from lib.core.hash_service import content_hash
+from staleness.hash_service import content_hash
 
 _SECTION_RE = re.compile(r"(?:section[-_]?)(\d{2})\b|[-_:](\d{2})(?:[-_.:,\s]|$)")
 

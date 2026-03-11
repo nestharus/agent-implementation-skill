@@ -6,8 +6,8 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, Iterator, Mapping, cast
 
-from lib.core.artifact_io import read_json, rename_malformed
-from lib.core.path_registry import PathRegistry
+from signals.artifact_io import read_json, rename_malformed
+from orchestrator.path_registry import PathRegistry
 
 
 @dataclass

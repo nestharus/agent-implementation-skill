@@ -7,20 +7,20 @@ import re
 from pathlib import Path
 from typing import Callable
 
-from lib.core.artifact_io import read_json
-from lib.core.model_policy import load_model_policy, resolve
-from lib.core.path_registry import PathRegistry
-from lib.risk.history import compute_history_adjustment, pattern_signature, read_history
-from lib.risk.posture import apply_one_step_rule, can_relax_posture, select_posture
-from lib.risk.serialization import (
+from signals.artifact_io import read_json
+from dispatch.model_policy import load_model_policy, resolve
+from orchestrator.path_registry import PathRegistry
+from risk.history import compute_history_adjustment, pattern_signature, read_history
+from risk.posture import apply_one_step_rule, can_relax_posture, select_posture
+from risk.serialization import (
     deserialize_assessment,
     deserialize_plan,
     serialize_assessment,
     serialize_plan,
     write_risk_artifact,
 )
-from lib.risk.threshold import enforce_thresholds, load_default_parameters, validate_risk_plan
-from lib.risk.types import (
+from risk.threshold import enforce_thresholds, load_default_parameters, validate_risk_plan
+from risk.types import (
     PostureProfile,
     RiskAssessment,
     RiskHistoryEntry,
@@ -30,9 +30,9 @@ from lib.risk.types import (
     StepDecision,
     StepMitigation,
 )
-from lib.risk.package_builder import write_package
-from lib.risk.quantifier import risk_to_posture
-from prompt_safety import write_validated_prompt
+from risk.package_builder import write_package
+from risk.quantifier import risk_to_posture
+from dispatch.prompt_safety import write_validated_prompt
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 

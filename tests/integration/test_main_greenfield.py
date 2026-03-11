@@ -10,9 +10,9 @@ from unittest.mock import MagicMock
 
 from _paths import SRC_DIR
 
-from lib.sections.section_loader import load_sections, parse_related_files
+from scan.section_loader import load_sections, parse_related_files
 
-from section_loop.types import Section
+from orchestrator.types import Section
 
 
 class TestNoModeRouting:
@@ -28,7 +28,7 @@ class TestNoModeRouting:
         The runtime resolves project_mode for telemetry only — it does not
         branch on the value to skip proposal or readiness paths.
         """
-        main_path = (SRC_DIR / "scripts" / "section_loop" / "main.py")
+        main_path = (SRC_DIR / "orchestrator" / "main.py")
         content = main_path.read_text()
         # Positive assertion: mode is resolved but only for contract writing
         assert "resolve_project_mode" in content, (

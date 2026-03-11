@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.pipelines.excerpt_extractor import extract_excerpts
-from src.scripts.section_loop.types import Section
+from src.proposal.excerpt_extractor import extract_excerpts
+from src.orchestrator.types import Section
 
 
 def _section(planspace: Path) -> Section:
@@ -57,7 +57,7 @@ def test_extract_excerpts_returns_ok_when_setup_creates_files(
     prompt_path = planspace / "artifacts" / "setup-prompt.md"
 
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor.write_section_setup_prompt",
+        "src.proposal.excerpt_extractor.write_section_setup_prompt",
         lambda *_args, **_kwargs: prompt_path,
     )
 
@@ -65,13 +65,13 @@ def test_extract_excerpts_returns_ok_when_setup_creates_files(
         _write_excerpts(planspace, section.number)
         return "ok"
 
-    monkeypatch.setattr("src.scripts.lib.pipelines.excerpt_extractor.dispatch_agent", _dispatch)
+    monkeypatch.setattr("src.proposal.excerpt_extractor.dispatch_agent", _dispatch)
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor.check_agent_signals",
+        "src.proposal.excerpt_extractor.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor.mailbox_send",
+        "src.proposal.excerpt_extractor.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
 
@@ -97,7 +97,7 @@ def test_extract_excerpts_routes_out_of_scope_then_retries(
     persisted: list[str] = []
 
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor.write_section_setup_prompt",
+        "src.proposal.excerpt_extractor.write_section_setup_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "setup-prompt.md",
     )
 
@@ -114,30 +114,30 @@ def test_extract_excerpts_routes_out_of_scope_then_retries(
             return ("out_of_scope", "needs root")
         return (None, "")
 
-    monkeypatch.setattr("src.scripts.lib.pipelines.excerpt_extractor.dispatch_agent", _dispatch)
-    monkeypatch.setattr("src.scripts.lib.pipelines.excerpt_extractor.check_agent_signals", _check)
+    monkeypatch.setattr("src.proposal.excerpt_extractor.dispatch_agent", _dispatch)
+    monkeypatch.setattr("src.proposal.excerpt_extractor.check_agent_signals", _check)
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor.mailbox_send",
+        "src.proposal.excerpt_extractor.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor.pause_for_parent",
+        "src.proposal.excerpt_extractor.pause_for_parent",
         lambda *_args, **_kwargs: "resume:accept root decision",
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor.persist_decision",
+        "src.proposal.excerpt_extractor.persist_decision",
         lambda _planspace, _section_number, payload: persisted.append(payload),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor._append_open_problem",
+        "src.proposal.excerpt_extractor._append_open_problem",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor._update_blocker_rollup",
+        "src.proposal.excerpt_extractor._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor.alignment_changed_pending",
+        "src.proposal.excerpt_extractor.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
 
@@ -165,31 +165,31 @@ def test_extract_excerpts_returns_none_when_parent_does_not_resume(
     section = _section(planspace)
 
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor.write_section_setup_prompt",
+        "src.proposal.excerpt_extractor.write_section_setup_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "setup-prompt.md",
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor.dispatch_agent",
+        "src.proposal.excerpt_extractor.dispatch_agent",
         lambda *_args, **_kwargs: "out",
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor.check_agent_signals",
+        "src.proposal.excerpt_extractor.check_agent_signals",
         lambda *_args, **_kwargs: ("needs_parent", "blocked"),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor.mailbox_send",
+        "src.proposal.excerpt_extractor.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor.pause_for_parent",
+        "src.proposal.excerpt_extractor.pause_for_parent",
         lambda *_args, **_kwargs: "stop",
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor._append_open_problem",
+        "src.proposal.excerpt_extractor._append_open_problem",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.excerpt_extractor._update_blocker_rollup",
+        "src.proposal.excerpt_extractor._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
 

@@ -1,0 +1,50 @@
+{
+  "parent_task_id": 11,
+  "flow_id": "flow_39d96bf8-a497-4bd0-8fc7-fc636ebf9aad",
+  "chain_id": "chain_1145048f-1b41-4503-9f1c-c2d9f7a9abc7",
+  "declared_tasks": [
+    {
+      "task_type": "research_ticket",
+      "slot_label": "T-01",
+      "parallel_group": 0,
+      "payload_refs": [
+        "/tmp/agentic-eval-research-flow-synthesizes-dossier-8m8x7noy/planspace/artifacts/research/sections/section-01/research-plan.json",
+        "/tmp/agentic-eval-research-flow-synthesizes-dossier-8m8x7noy/planspace/artifacts/research/sections/section-01/tickets/T-01-result.md"
+      ]
+    },
+    {
+      "task_type": "research_ticket",
+      "slot_label": "T-02",
+      "parallel_group": 0,
+      "payload_refs": [
+        "/tmp/agentic-eval-research-flow-synthesizes-dossier-8m8x7noy/planspace/artifacts/research/sections/section-01/research-plan.json",
+        "/tmp/agentic-eval-research-flow-synthesizes-dossier-8m8x7noy/planspace/artifacts/research/sections/section-01/tickets/T-02-result.md"
+      ]
+    },
+    {
+      "task_type": "research_ticket",
+      "slot_label": "T-03",
+      "parallel_group": 1,
+      "depends_on_slots": ["T-01", "T-02"],
+      "payload_refs": [
+        "/tmp/agentic-eval-research-flow-synthesizes-dossier-8m8x7noy/planspace/artifacts/research/sections/section-01/research-plan.json",
+        "/tmp/agentic-eval-research-flow-synthesizes-dossier-8m8x7noy/planspace/artifacts/research/sections/section-01/tickets/T-03-result.md"
+      ]
+    },
+    {
+      "task_type": "research_synthesis",
+      "slot_label": "synthesis",
+      "depends_on_slots": ["T-01", "T-02", "T-03"],
+      "payload_refs": [
+        "/tmp/agentic-eval-research-flow-synthesizes-dossier-8m8x7noy/planspace/artifacts/research/sections/section-01/research-plan.json",
+        "/tmp/agentic-eval-research-flow-synthesizes-dossier-8m8x7noy/planspace/artifacts/research/sections/section-01/dossier.md"
+      ]
+    }
+  ],
+  "gate_spec": {
+    "mode": "all",
+    "failure_policy": "include",
+    "member_slots": ["T-01", "T-02", "T-03"],
+    "continuation_slot": "synthesis"
+  }
+}

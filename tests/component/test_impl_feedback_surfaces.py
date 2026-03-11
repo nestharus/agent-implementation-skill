@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.artifact_io import write_json
-from src.scripts.section_loop.intent.surfaces import (
+from signals.artifact_io import write_json
+from src.intent.loop_surfaces import (
     load_implementation_feedback_surfaces,
 )
 

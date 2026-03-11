@@ -10,9 +10,9 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from lib.core.hash_service import file_hash
-from section_loop.section_engine import run_section
-from section_loop.types import Section
+from staleness.hash_service import file_hash
+from implementation.engine_runner import run_section
+from orchestrator.types import Section
 
 
 def _make_section(planspace: Path, codespace: Path) -> Section:

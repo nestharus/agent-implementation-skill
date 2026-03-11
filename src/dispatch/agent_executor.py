@@ -10,7 +10,7 @@ from pathlib import Path
 WORKFLOW_HOME = Path(
     os.environ.get(
         "WORKFLOW_HOME",
-        Path(__file__).resolve().parent.parent.parent.parent,
+        Path(__file__).resolve().parent.parent,
     )
 )
 

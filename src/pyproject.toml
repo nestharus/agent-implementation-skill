@@ -1,0 +1,29 @@
+[project]
+name = "agent-implementation-skill"
+version = "0.1.0"
+description = "Multi-model agent implementation workflow for software development"
+requires-python = ">=3.14"
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+logex = "log_extract.cli:run"
+agentic-evals = "evals.agentic.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = [".", "src/scripts"]
+include = ["evals*", "log_extract*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts", "src/scripts", "tests"]

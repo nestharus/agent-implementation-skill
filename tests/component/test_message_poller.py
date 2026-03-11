@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 
 from _paths import DB_SH
-from src.scripts.lib.core.database_client import DatabaseClient
-from src.scripts.lib.dispatch.mailbox_service import MailboxService
-from src.scripts.lib.dispatch.message_poller import (
+from src.signals.database_client import DatabaseClient
+from src.signals.mailbox_service import MailboxService
+from src.signals.message_poller import (
     check_for_messages,
     handle_pending_messages,
     poll_control_messages,

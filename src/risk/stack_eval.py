@@ -12,10 +12,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from lib.core.artifact_io import read_json, write_json
-from lib.core.path_registry import PathRegistry
-from lib.risk.package_builder import build_decision_package
-from lib.risk.types import RiskPackage
+from signals.artifact_io import read_json, write_json
+from orchestrator.path_registry import PathRegistry
+from risk.package_builder import build_decision_package
+from risk.types import RiskPackage
 
 
 @dataclass

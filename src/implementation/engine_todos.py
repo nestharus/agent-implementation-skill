@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from lib.core.artifact_io import read_json, write_json
-from lib.core.path_registry import PathRegistry
+from signals.artifact_io import read_json, write_json
+from orchestrator.path_registry import PathRegistry
 
-from ..dispatch import dispatch_agent
-from prompt_safety import write_validated_prompt
+from dispatch.section_dispatch import dispatch_agent
+from dispatch.prompt_safety import write_validated_prompt
 
 
 def _gather_complexity_signals(

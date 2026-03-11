@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.scripts.lib.core.model_policy import ModelPolicy, load_model_policy, resolve
+from src.dispatch.model_policy import ModelPolicy, load_model_policy, resolve
 
 
 def test_load_model_policy_returns_defaults_when_file_missing(tmp_path) -> None:

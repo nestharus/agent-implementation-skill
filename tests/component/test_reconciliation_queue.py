@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.scripts.lib.repositories.reconciliation_queue import (
+from src.reconciliation.reconciliation_queue import (
     load_reconciliation_requests,
     queue_reconciliation_request,
 )

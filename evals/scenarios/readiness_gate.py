@@ -26,9 +26,9 @@ from evals.harness import Check, Scenario
 
 # Import the readiness and proposal-state machinery for mechanical setup.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src" / "scripts"))
-from lib.repositories.proposal_state_repository import save_proposal_state  # noqa: E402
-from lib.services.readiness_resolver import resolve_readiness  # noqa: E402
-from section_loop.reconciliation import run_reconciliation  # noqa: E402
+from proposal.proposal_state_repository import save_proposal_state  # noqa: E402
+from proposal.readiness_resolver import resolve_readiness  # noqa: E402
+from reconciliation.loop_reconciliation import run_reconciliation  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

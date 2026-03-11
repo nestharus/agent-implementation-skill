@@ -6,8 +6,8 @@ import json
 import logging
 from pathlib import Path
 
-from lib.risk.serialization import deserialize_history_entry, serialize_history_entry
-from lib.risk.types import AssessmentClass, RiskHistoryEntry, RiskType
+from risk.serialization import deserialize_history_entry, serialize_history_entry
+from risk.types import AssessmentClass, RiskHistoryEntry, RiskType
 
 logger = logging.getLogger(__name__)
 

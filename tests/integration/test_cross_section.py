@@ -10,7 +10,7 @@ import pytest
 
 from _paths import SRC_DIR
 
-from section_loop.cross_section import (
+from coordination.cross_section import (
     build_section_number_map,
     compute_text_diff,
     extract_section_summary,
@@ -18,7 +18,7 @@ from section_loop.cross_section import (
     persist_decision,
     read_decisions,
 )
-from section_loop.types import Section
+from orchestrator.types import Section
 
 
 class TestComputeTextDiff:

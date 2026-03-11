@@ -8,20 +8,20 @@ import sys
 import uuid
 from pathlib import Path
 
-from lib.flow.flow_context import (
+from flow.flow_context import (
     continuation_relpath,
     flow_context_relpath,
     result_manifest_relpath,
     write_flow_context,
 )
-from lib.services.freshness_service import compute_section_freshness
+from staleness.freshness_service import compute_section_freshness
 
-_SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
+_SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
-from flow_catalog import resolve_chain_ref  # noqa: E402
-from flow_schema import BranchSpec, GateSpec, TaskSpec  # noqa: E402
-from task_router import submit_task  # noqa: E402
+from flow.flow_catalog import resolve_chain_ref  # noqa: E402
+from flow.flow_schema import BranchSpec, GateSpec, TaskSpec  # noqa: E402
+from flow.task_router import submit_task  # noqa: E402
 
 
 def new_instance_id() -> str:

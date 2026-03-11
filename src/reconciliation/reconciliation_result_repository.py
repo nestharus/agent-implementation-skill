@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from lib.core.artifact_io import read_json, rename_malformed, write_json
-from lib.core.hash_service import content_hash
-from lib.core.path_registry import PathRegistry
+from signals.artifact_io import read_json, rename_malformed, write_json
+from staleness.hash_service import content_hash
+from orchestrator.path_registry import PathRegistry
 
 logger = logging.getLogger(__name__)
 

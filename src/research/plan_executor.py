@@ -5,23 +5,23 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-_SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
+_SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from flow_schema import BranchSpec, GateSpec, TaskSpec
-from lib.core.artifact_io import write_json
-from lib.core.path_registry import PathRegistry
-from lib.flow.flow_submitter import new_flow_id, submit_chain, submit_fanout
-from lib.services.freshness_service import compute_section_freshness
-from lib.research.orchestrator import load_research_status, validate_research_plan, write_research_status
-from lib.research.prompt_writer import (
+from flow.flow_schema import BranchSpec, GateSpec, TaskSpec
+from signals.artifact_io import write_json
+from orchestrator.path_registry import PathRegistry
+from flow.flow_submitter import new_flow_id, submit_chain, submit_fanout
+from staleness.freshness_service import compute_section_freshness
+from research.orchestrator import load_research_status, validate_research_plan, write_research_status
+from research.prompt_writer import (
     write_research_synthesis_prompt,
     write_research_ticket_prompt,
     write_research_verify_prompt,
 )
-from prompt_safety import write_validated_prompt
-from section_loop.section_engine.blockers import _update_blocker_rollup
+from dispatch.prompt_safety import write_validated_prompt
+from signals.blockers import _update_blocker_rollup
 
 
 def _ordered_ticket_ids(plan: dict) -> list[str]:

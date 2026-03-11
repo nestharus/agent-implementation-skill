@@ -7,9 +7,9 @@ import logging
 from dataclasses import asdict
 from pathlib import Path
 
-from lib.core.artifact_io import read_json, write_json
-from lib.core.path_registry import PathRegistry
-from lib.intake.types import (
+from signals.artifact_io import read_json, write_json
+from orchestrator.path_registry import PathRegistry
+from intake.types import (
     GovernanceClaim,
     HypothesisSet,
     IntakeSession,

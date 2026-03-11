@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.artifact_io import read_json
-from lib.core.path_registry import PathRegistry
+from signals.artifact_io import read_json
+from orchestrator.path_registry import PathRegistry
 
 DEFAULT_SUBSTRATE_MODELS: dict[str, str] = {
     "substrate_shard": "gpt-high",

@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lib.risk.history import append_history_entry
-from lib.risk.loop import run_risk_loop
-from lib.risk.serialization import read_risk_artifact, serialize_assessment, serialize_plan
-from lib.risk.types import (
+from risk.history import append_history_entry
+from risk.loop import run_risk_loop
+from risk.serialization import read_risk_artifact, serialize_assessment, serialize_plan
+from risk.types import (
     PackageStep,
     PostureProfile,
     RiskAssessment,
@@ -174,7 +174,7 @@ def _assessment(*, raw_risk: int) -> RiskAssessment:
 
 
 def _plan(*, residual_risk: int, posture: PostureProfile):
-    from lib.risk.types import RiskPlan
+    from risk.types import RiskPlan
 
     return RiskPlan(
         plan_id="plan-1",

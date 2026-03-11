@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from src.scripts.lib.flow.flow_context import (
+from src.flow.flow_context import (
     FlowCorruptionError,
     build_flow_context,
     continuation_relpath,

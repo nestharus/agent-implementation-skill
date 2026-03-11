@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-DB_SH = Path(__file__).resolve().parent.parent.parent / "db.sh"
+DB_SH = Path(__file__).resolve().parent.parent / "scripts" / "db.sh"
 
 
 def db_cmd(db_path: str, command: str, *args: str) -> str:

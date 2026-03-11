@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.scripts.lib.services.readiness_resolver import resolve_readiness
+from src.proposal.readiness_resolver import resolve_readiness
 
 
 def test_resolve_readiness_writes_ready_artifact(tmp_path: Path) -> None:

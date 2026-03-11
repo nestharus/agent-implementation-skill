@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.artifact_io import write_json
-from lib.core.path_registry import PathRegistry
-from lib.services.signal_reader import read_signal_tuple
+from signals.artifact_io import write_json
+from orchestrator.path_registry import PathRegistry
+from signals.signal_reader import read_signal_tuple
 
 
 def summarize_output(output: str, max_len: int = 200) -> str:

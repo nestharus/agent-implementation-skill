@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.pipelines import problem_frame_gate
-from src.scripts.lib.pipelines.problem_frame_gate import validate_problem_frame
-from section_loop.types import Section
+from src.proposal import problem_frame_gate
+from src.proposal.problem_frame_gate import validate_problem_frame
+from orchestrator.types import Section
 
 
 def _make_section(planspace: Path) -> Section:

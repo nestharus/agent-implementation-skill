@@ -193,8 +193,7 @@ Investigation prompts and findings go in `.tmp/agentic-evals/`.
 - **Observe, report, stop** — when monitoring an eval: do NOT manually write artifacts
   to unblock a stuck pipeline, do NOT send resume signals, do NOT pre-seed files that
   agents should have produced
-- **CLAUDECODE must be stripped** — trigger adapters and scan dispatch strip the
-  `CLAUDECODE` env var so nested `agents` calls can launch
+- The ONLY thing that should be in the test is the spec. Nothing else.
 - **Real agent calls** — evals exercise real LLM calls via the `agents` binary; cost
   and latency are real
 

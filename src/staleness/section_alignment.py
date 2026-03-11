@@ -1,17 +1,17 @@
 from pathlib import Path
 
-from lib.services.alignment_service import (
+from staleness.alignment_service import (
     collect_modified_files as _collect_modified_files,
     extract_problems,
 )
-from lib.core.path_registry import PathRegistry
-from .agent_templates import render_template
-from .communication import log
-from .dispatch import dispatch_agent
-from lib.services.verdict_parsers import parse_alignment_verdict as _parse_alignment_verdict
-from prompt_safety import validate_dynamic_content
-from .pipeline_control import poll_control_messages
-from .types import Section
+from orchestrator.path_registry import PathRegistry
+from dispatch.agent_templates import render_template
+from signals.section_loop_communication import log
+from dispatch.section_dispatch import dispatch_agent
+from proposal.verdict_parsers import parse_alignment_verdict as _parse_alignment_verdict
+from dispatch.prompt_safety import validate_dynamic_content
+from orchestrator.pipeline_control import poll_control_messages
+from orchestrator.types import Section
 
 
 def collect_modified_files(
@@ -145,7 +145,7 @@ def _run_alignment_check_with_retries(
     If the agent times out, retries up to max_retries times. Returns the
     alignment result text, or None if all retries exhausted.
     """
-    from .prompts import write_impl_alignment_prompt
+    from dispatch.prompts_writers import write_impl_alignment_prompt
 
     paths = PathRegistry(planspace)
     for attempt in range(1, max_retries + 2):  # 1 initial + max_retries

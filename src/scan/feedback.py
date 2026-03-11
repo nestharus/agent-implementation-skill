@@ -6,21 +6,21 @@ Translates the post-scan feedback collection and routing from scan.sh.
 from __future__ import annotations
 from pathlib import Path
 
-from lib.core.artifact_io import read_json, write_json
-from lib.core.path_registry import PathRegistry
-from lib.scan.scan_feedback_router import (
+from signals.artifact_io import read_json, write_json
+from orchestrator.path_registry import PathRegistry
+from scan.scan_feedback_router import (
     _append_to_log,
     _extract_section_number,
     _is_valid_updater_signal,
     _route_scope_deltas,
     _validate_feedback_schema,
 )
-from lib.scan.scan_related_files import apply_related_files_update
-from lib.scan.scan_template_loader import load_scan_template
+from scan.scan_related_files import apply_related_files_update
+from scan.scan_template_loader import load_scan_template
 
-from prompt_safety import validate_dynamic_content
+from dispatch.prompt_safety import validate_dynamic_content
 
-from .dispatch import dispatch_agent, read_scan_model_policy
+from scan.cli_dispatch import dispatch_agent, read_scan_model_policy
 
 
 def collect_and_route_feedback(

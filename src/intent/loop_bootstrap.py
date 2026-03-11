@@ -3,18 +3,18 @@
 from pathlib import Path
 from typing import Any
 
-from lib.core.artifact_io import write_json
-from lib.core.hash_service import content_hash, file_hash
-from lib.intent import philosophy_bootstrap as _philosophy_bootstrap
-from lib.core.model_policy import resolve
-from lib.core.path_registry import PathRegistry
+from signals.artifact_io import write_json
+from staleness.hash_service import content_hash, file_hash
+from intent import philosophy_bootstrap as _philosophy_bootstrap
+from dispatch.model_policy import resolve
+from orchestrator.path_registry import PathRegistry
 
-from ..communication import _log_artifact, log
-from ..dispatch import (
+from signals.section_loop_communication import _log_artifact, log
+from dispatch.section_dispatch import (
     dispatch_agent, read_agent_signal, read_model_policy,
 )
-from ..types import Section
-from prompt_safety import write_validated_prompt
+from orchestrator.types import Section
+from dispatch.prompt_safety import write_validated_prompt
 
 
 def _sync_philosophy_bootstrap_overrides() -> None:

@@ -6,20 +6,20 @@ import subprocess
 from pathlib import Path
 from typing import Callable
 
-from lib.core.artifact_io import read_json, write_json
-from lib.services.alignment_change_tracker import (
+from signals.artifact_io import read_json, write_json
+from staleness.alignment_change_tracker import (
     check_and_clear,
     check_pending as alignment_changed_pending,
 )
-from lib.core.path_registry import PathRegistry
-from lib.repositories.note_repository import read_incoming_notes
-from lib.repositories.proposal_state_repository import load_proposal_state
-from lib.risk.engagement import determine_engagement
-from lib.risk.history import append_history_entry, pattern_signature, read_history
-from lib.risk.loop import run_lightweight_risk_check, run_risk_loop
-from lib.risk.package_builder import build_package_from_proposal, read_package, refresh_package
-from lib.risk.serialization import load_risk_assessment
-from lib.risk.types import (
+from orchestrator.path_registry import PathRegistry
+from coordination.note_repository import read_incoming_notes
+from proposal.proposal_state_repository import load_proposal_state
+from risk.engagement import determine_engagement
+from risk.history import append_history_entry, pattern_signature, read_history
+from risk.loop import run_lightweight_risk_check, run_risk_loop
+from risk.package_builder import build_package_from_proposal, read_package, refresh_package
+from risk.serialization import load_risk_assessment
+from risk.types import (
     PostureProfile,
     RiskHistoryEntry,
     RiskMode,
@@ -27,16 +27,16 @@ from lib.risk.types import (
     RiskPlan,
     StepDecision,
 )
-from lib.services.freshness_service import compute_section_freshness
-from lib.services.readiness_resolver import resolve_readiness
-from section_loop.communication import AGENT_NAME, DB_SH, log, mailbox_send
-from section_loop.dispatch import dispatch_agent
-from section_loop.pipeline_control import (
+from staleness.freshness_service import compute_section_freshness
+from proposal.readiness_resolver import resolve_readiness
+from signals.section_loop_communication import AGENT_NAME, DB_SH, log, mailbox_send
+from dispatch.section_dispatch import dispatch_agent
+from orchestrator.pipeline_control import (
     _section_inputs_hash,
     handle_pending_messages,
 )
-from section_loop.section_engine import run_section
-from section_loop.types import ProposalPassResult, Section, SectionResult
+from implementation.engine_runner import run_section
+from orchestrator.types import ProposalPassResult, Section, SectionResult
 
 _IMPLEMENTATION_ROAL_KINDS = frozenset({
     "accepted_frontier",

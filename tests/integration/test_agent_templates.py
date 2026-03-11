@@ -6,7 +6,7 @@ No LLM mocks needed — these are pure string operations.
 
 from __future__ import annotations
 
-from section_loop.agent_templates import (
+from dispatch.agent_templates import (
     SYSTEM_CONSTRAINTS,
     render_template,
     validate_dynamic_content,
@@ -163,7 +163,7 @@ class TestMonitorPromptIntegration:
     ) -> None:
         from pathlib import Path
 
-        from section_loop.dispatch import _write_agent_monitor_prompt
+        from dispatch.section_dispatch import _write_agent_monitor_prompt
 
         prompt_path = _write_agent_monitor_prompt(
             planspace, "impl-01", "impl-01-monitor",
@@ -196,10 +196,10 @@ class TestAdjudicatePromptIntegration:
         # We need to call adjudicate_agent_output but mock dispatch_agent
         # so no actual agent runs.
         with patch(
-            "section_loop.dispatch.dispatch_agent",
+            "dispatch.section_dispatch.dispatch_agent",
             return_value='{"state": "ALIGNED", "detail": "all good"}',
         ):
-            from section_loop.dispatch import adjudicate_agent_output
+            from dispatch.section_dispatch import adjudicate_agent_output
 
             adjudicate_agent_output(
                 output_path, planspace, "test-parent",

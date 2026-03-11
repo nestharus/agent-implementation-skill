@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lib.core.path_registry import PathRegistry
-from lib.risk.package_builder import (
+from orchestrator.path_registry import PathRegistry
+from risk.package_builder import (
     _materialize_steps,
     _positional_assessment_class,
     build_package,
@@ -15,7 +15,7 @@ from lib.risk.package_builder import (
     refresh_package,
     write_package,
 )
-from lib.risk.types import PackageStep, StepClass
+from risk.types import PackageStep, StepClass
 
 
 def test_build_package_creates_expected_structure() -> None:

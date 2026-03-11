@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from lib.core.artifact_io import read_json
+from signals.artifact_io import read_json
 
 SUMMARY_BEGIN = "<!-- scan-summary:begin -->"
 SUMMARY_END = "<!-- scan-summary:end -->"
@@ -13,7 +13,7 @@ SUMMARY_END = "<!-- scan-summary:end -->"
 
 def deep_scan_related_files(section_file: Path) -> list[str]:
     """Parse ``### <path>`` entries under ``## Related Files``."""
-    from scan.related_files import extract_related_files
+    from scan.cli_related_files import extract_related_files
 
     return extract_related_files(section_file.read_text(encoding="utf-8"))
 
@@ -46,7 +46,7 @@ def update_match(
     if not lines:
         return True
 
-    from scan.related_files import find_entry_span
+    from scan.cli_related_files import find_entry_span
 
     section = section_file.read_text(encoding="utf-8")
     span = find_entry_span(section, source_file)

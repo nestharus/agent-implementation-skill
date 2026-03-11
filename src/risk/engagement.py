@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lib.risk.types import RiskMode
+from risk.types import RiskMode
 
 
 def determine_engagement(

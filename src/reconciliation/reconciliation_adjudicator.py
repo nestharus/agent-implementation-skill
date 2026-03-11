@@ -6,12 +6,12 @@ import json
 import logging
 from pathlib import Path
 
-from lib.core.artifact_io import write_json
-from lib.core.model_policy import resolve
-from lib.core.path_registry import PathRegistry
-from lib.prompts.prompt_template import render_template
-from prompt_safety import validate_dynamic_content
-from section_loop.dispatch import dispatch_agent, read_model_policy
+from signals.artifact_io import write_json
+from dispatch.model_policy import resolve
+from orchestrator.path_registry import PathRegistry
+from dispatch.prompt_template import render_template
+from dispatch.prompt_safety import validate_dynamic_content
+from dispatch.section_dispatch import dispatch_agent, read_model_policy
 
 logger = logging.getLogger(__name__)
 

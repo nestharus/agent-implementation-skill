@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from src.scripts.lib.core.artifact_io import write_json
-from src.scripts.lib.core.hash_service import content_hash, file_hash
-from src.scripts.lib.scan.scan_related_files import (
+from src.signals.artifact_io import write_json
+from src.staleness.hash_service import content_hash, file_hash
+from src.scan.scan_related_files import (
     apply_related_files_update,
     list_section_files,
     validate_existing_related_files,
 )
-from src.scripts.scan.cache import strip_scan_summaries
+from src.scan.cli_cache import strip_scan_summaries
 
 
 def test_list_section_files_filters_and_sorts(tmp_path) -> None:
@@ -123,7 +123,7 @@ def test_validate_existing_related_files_skips_when_inputs_unchanged(
         raise AssertionError("dispatch_agent should not run when hash matches")
 
     monkeypatch.setattr(
-        "src.scripts.lib.scan.scan_related_files.dispatch_agent",
+        "src.scan.scan_related_files.dispatch_agent",
         fail_dispatch,
     )
 
@@ -180,7 +180,7 @@ def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
     )
 
     monkeypatch.setattr(
-        "src.scripts.lib.scan.scan_related_files.load_scan_template",
+        "src.scan.scan_related_files.load_scan_template",
         lambda name: (
             "Section: {section_file}\n"
             "Codemap: {codemap_path}\n"
@@ -190,7 +190,7 @@ def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
         ),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.scan.scan_related_files.validate_dynamic_content",
+        "src.scan.scan_related_files.validate_dynamic_content",
         lambda prompt: [],
     )
     def mock_dispatch(**kwargs):
@@ -206,7 +206,7 @@ def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(
-        "src.scripts.lib.scan.scan_related_files.dispatch_agent",
+        "src.scan.scan_related_files.dispatch_agent",
         mock_dispatch,
     )
 

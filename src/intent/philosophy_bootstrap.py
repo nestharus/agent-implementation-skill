@@ -9,13 +9,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from lib.core.artifact_io import read_json, rename_malformed, write_json
-from lib.core.hash_service import content_hash, file_hash
-from lib.core.model_policy import resolve
-from lib.core.path_registry import PathRegistry
-from prompt_safety import write_validated_prompt
-from section_loop.communication import _log_artifact, log
-from section_loop.dispatch import (
+from signals.artifact_io import read_json, rename_malformed, write_json
+from staleness.hash_service import content_hash, file_hash
+from dispatch.model_policy import resolve
+from orchestrator.path_registry import PathRegistry
+from dispatch.prompt_safety import write_validated_prompt
+from signals.section_loop_communication import _log_artifact, log
+from dispatch.section_dispatch import (
     dispatch_agent,
     read_model_policy,
 )

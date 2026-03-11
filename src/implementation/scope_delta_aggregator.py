@@ -4,17 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.artifact_io import read_json, rename_malformed, write_json
-from lib.core.model_policy import resolve
-from lib.repositories.decision_repository import Decision, load_decisions, record_decision
-from lib.core.path_registry import PathRegistry
-from lib.services.scope_delta_parser import (
+from signals.artifact_io import read_json, rename_malformed, write_json
+from dispatch.model_policy import resolve
+from orchestrator.decision_repository import Decision, load_decisions, record_decision
+from orchestrator.path_registry import PathRegistry
+from implementation.scope_delta_parser import (
     normalize_section_id,
     parse_scope_delta_adjudication,
 )
-from prompt_safety import write_validated_prompt
-from section_loop.communication import _log_artifact, log, mailbox_send
-from section_loop.dispatch import dispatch_agent
+from dispatch.prompt_safety import write_validated_prompt
+from signals.section_loop_communication import _log_artifact, log, mailbox_send
+from dispatch.section_dispatch import dispatch_agent
 
 
 class ScopeDeltaAggregationExit(Exception):

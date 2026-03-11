@@ -6,10 +6,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from lib.core.artifact_io import write_json
-from lib.core.path_registry import PathRegistry
-from prompt_safety import write_validated_prompt
-from section_loop.communication import _log_artifact, log
+from signals.artifact_io import write_json
+from orchestrator.path_registry import PathRegistry
+from dispatch.prompt_safety import write_validated_prompt
+from signals.section_loop_communication import _log_artifact, log
 
 
 def _parse_coordination_plan(

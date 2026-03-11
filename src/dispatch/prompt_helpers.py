@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.path_registry import PathRegistry
-from section_loop.communication import DB_SH
-from section_loop.prompts.renderer import load_template, render
+from orchestrator.path_registry import PathRegistry
+from signals.section_loop_communication import DB_SH
+from dispatch.prompts_renderer import load_template, render
 
 
 def signal_instructions(signal_path: Path) -> str:

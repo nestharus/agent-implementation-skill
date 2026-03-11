@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.substrate import substrate_dispatch
+from src.scan import substrate_dispatch
 
 
 def _make_agent_home(tmp_path: Path) -> Path:

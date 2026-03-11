@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.prompt_safety import validate_dynamic_content, write_validated_prompt
+from src.dispatch.prompt_safety import validate_dynamic_content, write_validated_prompt
 
 
 # ---------------------------------------------------------------------------

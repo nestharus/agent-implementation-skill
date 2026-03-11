@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lib.core.path_registry import PathRegistry
+from orchestrator.path_registry import PathRegistry
 
 
 def parse_context_field(agent_file: str) -> list[str]:
@@ -139,7 +139,7 @@ def _resolve_allowed_tasks(_planspace: Path, _section: str | None) -> str:
         from src.scripts.task_router import TASK_ROUTES
     except ImportError:
         try:
-            from task_router import TASK_ROUTES  # type: ignore[import-not-found]
+            from flow.task_router import TASK_ROUTES  # type: ignore[import-not-found]
         except ImportError:
             TASK_ROUTES = None
 

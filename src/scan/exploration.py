@@ -4,18 +4,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.path_registry import PathRegistry
-from lib.scan.scan_phase_logger import log_phase_failure
-from lib.scan.scan_template_loader import load_scan_template
-from lib.scan.scan_related_files import (
+from orchestrator.path_registry import PathRegistry
+from scan.scan_phase_logger import log_phase_failure
+from scan.scan_template_loader import load_scan_template
+from scan.scan_related_files import (
     apply_related_files_update,
     list_section_files,
     validate_existing_related_files,
 )
 
-from prompt_safety import validate_dynamic_content
+from dispatch.prompt_safety import validate_dynamic_content
 
-from .dispatch import dispatch_agent, read_scan_model_policy
+from scan.cli_dispatch import dispatch_agent, read_scan_model_policy
 
 
 def run_section_exploration(

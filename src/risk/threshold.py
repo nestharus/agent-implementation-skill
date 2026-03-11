@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lib.risk.types import AssessmentClass, DecisionClass, RiskPlan, StepAssessment, StepClass, StepDecision, StepMitigation
+from risk.types import AssessmentClass, DecisionClass, RiskPlan, StepAssessment, StepClass, StepDecision, StepMitigation
 
 
 def validate_risk_plan(plan: RiskPlan, parameters: dict) -> list[str]:

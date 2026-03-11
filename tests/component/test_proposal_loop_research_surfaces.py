@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.pipelines.proposal_loop import run_proposal_loop
-from src.scripts.section_loop.intent.expansion import run_expansion_cycle
-from src.scripts.section_loop.types import Section
+from src.proposal.proposal_loop import run_proposal_loop
+from src.intent.loop_expansion import run_expansion_cycle
+from src.orchestrator.types import Section
 
 
 def _section(planspace: Path, number: str = "01") -> Section:
@@ -57,27 +57,27 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
     expansion_calls: list[str] = []
 
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.proposal_loop.load_triage_result",
+        "src.proposal.proposal_loop.load_triage_result",
         lambda *_args, **_kwargs: {"intent_mode": "full", "budgets": {}},
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.proposal_loop.handle_pending_messages",
+        "src.proposal.proposal_loop.handle_pending_messages",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.proposal_loop.alignment_changed_pending",
+        "src.proposal.proposal_loop.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.proposal_loop.write_model_choice_signal",
+        "src.proposal.proposal_loop.write_model_choice_signal",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.proposal_loop.write_integration_proposal_prompt",
+        "src.proposal.proposal_loop.write_integration_proposal_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.proposal_loop.write_integration_alignment_prompt",
+        "src.proposal.proposal_loop.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
 
@@ -90,33 +90,33 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         output_path.write_text("aligned", encoding="utf-8")
         return '{"aligned": true}'
 
-    monkeypatch.setattr("src.scripts.lib.pipelines.proposal_loop.dispatch_agent", _dispatch)
+    monkeypatch.setattr("src.proposal.proposal_loop.dispatch_agent", _dispatch)
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.proposal_loop.check_agent_signals",
+        "src.proposal.proposal_loop.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.proposal_loop._extract_problems",
+        "src.proposal.proposal_loop._extract_problems",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.proposal_loop.mailbox_send",
+        "src.proposal.proposal_loop.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.proposal_loop.ingest_and_submit",
+        "src.proposal.proposal_loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.proposal_loop.load_reconciliation_result",
+        "src.proposal.proposal_loop.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.proposal_loop._write_alignment_surface",
+        "src.proposal.proposal_loop._write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.proposal_loop.run_expansion_cycle",
+        "src.proposal.proposal_loop.run_expansion_cycle",
         lambda section_number, *_args, **_kwargs: (
             expansion_calls.append(section_number)
             or {
@@ -167,16 +167,16 @@ def test_run_expansion_cycle_merges_research_surfaces_into_pending_payload(
     )
 
     monkeypatch.setattr(
-        "src.scripts.section_loop.intent.expansion.read_model_policy",
+        "src.intent.loop_expansion.read_model_policy",
         lambda *_args, **_kwargs: {},
     )
     monkeypatch.setattr(
-        "section_loop.intent.expansion.read_model_policy",
+        "intent.loop_expansion.read_model_policy",
         lambda *_args, **_kwargs: {},
         raising=False,
     )
     monkeypatch.setattr(
-        "lib.intent.intent_surface.run_problem_expander",
+        "intent.intent_surface.run_problem_expander",
         lambda *_args, **_kwargs: {
             "applied": {
                 "problem_definition_updated": False,
@@ -189,7 +189,7 @@ def test_run_expansion_cycle_merges_research_surfaces_into_pending_payload(
         },
     )
     monkeypatch.setattr(
-        "src.scripts.lib.intent.intent_surface.run_problem_expander",
+        "src.intent.intent_surface.run_problem_expander",
         lambda *_args, **_kwargs: {
             "applied": {
                 "problem_definition_updated": False,

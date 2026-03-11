@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 from _paths import DB_SH
 
-from flow_schema import (
+from flow.flow_schema import (
     BranchSpec,
     ChainAction,
     FanoutAction,

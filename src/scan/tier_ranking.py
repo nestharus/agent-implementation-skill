@@ -5,12 +5,12 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from lib.core.artifact_io import read_json, rename_malformed, write_json
-from lib.core.hash_service import content_hash
-from lib.scan.scan_template_loader import load_scan_template
-from prompt_safety import validate_dynamic_content
-from scan.cache import strip_scan_summaries
-from scan.dispatch import dispatch_agent
+from signals.artifact_io import read_json, rename_malformed, write_json
+from staleness.hash_service import content_hash
+from scan.scan_template_loader import load_scan_template
+from dispatch.prompt_safety import validate_dynamic_content
+from scan.cli_cache import strip_scan_summaries
+from scan.cli_dispatch import dispatch_agent
 
 
 def validate_tier_file(tier_file: Path) -> bool:

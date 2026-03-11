@@ -1,13 +1,13 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-from lib.core.artifact_io import read_json, write_json
-from lib.core.hash_service import file_hash
-from lib.core.path_registry import PathRegistry
+from signals.artifact_io import read_json, write_json
+from staleness.hash_service import file_hash
+from orchestrator.path_registry import PathRegistry
 
-from ..alignment import _parse_alignment_verdict
-from ..communication import log
-from ..types import Section
+from staleness.section_alignment import _parse_alignment_verdict
+from signals.section_loop_communication import log
+from orchestrator.types import Section
 
 
 def _file_sha256(path: Path) -> str:
@@ -17,7 +17,7 @@ def _file_sha256(path: Path) -> str:
 
 def _proposal_governance_ids(planspace: Path, section_number: str) -> dict:
     """Extract governance identity from proposal-state if available."""
-    from lib.repositories.proposal_state_repository import load_proposal_state
+    from proposal.proposal_state_repository import load_proposal_state
 
     paths = PathRegistry(planspace)
     state_path = (

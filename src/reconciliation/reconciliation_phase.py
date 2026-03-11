@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.services.alignment_change_tracker import (
+from staleness.alignment_change_tracker import (
     check_pending as alignment_changed_pending,
 )
-from section_loop.communication import log, mailbox_send
-from section_loop.pipeline_control import handle_pending_messages
-from section_loop.reconciliation import run_reconciliation
-from section_loop.section_engine import run_section
-from section_loop.types import ProposalPassResult, Section
+from signals.section_loop_communication import log, mailbox_send
+from orchestrator.pipeline_control import handle_pending_messages
+from reconciliation.loop_reconciliation import run_reconciliation
+from implementation.engine_runner import run_section
+from orchestrator.types import ProposalPassResult, Section
 
 
 class ReconciliationPhaseExit(Exception):
@@ -156,6 +156,6 @@ def run_reconciliation_phase(
 
 
 def _check_and_clear_alignment_changed(planspace: Path) -> bool:
-    from section_loop.main import _check_and_clear_alignment_changed as check_and_clear
+    from orchestrator.main import _check_and_clear_alignment_changed as check_and_clear
 
     return check_and_clear(planspace)

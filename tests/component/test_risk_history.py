@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lib.risk.history import (
+from risk.history import (
     append_history_entry,
     compute_history_adjustment,
     pattern_signature,
     read_history,
 )
-from lib.risk.types import PostureProfile, RiskHistoryEntry, RiskType, StepClass
+from risk.types import PostureProfile, RiskHistoryEntry, RiskType, StepClass
 
 
 def _entry(

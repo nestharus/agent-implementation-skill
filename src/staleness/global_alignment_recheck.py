@@ -4,17 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.model_policy import resolve
-from lib.core.path_registry import PathRegistry
-from section_loop.alignment import (
+from dispatch.model_policy import resolve
+from orchestrator.path_registry import PathRegistry
+from staleness.section_alignment import (
     _extract_problems,
     _run_alignment_check_with_retries,
 )
-from section_loop.communication import log, mailbox_send
-from section_loop.cross_section import read_incoming_notes
-from section_loop.dispatch import check_agent_signals
-from section_loop.pipeline_control import _section_inputs_hash, poll_control_messages
-from section_loop.types import Section, SectionResult
+from signals.section_loop_communication import log, mailbox_send
+from coordination.cross_section import read_incoming_notes
+from dispatch.section_dispatch import check_agent_signals
+from orchestrator.pipeline_control import _section_inputs_hash, poll_control_messages
+from orchestrator.types import Section, SectionResult
 
 
 def run_global_alignment_recheck(

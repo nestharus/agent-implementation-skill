@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.scripts.lib.governance.loader import build_governance_indexes
-from src.scripts.lib.governance.packet import build_section_governance_packet
+from src.intake.governance_loader import build_governance_indexes
+from src.intake.governance_packet import build_section_governance_packet
 
 
 def test_build_section_governance_packet_uses_indexes_and_default_profile(

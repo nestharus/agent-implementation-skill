@@ -26,15 +26,15 @@ import sys
 import time
 from pathlib import Path
 
-from lib.dispatch.dispatch_metadata import DISPATCH_META_CORRUPT, read_dispatch_metadata
-from lib.core.path_registry import PathRegistry
-from lib.tasks.task_db_client import db_cmd
-from lib.tasks.task_notifier import (
+from dispatch.dispatch_metadata import DISPATCH_META_CORRUPT, read_dispatch_metadata
+from orchestrator.path_registry import PathRegistry
+from flow.task_db_client import db_cmd
+from flow.task_notifier import (
     notify_task_result,
     record_qa_intercept,
     record_task_routing,
 )
-from lib.tasks.task_parser import parse_task_output
+from flow.task_parser import parse_task_output
 
 # Resolve paths relative to this script's location.
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -42,19 +42,19 @@ WORKFLOW_HOME = Path(os.environ.get("WORKFLOW_HOME", SCRIPTS_DIR.parent))
 
 # Import task_router and task_flow from the same directory.
 sys.path.insert(0, str(SCRIPTS_DIR))
-from task_flow import (  # noqa: E402
+from flow.task_flow import (  # noqa: E402
     FlowCorruptionError,
     build_flow_context,
     compute_section_freshness,
     reconcile_task_completion,
     write_dispatch_prompt,
 )
-from task_router import resolve_task  # noqa: E402
+from flow.task_router import resolve_task  # noqa: E402
 
-from section_loop.agent_templates import (  # noqa: E402
+from dispatch.agent_templates import (  # noqa: E402
     validate_dynamic_content,
 )
-from section_loop.dispatch import dispatch_agent, read_model_policy  # noqa: E402
+from dispatch.section_dispatch import dispatch_agent, read_model_policy  # noqa: E402
 
 DISPATCHER_NAME = "task-dispatcher"
 
@@ -231,7 +231,7 @@ def dispatch_task(
     # --- QA dispatch interceptor (optional) ---
     # Lazy-import inside conditional to avoid hard dependency.
     try:
-        from qa_interceptor import intercept_task, read_qa_parameters
+        from dispatch.qa_interceptor import intercept_task, read_qa_parameters
         qa_params = read_qa_parameters(planspace)
     except Exception:
         qa_params = {}
@@ -329,7 +329,7 @@ def dispatch_task(
             )
             return
 
-    # V6: Dispatch through section_loop.dispatch for pause/alignment
+    # V6: Dispatch through dispatch.section_dispatch for pause/alignment
     # handling, context sidecars, and per-dispatch monitoring.
     output = dispatch_agent(
         model, prompt_path, output_path,

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.artifact_io import write_json
-from lib.core.path_registry import PathRegistry
-from section_loop.communication import log
+from signals.artifact_io import write_json
+from orchestrator.path_registry import PathRegistry
+from signals.section_loop_communication import log
 
 
 def emit_recurrence_signal(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.scripts.lib.tasks.task_parser import parse_task_output
+from src.flow.task_parser import parse_task_output
 
 
 def test_parse_task_output_returns_none_for_no_runnable_tasks() -> None:

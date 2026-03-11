@@ -6,14 +6,14 @@ Uses real file I/O — no LLM mocks needed (prompts are string templates).
 
 from pathlib import Path
 
-from section_loop.prompts import (
+from dispatch.prompts_writers import (
     agent_mail_instructions,
     signal_instructions,
     write_integration_proposal_prompt,
     write_section_setup_prompt,
     write_strategic_impl_prompt,
 )
-from section_loop.types import Section
+from orchestrator.types import Section
 
 
 class TestSignalInstructions:

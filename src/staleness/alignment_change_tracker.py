@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.database_client import DatabaseClient
-from lib.repositories.excerpt_repository import invalidate_all
-from lib.core.path_registry import PathRegistry
+from signals.database_client import DatabaseClient
+from proposal.excerpt_repository import invalidate_all
+from orchestrator.path_registry import PathRegistry
 
 
 def _database_client(planspace: Path, db_sh: Path) -> DatabaseClient:

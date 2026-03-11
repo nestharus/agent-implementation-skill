@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from lib.core.artifact_io import read_json, rename_malformed, write_json
+from signals.artifact_io import read_json, rename_malformed, write_json
 
 
 @dataclasses.dataclass

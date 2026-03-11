@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.pipelines.readiness_gate import (
+from src.proposal.readiness_gate import (
     publish_discoveries,
     resolve_and_route,
     route_blockers,
 )
-from src.scripts.section_loop.types import Section
+from src.orchestrator.types import Section
 
 
 def _section(planspace: Path) -> Section:
@@ -32,7 +32,7 @@ def test_publish_discoveries_writes_scope_delta_and_research_artifact(
     (planspace / "artifacts" / "open-problems").mkdir(parents=True, exist_ok=True)
     appended: list[str] = []
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate._append_open_problem",
+        "src.proposal.readiness_gate._append_open_problem",
         lambda _planspace, _section, detail, _source: appended.append(detail),
     )
 
@@ -63,13 +63,13 @@ def test_route_blockers_writes_signals_and_queues_reconciliation(
     queued: list[tuple[list[str], list[str]]] = []
 
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.queue_reconciliation_request",
+        "src.proposal.readiness_gate.queue_reconciliation_request",
         lambda _artifacts, _section, contracts, anchors: queued.append(
             (contracts, anchors)
         ),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate._update_blocker_rollup",
+        "src.proposal.readiness_gate._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
 
@@ -112,19 +112,19 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
     prompt_path.write_text("# Prompt\n", encoding="utf-8")
 
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate._update_blocker_rollup",
+        "src.proposal.readiness_gate._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.compute_trigger_hash",
+        "src.proposal.readiness_gate.compute_trigger_hash",
         lambda questions: "hash-03",
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.is_research_complete_for_trigger",
+        "src.proposal.readiness_gate.is_research_complete_for_trigger",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.write_research_plan_prompt",
+        "src.proposal.readiness_gate.write_research_plan_prompt",
         lambda section_number, ps, codespace, trigger_path: (
             prompt_calls.append(
                 {
@@ -138,17 +138,17 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
         ),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.compute_section_freshness",
+        "src.proposal.readiness_gate.compute_section_freshness",
         lambda ps, sec: "fresh-03",
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.write_research_status",
+        "src.proposal.readiness_gate.write_research_status",
         lambda section_number, ps, status, **kwargs: status_writes.append(
             (section_number, ps, status, kwargs)
         ),
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.submit_task",
+        "src.proposal.readiness_gate.submit_task",
         lambda db_path, submitted_by, task_type, **kwargs: (
             submitted.append(
                 {
@@ -233,19 +233,19 @@ def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
     submitted: list[dict] = []
 
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate._update_blocker_rollup",
+        "src.proposal.readiness_gate._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.compute_trigger_hash",
+        "src.proposal.readiness_gate.compute_trigger_hash",
         lambda questions: "hash-03",
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.is_research_complete_for_trigger",
+        "src.proposal.readiness_gate.is_research_complete_for_trigger",
         lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.submit_task",
+        "src.proposal.readiness_gate.submit_task",
         lambda db_path, submitted_by, task_type, **kwargs: (
             submitted.append(
                 {
@@ -306,23 +306,23 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
     submitted: list[dict] = []
 
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate._update_blocker_rollup",
+        "src.proposal.readiness_gate._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.compute_trigger_hash",
+        "src.proposal.readiness_gate.compute_trigger_hash",
         lambda questions: "hash-03",
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.is_research_complete_for_trigger",
+        "src.proposal.readiness_gate.is_research_complete_for_trigger",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.write_research_plan_prompt",
+        "src.proposal.readiness_gate.write_research_plan_prompt",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.submit_task",
+        "src.proposal.readiness_gate.submit_task",
         lambda db_path, submitted_by, task_type, **kwargs: (
             submitted.append(
                 {
@@ -337,7 +337,7 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
     )
     status_writes: list[tuple[str, Path, str, dict]] = []
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.write_research_status",
+        "src.proposal.readiness_gate.write_research_status",
         lambda section_number, ps, status, **kwargs: status_writes.append(
             (section_number, ps, status, kwargs)
         ),
@@ -395,11 +395,11 @@ def test_route_blockers_ignores_empty_blocking_research_questions(
     submitted: list[dict] = []
 
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate._update_blocker_rollup",
+        "src.proposal.readiness_gate._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.submit_task",
+        "src.proposal.readiness_gate.submit_task",
         lambda db_path, submitted_by, task_type, **kwargs: (
             submitted.append(
                 {
@@ -477,7 +477,7 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
     )
 
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.resolve_readiness",
+        "src.proposal.readiness_gate.resolve_readiness",
         lambda *_args, **_kwargs: {
             "ready": False,
             "blockers": [{"type": "user_root_questions", "description": "Choose retry policy"}],
@@ -485,19 +485,19 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
         },
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.mailbox_send",
+        "src.proposal.readiness_gate.mailbox_send",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate._append_open_problem",
+        "src.proposal.readiness_gate._append_open_problem",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate.queue_reconciliation_request",
+        "src.proposal.readiness_gate.queue_reconciliation_request",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.scripts.lib.pipelines.readiness_gate._update_blocker_rollup",
+        "src.proposal.readiness_gate._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
 

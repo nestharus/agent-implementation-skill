@@ -2,20 +2,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.artifact_io import read_json_or_default, write_json
-from lib.services.alignment_change_tracker import check_pending as alignment_changed_pending
-from lib.repositories.excerpt_repository import exists as excerpt_exists
-from lib.core.path_registry import PathRegistry
-from section_loop.communication import mailbox_send, log
-from section_loop.cross_section import persist_decision
-from section_loop.dispatch import (
+from signals.artifact_io import read_json_or_default, write_json
+from staleness.alignment_change_tracker import check_pending as alignment_changed_pending
+from proposal.excerpt_repository import exists as excerpt_exists
+from orchestrator.path_registry import PathRegistry
+from signals.section_loop_communication import mailbox_send, log
+from coordination.cross_section import persist_decision
+from dispatch.section_dispatch import (
     check_agent_signals,
     dispatch_agent,
     summarize_output,
 )
-from section_loop.pipeline_control import pause_for_parent
-from section_loop.prompts import write_section_setup_prompt
-from section_loop.section_engine.blockers import (
+from orchestrator.pipeline_control import pause_for_parent
+from dispatch.prompts_writers import write_section_setup_prompt
+from signals.blockers import (
     _append_open_problem,
     _update_blocker_rollup,
 )

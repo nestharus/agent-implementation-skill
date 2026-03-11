@@ -7,17 +7,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.core.path_registry import PathRegistry
-from lib.scan.deep_scan_analyzer import analyze_file as _analyze_file
-from lib.scan.deep_scan_analyzer import safe_name as _safe_name
-from lib.scan.scan_match_updater import deep_scan_related_files, update_match
-from lib.scan.scan_related_files import list_section_files
-from lib.scan.scan_section_iterator import scan_sections as _scan_sections
-from lib.scan.tier_ranking import run_tier_ranking as _run_tier_ranking
-from lib.scan.tier_ranking import validate_tier_file
+from orchestrator.path_registry import PathRegistry
+from scan.deep_scan_analyzer import analyze_file as _analyze_file
+from scan.deep_scan_analyzer import safe_name as _safe_name
+from scan.scan_match_updater import deep_scan_related_files, update_match
+from scan.scan_related_files import list_section_files
+from scan.scan_section_iterator import scan_sections as _scan_sections
+from scan.tier_ranking import run_tier_ranking as _run_tier_ranking
+from scan.tier_ranking import validate_tier_file
 
-from .cache import FileCardCache
-from .dispatch import dispatch_agent, read_scan_model_policy
+from scan.cli_cache import FileCardCache
+from scan.cli_dispatch import dispatch_agent, read_scan_model_policy
 from .feedback import collect_and_route_feedback
 _MAX_SCAN_PASSES = 2
 

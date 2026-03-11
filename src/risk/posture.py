@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from lib.risk.quantifier import DEFAULT_POSTURE_BANDS, risk_to_posture
-from lib.risk.types import PostureProfile
+from risk.quantifier import DEFAULT_POSTURE_BANDS, risk_to_posture
+from risk.types import PostureProfile
 
 POSTURE_SEQUENCE: tuple[PostureProfile, ...] = tuple(
     posture for _, _, posture in DEFAULT_POSTURE_BANDS

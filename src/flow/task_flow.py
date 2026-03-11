@@ -15,7 +15,7 @@ gate firing.
 
 from __future__ import annotations
 
-from lib.flow.flow_context import (
+from flow.flow_context import (
     FlowCorruptionError,
     build_flow_context,
     gate_aggregate_relpath as _gate_aggregate_relpath,
@@ -24,7 +24,7 @@ from lib.flow.flow_context import (
     flow_context_relpath as _flow_context_relpath,
     write_dispatch_prompt,
 )
-from lib.flow.flow_reconciler import (
+from flow.flow_reconciler import (
     build_gate_aggregate_manifest,
     build_result_manifest,
     cancel_chain_descendants as _cancel_chain_descendants,
@@ -36,9 +36,9 @@ from lib.flow.flow_reconciler import (
     update_gate_member as _update_gate_member,
     update_gate_member_leaf as _update_gate_member_leaf,
 )
-from lib.services.freshness_service import compute_section_freshness
-from lib.core.path_registry import PathRegistry
-from lib.flow.flow_submitter import (
+from staleness.freshness_service import compute_section_freshness
+from orchestrator.path_registry import PathRegistry
+from flow.flow_submitter import (
     new_chain_id as _new_chain_id,
     new_flow_id as _new_flow_id,
     new_gate_id as _new_gate_id,

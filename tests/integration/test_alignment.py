@@ -8,12 +8,12 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from section_loop.alignment import (
+from staleness.section_alignment import (
     _extract_problems,
     _parse_alignment_verdict,
     collect_modified_files,
 )
-from section_loop.types import Section
+from orchestrator.types import Section
 
 
 class TestCollectModifiedFiles:
@@ -183,7 +183,7 @@ class TestExtractProblems:
         })
 
         with patch(
-            "section_loop.alignment.dispatch_agent",
+            "staleness.section_alignment.dispatch_agent",
             return_value=adjudicator_response,
         ):
             problems = _extract_problems(
@@ -210,7 +210,7 @@ class TestExtractProblems:
         })
 
         with patch(
-            "section_loop.alignment.dispatch_agent",
+            "staleness.section_alignment.dispatch_agent",
             return_value=adjudicator_response,
         ):
             problems = _extract_problems(

@@ -3,22 +3,22 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from lib.services.alignment_change_tracker import check_pending as alignment_changed_pending
-from lib.core.artifact_io import read_json, write_json
-from lib.core.model_policy import resolve
-from lib.core.path_registry import PathRegistry
-from lib.flow.flow_submitter import submit_chain
-from lib.governance.assessment import write_post_impl_assessment_prompt
-from section_loop.alignment import _extract_problems, collect_modified_files
-from section_loop.change_detection import diff_files, snapshot_files
-from section_loop.communication import _record_traceability, log, mailbox_send
-from section_loop.cross_section import persist_decision
-from section_loop.dispatch import check_agent_signals, dispatch_agent, summarize_output
-from section_loop.pipeline_control import handle_pending_messages, pause_for_parent
-from section_loop.prompts import write_impl_alignment_prompt, write_strategic_impl_prompt
-from section_loop.task_ingestion import ingest_and_submit
-from section_loop.section_engine.traceability import _write_traceability_index
-from flow_schema import TaskSpec
+from staleness.alignment_change_tracker import check_pending as alignment_changed_pending
+from signals.artifact_io import read_json, write_json
+from dispatch.model_policy import resolve
+from orchestrator.path_registry import PathRegistry
+from flow.flow_submitter import submit_chain
+from intake.governance_assessment import write_post_impl_assessment_prompt
+from staleness.section_alignment import _extract_problems, collect_modified_files
+from staleness.change_detection import diff_files, snapshot_files
+from signals.section_loop_communication import _record_traceability, log, mailbox_send
+from coordination.cross_section import persist_decision
+from dispatch.section_dispatch import check_agent_signals, dispatch_agent, summarize_output
+from orchestrator.pipeline_control import handle_pending_messages, pause_for_parent
+from dispatch.prompts_writers import write_impl_alignment_prompt, write_strategic_impl_prompt
+from flow.section_task_ingestion import ingest_and_submit
+from implementation.engine_traceability import _write_traceability_index
+from flow.flow_schema import TaskSpec
 
 
 def run_implementation_loop(
@@ -287,8 +287,8 @@ def run_implementation_loop(
     paths = PathRegistry(planspace)
     trace_map_path = paths.trace_map(section.number)
     trace_map_path.parent.mkdir(parents=True, exist_ok=True)
-    from lib.core.hash_service import file_hash
-    from lib.repositories.proposal_state_repository import load_proposal_state
+    from staleness.hash_service import file_hash
+    from proposal.proposal_state_repository import load_proposal_state
     proposal_state_path = (
         paths.proposals_dir()
         / f"section-{section.number}-proposal-state.json"

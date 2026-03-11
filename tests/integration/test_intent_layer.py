@@ -14,9 +14,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from _paths import SRC_DIR
-from lib.core.hash_service import file_hash
+from staleness.hash_service import file_hash
 
-from section_loop.intent.surfaces import (
+from intent.loop_surfaces import (
     find_discarded_recurrences,
     load_surface_registry,
     merge_surfaces_into_registry,
@@ -25,8 +25,8 @@ from section_loop.intent.surfaces import (
     mark_surfaces_applied,
     mark_surfaces_discarded,
 )
-from section_loop.intent.triage import _full_default
-from section_loop.types import Section
+from intent.loop_triage import _full_default
+from orchestrator.types import Section
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +271,7 @@ class TestIntentTriage:
 
         mock_dispatch.side_effect = write_triage_signal
 
-        from section_loop.intent.triage import run_intent_triage
+        from intent.loop_triage import run_intent_triage
         result = run_intent_triage(
             "01", intent_planspace, intent_planspace, "parent",
             related_files_count=6,
@@ -285,7 +285,7 @@ class TestIntentTriage:
         """V2/R75: When GLM fails to write signal, fallback to full."""
         mock_dispatch.return_value = ""
 
-        from section_loop.intent.triage import run_intent_triage
+        from intent.loop_triage import run_intent_triage
         result = run_intent_triage(
             "01", intent_planspace, intent_planspace, "parent",
         )
@@ -364,7 +364,7 @@ class TestIntentBootstrap:
 
         mock_dispatch.side_effect = handle_dispatch
 
-        from section_loop.intent.bootstrap import ensure_global_philosophy
+        from intent.loop_bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(
             intent_planspace, intent_planspace, "parent",
         )
@@ -383,7 +383,7 @@ class TestIntentBootstrap:
         )
         philosophy_path.write_text("# Existing Philosophy\n\nP1...\n")
 
-        from section_loop.intent.bootstrap import ensure_global_philosophy
+        from intent.loop_bootstrap import ensure_global_philosophy
         ensure_global_philosophy(
             intent_planspace, intent_planspace, "parent",
         )
@@ -397,7 +397,7 @@ class TestIntentBootstrap:
         section = _make_intent_section(intent_planspace, codespace)
         mock_dispatch.return_value = ""
 
-        from section_loop.intent.bootstrap import generate_intent_pack
+        from intent.loop_bootstrap import generate_intent_pack
         intent_dir = generate_intent_pack(
             section, intent_planspace, codespace, "parent",
         )
@@ -419,7 +419,7 @@ class TestExpansionCycle:
         self, intent_planspace: Path, mock_dispatch: MagicMock,
     ) -> None:
         """No surfaces signal → no expansion, no restart."""
-        from section_loop.intent.expansion import run_expansion_cycle
+        from intent.loop_expansion import run_expansion_cycle
         result = run_expansion_cycle(
             "01", intent_planspace, intent_planspace, "parent",
         )
@@ -481,7 +481,7 @@ class TestExpansionCycle:
 
         mock_dispatch.side_effect = write_delta
 
-        from section_loop.intent.expansion import run_expansion_cycle
+        from intent.loop_expansion import run_expansion_cycle
         result = run_expansion_cycle(
             "01", intent_planspace, intent_planspace, "parent",
         )
@@ -565,7 +565,7 @@ class TestExpansionCycle:
 
         mock_dispatch.side_effect = write_adjudication
 
-        from section_loop.intent.expansion import run_expansion_cycle
+        from intent.loop_expansion import run_expansion_cycle
         result = run_expansion_cycle(
             "01", intent_planspace, intent_planspace, "parent",
         )
@@ -700,7 +700,7 @@ class TestRunnerIntentIntegration:
 
         mock_dispatch.side_effect = track_calls
 
-        from section_loop.section_engine import run_section
+        from implementation.engine_runner import run_section
         result = run_section(
             intent_planspace, codespace, section, "parent",
         )
@@ -766,7 +766,7 @@ class TestRunnerIntentIntegration:
 
         mock_dispatch.side_effect = track_calls
 
-        from section_loop.section_engine import run_section
+        from implementation.engine_runner import run_section
         run_section(intent_planspace, codespace, section, "parent")
 
         # Verify alignment-judge.md was used (not intent-judge.md)
@@ -790,7 +790,7 @@ class TestIntentInputsHash:
         self, intent_planspace: Path, codespace: Path,
     ) -> None:
         """Changing philosophy.md changes the section inputs hash."""
-        from section_loop.pipeline_control import _section_inputs_hash
+        from orchestrator.pipeline_control import _section_inputs_hash
 
         sec = Section(
             number="01",
@@ -816,7 +816,7 @@ class TestIntentInputsHash:
         self, intent_planspace: Path, codespace: Path,
     ) -> None:
         """Changing problem.md changes the section inputs hash."""
-        from section_loop.pipeline_control import _section_inputs_hash
+        from orchestrator.pipeline_control import _section_inputs_hash
 
         sec = Section(
             number="01",
@@ -848,7 +848,7 @@ class TestIntentConventions:
 
     def test_intent_model_policy_defaults_exist(self) -> None:
         """All intent model keys have defaults in read_model_policy."""
-        from section_loop.dispatch import read_model_policy
+        from dispatch.section_dispatch import read_model_policy
         from pathlib import Path
         import tempfile
 
@@ -865,16 +865,18 @@ class TestIntentConventions:
 
     def test_intent_module_imports(self) -> None:
         """Intent module public API is importable."""
-        from section_loop.intent import (
+        from intent.loop_bootstrap import (
             ensure_global_philosophy,
-            find_discarded_recurrences,
             generate_intent_pack,
+        )
+        from intent.loop_surfaces import (
+            find_discarded_recurrences,
             load_surface_registry,
             merge_surfaces_into_registry,
             normalize_surface_ids,
-            run_expansion_cycle,
-            run_intent_triage,
         )
+        from intent.loop_expansion import run_expansion_cycle
+        from intent.intent_triage import run_intent_triage
         # Smoke check — all names resolve
         assert callable(ensure_global_philosophy)
         assert callable(find_discarded_recurrences)
@@ -938,7 +940,7 @@ class TestIntentConventions:
         self, intent_planspace: Path, mock_dispatch: MagicMock,
     ) -> None:
         """No philosophy sources → fail-closed, return blocker result."""
-        from section_loop.intent.bootstrap import ensure_global_philosophy
+        from intent.loop_bootstrap import ensure_global_philosophy
         # No constraints.md, philosophy.md etc. in planspace
         result = ensure_global_philosophy(
             intent_planspace, intent_planspace, "parent",
@@ -1173,7 +1175,7 @@ class TestIntentConventions:
 
         mock_dispatch.side_effect = track_calls
 
-        from section_loop.section_engine import run_section
+        from implementation.engine_runner import run_section
         run_section(intent_planspace, codespace, section, "parent")
 
         # intent-pack-generator must come AFTER TODO extraction
@@ -1187,7 +1189,7 @@ class TestIntentConventions:
         """proposal_max and implementation_max from triage reach cycle budget (V7/R53)."""
         # V1/R75: philosophy is now a gate — mock it as available
         monkeypatch.setattr(
-            "section_loop.section_engine.runner.ensure_global_philosophy",
+            "implementation.engine_runner.ensure_global_philosophy",
             MagicMock(return_value={
                 "status": "ready",
                 "blocking_state": None,
@@ -1241,7 +1243,7 @@ class TestIntentConventions:
 
         mock_dispatch.side_effect = track_calls
 
-        from section_loop.section_engine import run_section
+        from implementation.engine_runner import run_section
         run_section(intent_planspace, codespace, section, "parent")
 
         # Read cycle budget and verify triage keys are present
@@ -1258,7 +1260,7 @@ class TestIntentConventions:
         """Malformed cycle budget → renamed + proceeds (V6/R53)."""
         # V1/R75: philosophy is now a gate — mock it as available
         monkeypatch.setattr(
-            "section_loop.section_engine.runner.ensure_global_philosophy",
+            "implementation.engine_runner.ensure_global_philosophy",
             MagicMock(return_value={
                 "status": "ready",
                 "blocking_state": None,
@@ -1311,7 +1313,7 @@ class TestIntentConventions:
 
         mock_dispatch.side_effect = track_calls
 
-        from section_loop.section_engine import run_section
+        from implementation.engine_runner import run_section
         # Should not crash
         run_section(intent_planspace, codespace, section, "parent")
 
@@ -1378,7 +1380,7 @@ class TestIntentConventions:
         mock_dispatch.side_effect = track_calls
         section = _make_intent_section(intent_planspace, intent_planspace)
 
-        from section_loop.section_engine import run_section
+        from implementation.engine_runner import run_section
         run_section(intent_planspace, intent_planspace, section, "parent")
 
         # First model is GLM (triage), second is escalation model
@@ -1434,7 +1436,7 @@ class TestIntentConventions:
 
     def test_intent_model_policy_escalation_keys(self) -> None:
         """Model policy includes escalation and recurrence adjudicator keys (V1/V5 R54)."""
-        from section_loop.dispatch import read_model_policy
+        from dispatch.section_dispatch import read_model_policy
         import tempfile
 
         with tempfile.TemporaryDirectory() as td:
@@ -1473,8 +1475,8 @@ class TestR55IntentPackCorrections:
         self, planspace, codespace, section_01, mock_dispatch,
     ) -> None:
         """Intent pack prompt references codemap corrections when present."""
-        from section_loop.intent.bootstrap import generate_intent_pack
-        from section_loop.types import Section
+        from intent.loop_bootstrap import generate_intent_pack
+        from orchestrator.types import Section
 
         # Create codemap and corrections
         artifacts = planspace / "artifacts"
@@ -1512,7 +1514,7 @@ class TestR55BudgetEnforcementFunctional:
     ) -> None:
         """When budget truncates, pending-surfaces file is written."""
         import json
-        from section_loop.intent.expansion import run_expansion_cycle
+        from intent.loop_expansion import run_expansion_cycle
 
         artifacts = planspace / "artifacts"
         signals = artifacts / "signals"
@@ -1574,7 +1576,7 @@ class TestR56QueueSemantics:
         self, planspace, codespace, section_01, mock_dispatch,
     ) -> None:
         """Pending surfaces from prior truncation are processed next cycle."""
-        from section_loop.intent.expansion import run_expansion_cycle
+        from intent.loop_expansion import run_expansion_cycle
 
         artifacts = planspace / "artifacts"
         signals = artifacts / "signals"
@@ -1686,7 +1688,7 @@ class TestR56AgentSelectedSources:
 
     def test_model_policy_has_selector_key(self) -> None:
         """Model policy must include intent_philosophy_selector key."""
-        from section_loop.dispatch import read_model_policy
+        from dispatch.section_dispatch import read_model_policy
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             ps = Path(td)
@@ -1719,7 +1721,7 @@ class TestR56AgentSelectedSources:
 
         mock_dispatch.side_effect = selector_empty
 
-        from section_loop.intent.bootstrap import ensure_global_philosophy
+        from intent.loop_bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
         assert result["status"] == "needs_user_input", (
             "Empty selection must fail-closed with a blocker result")
@@ -1738,7 +1740,7 @@ class TestR56AgentSelectedSources:
 
         mock_dispatch.side_effect = selector_missing
 
-        from section_loop.intent.bootstrap import ensure_global_philosophy
+        from intent.loop_bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
         assert result["status"] == "failed"
         assert result["blocking_state"] == "NEEDS_PARENT"
@@ -1781,7 +1783,7 @@ class TestR56AgentSelectedSources:
 
         mock_dispatch.side_effect = selector_states
 
-        from section_loop.intent.bootstrap import ensure_global_philosophy
+        from intent.loop_bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
         assert result["status"] == "needs_user_input"
 
@@ -1832,7 +1834,7 @@ class TestR56AgentSelectedSources:
 
         mock_dispatch.side_effect = verifier_missing
 
-        from section_loop.intent.bootstrap import ensure_global_philosophy
+        from intent.loop_bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
         assert result["status"] == "failed"
         assert result["blocking_state"] == "NEEDS_PARENT"
@@ -1917,7 +1919,7 @@ class TestR56AgentSelectedSources:
 
         mock_dispatch.side_effect = verifier_authoritative
 
-        from section_loop.intent.bootstrap import ensure_global_philosophy
+        from intent.loop_bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
 
         assert result["status"] == "ready"
@@ -1940,7 +1942,7 @@ class TestR56UpdaterSignalPreservation:
     def test_malformed_updater_signal_preserved(self) -> None:
         """Malformed JSON is renamed to .malformed.json by read_json + rename_malformed (V3/R56)."""
         import tempfile
-        from lib.core.artifact_io import read_json, rename_malformed
+        from signals.artifact_io import read_json, rename_malformed
         with tempfile.TemporaryDirectory() as td:
             signal_path = Path(td) / "section-01-related-files-update.json"
             signal_path.write_text("{not valid json", encoding="utf-8")
@@ -1961,7 +1963,7 @@ class TestR56AxisBudgetEnforcement:
         self, planspace, codespace, section_01, mock_dispatch,
     ) -> None:
         """axes_added_so_far is persisted in registry after expansion."""
-        from section_loop.intent.expansion import run_expansion_cycle
+        from intent.loop_expansion import run_expansion_cycle
 
         artifacts = planspace / "artifacts"
         signals = artifacts / "signals"
@@ -2019,7 +2021,7 @@ class TestR56AxisBudgetEnforcement:
         self, planspace, codespace, section_01, mock_dispatch,
     ) -> None:
         """R68/V5: Exceeding max_new_axes_total is advisory — axes accepted."""
-        from section_loop.intent.expansion import run_expansion_cycle
+        from intent.loop_expansion import run_expansion_cycle
 
         artifacts = planspace / "artifacts"
         signals = artifacts / "signals"
@@ -2080,7 +2082,7 @@ class TestR57DeepScanFeedbackPreservation:
 
     def test_malformed_feedback_renamed(self, tmp_path):
         """Malformed feedback JSON is renamed to .malformed.json."""
-        from scan.deep_scan import update_match
+        from scan.cli_deep_scan import update_match
 
         section_file = tmp_path / "section-01.md"
         section_file.write_text(
@@ -2124,7 +2126,7 @@ class TestR57RefExpansionWarnings:
         """Unreadable ref produces stable REF_READ_ERROR marker in hash."""
         import hashlib
 
-        from section_loop.pipeline_control import _section_inputs_hash
+        from orchestrator.pipeline_control import _section_inputs_hash
 
         planspace = tmp_path / "plan"
         codespace = tmp_path / "code"
@@ -2140,7 +2142,7 @@ class TestR57RefExpansionWarnings:
         ref_path.write_text("/nonexistent/path/that/does/not/exist.md")
 
         # Build a section
-        from section_loop.types import Section
+        from orchestrator.types import Section
 
         sections_by_num = {
             "01": Section(
@@ -2160,8 +2162,8 @@ class TestR57RefExpansionWarnings:
         self, planspace, codespace, section_01, capsys,
     ):
         """Broken ref in context builder emits warning."""
-        from section_loop.prompts.context import build_prompt_context
-        from section_loop.types import Section
+        from dispatch.prompts_context import build_prompt_context
+        from orchestrator.types import Section
 
         sec_path = planspace / "artifacts" / "sections" / "section-01.md"
         sec = Section(number="01", path=sec_path, related_files=[])
@@ -2186,7 +2188,7 @@ class TestR57GateTypeSpecificMessaging:
         """Axis budget gate must NOT say 'Philosophy tension'."""
         from unittest.mock import patch
 
-        from section_loop.intent.expansion import handle_user_gate
+        from intent.loop_expansion import handle_user_gate
 
         artifacts = planspace / "artifacts"
         signals = artifacts / "signals"
@@ -2200,7 +2202,7 @@ class TestR57GateTypeSpecificMessaging:
         }
 
         with patch(
-            "section_loop.intent.expansion.pause_for_parent",
+            "intent.loop_expansion.pause_for_parent",
             return_value="resume:accept",
         ) as mock_pause:
             handle_user_gate("01", planspace, "test-parent", delta_result)
@@ -2227,7 +2229,7 @@ class TestR57GateTypeSpecificMessaging:
         """Philosophy gate correctly says 'Philosophy tension'."""
         from unittest.mock import patch
 
-        from section_loop.intent.expansion import handle_user_gate
+        from intent.loop_expansion import handle_user_gate
 
         artifacts = planspace / "artifacts"
         signals = artifacts / "signals"
@@ -2242,7 +2244,7 @@ class TestR57GateTypeSpecificMessaging:
         }
 
         with patch(
-            "section_loop.intent.expansion.pause_for_parent",
+            "intent.loop_expansion.pause_for_parent",
             return_value="resume:accept",
         ) as mock_pause:
             handle_user_gate("01", planspace, "test-parent", delta_result)
@@ -2289,7 +2291,7 @@ class TestR57SurfacePersistenceOnMisalignment:
             json.dumps(surfaces))
 
         # Import the surface functions to verify merge
-        from section_loop.intent.surfaces import (
+        from intent.loop_surfaces import (
             load_intent_surfaces,
             load_surface_registry,
             merge_surfaces_into_registry,
@@ -2326,7 +2328,7 @@ class TestR58ScopeDeltaAdjudicationFailClosed:
 
     def test_malformed_delta_preserved_and_replaced(self, tmp_path):
         """Malformed delta → .malformed.json + valid replacement."""
-        from section_loop.coordination.runner import (
+        from coordination.loop_runner import (
             _normalize_section_id,
         )
 
@@ -2399,7 +2401,7 @@ class TestR58ToolRegistryCoordinationPreservation:
 
     def test_malformed_tool_registry_preserved(self, tmp_path):
         """Malformed tool-registry → .malformed.json copy exists."""
-        from section_loop.coordination.execution import (
+        from coordination.loop_execution import (
             write_coordinator_fix_prompt,
         )
 
@@ -2475,7 +2477,7 @@ class TestR59CatalogCodespaceCoverage:
         self, tmp_path,
     ) -> None:
         """Planspace >50 artifacts must not crowd out codespace docs."""
-        from section_loop.intent.bootstrap import _build_philosophy_catalog
+        from intent.loop_bootstrap import _build_philosophy_catalog
 
         planspace = tmp_path / "planspace"
         codespace = tmp_path / "codespace"
@@ -2502,7 +2504,7 @@ class TestR59CatalogCodespaceCoverage:
 
     def test_codespace_scanned_first(self, tmp_path) -> None:
         """Codespace should appear before planspace in catalog."""
-        from section_loop.intent.bootstrap import _build_philosophy_catalog
+        from intent.loop_bootstrap import _build_philosophy_catalog
 
         planspace = tmp_path / "planspace"
         codespace = tmp_path / "codespace"
@@ -2522,7 +2524,7 @@ class TestR59CatalogCodespaceCoverage:
 
     def test_planspace_artifacts_excluded(self, tmp_path) -> None:
         """Planspace artifacts/ directory must be excluded from catalog."""
-        from section_loop.intent.bootstrap import _build_philosophy_catalog
+        from intent.loop_bootstrap import _build_philosophy_catalog
 
         planspace = tmp_path / "planspace"
         codespace = tmp_path / "codespace"
@@ -2601,7 +2603,7 @@ class TestR59PhilosophyGroundingValidation:
 
         mock_dispatch.side_effect = side_effect
 
-        from section_loop.intent.bootstrap import ensure_global_philosophy
+        from intent.loop_bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
         assert result["status"] == "failed", (
             "Missing source map must cause grounding failure")
@@ -2659,7 +2661,7 @@ class TestR59PhilosophyGroundingValidation:
 
         mock_dispatch.side_effect = side_effect
 
-        from section_loop.intent.bootstrap import ensure_global_philosophy
+        from intent.loop_bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
         assert result["status"] == "failed"
 
@@ -2715,7 +2717,7 @@ class TestR59PhilosophyGroundingValidation:
 
         mock_dispatch.side_effect = side_effect
 
-        from section_loop.intent.bootstrap import ensure_global_philosophy
+        from intent.loop_bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
 
         assert result["status"] == "needs_user_input"
@@ -2772,7 +2774,7 @@ class TestR59PhilosophyGroundingValidation:
 
         mock_dispatch.side_effect = side_effect
 
-        from section_loop.intent.bootstrap import ensure_global_philosophy
+        from intent.loop_bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
 
         assert result["status"] == "ready"
@@ -2841,7 +2843,7 @@ class TestR59PhilosophyGroundingValidation:
 
         mock_dispatch.side_effect = side_effect
 
-        from section_loop.intent.bootstrap import ensure_global_philosophy
+        from intent.loop_bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
 
         assert result["status"] == "needs_user_input"
@@ -2912,7 +2914,7 @@ class TestR59PhilosophyGroundingValidation:
 
         mock_dispatch.side_effect = side_effect
 
-        from section_loop.intent.bootstrap import ensure_global_philosophy
+        from intent.loop_bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
         assert result["status"] == "failed", (
             "Unmapped principles must cause grounding failure")
@@ -2979,7 +2981,7 @@ class TestR59PhilosophyGroundingValidation:
 
         mock_dispatch.side_effect = side_effect
 
-        from section_loop.intent.bootstrap import ensure_global_philosophy
+        from intent.loop_bootstrap import ensure_global_philosophy
         result = ensure_global_philosophy(planspace, codespace, "parent")
         assert result["status"] == "ready", (
             "Fully grounded philosophy must succeed")
@@ -2998,7 +3000,7 @@ class TestR59IntentPackHashInvalidation:
         self, planspace, codespace, mock_dispatch,
     ) -> None:
         """Existing pack must regenerate when upstream inputs change."""
-        from section_loop.intent.bootstrap import generate_intent_pack
+        from intent.loop_bootstrap import generate_intent_pack
 
         sec = _make_intent_section(planspace, codespace)
         artifacts = planspace / "artifacts"
@@ -3033,7 +3035,7 @@ class TestR59IntentPackHashInvalidation:
         self, planspace, codespace, mock_dispatch,
     ) -> None:
         """Existing pack with matching hash must skip regeneration."""
-        from section_loop.intent.bootstrap import (
+        from intent.loop_bootstrap import (
             generate_intent_pack, _compute_intent_pack_hash,
         )
 
@@ -3077,7 +3079,7 @@ class TestR59IntentPackHashInvalidation:
         self, planspace, codespace, mock_dispatch,
     ) -> None:
         """Successful generation must write input hash file."""
-        from section_loop.intent.bootstrap import generate_intent_pack
+        from intent.loop_bootstrap import generate_intent_pack
 
         sec = _make_intent_section(planspace, codespace)
         artifacts = planspace / "artifacts"
@@ -3110,7 +3112,7 @@ class TestR60BoundedCatalogWalk:
 
     def test_walk_respects_max_depth(self, tmp_path: Path) -> None:
         """Files beyond max_depth must not be returned."""
-        from section_loop.intent.bootstrap import _walk_md_bounded
+        from intent.loop_bootstrap import _walk_md_bounded
 
         (tmp_path / "a.md").write_text("top")
         (tmp_path / "sub").mkdir()
@@ -3129,7 +3131,7 @@ class TestR60BoundedCatalogWalk:
 
     def test_walk_excludes_top_dirs(self, tmp_path: Path) -> None:
         """Top-level excluded dirs must be pruned during traversal."""
-        from section_loop.intent.bootstrap import _walk_md_bounded
+        from intent.loop_bootstrap import _walk_md_bounded
 
         (tmp_path / "keep").mkdir()
         (tmp_path / "keep" / "good.md").write_text("keep me")
@@ -3146,7 +3148,7 @@ class TestR60BoundedCatalogWalk:
 
     def test_walk_sorted_per_directory(self, tmp_path: Path) -> None:
         """Files within each directory must be sorted."""
-        from section_loop.intent.bootstrap import _walk_md_bounded
+        from intent.loop_bootstrap import _walk_md_bounded
 
         for name in ("c.md", "a.md", "b.md"):
             (tmp_path / name).write_text(f"file {name}")
@@ -3156,7 +3158,7 @@ class TestR60BoundedCatalogWalk:
 
     def test_catalog_uses_bounded_walk(self, tmp_path: Path) -> None:
         """_build_philosophy_catalog must use bounded walk (basic functionality)."""
-        from section_loop.intent.bootstrap import _build_philosophy_catalog
+        from intent.loop_bootstrap import _build_philosophy_catalog
 
         codespace = tmp_path / "codespace"
         planspace = tmp_path / "planspace"
@@ -3217,10 +3219,10 @@ class TestR61AlignmentSurfaceIntentArtifacts:
         self, planspace: Path, section_01: None,
     ) -> None:
         """Alignment surface must include intent problem.md when present."""
-        from section_loop.section_engine.reexplore import (
+        from implementation.engine_reexplore import (
             _write_alignment_surface,
         )
-        from section_loop.types import Section
+        from orchestrator.types import Section
 
         sec_path = planspace / "artifacts" / "sections" / "section-01.md"
         section = Section(number="01", path=sec_path, related_files=[])
@@ -3246,10 +3248,10 @@ class TestR61AlignmentSurfaceIntentArtifacts:
         self, planspace: Path, section_01: None,
     ) -> None:
         """Alignment surface must include problem-alignment.md when present."""
-        from section_loop.section_engine.reexplore import (
+        from implementation.engine_reexplore import (
             _write_alignment_surface,
         )
-        from section_loop.types import Section
+        from orchestrator.types import Section
 
         sec_path = planspace / "artifacts" / "sections" / "section-01.md"
         section = Section(number="01", path=sec_path, related_files=[])
@@ -3273,10 +3275,10 @@ class TestR61AlignmentSurfaceIntentArtifacts:
         self, planspace: Path, section_01: None,
     ) -> None:
         """All four intent artifacts appear in surface when present."""
-        from section_loop.section_engine.reexplore import (
+        from implementation.engine_reexplore import (
             _write_alignment_surface,
         )
-        from section_loop.types import Section
+        from orchestrator.types import Section
 
         sec_path = planspace / "artifacts" / "sections" / "section-01.md"
         section = Section(number="01", path=sec_path, related_files=[])
@@ -3306,10 +3308,10 @@ class TestR61AlignmentSurfaceIntentArtifacts:
         self, planspace: Path, section_01: None,
     ) -> None:
         """No intent references when intent artifacts don't exist."""
-        from section_loop.section_engine.reexplore import (
+        from implementation.engine_reexplore import (
             _write_alignment_surface,
         )
-        from section_loop.types import Section
+        from orchestrator.types import Section
 
         sec_path = planspace / "artifacts" / "sections" / "section-01.md"
         section = Section(number="01", path=sec_path, related_files=[])
@@ -3333,7 +3335,7 @@ class TestR61AgentSteerableExtensions:
 
     def test_walk_with_txt_extension(self, tmp_path: Path) -> None:
         """Walker yields .txt files when extensions include .txt."""
-        from section_loop.intent.bootstrap import _walk_md_bounded
+        from intent.loop_bootstrap import _walk_md_bounded
 
         (tmp_path / "notes.txt").write_text("philosophy notes")
         (tmp_path / "readme.md").write_text("readme")
@@ -3350,7 +3352,7 @@ class TestR61AgentSteerableExtensions:
 
     def test_walk_default_extensions_is_md_only(self, tmp_path: Path) -> None:
         """Default extensions parameter yields only .md files."""
-        from section_loop.intent.bootstrap import _walk_md_bounded
+        from intent.loop_bootstrap import _walk_md_bounded
 
         (tmp_path / "notes.txt").write_text("philosophy notes")
         (tmp_path / "readme.md").write_text("readme")
@@ -3364,7 +3366,7 @@ class TestR61AgentSteerableExtensions:
         self, tmp_path: Path,
     ) -> None:
         """_build_philosophy_catalog passes extensions to walker."""
-        from section_loop.intent.bootstrap import _build_philosophy_catalog
+        from intent.loop_bootstrap import _build_philosophy_catalog
 
         ps = tmp_path / "plan"
         cs = tmp_path / "code"

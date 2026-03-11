@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lib.core.artifact_io import read_json, write_json
-from lib.pipelines.implementation_pass import _append_risk_history, _run_risk_review
-from lib.pipelines.proposal_pass import _risk_check_proposal
-from lib.repositories.strategic_state import build_strategic_state
-from lib.risk.history import read_history
-from lib.risk.serialization import serialize_assessment, serialize_plan
-from lib.risk.types import (
+from signals.artifact_io import read_json, write_json
+from implementation.implementation_pass import _append_risk_history, _run_risk_review
+from proposal.proposal_pass import _risk_check_proposal
+from orchestrator.strategic_state import build_strategic_state
+from risk.history import read_history
+from risk.serialization import serialize_assessment, serialize_plan
+from risk.types import (
     PostureProfile,
     RiskAssessment,
     RiskModifiers,
@@ -24,7 +24,7 @@ from lib.risk.types import (
     StepMitigation,
     UnderstandingInventory,
 )
-from section_loop.types import Section
+from orchestrator.types import Section
 
 
 def test_run_risk_review_with_mocked_dispatch_returns_plan(
@@ -80,7 +80,7 @@ def test_run_risk_review_failure_blocks_fail_closed(
         related_files=["src/app.py", "src/utils.py"],
     )
     monkeypatch.setattr(
-        "lib.pipelines.implementation_pass.build_package_from_proposal",
+        "implementation.implementation_pass.build_package_from_proposal",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
     )
 

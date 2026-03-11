@@ -4,30 +4,30 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from lib.core.artifact_io import write_json
-from lib.core.hash_service import content_hash
-from lib.core.path_registry import PathRegistry
-from lib.research.orchestrator import (
+from signals.artifact_io import write_json
+from staleness.hash_service import content_hash
+from orchestrator.path_registry import PathRegistry
+from research.orchestrator import (
     compute_trigger_hash,
     is_research_complete_for_trigger,
     write_research_status,
 )
-from lib.research.prompt_writer import write_research_plan_prompt
-from lib.repositories.proposal_state_repository import load_proposal_state
-from lib.services.freshness_service import compute_section_freshness
-from lib.services.readiness_resolver import resolve_readiness
-from lib.repositories.reconciliation_queue import queue_reconciliation_request
-from section_loop.communication import mailbox_send, log
-from section_loop.section_engine.blockers import (
+from research.prompt_writer import write_research_plan_prompt
+from proposal.proposal_state_repository import load_proposal_state
+from staleness.freshness_service import compute_section_freshness
+from proposal.readiness_resolver import resolve_readiness
+from reconciliation.reconciliation_queue import queue_reconciliation_request
+from signals.section_loop_communication import mailbox_send, log
+from signals.blockers import (
     _append_open_problem,
     _update_blocker_rollup,
 )
-from section_loop.types import ProposalPassResult
+from orchestrator.types import ProposalPassResult
 
-_SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
+_SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
-from task_router import submit_task  # noqa: E402
+from flow.task_router import submit_task  # noqa: E402
 
 
 @dataclass

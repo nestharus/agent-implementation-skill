@@ -9,40 +9,40 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from lib.core.artifact_io import rename_malformed, write_json
-from lib.core.path_registry import PathRegistry
-from lib.flow.flow_context import (
+from signals.artifact_io import rename_malformed, write_json
+from orchestrator.path_registry import PathRegistry
+from flow.flow_context import (
     flow_context_relpath,
     gate_aggregate_relpath,
     read_flow_json,
     result_manifest_relpath,
     write_flow_context,
 )
-from lib.flow.flow_submitter import (
+from flow.flow_submitter import (
     new_chain_id,
     new_instance_id,
     submit_chain,
     submit_fanout,
 )
-from lib.research.orchestrator import (
+from research.orchestrator import (
     load_research_status,
     validate_research_plan,
     write_research_status,
 )
-from lib.research.plan_executor import (
+from research.plan_executor import (
     execute_research_plan,
     submit_research_verify,
 )
-from lib.governance.assessment import (
+from intake.governance_assessment import (
     read_post_impl_assessment,
     record_assessment_governance,
 )
 
-_SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
+_SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
-from flow_schema import ChainAction, FanoutAction, parse_flow_signal  # noqa: E402
-from task_router import submit_task  # noqa: E402
+from flow.flow_schema import ChainAction, FanoutAction, parse_flow_signal  # noqa: E402
+from flow.task_router import submit_task  # noqa: E402
 
 
 def build_result_manifest(

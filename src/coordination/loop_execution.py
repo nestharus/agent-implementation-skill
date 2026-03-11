@@ -1,15 +1,15 @@
 from pathlib import Path
 from typing import Any
 
-from lib.core.artifact_io import read_json
-from lib.core.model_policy import resolve
-from lib.core.path_registry import PathRegistry
+from signals.artifact_io import read_json
+from dispatch.model_policy import resolve
+from orchestrator.path_registry import PathRegistry
 
-from ..agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
-from ..communication import WORKFLOW_HOME, _log_artifact, log
-from ..context_assembly import materialize_context_sidecar
-from ..dispatch import dispatch_agent, write_model_choice_signal
-from ..task_ingestion import ingest_and_submit
+from dispatch.agent_templates import TASK_SUBMISSION_SEMANTICS, validate_dynamic_content
+from signals.section_loop_communication import WORKFLOW_HOME, _log_artifact, log
+from orchestrator.context_assembly import materialize_context_sidecar
+from dispatch.section_dispatch import dispatch_agent, write_model_choice_signal
+from flow.section_task_ingestion import ingest_and_submit
 
 
 def write_coordinator_fix_prompt(
@@ -232,7 +232,7 @@ def _dispatch_fix_group(
     The ``default_fix_model`` should come from ``policy["coordination_fix"]``
     so that model selection is strictly policy-driven.
     """
-    from ..dispatch import read_model_policy
+    from dispatch.section_dispatch import read_model_policy
 
     paths = PathRegistry(planspace)
     artifacts = paths.coordination_dir()

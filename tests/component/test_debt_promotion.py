@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.scripts.lib.governance.assessment import promote_debt_signals
+from src.intake.governance_assessment import promote_debt_signals
 
 
 def _write_signal(signals_dir: Path, section: str, items: list[dict]) -> None:

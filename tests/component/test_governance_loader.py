@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.scripts.lib.core.path_registry import PathRegistry
-from src.scripts.lib.governance.loader import (
+from src.orchestrator.path_registry import PathRegistry
+from src.intake.governance_loader import (
     bootstrap_governance_if_missing,
     build_governance_indexes,
     parse_pattern_index,

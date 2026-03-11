@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from src.scripts.lib.core.artifact_io import write_json
-from src.scripts.lib.repositories.decision_repository import Decision, record_decision
-from src.scripts.lib.repositories.strategic_state import build_strategic_state
+from src.signals.artifact_io import write_json
+from src.orchestrator.decision_repository import Decision, record_decision
+from src.orchestrator.strategic_state import build_strategic_state
 
 
 def test_build_strategic_state_writes_snapshot_and_derives_fields(

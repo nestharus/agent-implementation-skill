@@ -9,31 +9,31 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 
-from lib.services.alignment_change_tracker import check_and_clear
-from lib.governance.assessment import promote_debt_signals
-from lib.governance.loader import bootstrap_governance_if_missing, build_governance_indexes
-from lib.pipelines.coordination_loop import run_coordination_loop
-from lib.pipelines.global_alignment_recheck import run_global_alignment_recheck
-from lib.pipelines.implementation_pass import (
+from staleness.alignment_change_tracker import check_and_clear
+from intake.governance_assessment import promote_debt_signals
+from intake.governance_loader import bootstrap_governance_if_missing, build_governance_indexes
+from coordination.coordination_loop import run_coordination_loop
+from staleness.global_alignment_recheck import run_global_alignment_recheck
+from implementation.implementation_pass import (
     ImplementationPassExit,
     ImplementationPassRestart,
     run_implementation_pass,
 )
-from lib.core.path_registry import PathRegistry
-from lib.sections.project_mode import resolve_project_mode, write_mode_contract
-from lib.pipelines.proposal_pass import ProposalPassExit, run_proposal_pass
-from lib.pipelines.reconciliation_phase import ReconciliationPhaseExit, run_reconciliation_phase
-from lib.sections.section_loader import load_sections
+from orchestrator.path_registry import PathRegistry
+from scan.project_mode import resolve_project_mode, write_mode_contract
+from proposal.proposal_pass import ProposalPassExit, run_proposal_pass
+from reconciliation.reconciliation_phase import ReconciliationPhaseExit, run_reconciliation_phase
+from scan.section_loader import load_sections
 
-from .communication import (
+from signals.section_loop_communication import (
     AGENT_NAME,
     DB_SH,
     log,
     mailbox_cleanup,
     mailbox_register,
 )
-from .dispatch import dispatch_agent, read_model_policy
-from lib.repositories.strategic_state import build_strategic_state
+from dispatch.section_dispatch import dispatch_agent, read_model_policy
+from orchestrator.strategic_state import build_strategic_state
 from .types import SectionResult
 
 

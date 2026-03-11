@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 import re
 
-from flow_schema import (
+from flow.flow_schema import (
     ChainAction,
     FlowDeclaration,
     TaskSpec,

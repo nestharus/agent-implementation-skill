@@ -55,14 +55,14 @@ def mock_scan_dispatch(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     mock.return_value = subprocess.CompletedProcess(
         args=[], returncode=0, stdout="", stderr="",
     )
-    monkeypatch.setattr("scan.dispatch.dispatch_agent", mock)
+    monkeypatch.setattr("scan.cli_dispatch.dispatch_agent", mock)
     # Also patch at import sites
     monkeypatch.setattr("scan.codemap.dispatch_agent", mock)
-    monkeypatch.setattr("scan.deep_scan.dispatch_agent", mock)
+    monkeypatch.setattr("scan.cli_deep_scan.dispatch_agent", mock)
     monkeypatch.setattr("scan.exploration.dispatch_agent", mock)
     monkeypatch.setattr("scan.feedback.dispatch_agent", mock)
-    monkeypatch.setattr("lib.scan.tier_ranking.dispatch_agent", mock)
-    monkeypatch.setattr("lib.scan.deep_scan_analyzer.dispatch_agent", mock)
+    monkeypatch.setattr("scan.tier_ranking.dispatch_agent", mock)
+    monkeypatch.setattr("scan.deep_scan_analyzer.dispatch_agent", mock)
     return mock
 
 
@@ -252,7 +252,7 @@ class TestCacheKeyIncludesCorrections:
 
     def test_corrections_change_cache_key(self, tmp_path: Path) -> None:
         """Cache key must differ when corrections content changes."""
-        from scan.cache import FileCardCache
+        from scan.cli_cache import FileCardCache
 
         section = tmp_path / "section.md"
         source = tmp_path / "source.py"
@@ -276,7 +276,7 @@ class TestCacheKeyIncludesCorrections:
 
     def test_no_corrections_matches_old_behavior(self, tmp_path: Path) -> None:
         """Without extra files, key matches the 2-file computation."""
-        from scan.cache import FileCardCache
+        from scan.cli_cache import FileCardCache
 
         section = tmp_path / "section.md"
         source = tmp_path / "source.py"
@@ -436,7 +436,7 @@ class TestScanSummaryIdempotency:
 
     def test_update_match_idempotent(self, tmp_path: Path) -> None:
         """Repeated update_match calls don't accumulate duplicate blocks."""
-        from scan.deep_scan import update_match
+        from scan.cli_deep_scan import update_match
 
         section = tmp_path / "section.md"
         section.write_text(
@@ -465,7 +465,7 @@ class TestScanSummaryIdempotency:
 
     def test_cache_key_ignores_scan_summaries(self, tmp_path: Path) -> None:
         """Cache key is stable regardless of scan summary content."""
-        from scan.cache import FileCardCache
+        from scan.cli_cache import FileCardCache
 
         section = tmp_path / "section.md"
         source = tmp_path / "source.py"
@@ -495,7 +495,7 @@ class TestCachedFeedbackValidation:
         self, tmp_path: Path,
     ) -> None:
         """Cache with invalid feedback falls through to fresh analysis."""
-        from scan.cache import FileCardCache, is_valid_cached_feedback
+        from scan.cli_cache import FileCardCache, is_valid_cached_feedback
 
         cards_dir = tmp_path / "cards"
         cache = FileCardCache(cards_dir)
@@ -517,7 +517,7 @@ class TestCachedFeedbackValidation:
 
     def test_valid_feedback_is_cached(self, tmp_path: Path) -> None:
         """Valid feedback is stored in cache."""
-        from scan.cache import FileCardCache
+        from scan.cli_cache import FileCardCache
 
         cards_dir = tmp_path / "cards"
         cache = FileCardCache(cards_dir)
@@ -544,7 +544,7 @@ class TestBridgeDirectiveTypeSafety:
     def test_bool_bridge_coerced_to_dict(self) -> None:
         """Bridge directive as bool is coerced to dict in parser."""
         import inspect
-        from section_loop.coordination.planning import _parse_coordination_plan
+        from coordination.loop_planning import _parse_coordination_plan
         src = inspect.getsource(_parse_coordination_plan)
         assert "isinstance(bridge, bool)" in src, (
             "Parser must handle bool bridge directives"
@@ -553,7 +553,7 @@ class TestBridgeDirectiveTypeSafety:
     def test_non_dict_bridge_defaults_to_disabled(self) -> None:
         """Runner defends against non-dict bridge directive."""
         import inspect
-        from section_loop.coordination.runner import run_global_coordination
+        from coordination.loop_runner import run_global_coordination
         src = inspect.getsource(run_global_coordination)
         assert "isinstance(bridge_directive, dict)" in src, (
             "Runner must check bridge_directive is dict"
@@ -565,7 +565,7 @@ class TestScanModelPolicy:
 
     def test_default_policy_has_all_tasks(self) -> None:
         """Default policy covers all scan task types."""
-        from scan.dispatch import _DEFAULT_MODELS
+        from scan.cli_dispatch import _DEFAULT_MODELS
         required = {
             "codemap_build", "codemap_freshness", "exploration",
             "validation", "tier_ranking", "deep_analysis",
@@ -577,7 +577,7 @@ class TestScanModelPolicy:
 
     def test_policy_override_from_file(self, tmp_path: Path) -> None:
         """model-policy.json overrides default scan models."""
-        from scan.dispatch import read_scan_model_policy
+        from scan.cli_dispatch import read_scan_model_policy
 
         planspace = tmp_path / "planspace"
         artifacts_dir = planspace / "artifacts"
@@ -622,7 +622,7 @@ class TestStaleToolSurfaceRemoval:
     def test_stale_removal_code_exists(self) -> None:
         """Section engine runner removes stale tools-available surface."""
         import inspect
-        from section_loop.section_engine.runner import run_section
+        from implementation.engine_runner import run_section
         src = inspect.getsource(run_section)
         assert "tools_available_path.unlink()" in src or \
                "tools_available_path.exists()" in src, (
@@ -635,7 +635,7 @@ class TestScanLoopClosure:
 
     def test_max_scan_passes_is_bounded(self) -> None:
         """_MAX_SCAN_PASSES prevents unbounded iteration."""
-        from scan.deep_scan import _MAX_SCAN_PASSES
+        from scan.cli_deep_scan import _MAX_SCAN_PASSES
         assert 1 < _MAX_SCAN_PASSES <= 3, (
             f"_MAX_SCAN_PASSES={_MAX_SCAN_PASSES} must be 2-3"
         )
@@ -645,8 +645,8 @@ class TestScanLoopClosure:
         mock_scan_dispatch: MagicMock,
     ) -> None:
         """Files already in already_scanned set are not re-dispatched."""
-        from scan.deep_scan import _scan_sections
-        from scan.cache import FileCardCache
+        from scan.cli_deep_scan import _scan_sections
+        from scan.cli_cache import FileCardCache
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"
@@ -675,7 +675,7 @@ class TestScanLoopClosure:
 
         # Mock returns success + writes tier sidecar to skip regeneration
         import hashlib
-        from scan.cache import strip_scan_summaries
+        from scan.cli_cache import strip_scan_summaries
         raw = sec_file.read_text()
         tier_input = strip_scan_summaries(raw) + "\n" + "src/main.py"
         tier_sidecar.write_text(hashlib.sha256(tier_input.encode()).hexdigest())
@@ -716,8 +716,8 @@ class TestDeepScanTierRankingFailureUnit:
         mock_scan_dispatch: MagicMock,
     ) -> None:
         """_scan_sections returns True (failure) when no tier ranking."""
-        from scan.cache import FileCardCache
-        from scan.deep_scan import _scan_sections
+        from scan.cli_cache import FileCardCache
+        from scan.cli_deep_scan import _scan_sections
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"

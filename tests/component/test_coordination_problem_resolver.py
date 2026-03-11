@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 
-from section_loop.types import Section, SectionResult
-from src.scripts.lib.pipelines.coordination_problem_resolver import (
+from orchestrator.types import Section, SectionResult
+from src.coordination.coordination_problem_resolver import (
     _collect_outstanding_problems,
     _detect_recurrence_patterns,
     build_file_to_sections,

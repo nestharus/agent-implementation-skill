@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from _paths import DB_SH
-from src.scripts.lib.services.alignment_change_tracker import (
+from src.staleness.alignment_change_tracker import (
     check_and_clear,
     check_pending,
     invalidate_excerpts,
     set_flag,
 )
-from src.scripts.lib.core.database_client import DatabaseClient
+from src.signals.database_client import DatabaseClient
 
 
 def _planspace(tmp_path: Path) -> Path:

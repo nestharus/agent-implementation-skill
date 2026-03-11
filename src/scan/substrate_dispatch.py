@@ -5,8 +5,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-# lib -> scripts -> src
-WORKFLOW_HOME = Path(__file__).resolve().parent.parent.parent.parent
+# scan/ -> src/
+WORKFLOW_HOME = Path(__file__).resolve().parent.parent
 
 
 def dispatch_substrate_agent(

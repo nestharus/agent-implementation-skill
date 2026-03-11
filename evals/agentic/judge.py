@@ -95,7 +95,7 @@ def _load_prompt_safety(project_root: Path):
     scripts_dir = project_root / "src" / "scripts"
     if str(scripts_dir) not in sys.path:
         sys.path.insert(0, str(scripts_dir))
-    from prompt_safety import write_validated_prompt
+    from dispatch.prompt_safety import write_validated_prompt
 
     return write_validated_prompt
 

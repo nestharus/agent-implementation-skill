@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.scripts.lib.dispatch.context_sidecar import (
+from src.dispatch.context_sidecar import (
     materialize_context_sidecar,
     parse_context_field,
     resolve_context,
@@ -167,7 +167,7 @@ def test_materialize_context_sidecar_writes_pretty_json_with_trailing_newline(tm
 
     sidecar = materialize_context_sidecar(str(agent_file), tmp_path, section="11")
 
-    from src.scripts.lib.core.path_registry import PathRegistry
+    from src.orchestrator.path_registry import PathRegistry
     assert sidecar == PathRegistry(tmp_path).context_sidecar("section-agent")
     assert sidecar is not None
     assert sidecar.read_text(encoding="utf-8").endswith("\n")

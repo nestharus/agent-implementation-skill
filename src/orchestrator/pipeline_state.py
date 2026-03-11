@@ -6,10 +6,10 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from lib.services.alignment_change_tracker import invalidate_excerpts, set_flag
-from lib.core.database_client import DatabaseClient
-from lib.dispatch.mailbox_service import MailboxService
-from lib.core.path_registry import PathRegistry
+from staleness.alignment_change_tracker import invalidate_excerpts, set_flag
+from signals.database_client import DatabaseClient
+from signals.mailbox_service import MailboxService
+from orchestrator.path_registry import PathRegistry
 
 
 def _database_client(planspace: Path, db_sh: Path) -> DatabaseClient:

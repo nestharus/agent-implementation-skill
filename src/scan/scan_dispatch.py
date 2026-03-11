@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lib.core.artifact_io import rename_malformed
-from lib.core.path_registry import PathRegistry
+from signals.artifact_io import rename_malformed
+from orchestrator.path_registry import PathRegistry
 
 DEFAULT_SCAN_MODELS: dict[str, str] = {
     "codemap_build": "claude-opus",

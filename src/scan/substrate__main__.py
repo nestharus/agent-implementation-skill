@@ -2,6 +2,6 @@
 
 import sys
 
-from .runner import main
+from scan.substrate_runner import main
 
 sys.exit(main())

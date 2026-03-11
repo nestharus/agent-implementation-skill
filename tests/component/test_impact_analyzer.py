@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from src.scripts.lib.services import impact_analyzer
-from src.scripts.section_loop.types import Section
+from src.implementation import impact_analyzer
+from src.orchestrator.types import Section
 
 
 def _write_section(path, summary: str) -> None:

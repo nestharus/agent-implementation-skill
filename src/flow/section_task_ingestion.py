@@ -21,23 +21,23 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from lib.tasks.task_ingestion import (
+from flow.task_ingestion import (
     find_first_section_scope,
     ingest_task_requests as _ingest_task_requests,
     parse_signal_file as _parse_signal_file,
 )
 
-from .communication import log
+from signals.section_loop_communication import log
 
 # task_router and flow_schema live alongside section_loop (in src/scripts/)
 _SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
-from flow_schema import (  # noqa: E402
+from flow.flow_schema import (  # noqa: E402
     ChainAction,
     FanoutAction,
 )
-from lib.flow.flow_submitter import new_flow_id  # noqa: E402
+from flow.flow_submitter import new_flow_id  # noqa: E402
 
 def ingest_task_requests(signal_path: Path) -> list[dict]:
     """Read and parse a task-request signal file.
@@ -95,7 +95,7 @@ def ingest_and_submit(
     # Lazy import to break circular dependency:
     # task_dispatcher → task_flow → flow_reconciler → plan_executor
     # → section_engine → reexplore → task_ingestion → task_flow
-    from task_flow import (  # noqa: E402
+    from flow.task_flow import (  # noqa: E402
         compute_section_freshness,
         submit_chain,
         submit_fanout,

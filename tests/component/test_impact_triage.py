@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from src.scripts.lib.pipelines import impact_triage
-from src.scripts.lib.pipelines.impact_triage import run_impact_triage
-from section_loop.types import Section
+from src.implementation import impact_triage
+from src.implementation.impact_triage import run_impact_triage
+from orchestrator.types import Section
 
 
 def _make_section(planspace: Path) -> Section:

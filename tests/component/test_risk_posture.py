@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from lib.risk.posture import (
+from risk.posture import (
     apply_one_step_rule,
     can_relax_posture,
     select_posture,
 )
-from lib.risk.types import PostureProfile
+from risk.types import PostureProfile
 
 
 def test_select_posture_returns_nominal_posture_without_current_state() -> None:

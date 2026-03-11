@@ -17,9 +17,9 @@ import pytest
 
 from _paths import DB_SH
 
-from flow_catalog import KNOWN_PACKAGES, resolve_chain_ref
-from flow_schema import BranchSpec, GateSpec, TaskSpec
-from task_flow import submit_chain, submit_fanout
+from flow.flow_catalog import KNOWN_PACKAGES, resolve_chain_ref
+from flow.flow_schema import BranchSpec, GateSpec, TaskSpec
+from flow.task_flow import submit_chain, submit_fanout
 
 
 # ---------------------------------------------------------------------------
