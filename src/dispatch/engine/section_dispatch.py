@@ -17,7 +17,7 @@ from dispatch.service.monitor_service import MonitorService
 from orchestrator.path_registry import PathRegistry
 from signals.repository.signal_reader import read_agent_signal, read_signal_tuple
 
-from dispatch.prompt.template import render_template
+from dispatch.prompt.template import SRC_TEMPLATE_DIR, load_template, render, render_template
 from dispatch.service.prompt_safety import validate_dynamic_content
 from signals.service.communication import (
     AGENT_NAME,
@@ -188,55 +188,14 @@ def _write_agent_monitor_prompt(
     db_path = paths.run_db()
     prompt_path = paths.artifacts / f"{monitor_name}-prompt.md"
 
-    dynamic_body = f"""# Agent Monitor: {agent_name}
-
-## Your Job
-Watch mailbox `{agent_name}` for messages from a running agent.
-Detect if the agent is looping (repeating the same actions).
-Report loops by logging signal events to the database.
-
-## Setup
-```bash
-bash "{DB_SH}" register "{db_path}" {monitor_name}
-```
-
-## Paths
-- Planspace: `{planspace}`
-- Database: `{db_path}`
-- Agent mailbox to watch: `{agent_name}`
-- Your mailbox: `{monitor_name}`
-
-## Monitor Loop
-1. Drain all messages from `{agent_name}` mailbox
-2. Track "plan:" messages in memory
-3. If you see the same plan repeated (same action on same file) → loop detected
-4. Check your own mailbox for `agent-finished` signal → exit
-5. Wait 10 seconds, repeat
-
-## Loop Detection
-Keep a list of all `plan:` messages received. If a new `plan:` message
-is substantially similar to a previous one (same file, same action),
-the agent is looping.
-
-**Agent self-reported loop:** If ANY drained message starts with
-`LOOP_DETECTED:`, the agent has self-detected a loop. Immediately log
-that payload as a signal event and exit — no further analysis needed.
-
-When loop detected (either self-reported or by your analysis), log a
-signal event:
-```bash
-bash "{DB_SH}" log "{db_path}" signal {agent_name} "LOOP_DETECTED:{agent_name}:<repeated action>" --agent {monitor_name}
-```
-
-Do NOT send loop signals via mailbox — only log signal events as above.
-
-## Exit Conditions
-- Receive `agent-finished` on your mailbox → exit normally
-- 5 minutes with no messages from agent → log stalled warning, then exit:
-  ```bash
-  bash "{DB_SH}" log "{db_path}" signal {agent_name} "STALLED:{agent_name}:no messages for 5 minutes" --agent {monitor_name}
-  ```
-"""
+    template = load_template("dispatch/agent-monitor.md", SRC_TEMPLATE_DIR)
+    dynamic_body = render(template, {
+        "agent_name": agent_name,
+        "monitor_name": monitor_name,
+        "db_sh": str(DB_SH),
+        "db_path": str(db_path),
+        "planspace": str(planspace),
+    })
     violations = validate_dynamic_content(dynamic_body)
     if violations:
         from signals.service.communication import log

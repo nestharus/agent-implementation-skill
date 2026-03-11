@@ -63,6 +63,7 @@ TASK_SUBMISSION_SEMANTICS = (
 )
 
 DEFAULT_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
+SRC_TEMPLATE_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
 
 
 def load_template(name: str, template_dir: Path | None = None) -> str:

@@ -31,6 +31,9 @@ Each item describes a structural mess, why it's a problem, and where it lives.
 ### 7. `execution.py` / `executor.py` / `runner.py` naming confusion
 - **Status**: DONE — renamed to `fix_dispatch.py`, `plan_executor.py`, `global_coordinator.py`
 
+### 5. Prompts inlined as f-strings in Python code
+- **Status**: DONE — extracted 3 prompts to `src/templates/` (coordinator-fix, agent-monitor, bridge-resolve), loaded via `load_template()` + `render()`
+
 ---
 
 ## IDENTIFIED — NOT YET STARTED
@@ -45,11 +48,6 @@ Each item describes a structural mess, why it's a problem, and where it lives.
 - **Problem**: `build_flow_context` returns `dict | None`. `coord_plan` is `dict[str, Any]`. Problems are `list[dict[str, Any]]`. Everything is untyped bags of strings and dicts. No `FlowContext`, `CoordinationPlan`, `Problem` dataclasses.
 - **Key files**: `src/flow/repository/context.py`, `src/coordination/engine/executor.py`, `src/coordination/engine/runner.py`
 - **Fix**: Introduce domain dataclasses. Start with FlowContext (most contained).
-
-### 5. Prompts inlined as f-strings in Python code
-- **Where**: `src/coordination/engine/execution.py` (60-line prompt), `src/dispatch/engine/section_dispatch.py` (50-line monitor prompt), `src/coordination/engine/executor.py` (bridge prompt)
-- **Problem**: Prompt templates embedded as massive f-strings. Can't be reviewed, tested, or versioned independently. Mixing content with logic.
-- **Fix**: Extract to template files (e.g., `src/<system>/prompts/`), load at runtime via a template loader
 
 ### 6. `write_dispatch_prompt` is string concatenation, not structured
 - **Where**: `src/flow/repository/context.py:88`
