@@ -22,8 +22,8 @@ import pytest
 from _paths import DB_SH
 
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
+from flow.exceptions import FlowCorruptionError
 from flow.service.task_flow import (
-    FlowCorruptionError,
     _read_flow_json,
     _read_origin_refs,
     build_flow_context,

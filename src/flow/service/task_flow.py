@@ -15,8 +15,8 @@ gate firing.
 
 from __future__ import annotations
 
+from flow.exceptions import FlowCorruptionError
 from flow.repository.context import (
-    FlowCorruptionError,
     build_flow_context,
     gate_aggregate_relpath as _gate_aggregate_relpath,
     read_flow_json as _read_flow_json,

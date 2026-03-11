@@ -34,8 +34,8 @@ from flow.service.notifier import (
     record_task_routing,
 )
 from flow.helpers.task_parser import parse_task_output
+from flow.exceptions import FlowCorruptionError
 from flow.service.task_flow import (  # noqa: E402
-    FlowCorruptionError,
     build_flow_context,
     compute_section_freshness,
     reconcile_task_completion,

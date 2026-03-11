@@ -21,8 +21,8 @@ import pytest
 from _paths import DB_SH
 
 from flow.types.schema import TaskSpec
+from flow.exceptions import FlowCorruptionError
 from flow.service.task_flow import (
-    FlowCorruptionError,
     build_flow_context,
     submit_chain,
     submit_fanout,

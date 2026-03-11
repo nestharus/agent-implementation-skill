@@ -6,10 +6,7 @@ from pathlib import Path
 
 from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
-
-
-class FlowCorruptionError(Exception):
-    """Raised when a flow artifact is corrupt (malformed JSON)."""
+from flow.exceptions import FlowCorruptionError
 
 
 def flow_context_relpath(task_id: int) -> str:

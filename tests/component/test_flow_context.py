@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from src.flow.repository.context import (
-    FlowCorruptionError,
+from flow.exceptions import FlowCorruptionError
+from flow.repository.context import (
     build_flow_context,
     continuation_relpath,
     dispatch_prompt_relpath,
