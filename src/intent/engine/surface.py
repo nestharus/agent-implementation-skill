@@ -10,11 +10,9 @@ from intent.service.philosophy import validate_philosophy_grounding
 from dispatch.service.prompt_safety import write_validated_prompt
 from signals.service.communication import _log_artifact, log, mailbox_send
 from dispatch.service.model_policy import resolve
-from dispatch.engine.section_dispatch import (
-    dispatch_agent,
-    read_agent_signal,
-    read_model_policy,
-)
+from dispatch.engine.section_dispatch import dispatch_agent
+from dispatch.service.model_policy import load_model_policy as read_model_policy
+from signals.repository.signal_reader import read_agent_signal
 from intent.service.surfaces import (
     find_discarded_recurrences,
     load_intent_surfaces,
@@ -26,6 +24,7 @@ from intent.service.surfaces import (
     save_surface_registry,
 )
 from orchestrator.service.pipeline_control import pause_for_parent
+from taskrouter import agent_for
 
 
 def build_pending_surface_payload(worklist: list[dict], surfaces: dict) -> dict:
@@ -406,7 +405,7 @@ materially changed (new constraints, new success criteria).
         parent,
         codespace=codespace,
         section_number=section_number,
-        agent_file="problem-expander.md",
+        agent_file=agent_for("intent.problem_expander"),
     )
 
     if result == "ALIGNMENT_CHANGED_PENDING":
@@ -496,7 +495,7 @@ Validate each philosophy surface and classify it:
         parent,
         codespace=codespace,
         section_number=section_number,
-        agent_file="philosophy-expander.md",
+        agent_file=agent_for("intent.philosophy_expander"),
     )
 
     if result == "ALIGNMENT_CHANGED_PENDING":
@@ -593,7 +592,7 @@ Write a JSON signal to: `{adjudication_path}`
         parent,
         codespace=codespace,
         section_number=section_number,
-        agent_file="recurrence-adjudicator.md",
+        agent_file=agent_for("intent.recurrence_adjudicator"),
     )
 
     result = read_agent_signal(adjudication_path)

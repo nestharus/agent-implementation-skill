@@ -15,10 +15,9 @@ from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
 from dispatch.service.prompt_safety import write_validated_prompt
 from signals.service.communication import _log_artifact, log
-from dispatch.engine.section_dispatch import (
-    dispatch_agent,
-    read_model_policy,
-)
+from dispatch.engine.section_dispatch import dispatch_agent
+from dispatch.service.model_policy import load_model_policy as read_model_policy
+from taskrouter import agent_for
 
 BOOTSTRAP_SIGNAL_NAME = "philosophy-bootstrap-signal.json"
 BOOTSTRAP_STATUS_NAME = "philosophy-bootstrap-status.json"
@@ -668,7 +667,7 @@ Write JSON to: `{guidance_path}`
         planspace,
         parent,
         codespace=codespace,
-        agent_file="philosophy-bootstrap-prompter.md",
+        agent_file=agent_for("intent.philosophy_bootstrap"),
     )
     if result == "ALIGNMENT_CHANGED_PENDING":
         return None
@@ -1347,7 +1346,7 @@ If NO files contain cross-cutting reasoning philosophy, write:
             planspace=planspace,
             parent=parent,
             codespace=codespace,
-            agent_file="philosophy-source-selector.md",
+            agent_file=agent_for("intent.philosophy_selector"),
         )
         selected_classification = selector_run["classification"]
 
@@ -1462,7 +1461,7 @@ If NO files contain cross-cutting reasoning philosophy, write:
                 planspace=planspace,
                 parent=parent,
                 codespace=codespace,
-                agent_file="philosophy-source-selector.md",
+                agent_file=agent_for("intent.philosophy_selector"),
             )
             expanded_classification = expanded_run["classification"]
             if expanded_classification["state"] == "valid_nonempty":
@@ -1593,7 +1592,7 @@ Write a JSON signal to: `{verify_signal}`
             planspace=planspace,
             parent=parent,
             codespace=codespace,
-            agent_file="philosophy-source-verifier.md",
+            agent_file=agent_for("intent.philosophy_verifier"),
         )
         verified_classification = verify_run["classification"]
         if verified_classification["state"] == "valid_nonempty":
@@ -1821,7 +1820,7 @@ genuinely ambiguous, do NOT invent filler. Instead:
             planspace,
             parent,
             codespace=codespace,
-            agent_file="philosophy-distiller.md",
+            agent_file=agent_for("intent.philosophy_distiller"),
         )
 
         if result == "ALIGNMENT_CHANGED_PENDING":

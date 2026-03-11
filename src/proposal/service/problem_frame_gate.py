@@ -14,6 +14,7 @@ from dispatch.prompt.writers import write_section_setup_prompt
 from signals.service.blockers import _update_blocker_rollup
 from implementation.service.reexplore import _write_alignment_surface
 from orchestrator.types import Section
+from taskrouter import agent_for
 
 
 def validate_problem_frame(
@@ -47,7 +48,7 @@ def validate_problem_frame(
             f"setup-{section.number}-retry",
             codespace=codespace,
             section_number=section.number,
-            agent_file="setup-excerpter.md",
+            agent_file=agent_for("proposal.section_setup"),
         )
         if retry_result == "ALIGNMENT_CHANGED_PENDING":
             return None

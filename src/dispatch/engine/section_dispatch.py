@@ -1,21 +1,11 @@
-import json
-import subprocess
 from pathlib import Path
-from typing import Any
 
 from dispatch.engine import agent_executor
 from staleness.service.change_tracker import check_pending as alignment_changed_pending
 from signals.service.database_client import DatabaseClient
-from dispatch.helpers.utils import (
-    check_agent_signals,
-    summarize_output,
-    write_model_choice_signal,
-)
 from dispatch.repository.metadata import write_dispatch_metadata
-from dispatch.service.model_policy import load_model_policy
 from dispatch.service.monitor_service import MonitorService
 from orchestrator.path_registry import PathRegistry
-from signals.repository.signal_reader import read_agent_signal, read_signal_tuple
 
 from dispatch.prompt.template import SRC_TEMPLATE_DIR, load_template, render, render_template
 from dispatch.service.prompt_safety import validate_dynamic_content
@@ -207,111 +197,3 @@ def _write_agent_monitor_prompt(
     )
     _log_artifact(planspace, f"prompt:agent-monitor-{agent_name}")
     return prompt_path
-
-
-def adjudicate_agent_output(
-    output_path: Path, planspace: Path, parent: str,
-    codespace: Path | None = None,
-    *,
-    model: str,
-) -> tuple[str | None, str]:
-    """Dispatch state-adjudicator to classify ambiguous agent output.
-
-    Used when structured signal file is absent but output may contain
-    signals. Returns (signal_type, detail) or (None, "").
-    """
-    paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
-    artifacts.mkdir(parents=True, exist_ok=True)
-    adj_prompt = artifacts / "adjudicate-prompt.md"
-    adj_output = artifacts / "adjudicate-output.md"
-
-    dynamic_body = f"""# Classify Agent Output
-
-Read the agent output file and determine its state.
-
-## Agent Output File
-`{output_path}`
-
-## Instructions
-
-Classify the output into exactly one state. Reply with a JSON block:
-
-```json
-{{
-  "state": "<STATE>",
-  "detail": "<brief explanation>"
-}}
-```
-
-States: ALIGNED, PROBLEMS, UNDERSPECIFIED, NEED_DECISION, DEPENDENCY,
-LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
-"""
-    violations = validate_dynamic_content(dynamic_body)
-    if violations:
-        from signals.service.communication import log
-        log(f"  ERROR: adjudicate prompt blocked — dynamic violations: {violations}")
-        return None, ""
-    adj_prompt.write_text(
-        render_template(
-            "adjudicate", dynamic_body,
-            file_paths=[str(output_path)],
-        ),
-        encoding="utf-8",
-    )
-
-    result = dispatch_agent(
-        model, adj_prompt, adj_output,
-        planspace, parent, codespace=codespace,
-        agent_file="state-adjudicator.md",
-    )
-    if result == "ALIGNMENT_CHANGED_PENDING":
-        return None, "ALIGNMENT_CHANGED_PENDING"
-
-    # Parse JSON from adjudicator output
-    try:
-        json_start = result.find("{")
-        json_end = result.rfind("}")
-        if json_start >= 0 and json_end > json_start:
-            data = json.loads(result[json_start:json_end + 1])
-            state = data.get("state", "").lower()
-            detail = data.get("detail", "")
-            if state in ("underspecified", "underspec"):
-                return "underspec", detail
-            if state == "need_decision":
-                return "need_decision", detail
-            if state == "dependency":
-                return "dependency", detail
-            if state == "loop_detected":
-                return "loop_detected", detail
-            if state == "needs_parent":
-                return "needs_parent", detail
-            if state in ("out_of_scope", "out-of-scope"):
-                return "out_of_scope", detail
-    except (json.JSONDecodeError, KeyError) as exc:
-        print(
-            f"[ADJUDICATOR][WARN] Malformed adjudicator verdict JSON "
-            f"({exc}) — treating as unrecognized signal",
-        )
-    return None, ""
-
-
-def create_signal_template(section: str, state: str, detail: str = "",
-                           **extra: Any) -> dict[str, Any]:
-    """Create a standardized signal dict for agent output.
-
-    Agents should include this JSON in their output for reliable
-    state classification. Scripts read JSON — agents decide semantics.
-    """
-    signal: dict[str, Any] = {
-        "state": state,
-        "section": section,
-        "detail": detail,
-    }
-    signal.update(extra)
-    return signal
-
-
-def read_model_policy(planspace: Path) -> dict[str, Any]:
-    """Read model policy from artifacts/model-policy.json."""
-    return load_model_policy(planspace)

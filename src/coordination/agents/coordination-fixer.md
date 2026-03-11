@@ -49,7 +49,7 @@ request to the task-submission path provided in your dispatch prompt:
 Legacy single-task format (still accepted):
 ```json
 {
-    "task_type": "scan_explore",
+    "task_type": "scan.explore",
     "concern_scope": "<coordination-group>",
     "payload_path": "<path-to-sub-task-prompt>",
     "priority": "normal"
@@ -64,8 +64,8 @@ Chain format (v2) — declare sequential follow-up steps:
         {
             "kind": "chain",
             "steps": [
-                {"task_type": "scan_explore", "concern_scope": "<coordination-group>", "payload_path": "<path-to-explore-prompt>"},
-                {"task_type": "coordination_fix", "concern_scope": "<coordination-group>", "payload_path": "<path-to-fix-prompt>"}
+                {"task_type": "scan.explore", "concern_scope": "<coordination-group>", "payload_path": "<path-to-explore-prompt>"},
+                {"task_type": "coordination.fix", "concern_scope": "<coordination-group>", "payload_path": "<path-to-fix-prompt>"}
             ]
         }
     ]
@@ -80,14 +80,14 @@ Fanout format (v2) — spawn parallel investigation branches with synthesis:
         {
             "kind": "fanout",
             "branches": [
-                {"label": "section-03", "steps": [{"task_type": "scan_explore", "concern_scope": "section-03", "payload_path": "<path-to-explore-03>"}]},
-                {"label": "section-07", "steps": [{"task_type": "scan_explore", "concern_scope": "section-07", "payload_path": "<path-to-explore-07>"}]}
+                {"label": "section-03", "steps": [{"task_type": "scan.explore", "concern_scope": "section-03", "payload_path": "<path-to-explore-03>"}]},
+                {"label": "section-07", "steps": [{"task_type": "scan.explore", "concern_scope": "section-07", "payload_path": "<path-to-explore-07>"}]}
             ],
             "gate": {
                 "mode": "all",
                 "failure_policy": "include",
                 "synthesis": {
-                    "task_type": "coordination_fix",
+                    "task_type": "coordination.fix",
                     "concern_scope": "cross-section",
                     "payload_path": "<path-to-coordinated-fix-prompt>"
                 }
@@ -102,7 +102,7 @@ If dispatched as part of a flow chain, your prompt will include a
 Read the flow context to understand what previous steps produced. Write
 follow-up declarations to the continuation path.
 
-Available task types: scan_explore, coordination_fix
+Available task types: scan.explore, coordination.fix
 
 The dispatcher handles agent and model selection. You declare WHAT analysis
 you need, not which agent runs it.

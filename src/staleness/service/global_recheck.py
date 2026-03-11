@@ -12,7 +12,7 @@ from staleness.service.section_alignment import (
 )
 from signals.service.communication import log, mailbox_send
 from coordination.service.cross_section import read_incoming_notes
-from dispatch.engine.section_dispatch import check_agent_signals
+from dispatch.helpers.utils import check_agent_signals
 from orchestrator.service.pipeline_control import _section_inputs_hash, poll_control_messages
 from orchestrator.types import Section, SectionResult
 

@@ -35,7 +35,7 @@ def test_write_flow_context_writes_expected_json(tmp_path) -> None:
         instance_id="inst_1",
         flow_id="flow_1",
         chain_id="chain_1",
-        task_type="alignment_check",
+        task_type="staleness.alignment_check",
         declared_by_task_id=10,
         depends_on=10,
         trigger_gate_id=None,
@@ -83,7 +83,7 @@ def test_build_flow_context_enriches_gate_aggregate(tmp_path) -> None:
     )
 
     assert ctx is not None
-    assert ctx["gate_aggregate_manifest"] == gate_aggregate_relpath(gate_id)
+    assert ctx.gate_aggregate_manifest == gate_aggregate_relpath(gate_id)
 
 
 def test_write_dispatch_prompt_wraps_original_without_mutation(tmp_path) -> None:

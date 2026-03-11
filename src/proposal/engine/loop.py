@@ -10,12 +10,8 @@ from orchestrator.path_registry import PathRegistry
 from staleness.service.section_alignment import _extract_problems
 from signals.service.communication import mailbox_send, log
 from coordination.service.cross_section import persist_decision
-from dispatch.engine.section_dispatch import (
-    check_agent_signals,
-    dispatch_agent,
-    summarize_output,
-    write_model_choice_signal,
-)
+from dispatch.engine.section_dispatch import dispatch_agent
+from dispatch.helpers.utils import check_agent_signals, summarize_output, write_model_choice_signal
 from intent.service.expansion import handle_user_gate, run_expansion_cycle
 from intent.service.surfaces import (
     load_combined_intent_surfaces,
@@ -39,6 +35,7 @@ from signals.service.blockers import (
 )
 from implementation.service.reexplore import _write_alignment_surface
 from flow.service.section_ingestion import ingest_and_submit
+from taskrouter import agent_for
 
 
 DEFINITION_GAP_KINDS = {
@@ -261,7 +258,7 @@ def run_proposal_loop(
             intg_agent,
             codespace=codespace,
             section_number=section.number,
-            agent_file="integration-proposer.md",
+            agent_file=agent_for("proposal.integration"),
         )
         if intg_result == "ALIGNMENT_CHANGED_PENDING":
             return None

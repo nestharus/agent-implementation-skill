@@ -1,19 +1,24 @@
-"""Component tests for research task routing."""
+"""Component tests for research task routing via taskrouter registry."""
 
 from __future__ import annotations
 
 import pytest
 
-from src.flow.types.routing import resolve_task
+from taskrouter import ensure_discovered, registry
+
+
+@pytest.fixture(autouse=True)
+def _discover() -> None:
+    ensure_discovered()
 
 
 @pytest.mark.parametrize(
     ("task_type", "expected_agent", "expected_model"),
     [
-        ("research_plan", "research-planner.md", "claude-opus"),
-        ("research_domain_ticket", "domain-researcher.md", "gpt-high"),
-        ("research_synthesis", "research-synthesizer.md", "gpt-high"),
-        ("research_verify", "research-verifier.md", "glm"),
+        ("research.plan", "research-planner.md", "claude-opus"),
+        ("research.domain_ticket", "domain-researcher.md", "gpt-high"),
+        ("research.synthesis", "research-synthesizer.md", "gpt-high"),
+        ("research.verify", "research-verifier.md", "glm"),
     ],
 )
 def test_resolve_research_task_uses_default_model(
@@ -21,16 +26,16 @@ def test_resolve_research_task_uses_default_model(
     expected_agent: str,
     expected_model: str,
 ) -> None:
-    assert resolve_task(task_type) == (expected_agent, expected_model)
+    assert registry.resolve(task_type) == (expected_agent, expected_model)
 
 
 @pytest.mark.parametrize(
     ("task_type", "expected_agent"),
     [
-        ("research_plan", "research-planner.md"),
-        ("research_domain_ticket", "domain-researcher.md"),
-        ("research_synthesis", "research-synthesizer.md"),
-        ("research_verify", "research-verifier.md"),
+        ("research.plan", "research-planner.md"),
+        ("research.domain_ticket", "domain-researcher.md"),
+        ("research.synthesis", "research-synthesizer.md"),
+        ("research.verify", "research-verifier.md"),
     ],
 )
 def test_resolve_research_task_honors_model_policy_override(
@@ -44,7 +49,10 @@ def test_resolve_research_task_honors_model_policy_override(
         "research_verify": "policy-verify",
     }
 
-    assert resolve_task(task_type, policy) == (
+    route = registry.get_route(task_type)
+    expected_model = policy[route.policy_key]
+
+    assert registry.resolve(task_type, policy) == (
         expected_agent,
-        policy[task_type],
+        expected_model,
     )

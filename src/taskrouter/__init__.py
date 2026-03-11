@@ -25,4 +25,34 @@ from taskrouter.core import TaskRegistry, TaskRoute, TaskRouter
 
 registry: TaskRegistry = TaskRegistry()
 
-__all__ = ["TaskRouter", "TaskRoute", "TaskRegistry", "registry"]
+_discovered = False
+
+
+def ensure_discovered() -> None:
+    """Populate the global registry by importing all system route modules.
+
+    Idempotent — safe to call multiple times.  Called automatically the
+    first time :func:`resolve` or :attr:`all_task_types` is accessed
+    through the convenience wrappers below.
+    """
+    global _discovered
+    if _discovered:
+        return
+    from taskrouter.discovery import discover
+    discover()
+    _discovered = True
+
+
+def agent_for(task_type: str) -> str:
+    """Resolve the agent file for a qualified task type.
+
+    Ensures discovery has run, then returns the registered agent filename.
+    """
+    ensure_discovered()
+    return registry.get_route(task_type).agent
+
+
+__all__ = [
+    "TaskRouter", "TaskRoute", "TaskRegistry",
+    "registry", "ensure_discovered", "agent_for",
+]

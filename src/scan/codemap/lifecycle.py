@@ -16,6 +16,7 @@ from dispatch.service.prompt_safety import validate_dynamic_content
 
 from scan.cli_dispatch import dispatch_agent, read_scan_model_policy
 from .fingerprint import NON_GIT_SENTINEL, compute_codespace_fingerprint
+from taskrouter import agent_for
 
 def run_codemap_build(
     *,
@@ -119,7 +120,7 @@ def run_codemap_build(
         model=model_policy["codemap_build"],
         project=codespace,
         prompt_file=prompt_file,
-        agent_file="scan-codemap-builder.md",
+        agent_file=agent_for("scan.codemap_build"),
         stdout_file=codemap_path,
         stderr_file=stderr_file,
     )
@@ -229,7 +230,7 @@ def _run_freshness_check(
         model=model_policy["codemap_freshness"],
         project=codespace,
         prompt_file=freshness_prompt,
-        agent_file="scan-codemap-freshness-judge.md",
+        agent_file=agent_for("scan.codemap_freshness"),
         stdout_file=freshness_output,
     )
 
@@ -295,7 +296,7 @@ def _run_verification(
         model=model_policy["validation"],
         project=codespace,
         prompt_file=verifier_prompt,
-        agent_file="scan-codemap-verifier.md",
+        agent_file=agent_for("scan.codemap_verify"),
         stdout_file=verifier_output,
     )
 

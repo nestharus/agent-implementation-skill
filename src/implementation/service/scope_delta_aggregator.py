@@ -15,6 +15,7 @@ from implementation.service.scope_delta_parser import (
 from dispatch.service.prompt_safety import write_validated_prompt
 from signals.service.communication import _log_artifact, log, mailbox_send
 from dispatch.engine.section_dispatch import dispatch_agent
+from taskrouter import agent_for
 
 
 class ScopeDeltaAggregationExit(Exception):
@@ -118,7 +119,7 @@ def _dispatch_adjudication(
         adjudication_output,
         planspace,
         parent,
-        agent_file="coordination-planner.md",
+        agent_file=agent_for("coordination.plan"),
     )
     if adjudication_result == "ALIGNMENT_CHANGED_PENDING":
         raise ScopeDeltaAggregationExit
@@ -142,7 +143,7 @@ def _dispatch_adjudication(
         retry_output,
         planspace,
         parent,
-        agent_file="coordination-planner.md",
+        agent_file=agent_for("coordination.plan"),
     )
     if retry_result == "ALIGNMENT_CHANGED_PENDING":
         raise ScopeDeltaAggregationExit

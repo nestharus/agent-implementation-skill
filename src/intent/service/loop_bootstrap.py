@@ -10,11 +10,12 @@ from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
 
 from signals.service.communication import _log_artifact, log
-from dispatch.engine.section_dispatch import (
-    dispatch_agent, read_agent_signal, read_model_policy,
-)
+from dispatch.engine.section_dispatch import dispatch_agent
+from dispatch.service.model_policy import load_model_policy as read_model_policy
+from signals.repository.signal_reader import read_agent_signal
 from orchestrator.types import Section
 from dispatch.service.prompt_safety import write_validated_prompt
+from taskrouter import agent_for
 
 
 def _sync_philosophy_bootstrap_overrides() -> None:
@@ -302,7 +303,7 @@ Write an empty surface registry to: `{intent_sec / "surface-registry.json"}`
         parent,
         codespace=codespace,
         section_number=sec,
-        agent_file="intent-pack-generator.md",
+        agent_file=agent_for("intent.pack_generator"),
     )
 
     if result == "ALIGNMENT_CHANGED_PENDING":

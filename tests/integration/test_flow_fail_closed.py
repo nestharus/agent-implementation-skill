@@ -243,7 +243,7 @@ class TestBuildFlowContextFailClosed:
         """Valid flow context is returned normally (no regression)."""
         ids = submit_chain(
             db_path, "test-agent",
-            [TaskSpec(task_type="alignment_check")],
+            [TaskSpec(task_type="staleness.alignment_check")],
             planspace=planspace,
         )
         tid = ids[0]
@@ -254,7 +254,7 @@ class TestBuildFlowContextFailClosed:
             flow_context_path=task["flow_context_path"],
         )
         assert result is not None
-        assert result["task"]["task_id"] == tid
+        assert result.task.task_id == tid
 
 
 # ---------------------------------------------------------------------------
@@ -269,7 +269,7 @@ class TestReconcileMalformedContinuation:
     ) -> None:
         ids = submit_chain(
             db_path, "test-agent",
-            [TaskSpec(task_type="alignment_check")],
+            [TaskSpec(task_type="staleness.alignment_check")],
             planspace=planspace,
         )
         tid = ids[0]
@@ -292,7 +292,7 @@ class TestReconcileMalformedContinuation:
     ) -> None:
         ids = submit_chain(
             db_path, "test-agent",
-            [TaskSpec(task_type="alignment_check")],
+            [TaskSpec(task_type="staleness.alignment_check")],
             planspace=planspace,
         )
         tid = ids[0]
@@ -319,8 +319,8 @@ class TestReconcileMalformedContinuation:
             BranchSpec(
                 label="test-branch",
                 steps=[
-                    TaskSpec(task_type="alignment_check"),
-                    TaskSpec(task_type="impact_analysis"),
+                    TaskSpec(task_type="staleness.alignment_check"),
+                    TaskSpec(task_type="signals.impact_analysis"),
                 ],
             ),
         ]
@@ -361,7 +361,7 @@ class TestReconcileMalformedContinuation:
         branches = [
             BranchSpec(
                 label="corrupted",
-                steps=[TaskSpec(task_type="alignment_check")],
+                steps=[TaskSpec(task_type="staleness.alignment_check")],
             ),
         ]
         gate_id = submit_fanout(
@@ -397,7 +397,7 @@ class TestReconcileMalformedContinuation:
     ) -> None:
         ids = submit_chain(
             db_path, "test-agent",
-            [TaskSpec(task_type="alignment_check")],
+            [TaskSpec(task_type="staleness.alignment_check")],
             planspace=planspace,
         )
         tid = ids[0]
@@ -429,7 +429,7 @@ class TestReadOriginRefsFailClosed:
     ) -> None:
         ids = submit_chain(
             db_path, "test-agent",
-            [TaskSpec(task_type="alignment_check")],
+            [TaskSpec(task_type="staleness.alignment_check")],
             origin_refs=["ref-1", "ref-2"],
             planspace=planspace,
         )
@@ -486,22 +486,23 @@ class TestDispatcherFlowCorruption:
 
         task = {
             "id": "1",
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "test-agent",
             "prio": "normal",
             "payload": str(prompt),
             "flow_context": ctx_relpath,
         }
 
+        from flow.engine import dispatcher as task_dispatcher
+
         with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
-             patch("flow.engine.dispatcher.resolve_task") as mock_resolve, \
+             patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
              patch("flow.engine.dispatcher._db_cmd") as mock_db, \
              patch("flow.engine.dispatcher._notify") as mock_notify:
             mock_resolve.return_value = ("alignment-judge.md", "glm")
             mock_dispatch.return_value = "done"
 
-            from flow.engine.dispatcher import dispatch_task
-            dispatch_task(str(db_path), planspace, task)
+            task_dispatcher.dispatch_task(str(db_path), planspace, task)
 
             # dispatch_agent should NOT have been called
             mock_dispatch.assert_not_called()
@@ -526,21 +527,22 @@ class TestDispatcherFlowCorruption:
 
         task = {
             "id": "2",
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "test-agent",
             "prio": "normal",
             "payload": str(prompt),
             "flow_context": "artifacts/flows/task-2-context.json",
         }
 
+        from flow.engine import dispatcher as task_dispatcher
+
         with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
-             patch("flow.engine.dispatcher.resolve_task") as mock_resolve, \
+             patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
              patch("flow.engine.dispatcher._db_cmd") as mock_db, \
              patch("flow.engine.dispatcher._notify"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 
-            from flow.engine.dispatcher import dispatch_task
-            dispatch_task(str(db_path), planspace, task)
+            task_dispatcher.dispatch_task(str(db_path), planspace, task)
 
             mock_dispatch.assert_not_called()
 
@@ -558,7 +560,7 @@ class TestDispatcherFlowCorruption:
         ctx_file = planspace / ctx_relpath
         ctx_file.parent.mkdir(parents=True, exist_ok=True)
         ctx_file.write_text(json.dumps({
-            "task": {"task_id": 3, "task_type": "alignment_check"},
+            "task": {"task_id": 3, "task_type": "staleness.alignment_check"},
             "continuation_path": "artifacts/flows/task-3-continuation.json",
         }))
 
@@ -567,7 +569,7 @@ class TestDispatcherFlowCorruption:
 
         task = {
             "id": "3",
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "test-agent",
             "prio": "normal",
             "payload": str(prompt),
@@ -575,15 +577,16 @@ class TestDispatcherFlowCorruption:
             "continuation": "artifacts/flows/task-3-continuation.json",
         }
 
+        from flow.engine import dispatcher as task_dispatcher
+
         with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
-             patch("flow.engine.dispatcher.resolve_task") as mock_resolve, \
+             patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
              patch("flow.engine.dispatcher._db_cmd"), \
              patch("flow.engine.dispatcher._notify"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
             mock_dispatch.return_value = "done"
 
-            from flow.engine.dispatcher import dispatch_task
-            dispatch_task(str(db_path), planspace, task)
+            task_dispatcher.dispatch_task(str(db_path), planspace, task)
 
             # dispatch_agent SHOULD have been called
             assert mock_dispatch.called

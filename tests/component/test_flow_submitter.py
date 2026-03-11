@@ -52,8 +52,8 @@ def test_submit_chain_writes_db_and_flow_context(tmp_path) -> None:
         db_path,
         "tester",
         [
-            TaskSpec(task_type="alignment_check"),
-            TaskSpec(task_type="impact_analysis"),
+            TaskSpec(task_type="staleness.alignment_check"),
+            TaskSpec(task_type="signals.impact_analysis"),
         ],
         planspace=planspace,
     )
@@ -76,8 +76,8 @@ def test_submit_fanout_creates_gate_and_members(tmp_path) -> None:
         db_path,
         "tester",
         [
-            BranchSpec(label="a", steps=[TaskSpec(task_type="alignment_check")]),
-            BranchSpec(label="b", steps=[TaskSpec(task_type="impact_analysis")]),
+            BranchSpec(label="a", steps=[TaskSpec(task_type="staleness.alignment_check")]),
+            BranchSpec(label="b", steps=[TaskSpec(task_type="signals.impact_analysis")]),
         ],
         flow_id="flow_test",
         gate=GateSpec(

@@ -225,7 +225,7 @@ class TestInterceptTask:
 
         task = {
             "id": "99",
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "section-loop",
             "payload": str(ps / "artifacts" / "test-payload.md"),
         }
@@ -260,7 +260,7 @@ class TestInterceptTask:
 
         task = {
             "id": "99b",
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "section-loop",
             "payload": str(ps / "artifacts" / "test-payload.md"),
         }
@@ -292,7 +292,7 @@ class TestInterceptTask:
 
         task = {
             "id": "100",
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "section-loop",
             "payload": str(ps / "artifacts" / "test-payload.md"),
         }
@@ -330,7 +330,7 @@ class TestInterceptTask:
 
         task = {
             "id": "101",
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "section-loop",
             "payload": str(ps / "artifacts" / "test-payload.md"),
         }
@@ -358,7 +358,7 @@ class TestInterceptTask:
 
         task = {
             "id": "102",
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "section-loop",
             "payload": str(ps / "artifacts" / "test-payload.md"),
         }
@@ -413,7 +413,7 @@ class TestInterceptTask:
 
         task = {
             "id": "104",
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "section-loop",
             "payload": str(ps / "artifacts" / "test-payload.md"),
         }
@@ -457,7 +457,7 @@ class TestDispatcherQaIntegration:
 
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
@@ -508,7 +508,7 @@ class TestDispatcherQaIntegration:
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
             patch.object(qa_interceptor, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(task_dispatcher, "resolve_task", return_value=("alignment-judge.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("alignment-judge.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
@@ -559,7 +559,7 @@ class TestDispatcherQaIntegration:
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
             patch.object(qa_interceptor, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(task_dispatcher, "resolve_task", return_value=("alignment-judge.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("alignment-judge.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
@@ -610,7 +610,7 @@ class TestDispatcherQaIntegration:
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
             patch.object(qa_interceptor, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(task_dispatcher, "resolve_task", return_value=("alignment-judge.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("alignment-judge.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
@@ -658,7 +658,7 @@ class TestDispatcherQaIntegration:
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
             patch.object(qa_interceptor, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(task_dispatcher, "resolve_task", return_value=("alignment-judge.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("alignment-judge.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
@@ -704,7 +704,7 @@ class TestDispatcherQaIntegration:
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
             patch.object(qa_interceptor, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(task_dispatcher, "resolve_task", return_value=("alignment-judge.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("alignment-judge.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):

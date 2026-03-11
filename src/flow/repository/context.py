@@ -7,6 +7,7 @@ from pathlib import Path
 from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
 from flow.exceptions import FlowCorruptionError
+from flow.types.context import FlowContext, FlowTask
 
 
 def flow_context_relpath(task_id: int) -> str:
@@ -51,13 +52,13 @@ def build_flow_context(
     flow_context_path: str | None = None,
     continuation_path: str | None = None,
     trigger_gate_id: str | None = None,
-) -> dict | None:
+) -> FlowContext | None:
     """Read and return the flow context for a task, enriched for dispatch."""
     if not flow_context_path:
         return None
 
     ctx_file = planspace / flow_context_path
-    status, context = read_flow_json(ctx_file)
+    status, raw = read_flow_json(ctx_file)
 
     if status == "missing":
         raise FlowCorruptionError(
@@ -69,15 +70,17 @@ def build_flow_context(
             f"flow context declared but file corrupt: {ctx_file}"
         )
 
-    gate_id = trigger_gate_id or context.get("task", {}).get("trigger_gate_id")
-    if gate_id and not context.get("gate_aggregate_manifest"):
+    context = FlowContext.from_dict(raw)
+
+    gate_id = trigger_gate_id or context.task.trigger_gate_id
+    if gate_id and not context.gate_aggregate_manifest:
         agg_relpath = gate_aggregate_relpath(gate_id)
         agg_file = planspace / agg_relpath
         if agg_file.exists():
-            context["gate_aggregate_manifest"] = agg_relpath
+            context.gate_aggregate_manifest = agg_relpath
 
-    if continuation_path and not context.get("continuation_path"):
-        context["continuation_path"] = continuation_path
+    if continuation_path and not context.continuation_path:
+        context.continuation_path = continuation_path
 
     return context
 
@@ -137,23 +140,22 @@ def write_flow_context(
     if previous_task_id is not None:
         previous_result = result_manifest_relpath(previous_task_id)
 
-    context = {
-        "task": {
-            "task_id": task_id,
-            "instance_id": instance_id,
-            "flow_id": flow_id,
-            "chain_id": chain_id,
-            "task_type": task_type,
-            "declared_by_task_id": declared_by_task_id,
-            "depends_on": depends_on,
-            "trigger_gate_id": trigger_gate_id,
-        },
-        "origin_refs": origin_refs or [],
-        "previous_result_manifest": previous_result,
-        "gate_aggregate_manifest": None,
-        "continuation_path": continuation_relpath(task_id),
-        "result_manifest_path": result_manifest_relpath(task_id),
-    }
+    context = FlowContext(
+        task=FlowTask(
+            task_id=task_id,
+            instance_id=instance_id,
+            flow_id=flow_id,
+            chain_id=chain_id,
+            task_type=task_type,
+            declared_by_task_id=declared_by_task_id,
+            depends_on=depends_on,
+            trigger_gate_id=trigger_gate_id,
+        ),
+        origin_refs=origin_refs or [],
+        previous_result_manifest=previous_result,
+        continuation_path=continuation_relpath(task_id),
+        result_manifest_path=result_manifest_relpath(task_id),
+    )
 
     context_path = flows_dir / f"task-{task_id}-context.json"
-    write_json(context_path, context)
+    write_json(context_path, context.to_dict())

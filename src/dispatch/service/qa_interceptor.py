@@ -29,6 +29,7 @@ from proposal.helpers.qa_verdict import parse_qa_verdict
 # a try/except, so import failures here do not break non-QA dispatch.
 from dispatch.engine.section_dispatch import dispatch_agent  # noqa: E402
 from taskrouter.agents import resolve_agent_path
+from taskrouter import agent_for
 
 # Infrastructure submitters that are not agent files.
 _INFRA_SUBMITTERS: dict[str, str] = {
@@ -325,7 +326,7 @@ def intercept_task(
             output_path,
             planspace,
             None,  # parent — not inside section-loop context
-            agent_file="qa-interceptor.md",
+            agent_file=agent_for("dispatch.qa_intercept"),
         )
 
         # 7. Parse verdict.

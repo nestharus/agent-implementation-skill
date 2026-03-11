@@ -176,7 +176,7 @@ class TestBuildManifests:
             instance_id="inst_abc",
             flow_id="flow_def",
             chain_id="chain_ghi",
-            task_type="alignment_check",
+            task_type="staleness.alignment_check",
             status="complete",
             output_path="artifacts/task-42-output.md",
             error=None,
@@ -185,7 +185,7 @@ class TestBuildManifests:
         assert m["instance_id"] == "inst_abc"
         assert m["flow_id"] == "flow_def"
         assert m["chain_id"] == "chain_ghi"
-        assert m["task_type"] == "alignment_check"
+        assert m["task_type"] == "staleness.alignment_check"
         assert m["status"] == "complete"
         assert m["output_path"] == "artifacts/task-42-output.md"
         assert m["error"] is None
@@ -197,7 +197,7 @@ class TestBuildManifests:
             instance_id="inst_x",
             flow_id="flow_y",
             chain_id="chain_z",
-            task_type="impact_analysis",
+            task_type="signals.impact_analysis",
             status="failed",
             output_path=None,
             error="something broke",
@@ -243,7 +243,7 @@ class TestResultManifestWriting:
     ) -> None:
         ids = submit_chain(
             db_path, "test-agent",
-            [TaskSpec(task_type="alignment_check")],
+            [TaskSpec(task_type="staleness.alignment_check")],
             planspace=planspace,
         )
         tid = ids[0]
@@ -270,7 +270,7 @@ class TestResultManifestWriting:
     ) -> None:
         ids = submit_chain(
             db_path, "test-agent",
-            [TaskSpec(task_type="alignment_check")],
+            [TaskSpec(task_type="staleness.alignment_check")],
             planspace=planspace,
         )
         tid = ids[0]
@@ -304,7 +304,7 @@ class TestChainContinuation:
         """Continuation with chain action creates new tasks in same chain."""
         ids = submit_chain(
             db_path, "test-agent",
-            [TaskSpec(task_type="alignment_check")],
+            [TaskSpec(task_type="staleness.alignment_check")],
             planspace=planspace,
         )
         tid = ids[0]
@@ -321,8 +321,8 @@ class TestChainContinuation:
             "actions": [{
                 "kind": "chain",
                 "steps": [
-                    {"task_type": "impact_analysis"},
-                    {"task_type": "coordination_fix"},
+                    {"task_type": "signals.impact_analysis"},
+                    {"task_type": "coordination.fix"},
                 ],
             }],
         })
@@ -353,7 +353,7 @@ class TestChainContinuation:
         """Without a continuation file, no new tasks are created."""
         ids = submit_chain(
             db_path, "test-agent",
-            [TaskSpec(task_type="alignment_check")],
+            [TaskSpec(task_type="staleness.alignment_check")],
             planspace=planspace,
         )
         tid = ids[0]
@@ -381,7 +381,7 @@ class TestFanoutContinuation:
     ) -> None:
         ids = submit_chain(
             db_path, "test-agent",
-            [TaskSpec(task_type="alignment_check")],
+            [TaskSpec(task_type="staleness.alignment_check")],
             planspace=planspace,
         )
         tid = ids[0]
@@ -399,11 +399,11 @@ class TestFanoutContinuation:
                 "branches": [
                     {
                         "label": "branch-a",
-                        "steps": [{"task_type": "impact_analysis"}],
+                        "steps": [{"task_type": "signals.impact_analysis"}],
                     },
                     {
                         "label": "branch-b",
-                        "steps": [{"task_type": "coordination_fix"}],
+                        "steps": [{"task_type": "coordination.fix"}],
                     },
                 ],
                 "gate": {"mode": "all", "failure_policy": "include"},
@@ -440,9 +440,9 @@ class TestFailureCascading:
         ids = submit_chain(
             db_path, "test-agent",
             [
-                TaskSpec(task_type="alignment_check"),
-                TaskSpec(task_type="impact_analysis"),
-                TaskSpec(task_type="coordination_fix"),
+                TaskSpec(task_type="staleness.alignment_check"),
+                TaskSpec(task_type="signals.impact_analysis"),
+                TaskSpec(task_type="coordination.fix"),
             ],
             planspace=planspace,
         )
@@ -470,11 +470,11 @@ class TestFailureCascading:
         branches = [
             BranchSpec(
                 label="will-fail",
-                steps=[TaskSpec(task_type="alignment_check")],
+                steps=[TaskSpec(task_type="staleness.alignment_check")],
             ),
             BranchSpec(
                 label="will-succeed",
-                steps=[TaskSpec(task_type="impact_analysis")],
+                steps=[TaskSpec(task_type="signals.impact_analysis")],
             ),
         ]
         gate_id = submit_fanout(
@@ -521,11 +521,11 @@ class TestGateFiring:
         branches = [
             BranchSpec(
                 label="a",
-                steps=[TaskSpec(task_type="alignment_check")],
+                steps=[TaskSpec(task_type="staleness.alignment_check")],
             ),
             BranchSpec(
                 label="b",
-                steps=[TaskSpec(task_type="impact_analysis")],
+                steps=[TaskSpec(task_type="signals.impact_analysis")],
             ),
         ]
         gate_id = submit_fanout(
@@ -567,7 +567,7 @@ class TestGateFiring:
         branches = [
             BranchSpec(
                 label="only",
-                steps=[TaskSpec(task_type="alignment_check")],
+                steps=[TaskSpec(task_type="staleness.alignment_check")],
             ),
         ]
         gate_id = submit_fanout(
@@ -577,7 +577,7 @@ class TestGateFiring:
                 mode="all",
                 failure_policy="include",
                 synthesis=TaskSpec(
-                    task_type="impact_analysis",
+                    task_type="signals.impact_analysis",
                     problem_id="P-syn",
                     concern_scope="payments",
                 ),
@@ -605,7 +605,7 @@ class TestGateFiring:
 
         # Synthesis task should exist
         syn_task = _query_task(db_path, gate["fired_task_id"])
-        assert syn_task["task_type"] == "impact_analysis"
+        assert syn_task["task_type"] == "signals.impact_analysis"
         assert syn_task["problem_id"] == "P-syn"
         assert syn_task["concern_scope"] == "payments"
         assert syn_task["trigger_gate_id"] == gate_id
@@ -624,11 +624,11 @@ class TestGateFiring:
         branches = [
             BranchSpec(
                 label="a",
-                steps=[TaskSpec(task_type="alignment_check")],
+                steps=[TaskSpec(task_type="staleness.alignment_check")],
             ),
             BranchSpec(
                 label="b",
-                steps=[TaskSpec(task_type="impact_analysis")],
+                steps=[TaskSpec(task_type="signals.impact_analysis")],
             ),
         ]
         gate_id = submit_fanout(
@@ -665,11 +665,11 @@ class TestFailurePolicyBlock:
         branches = [
             BranchSpec(
                 label="will-fail",
-                steps=[TaskSpec(task_type="alignment_check")],
+                steps=[TaskSpec(task_type="staleness.alignment_check")],
             ),
             BranchSpec(
                 label="will-succeed",
-                steps=[TaskSpec(task_type="impact_analysis")],
+                steps=[TaskSpec(task_type="signals.impact_analysis")],
             ),
         ]
         gate_id = submit_fanout(
@@ -678,7 +678,7 @@ class TestFailurePolicyBlock:
             gate=GateSpec(
                 mode="all",
                 failure_policy="block",
-                synthesis=TaskSpec(task_type="coordination_fix"),
+                synthesis=TaskSpec(task_type="coordination.fix"),
             ),
             planspace=planspace,
         )
@@ -723,11 +723,11 @@ class TestFailurePolicyBlock:
         branches = [
             BranchSpec(
                 label="will-fail",
-                steps=[TaskSpec(task_type="alignment_check")],
+                steps=[TaskSpec(task_type="staleness.alignment_check")],
             ),
             BranchSpec(
                 label="will-succeed",
-                steps=[TaskSpec(task_type="impact_analysis")],
+                steps=[TaskSpec(task_type="signals.impact_analysis")],
             ),
         ]
         gate_id = submit_fanout(
@@ -736,7 +736,7 @@ class TestFailurePolicyBlock:
             gate=GateSpec(
                 mode="all",
                 failure_policy="include",
-                synthesis=TaskSpec(task_type="coordination_fix"),
+                synthesis=TaskSpec(task_type="coordination.fix"),
             ),
             planspace=planspace,
         )
@@ -789,7 +789,7 @@ class TestGateMemberLeafTracking:
         branches = [
             BranchSpec(
                 label="extending",
-                steps=[TaskSpec(task_type="alignment_check")],
+                steps=[TaskSpec(task_type="staleness.alignment_check")],
             ),
         ]
         gate_id = submit_fanout(
@@ -813,7 +813,7 @@ class TestGateMemberLeafTracking:
             "version": 2,
             "actions": [{
                 "kind": "chain",
-                "steps": [{"task_type": "impact_analysis"}],
+                "steps": [{"task_type": "signals.impact_analysis"}],
             }],
         })
 
@@ -833,7 +833,7 @@ class TestGateMemberLeafTracking:
 
         # Now complete the extended task (the new leaf)
         new_task = _query_task(db_path, updated_leaf)
-        assert new_task["task_type"] == "impact_analysis"
+        assert new_task["task_type"] == "signals.impact_analysis"
         _mark_task_running(db_path, updated_leaf)
         _mark_task_complete(db_path, updated_leaf)
 
@@ -854,8 +854,8 @@ class TestGateMemberLeafTracking:
             BranchSpec(
                 label="multi-step",
                 steps=[
-                    TaskSpec(task_type="alignment_check"),
-                    TaskSpec(task_type="impact_analysis"),
+                    TaskSpec(task_type="staleness.alignment_check"),
+                    TaskSpec(task_type="signals.impact_analysis"),
                 ],
             ),
         ]
@@ -915,7 +915,7 @@ class TestEdgeCases:
         """A task without flow/chain IDs reconciles safely (writes manifest only)."""
         from flow.types.routing import submit_task as _submit
 
-        tid = _submit(db_path, "test", "alignment_check")
+        tid = _submit(db_path, "test", "staleness.alignment_check")
         _mark_task_running(db_path, tid)
         _mark_task_complete(db_path, tid)
 
@@ -935,7 +935,7 @@ class TestEdgeCases:
         """
         ids = submit_chain(
             db_path, "test-agent",
-            [TaskSpec(task_type="alignment_check")],
+            [TaskSpec(task_type="staleness.alignment_check")],
             planspace=planspace,
         )
         tid = ids[0]

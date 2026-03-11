@@ -41,10 +41,11 @@ from flow.service.task_flow import (  # noqa: E402
     reconcile_task_completion,
     write_dispatch_prompt,
 )
-from flow.types.routing import resolve_task  # noqa: E402
+from taskrouter import ensure_discovered, registry as _task_registry  # noqa: E402
 
 from dispatch.service.prompt_safety import validate_dynamic_content  # noqa: E402
-from dispatch.engine.section_dispatch import dispatch_agent, read_model_policy  # noqa: E402
+from dispatch.engine.section_dispatch import dispatch_agent  # noqa: E402
+from dispatch.service.model_policy import load_model_policy as read_model_policy  # noqa: E402
 
 DISPATCHER_NAME = "task-dispatcher"
 
@@ -157,7 +158,7 @@ def dispatch_task(
 
     # Resolve agent file and model.
     try:
-        agent_file, model = resolve_task(task_type, model_policy)
+        agent_file, model = _task_registry.resolve(task_type, model_policy)
     except ValueError as e:
         log(f"ERROR: Cannot resolve task {task_id}: {e}")
         _db_cmd(db_path, "claim-task", DISPATCHER_NAME, task_id)
@@ -428,6 +429,7 @@ def main() -> None:
         log(f"ERROR: Database not found at {db_path}")
         sys.exit(1)
 
+    ensure_discovered()
     log(f"Starting dispatcher (planspace={planspace}, poll={args.poll_interval}s)")
 
     while True:

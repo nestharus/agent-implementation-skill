@@ -172,11 +172,11 @@ class TestTaskRegistry:
             "synthesis",
             agent="research-synthesizer.md",
             model="gpt-high",
-            policy_key="research_synthesis",
+            policy_key="research.synthesis",
         )
         agent, model = fresh_registry.resolve(
             "research.synthesis",
-            model_policy={"research_synthesis": "gpt-xhigh"},
+            model_policy={"research.synthesis": "gpt-xhigh"},
         )
         assert agent == "research-synthesizer.md"
         assert model == "gpt-xhigh"
@@ -315,7 +315,7 @@ class TestDiscovery:
             if mod.router.namespace not in test_registry.namespaces:
                 test_registry.add_router(mod.router)
 
-        assert len(test_registry.all_task_types) == 28
+        assert len(test_registry.all_task_types) == 35
         assert test_registry.namespaces == frozenset({
             "scan",
             "staleness",

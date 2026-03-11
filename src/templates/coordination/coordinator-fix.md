@@ -25,7 +25,7 @@ creates or re-triggers another.
    the broader project structure. If you need deeper exploration, submit
    a task request to `{task_submission_path}`:
    ```json
-   {{"task_type": "scan_explore", "concern_scope": "coord-group-{group_id}", "payload_path": "<path-to-exploration-prompt>", "priority": "normal"}}
+   {{"task_type": "scan.explore", "concern_scope": "coord-group-{group_id}", "payload_path": "<path-to-exploration-prompt>", "priority": "normal"}}
    ```
 
 2. **Plan holistically.** Consider how all the problems interact. A single
@@ -34,13 +34,13 @@ creates or re-triggers another.
 3. **Implement.** Make the changes. For targeted sub-tasks, submit a
    task request:
    ```json
-   {{"task_type": "coordination_fix", "concern_scope": "coord-group-{group_id}", "payload_path": "<path-to-fix-prompt>", "priority": "normal"}}
+   {{"task_type": "coordination.fix", "concern_scope": "coord-group-{group_id}", "payload_path": "<path-to-fix-prompt>", "priority": "normal"}}
    ```
 
 4. **Verify.** After implementation, submit a scan task to verify
    the fixes address all listed problems without introducing new issues.
 
-Available task types: scan_explore, coordination_fix
+Available task types: scan.explore, coordination.fix
 
 The examples above use the legacy single-task format. You may also use
 the v2 envelope format with chain or fanout actions — see your agent

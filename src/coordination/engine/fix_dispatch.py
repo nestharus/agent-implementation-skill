@@ -10,8 +10,10 @@ from dispatch.service.prompt_safety import validate_dynamic_content
 from signals.service.communication import _log_artifact, log
 from orchestrator.service.context_assembly import materialize_context_sidecar
 from taskrouter.agents import resolve_agent_path
-from dispatch.engine.section_dispatch import dispatch_agent, write_model_choice_signal
+from dispatch.engine.section_dispatch import dispatch_agent
+from dispatch.helpers.utils import write_model_choice_signal
 from flow.service.section_ingestion import ingest_and_submit
+from taskrouter import agent_for
 
 
 def write_coordinator_fix_prompt(
@@ -185,7 +187,7 @@ def _dispatch_fix_group(
     The ``default_fix_model`` should come from ``policy["coordination_fix"]``
     so that model selection is strictly policy-driven.
     """
-    from dispatch.engine.section_dispatch import read_model_policy
+    from dispatch.service.model_policy import load_model_policy as read_model_policy
 
     paths = PathRegistry(planspace)
     artifacts = paths.coordination_dir()
@@ -224,7 +226,7 @@ def _dispatch_fix_group(
     result = dispatch_agent(
         fix_model, fix_prompt, fix_output,
         planspace, parent, codespace=codespace,
-        agent_file="coordination-fixer.md",
+        agent_file=agent_for("coordination.fix"),
     )
     if result == "ALIGNMENT_CHANGED_PENDING":
         return group_id, None  # Sentinel — caller must check

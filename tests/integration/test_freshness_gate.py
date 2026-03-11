@@ -64,7 +64,7 @@ def _create_section_artifacts(planspace: Path, section: str) -> None:
 
 def _submit_task_with_freshness(
     db_path: str,
-    task_type: str = "alignment_check",
+    task_type: str = "staleness.alignment_check",
     scope: str | None = None,
     freshness_token: str | None = None,
 ) -> str:
@@ -100,7 +100,7 @@ def _dispatch_and_capture(
 
     task_id = _submit_task_with_freshness(
         db_path,
-        task.get("type", "alignment_check"),
+        task.get("type", "staleness.alignment_check"),
         task.get("scope"),
         task.get("freshness"),
     )
@@ -145,7 +145,7 @@ def _dispatch_and_capture(
 
     with (
         patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-        patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
+        patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
         patch.object(task_dispatcher, "reconcile_task_completion"),
         patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         patch.object(task_dispatcher, "_db_cmd", side_effect=tracking_db_cmd),
@@ -235,7 +235,7 @@ class TestDispatcherFreshnessGate:
         token = compute_section_freshness(ps, "03")
 
         task = {
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "test-submitter",
             "scope": "section-03",
             "freshness": token,
@@ -260,7 +260,7 @@ class TestDispatcherFreshnessGate:
         )
 
         task = {
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "test-submitter",
             "scope": "section-04",
             "freshness": old_token,
@@ -277,7 +277,7 @@ class TestDispatcherFreshnessGate:
         _create_section_artifacts(ps, "05")
 
         task = {
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "test-submitter",
             "scope": "section-05",
             # No freshness token
@@ -297,7 +297,7 @@ class TestDispatcherFreshnessGate:
         ps = _setup_planspace(tmp_path)
 
         task = {
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "test-submitter",
             "scope": "coord-group-1",
             "freshness": "deadbeef12345678",  # arbitrary token
@@ -323,7 +323,7 @@ class TestDbShFreshnessToken:
         db_path = str(ps / "run.db")
 
         _submit_task_with_freshness(
-            db_path, "alignment_check",
+            db_path, "staleness.alignment_check",
             scope="section-01",
             freshness_token="abc123def4567890",
         )
@@ -343,7 +343,7 @@ class TestDbShFreshnessToken:
         db_path = str(ps / "run.db")
 
         _submit_task_with_freshness(
-            db_path, "alignment_check",
+            db_path, "staleness.alignment_check",
             scope="section-01",
         )
 

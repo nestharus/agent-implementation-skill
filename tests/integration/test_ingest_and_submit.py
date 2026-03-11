@@ -146,7 +146,7 @@ class TestLegacyV1SingleTask:
     ) -> None:
         sig = planspace / "artifacts" / "signals" / "task.json"
         sig.write_text(json.dumps({
-            "task_type": "alignment_check",
+            "task_type": "staleness.alignment_check",
             "concern_scope": "auth",
         }))
         ids = ingest_and_submit(
@@ -154,7 +154,7 @@ class TestLegacyV1SingleTask:
         )
         assert len(ids) == 1
         task = _query_task(db_path, ids[0])
-        assert task["task_type"] == "alignment_check"
+        assert task["task_type"] == "staleness.alignment_check"
         assert task["concern_scope"] == "auth"
         assert task["submitted_by"] == "test-agent"
         assert task["status"] == "pending"
@@ -164,7 +164,7 @@ class TestLegacyV1SingleTask:
     ) -> None:
         sig = planspace / "artifacts" / "signals" / "task.json"
         sig.write_text(json.dumps({
-            "task_type": "alignment_check",
+            "task_type": "staleness.alignment_check",
         }))
         ingest_and_submit(planspace, db_path, "test-agent", sig)
         assert not sig.exists()
@@ -174,7 +174,7 @@ class TestLegacyV1SingleTask:
     ) -> None:
         sig = planspace / "artifacts" / "signals" / "task.json"
         sig.write_text(json.dumps({
-            "task_type": "alignment_check",
+            "task_type": "staleness.alignment_check",
         }))
         ids = ingest_and_submit(
             planspace, db_path, "test-agent", sig,
@@ -186,7 +186,7 @@ class TestLegacyV1SingleTask:
         assert ctx_path.exists()
         ctx = json.loads(ctx_path.read_text())
         assert ctx["task"]["task_id"] == ids[0]
-        assert ctx["task"]["task_type"] == "alignment_check"
+        assert ctx["task"]["task_type"] == "staleness.alignment_check"
 
     def test_flow_metadata_propagated(
         self, planspace: Path, db_path: Path,
@@ -194,7 +194,7 @@ class TestLegacyV1SingleTask:
         """Caller-provided flow_id, chain_id, origin_refs are propagated."""
         sig = planspace / "artifacts" / "signals" / "task.json"
         sig.write_text(json.dumps({
-            "task_type": "alignment_check",
+            "task_type": "staleness.alignment_check",
         }))
         ids = ingest_and_submit(
             planspace, db_path, "test-agent", sig,
@@ -220,7 +220,7 @@ class TestLegacyV1SingleTask:
         """TaskSpec fields (priority, problem_id, payload_path) propagated."""
         sig = planspace / "artifacts" / "signals" / "task.json"
         sig.write_text(json.dumps({
-            "task_type": "impact_analysis",
+            "task_type": "signals.impact_analysis",
             "concern_scope": "payments",
             "payload_path": "/tmp/prompt.md",
             "priority": "high",
@@ -230,7 +230,7 @@ class TestLegacyV1SingleTask:
             planspace, db_path, "test-agent", sig,
         )
         task = _query_task(db_path, ids[0])
-        assert task["task_type"] == "impact_analysis"
+        assert task["task_type"] == "signals.impact_analysis"
         assert task["concern_scope"] == "payments"
         assert task["payload_path"] == "/tmp/prompt.md"
         assert task["priority"] == "high"
@@ -249,8 +249,8 @@ class TestLegacyV1Multi:
     ) -> None:
         sig = planspace / "artifacts" / "signals" / "tasks.jsonl"
         lines = [
-            json.dumps({"task_type": "alignment_check"}),
-            json.dumps({"task_type": "impact_analysis"}),
+            json.dumps({"task_type": "staleness.alignment_check"}),
+            json.dumps({"task_type": "signals.impact_analysis"}),
         ]
         sig.write_text("\n".join(lines))
         ids = ingest_and_submit(
@@ -258,16 +258,16 @@ class TestLegacyV1Multi:
         )
         assert len(ids) == 2
         tasks = _query_all_tasks(db_path)
-        assert tasks[0]["task_type"] == "alignment_check"
-        assert tasks[1]["task_type"] == "impact_analysis"
+        assert tasks[0]["task_type"] == "staleness.alignment_check"
+        assert tasks[1]["task_type"] == "signals.impact_analysis"
 
     def test_json_array_submitted(
         self, planspace: Path, db_path: Path,
     ) -> None:
         sig = planspace / "artifacts" / "signals" / "tasks.json"
         sig.write_text(json.dumps([
-            {"task_type": "alignment_check"},
-            {"task_type": "impact_analysis"},
+            {"task_type": "staleness.alignment_check"},
+            {"task_type": "signals.impact_analysis"},
         ]))
         ids = ingest_and_submit(
             planspace, db_path, "test-agent", sig,
@@ -280,8 +280,8 @@ class TestLegacyV1Multi:
         """Multiple legacy tasks form a chain with depends_on wiring."""
         sig = planspace / "artifacts" / "signals" / "tasks.json"
         sig.write_text(json.dumps([
-            {"task_type": "alignment_check"},
-            {"task_type": "impact_analysis"},
+            {"task_type": "staleness.alignment_check"},
+            {"task_type": "signals.impact_analysis"},
         ]))
         ids = ingest_and_submit(
             planspace, db_path, "test-agent", sig,
@@ -311,8 +311,8 @@ class TestV2Chain:
                 {
                     "kind": "chain",
                     "steps": [
-                        {"task_type": "alignment_check", "payload_path": "artifacts/p1.md"},
-                        {"task_type": "impact_analysis", "payload_path": "artifacts/p2.md"},
+                        {"task_type": "staleness.alignment_check", "payload_path": "artifacts/p1.md"},
+                        {"task_type": "signals.impact_analysis", "payload_path": "artifacts/p2.md"},
                     ],
                 },
             ],
@@ -323,8 +323,8 @@ class TestV2Chain:
         assert len(ids) == 2
         t0 = _query_task(db_path, ids[0])
         t1 = _query_task(db_path, ids[1])
-        assert t0["task_type"] == "alignment_check"
-        assert t1["task_type"] == "impact_analysis"
+        assert t0["task_type"] == "staleness.alignment_check"
+        assert t1["task_type"] == "signals.impact_analysis"
         assert t1["depends_on"] == str(ids[0])
 
     def test_v2_chain_with_flow_metadata(
@@ -336,7 +336,7 @@ class TestV2Chain:
             "actions": [
                 {
                     "kind": "chain",
-                    "steps": [{"task_type": "alignment_check", "payload_path": "artifacts/p.md"}],
+                    "steps": [{"task_type": "staleness.alignment_check", "payload_path": "artifacts/p.md"}],
                 },
             ],
         }))
@@ -369,13 +369,13 @@ class TestV2Fanout:
                         {
                             "label": "branch-a",
                             "steps": [
-                                {"task_type": "alignment_check", "payload_path": "artifacts/p1.md"},
+                                {"task_type": "staleness.alignment_check", "payload_path": "artifacts/p1.md"},
                             ],
                         },
                         {
                             "label": "branch-b",
                             "steps": [
-                                {"task_type": "impact_analysis", "payload_path": "artifacts/p2.md"},
+                                {"task_type": "signals.impact_analysis", "payload_path": "artifacts/p2.md"},
                             ],
                         },
                     ],
@@ -395,7 +395,7 @@ class TestV2Fanout:
         tasks = _query_all_tasks(db_path)
         assert len(tasks) == 2
         types = {t["task_type"] for t in tasks}
-        assert types == {"alignment_check", "impact_analysis"}
+        assert types == {"staleness.alignment_check", "signals.impact_analysis"}
 
     def test_v2_fanout_with_gate(
         self, planspace: Path, db_path: Path,
@@ -410,13 +410,13 @@ class TestV2Fanout:
                         {
                             "label": "a",
                             "steps": [
-                                {"task_type": "alignment_check", "payload_path": "artifacts/p1.md"},
+                                {"task_type": "staleness.alignment_check", "payload_path": "artifacts/p1.md"},
                             ],
                         },
                         {
                             "label": "b",
                             "steps": [
-                                {"task_type": "impact_analysis", "payload_path": "artifacts/p2.md"},
+                                {"task_type": "signals.impact_analysis", "payload_path": "artifacts/p2.md"},
                             ],
                         },
                     ],
@@ -454,7 +454,7 @@ class TestV2Mixed:
                 {
                     "kind": "chain",
                     "steps": [
-                        {"task_type": "alignment_check", "payload_path": "artifacts/p1.md"},
+                        {"task_type": "staleness.alignment_check", "payload_path": "artifacts/p1.md"},
                     ],
                 },
                 {
@@ -463,7 +463,7 @@ class TestV2Mixed:
                         {
                             "label": "a",
                             "steps": [
-                                {"task_type": "impact_analysis", "payload_path": "artifacts/p2.md"},
+                                {"task_type": "signals.impact_analysis", "payload_path": "artifacts/p2.md"},
                             ],
                         },
                     ],
@@ -525,7 +525,7 @@ class TestDeclaredByTaskId:
     ) -> None:
         sig = planspace / "artifacts" / "signals" / "task.json"
         sig.write_text(json.dumps({
-            "task_type": "alignment_check",
+            "task_type": "staleness.alignment_check",
         }))
         ids = ingest_and_submit(
             planspace, db_path, "test-agent", sig,
@@ -547,7 +547,7 @@ class TestDBPaths:
     ) -> None:
         sig = planspace / "artifacts" / "signals" / "task.json"
         sig.write_text(json.dumps({
-            "task_type": "alignment_check",
+            "task_type": "staleness.alignment_check",
         }))
         ids = ingest_and_submit(
             planspace, db_path, "test-agent", sig,

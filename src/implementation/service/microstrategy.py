@@ -13,6 +13,7 @@ from orchestrator.service.pipeline_control import poll_control_messages
 from dispatch.prompt.writers import agent_mail_instructions
 from flow.service.section_ingestion import ingest_and_submit
 from implementation.service.todos import _check_needs_microstrategy
+from taskrouter import agent_for
 
 
 def run_microstrategy(
@@ -128,7 +129,7 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
         agent_name,
         codespace=codespace,
         section_number=section.number,
-        agent_file="microstrategy-writer.md",
+        agent_file=agent_for("implementation.microstrategy"),
     )
     if micro_result == "ALIGNMENT_CHANGED_PENDING":
         return None
@@ -156,7 +157,7 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
             f"{agent_name}-escalation",
             codespace=codespace,
             section_number=section.number,
-            agent_file="microstrategy-writer.md",
+            agent_file=agent_for("implementation.microstrategy"),
         )
         if escalated_result == "ALIGNMENT_CHANGED_PENDING":
             return None

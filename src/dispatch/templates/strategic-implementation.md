@@ -72,7 +72,7 @@ To submit a task request, write to `{task_submission_path}`:
 Legacy single-task format (still accepted):
 ```json
 {{
-    "task_type": "scan_explore",
+    "task_type": "scan.explore",
     "concern_scope": "section-{section_number}",
     "payload_path": "<path-to-prompt-file>",
     "priority": "normal"
@@ -82,7 +82,7 @@ Legacy single-task format (still accepted):
 For targeted implementation of a self-contained area:
 ```json
 {{
-    "task_type": "strategic_implementation",
+    "task_type": "implementation.strategic",
     "concern_scope": "section-{section_number}",
     "payload_path": "<path-to-implementation-prompt>",
     "priority": "normal"
@@ -97,8 +97,8 @@ Chain format (v2) — declare sequential follow-up steps:
         {{
             "kind": "chain",
             "steps": [
-                {{"task_type": "strategic_implementation", "concern_scope": "section-{section_number}", "payload_path": "<path-to-impl-prompt>"}},
-                {{"task_type": "alignment_check", "concern_scope": "section-{section_number}", "payload_path": "<path-to-verify-prompt>"}}
+                {{"task_type": "implementation.strategic", "concern_scope": "section-{section_number}", "payload_path": "<path-to-impl-prompt>"}},
+                {{"task_type": "staleness.alignment_check", "concern_scope": "section-{section_number}", "payload_path": "<path-to-verify-prompt>"}}
             ]
         }}
     ]

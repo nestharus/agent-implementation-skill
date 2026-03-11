@@ -18,6 +18,7 @@ from coordination.engine.fix_dispatch import _dispatch_fix_group
 from dispatch.engine.section_dispatch import dispatch_agent
 from orchestrator.service.pipeline_control import poll_control_messages
 from orchestrator.types import Section
+from taskrouter import agent_for
 
 
 class CoordinationExecutionExit(Exception):
@@ -238,7 +239,7 @@ def _run_bridge_for_group(
         planspace,
         parent,
         codespace=codespace,
-        agent_file="bridge-agent.md",
+        agent_file=agent_for("coordination.bridge"),
     )
 
     paths.contracts_dir().mkdir(parents=True, exist_ok=True)
@@ -254,7 +255,7 @@ def _run_bridge_for_group(
             planspace,
             parent,
             codespace=codespace,
-            agent_file="bridge-agent.md",
+            agent_file=agent_for("coordination.bridge"),
         )
     if not contract_delta_path.exists():
         log(

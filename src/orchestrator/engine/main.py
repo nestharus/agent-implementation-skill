@@ -32,7 +32,8 @@ from signals.service.communication import (
     mailbox_cleanup,
     mailbox_register,
 )
-from dispatch.engine.section_dispatch import dispatch_agent, read_model_policy
+from dispatch.engine.section_dispatch import dispatch_agent
+from dispatch.service.model_policy import load_model_policy as read_model_policy
 from orchestrator.engine.strategic_state import build_strategic_state
 from orchestrator.types import SectionResult
 

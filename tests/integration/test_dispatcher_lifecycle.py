@@ -73,7 +73,7 @@ def _submit_simple_task(db_path: str, planspace: Path) -> tuple[str, Path]:
     """
     result = subprocess.run(
         ["bash", str(DB_SH), "submit-task", db_path,
-         "test-submitter", "alignment_check"],
+         "test-submitter", "staleness.alignment_check"],
         check=True, capture_output=True, text=True,
     )
     task_id = result.stdout.strip().split(":")[1]
@@ -181,7 +181,7 @@ class TestDispatchTaskClaimsDispatchesCompletes:
 
         task = {
             "id": task_id,
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "test-submitter",
             "payload": str(payload),
         }
@@ -189,7 +189,7 @@ class TestDispatchTaskClaimsDispatchesCompletes:
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
             patch.object(
-                task_dispatcher, "resolve_task",
+                task_dispatcher._task_registry, "resolve",
                 return_value=("alignment-judge.md", "test-model"),
             ),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
@@ -238,7 +238,7 @@ class TestDispatchTaskAgentTimeoutFails:
 
         task = {
             "id": task_id,
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "test-submitter",
             "payload": str(payload),
         }
@@ -246,7 +246,7 @@ class TestDispatchTaskAgentTimeoutFails:
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
             patch.object(
-                task_dispatcher, "resolve_task",
+                task_dispatcher._task_registry, "resolve",
                 return_value=("alignment-judge.md", "test-model"),
             ),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
@@ -286,7 +286,7 @@ class TestDispatchTaskAgentNonzeroExitFails:
 
         task = {
             "id": task_id,
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "test-submitter",
             "payload": str(payload),
         }
@@ -294,7 +294,7 @@ class TestDispatchTaskAgentNonzeroExitFails:
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
             patch.object(
-                task_dispatcher, "resolve_task",
+                task_dispatcher._task_registry, "resolve",
                 return_value=("alignment-judge.md", "test-model"),
             ),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
@@ -331,11 +331,11 @@ class TestDispatchChainContinuation:
             "test-submitter",
             [
                 TaskSpec(
-                    task_type="alignment_check",
+                    task_type="staleness.alignment_check",
                     payload_path=str(payload1),
                 ),
                 TaskSpec(
-                    task_type="impact_analysis",
+                    task_type="signals.impact_analysis",
                     payload_path=str(payload2),
                 ),
             ],
@@ -361,7 +361,7 @@ class TestDispatchChainContinuation:
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch_1),
             patch.object(
-                task_dispatcher, "resolve_task",
+                task_dispatcher._task_registry, "resolve",
                 return_value=("alignment-judge.md", "test-model"),
             ),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
@@ -388,7 +388,7 @@ class TestDispatchChainContinuation:
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch_2),
             patch.object(
-                task_dispatcher, "resolve_task",
+                task_dispatcher._task_registry, "resolve",
                 return_value=("impact-analyzer.md", "test-model"),
             ),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
@@ -422,9 +422,9 @@ class TestDispatchChainFailureCancelsDescendants:
             db_path_obj,
             "test-submitter",
             [
-                TaskSpec(task_type="alignment_check", payload_path=str(payloads[0])),
-                TaskSpec(task_type="impact_analysis", payload_path=str(payloads[1])),
-                TaskSpec(task_type="coordination_fix", payload_path=str(payloads[2])),
+                TaskSpec(task_type="staleness.alignment_check", payload_path=str(payloads[0])),
+                TaskSpec(task_type="signals.impact_analysis", payload_path=str(payloads[1])),
+                TaskSpec(task_type="coordination.fix", payload_path=str(payloads[2])),
             ],
             planspace=ps,
         )
@@ -448,7 +448,7 @@ class TestDispatchChainFailureCancelsDescendants:
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch_fail),
             patch.object(
-                task_dispatcher, "resolve_task",
+                task_dispatcher._task_registry, "resolve",
                 return_value=("alignment-judge.md", "test-model"),
             ),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
@@ -485,14 +485,14 @@ class TestDispatchMissingPayload:
 
         task = {
             "id": task_id,
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "test-submitter",
             "payload": str(nonexistent_payload),
         }
 
         with (
             patch.object(
-                task_dispatcher, "resolve_task",
+                task_dispatcher._task_registry, "resolve",
                 return_value=("alignment-judge.md", "test-model"),
             ),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
@@ -507,7 +507,7 @@ class TestDispatchMissingPayload:
 
 
 class TestDispatchUnresolvableTaskType:
-    """Test 7: unknown task type -> ValueError from resolve_task -> fail."""
+    """Test 7: unknown task type -> ValueError from _task_registry.resolve -> fail."""
 
     def test_dispatch_unresolvable_task_type_fails(
         self, tmp_path: Path,
@@ -533,7 +533,7 @@ class TestDispatchUnresolvableTaskType:
         }
 
         with patch.object(
-            task_dispatcher, "resolve_task",
+            task_dispatcher._task_registry, "resolve",
             side_effect=ValueError("Unknown task type: 'nonexistent_task_type_xyz'"),
         ):
             task_dispatcher.dispatch_task(db_path, ps, task)
@@ -573,7 +573,7 @@ class TestDispatchStaleFreshnessToken:
 
         task = {
             "id": task_id,
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "test-submitter",
             "payload": str(payload),
             "scope": "section-01",
@@ -582,7 +582,7 @@ class TestDispatchStaleFreshnessToken:
 
         with (
             patch.object(
-                task_dispatcher, "resolve_task",
+                task_dispatcher._task_registry, "resolve",
                 return_value=("alignment-judge.md", "test-model"),
             ),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),

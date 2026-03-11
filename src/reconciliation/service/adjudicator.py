@@ -11,7 +11,9 @@ from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.template import render_template
 from dispatch.service.prompt_safety import validate_dynamic_content
-from dispatch.engine.section_dispatch import dispatch_agent, read_model_policy
+from dispatch.engine.section_dispatch import dispatch_agent
+from dispatch.service.model_policy import load_model_policy as read_model_policy
+from taskrouter import agent_for
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +86,7 @@ group's `members` array or in the `separate` array.
             prompt_path,
             output_path,
             planspace=planspace,
-            agent_file="reconciliation-adjudicator.md",
+            agent_file=agent_for("reconciliation.adjudicate"),
         )
     except Exception:
         logger.warning(

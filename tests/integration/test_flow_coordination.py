@@ -157,7 +157,7 @@ class TestCoordinationFixPackage:
             [],
         )
         assert len(steps) == 1
-        assert steps[0].task_type == "coordination_fix"
+        assert steps[0].task_type == "coordination.fix"
         assert steps[0].concern_scope == "coord-group-1"
         assert steps[0].payload_path == "/tmp/p.md"
 
@@ -409,7 +409,7 @@ class TestCoordinationGateFiring:
                 mode="all",
                 failure_policy="include",
                 synthesis=TaskSpec(
-                    task_type="alignment_check",
+                    task_type="staleness.alignment_check",
                     concern_scope="post-coordination",
                 ),
             ),
@@ -432,7 +432,7 @@ class TestCoordinationGateFiring:
         assert gate["fired_task_id"] is not None
 
         syn_task = _query_task(db_path, gate["fired_task_id"])
-        assert syn_task["task_type"] == "alignment_check"
+        assert syn_task["task_type"] == "staleness.alignment_check"
         assert syn_task["concern_scope"] == "post-coordination"
         assert syn_task["trigger_gate_id"] == gate_id
 
@@ -609,7 +609,7 @@ class TestEdgeCases:
 
         tasks = _query_all_tasks(db_path)
         assert len(tasks) == 2
-        assert all(t["task_type"] == "coordination_fix" for t in tasks)
+        assert all(t["task_type"] == "coordination.fix" for t in tasks)
 
         # Concern scopes match
         scopes = {t["concern_scope"] for t in tasks}

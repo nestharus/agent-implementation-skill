@@ -214,7 +214,7 @@ def route_blockers(
                 task_id = submit_task(
                     registry.run_db(),
                     f"readiness-{section_number}",
-                    "research_plan",
+                    "research.plan",
                     concern_scope=f"section-{section_number}",
                     payload_path=str(prompt_path),
                     problem_id=f"research-{section_number}",

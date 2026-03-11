@@ -15,7 +15,7 @@ from src.flow.service.task_ingestion import (
 
 def test_parse_signal_file_consumes_legacy_signal(tmp_path) -> None:
     signal_path = tmp_path / "task.json"
-    signal_path.write_text(json.dumps({"task_type": "alignment_check"}), encoding="utf-8")
+    signal_path.write_text(json.dumps({"task_type": "staleness.alignment_check"}), encoding="utf-8")
 
     decl = parse_signal_file(signal_path)
 
@@ -43,8 +43,8 @@ def test_extract_legacy_tasks_flattens_chain_steps() -> None:
         actions=[
             ChainAction(
                 steps=[
-                    TaskSpec(task_type="alignment_check", concern_scope="section-03"),
-                    TaskSpec(task_type="impact_analysis", payload_path="artifacts/x.md"),
+                    TaskSpec(task_type="staleness.alignment_check", concern_scope="section-03"),
+                    TaskSpec(task_type="signals.impact_analysis", payload_path="artifacts/x.md"),
                 ],
             ),
         ],
@@ -53,8 +53,8 @@ def test_extract_legacy_tasks_flattens_chain_steps() -> None:
     tasks = extract_legacy_tasks(decl)
 
     assert tasks == [
-        {"task_type": "alignment_check", "concern_scope": "section-03"},
-        {"task_type": "impact_analysis", "payload_path": "artifacts/x.md"},
+        {"task_type": "staleness.alignment_check", "concern_scope": "section-03"},
+        {"task_type": "signals.impact_analysis", "payload_path": "artifacts/x.md"},
     ]
 
 
@@ -79,7 +79,7 @@ def test_ingest_task_requests_skips_v2_declarations(tmp_path) -> None:
                         "kind": "chain",
                         "steps": [
                             {
-                                "task_type": "alignment_check",
+                                "task_type": "staleness.alignment_check",
                                 "payload_path": "artifacts/tasks/t1.md",
                             },
                         ],

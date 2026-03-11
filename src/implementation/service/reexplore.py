@@ -9,6 +9,7 @@ from coordination.service.cross_section import extract_section_summary
 from dispatch.engine.section_dispatch import dispatch_agent
 from flow.service.section_ingestion import ingest_and_submit
 from orchestrator.types import Section
+from taskrouter import agent_for
 
 
 def _reexplore_section(
@@ -71,7 +72,7 @@ Your job is to determine why and classify the situation.
 4. If you need deeper exploration, submit a task request to
    `{planspace}/artifacts/signals/task-requests-reexplore-{section.number}.json`:
    ```json
-   {{"task_type": "scan_explore", "concern_scope": "section-{section.number}", "payload_path": "<path-to-exploration-prompt>", "priority": "normal"}}
+   {{"task_type": "scan.explore", "concern_scope": "section-{section.number}", "payload_path": "<path-to-exploration-prompt>", "priority": "normal"}}
    ```
    The above is the legacy single-task format (still accepted). You may
    also use the v2 envelope format with chain or fanout actions — see
@@ -122,7 +123,7 @@ the JSON, not unstructured text.
         model, prompt_path, output_path,
         planspace, parent, f"reexplore-{section.number}",
         codespace=codespace, section_number=section.number,
-        agent_file="section-re-explorer.md",
+        agent_file=agent_for("implementation.reexplore"),
     )
 
     # V6: Submit agent-emitted follow-up work into the queue

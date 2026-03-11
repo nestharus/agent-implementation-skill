@@ -28,17 +28,17 @@ from orchestrator.path_registry import PathRegistry
 def _proposal_alignment_package(
     args: dict, origin_refs: list[str]
 ) -> list[TaskSpec]:
-    """integration_proposal → alignment_check."""
+    """proposal.integration → staleness.alignment_check."""
     return [
         TaskSpec(
-            task_type="integration_proposal",
+            task_type="proposal.integration",
             concern_scope=args.get("concern_scope", ""),
             payload_path=args.get("payload_path", ""),
             priority=args.get("priority", "normal"),
             problem_id=args.get("problem_id", ""),
         ),
         TaskSpec(
-            task_type="alignment_check",
+            task_type="staleness.alignment_check",
             concern_scope=args.get("concern_scope", ""),
             payload_path=args.get("alignment_payload_path", ""),
             priority=args.get("priority", "normal"),
@@ -50,17 +50,17 @@ def _proposal_alignment_package(
 def _implementation_alignment_package(
     args: dict, origin_refs: list[str]
 ) -> list[TaskSpec]:
-    """strategic_implementation → alignment_check."""
+    """implementation.strategic → staleness.alignment_check."""
     return [
         TaskSpec(
-            task_type="strategic_implementation",
+            task_type="implementation.strategic",
             concern_scope=args.get("concern_scope", ""),
             payload_path=args.get("payload_path", ""),
             priority=args.get("priority", "normal"),
             problem_id=args.get("problem_id", ""),
         ),
         TaskSpec(
-            task_type="alignment_check",
+            task_type="staleness.alignment_check",
             concern_scope=args.get("concern_scope", ""),
             payload_path=args.get("alignment_payload_path", ""),
             priority=args.get("priority", "normal"),
@@ -81,7 +81,7 @@ def _coordination_fix_package(
     """
     return [
         TaskSpec(
-            task_type="coordination_fix",
+            task_type="coordination.fix",
             concern_scope=args.get("concern_scope", ""),
             payload_path=args.get("payload_path", ""),
             priority=args.get("priority", "normal"),
@@ -97,7 +97,7 @@ def _research_ticket_package(
     del origin_refs
     return [
         TaskSpec(
-            task_type="research_domain_ticket",
+            task_type="research.domain_ticket",
             concern_scope=args.get("concern_scope", ""),
             payload_path=args.get("payload_path", ""),
             priority=args.get("priority", "normal"),
@@ -109,18 +109,18 @@ def _research_ticket_package(
 def _research_code_ticket_package(
     args: dict, origin_refs: list[str]
 ) -> list[TaskSpec]:
-    """Code research ticket: scan_explore -> research_domain_ticket."""
+    """Code research ticket: scan.explore -> research.domain_ticket."""
     del origin_refs
     return [
         TaskSpec(
-            task_type="scan_explore",
+            task_type="scan.explore",
             concern_scope=args.get("concern_scope", ""),
             payload_path=args.get("scan_payload_path", ""),
             priority=args.get("priority", "normal"),
             problem_id=args.get("problem_id", ""),
         ),
         TaskSpec(
-            task_type="research_domain_ticket",
+            task_type="research.domain_ticket",
             concern_scope=args.get("concern_scope", ""),
             payload_path=args.get("payload_path", ""),
             priority=args.get("priority", "normal"),
@@ -150,9 +150,9 @@ def resolve_chain_ref(
     """Resolve a named chain package to a list of TaskSpec steps.
 
     Known packages:
-    - "proposal_alignment_package" -> [integration_proposal, alignment_check]
-    - "implementation_alignment_package" -> [strategic_implementation, alignment_check]
-    - "coordination_fix_package" -> [coordination_fix]
+    - "proposal_alignment_package" -> [proposal.integration, staleness.alignment_check]
+    - "implementation_alignment_package" -> [implementation.strategic, staleness.alignment_check]
+    - "coordination_fix_package" -> [coordination.fix]
 
     Raises ValueError for unknown package names.
     """

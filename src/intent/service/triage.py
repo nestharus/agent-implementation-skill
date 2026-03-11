@@ -11,11 +11,10 @@ from orchestrator.path_registry import PathRegistry
 from risk.repository.history import read_history
 from risk.types import PostureProfile
 from signals.service.communication import _log_artifact, log
-from dispatch.engine.section_dispatch import (
-    dispatch_agent,
-    read_agent_signal,
-    read_model_policy,
-)
+from dispatch.engine.section_dispatch import dispatch_agent
+from dispatch.service.model_policy import load_model_policy as read_model_policy
+from signals.repository.signal_reader import read_agent_signal
+from taskrouter import agent_for
 
 
 def run_intent_triage(
@@ -146,7 +145,7 @@ Write a JSON signal to: `{triage_signal_path}`
         parent,
         codespace=codespace,
         section_number=section_number,
-        agent_file="intent-triager.md",
+        agent_file=agent_for("intent.triage"),
     )
 
     if result == "ALIGNMENT_CHANGED_PENDING":
@@ -178,7 +177,7 @@ Write a JSON signal to: `{triage_signal_path}`
                 parent,
                 codespace=codespace,
                 section_number=section_number,
-                agent_file="intent-triager.md",
+                agent_file=agent_for("intent.triage"),
             )
             escalated = read_agent_signal(
                 triage_signal_path,

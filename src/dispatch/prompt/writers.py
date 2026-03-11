@@ -102,8 +102,8 @@ def write_integration_proposal_prompt(
         "task_submission_path": str(
             artifacts / "signals" / f"task-requests-proposal-{sec}.json"),
         "allowed_tasks": (
-            "scan_explore, impact_analysis, "
-            "integration_proposal, research_plan"
+            "scan.explore, signals.impact_analysis, "
+            "proposal.integration, research.plan"
         ),
         "signal_block": signal_instructions(
             artifacts / "signals" / f"proposal-{sec}-signal.json",
@@ -335,7 +335,7 @@ def write_strategic_impl_prompt(
         "research_ref": research_impl_ref,
         "task_submission_path": str(
             artifacts / "signals" / f"task-requests-impl-{sec}.json"),
-        "allowed_tasks": "scan_explore, scan_deep_analyze, strategic_implementation, alignment_check",
+        "allowed_tasks": "scan.explore, scan.deep_analyze, implementation.strategic, staleness.alignment_check",
         "signal_block": signal_instructions(
             artifacts / "signals" / f"impl-{sec}-signal.json",
         ),

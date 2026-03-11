@@ -27,13 +27,13 @@ def test_notify_task_result_sends_mailbox_message(tmp_path: Path) -> None:
         db_path,
         "submitter",
         "17",
-        "alignment_check",
+        "staleness.alignment_check",
         "failed",
         "bad prompt",
     )
 
     drained = db_cmd(db_path, "drain", "submitter")
-    assert "task:failed:17:alignment_check:bad prompt" in drained
+    assert "task:failed:17:staleness.alignment_check:bad prompt" in drained
 
 
 def test_record_task_routing_updates_task_row(tmp_path: Path) -> None:
@@ -41,7 +41,7 @@ def test_record_task_routing_updates_task_row(tmp_path: Path) -> None:
     task_id = db_cmd(
         db_path,
         "submit-task",
-        "alignment_check",
+        "staleness.alignment_check",
         "--by",
         "submitter",
     ).split(":")[1]
@@ -49,7 +49,7 @@ def test_record_task_routing_updates_task_row(tmp_path: Path) -> None:
     record_task_routing(
         planspace,
         task_id,
-        "alignment_check",
+        "staleness.alignment_check",
         "alignment-judge.md",
         "test-model",
     )
@@ -67,7 +67,7 @@ def test_record_task_routing_updates_task_row(tmp_path: Path) -> None:
 def test_record_qa_intercept_logs_lifecycle_event(tmp_path: Path) -> None:
     planspace, db_path = _init_planspace(tmp_path)
 
-    record_qa_intercept(planspace, "22", "alignment_check", "reason.md")
+    record_qa_intercept(planspace, "22", "staleness.alignment_check", "reason.md")
 
     rows = db_cmd(
         db_path,

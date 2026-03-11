@@ -106,7 +106,7 @@ class TestBuildFlowContext:
         """build_flow_context reads the JSON file and returns its contents."""
         ids = submit_chain(
             db_path, "test-agent",
-            [TaskSpec(task_type="alignment_check")],
+            [TaskSpec(task_type="staleness.alignment_check")],
             planspace=planspace,
         )
         tid = ids[0]
@@ -118,10 +118,10 @@ class TestBuildFlowContext:
         )
 
         assert result is not None
-        assert result["task"]["task_id"] == tid
-        assert result["task"]["task_type"] == "alignment_check"
-        assert "continuation_path" in result
-        assert "result_manifest_path" in result
+        assert result.task.task_id == tid
+        assert result.task.task_type == "staleness.alignment_check"
+        assert result.continuation_path is not None
+        assert result.result_manifest_path is not None
 
     def test_chain_predecessor_result_available(
         self, db_path: Path, planspace: Path,
@@ -130,8 +130,8 @@ class TestBuildFlowContext:
         ids = submit_chain(
             db_path, "test-agent",
             [
-                TaskSpec(task_type="alignment_check"),
-                TaskSpec(task_type="impact_analysis"),
+                TaskSpec(task_type="staleness.alignment_check"),
+                TaskSpec(task_type="signals.impact_analysis"),
             ],
             planspace=planspace,
         )
@@ -143,8 +143,8 @@ class TestBuildFlowContext:
         )
 
         assert result is not None
-        assert result["previous_result_manifest"] is not None
-        assert f"task-{ids[0]}-result.json" in result["previous_result_manifest"]
+        assert result.previous_result_manifest is not None
+        assert f"task-{ids[0]}-result.json" in result.previous_result_manifest
 
     def test_enriches_continuation_path(
         self, db_path: Path, planspace: Path,
@@ -152,7 +152,7 @@ class TestBuildFlowContext:
         """build_flow_context fills in continuation_path from DB row."""
         ids = submit_chain(
             db_path, "test-agent",
-            [TaskSpec(task_type="alignment_check")],
+            [TaskSpec(task_type="staleness.alignment_check")],
             planspace=planspace,
         )
         tid = ids[0]
@@ -165,7 +165,7 @@ class TestBuildFlowContext:
         )
 
         assert result is not None
-        assert result["continuation_path"] == task["continuation_path"]
+        assert result.continuation_path == task["continuation_path"]
 
     def test_enriches_gate_aggregate_for_synthesis(
         self, db_path: Path, planspace: Path,
@@ -200,7 +200,7 @@ class TestBuildFlowContext:
         )
 
         assert result is not None
-        assert result["gate_aggregate_manifest"] == agg_relpath
+        assert result.gate_aggregate_manifest == agg_relpath
 
     def test_raises_on_malformed_json(
         self, planspace: Path,
@@ -350,21 +350,22 @@ class TestDispatcherFlowIntegration:
 
         task = {
             "id": "1",
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "test-agent",
             "prio": "normal",
             "payload": str(prompt),
         }
 
+        from flow.engine import dispatcher as task_dispatcher
+
         with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
-             patch("flow.engine.dispatcher.resolve_task") as mock_resolve, \
+             patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
              patch("flow.engine.dispatcher._db_cmd") as mock_db, \
              patch("flow.engine.dispatcher._notify"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
             mock_dispatch.return_value = "done"
 
-            from flow.engine.dispatcher import dispatch_task
-            dispatch_task(str(db_path), planspace, task)
+            task_dispatcher.dispatch_task(str(db_path), planspace, task)
 
             # dispatch_agent should be called with the original prompt path
             assert mock_dispatch.called
@@ -381,7 +382,7 @@ class TestDispatcherFlowIntegration:
         ctx_file = planspace / ctx_relpath
         ctx_file.parent.mkdir(parents=True, exist_ok=True)
         ctx_file.write_text(json.dumps({
-            "task": {"task_id": 1, "task_type": "impact_analysis"},
+            "task": {"task_id": 1, "task_type": "signals.impact_analysis"},
             "previous_result_manifest": "artifacts/flows/task-0-result.json",
             "continuation_path": "artifacts/flows/task-1-continuation.json",
         }))
@@ -392,7 +393,7 @@ class TestDispatcherFlowIntegration:
 
         task = {
             "id": "1",
-            "type": "impact_analysis",
+            "type": "signals.impact_analysis",
             "by": "test-agent",
             "prio": "normal",
             "payload": str(prompt),
@@ -400,15 +401,16 @@ class TestDispatcherFlowIntegration:
             "continuation": "artifacts/flows/task-1-continuation.json",
         }
 
+        from flow.engine import dispatcher as task_dispatcher
+
         with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
-             patch("flow.engine.dispatcher.resolve_task") as mock_resolve, \
+             patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
              patch("flow.engine.dispatcher._db_cmd") as mock_db, \
              patch("flow.engine.dispatcher._notify"):
             mock_resolve.return_value = ("impact-analyzer.md", "glm")
             mock_dispatch.return_value = "done"
 
-            from flow.engine.dispatcher import dispatch_task
-            dispatch_task(str(db_path), planspace, task)
+            task_dispatcher.dispatch_task(str(db_path), planspace, task)
 
             # dispatch_agent should be called with a wrapper prompt
             assert mock_dispatch.called
@@ -443,7 +445,7 @@ class TestDispatcherFlowIntegration:
 
         task = {
             "id": "2",
-            "type": "alignment_check",
+            "type": "staleness.alignment_check",
             "by": "test-agent",
             "prio": "normal",
             "payload": str(prompt),
@@ -451,15 +453,16 @@ class TestDispatcherFlowIntegration:
             "continuation": "artifacts/flows/task-2-continuation.json",
         }
 
+        from flow.engine import dispatcher as task_dispatcher
+
         with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
-             patch("flow.engine.dispatcher.resolve_task") as mock_resolve, \
+             patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
              patch("flow.engine.dispatcher._db_cmd"), \
              patch("flow.engine.dispatcher._notify"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
             mock_dispatch.return_value = "done"
 
-            from flow.engine.dispatcher import dispatch_task
-            dispatch_task(str(db_path), planspace, task)
+            task_dispatcher.dispatch_task(str(db_path), planspace, task)
 
         # Original file must be unchanged.
         assert prompt.read_text() == original_text
@@ -556,8 +559,8 @@ class TestEndToEndFlowContext:
         ids = submit_chain(
             db_path, "test-agent",
             [
-                TaskSpec(task_type="alignment_check"),
-                TaskSpec(task_type="impact_analysis"),
+                TaskSpec(task_type="staleness.alignment_check"),
+                TaskSpec(task_type="signals.impact_analysis"),
             ],
             planspace=planspace,
             origin_refs=["section-01"],
@@ -572,11 +575,11 @@ class TestEndToEndFlowContext:
         )
 
         assert ctx is not None
-        assert ctx["task"]["task_id"] == ids[1]
-        assert ctx["previous_result_manifest"] is not None
-        assert f"task-{ids[0]}-result.json" in ctx["previous_result_manifest"]
-        assert ctx["origin_refs"] == ["section-01"]
-        assert ctx["continuation_path"] is not None
+        assert ctx.task.task_id == ids[1]
+        assert ctx.previous_result_manifest is not None
+        assert f"task-{ids[0]}-result.json" in ctx.previous_result_manifest
+        assert ctx.origin_refs == ["section-01"]
+        assert ctx.continuation_path is not None
 
     def test_dispatch_prompt_for_chain_task(
         self, db_path: Path, planspace: Path, tmp_path: Path,
@@ -585,8 +588,8 @@ class TestEndToEndFlowContext:
         ids = submit_chain(
             db_path, "test-agent",
             [
-                TaskSpec(task_type="alignment_check"),
-                TaskSpec(task_type="impact_analysis"),
+                TaskSpec(task_type="staleness.alignment_check"),
+                TaskSpec(task_type="signals.impact_analysis"),
             ],
             planspace=planspace,
         )
@@ -622,7 +625,7 @@ class TestEndToEndFlowContext:
         branches = [
             BranchSpec(
                 label="only",
-                steps=[TaskSpec(task_type="alignment_check")],
+                steps=[TaskSpec(task_type="staleness.alignment_check")],
             ),
         ]
         gate_id = submit_fanout(
@@ -632,7 +635,7 @@ class TestEndToEndFlowContext:
                 mode="all",
                 failure_policy="include",
                 synthesis=TaskSpec(
-                    task_type="impact_analysis",
+                    task_type="signals.impact_analysis",
                     problem_id="P-syn",
                 ),
             ),
@@ -688,5 +691,5 @@ class TestEndToEndFlowContext:
         )
 
         assert ctx is not None
-        assert ctx["gate_aggregate_manifest"] is not None
-        assert gate_id in ctx["gate_aggregate_manifest"]
+        assert ctx.gate_aggregate_manifest is not None
+        assert gate_id in ctx.gate_aggregate_manifest

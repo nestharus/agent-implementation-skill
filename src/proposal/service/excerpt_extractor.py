@@ -8,17 +8,15 @@ from proposal.repository.excerpts import exists as excerpt_exists
 from orchestrator.path_registry import PathRegistry
 from signals.service.communication import mailbox_send, log
 from coordination.service.cross_section import persist_decision
-from dispatch.engine.section_dispatch import (
-    check_agent_signals,
-    dispatch_agent,
-    summarize_output,
-)
+from dispatch.engine.section_dispatch import dispatch_agent
+from dispatch.helpers.utils import check_agent_signals, summarize_output
 from orchestrator.service.pipeline_control import pause_for_parent
 from dispatch.prompt.writers import write_section_setup_prompt
 from signals.service.blockers import (
     _append_open_problem,
     _update_blocker_rollup,
 )
+from taskrouter import agent_for
 
 
 def extract_excerpts(
@@ -57,7 +55,7 @@ def extract_excerpts(
             setup_agent,
             codespace=codespace,
             section_number=section.number,
-            agent_file="setup-excerpter.md",
+            agent_file=agent_for("proposal.section_setup"),
         )
         if output == "ALIGNMENT_CHANGED_PENDING":
             return None

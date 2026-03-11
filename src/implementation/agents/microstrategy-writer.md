@@ -40,7 +40,7 @@ implementation agents to produce incorrect code.
 Legacy single-task format (still accepted):
 ```json
 {
-    "task_type": "scan_deep_analyze",
+    "task_type": "scan.deep_analyze",
     "problem_id": "<problem-id>",
     "concern_scope": "<section-id>",
     "payload_path": "<path-to-exploration-prompt>",
@@ -56,8 +56,8 @@ Chain format (v2) — declare sequential follow-up steps:
         {
             "kind": "chain",
             "steps": [
-                {"task_type": "scan_deep_analyze", "concern_scope": "<section-id>", "payload_path": "<path-to-analysis-prompt>"},
-                {"task_type": "scan_explore", "concern_scope": "<section-id>", "payload_path": "<path-to-followup-prompt>"}
+                {"task_type": "scan.deep_analyze", "concern_scope": "<section-id>", "payload_path": "<path-to-analysis-prompt>"},
+                {"task_type": "scan.explore", "concern_scope": "<section-id>", "payload_path": "<path-to-followup-prompt>"}
             ]
         }
     ]

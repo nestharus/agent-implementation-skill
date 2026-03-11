@@ -83,7 +83,7 @@ def test_collect_outputs_and_structural_checks_cover_core_predicates(
             "CREATE TABLE tasks (id INTEGER PRIMARY KEY, task_type TEXT, status TEXT)"
         )
         conn.execute(
-            "INSERT INTO tasks(id, task_type, status) VALUES (1, 'research_domain_ticket', 'pending')"
+            "INSERT INTO tasks(id, task_type, status) VALUES (1, 'research.domain_ticket', 'pending')"
         )
         conn.commit()
 
@@ -116,7 +116,7 @@ def test_collect_outputs_and_structural_checks_cover_core_predicates(
         StructuralCheck(
             type="db_min_rows",
             query="tasks",
-            where={"task_type": "research_domain_ticket"},
+            where={"task_type": "research.domain_ticket"},
             min=1,
             required=True,
         ),

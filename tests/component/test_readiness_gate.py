@@ -202,7 +202,7 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
         {
             "db_path": planspace / "run.db",
             "submitted_by": "readiness-03",
-            "task_type": "research_plan",
+            "task_type": "research.plan",
             "concern_scope": "section-03",
             "payload_path": str(prompt_path),
             "problem_id": "research-03",

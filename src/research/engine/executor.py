@@ -244,19 +244,19 @@ def _build_branch(
             label=ticket_id,
             steps=[
                 TaskSpec(
-                    task_type="research_domain_ticket",
+                    task_type="research.domain_ticket",
                     concern_scope=concern_scope,
                     payload_path=str(web_prompt),
                     problem_id=problem_id,
                 ),
                 TaskSpec(
-                    task_type="scan_explore",
+                    task_type="scan.explore",
                     concern_scope=concern_scope,
                     payload_path=str(scan_prompt),
                     problem_id=problem_id,
                 ),
                 TaskSpec(
-                    task_type="research_domain_ticket",
+                    task_type="research.domain_ticket",
                     concern_scope=concern_scope,
                     payload_path=str(final_prompt),
                     problem_id=problem_id,
@@ -373,7 +373,7 @@ def execute_research_plan(
         mode="all",
         failure_policy="include",
         synthesis=TaskSpec(
-            task_type="research_synthesis",
+            task_type="research.synthesis",
             concern_scope=f"section-{section_number}",
             payload_path=str(synthesis_prompt),
             problem_id=f"research-{section_number}",
@@ -421,7 +421,7 @@ def submit_research_verify(
         f"research-{section_number}",
         [
             TaskSpec(
-                task_type="research_verify",
+                task_type="research.verify",
                 concern_scope=f"section-{section_number}",
                 payload_path=str(verify_prompt),
                 problem_id=f"research-{section_number}",

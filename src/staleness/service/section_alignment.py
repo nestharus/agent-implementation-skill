@@ -12,6 +12,7 @@ from proposal.helpers.verdict_parsers import parse_alignment_verdict as _parse_a
 from dispatch.service.prompt_safety import validate_dynamic_content
 from orchestrator.service.pipeline_control import poll_control_messages
 from orchestrator.types import Section
+from taskrouter import agent_for
 
 
 def collect_modified_files(
@@ -104,7 +105,7 @@ Reply with a JSON block:
         adj_result = dispatch_agent(
             adjudicator_model, adj_prompt, adj_output,
             planspace, parent, codespace=codespace,
-            agent_file="alignment-output-adjudicator.md",
+            agent_file=agent_for("staleness.alignment_adjudicate"),
         )
         if adj_result and adj_result != "ALIGNMENT_CHANGED_PENDING":
             try:
@@ -161,7 +162,7 @@ def _run_alignment_check_with_retries(
             model, align_prompt, align_output,
             planspace, parent, codespace=codespace,
             section_number=sec_num,
-            agent_file="alignment-judge.md",
+            agent_file=agent_for("staleness.alignment_check"),
         )
         if result == "ALIGNMENT_CHANGED_PENDING":
             return result

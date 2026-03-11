@@ -73,7 +73,7 @@ def _dispatch_with_captured_kwargs(
 ) -> dict:
     """Run dispatch_task with mocked dispatch_agent, return its kwargs.
 
-    Sets up the standard mocks (resolve_task, validate_dynamic_content,
+    Sets up the standard mocks (_task_registry.resolve, validate_dynamic_content,
     render_template, reconcile_task_completion) and captures the kwargs
     passed to dispatch_agent.
     """
@@ -110,7 +110,7 @@ def _dispatch_with_captured_kwargs(
 
     with (
         patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-        patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
+        patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
         patch.object(task_dispatcher, "reconcile_task_completion"),
         patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
     ):

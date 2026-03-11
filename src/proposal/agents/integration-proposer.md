@@ -135,7 +135,7 @@ to the task-submission path specified in your dispatch prompt:
 Legacy single-task format (still accepted):
 ```json
 {
-    "task_type": "scan_explore",
+    "task_type": "scan.explore",
     "problem_id": "<problem-id>",
     "concern_scope": "<section-id>",
     "payload_path": "<path-to-sub-task-prompt>",
@@ -151,8 +151,8 @@ Chain format (v2) — declare sequential follow-up steps:
         {
             "kind": "chain",
             "steps": [
-                {"task_type": "scan_explore", "concern_scope": "<section-id>", "payload_path": "<path-to-explore-prompt>"},
-                {"task_type": "integration_proposal", "concern_scope": "<section-id>", "payload_path": "<path-to-proposal-prompt>"}
+                {"task_type": "scan.explore", "concern_scope": "<section-id>", "payload_path": "<path-to-explore-prompt>"},
+                {"task_type": "proposal.integration", "concern_scope": "<section-id>", "payload_path": "<path-to-proposal-prompt>"}
             ]
         }
     ]

@@ -7,7 +7,7 @@ from staleness.helpers.hashing import content_hash
 from orchestrator.path_registry import PathRegistry
 
 from signals.service.communication import log
-from dispatch.engine.section_dispatch import read_agent_signal
+from signals.repository.signal_reader import read_agent_signal
 
 
 def load_surface_registry(

@@ -33,6 +33,7 @@ from risk.types import (
 from risk.service.package_builder import write_package
 from risk.service.quantifier import risk_to_posture
 from dispatch.service.prompt_safety import write_validated_prompt
+from taskrouter import agent_for
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
@@ -78,7 +79,7 @@ def run_risk_loop(
             planspace,
             None,
             f"risk-assessor-{scope}",
-            agent_file="risk-assessor.md",
+            agent_file=agent_for("risk.assess"),
         )
         assessment = parse_risk_assessment(assessment_response)
         if assessment is None:
@@ -126,7 +127,7 @@ def run_risk_loop(
             planspace,
             None,
             f"execution-optimizer-{scope}",
-            agent_file="execution-optimizer.md",
+            agent_file=agent_for("risk.optimize"),
         )
         plan = parse_risk_plan(optimization_response)
         if plan is None:
@@ -208,7 +209,7 @@ def run_lightweight_risk_check(
         planspace,
         None,
         f"risk-assessor-light-{scope}",
-        agent_file="risk-assessor.md",
+        agent_file=agent_for("risk.assess"),
     )
     assessment = parse_risk_assessment(response)
     if assessment is None:
@@ -252,7 +253,7 @@ def run_lightweight_risk_check(
             planspace,
             None,
             f"execution-optimizer-light-{scope}",
-            agent_file="execution-optimizer.md",
+            agent_file=agent_for("risk.optimize"),
         )
     except Exception as exc:
         fallback = _lightweight_fallback_plan(

@@ -20,6 +20,7 @@ from orchestrator.service.context_assembly import materialize_context_sidecar
 from dispatch.engine.section_dispatch import dispatch_agent
 from orchestrator.path_registry import PathRegistry
 from taskrouter.agents import resolve_agent_path
+from taskrouter import agent_for
 
 if TYPE_CHECKING:
     from orchestrator.types import Section
@@ -255,7 +256,7 @@ This is the primary content of the consequence note the target receives.
         parent,
         codespace=codespace,
         section_number=section_number,
-        agent_file="impact-analyzer.md",
+        agent_file=agent_for("signals.impact_analysis"),
     )
 
     sec_num_map = build_section_number_map(all_sections)
@@ -325,7 +326,7 @@ If no material impacts can be extracted, reply:
         parent,
         codespace=codespace,
         section_number=section_number,
-        agent_file="impact-output-normalizer.md",
+        agent_file=agent_for("signals.impact_normalize"),
     )
     impacted_sections = _parse_material_impacts(normalize_result, sec_num_map)
     if impacted_sections is None:

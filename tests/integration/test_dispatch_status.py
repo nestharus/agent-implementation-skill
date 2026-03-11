@@ -74,7 +74,7 @@ class TestDispatchWritesMeta:
         fake_result = SimpleNamespace(
             stdout="hello", stderr="", returncode=0,
         )
-        monkeypatch.setattr(dispatch_mod.subprocess, "run", lambda *a, **kw: fake_result)
+        monkeypatch.setattr(executor_mod.subprocess, "run", lambda *a, **kw: fake_result)
 
         dispatch_agent(
             "test-model", prompt_path, output_path,
@@ -98,7 +98,7 @@ class TestDispatchWritesMeta:
         fake_result = SimpleNamespace(
             stdout="error output", stderr="stack trace", returncode=1,
         )
-        monkeypatch.setattr(dispatch_mod.subprocess, "run", lambda *a, **kw: fake_result)
+        monkeypatch.setattr(executor_mod.subprocess, "run", lambda *a, **kw: fake_result)
 
         dispatch_agent(
             "test-model", prompt_path, output_path,
@@ -122,7 +122,7 @@ class TestDispatchWritesMeta:
         def _raise_timeout(*args, **kwargs):
             raise subprocess.TimeoutExpired(cmd="agents", timeout=600)
 
-        monkeypatch.setattr(dispatch_mod.subprocess, "run", _raise_timeout)
+        monkeypatch.setattr(executor_mod.subprocess, "run", _raise_timeout)
 
         dispatch_agent(
             "test-model", prompt_path, output_path,
@@ -195,7 +195,7 @@ class TestDispatcherReadsMetaSidecar:
 
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
@@ -242,7 +242,7 @@ class TestDispatcherReadsMetaSidecar:
 
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
@@ -287,7 +287,7 @@ class TestDispatcherReadsMetaSidecar:
 
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):

@@ -18,8 +18,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# task_router lives alongside flow_schema (in src/scripts/)
-from flow.types.routing import TASK_ROUTES
+from taskrouter import ensure_discovered, registry as _task_registry
 
 
 # ---------------------------------------------------------------------------
@@ -245,8 +244,9 @@ def parse_flow_signal(signal_path: Path) -> FlowDeclaration:
 # ---------------------------------------------------------------------------
 
 def _known_task_types() -> frozenset[str]:
-    """Return the set of known task types from the task router."""
-    return frozenset(TASK_ROUTES.keys())
+    """Return the set of known task types from the taskrouter registry."""
+    ensure_discovered()
+    return _task_registry.all_task_types
 
 
 def validate_flow_declaration(decl: FlowDeclaration) -> list[str]:

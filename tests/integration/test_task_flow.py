@@ -106,12 +106,12 @@ class TestSubmitChain:
         assert result == []
 
     def test_single_step_chain(self, db_path: Path) -> None:
-        steps = [TaskSpec(task_type="alignment_check")]
+        steps = [TaskSpec(task_type="staleness.alignment_check")]
         ids = submit_chain(db_path, "test-agent", steps)
         assert len(ids) == 1
 
         task = _query_task(db_path, ids[0])
-        assert task["task_type"] == "alignment_check"
+        assert task["task_type"] == "staleness.alignment_check"
         assert task["submitted_by"] == "test-agent"
         assert task["depends_on"] is None
         assert task["status"] == "pending"
@@ -119,9 +119,9 @@ class TestSubmitChain:
     def test_three_step_chain_dependency_wiring(self, db_path: Path) -> None:
         """3-step chain: step[1] depends on step[0], step[2] on step[1]."""
         steps = [
-            TaskSpec(task_type="alignment_check"),
-            TaskSpec(task_type="impact_analysis"),
-            TaskSpec(task_type="coordination_fix"),
+            TaskSpec(task_type="staleness.alignment_check"),
+            TaskSpec(task_type="signals.impact_analysis"),
+            TaskSpec(task_type="coordination.fix"),
         ]
         ids = submit_chain(db_path, "test-agent", steps)
         assert len(ids) == 3
@@ -142,8 +142,8 @@ class TestSubmitChain:
     def test_shared_chain_id(self, db_path: Path) -> None:
         """All steps in a chain share the same chain_id."""
         steps = [
-            TaskSpec(task_type="alignment_check"),
-            TaskSpec(task_type="impact_analysis"),
+            TaskSpec(task_type="staleness.alignment_check"),
+            TaskSpec(task_type="signals.impact_analysis"),
         ]
         ids = submit_chain(db_path, "test-agent", steps)
 
@@ -155,8 +155,8 @@ class TestSubmitChain:
     def test_shared_flow_id(self, db_path: Path) -> None:
         """All steps in a chain share the same flow_id."""
         steps = [
-            TaskSpec(task_type="alignment_check"),
-            TaskSpec(task_type="impact_analysis"),
+            TaskSpec(task_type="staleness.alignment_check"),
+            TaskSpec(task_type="signals.impact_analysis"),
         ]
         ids = submit_chain(db_path, "test-agent", steps)
 
@@ -168,8 +168,8 @@ class TestSubmitChain:
     def test_unique_instance_ids(self, db_path: Path) -> None:
         """Each step gets a unique instance_id."""
         steps = [
-            TaskSpec(task_type="alignment_check"),
-            TaskSpec(task_type="impact_analysis"),
+            TaskSpec(task_type="staleness.alignment_check"),
+            TaskSpec(task_type="signals.impact_analysis"),
         ]
         ids = submit_chain(db_path, "test-agent", steps)
 
@@ -181,7 +181,7 @@ class TestSubmitChain:
 
     def test_explicit_flow_and_chain_ids(self, db_path: Path) -> None:
         """Caller-provided flow_id and chain_id are used."""
-        steps = [TaskSpec(task_type="alignment_check")]
+        steps = [TaskSpec(task_type="staleness.alignment_check")]
         ids = submit_chain(
             db_path, "test-agent", steps,
             flow_id="flow_custom", chain_id="chain_custom",
@@ -192,7 +192,7 @@ class TestSubmitChain:
         assert task["chain_id"] == "chain_custom"
 
     def test_declared_by_task_id_propagated(self, db_path: Path) -> None:
-        steps = [TaskSpec(task_type="alignment_check")]
+        steps = [TaskSpec(task_type="staleness.alignment_check")]
         ids = submit_chain(
             db_path, "test-agent", steps,
             declared_by_task_id=42,
@@ -203,7 +203,7 @@ class TestSubmitChain:
 
     def test_flow_context_paths_set(self, db_path: Path) -> None:
         """Each task has flow_context_path, continuation_path, result_manifest_path."""
-        steps = [TaskSpec(task_type="alignment_check")]
+        steps = [TaskSpec(task_type="staleness.alignment_check")]
         ids = submit_chain(db_path, "test-agent", steps)
         tid = ids[0]
 
@@ -217,8 +217,8 @@ class TestSubmitChain:
     ) -> None:
         """Flow context JSON file is written when planspace provided."""
         steps = [
-            TaskSpec(task_type="alignment_check"),
-            TaskSpec(task_type="impact_analysis"),
+            TaskSpec(task_type="staleness.alignment_check"),
+            TaskSpec(task_type="signals.impact_analysis"),
         ]
         ids = submit_chain(
             db_path, "test-agent", steps,
@@ -231,7 +231,7 @@ class TestSubmitChain:
         assert ctx_path.exists()
         ctx = json.loads(ctx_path.read_text())
         assert ctx["task"]["task_id"] == ids[0]
-        assert ctx["task"]["task_type"] == "alignment_check"
+        assert ctx["task"]["task_type"] == "staleness.alignment_check"
         assert ctx["task"]["depends_on"] is None
         assert ctx["origin_refs"] == ["ref-1"]
         assert ctx["previous_result_manifest"] is None
@@ -248,7 +248,7 @@ class TestSubmitChain:
 
     def test_no_context_files_without_planspace(self, db_path: Path, tmp_path: Path) -> None:
         """No flow context files created when planspace is None."""
-        steps = [TaskSpec(task_type="alignment_check")]
+        steps = [TaskSpec(task_type="staleness.alignment_check")]
         submit_chain(db_path, "test-agent", steps)
         # No artifacts directory should exist in tmp_path
         assert not (tmp_path / "artifacts").exists()
@@ -257,7 +257,7 @@ class TestSubmitChain:
         """TaskSpec fields (concern_scope, payload, priority, problem_id) propagate."""
         steps = [
             TaskSpec(
-                task_type="impact_analysis",
+                task_type="signals.impact_analysis",
                 concern_scope="payments",
                 payload_path="/tmp/prompt.md",
                 priority="high",
@@ -267,7 +267,7 @@ class TestSubmitChain:
         ids = submit_chain(db_path, "test-agent", steps)
 
         task = _query_task(db_path, ids[0])
-        assert task["task_type"] == "impact_analysis"
+        assert task["task_type"] == "signals.impact_analysis"
         assert task["concern_scope"] == "payments"
         assert task["payload_path"] == "/tmp/prompt.md"
         assert task["priority"] == "high"
@@ -293,11 +293,11 @@ class TestSubmitFanout:
         branches = [
             BranchSpec(
                 label="branch-a",
-                steps=[TaskSpec(task_type="alignment_check")],
+                steps=[TaskSpec(task_type="staleness.alignment_check")],
             ),
             BranchSpec(
                 label="branch-b",
-                steps=[TaskSpec(task_type="impact_analysis")],
+                steps=[TaskSpec(task_type="signals.impact_analysis")],
             ),
         ]
         submit_fanout(
@@ -327,11 +327,11 @@ class TestSubmitFanout:
         branches = [
             BranchSpec(
                 label="a",
-                steps=[TaskSpec(task_type="alignment_check")],
+                steps=[TaskSpec(task_type="staleness.alignment_check")],
             ),
             BranchSpec(
                 label="b",
-                steps=[TaskSpec(task_type="impact_analysis")],
+                steps=[TaskSpec(task_type="signals.impact_analysis")],
             ),
         ]
         gate_id = submit_fanout(
@@ -355,11 +355,11 @@ class TestSubmitFanout:
         branches = [
             BranchSpec(
                 label="branch-x",
-                steps=[TaskSpec(task_type="alignment_check")],
+                steps=[TaskSpec(task_type="staleness.alignment_check")],
             ),
             BranchSpec(
                 label="branch-y",
-                steps=[TaskSpec(task_type="impact_analysis")],
+                steps=[TaskSpec(task_type="signals.impact_analysis")],
             ),
         ]
         gate_id = submit_fanout(
@@ -385,7 +385,7 @@ class TestSubmitFanout:
     def test_no_gate_returns_none(self, db_path: Path) -> None:
         """Without a gate spec, no gate is created."""
         branches = [
-            BranchSpec(steps=[TaskSpec(task_type="alignment_check")]),
+            BranchSpec(steps=[TaskSpec(task_type="staleness.alignment_check")]),
         ]
         result = submit_fanout(
             db_path, "test-agent", branches,
@@ -396,14 +396,14 @@ class TestSubmitFanout:
     def test_gate_synthesis_fields(self, db_path: Path) -> None:
         """Gate synthesis task fields are stored correctly."""
         branches = [
-            BranchSpec(steps=[TaskSpec(task_type="alignment_check")]),
+            BranchSpec(steps=[TaskSpec(task_type="staleness.alignment_check")]),
         ]
         gate_id = submit_fanout(
             db_path, "test-agent", branches,
             flow_id="flow_syn",
             gate=GateSpec(
                 synthesis=TaskSpec(
-                    task_type="impact_analysis",
+                    task_type="signals.impact_analysis",
                     problem_id="P-syn",
                     concern_scope="payments",
                     payload_path="/tmp/syn.md",
@@ -413,7 +413,7 @@ class TestSubmitFanout:
         )
 
         gate = _query_gate(db_path, gate_id)
-        assert gate["synthesis_task_type"] == "impact_analysis"
+        assert gate["synthesis_task_type"] == "signals.impact_analysis"
         assert gate["synthesis_problem_id"] == "P-syn"
         assert gate["synthesis_concern_scope"] == "payments"
         assert gate["synthesis_payload_path"] == "/tmp/syn.md"
@@ -443,8 +443,8 @@ class TestSubmitFanout:
         conn.close()
 
         assert len(tasks) == 2
-        assert tasks[0]["task_type"] == "integration_proposal"
-        assert tasks[1]["task_type"] == "alignment_check"
+        assert tasks[0]["task_type"] == "proposal.integration"
+        assert tasks[1]["task_type"] == "staleness.alignment_check"
         # Both in same chain
         assert tasks[0]["chain_id"] == tasks[1]["chain_id"]
         # Second depends on first
@@ -456,9 +456,9 @@ class TestSubmitFanout:
             BranchSpec(
                 label="long-branch",
                 steps=[
-                    TaskSpec(task_type="alignment_check"),
-                    TaskSpec(task_type="impact_analysis"),
-                    TaskSpec(task_type="coordination_fix"),
+                    TaskSpec(task_type="staleness.alignment_check"),
+                    TaskSpec(task_type="signals.impact_analysis"),
+                    TaskSpec(task_type="coordination.fix"),
                 ],
             ),
         ]
@@ -482,7 +482,7 @@ class TestSubmitFanout:
 
         assert len(tasks) == 3
         assert tasks[2]["id"] == leaf_tid
-        assert tasks[2]["task_type"] == "coordination_fix"
+        assert tasks[2]["task_type"] == "coordination.fix"
 
     def test_fanout_flow_context_written(
         self, db_path: Path, flow_planspace: Path
@@ -491,7 +491,7 @@ class TestSubmitFanout:
         branches = [
             BranchSpec(
                 label="a",
-                steps=[TaskSpec(task_type="alignment_check")],
+                steps=[TaskSpec(task_type="staleness.alignment_check")],
             ),
         ]
         submit_fanout(
@@ -514,7 +514,7 @@ class TestSubmitFanout:
     def test_declared_by_propagated_to_gate(self, db_path: Path) -> None:
         """declared_by_task_id is stored on the gate row."""
         branches = [
-            BranchSpec(steps=[TaskSpec(task_type="alignment_check")]),
+            BranchSpec(steps=[TaskSpec(task_type="staleness.alignment_check")]),
         ]
         gate_id = submit_fanout(
             db_path, "test-agent", branches,
@@ -544,8 +544,8 @@ class TestFlowCatalog:
             ["ref-1"],
         )
         assert len(steps) == 2
-        assert steps[0].task_type == "integration_proposal"
-        assert steps[1].task_type == "alignment_check"
+        assert steps[0].task_type == "proposal.integration"
+        assert steps[1].task_type == "staleness.alignment_check"
         assert steps[0].concern_scope == "auth"
         assert steps[1].concern_scope == "auth"
 
@@ -556,8 +556,8 @@ class TestFlowCatalog:
             [],
         )
         assert len(steps) == 2
-        assert steps[0].task_type == "strategic_implementation"
-        assert steps[1].task_type == "alignment_check"
+        assert steps[0].task_type == "implementation.strategic"
+        assert steps[1].task_type == "staleness.alignment_check"
 
     def test_research_ticket_package(self) -> None:
         steps = resolve_chain_ref(
@@ -570,7 +570,7 @@ class TestFlowCatalog:
             [],
         )
         assert len(steps) == 1
-        assert steps[0].task_type == "research_domain_ticket"
+        assert steps[0].task_type == "research.domain_ticket"
         assert steps[0].payload_path == "/tmp/research-ticket.md"
         assert steps[0].problem_id == "research-03-T-01"
 
@@ -586,9 +586,9 @@ class TestFlowCatalog:
             [],
         )
         assert len(steps) == 2
-        assert steps[0].task_type == "scan_explore"
+        assert steps[0].task_type == "scan.explore"
         assert steps[0].payload_path == "/tmp/research-scan.md"
-        assert steps[1].task_type == "research_domain_ticket"
+        assert steps[1].task_type == "research.domain_ticket"
         assert steps[1].payload_path == "/tmp/research-ticket.md"
 
     def test_unknown_package_raises(self) -> None:
@@ -607,11 +607,11 @@ class TestIdUniqueness:
         """Two separate chains get distinct flow/chain IDs."""
         ids1 = submit_chain(
             db_path, "agent-1",
-            [TaskSpec(task_type="alignment_check")],
+            [TaskSpec(task_type="staleness.alignment_check")],
         )
         ids2 = submit_chain(
             db_path, "agent-2",
-            [TaskSpec(task_type="impact_analysis")],
+            [TaskSpec(task_type="signals.impact_analysis")],
         )
 
         t1 = _query_task(db_path, ids1[0])

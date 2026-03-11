@@ -35,7 +35,7 @@ task-submission path in your dispatch prompt:
 Legacy single-task format (still accepted):
 ```json
 {
-    "task_type": "scan_explore",
+    "task_type": "scan.explore",
     "problem_id": "<problem-id>",
     "concern_scope": "<section-id>",
     "payload_path": "<path-to-exploration-prompt>",
@@ -51,8 +51,8 @@ Chain format (v2) — declare sequential follow-up steps:
         {
             "kind": "chain",
             "steps": [
-                {"task_type": "scan_explore", "concern_scope": "<section-id>", "payload_path": "<path-to-broad-explore-prompt>"},
-                {"task_type": "scan_explore", "concern_scope": "<section-id>", "payload_path": "<path-to-refined-explore-prompt>"}
+                {"task_type": "scan.explore", "concern_scope": "<section-id>", "payload_path": "<path-to-broad-explore-prompt>"},
+                {"task_type": "scan.explore", "concern_scope": "<section-id>", "payload_path": "<path-to-refined-explore-prompt>"}
             ]
         }
     ]

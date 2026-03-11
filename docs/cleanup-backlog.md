@@ -37,42 +37,26 @@ Each item describes a structural mess, why it's a problem, and where it lives.
 ### 11. `intent` and `risk` systems missing `routes.py`
 - **Status**: DONE — created `intent/routes.py` (10 routes) and `risk/routes.py` (3 routes), registered in `taskrouter/discovery.py`
 
----
-
-## IDENTIFIED — NOT YET STARTED
-
-### 2. `section_dispatch.py` is a frankenstein of concerns
-- **Where**: `src/dispatch/engine/section_dispatch.py`
-- **Problem**: `dispatch_agent()` does 7 unrelated things: pause checking, context sidecar materialization, monitor startup/shutdown, QA interception, actual dispatch, output writing, metadata writing. Also contains `adjudicate_agent_output()`, `create_signal_template()`, `read_model_policy()` — none of which are "section dispatch."
-- **Fix**: Split into focused middleware (pause gate, monitor lifecycle, QA gate, dispatch core)
-
-### 3. No typed domain objects — raw dicts everywhere
-- **Where**: Throughout the codebase
-- **Problem**: `build_flow_context` returns `dict | None`. `coord_plan` is `dict[str, Any]`. Problems are `list[dict[str, Any]]`. Everything is untyped bags of strings and dicts. No `FlowContext`, `CoordinationPlan`, `Problem` dataclasses.
-- **Key files**: `src/flow/repository/context.py`, `src/coordination/engine/executor.py`, `src/coordination/engine/runner.py`
-- **Fix**: Introduce domain dataclasses. Start with FlowContext (most contained).
-
-### 6. `write_dispatch_prompt` is string concatenation, not structured
-- **Where**: `src/flow/repository/context.py:88`
-- **Problem**: Reads an original prompt file as raw text, prepends a `<flow-context>` header (also raw text), writes a new file. No typed FlowContext, no structured prompt object, no path abstraction. `flow_context_path` is a relative path string baked into prompt text.
-- **Fix**: Create a proper PromptBuilder or FlowContext type
-
-### 12. Cross-system agent dispatch via hardcoded strings
-- **Where**: 19 agents dispatched via `agent_file="foo.md"` scattered across ~15 files
-- **Problem**: No routing, no policy override, no observability. The `agent_file` param is just a raw string. The whole point of the taskrouter system is to replace this pattern.
-- **Fix**: After routes.py exists for all systems, migrate direct dispatch to use `taskrouter.registry.resolve()`
-
 ### 13. Old centralized `TASK_ROUTES` dict still exists
-- **Where**: `src/flow/types/routing.py`
-- **Problem**: The old flat routing table (`resolve_task()`, `submit_task()`) still exists and is still used by `src/flow/engine/dispatcher.py`. It duplicates the new `taskrouter` system.
-- **Fix**: Migrate `dispatcher.py` to use `taskrouter.registry.resolve()`, delete `TASK_ROUTES` dict
+- **Status**: DONE — deleted `TASK_ROUTES` dict and `resolve_task()` from `flow/types/routing.py`. Migrated `dispatcher.py` to `taskrouter.registry.resolve()`. Added `ensure_discovered()` lazy init. `submit_task()` kept as pure DB helper.
 
 ### 14. `dispatch/prompt/writers.py` has hardcoded `allowed_tasks` strings
-- **Where**: `src/dispatch/prompt/writers.py` lines ~176 and ~346
-- **Problem**: Hardcoded task name lists like `"scan_explore, impact_analysis, integration_proposal, research_plan"` baked into prompt templates. Uses old flat names, not qualified names.
-- **Fix**: Generate from `taskrouter.registry.allowed_tasks_for()` with qualified names
+- **Status**: DONE — updated hardcoded task lists to use qualified names (`scan.explore`, `signals.impact_analysis`, etc.). Agent prompts now reference qualified task types matching `taskrouter.registry`.
 
 ### 15. `context_sidecar.py` dumps ALL task routes as JSON
-- **Where**: `src/dispatch/service/context_sidecar.py`
-- **Problem**: `_resolve_allowed_tasks()` dumps all `TASK_ROUTES` keys. Should use scoped allowed_tasks from taskrouter.
-- **Fix**: Replace with `taskrouter.registry.allowed_tasks_for(scope)`
+- **Status**: DONE — `_resolve_allowed_tasks()` now uses `taskrouter.registry.all_task_types` instead of `TASK_ROUTES.keys()`. Also migrated `flow/types/schema.py` validation to use registry.
+
+### 12. Cross-system agent dispatch via hardcoded strings
+- **Status**: DONE — added 7 missing routes (coordination.plan, coordination.bridge, dispatch.bridge_tools, dispatch.qa_intercept, implementation.microstrategy, implementation.reexplore, signals.impact_normalize). Added `agent_for()` helper to taskrouter. Migrated 61 dispatch calls across 30 files from `agent_file="foo.md"` to `agent_file=agent_for("task.type")`. Only legacy `section-loop.py` retains hardcoded strings.
+
+### 2. `section_dispatch.py` is a frankenstein of concerns
+- **Status**: DONE — extracted `adjudicate_agent_output` to `dispatch/service/output_adjudicator.py`, `create_signal_template` to `signals/repository/signal_template.py`. Removed `read_model_policy` wrapper (callers now import `load_model_policy` directly). Eliminated 5 re-exports (`check_agent_signals`, `summarize_output`, `write_model_choice_signal`, `read_agent_signal`, `read_signal_tuple`) — updated 18 callers to import from source modules. Module now contains only `dispatch_agent` + private helpers.
+
+---
+
+### 3. No typed domain objects — raw dicts everywhere
+- **Status**: DONE (partial) — introduced `FlowContext` and `FlowTask` dataclasses in `src/flow/types/context.py`. `build_flow_context` now returns `FlowContext | None`. `write_flow_context` constructs `FlowContext` internally. All callers and tests updated to use attribute access. Remaining: `CoordinationPlan`, `Problem` dataclasses (separate future item).
+
+### 6. `write_dispatch_prompt` is string concatenation, not structured
+- **Status**: DONE — `write_dispatch_prompt` now uses `FlowContext` typed domain object. The prompt wrapper is structured via `PathRegistry.flows_dir()` for path management. Flow context is serialized through `FlowContext.to_dict()` / `FlowContext.from_dict()` round-trip.
+

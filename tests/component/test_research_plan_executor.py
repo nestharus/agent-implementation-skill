@@ -94,18 +94,18 @@ def test_execute_research_plan_translates_semantic_plan_into_fanout(
 
     tasks = _query_all(db_path, "SELECT * FROM tasks ORDER BY id")
     assert [task["task_type"] for task in tasks] == [
-        "research_domain_ticket",
-        "scan_explore",
-        "research_domain_ticket",
-        "research_domain_ticket",
-        "scan_explore",
-        "research_domain_ticket",
+        "research.domain_ticket",
+        "scan.explore",
+        "research.domain_ticket",
+        "research.domain_ticket",
+        "scan.explore",
+        "research.domain_ticket",
     ]
 
     gates = _query_all(db_path, "SELECT * FROM gates")
     assert len(gates) == 1
     assert gates[0]["expected_count"] == 3
-    assert gates[0]["synthesis_task_type"] == "research_synthesis"
+    assert gates[0]["synthesis_task_type"] == "research.synthesis"
 
     status = json.loads(paths.research_status("03").read_text(encoding="utf-8"))
     assert status["status"] == "tickets_submitted"

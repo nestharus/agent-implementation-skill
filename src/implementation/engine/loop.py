@@ -13,12 +13,14 @@ from staleness.service.section_alignment import _extract_problems, collect_modif
 from staleness.helpers.detection import diff_files, snapshot_files
 from signals.service.communication import _record_traceability, log, mailbox_send
 from coordination.service.cross_section import persist_decision
-from dispatch.engine.section_dispatch import check_agent_signals, dispatch_agent, summarize_output
+from dispatch.engine.section_dispatch import dispatch_agent
+from dispatch.helpers.utils import check_agent_signals, summarize_output
 from orchestrator.service.pipeline_control import handle_pending_messages, pause_for_parent
 from dispatch.prompt.writers import write_impl_alignment_prompt, write_strategic_impl_prompt
 from flow.service.section_ingestion import ingest_and_submit
 from implementation.service.traceability import _write_traceability_index
 from flow.types.schema import TaskSpec
+from taskrouter import agent_for
 
 
 def run_implementation_loop(
@@ -117,7 +119,7 @@ def run_implementation_loop(
             impl_agent,
             codespace=codespace,
             section_number=section.number,
-            agent_file="implementation-strategist.md",
+            agent_file=agent_for("implementation.strategic"),
         )
         if impl_result == "ALIGNMENT_CHANGED_PENDING":
             return None
@@ -184,7 +186,7 @@ def run_implementation_loop(
             parent,
             codespace=codespace,
             section_number=section.number,
-            agent_file="alignment-judge.md",
+            agent_file=agent_for("staleness.alignment_check"),
         )
         if impl_align_result == "ALIGNMENT_CHANGED_PENDING":
             return None
@@ -364,7 +366,7 @@ def _dispatch_post_impl_assessment(
         f"post-impl-{section_number}",
         [
             TaskSpec(
-                task_type="post_impl_assessment",
+                task_type="implementation.post_assessment",
                 concern_scope=f"section-{section_number}",
                 payload_path=str(prompt_path),
                 problem_id=f"post-impl-{section_number}",

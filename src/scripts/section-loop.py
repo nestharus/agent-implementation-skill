@@ -101,6 +101,15 @@ WORKFLOW_HOME = Path(os.environ.get(
     Path(__file__).resolve().parent.parent,
 ))
 DB_SH = WORKFLOW_HOME / "scripts" / "db.sh"
+AGENTS_DIR = Path(os.environ.get(
+    "AGENTS_DIR",
+    Path("/home/nes/.claude/workspaces/pulseplan/agents"),
+))
+
+def resolve_agent_path(name: str) -> Path:
+    """Resolve agent definition file path from safe directory."""
+    return AGENTS_DIR / name
+
 AGENT_NAME = "section-loop"
 # Coordination round limits: hard cap to prevent runaway, but rounds
 # continue adaptively while problem count decreases.
@@ -1639,7 +1648,7 @@ Your job is to determine why and classify the situation.
    to this section's problem space
 4. Use GLM sub-agents for quick file reads:
    ```bash
-   uv run --frozen agents --model glm --project "{codespace}" "<instructions>"
+   agents --model glm --project "{codespace}" "<instructions>"
    ```
 
 ## Output
@@ -1932,7 +1941,7 @@ before diving into individual files.
 
 **Dispatch GLM sub-agents for targeted exploration:**
 ```bash
-uv run --frozen agents --model glm --project "{codespace}" "<instructions>"
+agents --model glm --project "{codespace}" "<instructions>"
 ```
 
 Use GLM to:
@@ -2173,7 +2182,7 @@ to understand how your changes fit into the broader project structure.
 
 For cheap exploration (reading, checking, verifying):
 ```bash
-uv run --frozen agents --model glm --project "{codespace}" "<instructions>"
+agents --model glm --project "{codespace}" "<instructions>"
 ```
 
 For targeted implementation of specific areas:
@@ -2428,8 +2437,10 @@ def _extract_problems(result: str) -> str | None:
             first_line = stripped
             break
 
-    # Strip markdown bold/emphasis and trailing punctuation for comparison
-    clean_first = first_line.strip("*_# ").split("\u2014")[0].split(" ")[0].strip()
+    # Strip markdown bold/emphasis and extract the first word for comparison
+    # Use regex to robustly extract ALIGNED/PROBLEMS from markdown-formatted output
+    first_word_match = _re.match(r'^[\s*_#]*(\w+)', first_line)
+    clean_first = first_word_match.group(1) if first_word_match else ""
 
     # Exact match ALIGNED on first line (not a substring of MISALIGNED etc.)
     if clean_first == "ALIGNED":
@@ -2666,6 +2677,7 @@ def run_section(
                             / f"section-{section.number}-integration-proposal.md")
     proposal_problems: str | None = None
     proposal_attempt = 0
+    MAX_PROPOSAL_ATTEMPTS = 10  # safety cap
 
     while True:
         # Check for pending messages between iterations
@@ -2681,6 +2693,12 @@ def run_section(
             return None
 
         proposal_attempt += 1
+        if proposal_attempt > MAX_PROPOSAL_ATTEMPTS:
+            log(f"Section {section.number}: proposal attempt cap "
+                f"({MAX_PROPOSAL_ATTEMPTS}) reached — aborting section")
+            mailbox_send(planspace, parent,
+                         f"fail:{section.number}:proposal_attempts_exhausted")
+            return None
         tag = "revise " if proposal_problems else ""
         log(f"Section {section.number}: {tag}integration proposal "
             f"(attempt {proposal_attempt})")
@@ -2946,6 +2964,7 @@ WHY — you're capturing WHAT and WHERE at the file level.
 
     impl_problems: str | None = None
     impl_attempt = 0
+    MAX_IMPL_ATTEMPTS = 10  # safety cap
 
     while True:
         # Check for pending messages between iterations
@@ -2961,6 +2980,12 @@ WHY — you're capturing WHAT and WHERE at the file level.
             return None
 
         impl_attempt += 1
+        if impl_attempt > MAX_IMPL_ATTEMPTS:
+            log(f"Section {section.number}: impl attempt cap "
+                f"({MAX_IMPL_ATTEMPTS}) reached — aborting section")
+            mailbox_send(planspace, parent,
+                         f"fail:{section.number}:impl_attempts_exhausted")
+            return None
         tag = "fix " if impl_problems else ""
         log(f"Section {section.number}: {tag}strategic implementation "
             f"(attempt {impl_attempt})")
@@ -3553,7 +3578,7 @@ creates or re-triggers another.
    the broader project structure. Then dispatch GLM sub-agents to read
    files and understand context:
    ```bash
-   uv run --frozen agents --model glm --project "{codespace}" "<instructions>"
+   agents --model glm --project "{codespace}" "<instructions>"
    ```
 
 2. **Plan holistically.** Consider how all the problems interact. A single

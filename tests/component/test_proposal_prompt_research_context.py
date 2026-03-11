@@ -77,8 +77,8 @@ def test_write_integration_proposal_prompt_includes_research_refs_when_present(
     assert "Research dossier (full findings)" in prompt
     assert str(dossier) in prompt
     assert (
-        "Available task types for this role: scan_explore, impact_analysis, "
-        "integration_proposal, research_plan"
+        "Available task types for this role: scan.explore, signals.impact_analysis, "
+        "proposal.integration, research.plan"
     ) in prompt
 
 

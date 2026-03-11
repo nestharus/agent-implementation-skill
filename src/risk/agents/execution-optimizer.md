@@ -263,7 +263,7 @@ Write JSON matching the `RiskPlan` schema from
             "kind": "chain",
             "steps": [
               {
-                "task_type": "scan_explore",
+                "task_type": "scan.explore",
                 "concern_scope": "section-03",
                 "payload_path": "artifacts/prompts/section-03-refresh.md"
               }

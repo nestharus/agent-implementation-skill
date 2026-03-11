@@ -85,7 +85,7 @@ To submit a task request, write to `{task_submission_path}`:
 Legacy single-task format (still accepted):
 ```json
 {{
-    "task_type": "scan_explore",
+    "task_type": "scan.explore",
     "concern_scope": "section-{section_number}",
     "payload_path": "<path-to-exploration-prompt>",
     "priority": "normal"
@@ -100,8 +100,8 @@ Chain format (v2) — declare sequential follow-up steps:
         {{
             "kind": "chain",
             "steps": [
-                {{"task_type": "scan_explore", "concern_scope": "section-{section_number}", "payload_path": "<path-to-explore-prompt>"}},
-                {{"task_type": "integration_proposal", "concern_scope": "section-{section_number}", "payload_path": "<path-to-proposal-prompt>"}}
+                {{"task_type": "scan.explore", "concern_scope": "section-{section_number}", "payload_path": "<path-to-explore-prompt>"}},
+                {{"task_type": "proposal.integration", "concern_scope": "section-{section_number}", "payload_path": "<path-to-proposal-prompt>"}}
             ]
         }}
     ]

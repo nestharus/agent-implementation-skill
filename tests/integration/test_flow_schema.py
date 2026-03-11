@@ -38,8 +38,8 @@ class TestDataStructures:
     """Basic data structure construction and defaults."""
 
     def test_task_spec_defaults(self) -> None:
-        ts = TaskSpec(task_type="alignment_check")
-        assert ts.task_type == "alignment_check"
+        ts = TaskSpec(task_type="staleness.alignment_check")
+        assert ts.task_type == "staleness.alignment_check"
         assert ts.concern_scope == ""
         assert ts.payload_path == ""
         assert ts.priority == "normal"
@@ -83,31 +83,31 @@ class TestNormalizeFlowDeclaration:
     """Tests for normalize_flow_declaration()."""
 
     def test_legacy_single_dict(self) -> None:
-        raw = {"task_type": "alignment_check", "concern_scope": "auth"}
+        raw = {"task_type": "staleness.alignment_check", "concern_scope": "auth"}
         decl = normalize_flow_declaration(raw)
         assert decl.version == 1
         assert len(decl.actions) == 1
         assert isinstance(decl.actions[0], ChainAction)
         assert len(decl.actions[0].steps) == 1
-        assert decl.actions[0].steps[0].task_type == "alignment_check"
+        assert decl.actions[0].steps[0].task_type == "staleness.alignment_check"
         assert decl.actions[0].steps[0].concern_scope == "auth"
 
     def test_legacy_array(self) -> None:
         raw = [
-            {"task_type": "alignment_check"},
-            {"task_type": "impact_analysis"},
+            {"task_type": "staleness.alignment_check"},
+            {"task_type": "signals.impact_analysis"},
         ]
         decl = normalize_flow_declaration(raw)
         assert decl.version == 1
         assert len(decl.actions) == 1
         assert len(decl.actions[0].steps) == 2
-        assert decl.actions[0].steps[0].task_type == "alignment_check"
-        assert decl.actions[0].steps[1].task_type == "impact_analysis"
+        assert decl.actions[0].steps[0].task_type == "staleness.alignment_check"
+        assert decl.actions[0].steps[1].task_type == "signals.impact_analysis"
 
     def test_legacy_array_skips_non_task_entries(self) -> None:
         """Array entries without task_type are silently dropped."""
         raw = [
-            {"task_type": "alignment_check"},
+            {"task_type": "staleness.alignment_check"},
             {"not_a_task": True},
         ]
         decl = normalize_flow_declaration(raw)
@@ -124,8 +124,8 @@ class TestNormalizeFlowDeclaration:
                 {
                     "kind": "chain",
                     "steps": [
-                        {"task_type": "alignment_check"},
-                        {"task_type": "impact_analysis"},
+                        {"task_type": "staleness.alignment_check"},
+                        {"task_type": "signals.impact_analysis"},
                     ],
                 }
             ],
@@ -145,11 +145,11 @@ class TestNormalizeFlowDeclaration:
                     "branches": [
                         {
                             "label": "branch-a",
-                            "steps": [{"task_type": "alignment_check"}],
+                            "steps": [{"task_type": "staleness.alignment_check"}],
                         },
                         {
                             "label": "branch-b",
-                            "steps": [{"task_type": "impact_analysis"}],
+                            "steps": [{"task_type": "signals.impact_analysis"}],
                         },
                     ],
                     "gate": {"mode": "all"},
@@ -188,7 +188,7 @@ class TestNormalizeFlowDeclaration:
 
     def test_legacy_preserves_all_fields(self) -> None:
         raw = {
-            "task_type": "impact_analysis",
+            "task_type": "signals.impact_analysis",
             "concern_scope": "payments",
             "payload_path": "/tmp/prompt.md",
             "priority": "high",
@@ -196,7 +196,7 @@ class TestNormalizeFlowDeclaration:
         }
         decl = normalize_flow_declaration(raw)
         step = decl.actions[0].steps[0]
-        assert step.task_type == "impact_analysis"
+        assert step.task_type == "signals.impact_analysis"
         assert step.concern_scope == "payments"
         assert step.payload_path == "/tmp/prompt.md"
         assert step.priority == "high"
@@ -209,11 +209,11 @@ class TestNormalizeFlowDeclaration:
                 {
                     "kind": "fanout",
                     "branches": [
-                        {"steps": [{"task_type": "alignment_check"}]},
+                        {"steps": [{"task_type": "staleness.alignment_check"}]},
                     ],
                     "gate": {
                         "mode": "all",
-                        "synthesis": {"task_type": "impact_analysis"},
+                        "synthesis": {"task_type": "signals.impact_analysis"},
                     },
                 }
             ],
@@ -222,7 +222,7 @@ class TestNormalizeFlowDeclaration:
         gate = decl.actions[0].gate
         assert gate is not None
         assert gate.synthesis is not None
-        assert gate.synthesis.task_type == "impact_analysis"
+        assert gate.synthesis.task_type == "signals.impact_analysis"
 
 
 # ---------------------------------------------------------------------------
@@ -234,16 +234,16 @@ class TestParseFlowSignal:
 
     def test_legacy_single_json(self, tmp_path: Path) -> None:
         p = tmp_path / "task.json"
-        p.write_text(json.dumps({"task_type": "alignment_check"}))
+        p.write_text(json.dumps({"task_type": "staleness.alignment_check"}))
         decl = parse_flow_signal(p)
         assert decl.version == 1
-        assert decl.actions[0].steps[0].task_type == "alignment_check"
+        assert decl.actions[0].steps[0].task_type == "staleness.alignment_check"
 
     def test_legacy_json_array(self, tmp_path: Path) -> None:
         p = tmp_path / "tasks.json"
         p.write_text(json.dumps([
-            {"task_type": "alignment_check"},
-            {"task_type": "impact_analysis"},
+            {"task_type": "staleness.alignment_check"},
+            {"task_type": "signals.impact_analysis"},
         ]))
         decl = parse_flow_signal(p)
         assert len(decl.actions[0].steps) == 2
@@ -251,8 +251,8 @@ class TestParseFlowSignal:
     def test_jsonl_format(self, tmp_path: Path) -> None:
         p = tmp_path / "tasks.jsonl"
         lines = [
-            json.dumps({"task_type": "alignment_check"}),
-            json.dumps({"task_type": "impact_analysis"}),
+            json.dumps({"task_type": "staleness.alignment_check"}),
+            json.dumps({"task_type": "signals.impact_analysis"}),
         ]
         p.write_text("\n".join(lines))
         decl = parse_flow_signal(p)
@@ -264,7 +264,7 @@ class TestParseFlowSignal:
         p.write_text(json.dumps({
             "version": 2,
             "actions": [
-                {"kind": "chain", "steps": [{"task_type": "alignment_check"}]},
+                {"kind": "chain", "steps": [{"task_type": "staleness.alignment_check"}]},
             ],
         }))
         decl = parse_flow_signal(p)
@@ -304,7 +304,7 @@ class TestValidateFlowDeclaration:
         decl = FlowDeclaration(
             version=1,
             actions=[ChainAction(steps=[
-                TaskSpec(task_type="alignment_check", payload_path="artifacts/prompt.md"),
+                TaskSpec(task_type="staleness.alignment_check", payload_path="artifacts/prompt.md"),
             ])],
         )
         errors = validate_flow_declaration(decl)
@@ -314,8 +314,8 @@ class TestValidateFlowDeclaration:
         decl = FlowDeclaration(
             version=2,
             actions=[ChainAction(steps=[
-                TaskSpec(task_type="alignment_check", payload_path="artifacts/p1.md"),
-                TaskSpec(task_type="impact_analysis", payload_path="artifacts/p2.md"),
+                TaskSpec(task_type="staleness.alignment_check", payload_path="artifacts/p1.md"),
+                TaskSpec(task_type="signals.impact_analysis", payload_path="artifacts/p2.md"),
             ])],
         )
         errors = validate_flow_declaration(decl)
@@ -335,8 +335,8 @@ class TestValidateFlowDeclaration:
         decl = FlowDeclaration(
             version=2,
             actions=[
-                ChainAction(steps=[TaskSpec(task_type="alignment_check")]),
-                ChainAction(steps=[TaskSpec(task_type="impact_analysis")]),
+                ChainAction(steps=[TaskSpec(task_type="staleness.alignment_check")]),
+                ChainAction(steps=[TaskSpec(task_type="signals.impact_analysis")]),
             ],
         )
         errors = validate_flow_declaration(decl)
@@ -375,7 +375,7 @@ class TestValidateFlowDeclaration:
             actions=[FanoutAction(branches=[
                 BranchSpec(
                     chain_ref="some-package",
-                    steps=[TaskSpec(task_type="alignment_check")],
+                    steps=[TaskSpec(task_type="staleness.alignment_check")],
                 ),
             ])],
         )
@@ -415,7 +415,7 @@ class TestValidateFlowDeclaration:
             version=2,
             actions=[FanoutAction(
                 branches=[
-                    BranchSpec(steps=[TaskSpec(task_type="alignment_check")]),
+                    BranchSpec(steps=[TaskSpec(task_type="staleness.alignment_check")]),
                 ],
                 gate=GateSpec(mode="any"),
             )],
@@ -428,7 +428,7 @@ class TestValidateFlowDeclaration:
             version=2,
             actions=[FanoutAction(
                 branches=[
-                    BranchSpec(steps=[TaskSpec(task_type="alignment_check")]),
+                    BranchSpec(steps=[TaskSpec(task_type="staleness.alignment_check")]),
                 ],
                 gate=GateSpec(
                     synthesis=TaskSpec(task_type="bogus_synthesis_task"),
@@ -452,8 +452,8 @@ class TestValidateFlowDeclaration:
             version=2,
             actions=[FanoutAction(
                 branches=[
-                    BranchSpec(steps=[TaskSpec(task_type="alignment_check", payload_path="p1.md")]),
-                    BranchSpec(steps=[TaskSpec(task_type="impact_analysis", payload_path="p2.md")]),
+                    BranchSpec(steps=[TaskSpec(task_type="staleness.alignment_check", payload_path="p1.md")]),
+                    BranchSpec(steps=[TaskSpec(task_type="signals.impact_analysis", payload_path="p2.md")]),
                 ],
                 gate=GateSpec(mode="all"),
             )],
@@ -466,9 +466,9 @@ class TestValidateFlowDeclaration:
         decl = FlowDeclaration(
             version=2,
             actions=[
-                ChainAction(steps=[TaskSpec(task_type="alignment_check", payload_path="p1.md")]),
+                ChainAction(steps=[TaskSpec(task_type="staleness.alignment_check", payload_path="p1.md")]),
                 FanoutAction(branches=[
-                    BranchSpec(steps=[TaskSpec(task_type="impact_analysis", payload_path="p2.md")]),
+                    BranchSpec(steps=[TaskSpec(task_type="signals.impact_analysis", payload_path="p2.md")]),
                 ]),
             ],
         )
@@ -489,12 +489,12 @@ class TestTaskIngestionIntegration:
 
         sig = tmp_path / "task.json"
         sig.write_text(json.dumps({
-            "task_type": "alignment_check",
+            "task_type": "staleness.alignment_check",
             "concern_scope": "auth",
         }))
         tasks = ingest_task_requests(sig)
         assert len(tasks) == 1
-        assert tasks[0]["task_type"] == "alignment_check"
+        assert tasks[0]["task_type"] == "staleness.alignment_check"
         assert tasks[0]["concern_scope"] == "auth"
         # Signal file should be deleted after ingestion
         assert not sig.exists()
@@ -505,8 +505,8 @@ class TestTaskIngestionIntegration:
 
         sig = tmp_path / "tasks.jsonl"
         lines = [
-            json.dumps({"task_type": "alignment_check"}),
-            json.dumps({"task_type": "impact_analysis"}),
+            json.dumps({"task_type": "staleness.alignment_check"}),
+            json.dumps({"task_type": "signals.impact_analysis"}),
         ]
         sig.write_text("\n".join(lines))
         tasks = ingest_task_requests(sig)
@@ -518,8 +518,8 @@ class TestTaskIngestionIntegration:
 
         sig = tmp_path / "tasks.json"
         sig.write_text(json.dumps([
-            {"task_type": "alignment_check"},
-            {"task_type": "impact_analysis"},
+            {"task_type": "staleness.alignment_check"},
+            {"task_type": "signals.impact_analysis"},
         ]))
         tasks = ingest_task_requests(sig)
         assert len(tasks) == 2
@@ -534,7 +534,7 @@ class TestTaskIngestionIntegration:
             "actions": [
                 {
                     "kind": "chain",
-                    "steps": [{"task_type": "alignment_check", "payload_path": "artifacts/p.md"}],
+                    "steps": [{"task_type": "staleness.alignment_check", "payload_path": "artifacts/p.md"}],
                 },
             ],
         }))
@@ -594,7 +594,7 @@ class TestTaskIngestionIntegration:
 
         sig = tmp_path / "task.json"
         sig.write_text(json.dumps({
-            "task_type": "alignment_check",
+            "task_type": "staleness.alignment_check",
             "concern_scope": "payments",
             "payload_path": "/tmp/prompt.md",
             "priority": "high",
@@ -603,7 +603,7 @@ class TestTaskIngestionIntegration:
         tasks = ingest_task_requests(sig)
         assert len(tasks) == 1
         t = tasks[0]
-        assert t["task_type"] == "alignment_check"
+        assert t["task_type"] == "staleness.alignment_check"
         assert t["concern_scope"] == "payments"
         assert t["payload_path"] == "/tmp/prompt.md"
         assert t["priority"] == "high"
@@ -615,7 +615,7 @@ class TestTaskIngestionIntegration:
 
         sig = tmp_path / "task.json"
         sig.write_text(json.dumps({
-            "task_type": "alignment_check",
+            "task_type": "staleness.alignment_check",
             "priority": "normal",
         }))
         tasks = ingest_task_requests(sig)

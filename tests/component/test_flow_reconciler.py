@@ -52,7 +52,7 @@ def test_manifest_builders_keep_existing_shape() -> None:
         instance_id="inst_1",
         flow_id="flow_1",
         chain_id="chain_1",
-        task_type="alignment_check",
+        task_type="staleness.alignment_check",
         status="complete",
         output_path="out.md",
         error=None,
@@ -81,7 +81,7 @@ def test_reconcile_task_completion_writes_result_manifest(tmp_path) -> None:
     [task_id] = submit_chain(
         db_path,
         "tester",
-        [TaskSpec(task_type="alignment_check")],
+        [TaskSpec(task_type="staleness.alignment_check")],
         planspace=planspace,
     )
     _update_task_status(db_path, task_id, "complete")
@@ -111,7 +111,7 @@ def test_reconcile_task_completion_extends_chain_from_continuation(tmp_path) -> 
     [task_id] = submit_chain(
         db_path,
         "tester",
-        [TaskSpec(task_type="alignment_check")],
+        [TaskSpec(task_type="staleness.alignment_check")],
         planspace=planspace,
     )
     continuation_path = planspace / f"artifacts/flows/task-{task_id}-continuation.json"
@@ -122,7 +122,7 @@ def test_reconcile_task_completion_extends_chain_from_continuation(tmp_path) -> 
                 "actions": [
                     {
                         "kind": "chain",
-                        "steps": [{"task_type": "impact_analysis"}],
+                        "steps": [{"task_type": "signals.impact_analysis"}],
                     }
                 ],
             }
@@ -155,7 +155,7 @@ def test_reconcile_task_completion_runs_research_plan_executor(
         "tester",
         [
             TaskSpec(
-                task_type="research_plan",
+                task_type="research.plan",
                 concern_scope="section-03",
                 payload_path=str(planspace / "artifacts" / "research-plan-03-prompt.md"),
             )
@@ -221,7 +221,7 @@ def test_reconcile_task_completion_submits_research_verify_after_synthesis(
         "tester",
         [
             TaskSpec(
-                task_type="research_synthesis",
+                task_type="research.synthesis",
                 concern_scope="section-03",
                 payload_path=str(planspace / "artifacts" / "research-synthesis-03-prompt.md"),
             )
@@ -243,8 +243,8 @@ def test_reconcile_task_completion_submits_research_verify_after_synthesis(
     rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
     conn.close()
     assert [row["task_type"] for row in rows] == [
-        "research_synthesis",
-        "research_verify",
+        "research.synthesis",
+        "research.verify",
     ]
     status = json.loads(
         (research_dir / "research-status.json").read_text(encoding="utf-8")
@@ -308,7 +308,7 @@ def test_reconcile_task_completion_records_post_impl_debt_signal(tmp_path) -> No
         "tester",
         [
             TaskSpec(
-                task_type="post_impl_assessment",
+                task_type="implementation.post_assessment",
                 concern_scope="section-01",
                 payload_path=str(prompt_path),
             )
@@ -390,7 +390,7 @@ def test_reconcile_task_completion_emits_post_impl_refactor_blocker(tmp_path) ->
         "tester",
         [
             TaskSpec(
-                task_type="post_impl_assessment",
+                task_type="implementation.post_assessment",
                 concern_scope="section-02",
                 payload_path=str(prompt_path),
             )

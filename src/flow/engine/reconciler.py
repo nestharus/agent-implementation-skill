@@ -294,9 +294,9 @@ def _handle_research_completion(
     """Apply script-owned research follow-on logic on task completion."""
     task_type = str(task.get("task_type") or "")
     if task_type not in {
-        "research_plan",
-        "research_synthesis",
-        "research_verify",
+        "research.plan",
+        "research.synthesis",
+        "research.verify",
     }:
         return
 
@@ -322,7 +322,7 @@ def _handle_research_completion(
     if status != "complete":
         return
 
-    if task_type == "research_plan":
+    if task_type == "research.plan":
         plan_output = Path(output_path) if output_path else PathRegistry(planspace).research_plan(section_number)
         execute_research_plan(
             section_number,
@@ -332,7 +332,7 @@ def _handle_research_completion(
         )
         return
 
-    if task_type == "research_synthesis":
+    if task_type == "research.synthesis":
         plan = validate_research_plan(PathRegistry(planspace).research_plan(section_number))
         verify_claims = bool(
             isinstance(plan, dict)
@@ -358,7 +358,7 @@ def _handle_research_completion(
             )
         return
 
-    if task_type == "research_verify":
+    if task_type == "research.verify":
         write_research_status(
             section_number,
             planspace,
@@ -379,7 +379,7 @@ def _handle_post_impl_assessment_completion(
     del codespace
 
     task_type = str(task.get("task_type") or "")
-    if task_type != "post_impl_assessment" or status != "complete":
+    if task_type != "implementation.post_assessment" or status != "complete":
         return
 
     section_number = _section_number(task)

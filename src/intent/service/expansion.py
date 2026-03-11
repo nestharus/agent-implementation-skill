@@ -7,7 +7,9 @@ from pathlib import Path
 from intent.engine import surface as _intent_surface
 from dispatch.service.prompt_safety import write_validated_prompt
 
-from dispatch.engine.section_dispatch import dispatch_agent, read_agent_signal, read_model_policy
+from dispatch.engine.section_dispatch import dispatch_agent
+from dispatch.service.model_policy import load_model_policy as read_model_policy
+from signals.repository.signal_reader import read_agent_signal
 from orchestrator.service.pipeline_control import pause_for_parent
 from intent.service.surfaces import (
     find_discarded_recurrences,

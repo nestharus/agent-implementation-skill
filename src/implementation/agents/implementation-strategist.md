@@ -66,7 +66,7 @@ dispatch prompt:
 Legacy single-task format (still accepted):
 ```json
 {
-    "task_type": "scan_explore",
+    "task_type": "scan.explore",
     "problem_id": "<problem-id>",
     "concern_scope": "<section-id>",
     "payload_path": "<path-to-sub-task-prompt>",
@@ -82,8 +82,8 @@ Chain format (v2) — declare sequential follow-up steps:
         {
             "kind": "chain",
             "steps": [
-                {"task_type": "strategic_implementation", "concern_scope": "<section-id>", "payload_path": "<path-to-impl-prompt>"},
-                {"task_type": "scan_explore", "concern_scope": "<section-id>", "payload_path": "<path-to-verify-prompt>"}
+                {"task_type": "implementation.strategic", "concern_scope": "<section-id>", "payload_path": "<path-to-impl-prompt>"},
+                {"task_type": "scan.explore", "concern_scope": "<section-id>", "payload_path": "<path-to-verify-prompt>"}
             ]
         }
     ]
@@ -96,10 +96,10 @@ Read the flow context to understand what previous steps produced. Write
 follow-up declarations to the continuation path.
 
 Common task types for implementation work:
-- `scan_explore` — explore related files
-- `scan_deep_analyze` — deep file analysis
-- `strategic_implementation` — submit complex implementation sub-tasks
-- `alignment_check` — verify implementation against alignment constraints
+- `scan.explore` — explore related files
+- `scan.deep_analyze` — deep file analysis
+- `implementation.strategic` — submit complex implementation sub-tasks
+- `staleness.alignment_check` — verify implementation against alignment constraints
 
 The dispatcher resolves each task type to the correct agent and model.
 You declare WHAT needs to happen, not HOW it runs.

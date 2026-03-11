@@ -7,14 +7,13 @@ No LLM mocks needed — these are pure file I/O and JSON parsing.
 import json
 from pathlib import Path
 
-from dispatch.engine.section_dispatch import (
+from dispatch.helpers.utils import (
     check_agent_signals,
-    read_agent_signal,
-    read_model_policy,
-    read_signal_tuple,
     summarize_output,
     write_model_choice_signal,
 )
+from dispatch.service.model_policy import load_model_policy as read_model_policy
+from signals.repository.signal_reader import read_agent_signal, read_signal_tuple
 
 
 class TestReadSignalTuple:

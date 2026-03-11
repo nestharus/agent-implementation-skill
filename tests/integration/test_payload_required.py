@@ -82,7 +82,7 @@ class TestDispatcherPayloadRequired:
 
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch) as mock_dispatch,
-            patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {"id": task_id, "type": "test-task", "by": "test-submitter"}
@@ -130,7 +130,7 @@ class TestDispatcherPayloadRequired:
 
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch) as mock_dispatch,
-            patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
@@ -169,7 +169,7 @@ class TestFlowValidationPayloadRequired:
         decl = FlowDeclaration(
             version=1,
             actions=[ChainAction(steps=[
-                TaskSpec(task_type="alignment_check"),
+                TaskSpec(task_type="staleness.alignment_check"),
             ])],
         )
         errors = validate_flow_declaration(decl)
@@ -183,7 +183,7 @@ class TestFlowValidationPayloadRequired:
             version=1,
             actions=[ChainAction(steps=[
                 TaskSpec(
-                    task_type="alignment_check",
+                    task_type="staleness.alignment_check",
                     payload_path="artifacts/test-prompt.md",
                 ),
             ])],
@@ -200,7 +200,7 @@ class TestFlowValidationPayloadRequired:
             actions=[FanoutAction(
                 branches=[
                     BranchSpec(steps=[
-                        TaskSpec(task_type="alignment_check"),
+                        TaskSpec(task_type="staleness.alignment_check"),
                     ]),
                 ],
             )],
@@ -219,13 +219,13 @@ class TestFlowValidationPayloadRequired:
                 branches=[
                     BranchSpec(steps=[
                         TaskSpec(
-                            task_type="alignment_check",
+                            task_type="staleness.alignment_check",
                             payload_path="artifacts/prompt.md",
                         ),
                     ]),
                     BranchSpec(steps=[
                         TaskSpec(
-                            task_type="impact_analysis",
+                            task_type="signals.impact_analysis",
                             payload_path="artifacts/prompt2.md",
                         ),
                     ]),

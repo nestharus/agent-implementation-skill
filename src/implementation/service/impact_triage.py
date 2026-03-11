@@ -17,6 +17,7 @@ from staleness.service.section_alignment import (
 from signals.service.communication import _log_artifact, log
 from dispatch.engine.section_dispatch import dispatch_agent
 from orchestrator.types import Section
+from taskrouter import agent_for
 
 
 def run_impact_triage(
@@ -103,7 +104,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         parent,
         codespace=codespace,
         section_number=section.number,
-        agent_file="consequence-note-triager.md",
+        agent_file=agent_for("coordination.consequence_triage"),
     )
 
     triage = read_json(triage_signal_path)

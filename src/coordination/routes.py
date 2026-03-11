@@ -20,3 +20,15 @@ router.route(
     agent="recurrence-adjudicator.md",
     model="glm",
 )
+router.route(
+    "plan",
+    agent="coordination-planner.md",
+    model="claude-opus",
+    policy_key="coordination_plan",
+)
+router.route(
+    "bridge",
+    agent="bridge-agent.md",
+    model="gpt-xhigh",
+    policy_key="coordination_bridge",
+)

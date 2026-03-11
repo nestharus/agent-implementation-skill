@@ -159,7 +159,7 @@ class TestDispatcherMetaCorruptionFailsClosed:
 
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
@@ -202,7 +202,7 @@ class TestDispatcherMetaCorruptionFailsClosed:
 
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
@@ -240,7 +240,7 @@ class TestDispatcherMetaCorruptionFailsClosed:
 
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion") as mock_reconcile,
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
@@ -285,7 +285,7 @@ class TestAbsentMetaAllowsFallback:
 
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
@@ -324,7 +324,7 @@ class TestAbsentMetaAllowsFallback:
 
         with (
             patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(task_dispatcher, "resolve_task", return_value=("test-agent.md", "test-model")),
+            patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
             patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):

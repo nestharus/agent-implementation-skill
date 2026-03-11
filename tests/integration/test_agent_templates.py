@@ -199,7 +199,7 @@ class TestAdjudicatePromptIntegration:
             "dispatch.engine.section_dispatch.dispatch_agent",
             return_value='{"state": "ALIGNED", "detail": "all good"}',
         ):
-            from dispatch.engine.section_dispatch import adjudicate_agent_output
+            from dispatch.service.output_adjudicator import adjudicate_agent_output
 
             adjudicate_agent_output(
                 output_path, planspace, "test-parent",

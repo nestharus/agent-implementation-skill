@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 
-from src.dispatch.service.model_policy import ModelPolicy, load_model_policy
-from src.flow.types.routing import resolve_task
+from dispatch.service.model_policy import ModelPolicy, load_model_policy
+from taskrouter import ensure_discovered, registry
 
 
 def test_model_policy_defaults_include_research_keys() -> None:
@@ -35,20 +35,22 @@ def test_load_model_policy_overrides_research_keys(tmp_path) -> None:
     assert policy.research_verify == "policy-verify"
 
 
-def test_resolve_task_uses_research_policy_keys() -> None:
-    assert resolve_task(
-        "research_plan",
+def test_registry_resolve_uses_research_policy_keys() -> None:
+    ensure_discovered()
+
+    assert registry.resolve(
+        "research.plan",
         {"research_plan": "policy-plan"},
     ) == ("research-planner.md", "policy-plan")
-    assert resolve_task(
-        "research_domain_ticket",
+    assert registry.resolve(
+        "research.domain_ticket",
         {"research_domain_ticket": "policy-domain"},
     ) == ("domain-researcher.md", "policy-domain")
-    assert resolve_task(
-        "research_synthesis",
+    assert registry.resolve(
+        "research.synthesis",
         {"research_synthesis": "policy-synthesis"},
     ) == ("research-synthesizer.md", "policy-synthesis")
-    assert resolve_task(
-        "research_verify",
+    assert registry.resolve(
+        "research.verify",
         {"research_verify": "policy-verify"},
     ) == ("research-verifier.md", "policy-verify")

@@ -42,14 +42,10 @@ from coordination.service.cross_section import (
     post_section_completion,
     read_incoming_notes,
 )
-from dispatch.engine.section_dispatch import (
-    check_agent_signals,
-    dispatch_agent,
-    read_agent_signal,
-    read_model_policy,
-    summarize_output,
-    write_model_choice_signal,
-)
+from dispatch.engine.section_dispatch import dispatch_agent
+from dispatch.helpers.utils import check_agent_signals, summarize_output, write_model_choice_signal
+from dispatch.service.model_policy import load_model_policy as read_model_policy
+from signals.repository.signal_reader import read_agent_signal
 from dispatch.prompt.template import TASK_SUBMISSION_SEMANTICS
 from dispatch.service.prompt_safety import validate_dynamic_content
 from flow.service.section_ingestion import ingest_and_submit

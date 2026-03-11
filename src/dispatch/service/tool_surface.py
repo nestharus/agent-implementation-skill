@@ -11,6 +11,7 @@ from staleness.helpers.hashing import file_hash
 from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
 from dispatch.service.prompt_safety import write_validated_prompt
+from taskrouter import agent_for
 
 
 def write_tool_surface(
@@ -118,7 +119,7 @@ def surface_tool_registry(
             parent,
             codespace=codespace,
             section_number=section_number,
-            agent_file="tool-registrar.md",
+            agent_file=agent_for("dispatch.tool_registry_repair"),
         )
         registry = read_json(tool_registry_path)
         if registry is not None:
@@ -238,7 +239,7 @@ def validate_tool_registry_after_implementation(
                 parent,
                 f"tool-registrar-{section_number}",
                 codespace=codespace,
-                agent_file="tool-registrar.md",
+                agent_file=agent_for("dispatch.tool_registry_repair"),
                 section_number=section_number,
             )
     except (json.JSONDecodeError, ValueError) as exc:
@@ -271,7 +272,7 @@ def validate_tool_registry_after_implementation(
             parent,
             codespace=codespace,
             section_number=section_number,
-            agent_file="tool-registrar.md",
+            agent_file=agent_for("dispatch.tool_registry_repair"),
         )
         if read_json(tool_registry_path) is not None:
             log(f"Section {section_number}: post-impl tool registry repaired")
@@ -397,7 +398,7 @@ with JSON:
         parent,
         f"bridge-tools-{section_number}",
         codespace=codespace,
-        agent_file="bridge-tools.md",
+        agent_file=agent_for("dispatch.bridge_tools"),
         section_number=section_number,
     )
 
@@ -427,7 +428,7 @@ with JSON:
             parent,
             f"bridge-tools-{section_number}-escalation",
             codespace=codespace,
-            agent_file="bridge-tools.md",
+            agent_file=agent_for("dispatch.bridge_tools"),
             section_number=section_number,
         )
         bridge_data = read_json(bridge_signal_path)
@@ -498,7 +499,7 @@ with JSON:
                 f"tool-digest-regen-{section_number}",
                 codespace=codespace,
                 section_number=section_number,
-                agent_file="tool-registrar.md",
+                agent_file=agent_for("dispatch.tool_registry_repair"),
             )
     else:
         log(

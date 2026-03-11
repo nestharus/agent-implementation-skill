@@ -122,7 +122,7 @@ class TestSurfaceRegistry:
     def test_merge_adds_new_surfaces(self) -> None:
         registry = {"section": "01", "next_id": 1, "surfaces": []}
         surfaces = {
-            "stage": "integration_proposal",
+            "stage": "proposal.integration",
             "attempt": 1,
             "problem_surfaces": [
                 {"id": "P-01-0001", "kind": "emergent", "axis_id": "A3",
@@ -147,7 +147,7 @@ class TestSurfaceRegistry:
             ],
         }
         surfaces = {
-            "stage": "integration_proposal", "attempt": 2,
+            "stage": "proposal.integration", "attempt": 2,
             "problem_surfaces": [
                 {"id": "P-01-0001", "kind": "emergent"},
             ],
@@ -436,7 +436,7 @@ class TestExpansionCycle:
         # Write surfaces signal — no pre-set id, normalization assigns it
         surfaces = {
             "section": "01",
-            "stage": "integration_proposal",
+            "stage": "proposal.integration",
             "attempt": 1,
             "problem_surfaces": [
                 {"kind": "emergent", "axis_id": "A3",
@@ -512,7 +512,7 @@ class TestExpansionCycle:
 
         surfaces = {
             "section": "01",
-            "stage": "integration_proposal",
+            "stage": "proposal.integration",
             "attempt": 3,
             "problem_surfaces": [s1, s2, s3],
             "philosophy_surfaces": [],
@@ -849,7 +849,7 @@ class TestIntentConventions:
 
     def test_intent_model_policy_defaults_exist(self) -> None:
         """All intent model keys have defaults in read_model_policy."""
-        from dispatch.engine.section_dispatch import read_model_policy
+        from dispatch.service.model_policy import load_model_policy as read_model_policy
         from pathlib import Path
         import tempfile
 
@@ -1422,7 +1422,7 @@ class TestIntentConventions:
 
     def test_intent_model_policy_escalation_keys(self) -> None:
         """Model policy includes escalation and recurrence adjudicator keys (V1/V5 R54)."""
-        from dispatch.engine.section_dispatch import read_model_policy
+        from dispatch.service.model_policy import load_model_policy as read_model_policy
         import tempfile
 
         with tempfile.TemporaryDirectory() as td:
@@ -1671,7 +1671,7 @@ class TestR56AgentSelectedSources:
 
     def test_model_policy_has_selector_key(self) -> None:
         """Model policy must include intent_philosophy_selector key."""
-        from dispatch.engine.section_dispatch import read_model_policy
+        from dispatch.service.model_policy import load_model_policy as read_model_policy
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             ps = Path(td)

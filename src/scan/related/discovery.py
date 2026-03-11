@@ -15,6 +15,7 @@ from scan.service.template_loader import load_scan_template
 from dispatch.service.prompt_safety import validate_dynamic_content
 from scan.codemap.cache import strip_scan_summaries
 from scan.cli_dispatch import dispatch_agent
+from taskrouter import agent_for
 
 
 def list_section_files(sections_dir: Path) -> list[Path]:
@@ -295,7 +296,7 @@ def validate_existing_related_files(
         model=model_policy["validation"],
         project=codespace,
         prompt_file=validate_prompt,
-        agent_file="scan-related-files-adjudicator.md",
+        agent_file=agent_for("scan.adjudicate"),
         stdout_file=validate_output,
     )
 
@@ -320,7 +321,7 @@ def validate_existing_related_files(
             model=escalation_model,
             project=codespace,
             prompt_file=validate_prompt,
-            agent_file="scan-related-files-adjudicator.md",
+            agent_file=agent_for("scan.adjudicate"),
             stdout_file=validate_output,
         )
         normalized = _normalize_validation_signal(

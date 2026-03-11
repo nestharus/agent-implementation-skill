@@ -11,6 +11,7 @@ from scan.service.template_loader import load_scan_template
 from dispatch.service.prompt_safety import validate_dynamic_content
 from scan.codemap.cache import strip_scan_summaries
 from scan.cli_dispatch import dispatch_agent
+from taskrouter import agent_for
 
 
 def validate_tier_file(tier_file: Path) -> bool:
@@ -104,7 +105,7 @@ def run_tier_ranking(
         model=tier_model,
         project=codespace,
         prompt_file=tier_prompt,
-        agent_file="scan-tier-ranker.md",
+        agent_file=agent_for("scan.tier_rank"),
         stdout_file=tier_output,
     )
 
@@ -119,7 +120,7 @@ def run_tier_ranking(
             model=escalation_model,
             project=codespace,
             prompt_file=tier_prompt,
-            agent_file="scan-tier-ranker.md",
+            agent_file=agent_for("scan.tier_rank"),
             stdout_file=tier_output,
         )
         if result.returncode == 0:

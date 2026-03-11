@@ -33,13 +33,12 @@ from signals.service.communication import (
     mailbox_send,
 )
 from coordination.service.cross_section import read_incoming_notes
-from dispatch.engine.section_dispatch import (
-    check_agent_signals,
-    dispatch_agent,
-    read_model_policy,
-)
+from dispatch.engine.section_dispatch import dispatch_agent
+from dispatch.helpers.utils import check_agent_signals
+from dispatch.service.model_policy import load_model_policy as read_model_policy
 from orchestrator.service.pipeline_control import coordination_recheck_hash, poll_control_messages
 from orchestrator.types import Section, SectionResult
+from taskrouter import agent_for
 
 
 def _normalize_section_id(value: str, scope_deltas_dir: Path) -> str:
@@ -128,7 +127,7 @@ def run_global_coordination(
     log("  coordinator: dispatching coordination-planner agent")
     plan_result = dispatch_agent(
         resolve(policy, "coordination_plan"), plan_prompt, plan_output,
-        planspace, parent, agent_file="coordination-planner.md",
+        planspace, parent, agent_file=agent_for("coordination.plan"),
     )
     if plan_result == "ALIGNMENT_CHANGED_PENDING":
         return False
@@ -143,7 +142,7 @@ def run_global_coordination(
         plan_output_retry = coord_dir / "coordination-plan-output-retry.md"
         retry_result = dispatch_agent(
             resolve(policy, "escalation_model"), plan_prompt, plan_output_retry,
-            planspace, parent, agent_file="coordination-planner.md",
+            planspace, parent, agent_file=agent_for("coordination.plan"),
         )
         if retry_result == "ALIGNMENT_CHANGED_PENDING":
             return False

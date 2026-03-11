@@ -9,3 +9,9 @@ router.route(
     agent="impact-analyzer.md",
     model="glm",
 )
+router.route(
+    "impact_normalize",
+    agent="impact-output-normalizer.md",
+    model="glm",
+    policy_key="impact_normalizer",
+)
