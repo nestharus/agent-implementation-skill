@@ -1,3 +1,0 @@
-Removed the Phase 18 compatibility layer completely. All remaining flat `lib.<module>` imports and string patch targets in `src/` and `tests/` now point at the new subpackages, the five orchestrator entrypoints were updated, `src/scripts/lib/` no longer has any top-level wrapper modules, and [`__init__.py`](/home/nes/projects/agent-implementation-skill/src/scripts/lib/__init__.py) is now empty.
-
-Verification is recorded in [`phase18b-results.md`](/home/nes/projects/agent-implementation-skill/.tmp/refactor/phase18b-results.md). The exact scan for legacy flat-module references returned no matches, and `uv run pytest tests/ -q --tb=short` finished with `1206 passed, 2 skipped` in `40.54s` (`1208` collected total).

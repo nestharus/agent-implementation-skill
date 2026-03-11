@@ -1,5 +1,0 @@
-Reorganization is complete. `src/scripts/lib/` now has the requested domain subpackages, all 84 implementation modules were moved with `git mv`, intra-`lib` imports were updated, and the old flat import surface is preserved through top-level compatibility modules so existing `lib.<module>` imports still resolve.
-
-I also corrected the moved modules that derive filesystem roots from `__file__`, because the extra package depth would otherwise have changed runtime behavior. The requested summary is in [phase18-results.md](/home/nes/projects/agent-implementation-skill/.tmp/refactor/phase18-results.md).
-
-Verification: `uv run pytest tests/ -q --tb=short` passed with `1208 passed in 40.19s`.

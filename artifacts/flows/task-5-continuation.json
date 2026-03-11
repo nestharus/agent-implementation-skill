@@ -1,8 +1,0 @@
-{
-  "task_id": 5,
-  "status": "completed",
-  "output_artifacts": [
-    "/tmp/agentic-eval-research-flow-synthesizes-dossier-3tb485lx/planspace/artifacts/research/sections/section-01/tickets/T-03-result.json"
-  ],
-  "follow_up_tasks": []
-}
