@@ -34,6 +34,9 @@ Each item describes a structural mess, why it's a problem, and where it lives.
 ### 5. Prompts inlined as f-strings in Python code
 - **Status**: DONE — extracted 3 prompts to `src/templates/` (coordinator-fix, agent-monitor, bridge-resolve), loaded via `load_template()` + `render()`
 
+### 11. `intent` and `risk` systems missing `routes.py`
+- **Status**: DONE — created `intent/routes.py` (10 routes) and `risk/routes.py` (3 routes), registered in `taskrouter/discovery.py`
+
 ---
 
 ## IDENTIFIED — NOT YET STARTED
@@ -53,11 +56,6 @@ Each item describes a structural mess, why it's a problem, and where it lives.
 - **Where**: `src/flow/repository/context.py:88`
 - **Problem**: Reads an original prompt file as raw text, prepends a `<flow-context>` header (also raw text), writes a new file. No typed FlowContext, no structured prompt object, no path abstraction. `flow_context_path` is a relative path string baked into prompt text.
 - **Fix**: Create a proper PromptBuilder or FlowContext type
-
-### 11. `intent` and `risk` systems missing `routes.py`
-- **Where**: `src/intent/`, `src/risk/`
-- **Problem**: These systems have agents (8 for intent, 3 for risk) dispatched via hardcoded `agent_file=` strings, bypassing the TaskRouter policy system entirely. No model policy override possible.
-- **Fix**: Create `intent/routes.py` and `risk/routes.py`, register direct-dispatch agents as routes
 
 ### 12. Cross-system agent dispatch via hardcoded strings
 - **Where**: 19 agents dispatched via `agent_file="foo.md"` scattered across ~15 files

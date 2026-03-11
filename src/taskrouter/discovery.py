@@ -21,6 +21,8 @@ _SYSTEM_ROUTE_MODULES: list[str] = [
     "reconciliation.routes",
     "dispatch.routes",
     "signals.routes",
+    "intent.routes",
+    "risk.routes",
 ]
 
 
