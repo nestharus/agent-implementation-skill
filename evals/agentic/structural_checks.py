@@ -119,7 +119,8 @@ def run_structural_checks(
             continue
 
         if check.type == "glob_min_count":
-            matched = [path for path in planspace.glob(str(check.path)) if path.is_file()]
+            glob_pattern = check.pattern or check.path or ""
+            matched = [path for path in planspace.glob(glob_pattern) if path.is_file()]
             minimum = int(check.min or 0)
             results.append(
                 _pass(check, target, f"{len(matched)} files matched")
