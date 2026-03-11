@@ -44,18 +44,12 @@ def run_intent_triage(
     triage_prompt_path = artifacts / f"intent-triage-{section_number}-prompt.md"
     triage_output_path = artifacts / f"intent-triage-{section_number}-output.md"
 
-    section_spec = artifacts / "sections" / f"section-{section_number}.md"
-    proposal_excerpt = (
-        artifacts / "sections" / f"section-{section_number}-proposal-excerpt.md"
-    )
-    alignment_excerpt = (
-        artifacts / "sections" / f"section-{section_number}-alignment-excerpt.md"
-    )
-    problem_brief = (
-        artifacts / "sections" / f"section-{section_number}-problem-frame.md"
-    )
-    codemap_path = artifacts / "codemap.md"
-    codemap_corrections_path = artifacts / "signals" / "codemap-corrections.json"
+    section_spec = paths.section_spec(section_number)
+    proposal_excerpt = paths.proposal_excerpt(section_number)
+    alignment_excerpt = paths.alignment_excerpt(section_number)
+    problem_brief = paths.problem_frame(section_number)
+    codemap_path = paths.codemap()
+    codemap_corrections_path = paths.corrections()
 
     triage_refs = []
     for label, path in [

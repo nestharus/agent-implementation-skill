@@ -7,6 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lib.core.artifact_io import read_json, write_json
+from lib.core.path_registry import PathRegistry
 from lib.scan.scan_feedback_router import (
     _append_to_log,
     _extract_section_number,
@@ -160,7 +161,8 @@ def _apply_feedback(
     """Apply missing files and prune irrelevant files from feedback."""
     print("--- Deep Scan: applying feedback (missing + irrelevant files) ---")
 
-    corrections_path = artifacts_dir / "signals" / "codemap-corrections.json"
+    _paths = PathRegistry(artifacts_dir.parent)
+    corrections_path = _paths.corrections()
     corrections_ref = ""
     if corrections_path.is_file():
         corrections_ref = (
@@ -223,9 +225,7 @@ def _apply_feedback(
         # Dispatch updater agent
         updater_prompt = sec_log_dir / "related-files-updater-prompt.md"
         updater_output = sec_log_dir / "related-files-updater-output.md"
-        updater_signal = (
-            artifacts_dir / "signals" / f"{sec_name}-related-files-update.json"
-        )
+        updater_signal = _paths.scan_related_files_update_signal(sec_name)
 
         missing_section = ""
         if truly_missing:

@@ -9,6 +9,7 @@ from typing import Any
 from lib.core.artifact_io import read_json, write_json
 from lib.core.hash_service import file_hash
 from lib.core.model_policy import resolve
+from lib.core.path_registry import PathRegistry
 from prompt_safety import write_validated_prompt
 
 
@@ -155,7 +156,7 @@ def surface_tool_registry(
                 ),
             }
             write_json(
-                artifacts / "signals" / f"section-{section_number}-blocker.json",
+                PathRegistry(planspace).blocker_signal(section_number),
                 blocker,
             )
             update_blocker_rollup(planspace)
@@ -293,7 +294,7 @@ def validate_tool_registry_after_implementation(
                 ),
             }
             write_json(
-                artifacts / "signals" / f"section-{section_number}-post-impl-blocker.json",
+                PathRegistry(planspace).post_impl_blocker_signal(section_number),
                 blocker,
             )
             update_blocker_rollup(planspace)
@@ -517,7 +518,7 @@ with JSON:
             },
         )
         write_json(
-            artifacts / "signals" / f"section-{section_number}-post-impl-blocker.json",
+            PathRegistry(planspace).post_impl_blocker_signal(section_number),
             {
                 "state": "needs_parent",
                 "detail": (

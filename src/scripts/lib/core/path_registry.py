@@ -133,6 +133,9 @@ class PathRegistry:
     def mode_signal(self, num: str) -> Path:
         return self.signals_dir() / f"section-{num}-mode.json"
 
+    def section_mode_txt(self, num: str) -> Path:
+        return self.sections_dir() / f"section-{num}-mode.txt"
+
     def blocker_signal(self, num: str) -> Path:
         return self.signals_dir() / f"section-{num}-blocker.json"
 

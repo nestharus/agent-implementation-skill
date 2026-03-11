@@ -142,8 +142,8 @@ path inconsistency across modules, and reader/writer disagreement.
 **Regions**: artifact paths, path construction, planspace layout, readers and
 writers
 
-**Solution surfaces**: PathRegistry, planspace-rooted accessors, runtime-shape
-tests.
+**Solution surfaces**: PathRegistry, planspace-rooted accessors, family-complete
+consumer migration, runtime-shape tests.
 
 **Philosophy**: Single source of truth for durable artifact locations.
 
@@ -151,7 +151,8 @@ tests.
 1. Durable artifact paths come from `PathRegistry(planspace)`.
 2. New artifact classes get a dedicated accessor before any writer or reader
    uses them.
-3. Writers, readers, prompts, and origin refs all use the same accessor.
+3. Writers, readers, prompts, origin refs, and freshness/hash inputs all use
+   the same accessor for a durable family.
 4. Manual path construction is permitted only for scratch / ephemeral paths or
    when the accessor intentionally returns a parent directory.
 5. Every durable-path consumer must declare which root kind it accepts
@@ -163,6 +164,13 @@ tests.
    explicit, separately named accessor methods. Two families using the same
    conceptual label but different directory layouts are a migration-ambiguity
    risk and must be registry-distinguished.
+8. Adding an accessor does **not** complete the migration by itself. The
+   pattern is healthy only when all authoritative consumers for that durable
+   family have moved to the accessor or the remaining exceptions are explicitly
+   documented and justified.
+9. If a durable family is consumed by more than one authoritative reader or
+   writer and no accessor exists yet, the accessor must be added before the
+   family spreads further.
 
 **Canonical instance**: `PathRegistry` in
 `src/scripts/lib/core/path_registry.py`
@@ -173,8 +181,6 @@ tests.
 - Governance artifact accessors (`governance_*`, packet,
   post-implementation assessment, risk-register signal)
 - Readiness / proposal-state / trace / signal / input-ref accessors
-- Prompt writers and dispatchers across `section_loop/`, `lib/research/`,
-  `lib/governance/`, and `task_dispatcher.py`
 - `src/scripts/lib/core/model_policy.py`
 - `src/scripts/lib/scan/scan_dispatch.py`
 - `src/scripts/lib/substrate/substrate_policy.py`
@@ -183,16 +189,30 @@ tests.
 - `src/scripts/lib/services/readiness_resolver.py`
 - `src/scripts/lib/dispatch/context_sidecar.py` — context sidecar
   materialization via `PathRegistry.context_sidecar()` accessor (R109)
-- `src/scripts/lib/scan/scan_related_files.py` and `src/scripts/scan/feedback.py`
-  — scan-stage related-files update signals via
-  `scan_related_files_update_signal()` (R110)
+- Scan-stage durable-path consumers in
+  `src/scripts/lib/scan/scan_related_files.py` and
+  `src/scripts/scan/{codemap,exploration,deep_scan,feedback}.py`
+- Intent/prompt durable-path consumers in
+  `src/scripts/lib/intent/intent_triage.py`,
+  `src/scripts/lib/prompts/prompt_context_assembler.py`,
+  `src/scripts/section_loop/intent/bootstrap.py`, and
+  `src/scripts/section_loop/prompts/writers.py`
+- Coordination / proposal / problem-frame prompt surfaces in
+  `src/scripts/section_loop/coordination/execution.py`,
+  `src/scripts/lib/pipelines/coordination_executor.py`,
+  `src/scripts/lib/pipelines/problem_frame_gate.py`, and
+  `src/scripts/lib/pipelines/implementation_loop.py`
+- Tool-surface blocker writers in `src/scripts/lib/tools/tool_surface.py`
+- Freshness/hash consumers in `src/scripts/lib/services/freshness_service.py`
+  and `src/scripts/lib/services/section_input_hasher.py`
 - `src/scripts/substrate/related_files.py` and
   `src/scripts/lib/prompts/substrate_prompt_builder.py` — substrate-stage
-  related-files update signals via `related_files_update_dir()` (R110)
+  related-files update signals via `related_files_update_dir()`
 
 **Conformance**: No durable artifact path may be reconstructed ad hoc. Any new
-artifact path MUST be added to `PathRegistry`, and all consumers must use that
-accessor.
+artifact path MUST be added to `PathRegistry`, and all authoritative consumers
+must use that accessor. A pattern round is not complete if it adds the accessor
+but leaves the primary readers/writers on hand-built paths.
 
 ---
 
@@ -783,7 +803,7 @@ positive assertions about current system behavior.
 **Regions**: integration tests, regression tests, component tests
 
 **Solution surfaces**: Positive behavioral assertions, output-shape contracts,
-presence tests over absence tests.
+round-trip fixture tests, presence tests over absence tests.
 
 **Philosophy**: Tests assert what the system *does*, not what it *used to
 contain*. Grepping source files for absent strings is repository archaeology,
@@ -801,28 +821,37 @@ a false pass — either way it says nothing about whether the behavior is correc
    current mechanism's keywords (e.g., "heuristic", "judgment", "evidence")
    rather than grepping for the old rule text.
 4. Source-text grep tests are permitted only when the invariant genuinely
-   requires source-level verification (e.g., "no hardcoded model literals in
-   prompt builders" — PAT-0005 sweep guards). Even then, prefer positive
-   contract tests where possible.
+   requires source-level verification (e.g., a central hardcoded-literal sweep
+   or a published static contract whose text is itself the artifact under
+   review). Even then, prefer positive contract tests where possible.
+5. When the file itself is the published contract artifact (agent skeleton,
+   schema, or template), positive presence assertions are acceptable; absence
+   assertions still need strong justification and should usually be replaced by
+   shape or behavior checks.
+6. Corruption-preservation, path-identity, and writer→reader handoff invariants
+   should be tested with realistic fixture round-trips rather than grepping
+   implementation source for warning text or filename suffixes.
 
 **Canonical instance**: `test_mode_is_observation_in_main()` in
 `tests/integration/test_main_greenfield.py`
 
 **Known instances**:
 - `tests/integration/test_main_greenfield.py` — mode-is-observation contract
-- `tests/integration/test_intent_layer.py` — 4 positive contract tests
-  replacing source-grep absence tests (heuristic judgment, evidence-driven
-  axes, agent-adjudicated recurrence, dynamic philosophy source discovery)
+- `tests/integration/test_intent_layer.py` — positive contract tests for
+  heuristic judgment, evidence-driven axes, agent-adjudicated recurrence, and
+  dynamic philosophy source discovery
 - `tests/component/test_governance_loader.py` — representative wrapped-bullet
   and numbered-template fixture for governance loader projection (R110)
 - `tests/component/test_governance_loader.py` — related-files signal path
   distinctness contract (R110)
+- `tests/component/test_artifact_io.py` — corruption-preservation round-trip
+  assertions on malformed JSON handling
 
 **Conformance**: New regression tests MUST express invariants as positive
 assertions about current behavior. Source-text grep for absent strings is a
 violation unless the invariant genuinely requires source-level verification.
-Converting existing source-grep tests to positive contracts is encouraged
-during audit rounds. High-risk archive→runtime projection contracts and
+Converting existing source-grep tests to positive contracts is expected during
+audit rounds. High-risk archive→runtime projection contracts and
 writer→reader handoff contracts should have at least one representative
 round-trip test with realistic fixture shapes.
 
@@ -835,11 +864,17 @@ round-trip test with realistic fixture shapes.
 - **PAT-0002 (Prompt Safety)**: Healthy. R109 clarified that payload-file
   contents are untrusted dynamic content even when delivered through internal
   tasks. QA interceptor now validates payload content before dispatch.
-- **PAT-0003 (Path Registry)**: Healthy. R110 added
-  `scan_related_files_update_signal()` accessor and documented substrate
-  `related_files_update_dir()`, making the two related-files signal families
-  explicitly registry-distinguished. Template extended with rule 7 (distinct
-  accessor names for related signal families).
+- **PAT-0003 (Path Registry)**: **Unhealthy.** R110 correctly distinguished the
+  scan-stage and substrate-stage related-files signal families, but the
+  migration stopped at accessor creation and representative path-shape tests.
+  CP-1 saturation sweep migrated authoritative consumers across scan
+  (`scan_related_files.py`, `codemap.py`, `exploration.py`, `deep_scan.py`,
+  `feedback.py`), intent/prompt assembly (`intent_triage.py`,
+  `prompt_context_assembler.py`, `bootstrap.py`, `writers.py`), tool-surface
+  blocker writers (`tool_surface.py`), and freshness/hash services. The
+  `section-<N>-mode.txt` family now has a dedicated `section_mode_txt()`
+  accessor. Template extended with rules 8-9 (accessor ≠ migration complete;
+  accessor required before family spreads).
 - **PAT-0004 (Flow System)**: Healthy.
 - **PAT-0005 (Policy-Driven Models)**: Healthy. R110 replaced the last two
   local `policy.get()` fallback sites (`proposal_loop.py` intent_judge,
@@ -872,7 +907,12 @@ round-trip test with realistic fixture shapes.
   `safety_blocked`); dispatcher logs `qa:degraded` distinctly from
   `qa:passed`; notifier carries reason_code through lifecycle events;
   reconciliation adjudicator references PAT-0014 degraded states in warnings.
-- **PAT-0015 (Positive Contract Testing)**: Healthy. R110 added
-  representative contract tests: governance loader with wrapped bullets and
-  numbered templates, related-files signal path distinctness. Conformance
-  extended to require representative round-trip tests for high-risk contracts.
+- **PAT-0015 (Positive Contract Testing)**: **Unhealthy.** R109-R110 moved the
+  suite toward positive contract tests and added representative round-trip
+  coverage. CP-2 replaced the last two source-archaeology tests in
+  `tests/integration/test_intent_layer.py` (conftest path resolution →
+  `DB_SH.exists()` behavioral contract; malformed updater-signal preservation →
+  `read_json` + `rename_malformed` round-trip). Template extended with rules
+  5-6 (published-contract presence assertions, round-trip fixture tests).
+  Added `test_artifact_io.py` corruption-preservation round-trip to known
+  instances.

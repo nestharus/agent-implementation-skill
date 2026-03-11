@@ -1447,12 +1447,10 @@ class TestIntentConventions:
                 "Model policy must include intent_recurrence_adjudicator key")
 
     def test_layout_agnostic_conftest(self) -> None:
-        """conftest.py DB_SH path resolves without hardcoded src/ (V6/R54)."""
-        conftest = (Path(__file__).resolve().parent.parent / "conftest.py")
-        text = conftest.read_text(encoding="utf-8")
-        # Must NOT hardcode "src" / "scripts" / "db.sh" directly
-        assert "PROJECT_ROOT / \"src\" / \"scripts\" / \"db.sh\"" not in text, (
-            "conftest.py must use layout-agnostic path resolution")
+        """DB_SH resolves to an existing path via layout-agnostic lookup (V6/R54)."""
+        from _paths import DB_SH
+        assert DB_SH.exists(), (
+            f"DB_SH should resolve to an existing path, got {DB_SH}")
 
     def test_implement_md_describes_intent_layer(self) -> None:
         """implement.md must describe the intent layer (V7/R54)."""
@@ -1940,17 +1938,20 @@ class TestR56UpdaterSignalPreservation:
     """V3/R56: Malformed updater signal renamed to .malformed.json."""
 
     def test_malformed_updater_signal_preserved(self) -> None:
-        """feedback.py updater signal parse site preserves malformed files."""
-        content = (SRC_DIR
-                   / "scripts" / "scan" / "feedback.py").read_text()
-        # Find the updater signal parse site (around _apply_feedback)
-        region_start = content.find("Malformed updater signal:")
-        assert region_start != -1, (
-            "feedback.py must have 'Malformed updater signal' warning")
-        region = content[region_start:region_start + 500]
-        assert ".malformed.json" in region, (
-            "feedback.py must rename malformed updater signal to "
-            ".malformed.json (V3/R56)")
+        """Malformed JSON is renamed to .malformed.json by read_json + rename_malformed (V3/R56)."""
+        import tempfile
+        from lib.core.artifact_io import read_json, rename_malformed
+        with tempfile.TemporaryDirectory() as td:
+            signal_path = Path(td) / "section-01-related-files-update.json"
+            signal_path.write_text("{not valid json", encoding="utf-8")
+            result = read_json(signal_path)
+            assert result is None, "read_json should return None for malformed JSON"
+            rename_malformed(signal_path)
+            malformed = signal_path.with_suffix(".malformed.json")
+            assert malformed.exists(), (
+                "rename_malformed should create .malformed.json")
+            assert not signal_path.exists(), (
+                "Original file should be renamed away")
 
 
 class TestR56AxisBudgetEnforcement:

@@ -45,7 +45,7 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
     for mode_file in (
         registry.project_mode_txt(),
         registry.project_mode_json(),
-        registry.sections_dir() / f"section-{sec}-mode.txt",
+        registry.section_mode_txt(sec),
     ):
         _add(mode_file)
 

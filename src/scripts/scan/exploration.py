@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from lib.core.path_registry import PathRegistry
 from lib.scan.scan_phase_logger import log_phase_failure
 from lib.scan.scan_template_loader import load_scan_template
 from lib.scan.scan_related_files import (
@@ -30,7 +31,7 @@ def run_section_exploration(
     if model_policy is None:
         model_policy = read_scan_model_policy(artifacts_dir)
     section_files = list_section_files(sections_dir)
-    corrections_file = artifacts_dir / "signals" / "codemap-corrections.json"
+    corrections_file = PathRegistry(artifacts_dir.parent).corrections()
 
     for section_file in section_files:
         section_name = section_file.stem  # e.g. "section-01"
@@ -86,9 +87,7 @@ def _explore_section(
     response_file = section_log / "explore-response.md"
     stderr_file = section_log / "explore.stderr.log"
 
-    corrections_signal = (
-        artifacts_dir / "signals" / "codemap-corrections.json"
-    )
+    corrections_signal = PathRegistry(artifacts_dir.parent).corrections()
 
     prompt = load_scan_template("explore_section.md").format(
         codemap_path=codemap_path,

@@ -95,7 +95,7 @@ def build_impl_context_extras(
             f"Read decisions: `{decisions_file}`\n"
         )
 
-    codemap_corrections_path = artifacts / "signals" / "codemap-corrections.json"
+    codemap_corrections_path = PathRegistry(artifacts.parent).corrections()
     corrections_ref = ""
     if codemap_corrections_path.exists():
         corrections_ref = (

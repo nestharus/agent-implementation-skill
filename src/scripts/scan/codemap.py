@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lib.core.artifact_io import read_json, rename_malformed
+from lib.core.path_registry import PathRegistry
 from lib.scan.scan_phase_logger import log_phase_failure
 from lib.scan.scan_template_loader import load_scan_template
 
@@ -98,9 +99,10 @@ def run_codemap_build(
     signals_dir = artifacts_dir / "signals"
     signals_dir.mkdir(parents=True, exist_ok=True)
 
+    _paths = PathRegistry(artifacts_dir.parent)
     prompt = load_scan_template("codemap_build.md").format(
-        project_mode_path=artifacts_dir / "project-mode.txt",
-        project_mode_signal=signals_dir / "project-mode.json",
+        project_mode_path=_paths.project_mode_txt(),
+        project_mode_signal=_paths.project_mode_json(),
     )
     violations = validate_dynamic_content(prompt)
     if violations:
@@ -199,7 +201,7 @@ def _run_freshness_check(
         )
 
     # Thread codemap corrections into freshness evaluation (P9/Thread #1)
-    corrections_path = artifacts_dir / "signals" / "codemap-corrections.json"
+    corrections_path = PathRegistry(artifacts_dir.parent).corrections()
     corrections_ref = ""
     if corrections_path.is_file():
         corrections_ref = (

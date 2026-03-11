@@ -8,6 +8,7 @@ from typing import Any
 
 from lib.core.artifact_io import read_json, write_json
 from lib.core.hash_service import content_hash, file_hash
+from lib.core.path_registry import PathRegistry
 from lib.scan.scan_dispatch import DEFAULT_SCAN_MODELS
 from lib.scan.scan_phase_logger import log_phase_failure
 from lib.scan.scan_template_loader import load_scan_template
@@ -211,9 +212,9 @@ def validate_existing_related_files(
     combined = f"{codemap_hash}:{corrections_hash}:{section_hash}"
     combined_hash = content_hash(combined)
 
-    signal_file = (
-        artifacts_dir / "signals" / f"{section_name}-related-files-update.json"
-    )
+    signal_file = PathRegistry(
+        artifacts_dir.parent
+    ).scan_related_files_update_signal(section_name)
     missing_existing = _missing_existing_related_files(section_text_raw, codespace)
 
     prev_hash = ""

@@ -89,3 +89,15 @@ Post-implementation assessment emits `accept_with_debt` verdicts with typed `deb
 - **Status**: resolved
 - **Acceptance rationale**: N/A — resolved.
 - **Mitigation**: R110 added `scan_related_files_update_signal()` accessor to PathRegistry, documented `related_files_update_dir()` as substrate-specific, extended PAT-0003 template with rule 7, and added a contract test verifying path distinctness.
+
+---
+
+### RISK-0007: PathRegistry consumer saturation gap
+
+- **Category**: pattern-drift / operability
+- **Region**: PathRegistry consumers across scan, intent/prompt assembly, tool surfaces, freshness/hash services
+- **Description**: PAT-0003 had correct accessors for several durable families, but authoritative consumers still reconstructed those paths manually. This created writer/reader drift risk and made governance health notes inaccurate (PAT-0003 claimed "Healthy" while ad-hoc construction remained widespread).
+- **Severity**: low-medium
+- **Status**: mitigated
+- **Acceptance rationale**: CP-1 saturation sweep migrated all known authoritative consumers. Remaining ad-hoc paths are either ephemeral or in coordination/pipeline modules that may need a future sweep.
+- **Mitigation**: CP-1 saturation sweep across 12 consumer files. PAT-0003 template extended with rules 8-9 (accessor ≠ migration complete; accessor required before family spreads). Health notes updated to reflect actual state.

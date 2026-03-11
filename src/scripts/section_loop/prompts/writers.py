@@ -52,15 +52,9 @@ def write_section_setup_prompt(
     ctx.update({
         "global_proposal": global_proposal,
         "global_alignment": global_alignment,
-        "proposal_excerpt": (
-            sections_dir / f"section-{sec}-proposal-excerpt.md"
-        ),
-        "alignment_excerpt": (
-            sections_dir / f"section-{sec}-alignment-excerpt.md"
-        ),
-        "problem_frame_path": (
-            sections_dir / f"section-{sec}-problem-frame.md"
-        ),
+        "proposal_excerpt": paths.proposal_excerpt(sec),
+        "alignment_excerpt": paths.alignment_excerpt(sec),
+        "problem_frame_path": paths.problem_frame(sec),
         "signal_block": signal_instructions(
             artifacts / "signals" / f"setup-{sec}-signal.json",
         ),
@@ -93,18 +87,10 @@ def write_integration_proposal_prompt(
     a_name = f"intg-proposal-{sec}"
     m_name = f"{a_name}-monitor"
 
-    proposal_excerpt = (
-        artifacts / "sections" / f"section-{sec}-proposal-excerpt.md"
-    )
-    alignment_excerpt = (
-        artifacts / "sections" / f"section-{sec}-alignment-excerpt.md"
-    )
-    integration_proposal = (
-        proposals_dir / f"section-{sec}-integration-proposal.md"
-    )
-    proposal_state_path = (
-        proposals_dir / f"section-{sec}-proposal-state.json"
-    )
+    proposal_excerpt = paths.proposal_excerpt(sec)
+    alignment_excerpt = paths.alignment_excerpt(sec)
+    integration_proposal = paths.proposal(sec)
+    proposal_state_path = paths.proposal_state(sec)
 
     ctx = build_prompt_context(section, planspace, codespace)
     ctx.update({
@@ -181,7 +167,8 @@ def write_integration_alignment_prompt(
     section: Section, planspace: Path, codespace: Path,
 ) -> Path:
     """Write the prompt for reviewing the integration proposal."""
-    artifacts = PathRegistry(planspace).artifacts
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     sec = section.number
 
     ctx = build_prompt_context(section, planspace, codespace)
@@ -189,13 +176,9 @@ def write_integration_alignment_prompt(
     # Intent surfaces output path (for intent-judge in full mode).
     # Conditional: only add the block when intent pack exists.
     intent_surfaces_block = ""
-    intent_pack = (
-        artifacts / "intent" / "sections" / f"section-{sec}" / "problem.md"
-    )
+    intent_pack = paths.intent_section_dir(sec) / "problem.md"
     if intent_pack.exists():
-        surfaces_path = (
-            artifacts / "signals" / f"intent-surfaces-{sec}.json"
-        )
+        surfaces_path = paths.intent_surfaces_signal(sec)
         intent_surfaces_block = (
             f"## Surfaces Signal Output\n\n"
             f"If you discover intent surfaces during alignment checking, "
@@ -203,9 +186,7 @@ def write_integration_alignment_prompt(
         )
 
     # Proposal-state artifact (machine-readable problem state)
-    proposal_state_path = (
-        artifacts / "proposals" / f"section-{sec}-proposal-state.json"
-    )
+    proposal_state_path = paths.proposal_state(sec)
     proposal_state_line = ""
     if proposal_state_path.exists():
         proposal_state_line = (
@@ -214,7 +195,6 @@ def write_integration_alignment_prompt(
         )
 
     # Governance packet reference
-    paths = PathRegistry(planspace)
     governance_packet_path = paths.governance_packet(sec)
     governance_packet_line = ""
     if governance_packet_path.exists():
@@ -224,16 +204,9 @@ def write_integration_alignment_prompt(
         )
 
     ctx.update({
-        "proposal_excerpt": (
-            artifacts / "sections" / f"section-{sec}-proposal-excerpt.md"
-        ),
-        "alignment_excerpt": (
-            artifacts / "sections" / f"section-{sec}-alignment-excerpt.md"
-        ),
-        "integration_proposal": (
-            artifacts / "proposals"
-            / f"section-{sec}-integration-proposal.md"
-        ),
+        "proposal_excerpt": paths.proposal_excerpt(sec),
+        "alignment_excerpt": paths.alignment_excerpt(sec),
+        "integration_proposal": paths.proposal(sec),
         "proposal_state_line": proposal_state_line,
         "governance_packet_line": governance_packet_line,
         "intent_surfaces_block": intent_surfaces_block,

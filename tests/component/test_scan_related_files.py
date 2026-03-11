@@ -77,17 +77,21 @@ def test_apply_related_files_update_returns_false_for_malformed_signal(
 def test_validate_existing_related_files_skips_when_inputs_unchanged(
     tmp_path, monkeypatch,
 ) -> None:
-    section_file = tmp_path / "section-07.md"
+    # Use proper planspace/artifacts layout so PathRegistry works
+    planspace = tmp_path / "planspace"
+    artifacts_dir = planspace / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    section_file = artifacts_dir / "section-07.md"
     section_file.write_text(
         "# Section 07\n\n## Related Files\n\n### src/app.py\nBody.\n",
         encoding="utf-8",
     )
-    codemap_path = tmp_path / "codemap.md"
+    codemap_path = artifacts_dir / "codemap.md"
     codemap_path.write_text("codemap\n", encoding="utf-8")
-    corrections_file = tmp_path / "signals" / "codemap-corrections.json"
+    corrections_file = artifacts_dir / "signals" / "codemap-corrections.json"
     corrections_file.parent.mkdir(parents=True, exist_ok=True)
     write_json(corrections_file, {"fixes": []})
-    artifacts_dir = tmp_path
     scan_log_dir = tmp_path / "scan-logs"
     section_log = scan_log_dir / "section-07"
     section_log.mkdir(parents=True, exist_ok=True)
@@ -110,7 +114,6 @@ def test_validate_existing_related_files_skips_when_inputs_unchanged(
 
     # Seed a valid cached signal so skip gate accepts the cached hash
     signals_dir = artifacts_dir / "signals"
-    signals_dir.mkdir(parents=True, exist_ok=True)
     write_json(
         signals_dir / "section-07-related-files-update.json",
         {"status": "current", "additions": [], "removals": [], "reason": "ok"},
@@ -143,7 +146,12 @@ def test_validate_existing_related_files_skips_when_inputs_unchanged(
 def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
     tmp_path, monkeypatch,
 ) -> None:
-    section_file = tmp_path / "section-08.md"
+    # Use proper planspace/artifacts layout so PathRegistry works
+    planspace = tmp_path / "planspace"
+    artifacts_dir = planspace / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    section_file = artifacts_dir / "section-08.md"
     section_file.write_text(
         "# Section 08\n\n"
         "## Related Files\n\n"
@@ -151,9 +159,8 @@ def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
         "Old entry.\n",
         encoding="utf-8",
     )
-    codemap_path = tmp_path / "codemap.md"
+    codemap_path = artifacts_dir / "codemap.md"
     codemap_path.write_text("codemap\n", encoding="utf-8")
-    artifacts_dir = tmp_path
     (artifacts_dir / "signals").mkdir(parents=True, exist_ok=True)
     scan_log_dir = tmp_path / "scan-logs"
     codespace = tmp_path / "codespace"

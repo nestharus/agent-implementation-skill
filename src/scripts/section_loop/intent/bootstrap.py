@@ -143,12 +143,11 @@ def generate_intent_pack(
     rubric_path = intent_sec / "problem-alignment.md"
 
     # Gather input references (needed for both hash check and prompt)
-    sections_dir = artifacts / "sections"
-    proposal_excerpt = sections_dir / f"section-{sec}-proposal-excerpt.md"
-    alignment_excerpt = sections_dir / f"section-{sec}-alignment-excerpt.md"
-    problem_frame = sections_dir / f"section-{sec}-problem-frame.md"
-    codemap_path = artifacts / "codemap.md"
-    corrections_path = artifacts / "signals" / "codemap-corrections.json"
+    proposal_excerpt = paths.proposal_excerpt(sec)
+    alignment_excerpt = paths.alignment_excerpt(sec)
+    problem_frame = paths.problem_frame(sec)
+    codemap_path = paths.codemap()
+    corrections_path = paths.corrections()
     philosophy_path = artifacts / "intent" / "global" / "philosophy.md"
     todos_path = artifacts / "todos" / f"section-{sec}-todos.md"
 

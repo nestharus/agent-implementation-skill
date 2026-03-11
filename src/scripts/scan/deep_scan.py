@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from lib.core.path_registry import PathRegistry
 from lib.scan.deep_scan_analyzer import analyze_file as _analyze_file
 from lib.scan.deep_scan_analyzer import safe_name as _safe_name
 from lib.scan.scan_match_updater import deep_scan_related_files, update_match
@@ -46,7 +47,7 @@ def run_deep_scan(
 
     section_files = list_section_files(sections_dir)
     file_card_cache = FileCardCache(artifacts_dir / "file-cards")
-    corrections_path = artifacts_dir / "signals" / "codemap-corrections.json"
+    corrections_path = PathRegistry(artifacts_dir.parent).corrections()
     already_scanned: dict[str, set[str]] = {}
     any_failures = False
 

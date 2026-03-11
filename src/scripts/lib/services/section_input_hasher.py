@@ -51,7 +51,7 @@ def section_inputs_hash(
         paths.corrections(),
         paths.project_mode_txt(),
         paths.project_mode_json(),
-        paths.sections_dir() / f"section-{sec_num}-mode.txt",
+        paths.section_mode_txt(sec_num),
         paths.problem_frame(sec_num),
         paths.proposals_dir() / f"section-{sec_num}-proposal-state.json",
         paths.reconciliation_dir()
