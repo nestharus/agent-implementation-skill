@@ -183,14 +183,16 @@ def _update_blocker_rollup(planspace: Path) -> None:
     rollup_path = decisions_dir / "needs-input.md"
 
     # Group blockers by category
-    groups: dict[str, list[dict]] = {
+    from collections import defaultdict
+    groups: dict[str, list[dict]] = defaultdict(list, {
         "missing_info": [],
         "decision_required": [],
         "dependency": [],
         "scope_expansion": [],
         "needs_parent": [],
         "malformed_signal": [],
-    }
+        "governance": [],
+    })
     for b in blockers:
         groups[b["category"]].append(b)
 
@@ -201,13 +203,14 @@ def _update_blocker_rollup(planspace: Path) -> None:
         "scope_expansion": "Scope Expansion (OUT_OF_SCOPE)",
         "needs_parent": "Parent Coordination / Decision Required (NEEDS_PARENT)",
         "malformed_signal": "Malformed Signal Files (parse error)",
+        "governance": "Governance (GOVERNANCE)",
     }
 
     lines = ["# Blocker Rollup (auto-generated)\n",
              f"**{len(blockers)} sections need input:**\n"]
     for cat_key in ("missing_info", "decision_required", "dependency",
                     "scope_expansion", "needs_parent",
-                    "malformed_signal"):
+                    "malformed_signal", "governance"):
         cat_blockers = groups[cat_key]
         if not cat_blockers:
             continue

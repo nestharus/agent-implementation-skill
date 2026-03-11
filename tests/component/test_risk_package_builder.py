@@ -8,7 +8,7 @@ from pathlib import Path
 from lib.core.path_registry import PathRegistry
 from lib.risk.package_builder import (
     _materialize_steps,
-    _positional_step_class,
+    _positional_assessment_class,
     build_package,
     build_package_from_proposal,
     read_package,
@@ -22,12 +22,12 @@ def test_build_package_creates_expected_structure() -> None:
     steps = [
         PackageStep(
             step_id="explore-01",
-            step_class=StepClass.EXPLORE,
+            assessment_class=StepClass.EXPLORE,
             summary="Refresh understanding",
         ),
         PackageStep(
             step_id="edit-02",
-            step_class=StepClass.EDIT,
+            assessment_class=StepClass.EDIT,
             summary="Apply change",
             prerequisites=["explore-01"],
         ),
@@ -139,10 +139,10 @@ def test_build_package_from_proposal_consumes_typed_microstrategy_steps(
     (proposals / "section-03-microstrategy.md").write_text(
         "```json\n"
         "[\n"
-        '  {"summary": "Refresh local context", "step_class": "explore"},\n'
-        '  {"summary": "Stabilize stale readiness inputs", "step_class": "stabilize"},\n'
-        '  {"summary": "Resolve shared seam with section 04", "step_class": "coordinate"},\n'
-        '  {"summary": "Run final checks", "step_class": "verify"}\n'
+        '  {"summary": "Refresh local context", "assessment_class": "explore"},\n'
+        '  {"summary": "Stabilize stale readiness inputs", "assessment_class": "stabilize"},\n'
+        '  {"summary": "Resolve shared seam with section 04", "assessment_class": "coordinate"},\n'
+        '  {"summary": "Run final checks", "assessment_class": "verify"}\n'
         "]\n"
         "```\n",
         encoding="utf-8",
@@ -156,7 +156,7 @@ def test_build_package_from_proposal_consumes_typed_microstrategy_steps(
         "Resolve shared seam with section 04",
         "Run final checks",
     ]
-    assert [step.step_class for step in package.steps] == [
+    assert [step.assessment_class for step in package.steps] == [
         StepClass.EXPLORE,
         StepClass.STABILIZE,
         StepClass.COORDINATE,
@@ -185,16 +185,16 @@ def test_build_package_from_empty_proposal_uses_generic_defaults(
     assert package.steps[2].summary == "Verify alignment and execution results"
 
 
-def test_positional_step_class_uses_edit_for_single_step() -> None:
-    assert _positional_step_class(index=1, total=1) == StepClass.EDIT
+def test_positional_assessment_class_uses_edit_for_single_step() -> None:
+    assert _positional_assessment_class(index=1, total=1) == StepClass.EDIT
 
 
-def test_positional_step_class_uses_position_based_defaults_for_multi_step() -> None:
+def test_positional_assessment_class_uses_position_based_defaults_for_multi_step() -> None:
     assert [
-        _positional_step_class(index=1, total=4),
-        _positional_step_class(index=2, total=4),
-        _positional_step_class(index=3, total=4),
-        _positional_step_class(index=4, total=4),
+        _positional_assessment_class(index=1, total=4),
+        _positional_assessment_class(index=2, total=4),
+        _positional_assessment_class(index=3, total=4),
+        _positional_assessment_class(index=4, total=4),
     ] == [
         StepClass.EXPLORE,
         StepClass.EDIT,
@@ -203,7 +203,7 @@ def test_positional_step_class_uses_position_based_defaults_for_multi_step() -> 
     ]
 
 
-def test_materialize_steps_uses_typed_step_classes_when_present() -> None:
+def test_materialize_steps_uses_typed_assessment_classes_when_present() -> None:
     steps = _materialize_steps(
         step_summaries=[
             "Refresh context",
@@ -212,13 +212,13 @@ def test_materialize_steps_uses_typed_step_classes_when_present() -> None:
             "Verify final behavior",
         ],
         proposal_state={},
-        step_classes={
+        assessment_classes={
             2: "stabilize",
             3: "coordinate",
         },
     )
 
-    assert [step.step_class for step in steps] == [
+    assert [step.assessment_class for step in steps] == [
         StepClass.EXPLORE,
         StepClass.STABILIZE,
         StepClass.COORDINATE,
@@ -226,7 +226,7 @@ def test_materialize_steps_uses_typed_step_classes_when_present() -> None:
     ]
 
 
-def test_materialize_steps_uses_positional_fallback_without_step_classes() -> None:
+def test_materialize_steps_uses_positional_fallback_without_assessment_classes() -> None:
     steps = _materialize_steps(
         step_summaries=[
             "Refresh context",
@@ -236,14 +236,14 @@ def test_materialize_steps_uses_positional_fallback_without_step_classes() -> No
         proposal_state={},
     )
 
-    assert [step.step_class for step in steps] == [
+    assert [step.assessment_class for step in steps] == [
         StepClass.EXPLORE,
         StepClass.EDIT,
         StepClass.VERIFY,
     ]
 
 
-def test_materialize_steps_invalid_step_class_falls_back_to_positional() -> None:
+def test_materialize_steps_invalid_assessment_class_falls_back_to_positional() -> None:
     steps = _materialize_steps(
         step_summaries=[
             "Refresh context",
@@ -251,10 +251,10 @@ def test_materialize_steps_invalid_step_class_falls_back_to_positional() -> None
             "Verify final behavior",
         ],
         proposal_state={},
-        step_classes={2: "unknown"},
+        assessment_classes={2: "unknown"},
     )
 
-    assert [step.step_class for step in steps] == [
+    assert [step.assessment_class for step in steps] == [
         StepClass.EXPLORE,
         StepClass.EDIT,
         StepClass.VERIFY,
@@ -270,18 +270,18 @@ def test_refresh_package_removes_completed_steps() -> None:
         steps=[
             PackageStep(
                 step_id="explore-01",
-                step_class=StepClass.EXPLORE,
+                assessment_class=StepClass.EXPLORE,
                 summary="Refresh understanding",
             ),
             PackageStep(
                 step_id="edit-02",
-                step_class=StepClass.EDIT,
+                assessment_class=StepClass.EDIT,
                 summary="Apply change",
                 prerequisites=["explore-01"],
             ),
             PackageStep(
                 step_id="verify-03",
-                step_class=StepClass.VERIFY,
+                assessment_class=StepClass.VERIFY,
                 summary="Verify change",
                 prerequisites=["edit-02"],
             ),
@@ -309,7 +309,7 @@ def test_write_and_read_package_round_trip(tmp_path: Path) -> None:
         steps=[
             PackageStep(
                 step_id="explore-01",
-                step_class=StepClass.EXPLORE,
+                assessment_class=StepClass.EXPLORE,
                 summary="Refresh understanding",
             )
         ],

@@ -249,7 +249,7 @@ def _setup_valid_assessment(planspace: Path, codespace: Path) -> Path:
         "steps": [
             {
                 "step_id": "edit-01",
-                "step_class": "edit",
+                "assessment_class": "edit",
                 "summary": "Apply the approved execution fix",
                 "prerequisites": [],
                 "expected_outputs": ["code-or-artifact-update"],
@@ -310,7 +310,7 @@ def _setup_high_risk_assessment(planspace: Path, codespace: Path) -> Path:
         "steps": [
             {
                 "step_id": "explore-01",
-                "step_class": "explore",
+                "assessment_class": "explore",
                 "summary": "Refresh the stale execution context",
                 "prerequisites": [],
                 "expected_outputs": ["refreshed-understanding"],
@@ -321,7 +321,7 @@ def _setup_high_risk_assessment(planspace: Path, codespace: Path) -> Path:
             },
             {
                 "step_id": "edit-02",
-                "step_class": "edit",
+                "assessment_class": "edit",
                 "summary": "Mutate the shared contract implementation across multiple files",
                 "prerequisites": ["explore-01"],
                 "expected_outputs": ["code-or-artifact-update"],
@@ -332,7 +332,7 @@ def _setup_high_risk_assessment(planspace: Path, codespace: Path) -> Path:
             },
             {
                 "step_id": "verify-03",
-                "step_class": "verify",
+                "assessment_class": "verify",
                 "summary": "Verify all impacted contract consumers",
                 "prerequisites": ["edit-02"],
                 "expected_outputs": ["verification-result"],
@@ -383,7 +383,7 @@ def _setup_high_risk_assessment(planspace: Path, codespace: Path) -> Path:
                 "package_id": "pkg-implementation-section-32",
                 "step_id": "edit-02",
                 "layer": "implementation",
-                "step_class": "edit",
+                "assessment_class": "edit",
                 "posture": "P2",
                 "predicted_risk": 55,
                 "actual_outcome": "failure",

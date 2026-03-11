@@ -70,18 +70,18 @@ def _write_risk_context(planspace: Path, sec_num: str) -> None:
             steps=[
                 PackageStep(
                     step_id="edit-01",
-                    step_class=StepClass.EDIT,
+                    assessment_class=StepClass.EDIT,
                     summary="Apply the change",
                 ),
                 PackageStep(
                     step_id="verify-02",
-                    step_class=StepClass.VERIFY,
+                    assessment_class=StepClass.VERIFY,
                     summary="Verify the change",
                     prerequisites=["edit-01"],
                 ),
                 PackageStep(
                     step_id="coord-03",
-                    step_class=StepClass.COORDINATE,
+                    assessment_class=StepClass.COORDINATE,
                     summary="Coordinate fallout",
                     prerequisites=["verify-02"],
                 ),
@@ -106,7 +106,7 @@ def _write_risk_context(planspace: Path, sec_num: str) -> None:
             step_assessments=[
                 StepAssessment(
                     step_id="edit-01",
-                    step_class=StepClass.EDIT,
+                    assessment_class=StepClass.EDIT,
                     summary="Apply the change",
                     prerequisites=[],
                     risk_vector=RiskVector(brute_force_regression=2),
@@ -116,7 +116,7 @@ def _write_risk_context(planspace: Path, sec_num: str) -> None:
                 ),
                 StepAssessment(
                     step_id="verify-02",
-                    step_class=StepClass.VERIFY,
+                    assessment_class=StepClass.VERIFY,
                     summary="Verify the change",
                     prerequisites=["edit-01"],
                     risk_vector=RiskVector(context_rot=2),
@@ -126,7 +126,7 @@ def _write_risk_context(planspace: Path, sec_num: str) -> None:
                 ),
                 StepAssessment(
                     step_id="coord-03",
-                    step_class=StepClass.COORDINATE,
+                    assessment_class=StepClass.COORDINATE,
                     summary="Coordinate fallout",
                     prerequisites=["verify-02"],
                     risk_vector=RiskVector(cross_section_incoherence=3),

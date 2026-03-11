@@ -133,7 +133,7 @@ def _package() -> RiskPackage:
         steps=[
             PackageStep(
                 step_id="edit-01",
-                step_class=StepClass.EDIT,
+                assessment_class=StepClass.EDIT,
                 summary="Apply the approved change",
             ),
         ],
@@ -158,7 +158,7 @@ def _assessment(*, raw_risk: int) -> RiskAssessment:
         step_assessments=[
             StepAssessment(
                 step_id="edit-01",
-                step_class=StepClass.EDIT,
+                assessment_class=StepClass.EDIT,
                 summary="Apply the approved change",
                 prerequisites=[],
                 risk_vector=RiskVector(brute_force_regression=3),
@@ -208,7 +208,7 @@ def _history_entry(
         package_id="pkg-old",
         step_id="edit-01",
         layer="implementation",
-        step_class=StepClass.EDIT,
+        assessment_class=StepClass.EDIT,
         posture=posture,
         predicted_risk=predicted_risk,
         actual_outcome=actual_outcome,

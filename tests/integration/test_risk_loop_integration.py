@@ -158,7 +158,7 @@ def _assessment_for(
         step_assessments.append(
             StepAssessment(
                 step_id=step.step_id,
-                step_class=step.step_class,
+                assessment_class=step.assessment_class,
                 summary=step.summary,
                 prerequisites=list(step.prerequisites),
                 risk_vector=vector,
@@ -502,7 +502,7 @@ def test_full_adaptive_cycle_relaxes_only_one_posture_level(
         steps=[
             PackageStep(
                 step_id="explore-01",
-                step_class=StepClass.EXPLORE,
+                assessment_class=StepClass.EXPLORE,
                 summary="Refresh context before implementation",
             ),
         ],
@@ -515,7 +515,7 @@ def test_full_adaptive_cycle_relaxes_only_one_posture_level(
                 package_id=f"pkg-prior-{index}",
                 step_id=package.steps[0].step_id,
                 layer="implementation",
-                step_class=package.steps[0].step_class,
+                assessment_class=package.steps[0].assessment_class,
                 posture=PostureProfile.P3_GUARDED,
                 predicted_risk=65,
                 actual_outcome="success",
@@ -541,7 +541,7 @@ def test_full_adaptive_cycle_relaxes_only_one_posture_level(
         step_assessments=[
             StepAssessment(
                 step_id=package.steps[0].step_id,
-                step_class=package.steps[0].step_class,
+                assessment_class=package.steps[0].assessment_class,
                 summary=package.steps[0].summary,
                 prerequisites=[],
                 risk_vector=RiskVector(brute_force_regression=4),
@@ -569,7 +569,7 @@ def test_full_adaptive_cycle_relaxes_only_one_posture_level(
         step_assessments=[
             StepAssessment(
                 step_id=package.steps[0].step_id,
-                step_class=package.steps[0].step_class,
+                assessment_class=package.steps[0].assessment_class,
                 summary=package.steps[0].summary,
                 prerequisites=[],
                 risk_vector=RiskVector(brute_force_regression=2),

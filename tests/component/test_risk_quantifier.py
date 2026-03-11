@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from lib.risk.quantifier import (
-    STEP_CLASS_WEIGHTS,
+    CLASS_WEIGHTS,
     compute_raw_risk,
-    is_step_acceptable,
+    is_acceptable,
     risk_to_posture,
 )
 from lib.risk.types import PostureProfile, RiskModifiers, RiskType, RiskVector, StepClass
@@ -44,7 +44,7 @@ def test_compute_raw_risk_max_vector_returns_high_score() -> None:
     assert score >= 90
 
 
-def test_step_class_weights_change_scoring() -> None:
+def test_class_weights_change_scoring() -> None:
     vector = RiskVector(
         brute_force_regression=4,
         cross_section_incoherence=4,
@@ -91,7 +91,7 @@ def test_modifier_penalties_amplify_and_good_reversibility_reduces() -> None:
 
 
 def test_single_dominant_risk_uses_step_specific_weights() -> None:
-    edit_weights = STEP_CLASS_WEIGHTS[StepClass.EDIT]
+    edit_weights = CLASS_WEIGHTS[StepClass.EDIT]
     strongest_risk = max(edit_weights, key=edit_weights.get)
     weakest_risk = min(edit_weights, key=edit_weights.get)
 
@@ -172,8 +172,8 @@ def test_risk_to_posture_maps_default_bands() -> None:
     assert risk_to_posture(100) == PostureProfile.P4_REOPEN
 
 
-def test_is_step_acceptable_uses_step_class_thresholds() -> None:
-    assert is_step_acceptable(50, StepClass.EXPLORE) is True
-    assert is_step_acceptable(50, StepClass.VERIFY) is True
-    assert is_step_acceptable(50, StepClass.EDIT) is False
-    assert is_step_acceptable(50, StepClass.COORDINATE) is False
+def test_is_acceptable_uses_class_thresholds() -> None:
+    assert is_acceptable(50, StepClass.EXPLORE) is True
+    assert is_acceptable(50, StepClass.VERIFY) is True
+    assert is_acceptable(50, StepClass.EDIT) is False
+    assert is_acceptable(50, StepClass.COORDINATE) is False

@@ -128,7 +128,7 @@ Write the microstrategy as markdown. Keep it tactical and concrete.
 The integration proposal already justified WHY — you're capturing
 WHAT and WHERE at the file level.
 
-Each step in your microstrategy may include an optional `step_class` to
+Each step in your microstrategy may include an optional `assessment_class` to
 communicate execution intent to ROAL:
 
 - `explore` — refresh understanding, read artifacts, narrow unknowns
@@ -142,10 +142,10 @@ Example step with typed class:
 ```json
 {
   "summary": "Resolve shared contract with section-05 before editing",
-  "step_class": "coordinate"
+  "assessment_class": "coordinate"
 }
 ```
 
-If you omit `step_class`, a positional default is used (first=explore,
+If you omit `assessment_class`, a positional default is used (first=explore,
 last=verify, middle=edit). But for non-trivial strategies, explicit
 typing helps ROAL apply appropriate risk thresholds.

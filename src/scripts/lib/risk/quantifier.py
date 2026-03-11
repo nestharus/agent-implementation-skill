@@ -7,7 +7,15 @@ from pathlib import Path
 from typing import Any
 
 from lib.core.artifact_io import read_json
-from lib.risk.types import PostureProfile, RiskModifiers, RiskType, RiskVector, StepClass
+from lib.risk.types import (
+    AssessmentClass,
+    DecisionClass,
+    PostureProfile,
+    RiskModifiers,
+    RiskType,
+    RiskVector,
+    StepClass,
+)
 
 RISK_TYPES: tuple[RiskType, ...] = (
     RiskType.CONTEXT_ROT,
@@ -17,9 +25,16 @@ RISK_TYPES: tuple[RiskType, ...] = (
     RiskType.CROSS_SECTION_INCOHERENCE,
     RiskType.TOOL_ISLAND_ISOLATION,
     RiskType.STALE_ARTIFACT_CONTAMINATION,
+    RiskType.ECOSYSTEM_MATURITY,
+    RiskType.DEPENDENCY_LOCK_IN,
+    RiskType.TEAM_CAPABILITY,
+    RiskType.SCALE_FIT,
+    RiskType.INTEGRATION_FIT,
+    RiskType.OPERABILITY_COST,
+    RiskType.EVOLUTION_FLEXIBILITY,
 )
 
-STEP_CLASS_WEIGHTS: dict[StepClass, dict[RiskType, float]] = {
+CLASS_WEIGHTS: dict[AssessmentClass, dict[RiskType, float]] = {
     StepClass.EXPLORE: {
         RiskType.CONTEXT_ROT: 0.5,
         RiskType.SILENT_DRIFT: 0.6,
@@ -28,6 +43,13 @@ STEP_CLASS_WEIGHTS: dict[StepClass, dict[RiskType, float]] = {
         RiskType.CROSS_SECTION_INCOHERENCE: 0.5,
         RiskType.TOOL_ISLAND_ISOLATION: 0.5,
         RiskType.STALE_ARTIFACT_CONTAMINATION: 0.5,
+        RiskType.ECOSYSTEM_MATURITY: 0.0,
+        RiskType.DEPENDENCY_LOCK_IN: 0.0,
+        RiskType.TEAM_CAPABILITY: 0.0,
+        RiskType.SCALE_FIT: 0.0,
+        RiskType.INTEGRATION_FIT: 0.0,
+        RiskType.OPERABILITY_COST: 0.0,
+        RiskType.EVOLUTION_FLEXIBILITY: 0.0,
     },
     StepClass.STABILIZE: {
         RiskType.CONTEXT_ROT: 1.0,
@@ -37,6 +59,13 @@ STEP_CLASS_WEIGHTS: dict[StepClass, dict[RiskType, float]] = {
         RiskType.CROSS_SECTION_INCOHERENCE: 1.0,
         RiskType.TOOL_ISLAND_ISOLATION: 0.9,
         RiskType.STALE_ARTIFACT_CONTAMINATION: 1.1,
+        RiskType.ECOSYSTEM_MATURITY: 0.0,
+        RiskType.DEPENDENCY_LOCK_IN: 0.0,
+        RiskType.TEAM_CAPABILITY: 0.0,
+        RiskType.SCALE_FIT: 0.0,
+        RiskType.INTEGRATION_FIT: 0.0,
+        RiskType.OPERABILITY_COST: 0.0,
+        RiskType.EVOLUTION_FLEXIBILITY: 0.0,
     },
     StepClass.EDIT: {
         RiskType.CONTEXT_ROT: 1.0,
@@ -46,6 +75,13 @@ STEP_CLASS_WEIGHTS: dict[StepClass, dict[RiskType, float]] = {
         RiskType.CROSS_SECTION_INCOHERENCE: 1.7,
         RiskType.TOOL_ISLAND_ISOLATION: 1.0,
         RiskType.STALE_ARTIFACT_CONTAMINATION: 1.2,
+        RiskType.ECOSYSTEM_MATURITY: 0.0,
+        RiskType.DEPENDENCY_LOCK_IN: 0.0,
+        RiskType.TEAM_CAPABILITY: 0.0,
+        RiskType.SCALE_FIT: 0.0,
+        RiskType.INTEGRATION_FIT: 0.0,
+        RiskType.OPERABILITY_COST: 0.0,
+        RiskType.EVOLUTION_FLEXIBILITY: 0.0,
     },
     StepClass.COORDINATE: {
         RiskType.CONTEXT_ROT: 1.0,
@@ -55,6 +91,13 @@ STEP_CLASS_WEIGHTS: dict[StepClass, dict[RiskType, float]] = {
         RiskType.CROSS_SECTION_INCOHERENCE: 2.0,
         RiskType.TOOL_ISLAND_ISOLATION: 1.3,
         RiskType.STALE_ARTIFACT_CONTAMINATION: 1.8,
+        RiskType.ECOSYSTEM_MATURITY: 0.0,
+        RiskType.DEPENDENCY_LOCK_IN: 0.0,
+        RiskType.TEAM_CAPABILITY: 0.0,
+        RiskType.SCALE_FIT: 0.0,
+        RiskType.INTEGRATION_FIT: 0.0,
+        RiskType.OPERABILITY_COST: 0.0,
+        RiskType.EVOLUTION_FLEXIBILITY: 0.0,
     },
     StepClass.VERIFY: {
         RiskType.CONTEXT_ROT: 0.8,
@@ -64,6 +107,93 @@ STEP_CLASS_WEIGHTS: dict[StepClass, dict[RiskType, float]] = {
         RiskType.CROSS_SECTION_INCOHERENCE: 1.0,
         RiskType.TOOL_ISLAND_ISOLATION: 0.8,
         RiskType.STALE_ARTIFACT_CONTAMINATION: 1.0,
+        RiskType.ECOSYSTEM_MATURITY: 0.0,
+        RiskType.DEPENDENCY_LOCK_IN: 0.0,
+        RiskType.TEAM_CAPABILITY: 0.0,
+        RiskType.SCALE_FIT: 0.0,
+        RiskType.INTEGRATION_FIT: 0.0,
+        RiskType.OPERABILITY_COST: 0.0,
+        RiskType.EVOLUTION_FLEXIBILITY: 0.0,
+    },
+    DecisionClass.LOCAL: {
+        RiskType.CONTEXT_ROT: 0.0,
+        RiskType.SILENT_DRIFT: 0.0,
+        RiskType.SCOPE_CREEP: 0.0,
+        RiskType.BRUTE_FORCE_REGRESSION: 0.0,
+        RiskType.CROSS_SECTION_INCOHERENCE: 0.0,
+        RiskType.TOOL_ISLAND_ISOLATION: 0.0,
+        RiskType.STALE_ARTIFACT_CONTAMINATION: 0.0,
+        RiskType.TEAM_CAPABILITY: 1.5,
+        RiskType.INTEGRATION_FIT: 1.3,
+        RiskType.OPERABILITY_COST: 1.0,
+        RiskType.ECOSYSTEM_MATURITY: 0.8,
+        RiskType.DEPENDENCY_LOCK_IN: 0.5,
+        RiskType.SCALE_FIT: 0.5,
+        RiskType.EVOLUTION_FLEXIBILITY: 0.5,
+    },
+    DecisionClass.COMPONENT: {
+        RiskType.CONTEXT_ROT: 0.0,
+        RiskType.SILENT_DRIFT: 0.0,
+        RiskType.SCOPE_CREEP: 0.0,
+        RiskType.BRUTE_FORCE_REGRESSION: 0.0,
+        RiskType.CROSS_SECTION_INCOHERENCE: 0.0,
+        RiskType.TOOL_ISLAND_ISOLATION: 0.0,
+        RiskType.STALE_ARTIFACT_CONTAMINATION: 0.0,
+        RiskType.INTEGRATION_FIT: 1.5,
+        RiskType.TEAM_CAPABILITY: 1.2,
+        RiskType.ECOSYSTEM_MATURITY: 1.0,
+        RiskType.OPERABILITY_COST: 1.0,
+        RiskType.SCALE_FIT: 0.8,
+        RiskType.DEPENDENCY_LOCK_IN: 0.8,
+        RiskType.EVOLUTION_FLEXIBILITY: 0.7,
+    },
+    DecisionClass.CROSS_CUTTING: {
+        RiskType.CONTEXT_ROT: 0.0,
+        RiskType.SILENT_DRIFT: 0.0,
+        RiskType.SCOPE_CREEP: 0.0,
+        RiskType.BRUTE_FORCE_REGRESSION: 0.0,
+        RiskType.CROSS_SECTION_INCOHERENCE: 0.0,
+        RiskType.TOOL_ISLAND_ISOLATION: 0.0,
+        RiskType.STALE_ARTIFACT_CONTAMINATION: 0.0,
+        RiskType.INTEGRATION_FIT: 1.8,
+        RiskType.ECOSYSTEM_MATURITY: 1.5,
+        RiskType.DEPENDENCY_LOCK_IN: 1.3,
+        RiskType.SCALE_FIT: 1.2,
+        RiskType.TEAM_CAPABILITY: 1.0,
+        RiskType.OPERABILITY_COST: 1.0,
+        RiskType.EVOLUTION_FLEXIBILITY: 1.0,
+    },
+    DecisionClass.PLATFORM: {
+        RiskType.CONTEXT_ROT: 0.0,
+        RiskType.SILENT_DRIFT: 0.0,
+        RiskType.SCOPE_CREEP: 0.0,
+        RiskType.BRUTE_FORCE_REGRESSION: 0.0,
+        RiskType.CROSS_SECTION_INCOHERENCE: 0.0,
+        RiskType.TOOL_ISLAND_ISOLATION: 0.0,
+        RiskType.STALE_ARTIFACT_CONTAMINATION: 0.0,
+        RiskType.ECOSYSTEM_MATURITY: 1.8,
+        RiskType.DEPENDENCY_LOCK_IN: 1.6,
+        RiskType.SCALE_FIT: 1.5,
+        RiskType.INTEGRATION_FIT: 1.3,
+        RiskType.OPERABILITY_COST: 1.2,
+        RiskType.EVOLUTION_FLEXIBILITY: 1.0,
+        RiskType.TEAM_CAPABILITY: 0.8,
+    },
+    DecisionClass.IRREVERSIBLE: {
+        RiskType.CONTEXT_ROT: 0.0,
+        RiskType.SILENT_DRIFT: 0.0,
+        RiskType.SCOPE_CREEP: 0.0,
+        RiskType.BRUTE_FORCE_REGRESSION: 0.0,
+        RiskType.CROSS_SECTION_INCOHERENCE: 0.0,
+        RiskType.TOOL_ISLAND_ISOLATION: 0.0,
+        RiskType.STALE_ARTIFACT_CONTAMINATION: 0.0,
+        RiskType.DEPENDENCY_LOCK_IN: 2.0,
+        RiskType.EVOLUTION_FLEXIBILITY: 1.8,
+        RiskType.ECOSYSTEM_MATURITY: 1.5,
+        RiskType.SCALE_FIT: 1.3,
+        RiskType.INTEGRATION_FIT: 1.2,
+        RiskType.OPERABILITY_COST: 1.0,
+        RiskType.TEAM_CAPABILITY: 0.8,
     },
 }
 
@@ -75,12 +205,17 @@ DEFAULT_POSTURE_BANDS: tuple[tuple[int, int, PostureProfile], ...] = (
     (80, 100, PostureProfile.P4_REOPEN),
 )
 
-DEFAULT_EXECUTION_THRESHOLDS: dict[StepClass, int] = {
+DEFAULT_CLASS_THRESHOLDS: dict[AssessmentClass, int] = {
     StepClass.EXPLORE: 60,
     StepClass.STABILIZE: 60,
     StepClass.EDIT: 45,
     StepClass.COORDINATE: 35,
     StepClass.VERIFY: 50,
+    DecisionClass.LOCAL: 55,
+    DecisionClass.COMPONENT: 45,
+    DecisionClass.CROSS_CUTTING: 35,
+    DecisionClass.PLATFORM: 30,
+    DecisionClass.IRREVERSIBLE: 20,
 }
 
 DEFAULT_RISK_PARAMETERS: dict[str, Any] = {
@@ -88,9 +223,9 @@ DEFAULT_RISK_PARAMETERS: dict[str, Any] = {
         {"min": lower, "max": upper, "posture": posture.value}
         for lower, upper, posture in DEFAULT_POSTURE_BANDS
     ],
-    "execution_thresholds": {
-        step_class.value: threshold
-        for step_class, threshold in DEFAULT_EXECUTION_THRESHOLDS.items()
+    "class_thresholds": {
+        assessment_class.value: threshold
+        for assessment_class, threshold in DEFAULT_CLASS_THRESHOLDS.items()
     },
 }
 
@@ -108,11 +243,11 @@ HISTORY_ADJUSTMENT_BOUND = 10.0
 def compute_raw_risk(
     risk_vector: RiskVector,
     modifiers: RiskModifiers,
-    step_class: StepClass,
+    assessment_class: AssessmentClass,
     history_adjustment: float = 0.0,
 ) -> int:
     """Compute a 0-100 raw risk score from ROAL risk inputs."""
-    weights = STEP_CLASS_WEIGHTS[step_class]
+    weights = CLASS_WEIGHTS[assessment_class]
     weighted_sum = sum(
         _severity_for(risk_vector, risk_type) * weights[risk_type]
         for risk_type in RISK_TYPES
@@ -144,9 +279,9 @@ def risk_to_posture(raw_risk: int) -> PostureProfile:
     return DEFAULT_POSTURE_BANDS[-1][2]
 
 
-def is_step_acceptable(raw_risk: int, step_class: StepClass) -> bool:
+def is_acceptable(raw_risk: int, assessment_class: AssessmentClass) -> bool:
     """Return whether the step can execute under default ROAL thresholds."""
-    threshold = DEFAULT_EXECUTION_THRESHOLDS[step_class]
+    threshold = DEFAULT_CLASS_THRESHOLDS[assessment_class]
     return _clamp_int(raw_risk, RISK_MIN, RISK_MAX) <= threshold
 
 
@@ -161,9 +296,11 @@ def load_risk_parameters(path: Path) -> dict[str, Any]:
     if isinstance(posture_bands, list):
         defaults["posture_bands"] = posture_bands
 
-    thresholds = payload.get("execution_thresholds")
+    thresholds = payload.get("class_thresholds")
+    if not isinstance(thresholds, dict):
+        thresholds = payload.get("execution_thresholds")
     if isinstance(thresholds, dict):
-        defaults["execution_thresholds"].update(
+        defaults["class_thresholds"].update(
             {
                 str(key): value
                 for key, value in thresholds.items()

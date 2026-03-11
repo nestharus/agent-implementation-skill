@@ -75,7 +75,7 @@ def _write_optimizer_fixture(
                 "package_id": package_payload["package_id"],
                 "step_id": package_payload["steps"][0]["step_id"],
                 "layer": "implementation",
-                "step_class": package_payload["steps"][0]["step_class"],
+                "assessment_class": package_payload["steps"][0]["assessment_class"],
                 "posture": "P2",
                 "predicted_risk": 58,
                 "actual_outcome": "warning",
@@ -142,7 +142,7 @@ def _setup_valid_plan(planspace: Path, codespace: Path) -> Path:
         "step_assessments": [
             {
                 "step_id": "edit-01",
-                "step_class": "edit",
+                "assessment_class": "edit",
                 "summary": "Apply a bounded local implementation fix",
                 "prerequisites": [],
                 "risk_vector": {
@@ -177,7 +177,7 @@ def _setup_valid_plan(planspace: Path, codespace: Path) -> Path:
         "steps": [
             {
                 "step_id": "edit-01",
-                "step_class": "edit",
+                "assessment_class": "edit",
                 "summary": "Apply a bounded local implementation fix",
                 "prerequisites": [],
                 "expected_outputs": ["code-or-artifact-update"],
@@ -194,8 +194,7 @@ def _setup_valid_plan(planspace: Path, codespace: Path) -> Path:
         assessment_payload=assessment_payload,
         package_payload=package_payload,
         parameters_payload={
-            "step_thresholds": {"edit": 45},
-            "execution_thresholds": {"edit": 45},
+            "class_thresholds": {"edit": 45},
         },
         extra_instructions=(
             "This is a low-risk fixture. Choose the minimum effective posture "
@@ -227,7 +226,7 @@ def _setup_high_risk_plan(planspace: Path, codespace: Path) -> Path:
         "step_assessments": [
             {
                 "step_id": "edit-02",
-                "step_class": "edit",
+                "assessment_class": "edit",
                 "summary": "Mutate a shared contract with stale prerequisites",
                 "prerequisites": ["fresh readiness artifact", "coordinated contract owner"],
                 "risk_vector": {
@@ -267,7 +266,7 @@ def _setup_high_risk_plan(planspace: Path, codespace: Path) -> Path:
         "steps": [
             {
                 "step_id": "edit-02",
-                "step_class": "edit",
+                "assessment_class": "edit",
                 "summary": "Mutate a shared contract with stale prerequisites",
                 "prerequisites": ["explore-01"],
                 "expected_outputs": ["code-or-artifact-update"],
@@ -284,8 +283,7 @@ def _setup_high_risk_plan(planspace: Path, codespace: Path) -> Path:
         assessment_payload=assessment_payload,
         package_payload=package_payload,
         parameters_payload={
-            "step_thresholds": {"edit": 45},
-            "execution_thresholds": {"edit": 45},
+            "class_thresholds": {"edit": 45},
         },
         extra_instructions=(
             "This fixture is intentionally above threshold. Recommend P3 or "

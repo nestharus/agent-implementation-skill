@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from lib.risk.types import RiskPlan, StepAssessment, StepClass, StepDecision, StepMitigation
+from lib.risk.types import AssessmentClass, DecisionClass, RiskPlan, StepAssessment, StepClass, StepDecision, StepMitigation
 
 
 def validate_risk_plan(plan: RiskPlan, parameters: dict) -> list[str]:
     """Validate that a risk plan meets policy requirements."""
     violations: list[str] = []
     thresholds = _resolve_thresholds(parameters)
-    step_classes = _resolve_step_classes(parameters)
+    assessment_classes = _resolve_assessment_classes(parameters)
 
     if not plan.plan_id:
         violations.append("plan_id is required")
@@ -37,8 +37,8 @@ def validate_risk_plan(plan: RiskPlan, parameters: dict) -> list[str]:
                 violations.append(
                     f"accepted step {decision.step_id} is missing residual_risk"
                 )
-            step_class = step_classes.get(decision.step_id)
-            threshold = thresholds.get(step_class.value) if step_class is not None else None
+            assessment_class = assessment_classes.get(decision.step_id)
+            threshold = thresholds.get(assessment_class.value) if assessment_class is not None else None
             if threshold is None:
                 violations.append(
                     f"accepted step {decision.step_id} is missing a policy threshold"
@@ -46,7 +46,7 @@ def validate_risk_plan(plan: RiskPlan, parameters: dict) -> list[str]:
             elif decision.residual_risk is not None and decision.residual_risk > threshold:
                 violations.append(
                     f"accepted step {decision.step_id} residual risk "
-                    f"{decision.residual_risk} exceeds {step_class.value} threshold {threshold}"
+                    f"{decision.residual_risk} exceeds {assessment_class.value} threshold {threshold}"
                 )
             if decision.route_to is not None:
                 violations.append(
@@ -103,25 +103,25 @@ def enforce_thresholds(
             continue
 
         assessment = assessments.get(decision.step_id)
-        step_class = assessment.step_class if assessment is not None else None
-        threshold = thresholds.get(step_class.value) if step_class is not None else None
+        assessment_class = assessment.assessment_class if assessment is not None else None
+        threshold = thresholds.get(assessment_class.value) if assessment_class is not None else None
         residual_risk = decision.residual_risk
 
         if (
-            step_class is None
+            assessment_class is None
             or threshold is None
             or residual_risk is None
             or residual_risk > threshold
         ):
             reason_parts = [decision.reason] if decision.reason else []
-            if step_class is None or threshold is None:
+            if assessment_class is None or threshold is None:
                 reason_parts.append(
-                    "fail-closed: missing step class or threshold during threshold enforcement"
+                    "fail-closed: missing assessment class or threshold during threshold enforcement"
                 )
             else:
                 reason_parts.append(
                     f"fail-closed: residual risk {residual_risk} exceeds "
-                    f"{step_class.value} threshold {threshold}"
+                    f"{assessment_class.value} threshold {threshold}"
                 )
             wait_for = list(decision.wait_for)
             if "threshold-compliant-plan" not in wait_for:
@@ -173,12 +173,17 @@ def enforce_thresholds(
 
 def load_default_parameters() -> dict:
     """Return default risk parameters."""
-    step_thresholds = {
+    class_thresholds = {
         "explore": 60,
         "stabilize": 60,
         "edit": 45,
         "coordinate": 35,
         "verify": 50,
+        "local": 55,
+        "component": 45,
+        "cross_cutting": 35,
+        "platform": 30,
+        "irreversible": 20,
     }
     return {
         "posture_bands": {
@@ -188,8 +193,7 @@ def load_default_parameters() -> dict:
             "P3": [60, 79],
             "P4": [80, 100],
         },
-        "step_thresholds": step_thresholds,
-        "execution_thresholds": dict(step_thresholds),
+        "class_thresholds": class_thresholds,
         "cooldown_iterations": 2,
         "relaxation_required_successes": 3,
         "history_adjustment_bound": 10.0,
@@ -197,11 +201,13 @@ def load_default_parameters() -> dict:
 
 
 def _resolve_thresholds(parameters: dict) -> dict[str, int]:
-    raw = parameters.get("step_thresholds")
+    raw = parameters.get("class_thresholds")
+    if not isinstance(raw, dict):
+        raw = parameters.get("step_thresholds")
     if not isinstance(raw, dict):
         raw = parameters.get("execution_thresholds")
     if not isinstance(raw, dict):
-        raw = load_default_parameters()["step_thresholds"]
+        raw = load_default_parameters()["class_thresholds"]
     return {
         str(key): int(value)
         for key, value in raw.items()
@@ -209,19 +215,22 @@ def _resolve_thresholds(parameters: dict) -> dict[str, int]:
     }
 
 
-def _resolve_step_classes(parameters: dict) -> dict[str, StepClass]:
-    raw = parameters.get("step_classes", {})
+def _resolve_assessment_classes(parameters: dict) -> dict[str, AssessmentClass]:
+    raw = parameters.get("assessment_classes", parameters.get("step_classes", {}))
     if not isinstance(raw, dict):
         return {}
-    resolved: dict[str, StepClass] = {}
-    for step_id, step_class in raw.items():
-        if isinstance(step_class, StepClass):
-            resolved[str(step_id)] = step_class
-        elif isinstance(step_class, str):
+    resolved: dict[str, AssessmentClass] = {}
+    for step_id, assessment_class in raw.items():
+        if isinstance(assessment_class, (StepClass, DecisionClass)):
+            resolved[str(step_id)] = assessment_class
+        elif isinstance(assessment_class, str):
             try:
-                resolved[str(step_id)] = StepClass(step_class)
+                resolved[str(step_id)] = StepClass(assessment_class)
             except ValueError:
-                continue
+                try:
+                    resolved[str(step_id)] = DecisionClass(assessment_class)
+                except ValueError:
+                    continue
     return resolved
 
 

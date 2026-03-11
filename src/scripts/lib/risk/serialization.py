@@ -11,6 +11,8 @@ from typing import Any, Callable, TypeVar, cast
 from lib.core.artifact_io import read_json, rename_malformed, write_json
 
 from .types import (
+    AssessmentClass,
+    DecisionClass,
     PackageStep,
     PostureProfile,
     RiskAssessment,
@@ -29,6 +31,13 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 _ArtifactT = TypeVar("_ArtifactT")
+
+
+def _deserialize_assessment_class(value: str) -> AssessmentClass:
+    try:
+        return StepClass(value)
+    except ValueError:
+        return DecisionClass(value)
 
 
 def serialize_assessment(assessment: RiskAssessment) -> dict[str, Any]:
@@ -104,7 +113,7 @@ def deserialize_history_entry(data: dict[str, Any]) -> RiskHistoryEntry:
         package_id=data["package_id"],
         step_id=data["step_id"],
         layer=data["layer"],
-        step_class=StepClass(data["step_class"]),
+        assessment_class=_deserialize_assessment_class(data.get("assessment_class", data.get("step_class", "edit"))),
         posture=PostureProfile(data["posture"]),
         predicted_risk=data["predicted_risk"],
         actual_outcome=data["actual_outcome"],
@@ -176,7 +185,7 @@ def _serialize_value(value: Any) -> Any:
 def _deserialize_package_step(data: dict[str, Any]) -> PackageStep:
     return PackageStep(
         step_id=data["step_id"],
-        step_class=StepClass(data["step_class"]),
+        assessment_class=_deserialize_assessment_class(data.get("assessment_class", data.get("step_class", "edit"))),
         summary=data["summary"],
         prerequisites=list(data.get("prerequisites", [])),
         expected_outputs=list(data.get("expected_outputs", [])),
@@ -190,7 +199,7 @@ def _deserialize_package_step(data: dict[str, Any]) -> PackageStep:
 def _deserialize_step_assessment(data: dict[str, Any]) -> StepAssessment:
     return StepAssessment(
         step_id=data["step_id"],
-        step_class=StepClass(data["step_class"]),
+        assessment_class=_deserialize_assessment_class(data.get("assessment_class", data.get("step_class", "edit"))),
         summary=data["summary"],
         prerequisites=list(data["prerequisites"]),
         risk_vector=_deserialize_risk_vector(data["risk_vector"]),
@@ -224,6 +233,13 @@ def _deserialize_risk_vector(data: dict[str, Any]) -> RiskVector:
         cross_section_incoherence=data.get("cross_section_incoherence", 0),
         tool_island_isolation=data.get("tool_island_isolation", 0),
         stale_artifact_contamination=data.get("stale_artifact_contamination", 0),
+        ecosystem_maturity=data.get("ecosystem_maturity", 0),
+        dependency_lock_in=data.get("dependency_lock_in", 0),
+        team_capability=data.get("team_capability", 0),
+        scale_fit=data.get("scale_fit", 0),
+        integration_fit=data.get("integration_fit", 0),
+        operability_cost=data.get("operability_cost", 0),
+        evolution_flexibility=data.get("evolution_flexibility", 0),
     )
 
 

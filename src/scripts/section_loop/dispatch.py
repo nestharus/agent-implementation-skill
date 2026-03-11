@@ -155,11 +155,11 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
         output_path,
         agent_file=agent_file,
         codespace=codespace,
-        timeout=600,
+        timeout=1800,
     )
     output = run_result.output
     if run_result.timed_out:
-        log("  WARNING: agent timed out after 600s")
+        log("  WARNING: agent timed out after 1800s")
     elif run_result.returncode != 0:
         log(f"  WARNING: agent returned {run_result.returncode}")
 

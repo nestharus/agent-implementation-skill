@@ -22,6 +22,7 @@ from src.scripts.lib.risk.serialization import (
     write_risk_artifact,
 )
 from src.scripts.lib.risk.types import (
+    DecisionClass,
     IntentRiskHint,
     PackageStep,
     PostureProfile,
@@ -52,7 +53,7 @@ def _sample_package() -> RiskPackage:
         steps=[
             PackageStep(
                 step_id="step-1",
-                step_class=StepClass.EXPLORE,
+                assessment_class=StepClass.EXPLORE,
                 summary="Inspect current behavior",
                 prerequisites=["ready"],
                 expected_outputs=["notes"],
@@ -83,7 +84,7 @@ def _sample_assessment() -> RiskAssessment:
         step_assessments=[
             StepAssessment(
                 step_id="step-1",
-                step_class=StepClass.STABILIZE,
+                assessment_class=StepClass.STABILIZE,
                 summary="Stabilize inputs",
                 prerequisites=["step-0"],
                 risk_vector=RiskVector(
@@ -170,6 +171,23 @@ class TestEnums:
                     "CROSS_SECTION_INCOHERENCE": "cross_section_incoherence",
                     "TOOL_ISLAND_ISOLATION": "tool_island_isolation",
                     "STALE_ARTIFACT_CONTAMINATION": "stale_artifact_contamination",
+                    "ECOSYSTEM_MATURITY": "ecosystem_maturity",
+                    "DEPENDENCY_LOCK_IN": "dependency_lock_in",
+                    "TEAM_CAPABILITY": "team_capability",
+                    "SCALE_FIT": "scale_fit",
+                    "INTEGRATION_FIT": "integration_fit",
+                    "OPERABILITY_COST": "operability_cost",
+                    "EVOLUTION_FLEXIBILITY": "evolution_flexibility",
+                },
+            ),
+            (
+                DecisionClass,
+                {
+                    "LOCAL": "local",
+                    "COMPONENT": "component",
+                    "CROSS_CUTTING": "cross_cutting",
+                    "PLATFORM": "platform",
+                    "IRREVERSIBLE": "irreversible",
                 },
             ),
             (
@@ -218,7 +236,7 @@ class TestDataclassDefaults:
             package_id="pkg-1",
             step_id="step-1",
             layer="section",
-            step_class=StepClass.EDIT,
+            assessment_class=StepClass.EDIT,
             posture=PostureProfile.P2_STANDARD,
             predicted_risk=42,
             actual_outcome="success",
@@ -246,7 +264,7 @@ class TestSerialization:
         serialized = serialize_package(package)
         restored = deserialize_package(serialized)
 
-        assert serialized["steps"][0]["step_class"] == "explore"
+        assert serialized["steps"][0]["assessment_class"] == "explore"
         assert isinstance(restored.steps[0], PackageStep)
         assert restored == package
 
@@ -278,7 +296,7 @@ class TestSerialization:
             package_id="pkg-1",
             step_id="step-1",
             layer="section",
-            step_class=StepClass.VERIFY,
+            assessment_class=StepClass.VERIFY,
             posture=PostureProfile.P3_GUARDED,
             predicted_risk=40,
             actual_outcome="partial",

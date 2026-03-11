@@ -44,7 +44,7 @@ def test_build_risk_assessment_prompt_includes_expected_context(tmp_path: Path) 
             package_id=package.package_id,
             step_id="explore-01",
             layer="implementation",
-            step_class=StepClass.EXPLORE,
+            assessment_class=StepClass.EXPLORE,
             posture=PostureProfile.P1_LIGHT,
             predicted_risk=22,
             actual_outcome="success",
@@ -85,7 +85,7 @@ def test_build_optimization_prompt_includes_assessment_and_parameters(
     prompt = build_optimization_prompt(
         assessment,
         package,
-        {"step_thresholds": {"explore": 60, "edit": 45}},
+        {"class_thresholds": {"explore": 60, "edit": 45}},
         tmp_path,
         "section-03",
     )
@@ -109,7 +109,7 @@ def test_build_optimization_prompt_marks_lightweight_single_pass_mode(
     prompt = build_optimization_prompt(
         _assessment(),
         _package(),
-        {"step_thresholds": {"explore": 60}},
+        {"class_thresholds": {"explore": 60}},
         tmp_path,
         "section-03",
         lightweight=True,
@@ -138,7 +138,7 @@ def test_prompt_builders_do_not_use_inline_json_blocks(
     build_optimization_prompt(
         _assessment(),
         _package(),
-        {"step_thresholds": {"explore": 60}},
+        {"class_thresholds": {"explore": 60}},
         tmp_path,
         "section-03",
     )
@@ -362,7 +362,7 @@ def test_run_risk_loop_applies_history_adjustment_to_assessment(tmp_path: Path) 
             package_id="pkg-prev",
             step_id="explore-01",
             layer="implementation",
-            step_class=StepClass.EXPLORE,
+            assessment_class=StepClass.EXPLORE,
             posture=PostureProfile.P3_GUARDED,
             predicted_risk=5,
             actual_outcome="failure",
@@ -401,7 +401,7 @@ def test_run_risk_loop_applies_posture_hysteresis_after_plan(tmp_path: Path) -> 
             package_id="pkg-prev",
             step_id="explore-01",
             layer="implementation",
-            step_class=StepClass.EXPLORE,
+            assessment_class=StepClass.EXPLORE,
             posture=PostureProfile.P0_DIRECT,
             predicted_risk=20,
             actual_outcome="success",
@@ -501,7 +501,7 @@ def _package() -> RiskPackage:
         steps=[
             PackageStep(
                 step_id="explore-01",
-                step_class=StepClass.EXPLORE,
+                assessment_class=StepClass.EXPLORE,
                 summary="Refresh understanding",
             )
         ],
@@ -526,7 +526,7 @@ def _assessment() -> RiskAssessment:
         step_assessments=[
             StepAssessment(
                 step_id="explore-01",
-                step_class=StepClass.EXPLORE,
+                assessment_class=StepClass.EXPLORE,
                 summary="Refresh understanding",
                 prerequisites=[],
                 risk_vector=RiskVector(context_rot=1),
@@ -687,7 +687,7 @@ def _write_artifacts(planspace: Path) -> None:
         encoding="utf-8",
     )
     (risk / "risk-parameters.json").write_text(
-        json.dumps({"step_thresholds": {"explore": 60, "edit": 45}}),
+        json.dumps({"class_thresholds": {"explore": 60, "edit": 45}}),
         encoding="utf-8",
     )
     (notes / "from-12-to-03.md").write_text(

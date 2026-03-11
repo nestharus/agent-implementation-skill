@@ -151,7 +151,7 @@ def test_convergence_when_risk_below_threshold(
         step_assessments=[
             StepAssessment(
                 step_id=package.steps[0].step_id,
-                step_class=package.steps[0].step_class,
+                assessment_class=package.steps[0].assessment_class,
                 summary=package.steps[0].summary,
                 prerequisites=[],
                 risk_vector=RiskVector(context_rot=1),

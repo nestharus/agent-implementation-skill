@@ -14,6 +14,17 @@ class StepClass(str, Enum):
     VERIFY = "verify"
 
 
+class DecisionClass(str, Enum):
+    LOCAL = "local"
+    COMPONENT = "component"
+    CROSS_CUTTING = "cross_cutting"
+    PLATFORM = "platform"
+    IRREVERSIBLE = "irreversible"
+
+
+AssessmentClass = StepClass | DecisionClass
+
+
 class PostureProfile(str, Enum):
     P0_DIRECT = "P0"
     P1_LIGHT = "P1"
@@ -30,6 +41,13 @@ class RiskType(str, Enum):
     CROSS_SECTION_INCOHERENCE = "cross_section_incoherence"
     TOOL_ISLAND_ISOLATION = "tool_island_isolation"
     STALE_ARTIFACT_CONTAMINATION = "stale_artifact_contamination"
+    ECOSYSTEM_MATURITY = "ecosystem_maturity"
+    DEPENDENCY_LOCK_IN = "dependency_lock_in"
+    TEAM_CAPABILITY = "team_capability"
+    SCALE_FIT = "scale_fit"
+    INTEGRATION_FIT = "integration_fit"
+    OPERABILITY_COST = "operability_cost"
+    EVOLUTION_FLEXIBILITY = "evolution_flexibility"
 
 
 class StepDecision(str, Enum):
@@ -58,6 +76,13 @@ class RiskVector:
     cross_section_incoherence: int = 0
     tool_island_isolation: int = 0
     stale_artifact_contamination: int = 0
+    ecosystem_maturity: int = 0
+    dependency_lock_in: int = 0
+    team_capability: int = 0
+    scale_fit: int = 0
+    integration_fit: int = 0
+    operability_cost: int = 0
+    evolution_flexibility: int = 0
 
 
 @dataclass
@@ -79,7 +104,7 @@ class UnderstandingInventory:
 @dataclass
 class PackageStep:
     step_id: str
-    step_class: StepClass
+    assessment_class: AssessmentClass
     summary: str
     prerequisites: list[str] = field(default_factory=list)
     expected_outputs: list[str] = field(default_factory=list)
@@ -92,7 +117,7 @@ class PackageStep:
 @dataclass
 class StepAssessment:
     step_id: str
-    step_class: StepClass
+    assessment_class: AssessmentClass
     summary: str
     prerequisites: list[str]
     risk_vector: RiskVector
@@ -158,7 +183,7 @@ class RiskHistoryEntry:
     package_id: str
     step_id: str
     layer: str
-    step_class: StepClass
+    assessment_class: AssessmentClass
     posture: PostureProfile
     predicted_risk: int
     actual_outcome: str

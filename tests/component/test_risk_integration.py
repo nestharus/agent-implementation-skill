@@ -429,7 +429,7 @@ def _assessment(scope: str = "section-01") -> RiskAssessment:
         step_assessments=[
             StepAssessment(
                 step_id="explore-01",
-                step_class=StepClass.EXPLORE,
+                assessment_class=StepClass.EXPLORE,
                 summary="Refresh understanding",
                 prerequisites=[],
                 risk_vector=RiskVector(context_rot=1),
@@ -439,7 +439,7 @@ def _assessment(scope: str = "section-01") -> RiskAssessment:
             ),
             StepAssessment(
                 step_id="edit-02",
-                step_class=StepClass.EDIT,
+                assessment_class=StepClass.EDIT,
                 summary="Implement approved change",
                 prerequisites=["explore-01"],
                 risk_vector=RiskVector(context_rot=1),
@@ -449,7 +449,7 @@ def _assessment(scope: str = "section-01") -> RiskAssessment:
             ),
             StepAssessment(
                 step_id="verify-03",
-                step_class=StepClass.VERIFY,
+                assessment_class=StepClass.VERIFY,
                 summary="Verify results",
                 prerequisites=["edit-02"],
                 risk_vector=RiskVector(context_rot=1),
@@ -480,7 +480,7 @@ def _proposal_assessment(scope: str = "section-01-proposal") -> RiskAssessment:
         step_assessments=[
             StepAssessment(
                 step_id="explore-01",
-                step_class=StepClass.EXPLORE,
+                assessment_class=StepClass.EXPLORE,
                 summary="Refresh understanding",
                 prerequisites=[],
                 risk_vector=RiskVector(silent_drift=3),

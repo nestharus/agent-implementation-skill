@@ -50,7 +50,7 @@ def test_validate_risk_plan_with_valid_plan_returns_no_violations() -> None:
         plan,
         {
             **load_default_parameters(),
-            "step_classes": {
+            "assessment_classes": {
                 "explore-01": StepClass.EXPLORE,
                 "edit-02": StepClass.EDIT,
             },
@@ -83,7 +83,7 @@ def test_validate_risk_plan_catches_overrisk_accepted_steps() -> None:
         plan,
         {
             **load_default_parameters(),
-            "step_classes": {"edit-02": StepClass.EDIT},
+            "assessment_classes": {"edit-02": StepClass.EDIT},
         },
     )
 
@@ -112,7 +112,7 @@ def test_enforce_thresholds_downgrades_over_threshold_steps() -> None:
     assessments = {
         "edit-02": StepAssessment(
             step_id="edit-02",
-            step_class=StepClass.EDIT,
+            assessment_class=StepClass.EDIT,
             summary="Apply change",
             prerequisites=[],
             risk_vector=RiskVector(brute_force_regression=3),
@@ -134,7 +134,7 @@ def test_load_default_parameters_returns_expected_structure() -> None:
     parameters = load_default_parameters()
 
     assert parameters["posture_bands"]["P0"] == [0, 19]
-    assert parameters["step_thresholds"]["edit"] == 45
+    assert parameters["class_thresholds"]["edit"] == 45
     assert parameters["cooldown_iterations"] == 2
     assert parameters["relaxation_required_successes"] == 3
     assert parameters["history_adjustment_bound"] == 10.0

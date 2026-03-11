@@ -151,8 +151,8 @@ def run_risk_loop(
             for item in assessment.step_assessments
         }
         enriched_parameters = dict(parameters)
-        enriched_parameters["step_classes"] = {
-            step_id: step_assessment.step_class
+        enriched_parameters["assessment_classes"] = {
+            step_id: step_assessment.assessment_class
             for step_id, step_assessment in assessments.items()
         }
         enforced_plan = enforce_thresholds(plan, assessments, enriched_parameters)
@@ -290,8 +290,8 @@ def run_lightweight_risk_check(
         for item in assessment.step_assessments
     }
     enriched_parameters = dict(parameters)
-    enriched_parameters["step_classes"] = {
-        step_id: step_assessment.step_class
+    enriched_parameters["assessment_classes"] = {
+        step_id: step_assessment.assessment_class
         for step_id, step_assessment in assessments.items()
     }
     enforced_plan = enforce_thresholds(plan, assessments, enriched_parameters)
@@ -572,9 +572,19 @@ def _load_parameters(paths: PathRegistry) -> dict:
     if isinstance(posture_bands, dict):
         parameters["posture_bands"] = posture_bands
 
+    class_thresholds = raw.get("class_thresholds")
+    if isinstance(class_thresholds, dict):
+        parameters["class_thresholds"].update(
+            {
+                str(key): int(value)
+                for key, value in class_thresholds.items()
+                if isinstance(value, int)
+            }
+        )
+
     step_thresholds = raw.get("step_thresholds")
     if isinstance(step_thresholds, dict):
-        parameters["step_thresholds"].update(
+        parameters["class_thresholds"].update(
             {
                 str(key): int(value)
                 for key, value in step_thresholds.items()
@@ -584,7 +594,7 @@ def _load_parameters(paths: PathRegistry) -> dict:
 
     execution_thresholds = raw.get("execution_thresholds")
     if isinstance(execution_thresholds, dict):
-        parameters["step_thresholds"].update(
+        parameters["class_thresholds"].update(
             {
                 str(key): int(value)
                 for key, value in execution_thresholds.items()
@@ -600,7 +610,7 @@ def _load_parameters(paths: PathRegistry) -> dict:
         if scalar_key in raw:
             parameters[scalar_key] = raw[scalar_key]
 
-    parameters["execution_thresholds"] = dict(parameters["step_thresholds"])
+    parameters["execution_thresholds"] = dict(parameters["class_thresholds"])
     return parameters
 
 
@@ -615,7 +625,7 @@ def _apply_history_adjustment(
         return
 
     signature = pattern_signature(
-        primary_step.step_class,
+        primary_step.assessment_class,
         primary_step.dominant_risks,
         primary_step.modifiers.blast_radius,
     )
@@ -626,7 +636,7 @@ def _apply_history_adjustment(
     ]
     adjustment = compute_history_adjustment(
         history_path,
-        primary_step.step_class,
+        primary_step.assessment_class,
         primary_step.dominant_risks,
         primary_step.modifiers.blast_radius,
     )
@@ -731,7 +741,7 @@ def _matching_history(
     step_assessment: StepAssessment,
 ) -> list[RiskHistoryEntry]:
     signature = pattern_signature(
-        step_assessment.step_class,
+        step_assessment.assessment_class,
         step_assessment.dominant_risks,
         step_assessment.modifiers.blast_radius,
     )
@@ -744,7 +754,7 @@ def _matching_history(
 
 def _history_signature(entry: RiskHistoryEntry) -> str:
     return pattern_signature(
-        entry.step_class,
+        entry.assessment_class,
         entry.dominant_risks,
         entry.blast_radius_band,
     )

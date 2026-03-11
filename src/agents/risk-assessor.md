@@ -145,7 +145,7 @@ not fake precision.
 ## Step Assessment Rules
 
 For every package step:
-1. Copy the step identity faithfully: `step_id`, `step_class`,
+1. Copy the step identity faithfully: `step_id`, `assessment_class`,
    `summary`
 2. Use `prerequisites` to list the prerequisites that actually govern
    safe execution of that step
@@ -204,7 +204,7 @@ Write JSON matching the `RiskAssessment` schema from
   "step_assessments": [
     {
       "step_id": "edit-02",
-      "step_class": "edit",
+      "assessment_class": "edit",
       "summary": "Apply the approved implementation slice",
       "prerequisites": [
         "proposal-state matches current package",

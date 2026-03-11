@@ -14,7 +14,7 @@ from lib.risk.serialization import (
     serialize_package,
     write_risk_artifact,
 )
-from lib.risk.types import PackageStep, RiskPackage, StepClass
+from lib.risk.types import AssessmentClass, DecisionClass, PackageStep, RiskPackage, StepClass
 
 _MICROSTRATEGY_LINE_RE = re.compile(r"^(?:[-*+]|\d+\.)\s+(.+)$")
 _MICROSTRATEGY_HEADING_RE = re.compile(r"^#{1,6}\s+(.+)$")
@@ -73,11 +73,11 @@ def build_package_from_proposal(
         for step in microstrategy_steps
         if _microstrategy_summary(step)
     ]
-    step_classes = {}
+    assessment_classes = {}
     if microstrategy_steps:
         for i, step in enumerate(microstrategy_steps, start=1):
-            if isinstance(step, dict) and "step_class" in step:
-                step_classes[i] = step["step_class"]
+            if isinstance(step, dict) and "assessment_class" in step:
+                assessment_classes[i] = step["assessment_class"]
 
     if not step_summaries:
         step_summaries = _default_step_summaries(
@@ -89,7 +89,7 @@ def build_package_from_proposal(
     steps = _materialize_steps(
         step_summaries=step_summaries,
         proposal_state=proposal_state,
-        step_classes=step_classes or None,
+        assessment_classes=assessment_classes or None,
     )
     return build_package(
         scope=scope,
@@ -110,7 +110,7 @@ def refresh_package(
     refreshed_steps = [
         PackageStep(
             step_id=step.step_id,
-            step_class=step.step_class,
+            assessment_class=step.assessment_class,
             summary=step.summary,
             prerequisites=[
                 prerequisite
@@ -259,9 +259,9 @@ def _coerce_microstrategy_step(
         return None
 
     step: dict[str, str] = {"summary": summary}
-    raw_class = value.get("step_class")
+    raw_class = value.get("assessment_class")
     if isinstance(raw_class, str) and raw_class.strip():
-        step["step_class"] = raw_class.strip()
+        step["assessment_class"] = raw_class.strip()
     return step
 
 
@@ -305,7 +305,7 @@ def _materialize_steps(
     *,
     step_summaries: list[str],
     proposal_state: dict,
-    step_classes: dict[int, str] | None = None,
+    assessment_classes: dict[int, str] | None = None,
 ) -> list[PackageStep]:
     mutation_surface = [str(item) for item in proposal_state.get("resolved_contracts", [])]
     verification_surface = [
@@ -315,37 +315,37 @@ def _materialize_steps(
     steps: list[PackageStep] = []
 
     for index, summary in enumerate(step_summaries, start=1):
-        if step_classes and index in step_classes:
-            raw_class = step_classes[index]
+        if assessment_classes and index in assessment_classes:
+            raw_class = assessment_classes[index]
             try:
-                step_class = StepClass(raw_class)
+                ac = StepClass(raw_class)
             except ValueError:
-                step_class = _positional_step_class(index=index, total=total)
+                ac = _positional_assessment_class(index=index, total=total)
         else:
-            step_class = _positional_step_class(index=index, total=total)
-        step_id = f"{step_class.value}-{index:02d}"
+            ac = _positional_assessment_class(index=index, total=total)
+        step_id = f"{ac.value}-{index:02d}"
         prerequisites = [] if not steps else [steps[-1].step_id]
         steps.append(
             PackageStep(
                 step_id=step_id,
-                step_class=step_class,
+                assessment_class=ac,
                 summary=summary,
                 prerequisites=prerequisites,
-                expected_outputs=_default_expected_outputs(step_class),
-                expected_resolutions=_default_expected_resolutions(step_class),
-                mutation_surface=list(mutation_surface) if step_class == StepClass.EDIT else [],
+                expected_outputs=_default_expected_outputs(ac),
+                expected_resolutions=_default_expected_resolutions(ac),
+                mutation_surface=list(mutation_surface) if ac == StepClass.EDIT else [],
                 verification_surface=(
                     list(verification_surface)
-                    if step_class in {StepClass.VERIFY, StepClass.STABILIZE}
+                    if ac in {StepClass.VERIFY, StepClass.STABILIZE}
                     else []
                 ),
-                reversibility=_default_reversibility(step_class),
+                reversibility=_default_reversibility(ac),
             )
         )
     return steps
 
 
-def _positional_step_class(*, index: int, total: int) -> StepClass:
+def _positional_assessment_class(*, index: int, total: int) -> StepClass:
     if total == 1:
         return StepClass.EDIT
     if index == 1 and total > 1:
@@ -355,7 +355,7 @@ def _positional_step_class(*, index: int, total: int) -> StepClass:
     return StepClass.EDIT
 
 
-def _default_expected_outputs(step_class: StepClass) -> list[str]:
+def _default_expected_outputs(assessment_class: StepClass) -> list[str]:
     mapping = {
         StepClass.EXPLORE: ["refreshed-understanding"],
         StepClass.STABILIZE: ["stabilized-inputs"],
@@ -363,10 +363,10 @@ def _default_expected_outputs(step_class: StepClass) -> list[str]:
         StepClass.COORDINATE: ["coordination-decision"],
         StepClass.VERIFY: ["verification-result"],
     }
-    return [mapping[step_class]]
+    return [mapping[assessment_class]]
 
 
-def _default_expected_resolutions(step_class: StepClass) -> list[str]:
+def _default_expected_resolutions(assessment_class: StepClass) -> list[str]:
     mapping = {
         StepClass.EXPLORE: ["unknowns reduced"],
         StepClass.STABILIZE: ["blocking state resolved"],
@@ -374,13 +374,13 @@ def _default_expected_resolutions(step_class: StepClass) -> list[str]:
         StepClass.COORDINATE: ["shared seam resolved"],
         StepClass.VERIFY: ["alignment confirmed"],
     }
-    return [mapping[step_class]]
+    return [mapping[assessment_class]]
 
 
-def _default_reversibility(step_class: StepClass) -> str:
-    if step_class in {StepClass.EXPLORE, StepClass.VERIFY}:
+def _default_reversibility(assessment_class: StepClass) -> str:
+    if assessment_class in {StepClass.EXPLORE, StepClass.VERIFY}:
         return "high"
-    if step_class == StepClass.EDIT:
+    if assessment_class == StepClass.EDIT:
         return "medium"
     return "low"
 
@@ -391,9 +391,14 @@ def _coerce_package_step(value: object) -> PackageStep | None:
     if not isinstance(value, dict):
         return None
     try:
+        raw_class = str(value.get("assessment_class", value.get("step_class", "edit")))
+        try:
+            ac: AssessmentClass = StepClass(raw_class)
+        except ValueError:
+            ac = DecisionClass(raw_class)
         return PackageStep(
             step_id=str(value["step_id"]),
-            step_class=StepClass(str(value["step_class"])),
+            assessment_class=ac,
             summary=str(value["summary"]),
             prerequisites=[str(item) for item in value.get("prerequisites", [])],
             expected_outputs=[str(item) for item in value.get("expected_outputs", [])],
@@ -408,3 +413,41 @@ def _coerce_package_step(value: object) -> PackageStep | None:
         )
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def build_decision_package(
+    scope: str,
+    decision_area: str,
+    problem_id: str,
+    source: str,
+    options: list[dict],
+) -> RiskPackage:
+    """Create a ROAL package for design decision evaluation."""
+    steps = []
+    for option in options:
+        decision_class_str = option.get("decision_class", "component")
+        try:
+            decision_class = DecisionClass(decision_class_str)
+        except ValueError:
+            decision_class = DecisionClass.COMPONENT
+        steps.append(
+            PackageStep(
+                step_id=option.get("option_id", f"option-{len(steps)+1}"),
+                assessment_class=decision_class,
+                summary=option.get("summary", ""),
+                prerequisites=list(option.get("prerequisites", [])),
+                expected_outputs=["option-evaluation"],
+                expected_resolutions=["decision narrowed"],
+                mutation_surface=list(option.get("mutation_surface", [])),
+                verification_surface=list(option.get("verification_surface", [])),
+                reversibility=option.get("reversibility", "medium"),
+            )
+        )
+    return RiskPackage(
+        package_id=f"pkg-design-{decision_area}",
+        layer="design",
+        scope=scope,
+        origin_problem_id=problem_id,
+        origin_source=source,
+        steps=steps,
+    )

@@ -542,7 +542,7 @@ def _append_risk_review_failure_history(
                 package_id=package.package_id,
                 step_id=step.step_id,
                 layer=package.layer,
-                step_class=step.step_class,
+                assessment_class=step.assessment_class,
                 posture=PostureProfile.P4_REOPEN,
                 predicted_risk=100,
                 actual_outcome="risk_review_failure",
@@ -800,7 +800,7 @@ def _append_risk_history(
                 package_id=risk_plan.package_id,
                 step_id=decision.step_id,
                 layer=risk_plan.layer,
-                step_class=package_step.step_class,
+                assessment_class=package_step.assessment_class,
                 posture=decision.posture or PostureProfile.P4_REOPEN,
                 predicted_risk=(
                     decision.residual_risk
@@ -828,7 +828,7 @@ def _append_risk_history(
             and assessment_step is not None
         ):
             current_signature = pattern_signature(
-                package_step.step_class,
+                package_step.assessment_class,
                 assessment_step.dominant_risks,
                 assessment_step.modifiers.blast_radius,
             )
@@ -836,7 +836,7 @@ def _append_risk_history(
                 entry
                 for entry in prior_history
                 if pattern_signature(
-                    entry.step_class,
+                    entry.assessment_class,
                     entry.dominant_risks,
                     entry.blast_radius_band,
                 ) == current_signature
@@ -849,7 +849,7 @@ def _append_risk_history(
                         package_id=risk_plan.package_id,
                         step_id=decision.step_id,
                         layer=risk_plan.layer,
-                        step_class=package_step.step_class,
+                        assessment_class=package_step.assessment_class,
                         posture=decision.posture or PostureProfile.P2_STANDARD,
                         predicted_risk=(
                             decision.residual_risk

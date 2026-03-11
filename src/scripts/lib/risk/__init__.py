@@ -18,6 +18,7 @@ from .loop import (
     run_risk_loop,
 )
 from .package_builder import (
+    build_decision_package,
     build_package,
     build_package_from_proposal,
     read_package,
@@ -26,9 +27,9 @@ from .package_builder import (
 )
 from .posture import apply_one_step_rule, can_relax_posture, select_posture
 from .quantifier import (
-    STEP_CLASS_WEIGHTS,
+    CLASS_WEIGHTS,
     compute_raw_risk,
-    is_step_acceptable,
+    is_acceptable,
     load_risk_parameters,
     risk_to_posture,
 )
@@ -49,6 +50,8 @@ from .serialization import (
 )
 from .threshold import enforce_thresholds, load_default_parameters, validate_risk_plan
 from .types import (
+    AssessmentClass,
+    DecisionClass,
     IntentRiskHint,
     PackageStep,
     PostureProfile,
@@ -69,6 +72,9 @@ from .types import (
 )
 
 __all__ = [
+    "AssessmentClass",
+    "CLASS_WEIGHTS",
+    "DecisionClass",
     "IntentRiskHint",
     "PackageStep",
     "PostureProfile",
@@ -86,9 +92,9 @@ __all__ = [
     "StepDecision",
     "StepMitigation",
     "UnderstandingInventory",
-    "STEP_CLASS_WEIGHTS",
     "append_history_entry",
     "apply_one_step_rule",
+    "build_decision_package",
     "build_optimization_prompt",
     "build_package",
     "build_package_from_proposal",
@@ -102,7 +108,7 @@ __all__ = [
     "deserialize_plan",
     "determine_engagement",
     "enforce_thresholds",
-    "is_step_acceptable",
+    "is_acceptable",
     "load_default_parameters",
     "load_risk_assessment",
     "load_risk_package",

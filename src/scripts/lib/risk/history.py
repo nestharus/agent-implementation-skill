@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from lib.risk.serialization import deserialize_history_entry, serialize_history_entry
-from lib.risk.types import RiskHistoryEntry, RiskType, StepClass
+from lib.risk.types import AssessmentClass, RiskHistoryEntry, RiskType
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ def read_history(history_path: Path) -> list[RiskHistoryEntry]:
 
 def compute_history_adjustment(
     history_path: Path,
-    step_class: StepClass,
+    assessment_class: AssessmentClass,
     dominant_risks: list[RiskType],
     blast_radius_band: int,
 ) -> float:
@@ -69,7 +69,7 @@ def compute_history_adjustment(
     deltas = [
         _actual_outcome_score(entry) - entry.predicted_risk
         for entry in history
-        if entry.step_class == step_class
+        if entry.assessment_class == assessment_class
         and entry.blast_radius_band == blast_radius_band
         and _has_overlap(requested_risks, set(entry.dominant_risks))
     ]
@@ -85,13 +85,13 @@ def compute_history_adjustment(
 
 
 def pattern_signature(
-    step_class: StepClass,
+    assessment_class: AssessmentClass,
     dominant_risks: list[RiskType],
     blast_radius_band: int,
 ) -> str:
     """Create a stable pattern key for history matching."""
     ordered_risks = ",".join(sorted({risk.value for risk in dominant_risks}))
-    return f"{step_class.value}|{blast_radius_band}|{ordered_risks}"
+    return f"{assessment_class.value}|{blast_radius_band}|{ordered_risks}"
 
 
 def _has_overlap(requested: set[RiskType], candidate: set[RiskType]) -> bool:
