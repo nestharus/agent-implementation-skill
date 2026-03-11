@@ -7,7 +7,9 @@ from pathlib import Path
 from lib.core.artifact_io import read_json, rename_malformed, write_json
 from lib.core.path_registry import PathRegistry
 from prompt_safety import write_validated_prompt
-from section_loop.section_engine.traceability import update_trace_governance
+# Lazy import to avoid circular dependency:
+# assessment -> section_engine -> implementation_loop -> assessment
+# update_trace_governance is imported inside promote_debt_signals()
 
 _VALID_VERDICTS = {"accept", "accept_with_debt", "refactor_required"}
 
@@ -156,6 +158,7 @@ def record_assessment_governance(
     if not isinstance(profile_id, str):
         profile_id = ""
 
+    from section_loop.section_engine.traceability import update_trace_governance
     update_trace_governance(
         planspace,
         section_number,

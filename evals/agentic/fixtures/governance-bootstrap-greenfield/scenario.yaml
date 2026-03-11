@@ -1,0 +1,45 @@
+id: governance-bootstrap-greenfield
+name: Governance bootstrap creates scaffolding for greenfield codespace
+category: failure-mode
+system: governance
+cost_tier: cheap
+wave: 2
+tags: [governance, bootstrap, greenfield, scaffolding]
+
+seed:
+  init_db: false
+  planspace_files: []
+  codespace_files:
+    - path: project-spec.md
+      source: codespace/project-spec.md
+  sql: []
+  pre_signals: []
+
+trigger:
+  kind: python_sequence
+  steps:
+    - adapter: governance_bootstrap
+
+collect:
+  file_globs:
+    - artifacts/governance/**
+  db_queries: []
+
+checks:
+  structural:
+    - type: exists
+      path: artifacts/governance/problem-index.json
+      required: true
+    - type: exists
+      path: artifacts/governance/pattern-index.json
+      required: true
+    - type: exists
+      path: artifacts/governance/index-status.json
+      required: true
+    - type: json_has_keys
+      path: artifacts/governance/index-status.json
+      keys: [ok]
+      required: true
+  semantic: []
+  absence: []
+  signals: []

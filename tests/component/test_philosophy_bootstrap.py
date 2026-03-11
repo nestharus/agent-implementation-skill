@@ -90,6 +90,46 @@ def test_validate_philosophy_grounding_renames_malformed_source_map(
     assert signal["state"] == "NEEDS_PARENT"
 
 
+def test_validate_philosophy_grounding_rejects_stale_source_files(
+    tmp_path: Path,
+) -> None:
+    """Source map with nonexistent source_file paths blocks bootstrap."""
+    artifacts = tmp_path / "artifacts"
+    intent_global = artifacts / "intent" / "global"
+    intent_global.mkdir(parents=True)
+    philosophy_path = intent_global / "philosophy.md"
+    source_map_path = intent_global / "philosophy-source-map.json"
+    philosophy_path.write_text(
+        "# Philosophy\n\n## Principles\n\n### P1: Test\n",
+        encoding="utf-8",
+    )
+    source_map_path.write_text(
+        json.dumps({
+            "P1": {
+                "source_type": "repo_source",
+                "source_file": "/nonexistent/path/philosophy.md",
+                "source_section": "## Values",
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    result = validate_philosophy_grounding(
+        philosophy_path,
+        source_map_path,
+        artifacts,
+    )
+
+    assert result is False
+    signal = json.loads(
+        (artifacts / "signals" / "philosophy-bootstrap-signal.json").read_text(
+            encoding="utf-8",
+        ),
+    )
+    assert signal["state"] == "NEEDS_PARENT"
+    assert "no longer exist" in signal["detail"]
+
+
 def test_validate_philosophy_grounding_rejects_legacy_source_map_shape(
     tmp_path: Path,
 ) -> None:

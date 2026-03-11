@@ -1,0 +1,52 @@
+id: philosophy-stale-source-blocks
+name: Philosophy bootstrap blocks when source map references nonexistent files
+category: failure-mode
+system: intent-bootstrap
+cost_tier: cheap
+wave: 2
+tags: [philosophy, bootstrap, stale-source, fail-closed]
+
+seed:
+  init_db: true
+  planspace_files:
+    - path: artifacts/intent/global/philosophy.md
+      source: planspace/artifacts/intent/global/philosophy.md
+    - path: artifacts/intent/global/philosophy-source-map.json
+      source: planspace/artifacts/intent/global/philosophy-source-map.json
+    - path: artifacts/intent/global/philosophy-source-manifest.json
+      source: planspace/artifacts/intent/global/philosophy-source-manifest.json
+  codespace_files:
+    - path: README.md
+      source: codespace/README.md
+  sql: []
+  pre_signals: []
+
+trigger:
+  kind: python_sequence
+  steps:
+    - adapter: ensure_global_philosophy
+      kwargs:
+        parent: eval-harness
+
+collect:
+  file_globs:
+    - artifacts/intent/global/**
+    - artifacts/signals/**
+  db_queries: []
+
+checks:
+  structural:
+    - type: exists
+      path: artifacts/intent/global/philosophy-bootstrap-status.json
+      required: true
+    - type: json_has_keys
+      path: artifacts/intent/global/philosophy-bootstrap-status.json
+      keys: [bootstrap_state, blocking_state]
+      required: true
+  semantic: []
+  absence: []
+  signals:
+    - id: AK1
+      path: artifacts/intent/global/philosophy-bootstrap-status.json
+      expected_state: needs_user_input
+      required_fields: [bootstrap_state, blocking_state]

@@ -216,6 +216,30 @@ def _write_rationale(
     return rationale_path
 
 
+def intercept_dispatch(
+    *,
+    agent_file: str,
+    prompt_path: Path,
+    planspace: Path,
+    submitted_by: str = "section-loop",
+) -> tuple[bool, str | None, str | None]:
+    """Evaluate a direct dispatch against agent contracts.
+
+    Creates a synthetic task dict and delegates to ``intercept_task()``.
+    Used by ``section_loop.dispatch.dispatch_agent()`` to intercept
+    dispatches that bypass the task queue.
+    """
+    task = {
+        "id": f"dispatch-{int(time.time())}",
+        "type": "direct-dispatch",
+        "by": submitted_by,
+        "payload": str(prompt_path),
+        "priority": "normal",
+        "scope": "unscoped",
+    }
+    return intercept_task(task, agent_file, planspace)
+
+
 def intercept_task(
     task: dict[str, str],
     agent_file: str,

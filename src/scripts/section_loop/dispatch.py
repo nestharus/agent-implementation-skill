@@ -104,6 +104,39 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
             monitor_prompt,
         )
 
+    # --- QA dispatch interceptor (optional) ---
+    # Mirrors task_dispatcher.py QA gate but at the dispatch level.
+    # Skip for qa-interceptor.md to prevent infinite recursion.
+    if planspace and agent_file != "qa-interceptor.md":
+        try:
+            from qa_interceptor import intercept_dispatch, read_qa_parameters
+            qa_params = read_qa_parameters(planspace)
+        except Exception:
+            qa_params = {}
+
+        if qa_params.get("qa_mode"):
+            log(f"  QA intercept: evaluating dispatch ({agent_file})")
+            try:
+                passed, rationale_path, reason_code = intercept_dispatch(
+                    agent_file=agent_file,
+                    prompt_path=prompt_path,
+                    planspace=planspace,
+                    submitted_by=agent_name or "section-loop",
+                )
+            except Exception as exc:
+                log(f"  QA ERROR: {exc} — failing open (degraded)")
+                passed = True
+                rationale_path = None
+                reason_code = "dispatch_error"
+
+            if not passed:
+                log(f"  QA REJECT: {agent_file} — see {rationale_path}")
+                return f"QA_REJECTED:{rationale_path}"
+            if reason_code:
+                log(f"  QA DEGRADED ({reason_code}) — failing open")
+            else:
+                log(f"  QA PASS: {agent_file}")
+
     log(f"  dispatch {model} → {prompt_path.name}")
     # Emit per-section dispatch summary event for QA monitor rule C1
     if planspace and section_number:

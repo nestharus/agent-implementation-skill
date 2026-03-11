@@ -151,12 +151,63 @@ def overwrite_file(planspace: Path, codespace: Path, project_root: Path, **kwarg
     path.write_text(str(kwargs["content"]).replace("\r\n", "\n").replace("\r", "\n"), encoding="utf-8")
 
 
+def qa_dispatch_intercept(
+    planspace: Path, codespace: Path, project_root: Path, **kwargs,
+) -> None:
+    """Dispatch a single agent with qa_mode enabled to exercise QA interception.
+
+    Creates a minimal prompt, dispatches via dispatch_agent, and verifies
+    that the QA interceptor creates artifacts in qa-intercepts/.
+    """
+    agent_file = kwargs.get("agent_file", "alignment-judge.md")
+    model = kwargs.get("model", "glm")
+    script = (
+        "from pathlib import Path; "
+        "from section_loop.dispatch import dispatch_agent; "
+        f"planspace = Path({str(planspace)!r}); "
+        f"codespace = Path({str(codespace)!r}); "
+        "prompt = planspace / 'artifacts' / 'qa-test-prompt.md'; "
+        "prompt.parent.mkdir(parents=True, exist_ok=True); "
+        "prompt.write_text('# Test prompt\\nReturn OK.\\n', encoding='utf-8'); "
+        "output = planspace / 'artifacts' / 'qa-test-output.md'; "
+        f"dispatch_agent({model!r}, prompt, output, planspace, None, "
+        f"codespace=codespace, agent_file={agent_file!r})"
+    )
+    subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        cwd=str(project_root),
+        env=_clean_env(PYTHONPATH=str(project_root / "src" / "scripts")),
+    )
+
+
+def governance_bootstrap(
+    planspace: Path, codespace: Path, project_root: Path, **kwargs,
+) -> None:
+    """Call bootstrap_governance_if_missing + build_governance_indexes."""
+    del kwargs
+    script = (
+        "from lib.governance.loader import bootstrap_governance_if_missing, build_governance_indexes; "
+        "from pathlib import Path; "
+        f"bootstrap_governance_if_missing(Path({str(codespace)!r}), Path({str(planspace)!r})); "
+        f"build_governance_indexes(Path({str(codespace)!r}), Path({str(planspace)!r}))"
+    )
+    subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        cwd=str(project_root),
+        env=_clean_env(PYTHONPATH=str(project_root / "src" / "scripts")),
+    )
+
+
 ADAPTERS = {
     "readiness_route": readiness_route,
     "dispatcher_once": dispatcher_once,
     "dispatcher_until_quiescent": dispatcher_until_quiescent,
     "ensure_global_philosophy": ensure_global_philosophy,
     "scan_quick": scan_quick,
+    "qa_dispatch_intercept": qa_dispatch_intercept,
+    "governance_bootstrap": governance_bootstrap,
     "append_to_file": append_to_file,
     "delete_file": delete_file,
     "overwrite_file": overwrite_file,

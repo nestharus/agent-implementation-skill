@@ -1032,7 +1032,22 @@ def validate_philosophy_grounding(
                     "mapped_principles": len(principle_ids - unmapped),
                 }
             else:
-                return True
+                # Verify that each source_file in the map still exists.
+                stale_sources = [
+                    entry.get("source_file", "")
+                    for entry in source_map.values()
+                    if isinstance(entry, dict)
+                    and not Path(entry.get("source_file", "")).exists()
+                ]
+                if stale_sources:
+                    detail = (
+                        f"Source map references {len(stale_sources)} file(s) "
+                        f"that no longer exist on disk: {stale_sources[:5]}. "
+                        "Philosophy must be re-distilled from current sources."
+                    )
+                    extras = {"stale_source_files": stale_sources}
+                else:
+                    return True
 
     if detail is not None:
         _write_bootstrap_signal(

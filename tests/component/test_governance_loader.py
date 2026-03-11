@@ -5,6 +5,7 @@ from pathlib import Path
 
 from src.scripts.lib.core.path_registry import PathRegistry
 from src.scripts.lib.governance.loader import (
+    bootstrap_governance_if_missing,
     build_governance_indexes,
     parse_pattern_index,
     parse_philosophy_profiles,
@@ -229,6 +230,79 @@ def test_pattern_index_preserves_wrapped_bullets_and_numbered_templates(
     # PAT-0002 also parsed
     assert patterns[1]["pattern_id"] == "PAT-0002"
     assert patterns[1]["known_instances"] == ["prompt_writer.py", "plan_executor.py"]
+
+
+def test_bootstrap_governance_creates_scaffolding_for_greenfield(
+    tmp_path: Path,
+) -> None:
+    """When codespace has no governance docs, bootstrap creates scaffolding."""
+    codespace = tmp_path / "codespace"
+    planspace = tmp_path / "planspace"
+    codespace.mkdir()
+    planspace.mkdir()
+
+    result = bootstrap_governance_if_missing(codespace, planspace)
+
+    assert result is True
+    assert (codespace / "governance" / "problems" / "index.md").exists()
+    assert (codespace / "governance" / "patterns" / "index.md").exists()
+    assert (codespace / "governance" / "risk-register.md").exists()
+    assert (codespace / "system-synthesis.md").exists()
+
+    # Verify content is parseable by the loader
+    problems = parse_problem_index(codespace)
+    patterns = parse_pattern_index(codespace)
+    assert problems == []
+    assert patterns == []
+
+
+def test_bootstrap_governance_skips_when_governance_exists(
+    tmp_path: Path,
+) -> None:
+    """When codespace already has governance docs, bootstrap is a no-op."""
+    codespace = tmp_path / "codespace"
+    planspace = tmp_path / "planspace"
+    (codespace / "governance" / "problems").mkdir(parents=True)
+    planspace.mkdir()
+
+    (codespace / "governance" / "problems" / "index.md").write_text(
+        "# Problem Archive\n\n## PRB-0001: Existing\n\n**Status**: active\n",
+        encoding="utf-8",
+    )
+
+    result = bootstrap_governance_if_missing(codespace, planspace)
+
+    assert result is False
+    # Existing content is preserved
+    assert "PRB-0001" in (
+        codespace / "governance" / "problems" / "index.md"
+    ).read_text(encoding="utf-8")
+
+
+def test_bootstrap_then_build_indexes_produces_valid_planspace(
+    tmp_path: Path,
+) -> None:
+    """Bootstrap + build_governance_indexes produces valid JSON indexes."""
+    codespace = tmp_path / "codespace"
+    planspace = tmp_path / "planspace"
+    codespace.mkdir()
+    planspace.mkdir()
+
+    bootstrap_governance_if_missing(codespace, planspace)
+    result = build_governance_indexes(codespace, planspace)
+
+    assert result is True
+    gov_dir = planspace / "artifacts" / "governance"
+    assert json.loads(
+        (gov_dir / "problem-index.json").read_text(encoding="utf-8")
+    ) == []
+    assert json.loads(
+        (gov_dir / "pattern-index.json").read_text(encoding="utf-8")
+    ) == []
+    status = json.loads(
+        (gov_dir / "index-status.json").read_text(encoding="utf-8")
+    )
+    assert status["ok"] is True
 
 
 def test_related_files_signal_paths_are_distinct(tmp_path: Path) -> None:

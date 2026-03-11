@@ -1,0 +1,12 @@
+{
+  "P1": {
+    "source_type": "repo_source",
+    "source_file": "/nonexistent/deleted/design-philosophy.md",
+    "source_section": "## Failure Modes"
+  },
+  "P2": {
+    "source_type": "repo_source",
+    "source_file": "/nonexistent/deleted/design-philosophy.md",
+    "source_section": "## Evidence Rules"
+  }
+}

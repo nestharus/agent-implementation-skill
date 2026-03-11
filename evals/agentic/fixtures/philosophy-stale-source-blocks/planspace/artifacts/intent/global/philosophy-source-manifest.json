@@ -1,0 +1,8 @@
+{
+  "sources": [
+    {
+      "path": "/nonexistent/deleted/design-philosophy.md",
+      "hash": "abc123stale"
+    }
+  ]
+}

@@ -307,6 +307,58 @@ def parse_synthesis_cues(codespace: Path) -> dict[str, list[str]]:
     return cues
 
 
+def bootstrap_governance_if_missing(codespace: Path, planspace: Path) -> bool:
+    """Create minimal governance scaffolding if codespace has none.
+
+    For greenfield projects that have no governance docs, this creates
+    the minimal directory structure and placeholder files so that
+    ``build_governance_indexes()`` has something to parse.
+
+    Returns True if scaffolding was created, False if governance
+    already exists.
+    """
+    problems_path = codespace / "governance" / "problems" / "index.md"
+    patterns_path = codespace / "governance" / "patterns" / "index.md"
+
+    if problems_path.exists() or patterns_path.exists():
+        return False
+
+    logger.info("Bootstrapping governance scaffolding for greenfield project")
+
+    problems_path.parent.mkdir(parents=True, exist_ok=True)
+    patterns_path.parent.mkdir(parents=True, exist_ok=True)
+
+    problems_path.write_text(
+        "# Problem Archive\n\n"
+        "Problems discovered during development are documented here.\n",
+        encoding="utf-8",
+    )
+    patterns_path.write_text(
+        "# Pattern Catalog\n\n"
+        "Patterns discovered during development are documented here.\n",
+        encoding="utf-8",
+    )
+
+    risk_path = codespace / "governance" / "risk-register.md"
+    if not risk_path.exists():
+        risk_path.write_text(
+            "# Risk Register\n\n"
+            "Risks identified during development are documented here.\n",
+            encoding="utf-8",
+        )
+
+    synthesis_path = codespace / "system-synthesis.md"
+    if not synthesis_path.exists():
+        synthesis_path.write_text(
+            "# System Synthesis\n\n"
+            "Architecture and governance connections.\n\n"
+            "## Regions\n",
+            encoding="utf-8",
+        )
+
+    return True
+
+
 def build_governance_indexes(codespace: Path, planspace: Path) -> bool:
     """Parse governance docs and mirror advisory JSON indexes into planspace.
 

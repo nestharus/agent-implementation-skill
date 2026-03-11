@@ -1,0 +1,45 @@
+id: qa-intercept-on-dispatch
+name: QA interception fires on direct dispatch when qa_mode is enabled
+category: failure-mode
+system: qa-interceptor
+cost_tier: moderate
+wave: 2
+tags: [qa, intercept, dispatch, qa-mode]
+
+seed:
+  init_db: true
+  planspace_files:
+    - path: artifacts/parameters.json
+      source: planspace/artifacts/parameters.json
+  codespace_files:
+    - path: README.md
+      source: codespace/README.md
+  sql: []
+  pre_signals: []
+
+trigger:
+  kind: python_sequence
+  steps:
+    - adapter: qa_dispatch_intercept
+      kwargs:
+        agent_file: alignment-judge.md
+        model: glm
+
+collect:
+  file_globs:
+    - artifacts/qa-intercepts/**
+    - artifacts/qa-test-output.md
+  db_queries: []
+
+checks:
+  structural:
+    - type: glob_min_count
+      pattern: "artifacts/qa-intercepts/qa-dispatch-*-prompt.md"
+      min: 1
+      required: true
+    - type: exists
+      path: artifacts/qa-test-output.md
+      required: true
+  semantic: []
+  absence: []
+  signals: []

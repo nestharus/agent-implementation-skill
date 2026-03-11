@@ -724,6 +724,83 @@ class TestDispatcherQaIntegration:
 
 
 # ---------------------------------------------------------------------------
+# Unit tests: intercept_dispatch
+# ---------------------------------------------------------------------------
+
+class TestInterceptDispatch:
+    """Tests for the dispatch-level QA interception entry point."""
+
+    def test_intercept_dispatch_creates_synthetic_task(
+        self, tmp_path: Path,
+    ) -> None:
+        """intercept_dispatch creates a task dict and delegates to intercept_task."""
+        from qa_interceptor import intercept_dispatch
+
+        ps = _setup_planspace(tmp_path)
+        prompt = ps / "artifacts" / "test-prompt.md"
+        prompt.write_text("# Test prompt\n", encoding="utf-8")
+
+        mock_output = '{"verdict": "PASS", "rationale": "OK"}'
+        with patch("qa_interceptor.dispatch_agent", return_value=mock_output):
+            passed, rationale_path, reason_code = intercept_dispatch(
+                agent_file="alignment-judge.md",
+                prompt_path=prompt,
+                planspace=ps,
+                submitted_by="section-loop",
+            )
+
+        assert passed is True
+        assert reason_code is None
+
+    def test_intercept_dispatch_reject_returns_false(
+        self, tmp_path: Path,
+    ) -> None:
+        """intercept_dispatch returns (False, path, None) on REJECT."""
+        from qa_interceptor import intercept_dispatch
+
+        ps = _setup_planspace(tmp_path)
+        prompt = ps / "artifacts" / "test-prompt.md"
+        prompt.write_text("# Test prompt\n", encoding="utf-8")
+
+        mock_output = json.dumps({
+            "verdict": "REJECT",
+            "rationale": "Contract violation",
+            "violations": ["scope"],
+        })
+        with patch("qa_interceptor.dispatch_agent", return_value=mock_output):
+            passed, rationale_path, reason_code = intercept_dispatch(
+                agent_file="alignment-judge.md",
+                prompt_path=prompt,
+                planspace=ps,
+            )
+
+        assert passed is False
+        assert rationale_path is not None
+        assert Path(rationale_path).exists()
+
+    def test_intercept_dispatch_missing_agent_fails_open(
+        self, tmp_path: Path,
+    ) -> None:
+        """Missing agent file fails open with target_unavailable reason."""
+        from qa_interceptor import intercept_dispatch
+
+        ps = _setup_planspace(tmp_path)
+        prompt = ps / "artifacts" / "test-prompt.md"
+        prompt.write_text("# Test\n", encoding="utf-8")
+
+        with patch("qa_interceptor.dispatch_agent") as mock_da:
+            passed, rationale_path, reason_code = intercept_dispatch(
+                agent_file="nonexistent-agent-xyz.md",
+                prompt_path=prompt,
+                planspace=ps,
+            )
+
+        assert passed is True
+        assert reason_code == "target_unavailable"
+        mock_da.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # Static validation: agent definition file
 # ---------------------------------------------------------------------------
 
