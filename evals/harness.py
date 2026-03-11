@@ -86,6 +86,9 @@ _SCENARIO_MODULES = [
     "evals.scenarios.readiness_gate",
     "evals.scenarios.risk_assessor",
     "evals.scenarios.execution_optimizer",
+    "evals.scenarios.design_risk",
+    "evals.scenarios.intake",
+    "evals.scenarios.value_stack",
 ]
 
 
