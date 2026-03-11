@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Literal
 
 
@@ -38,3 +39,55 @@ class ValueScale:
     suggested_rationale: str = ""
     selected_level: int | None = None
     selected_state: Literal["candidate", "verified"] = "candidate"
+
+
+def save_value_scales(
+    scales: list[ValueScale],
+    scope: str,
+    planspace: Path,
+) -> Path:
+    """Persist value scales to the risk directory."""
+    from lib.core.artifact_io import write_json
+    from lib.core.path_registry import PathRegistry
+
+    paths = PathRegistry(planspace)
+    path = paths.value_scales(scope)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_json(path, [asdict(s) for s in scales])
+    return path
+
+
+def load_value_scales(
+    scope: str,
+    planspace: Path,
+) -> list[ValueScale]:
+    """Load value scales from the risk directory."""
+    from lib.core.artifact_io import read_json
+    from lib.core.path_registry import PathRegistry
+
+    paths = PathRegistry(planspace)
+    data = read_json(paths.value_scales(scope))
+    if not isinstance(data, list):
+        return []
+    scales: list[ValueScale] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        levels_data = item.pop("levels", [])
+        levels = []
+        for lv in levels_data:
+            if isinstance(lv, dict):
+                cascades_data = lv.pop("cascades", [])
+                cascades = [_deserialize_cascade(c) for c in cascades_data if isinstance(c, dict)]
+                levels.append(ValueScaleLevel(**lv, cascades=cascades))
+        scales.append(ValueScale(**item, levels=levels))
+    return scales
+
+
+def _deserialize_cascade(data: dict) -> CascadeNode:
+    """Recursively deserialize a cascade node."""
+    children_data = data.pop("children", [])
+    children = [
+        _deserialize_cascade(c) for c in children_data if isinstance(c, dict)
+    ]
+    return CascadeNode(**data, children=children)
