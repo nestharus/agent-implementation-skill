@@ -17,7 +17,6 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 from intent.service.philosophy_classifier import (
-    VALID_SOURCE_TYPES,
     _classify_distiller_result,
     _classify_guidance_result,
     _classify_selector_result,

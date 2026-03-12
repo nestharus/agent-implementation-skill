@@ -105,6 +105,9 @@ Missing/problematic patterns:
 
 ## NOT A BUG
 
+### 81. `staleness/service/section_alignment.py` imports `write_impl_alignment_prompt` from `dispatch.prompt.writers`
+- **Resolution**: Not a layer violation. `dispatch/` is a shared service layer (prompt construction + agent dispatch) consumed by multiple systems including `implementation/` and `staleness/`. The lazy import at line 144 avoids circular imports at module load time. Both consumers need to construct prompts before dispatching alignment check agents — this is a legitimate service dependency, not a forward dependency.
+
 ### 44. `ensure_global_philosophy` defined in 2 files
 - `loop_bootstrap.py` is a dependency-injection wrapper around `philosophy.py`. Same pattern as `expansion.py`/`surface.py`.
 
@@ -125,6 +128,30 @@ Missing/problematic patterns:
 ---
 
 ## DONE
+
+### 82. Dead re-exports in `scan/service/section_notes.py`
+- **Status**: DONE — removed `post_section_completion` and `read_incoming_notes` re-exports. Zero consumers imported them from this module after #72 moved them to `coordination/service/completion.py`.
+
+### 83. `cross_section.py` stale re-exports and dead container method
+- **Status**: DONE — removed 6 unused re-exports (`build_section_number_map`, `extract_section_summary`, `normalize_section_number`, `read_decisions`, `post_section_completion`, `read_incoming_notes`, `compute_text_diff`). Updated `global_coordinator.py` to import `read_incoming_notes` from `coordination.service.completion` directly. Removed dead `read_incoming_notes` method from `CrossSectionService`. Updated `test_cross_section.py` to import from source modules.
+
+### 84. Dead imports across production files
+- **Status**: DONE — removed unused imports across 14 files: `PostureProfile` (strategic_state.py), `coordination_recheck_hash` (pipeline_control.py), `result_manifest_relpath` (reconciler.py), `RiskMode` (proposal_pass.py), `VALID_SOURCE_TYPES` (philosophy_bootstrap.py), `sys` (catalog.py, schema.py, cli.py), `json` (cli_dispatch.py), `subprocess` (tier_ranking.py), `re` (cli_handler.py), `_analyze_file`/`_safe_name`/`_run_tier_ranking`/`validate_tier_file` (deep_scan.py), `DEFAULT_SCAN_MODELS`/`log_phase_failure` (discovery.py), `_extract_section_number` (feedback.py), `QaVerdict` (qa_interceptor.py), `PathRegistry` (reconciliation/loop.py).
+
+### 85. `intent/service/philosophy.py` — dead re-export facade (64 names)
+- **Status**: DONE — deleted facade file. Only 2 consumers: `expanders.py` updated to import `validate_philosophy_grounding` from `philosophy_bootstrap` directly; `test_philosophy_bootstrap.py` updated to import from `philosophy_catalog` and `philosophy_bootstrap`. `loop_bootstrap.py` updated from module-alias pattern to direct imports from sub-modules.
+
+### 86. `flow/service/task_flow.py` — dead re-exports trimmed
+- **Status**: DONE — removed 17 unused re-exports (underscore-prefixed internal names, `FlowCorruptionError`, `Services`, `PathRegistry`). Kept 8 consumed names used by 10 consumer files.
+
+### 78. `research/prompt/writer.py` → `research/prompt/writers.py`
+- **Status**: DONE — renamed to match plural convention (`writers.py`) used by all other prompt modules. Updated 3 import sites (readiness_gate.py, executor.py, test_research_prompt_writer.py).
+
+### 79. Dead code: `_normalize_section_id` in `global_coordinator.py`
+- **Status**: DONE — deleted unused backward-compat alias (never called anywhere). Removed unused import from `test_intent_layer.py`.
+
+### 80. `verdict_parsers.py` cross-package boundary violation
+- **Status**: DONE — moved from `proposal/helpers/` to `staleness/helpers/` (alignment verdict parsing is a staleness concern). Updated 4 import sites (section_alignment.py, containers.py, test_verdict_parsers.py, test_research_prompt_writer.py). Deleted empty `proposal/helpers/` directory.
 
 ### 71. `run_global_coordination()` — 336-line god function decomposed
 - **Status**: DONE — decomposed into 6 phase functions: `_collect_and_persist_problems()`, `_build_coordination_plan()`, `_execute_plan()`, `_recheck_section_alignment()`, `_record_recurrence_resolution()`, `_recheck_affected_sections()`. Main function reduced to ~30 lines of phase orchestration.

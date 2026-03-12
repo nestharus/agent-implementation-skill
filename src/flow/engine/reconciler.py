@@ -12,9 +12,6 @@ from pathlib import Path
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from flow.service.task_db_client import task_db
-from flow.repository.context import (
-    result_manifest_relpath,
-)
 from flow.engine.submitter import (
     submit_chain,
     submit_fanout,

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from intent.service.philosophy import validate_philosophy_grounding
+from intent.service.philosophy_bootstrap import validate_philosophy_grounding
 
 
 def run_problem_expander(

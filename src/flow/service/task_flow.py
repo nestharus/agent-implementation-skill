@@ -1,50 +1,25 @@
-"""Flow submission engine — submits chains and fanouts to the task queue.
+"""Flow system public API — re-exports for external consumers.
 
-Freshness tokens are computed via ``Services.freshness().compute()`` — a
-lightweight, model-free hash of a section's alignment artifacts used for
-the dispatcher's staleness gate (P4).
-
-Uses the data structures from flow_schema.py and the DB functions from
-task_router.py.  Writes flow context JSON files so agents can discover
-their position in a chain or fanout.
-
-Also provides completion reconciliation: when a task finishes, this module
-handles chain continuations, gate member updates, failure cascading, and
-gate firing.
+Provides a single import point for flow submission, reconciliation,
+and context construction.
 """
 
 from __future__ import annotations
 
-from flow.exceptions import FlowCorruptionError
 from flow.repository.context import (
     build_flow_context,
-    gate_aggregate_relpath as _gate_aggregate_relpath,
     read_flow_json as _read_flow_json,
-    result_manifest_relpath as _result_manifest_relpath,
-    flow_context_relpath as _flow_context_relpath,
     write_dispatch_prompt,
 )
 from flow.engine.reconciler import (
     build_gate_aggregate_manifest,
     build_result_manifest,
-    check_and_fire_gate as _check_and_fire_gate,
     reconcile_task_completion,
 )
 from flow.repository.gate_operations import (
-    cancel_chain_descendants as _cancel_chain_descendants,
-    find_gate_for_chain as _find_gate_for_chain,
-    get_gate_member_leaf as _get_gate_member_leaf,
     read_origin_refs as _read_origin_refs,
-    update_gate_member as _update_gate_member,
-    update_gate_member_leaf as _update_gate_member_leaf,
 )
-from containers import Services
-from orchestrator.path_registry import PathRegistry
 from flow.engine.submitter import (
-    new_chain_id as _new_chain_id,
-    new_flow_id as _new_flow_id,
-    new_gate_id as _new_gate_id,
-    new_instance_id as _new_instance_id,
     submit_chain,
     submit_fanout,
 )

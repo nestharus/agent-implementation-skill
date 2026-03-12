@@ -4,7 +4,15 @@ from pathlib import Path
 from typing import Any
 
 from containers import Services
-from intent.service import philosophy as _philosophy_bootstrap
+from intent.service.philosophy_bootstrap import (
+    ensure_global_philosophy as _ensure_global_philosophy,
+    sha256_file as _sha256_file_impl,
+    validate_philosophy_grounding as _validate_grounding,
+)
+from intent.service.philosophy_catalog import (
+    build_philosophy_catalog as _build_catalog,
+    walk_md_bounded as _walk_bounded,
+)
 from orchestrator.path_registry import PathRegistry
 
 from orchestrator.types import Section
@@ -18,7 +26,7 @@ def _walk_md_bounded(
     exclude_top_dirs: frozenset[str] = frozenset(),
     extensions: frozenset[str] = frozenset({".md"}),
 ):
-    return _philosophy_bootstrap.walk_md_bounded(
+    return _walk_bounded(
         root,
         max_depth=max_depth,
         exclude_top_dirs=exclude_top_dirs,
@@ -35,7 +43,7 @@ def _build_philosophy_catalog(
     max_depth: int = 3,
     extensions: frozenset[str] = frozenset({".md"}),
 ) -> list[dict]:
-    return _philosophy_bootstrap.build_philosophy_catalog(
+    return _build_catalog(
         planspace,
         codespace,
         max_files=max_files,
@@ -50,7 +58,7 @@ def _validate_philosophy_grounding(
     source_map_path: Path,
     artifacts: Path,
 ) -> bool:
-    return _philosophy_bootstrap.validate_philosophy_grounding(
+    return _validate_grounding(
         philosophy_path,
         source_map_path,
         artifacts,
@@ -58,7 +66,7 @@ def _validate_philosophy_grounding(
 
 
 def _sha256_file(path: Path) -> str:
-    return _philosophy_bootstrap.sha256_file(path)
+    return _sha256_file_impl(path)
 
 
 def _compute_intent_pack_hash(
@@ -98,7 +106,7 @@ def ensure_global_philosophy(
     codespace: Path,
     parent: str,
 ) -> dict[str, Any]:
-    return _philosophy_bootstrap.ensure_global_philosophy(
+    return _ensure_global_philosophy(
         planspace,
         codespace,
         parent,

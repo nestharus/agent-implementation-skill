@@ -8,8 +8,6 @@ from typing import Any
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from scan.service.scan_dispatch import DEFAULT_SCAN_MODELS
-from scan.service.section_notes import log_phase_failure
 from scan.service.template_loader import load_scan_template
 from scan.codemap.cache import strip_scan_summaries
 from scan.cli_dispatch import dispatch_agent

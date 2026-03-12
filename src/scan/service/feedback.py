@@ -9,7 +9,6 @@ from pathlib import Path
 from orchestrator.path_registry import PathRegistry
 from scan.service.feedback_router import (
     _append_to_log,
-    _extract_section_number,
     _is_valid_updater_signal,
     _route_scope_deltas,
     _validate_feedback_schema,

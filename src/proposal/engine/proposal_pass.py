@@ -15,7 +15,7 @@ from risk.service.engagement import determine_engagement
 from risk.engine.loop import run_lightweight_risk_check
 from risk.service.package_builder import build_package_from_proposal
 from risk.repository.serialization import load_risk_assessment
-from risk.types import RiskMode, RiskPackage, RiskType
+from risk.types import RiskPackage, RiskType
 from scan.service.section_loader import parse_related_files
 from _config import AGENT_NAME, DB_SH
 from containers import Services

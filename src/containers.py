@@ -276,10 +276,6 @@ class CrossSectionService:
         from orchestrator.service.section_decisions import extract_section_summary
         return extract_section_summary(path)
 
-    def read_incoming_notes(self, planspace, section_number: str) -> list[dict]:
-        from coordination.service.cross_section import read_incoming_notes
-        return read_incoming_notes(planspace, section_number)
-
     def write_consequence_note(self, planspace, from_section, to_section, content):
         from coordination.repository.notes import write_consequence_note
         return write_consequence_note(planspace, from_section, to_section, content)
@@ -364,7 +360,7 @@ class SectionAlignmentService:
         )
 
     def parse_alignment_verdict(self, result):
-        from proposal.helpers.verdict_parsers import parse_alignment_verdict
+        from staleness.helpers.verdict_parsers import parse_alignment_verdict
         return parse_alignment_verdict(result)
 
     def run_global_recheck(

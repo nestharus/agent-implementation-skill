@@ -10,12 +10,12 @@ import pytest
 
 from _paths import SRC_DIR
 
-from coordination.service.cross_section import (
+from coordination.service.cross_section import persist_decision
+from implementation.service.snapshot import compute_text_diff
+from orchestrator.service.section_decisions import (
     build_section_number_map,
-    compute_text_diff,
     extract_section_summary,
     normalize_section_number,
-    persist_decision,
     read_decisions,
 )
 from orchestrator.types import Section

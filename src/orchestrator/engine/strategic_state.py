@@ -13,7 +13,7 @@ from risk.repository.serialization import (
     load_risk_assessment,
     load_risk_plan,
 )
-from risk.types import PostureProfile, StepDecision
+from risk.types import StepDecision
 
 
 @dataclass(frozen=True)

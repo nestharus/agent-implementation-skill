@@ -8,13 +8,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
-from scan.explore.analyzer import analyze_file as _analyze_file
-from scan.explore.analyzer import safe_name as _safe_name
 from scan.related.match_updater import deep_scan_related_files, update_match
 from scan.related.discovery import list_section_files
 from scan.related.section_iterator import scan_sections as _scan_sections
-from scan.explore.tier_ranking import run_tier_ranking as _run_tier_ranking
-from scan.explore.tier_ranking import validate_tier_file
 
 from scan.codemap.cache import FileCardCache
 from scan.cli_dispatch import dispatch_agent, read_scan_model_policy

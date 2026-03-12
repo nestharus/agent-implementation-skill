@@ -14,7 +14,6 @@ eliminate parsing/editing duplication (R33/P9).
 
 from __future__ import annotations
 
-import re
 
 
 def _find_block_bounds(text: str) -> tuple[int, int] | None:

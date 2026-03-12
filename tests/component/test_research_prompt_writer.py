@@ -6,7 +6,7 @@ import pytest
 from dependency_injector import providers
 
 from containers import PromptGuard, Services
-from src.research.prompt.writer import (
+from src.research.prompt.writers import (
     write_research_plan_prompt,
     write_research_synthesis_prompt,
     write_research_ticket_prompt,

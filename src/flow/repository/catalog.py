@@ -10,7 +10,6 @@ fix groups into BranchSpec lists suitable for ``submit_fanout()``.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 from flow.types.schema import BranchSpec, TaskSpec

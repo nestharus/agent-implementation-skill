@@ -25,15 +25,8 @@ from signals.service.communication import (
     _log_artifact,
     mailbox_send,
 )
-from coordination.service.cross_section import read_incoming_notes
+from coordination.service.completion import read_incoming_notes
 from orchestrator.types import Section, SectionResult
-
-
-def _normalize_section_id(value: str, scope_deltas_dir: Path) -> str:
-    """Backward-compatible private alias used by older tests."""
-    from implementation.service.scope_delta_parser import normalize_section_id
-
-    return normalize_section_id(value, scope_deltas_dir)
 
 
 # Coordination round limits: hard cap to prevent runaway, but rounds

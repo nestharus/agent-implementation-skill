@@ -23,7 +23,7 @@ from pathlib import Path
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from qa.helpers.qa_verdict import QaVerdict, parse_qa_verdict
+from qa.helpers.qa_verdict import parse_qa_verdict
 
 
 logger = logging.getLogger(__name__)

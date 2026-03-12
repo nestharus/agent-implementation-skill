@@ -18,10 +18,7 @@ from orchestrator.service.pipeline_state import (
     pause_for_parent as wait_for_parent,
     wait_if_paused as block_if_paused,
 )
-from staleness.service.input_hasher import (
-    coordination_recheck_hash,
-    section_inputs_hash,
-)
+from staleness.service.input_hasher import section_inputs_hash
 
 from containers import Services
 from _config import AGENT_NAME, DB_SH

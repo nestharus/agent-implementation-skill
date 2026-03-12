@@ -9,7 +9,7 @@ from research.engine.orchestrator import (
     is_research_complete_for_trigger,
     write_research_status,
 )
-from research.prompt.writer import write_research_plan_prompt
+from research.prompt.writers import write_research_plan_prompt
 from proposal.repository.state import load_proposal_state
 from proposal.service.readiness_resolver import resolve_readiness
 from reconciliation.repository.queue import queue_reconciliation_request

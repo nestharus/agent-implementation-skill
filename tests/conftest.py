@@ -106,9 +106,6 @@ def override_dispatcher_and_guard(fake_dispatch_fn):
         def extract_section_summary(self, path):
             return ""
 
-        def read_incoming_notes(self, *_args, **_kwargs):
-            return []
-
         def write_consequence_note(self, *_args, **_kwargs):
             return None
 

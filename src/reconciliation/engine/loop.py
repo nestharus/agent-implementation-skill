@@ -14,7 +14,6 @@ import logging
 from pathlib import Path
 
 from containers import Services
-from orchestrator.path_registry import PathRegistry
 from proposal.repository.state import load_proposal_state
 from reconciliation.service.adjudicator import adjudicate_ungrouped_candidates
 from reconciliation.service.detectors import (

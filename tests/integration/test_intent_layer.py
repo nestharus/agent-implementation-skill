@@ -2307,10 +2307,6 @@ class TestR58ScopeDeltaAdjudicationFailClosed:
 
     def test_malformed_delta_preserved_and_replaced(self, tmp_path):
         """Malformed delta → .malformed.json + valid replacement."""
-        from coordination.engine.global_coordinator import (
-            _normalize_section_id,
-        )
-
         # Set up scope-deltas dir with a malformed delta
         scope_deltas_dir = tmp_path / "artifacts" / "scope-deltas"
         scope_deltas_dir.mkdir(parents=True)
