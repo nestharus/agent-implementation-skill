@@ -131,6 +131,9 @@ Missing/problematic patterns:
 
 ## DONE
 
+### 88. Remaining vague/bare-noun file renames (6 files)
+- **Status**: DONE — renamed 6 files with vague or unqualified names: `main.py` → `pipeline_orchestrator.py`, `executor.py` → `research_plan_executor.py`, `dispatcher.py` → `task_dispatcher.py`, `submitter.py` → `flow_submitter.py`, `loader.py` → `governance_loader.py`, `core.py` → `route_registry.py`. Updated 23 source/test files with import paths. 1561 tests passing.
+
 ### 87. Comprehensive file rename: verb/action names → component nouns (52 files)
 - **Status**: DONE — renamed 52 files across all service/, helpers/, engine/, and explore/ directories to component noun names. Examples: `completion.py` → `completion_handler.py`, `cross_section.py` → `decision_recorder.py`, `microstrategy.py` → `microstrategy_generator.py`, `reexplore.py` → `section_reexplorer.py`, `snapshot.py` → `file_snapshotter.py`, `assessment.py` → `assessment_evaluator.py`, `packet.py` → `governance_packet_builder.py`, `blockers.py` → `blocker_manager.py`, `communication.py` → `section_communicator.py`, `freshness.py` → `freshness_calculator.py`, `deep_scan.py` → `deep_scanner.py`, `cli_dispatch.py` → `scan_dispatcher.py`. Updated 113 source/test files with import path changes + 3 test files with stale module-alias variable references. Full rename map: 52 entries across coordination/, dispatch/, flow/, implementation/, intake/, intent/, orchestrator/, proposal/, reconciliation/, scan/, signals/, staleness/.
 

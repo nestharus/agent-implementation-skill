@@ -21,10 +21,7 @@ from implementation.service.scope_delta_aggregator import (
     aggregate_scope_deltas,
 )
 
-from signals.service.section_communicator import (
-    _log_artifact,
-    mailbox_send,
-)
+
 from coordination.service.completion_handler import read_incoming_notes
 from orchestrator.types import Section, SectionResult
 
@@ -74,7 +71,7 @@ def _collect_and_persist_problems(
 
     state_path = coord_dir / "problems.json"
     Services.artifact_io().write_json(state_path, problems)
-    _log_artifact(planspace, "coordination:problems")
+    Services.communicator().log_artifact(planspace,"coordination:problems")
 
     return problems, recurrence
 
@@ -131,7 +128,7 @@ def _build_coordination_plan(
             "reason": "unparseable_plan_json",
             "attempts": 2,
         })
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace, parent,
             "fail:coordination:unparseable_plan_json",
         )
@@ -154,7 +151,7 @@ def _build_coordination_plan(
     # Save plan and groups for debugging
     plan_path = coord_dir / "coordination-plan.json"
     Services.artifact_io().write_json(plan_path, coord_plan)
-    _log_artifact(planspace, "coordination:plan")
+    Services.communicator().log_artifact(planspace,"coordination:plan")
 
     groups_path = coord_dir / "groups.json"
     groups_data = []
@@ -167,7 +164,7 @@ def _build_coordination_plan(
             "files": sorted({f for p in g for f in p.get("files", [])}),
         })
     Services.artifact_io().write_json(groups_path, groups_data)
-    _log_artifact(planspace, "coordination:groups")
+    Services.communicator().log_artifact(planspace,"coordination:groups")
 
     return confirmed_groups, group_strategies, coord_plan
 
@@ -243,7 +240,7 @@ def _recheck_section_alignment(
     if align_result == "INVALID_FRAME":
         Services.logger().log(f"  coordinator: section {sec_num} invalid alignment "
             f"frame — requires parent intervention")
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace, parent,
             f"fail:invalid_alignment_frame:{sec_num}",
         )

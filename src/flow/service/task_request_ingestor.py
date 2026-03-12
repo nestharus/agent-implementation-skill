@@ -72,7 +72,7 @@ def ingest_and_submit(
 
     Reads task-request JSON files, parses them via ``parse_flow_signal``,
     and submits them through ``submit_chain``/``submit_fanout`` from
-    task_flow.py.  The task_dispatcher.py poll loop handles actual dispatch.
+    flow_facade.py.  The task_dispatcher.py poll loop handles actual dispatch.
 
     For legacy v1 tasks: each is submitted as a single-step chain.
     For v2 declarations: chain/fanout actions are fully processed.
@@ -87,8 +87,8 @@ def ingest_and_submit(
         return []
 
     # Lazy import to break circular dependency:
-    # task_dispatcher → task_flow → flow_reconciler → plan_executor
-    # → section_engine → reexplore → task_ingestion → task_flow
+    # task_dispatcher → flow_facade → reconciler → plan_executor
+    # → section_pipeline → section_reexplorer → task_request_ingestor → flow_facade
     from flow.service.flow_facade import (
         submit_chain,
         submit_fanout,

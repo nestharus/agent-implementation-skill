@@ -74,7 +74,7 @@ def _read_dispatch_meta(meta_path: Path) -> dict | None | object:
     - ``_DISPATCH_META_CORRUPT`` when the file exists but is malformed
       or unreadable.  The corrupt file is renamed to
       ``.malformed.json`` for forensic preservation and a warning is
-      logged (same pattern as ``_read_flow_json`` in task_flow.py).
+      logged (same pattern as ``_read_flow_json`` in flow_facade.py).
     """
     data = read_dispatch_metadata(meta_path)
     if data is DISPATCH_META_CORRUPT:
@@ -266,7 +266,7 @@ def dispatch_task(
             )
             return
 
-    # V6: Dispatch through dispatch.section_dispatch for pause/alignment
+    # V6: Dispatch through dispatch.engine.section_dispatcher for pause/alignment
     # handling, context sidecars, and per-dispatch monitoring.
     output = Services.dispatcher().dispatch(
         model, prompt_path, output_path,

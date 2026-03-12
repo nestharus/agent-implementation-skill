@@ -3,5 +3,5 @@
 Public API (import from submodules):
     project_mode: resolve_project_mode, write_mode_contract
     section_loader: load_sections, parse_related_files
-    section_notes: post_section_completion
+    phase_failure_logger: log_phase_failure
 """

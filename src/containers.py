@@ -31,7 +31,7 @@ from dependency_injector import containers, providers
 class AgentDispatcher:
     """Dispatches agents to LLM providers.
 
-    Wraps ``dispatch.engine.section_dispatch.dispatch_agent``.
+    Wraps ``dispatch.engine.section_dispatcher.dispatch_agent``.
     """
 
     def dispatch(

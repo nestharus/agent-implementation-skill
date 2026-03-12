@@ -1,7 +1,8 @@
 """Coordination system: cross-section alignment and consequence notes.
 
 Public API (import from submodules):
-    coordination_loop: run_coordination_loop
-    cross_section: extract_section_summary, persist_decision, read_incoming_notes
+    coordination_controller: run_coordination_loop
+    decision_recorder: persist_decision
+    completion_handler: read_incoming_notes, post_section_completion
     note_repository: write_consequence_note
 """

@@ -231,7 +231,7 @@ def intercept_dispatch(
     """Evaluate a direct dispatch against agent contracts.
 
     Creates a synthetic task dict and delegates to ``intercept_task()``.
-    Used by ``dispatch.section_dispatch.dispatch_agent()`` to intercept
+    Used by ``dispatch.engine.section_dispatcher.dispatch_agent()`` to intercept
     dispatches that bypass the task queue.
     """
     task = {

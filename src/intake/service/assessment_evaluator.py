@@ -7,7 +7,7 @@ from pathlib import Path
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 # Lazy import to avoid circular dependency:
-# assessment -> section_engine -> implementation_loop -> assessment
+# assessment_evaluator -> section_pipeline -> implementation_cycle -> assessment_evaluator
 # update_trace_governance is imported inside promote_debt_signals()
 
 _VALID_VERDICTS = {"accept", "accept_with_debt", "refactor_required"}
