@@ -11,8 +11,6 @@ from orchestrator.path_registry import PathRegistry
 from scan.service.section_notes import log_phase_failure
 from scan.service.template_loader import load_scan_template
 
-from dispatch.service.prompt_guard import validate_dynamic_content
-
 from scan.cli_dispatch import dispatch_agent, read_scan_model_policy
 from .fingerprint import NON_GIT_SENTINEL, compute_codespace_fingerprint
 from containers import Services
@@ -104,7 +102,7 @@ def run_codemap_build(
         project_mode_path=_paths.project_mode_txt(),
         project_mode_signal=_paths.project_mode_json(),
     )
-    violations = validate_dynamic_content(prompt)
+    violations = Services.prompt_guard().validate_dynamic(prompt)
     if violations:
         log_phase_failure(
             "quick-codemap",
@@ -216,7 +214,7 @@ def _run_freshness_check(
         freshness_signal=freshness_signal,
         corrections_ref=corrections_ref,
     )
-    violations = validate_dynamic_content(prompt)
+    violations = Services.prompt_guard().validate_dynamic(prompt)
     if violations:
         print(
             f"[CODEMAP] Freshness prompt blocked — safety violations: "
@@ -282,7 +280,7 @@ def _run_verification(
         codemap_path=codemap_path,
         corrections_signal=corrections_signal,
     )
-    violations = validate_dynamic_content(prompt)
+    violations = Services.prompt_guard().validate_dynamic(prompt)
     if violations:
         print(
             f"[CODEMAP] Verify prompt blocked — safety violations: "

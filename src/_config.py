@@ -1,0 +1,16 @@
+"""Shared configuration constants for the section-loop agent."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+WORKFLOW_HOME = Path(
+    os.environ.get(
+        "WORKFLOW_HOME",
+        Path(__file__).resolve().parent,
+    ),
+)
+DB_SH = WORKFLOW_HOME / "scripts" / "db.sh"
+DB_PATH = Path("run.db")
+AGENT_NAME = "section-loop"

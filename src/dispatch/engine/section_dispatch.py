@@ -8,9 +8,8 @@ from orchestrator.path_registry import PathRegistry
 
 from dispatch.prompt.template import SRC_TEMPLATE_DIR, load_template, render, render_template
 from dispatch.service.prompt_guard import validate_dynamic_content
+from _config import AGENT_NAME, DB_SH
 from signals.service.communication import (
-    AGENT_NAME,
-    DB_SH,
     _log_artifact,
 )
 from orchestrator.service.context_assembly import materialize_context_sidecar

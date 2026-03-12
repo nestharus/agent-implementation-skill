@@ -20,7 +20,7 @@ from staleness.service.change_tracker import (
     make_alignment_checker,
 )
 from scan.service.section_loader import parse_related_files
-from signals.service.communication import AGENT_NAME, DB_SH
+from _config import AGENT_NAME, DB_SH
 from containers import Services
 from implementation.service.reexplore import _reexplore_section
 from implementation.engine.runner import run_section

@@ -10,7 +10,7 @@ from orchestrator.path_registry import PathRegistry
 from orchestrator.engine.strategic_state import build_strategic_state
 from staleness.service.change_tracker import make_alignment_checker
 from containers import Services
-from signals.service.communication import AGENT_NAME, DB_SH
+from _config import AGENT_NAME, DB_SH
 from coordination.engine.global_coordinator import (
     MAX_COORDINATION_ROUNDS,
     MIN_COORDINATION_ROUNDS,

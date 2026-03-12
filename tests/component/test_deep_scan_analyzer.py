@@ -4,6 +4,9 @@ import hashlib
 import json
 import subprocess
 
+from dependency_injector import providers
+
+from containers import PromptGuard, Services
 from src.scan.explore.analyzer import analyze_file, safe_name
 from src.scan.codemap.cache import FileCardCache
 
@@ -116,10 +119,15 @@ def test_analyze_file_dispatches_and_caches_response(
         "src.scan.explore.analyzer.load_scan_template",
         lambda _name: "{section_file}\n{abs_source}\n{feedback_file}",
     )
-    monkeypatch.setattr(
-        "src.scan.explore.analyzer.validate_dynamic_content",
-        lambda _prompt: [],
-    )
+    class _NoopGuard(PromptGuard):
+        def validate_dynamic(self, content):
+            return []
+        def write_validated(self, content, path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            return True
+
+    Services.prompt_guard.override(providers.Object(_NoopGuard()))
     monkeypatch.setattr(
         "src.scan.explore.analyzer.update_match",
         lambda *_args, **_kwargs: True,
@@ -142,19 +150,22 @@ def test_analyze_file_dispatches_and_caches_response(
         fake_dispatch,
     )
 
-    ok = analyze_file(
-        section_file,
-        "section-01",
-        "src/main.py",
-        codespace,
-        tmp_path / "codemap.md",
-        tmp_path / "corrections.json",
-        scan_log_dir,
-        cache,
-        {"deep_analysis": "glm"},
-    )
+    try:
+        ok = analyze_file(
+            section_file,
+            "section-01",
+            "src/main.py",
+            codespace,
+            tmp_path / "codemap.md",
+            tmp_path / "corrections.json",
+            scan_log_dir,
+            cache,
+            {"deep_analysis": "glm"},
+        )
 
-    assert ok is True
+        assert ok is True
+    finally:
+        Services.prompt_guard.reset_override()
     assert cache.get(
         cache.content_hash(
             section_file,

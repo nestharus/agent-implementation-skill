@@ -25,9 +25,8 @@ from proposal.engine.proposal_pass import ProposalPassExit, run_proposal_pass
 from reconciliation.engine.phase import ReconciliationPhaseExit, ReconciliationResult, run_reconciliation_phase
 from scan.service.section_loader import load_sections
 
+from _config import AGENT_NAME, DB_SH
 from signals.service.communication import (
-    AGENT_NAME,
-    DB_SH,
     mailbox_cleanup,
     mailbox_register,
 )

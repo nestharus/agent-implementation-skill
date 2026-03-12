@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from dependency_injector import providers
+
+from containers import PromptGuard, Services
 from src.signals.repository.artifact_io import write_json
 from src.staleness.helpers.hashing import content_hash, file_hash
 from src.scan.related.discovery import (
@@ -189,10 +192,16 @@ def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
             "Signal: {update_signal}\n"
         ),
     )
-    monkeypatch.setattr(
-        "src.scan.related.discovery.validate_dynamic_content",
-        lambda prompt: [],
-    )
+    class _NoopGuard(PromptGuard):
+        def validate_dynamic(self, content):
+            return []
+        def write_validated(self, content, path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            return True
+
+    Services.prompt_guard.override(providers.Object(_NoopGuard()))
+
     def mock_dispatch(**kwargs):
         # Simulate agent writing the signal file
         write_json(
@@ -210,22 +219,25 @@ def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
         mock_dispatch,
     )
 
-    validate_existing_related_files(
-        section_file=section_file,
-        section_name="section-08",
-        codemap_path=codemap_path,
-        codespace=codespace,
-        artifacts_dir=artifacts_dir,
-        scan_log_dir=scan_log_dir,
-        corrections_file=artifacts_dir / "signals" / "codemap-corrections.json",
-        model_policy={"validation": "test-model"},
-    )
+    try:
+        validate_existing_related_files(
+            section_file=section_file,
+            section_name="section-08",
+            codemap_path=codemap_path,
+            codespace=codespace,
+            artifacts_dir=artifacts_dir,
+            scan_log_dir=scan_log_dir,
+            corrections_file=artifacts_dir / "signals" / "codemap-corrections.json",
+            model_policy={"validation": "test-model"},
+        )
 
-    updated_text = section_file.read_text(encoding="utf-8")
-    saved_signal = update_signal.read_text(encoding="utf-8")
-    section_log = scan_log_dir / "section-08"
+        updated_text = section_file.read_text(encoding="utf-8")
+        saved_signal = update_signal.read_text(encoding="utf-8")
+        section_log = scan_log_dir / "section-08"
 
-    assert "### src/old.py" not in updated_text
-    assert "### src/new.py" in updated_text
-    assert '"status": "applied"' in saved_signal
-    assert (section_log / "codemap-hash.txt").exists()
+        assert "### src/old.py" not in updated_text
+        assert "### src/new.py" in updated_text
+        assert '"status": "applied"' in saved_signal
+        assert (section_log / "codemap-hash.txt").exists()
+    finally:
+        Services.prompt_guard.reset_override()

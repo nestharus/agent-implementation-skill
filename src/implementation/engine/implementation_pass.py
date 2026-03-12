@@ -23,7 +23,7 @@ from risk.types import (
 )
 from proposal.service.readiness_resolver import resolve_readiness
 from containers import Services
-from signals.service.communication import AGENT_NAME, DB_SH
+from _config import AGENT_NAME, DB_SH
 from implementation.engine.runner import run_section
 from implementation.repository.roal_index import (
     IMPLEMENTATION_ROAL_KINDS,

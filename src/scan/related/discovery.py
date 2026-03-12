@@ -11,7 +11,6 @@ from orchestrator.path_registry import PathRegistry
 from scan.service.scan_dispatch import DEFAULT_SCAN_MODELS
 from scan.service.section_notes import log_phase_failure
 from scan.service.template_loader import load_scan_template
-from dispatch.service.prompt_guard import validate_dynamic_content
 from scan.codemap.cache import strip_scan_summaries
 from scan.cli_dispatch import dispatch_agent
 
@@ -279,7 +278,7 @@ def validate_existing_related_files(
         update_signal=signal_file,
         missing_existing_section=missing_existing_section,
     )
-    violations = validate_dynamic_content(prompt)
+    violations = Services.prompt_guard().validate_dynamic(prompt)
     if violations:
         print(
             f"[EXPLORE] {section_name}: validate prompt blocked — "

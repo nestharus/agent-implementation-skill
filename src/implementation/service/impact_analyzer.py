@@ -10,10 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from containers import Services
-from signals.service.communication import (
-    AGENT_NAME,
-    DB_SH,
-)
+from _config import AGENT_NAME, DB_SH
 from orchestrator.path_registry import PathRegistry
 from orchestrator.service.section_decisions import (
     build_section_number_map,

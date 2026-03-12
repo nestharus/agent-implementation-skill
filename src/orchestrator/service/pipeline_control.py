@@ -24,10 +24,7 @@ from staleness.service.input_hasher import (
 )
 
 from containers import Services
-from signals.service.communication import (
-    AGENT_NAME,
-    DB_SH,
-)
+from _config import AGENT_NAME, DB_SH
 
 _section_inputs_hash = section_inputs_hash
 

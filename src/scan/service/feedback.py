@@ -17,8 +17,6 @@ from scan.service.feedback_router import (
 from scan.related.discovery import apply_related_files_update
 from scan.service.template_loader import load_scan_template
 
-from dispatch.service.prompt_guard import validate_dynamic_content
-
 from scan.cli_dispatch import dispatch_agent, read_scan_model_policy
 from containers import Services
 
@@ -254,7 +252,7 @@ def _apply_feedback(
             irrelevant_section=irrelevant_section,
             updater_signal=updater_signal,
         )
-        violations = validate_dynamic_content(prompt)
+        violations = Services.prompt_guard().validate_dynamic(prompt)
         if violations:
             print(
                 f"[FEEDBACK] {sec_name}: updater prompt blocked — "

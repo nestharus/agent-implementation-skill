@@ -9,7 +9,7 @@ from staleness.service.change_tracker import (
     make_alignment_checker,
 )
 from containers import Services
-from signals.service.communication import AGENT_NAME, DB_SH
+from _config import AGENT_NAME, DB_SH
 from reconciliation.engine.loop import run_reconciliation
 from implementation.engine.runner import run_section
 from orchestrator.types import ProposalPassResult, Section

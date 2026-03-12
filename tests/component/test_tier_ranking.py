@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import subprocess
 
+from dependency_injector import providers
+
+from containers import PromptGuard, Services
 from src.staleness.helpers.hashing import content_hash
 from src.scan.explore.tier_ranking import run_tier_ranking, validate_tier_file
 from src.scan.codemap.cache import strip_scan_summaries
@@ -91,10 +94,15 @@ def test_run_tier_ranking_dispatches_and_writes_sidecar(
         "src.scan.explore.tier_ranking.load_scan_template",
         lambda _name: "{section_file}\n{file_list_text}\n{tier_file}",
     )
-    monkeypatch.setattr(
-        "src.scan.explore.tier_ranking.validate_dynamic_content",
-        lambda _prompt: [],
-    )
+    class _NoopGuard(PromptGuard):
+        def validate_dynamic(self, content):
+            return []
+        def write_validated(self, content, path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            return True
+
+    Services.prompt_guard.override(providers.Object(_NoopGuard()))
 
     def fake_dispatch(**kwargs):
         tier_file = artifacts_dir / "sections" / "section-01-file-tiers.json"
@@ -107,17 +115,20 @@ def test_run_tier_ranking_dispatches_and_writes_sidecar(
 
     monkeypatch.setattr("src.scan.explore.tier_ranking.dispatch_agent", fake_dispatch)
 
-    result = run_tier_ranking(
-        section_file,
-        "section-01",
-        ["src/main.py"],
-        codespace,
-        artifacts_dir,
-        scan_log_dir,
-        {"tier_ranking": "glm", "exploration": "claude-opus"},
-    )
+    try:
+        result = run_tier_ranking(
+            section_file,
+            "section-01",
+            ["src/main.py"],
+            codespace,
+            artifacts_dir,
+            scan_log_dir,
+            {"tier_ranking": "glm", "exploration": "claude-opus"},
+        )
 
-    assert result == artifacts_dir / "sections" / "section-01-file-tiers.json"
-    assert (
-        artifacts_dir / "sections" / "section-01-file-tiers.inputs.sha256"
-    ).is_file()
+        assert result == artifacts_dir / "sections" / "section-01-file-tiers.json"
+        assert (
+            artifacts_dir / "sections" / "section-01-file-tiers.inputs.sha256"
+        ).is_file()
+    finally:
+        Services.prompt_guard.reset_override()

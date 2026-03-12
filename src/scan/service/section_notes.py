@@ -19,7 +19,7 @@ from orchestrator.path_registry import PathRegistry
 from orchestrator.service.section_decisions import extract_section_summary
 from implementation.service.snapshot import compute_text_diff, snapshot_modified_files
 
-from signals.service.communication import AGENT_NAME, DB_SH
+from _config import AGENT_NAME, DB_SH
 
 if TYPE_CHECKING:
     from orchestrator.types import Section

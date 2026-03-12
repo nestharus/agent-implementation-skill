@@ -2,22 +2,12 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
+from _config import AGENT_NAME, DB_PATH, DB_SH, WORKFLOW_HOME
 from signals.service.database_client import DatabaseClient
 from signals.service.mailbox_service import MailboxService, summary_tag
 from orchestrator.path_registry import PathRegistry
-
-WORKFLOW_HOME = Path(
-    os.environ.get(
-        "WORKFLOW_HOME",
-        Path(__file__).resolve().parent.parent.parent,
-    ),
-)
-DB_SH = WORKFLOW_HOME / "scripts" / "db.sh"
-DB_PATH = Path("run.db")
-AGENT_NAME = "section-loop"
 
 
 def log(msg: str) -> None:

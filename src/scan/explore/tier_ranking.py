@@ -7,7 +7,6 @@ from pathlib import Path
 
 from containers import Services
 from scan.service.template_loader import load_scan_template
-from dispatch.service.prompt_guard import validate_dynamic_content
 from scan.codemap.cache import strip_scan_summaries
 from scan.cli_dispatch import dispatch_agent
 
@@ -88,7 +87,7 @@ def run_tier_ranking(
         file_list_text=file_list_text,
         tier_file=tier_file,
     )
-    violations = validate_dynamic_content(prompt)
+    violations = Services.prompt_guard().validate_dynamic(prompt)
     if violations:
         print(
             f"[TIER] {section_name}: prompt blocked — "
