@@ -8,7 +8,7 @@ from dependency_injector import providers
 
 from conftest import NoOpFlow, NoOpSectionAlignment, make_dispatcher
 from containers import DispatchHelperService, Services
-from src.implementation.engine.loop import run_implementation_loop
+from src.implementation.engine.implementation_cycle import run_implementation_loop
 from src.orchestrator.types import Section
 
 
@@ -56,11 +56,11 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
     impl_modified = planspace / "artifacts" / "impl-09-modified.txt"
 
     monkeypatch.setattr(
-        "src.implementation.engine.loop.write_strategic_impl_prompt",
+        "src.implementation.engine.implementation_cycle.write_strategic_impl_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "impl-prompt.md",
     )
     monkeypatch.setattr(
-        "src.implementation.engine.loop.write_impl_alignment_prompt",
+        "src.implementation.engine.implementation_cycle.write_impl_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "impl-align-prompt.md",
     )
 
@@ -83,11 +83,11 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
     Services.flow_ingestion.override(providers.Object(NoOpFlow()))
     Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
     monkeypatch.setattr(
-        "src.implementation.engine.loop._write_traceability_index",
+        "src.implementation.engine.implementation_cycle._write_traceability_index",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.implementation.engine.loop.write_post_impl_assessment_prompt",
+        "src.implementation.engine.implementation_cycle.write_post_impl_assessment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "post-impl-09-prompt.md",
     )
 
@@ -129,11 +129,11 @@ def test_run_implementation_loop_retries_after_alignment_problems(
     impl_calls = {"count": 0}
 
     monkeypatch.setattr(
-        "src.implementation.engine.loop.write_strategic_impl_prompt",
+        "src.implementation.engine.implementation_cycle.write_strategic_impl_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "impl-prompt.md",
     )
     monkeypatch.setattr(
-        "src.implementation.engine.loop.write_impl_alignment_prompt",
+        "src.implementation.engine.implementation_cycle.write_impl_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "impl-align-prompt.md",
     )
 
@@ -162,11 +162,11 @@ def test_run_implementation_loop_retries_after_alignment_problems(
         lambda *_args, **_kwargs: next(problems),
     )
     monkeypatch.setattr(
-        "src.implementation.engine.loop._write_traceability_index",
+        "src.implementation.engine.implementation_cycle._write_traceability_index",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.implementation.engine.loop.write_post_impl_assessment_prompt",
+        "src.implementation.engine.implementation_cycle.write_post_impl_assessment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "post-impl-09-prompt.md",
     )
 

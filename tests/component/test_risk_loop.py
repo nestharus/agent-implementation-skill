@@ -8,10 +8,10 @@ from pathlib import Path
 from dependency_injector import providers
 
 from containers import PromptGuard, Services
-from risk.engine import loop as risk_loop
+from risk.engine import risk_assessor as risk_loop
 from risk.prompt import writers as risk_prompt_writers
 from risk.repository.history import append_history_entry
-from risk.engine.loop import (
+from risk.engine.risk_assessor import (
     run_lightweight_risk_check,
     run_risk_loop,
 )

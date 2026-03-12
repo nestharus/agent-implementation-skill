@@ -8,7 +8,7 @@ from dependency_injector import providers
 
 from conftest import NoOpFlow, NoOpSectionAlignment, StubPolicies, make_dispatcher
 from containers import CrossSectionService, Services
-from src.proposal.engine.loop import run_proposal_loop
+from src.proposal.engine.proposal_cycle import run_proposal_loop
 from src.intent.service.expansion import run_expansion_cycle
 from src.orchestrator.types import Section
 
@@ -58,7 +58,7 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
     expansion_calls: list[str] = []
 
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_triage_result",
+        "src.proposal.engine.proposal_cycle.load_triage_result",
         lambda *_args, **_kwargs: {"intent_mode": "full", "budgets": {}},
     )
     monkeypatch.setattr(
@@ -67,11 +67,11 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.write_integration_proposal_prompt",
+        "src.proposal.engine.proposal_cycle.write_integration_proposal_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.write_integration_alignment_prompt",
+        "src.proposal.engine.proposal_cycle.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
 
@@ -98,11 +98,11 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_reconciliation_result",
+        "src.proposal.engine.proposal_cycle.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop._write_alignment_surface",
+        "src.proposal.engine.proposal_cycle._write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(

@@ -6,8 +6,8 @@ import pytest
 from dependency_injector import providers
 
 from containers import Services
-from src.proposal.engine import proposal_pass
-from src.proposal.engine.proposal_pass import ProposalPassExit, run_proposal_pass
+from src.proposal.engine import proposal_phase as proposal_pass
+from src.proposal.engine.proposal_phase import ProposalPassExit, run_proposal_pass
 from orchestrator.types import ProposalPassResult, Section
 
 

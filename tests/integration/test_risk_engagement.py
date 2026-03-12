@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from signals.repository.artifact_io import write_json
-from implementation.engine.implementation_pass import _run_risk_review
+from implementation.engine.implementation_phase import _run_risk_review
 from risk.service.package_builder import build_package_from_proposal
 from risk.repository.serialization import serialize_assessment, serialize_plan
 from risk.types import (

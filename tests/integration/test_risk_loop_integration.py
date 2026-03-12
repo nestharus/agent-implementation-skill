@@ -5,14 +5,14 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from signals.repository.artifact_io import read_json, write_json
-from implementation.engine.implementation_pass import (
+from implementation.engine.implementation_phase import (
     _run_risk_review,
     run_implementation_pass,
 )
 from implementation.repository.roal_index import read_roal_input_index
 from implementation.service.risk_history import append_risk_history
 from risk.repository.history import append_history_entry, read_history
-from risk.engine.loop import run_lightweight_risk_check, run_risk_loop
+from risk.engine.risk_assessor import run_lightweight_risk_check, run_risk_loop
 from risk.service.package_builder import build_package_from_proposal
 from risk.repository.serialization import serialize_assessment, serialize_plan
 from risk.types import (
@@ -702,12 +702,12 @@ def test_reassessment_executes_newly_accepted_frontier_end_to_end(
     reassessment_packages: list[list[str]] = []
     run_calls: list[list[str]] = []
 
-    monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
-    monkeypatch.setattr("implementation.engine.implementation_pass._run_risk_review", lambda *_args, **_kwargs: initial_plan)
-    monkeypatch.setattr("implementation.engine.implementation_pass.append_risk_history", lambda *args, **kwargs: None)
-    monkeypatch.setattr("implementation.engine.implementation_pass.read_package", lambda *_args, **_kwargs: package)
-    monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_phase._run_risk_review", lambda *_args, **_kwargs: initial_plan)
+    monkeypatch.setattr("implementation.engine.implementation_phase.append_risk_history", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_phase.read_package", lambda *_args, **_kwargs: package)
+    monkeypatch.setattr("implementation.engine.implementation_phase.subprocess.run", lambda *args, **kwargs: None)
 
     def _run_section(*_args, **_kwargs) -> list[str]:
         files = (
@@ -726,8 +726,8 @@ def test_reassessment_executes_newly_accepted_frontier_end_to_end(
         reassessment_packages.append([step.step_id for step in args[3].steps])
         return reassessed_plan
 
-    monkeypatch.setattr("implementation.engine.implementation_pass.run_section", _run_section)
-    monkeypatch.setattr("implementation.engine.implementation_pass.run_risk_loop", _reassess)
+    monkeypatch.setattr("implementation.engine.implementation_phase.run_section", _run_section)
+    monkeypatch.setattr("implementation.engine.implementation_phase.run_risk_loop", _reassess)
 
     results = run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},

@@ -8,7 +8,7 @@ from dependency_injector import providers
 
 from conftest import NoOpFlow, NoOpSectionAlignment, make_dispatcher
 from containers import CrossSectionService, Services
-from src.proposal.engine.loop import run_proposal_loop
+from src.proposal.engine.proposal_cycle import run_proposal_loop
 from src.orchestrator.types import Section
 
 def _section(planspace: Path) -> Section:
@@ -51,7 +51,7 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
     alignment_written: list[str] = []
 
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_triage_result",
+        "src.proposal.engine.proposal_cycle.load_triage_result",
         lambda *_args, **_kwargs: {"intent_mode": "lightweight", "budgets": {}},
     )
     monkeypatch.setattr(
@@ -60,11 +60,11 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.write_integration_proposal_prompt",
+        "src.proposal.engine.proposal_cycle.write_integration_proposal_prompt",
         lambda *_args, **_kwargs: prompt_path,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.write_integration_alignment_prompt",
+        "src.proposal.engine.proposal_cycle.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: align_prompt_path,
     )
 
@@ -86,11 +86,11 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_reconciliation_result",
+        "src.proposal.engine.proposal_cycle.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop._write_alignment_surface",
+        "src.proposal.engine.proposal_cycle._write_alignment_surface",
         lambda _planspace, _section: alignment_written.append("done"),
     )
 
@@ -129,7 +129,7 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
     problems = iter(["missing anchor", None])
 
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_triage_result",
+        "src.proposal.engine.proposal_cycle.load_triage_result",
         lambda *_args, **_kwargs: {"intent_mode": "lightweight", "budgets": {}},
     )
     monkeypatch.setattr(
@@ -138,11 +138,11 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.write_integration_proposal_prompt",
+        "src.proposal.engine.proposal_cycle.write_integration_proposal_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.write_integration_alignment_prompt",
+        "src.proposal.engine.proposal_cycle.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
 
@@ -166,11 +166,11 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
         lambda *_args, **_kwargs: next(problems),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_reconciliation_result",
+        "src.proposal.engine.proposal_cycle.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop._write_alignment_surface",
+        "src.proposal.engine.proposal_cycle._write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
 
@@ -213,7 +213,7 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
     capturing_pipeline_control._pause_return = "resume:use new direction"
 
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_triage_result",
+        "src.proposal.engine.proposal_cycle.load_triage_result",
         lambda *_args, **_kwargs: {"intent_mode": "lightweight", "budgets": {}},
     )
     monkeypatch.setattr(
@@ -222,11 +222,11 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.write_integration_proposal_prompt",
+        "src.proposal.engine.proposal_cycle.write_integration_proposal_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.write_integration_alignment_prompt",
+        "src.proposal.engine.proposal_cycle.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
 
@@ -251,19 +251,19 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
     Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
     monkeypatch.setattr(Services.dispatch_helpers(), "check_agent_signals", _signals)
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_reconciliation_result",
+        "src.proposal.engine.proposal_cycle.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop._append_open_problem",
+        "src.proposal.engine.proposal_cycle._append_open_problem",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop._update_blocker_rollup",
+        "src.proposal.engine.proposal_cycle._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop._write_alignment_surface",
+        "src.proposal.engine.proposal_cycle._write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
 

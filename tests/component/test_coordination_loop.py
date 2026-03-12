@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from coordination.engine import loop
-from coordination.engine.loop import run_coordination_loop
+from coordination.engine import coordination_controller as loop
+from coordination.engine.coordination_controller import run_coordination_loop
 from orchestrator.types import Section, SectionResult
 
 

@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 
 from signals.repository.artifact_io import read_json, write_json
-from implementation.engine.implementation_pass import _run_risk_review
+from implementation.engine.implementation_phase import _run_risk_review
 from implementation.service.risk_history import append_risk_history
-from proposal.engine.proposal_pass import _risk_check_proposal
+from proposal.engine.proposal_phase import _risk_check_proposal
 from orchestrator.engine.strategic_state import build_strategic_state
 from risk.repository.history import read_history
 from risk.repository.serialization import serialize_assessment, serialize_plan
@@ -81,7 +81,7 @@ def test_run_risk_review_failure_blocks_fail_closed(
         related_files=["src/app.py", "src/utils.py"],
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass.build_package_from_proposal",
+        "implementation.engine.implementation_phase.build_package_from_proposal",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
     )
 

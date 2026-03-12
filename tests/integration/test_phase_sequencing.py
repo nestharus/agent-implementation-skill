@@ -18,11 +18,11 @@ import pytest
 
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
-from implementation.engine.implementation_pass import (
+from implementation.engine.implementation_phase import (
     ImplementationPassRestart,
     run_implementation_pass,
 )
-from proposal.engine.proposal_pass import ProposalPassExit, run_proposal_pass
+from proposal.engine.proposal_phase import ProposalPassExit, run_proposal_pass
 from reconciliation.engine.phase import run_reconciliation_phase
 from orchestrator.types import ProposalPassResult, Section, SectionResult
 
@@ -286,10 +286,10 @@ class TestBlockedSectionsExcludedFromImplementation:
             return ["src/main.py"]  # modified files
 
         with patch(
-            "implementation.engine.implementation_pass.run_section",
+            "implementation.engine.implementation_phase.run_section",
             side_effect=track_run_section,
         ), patch(
-            "implementation.engine.implementation_pass._run_risk_review",
+            "implementation.engine.implementation_phase._run_risk_review",
             return_value=None,
         ):
             results = run_implementation_pass(
@@ -394,7 +394,7 @@ class TestImplementationPassRestartOnAlignmentChange:
         # Configure pipeline control to report alignment changed
         capturing_pipeline_control._alignment_changed_return = True
         with patch(
-            "implementation.engine.implementation_pass._check_and_clear_alignment_changed",
+            "implementation.engine.implementation_phase._check_and_clear_alignment_changed",
             return_value=True,
         ):
             with pytest.raises(ImplementationPassRestart):
@@ -463,10 +463,10 @@ class TestFullPhaseSequence:
             return [f"src/feature_{section.number}.py"]
 
         with patch(
-            "implementation.engine.implementation_pass.run_section",
+            "implementation.engine.implementation_phase.run_section",
             side_effect=mock_run_section,
         ), patch(
-            "implementation.engine.implementation_pass._run_risk_review",
+            "implementation.engine.implementation_phase._run_risk_review",
             return_value=None,
         ):
             section_results = run_implementation_pass(
@@ -531,10 +531,10 @@ class TestFullPhaseSequence:
             return [f"src/feature_{section.number}.py"]
 
         with patch(
-            "implementation.engine.implementation_pass.run_section",
+            "implementation.engine.implementation_phase.run_section",
             side_effect=mock_run_section,
         ), patch(
-            "implementation.engine.implementation_pass._run_risk_review",
+            "implementation.engine.implementation_phase._run_risk_review",
             return_value=None,
         ):
             section_results = run_implementation_pass(
@@ -569,10 +569,10 @@ class TestFullPhaseSequence:
             return None  # implementation failed
 
         with patch(
-            "implementation.engine.implementation_pass.run_section",
+            "implementation.engine.implementation_phase.run_section",
             side_effect=mock_run_section,
         ), patch(
-            "implementation.engine.implementation_pass._run_risk_review",
+            "implementation.engine.implementation_phase._run_risk_review",
             return_value=None,
         ):
             section_results = run_implementation_pass(

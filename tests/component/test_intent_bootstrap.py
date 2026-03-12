@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from src.intent.engine import bootstrap
-from src.intent.engine.bootstrap import run_intent_bootstrap
+from src.intent.engine import intent_initializer as bootstrap
+from src.intent.engine.intent_initializer import run_intent_bootstrap
 from orchestrator.types import Section
 
 

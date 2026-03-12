@@ -4,7 +4,7 @@ from typing import Callable
 import pytest
 
 from signals.repository.artifact_io import read_json, write_json
-from implementation.engine.implementation_pass import (
+from implementation.engine.implementation_phase import (
     ImplementationPassExit,
     ImplementationPassRestart,
     run_implementation_pass,
@@ -157,7 +157,7 @@ def _patch_implementation_pass_basics(
 ) -> None:
     if alignment_checks is None:
         monkeypatch.setattr(
-            "implementation.engine.implementation_pass._check_and_clear_alignment_changed",
+            "implementation.engine.implementation_phase._check_and_clear_alignment_changed",
             lambda *args: False,
         )
     else:
@@ -169,33 +169,33 @@ def _patch_implementation_pass_basics(
             return False
 
         monkeypatch.setattr(
-            "implementation.engine.implementation_pass._check_and_clear_alignment_changed",
+            "implementation.engine.implementation_phase._check_and_clear_alignment_changed",
             _check_alignment,
         )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass.resolve_readiness",
+        "implementation.engine.implementation_phase.resolve_readiness",
         lambda *_args, **_kwargs: {"ready": True},
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass._run_risk_review",
+        "implementation.engine.implementation_phase._run_risk_review",
         lambda *_args, **_kwargs: risk_plan,
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass.run_section",
+        "implementation.engine.implementation_phase.run_section",
         run_section_fn,
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass.subprocess.run",
+        "implementation.engine.implementation_phase.subprocess.run",
         lambda *args, **kwargs: None,
     )
     if reassess_fn is not None:
         monkeypatch.setattr(
-            "implementation.engine.implementation_pass._maybe_reassess_deferred_steps",
+            "implementation.engine.implementation_phase._maybe_reassess_deferred_steps",
             reassess_fn,
         )
     if append_history_fn is not None:
         monkeypatch.setattr(
-            "implementation.engine.implementation_pass.append_risk_history",
+            "implementation.engine.implementation_phase.append_risk_history",
             append_history_fn,
         )
 
@@ -206,23 +206,23 @@ def test_run_implementation_pass_records_results_and_hashes(
 
     noop_pipeline_control.section_inputs_hash = lambda *args: "hash-123"
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass._check_and_clear_alignment_changed",
+        "implementation.engine.implementation_phase._check_and_clear_alignment_changed",
         lambda *args: False,
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass.resolve_readiness",
+        "implementation.engine.implementation_phase.resolve_readiness",
         lambda *_args, **_kwargs: {"ready": True},
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass._run_risk_review",
+        "implementation.engine.implementation_phase._run_risk_review",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass.run_section",
+        "implementation.engine.implementation_phase.run_section",
         lambda *args, **kwargs: ["src/app.py"],
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass.subprocess.run",
+        "implementation.engine.implementation_phase.subprocess.run",
         lambda *args, **kwargs: None,
     )
 
@@ -267,12 +267,12 @@ def test_run_implementation_pass_writes_accepted_steps_artifact(
             ),
         ],
     )
-    monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
-    monkeypatch.setattr("implementation.engine.implementation_pass._run_risk_review", lambda *_args, **_kwargs: plan)
-    monkeypatch.setattr("implementation.engine.implementation_pass.run_section", lambda *args, **kwargs: ["src/app.py"])
-    monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
-    monkeypatch.setattr("implementation.engine.implementation_pass.append_risk_history", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_phase._run_risk_review", lambda *_args, **_kwargs: plan)
+    monkeypatch.setattr("implementation.engine.implementation_phase.run_section", lambda *args, **kwargs: ["src/app.py"])
+    monkeypatch.setattr("implementation.engine.implementation_phase.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_phase.append_risk_history", lambda *args, **kwargs: None)
 
     run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
@@ -337,12 +337,12 @@ def test_run_implementation_pass_writes_deferred_steps_artifact(
             ),
         ],
     )
-    monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
-    monkeypatch.setattr("implementation.engine.implementation_pass._run_risk_review", lambda *_args, **_kwargs: plan)
-    monkeypatch.setattr("implementation.engine.implementation_pass.run_section", lambda *args, **kwargs: ["src/app.py"])
-    monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
-    monkeypatch.setattr("implementation.engine.implementation_pass.append_risk_history", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_phase._run_risk_review", lambda *_args, **_kwargs: plan)
+    monkeypatch.setattr("implementation.engine.implementation_phase.run_section", lambda *args, **kwargs: ["src/app.py"])
+    monkeypatch.setattr("implementation.engine.implementation_phase.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_phase.append_risk_history", lambda *args, **kwargs: None)
 
     run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
@@ -410,14 +410,14 @@ def test_run_implementation_pass_writes_reopen_blocker_and_skips(
             ),
         ],
     )
-    monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
-    monkeypatch.setattr("implementation.engine.implementation_pass._run_risk_review", lambda *_args, **_kwargs: plan)
+    monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_phase._run_risk_review", lambda *_args, **_kwargs: plan)
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass.run_section",
+        "implementation.engine.implementation_phase.run_section",
         lambda *args, **kwargs: run_calls.append("run") or ["src/app.py"],
     )
-    monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_phase.subprocess.run", lambda *args, **kwargs: None)
 
     results = run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
@@ -461,17 +461,17 @@ def test_run_implementation_pass_fail_closed_on_roal_failure(
     noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
     run_calls: list[str] = []
-    monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass._run_risk_review",
+        "implementation.engine.implementation_phase._run_risk_review",
         lambda *_args, **_kwargs: _plan(accepted_frontier=[]),
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass.run_section",
+        "implementation.engine.implementation_phase.run_section",
         lambda *args, **kwargs: run_calls.append("run") or ["src/app.py"],
     )
-    monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_phase.subprocess.run", lambda *args, **kwargs: None)
 
     results = run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
@@ -488,11 +488,11 @@ def test_run_implementation_pass_skip_mode_proceeds_without_risk_artifacts(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
     noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
-    monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
-    monkeypatch.setattr("implementation.engine.implementation_pass._run_risk_review", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("implementation.engine.implementation_pass.run_section", lambda *args, **kwargs: ["src/app.py"])
-    monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
+    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_phase._run_risk_review", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_phase.run_section", lambda *args, **kwargs: ["src/app.py"])
+    monkeypatch.setattr("implementation.engine.implementation_phase.subprocess.run", lambda *args, **kwargs: None)
 
     results = run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
@@ -512,7 +512,7 @@ def test_run_implementation_pass_restarts_on_alignment_change(
     section = _make_section(planspace, "01")
     capturing_pipeline_control._alignment_changed_return = True
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass._check_and_clear_alignment_changed",
+        "implementation.engine.implementation_phase._check_and_clear_alignment_changed",
         lambda *args: True,
     )
 
@@ -1014,25 +1014,25 @@ def test_run_implementation_pass_invokes_roal_when_section_is_ready(
     risk_plans: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass._check_and_clear_alignment_changed",
+        "implementation.engine.implementation_phase._check_and_clear_alignment_changed",
         lambda *args: False,
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass.resolve_readiness",
+        "implementation.engine.implementation_phase.resolve_readiness",
         lambda *_args, **_kwargs: {"ready": True},
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass._run_risk_review",
+        "implementation.engine.implementation_phase._run_risk_review",
         lambda planspace_arg, sec_num, section_arg, _dispatch: (
             risk_plans.append((sec_num, section_arg.number)) or None
         ),
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass.run_section",
+        "implementation.engine.implementation_phase.run_section",
         lambda *args, **kwargs: ["src/app.py"],
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass.subprocess.run",
+        "implementation.engine.implementation_phase.subprocess.run",
         lambda *args, **kwargs: None,
     )
 

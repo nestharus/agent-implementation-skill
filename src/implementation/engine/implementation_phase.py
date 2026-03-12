@@ -10,7 +10,7 @@ from orchestrator.path_registry import PathRegistry
 from coordination.repository.notes import read_incoming_notes
 from proposal.repository.state import load_proposal_state
 from risk.service.engagement import determine_engagement
-from risk.engine.loop import run_lightweight_risk_check, run_risk_loop
+from risk.engine.risk_assessor import run_lightweight_risk_check, run_risk_loop
 from risk.service.package_builder import build_package_from_proposal, read_package, refresh_package
 from risk.types import (
     RiskMode,
@@ -21,7 +21,7 @@ from risk.types import (
 from proposal.service.readiness_resolver import resolve_readiness
 from containers import Services
 from _config import AGENT_NAME, DB_SH
-from implementation.engine.runner import run_section
+from implementation.engine.section_pipeline import run_section
 from implementation.repository.roal_index import (
     IMPLEMENTATION_ROAL_KINDS,
     refresh_roal_input_index,

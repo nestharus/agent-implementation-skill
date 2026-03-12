@@ -6,7 +6,7 @@ import pytest
 
 from conftest import override_dispatcher_and_guard
 from containers import Services
-from src.proposal.engine.loop import run_proposal_loop
+from src.proposal.engine.proposal_cycle import run_proposal_loop
 from src.orchestrator.types import Section
 
 def _section(planspace: Path) -> Section:
@@ -39,7 +39,7 @@ def _install_common_patches(
     proposal_path: Path,
 ) -> None:
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_triage_result",
+        "src.proposal.engine.proposal_cycle.load_triage_result",
         lambda *_args, **_kwargs: {
             "intent_mode": "full",
             "budgets": {"intent_expansion_max": 2},
@@ -51,11 +51,11 @@ def _install_common_patches(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.write_integration_proposal_prompt",
+        "src.proposal.engine.proposal_cycle.write_integration_proposal_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.write_integration_alignment_prompt",
+        "src.proposal.engine.proposal_cycle.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
     monkeypatch.setattr(
@@ -64,11 +64,11 @@ def _install_common_patches(
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_reconciliation_result",
+        "src.proposal.engine.proposal_cycle.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop._write_alignment_surface",
+        "src.proposal.engine.proposal_cycle._write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -113,7 +113,7 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
     expansion_calls: list[str] = []
 
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_combined_intent_surfaces",
+        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
@@ -177,7 +177,7 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
     expansion_calls: list[str] = []
 
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_combined_intent_surfaces",
+        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
@@ -241,14 +241,14 @@ def test_misaligned_definition_gap_expansion_respects_budget(
     expansion_calls: list[str] = []
 
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_triage_result",
+        "src.proposal.engine.proposal_cycle.load_triage_result",
         lambda *_args, **_kwargs: {
             "intent_mode": "full",
             "budgets": {"intent_expansion_max": 0},
         },
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_combined_intent_surfaces",
+        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(

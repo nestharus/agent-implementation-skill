@@ -12,7 +12,7 @@ from orchestrator.repository.section_artifacts import write_section_input_artifa
 from implementation.repository.roal_index import refresh_roal_input_index
 from proposal.repository.state import load_proposal_state
 from risk.service.engagement import determine_engagement
-from risk.engine.loop import run_lightweight_risk_check
+from risk.engine.risk_assessor import run_lightweight_risk_check
 from risk.service.package_builder import build_package_from_proposal
 from risk.repository.serialization import load_risk_assessment
 from risk.types import RiskPackage, RiskType
@@ -20,7 +20,7 @@ from scan.service.section_loader import parse_related_files
 from _config import AGENT_NAME, DB_SH
 from containers import Services
 from implementation.service.reexplore import _reexplore_section
-from implementation.engine.runner import run_section
+from implementation.engine.section_pipeline import run_section
 from orchestrator.types import ProposalPassResult, Section
 
 logger = logging.getLogger(__name__)

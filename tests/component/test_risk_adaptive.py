@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from risk.repository.history import append_history_entry
-from risk.engine.loop import run_risk_loop
+from risk.engine.risk_assessor import run_risk_loop
 from risk.repository.serialization import load_risk_artifact, serialize_assessment, serialize_plan
 from risk.types import (
     PackageStep,

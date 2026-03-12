@@ -17,7 +17,7 @@ from dispatch.prompt.writers import (
     write_integration_alignment_prompt,
     write_integration_proposal_prompt,
 )
-from reconciliation.engine.loop import load_reconciliation_result
+from reconciliation.engine.cross_section_reconciler import load_reconciliation_result
 from signals.service.blockers import (
     _append_open_problem,
     _update_blocker_rollup,

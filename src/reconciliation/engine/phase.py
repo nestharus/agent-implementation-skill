@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from containers import Services
-from reconciliation.engine.loop import run_reconciliation_loop
-from implementation.engine.runner import run_section
+from reconciliation.engine.cross_section_reconciler import run_reconciliation_loop
+from implementation.engine.section_pipeline import run_section
 from orchestrator.types import ProposalPassResult, Section
 
 

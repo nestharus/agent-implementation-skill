@@ -7,7 +7,7 @@ import pytest
 
 from conftest import override_dispatcher_and_guard
 from containers import Services
-from src.proposal.engine.loop import run_proposal_loop
+from src.proposal.engine.proposal_cycle import run_proposal_loop
 from src.orchestrator.types import Section
 
 def _section(planspace: Path, number: str = "01") -> Section:
@@ -63,7 +63,7 @@ def _install_common_patches(
     )
 
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_triage_result",
+        "src.proposal.engine.proposal_cycle.load_triage_result",
         lambda *_args, **_kwargs: {
             "intent_mode": intent_mode,
             "budgets": {"intent_expansion_max": 2},
@@ -80,11 +80,11 @@ def _install_common_patches(
         return planspace / "artifacts" / "proposal-prompt.md"
 
     monkeypatch.setattr(
-        "src.proposal.engine.loop.write_integration_proposal_prompt",
+        "src.proposal.engine.proposal_cycle.write_integration_proposal_prompt",
         _proposal_prompt,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.write_integration_alignment_prompt",
+        "src.proposal.engine.proposal_cycle.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
     monkeypatch.setattr(
@@ -93,11 +93,11 @@ def _install_common_patches(
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_reconciliation_result",
+        "src.proposal.engine.proposal_cycle.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop._write_alignment_surface",
+        "src.proposal.engine.proposal_cycle._write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -145,7 +145,7 @@ def test_lightweight_aligned_surfaces_force_reproposal_under_full_intent(
         proposal_args=proposal_args,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_combined_intent_surfaces",
+        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
@@ -212,7 +212,7 @@ def test_lightweight_aligned_surfaces_persist_registry_entries(
         proposal_args=proposal_args,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_combined_intent_surfaces",
+        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
@@ -257,7 +257,7 @@ def test_lightweight_empty_surface_payload_does_not_escalate(
         proposal_args=proposal_args,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_combined_intent_surfaces",
+        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: {
             "problem_surfaces": [],
             "philosophy_surfaces": [],
@@ -319,7 +319,7 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
         proposal_args=proposal_args,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_combined_intent_surfaces",
+        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
@@ -390,7 +390,7 @@ def test_full_mode_surfaces_do_not_emit_lightweight_escalation_signal(
         proposal_args=proposal_args,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.load_combined_intent_surfaces",
+        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(

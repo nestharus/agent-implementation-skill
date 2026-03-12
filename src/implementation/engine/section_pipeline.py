@@ -1,16 +1,16 @@
 from pathlib import Path
 
-from intent.engine import bootstrap as intent_bootstrap_module
+from intent.engine import intent_initializer as intent_bootstrap_module
 from implementation.service.triage_orchestrator import run_impact_triage
-from intent.engine.bootstrap import run_intent_bootstrap
+from intent.engine.intent_initializer import run_intent_bootstrap
 from proposal.service.problem_frame_gate import validate_problem_frame
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from implementation.service.microstrategy import run_microstrategy
-from proposal.engine.loop import run_proposal_loop
+from proposal.engine.proposal_cycle import run_proposal_loop
 from proposal.service.readiness_resolver import resolve_readiness
 from proposal.service.excerpt_extractor import extract_excerpts
-from implementation.engine.loop import run_implementation_loop
+from implementation.engine.implementation_cycle import run_implementation_loop
 from intent.service.recurrence import emit_recurrence_signal
 from dispatch.service.tool_registry_manager import (
     handle_tool_friction,
@@ -25,7 +25,7 @@ from coordination.service.completion import (
 from orchestrator.types import ProposalPassResult, Section
 from intent.service.loop_bootstrap import ensure_global_philosophy, generate_intent_pack
 from intent.service.triage import run_intent_triage
-from reconciliation.engine.loop import load_reconciliation_result
+from reconciliation.engine.cross_section_reconciler import load_reconciliation_result
 from signals.service.blockers import _update_blocker_rollup
 from implementation.service.microstrategy_decision import _extract_todos_from_files
 
