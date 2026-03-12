@@ -77,7 +77,7 @@ def _coordination_fix_package(
     Used as a chain_ref inside fanout branches so that each
     coordination fix group becomes a separate branch with its own
     chain_id.  The ``payload_path`` arg should point to the per-group
-    fix prompt written by ``write_coordinator_fix_prompt()``.
+    fix prompt written by ``write_fix_prompt()``.
     """
     return [
         TaskSpec(

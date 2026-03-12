@@ -2384,9 +2384,7 @@ class TestR58ToolRegistryCoordinationPreservation:
 
     def test_malformed_tool_registry_preserved(self, tmp_path):
         """Malformed tool-registry → .malformed.json copy exists."""
-        from coordination.engine.fix_dispatch import (
-            write_coordinator_fix_prompt,
-        )
+        from coordination.prompt.writers import write_fix_prompt
 
         planspace = tmp_path / "plan"
         codespace = tmp_path / "code"
@@ -2405,7 +2403,7 @@ class TestR58ToolRegistryCoordinationPreservation:
         sec_dir = planspace / "artifacts" / "sections"
         sec_dir.mkdir(parents=True)
 
-        write_coordinator_fix_prompt(group, planspace, codespace, 0)
+        write_fix_prompt(group, planspace, codespace, 0)
 
         # Assert malformed copy was preserved
         malformed = tool_reg.with_suffix(".malformed.json")

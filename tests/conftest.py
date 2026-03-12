@@ -86,7 +86,6 @@ def mock_dispatch(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     monkeypatch.setattr("implementation.engine.runner.dispatch_agent", mock)
     monkeypatch.setattr("implementation.service.reexplore.dispatch_agent", mock)
     monkeypatch.setattr("implementation.service.microstrategy_decision.dispatch_agent", mock)
-    monkeypatch.setattr("coordination.engine.fix_dispatch.dispatch_agent", mock)
     monkeypatch.setattr("coordination.engine.global_coordinator.dispatch_agent", mock)
     monkeypatch.setattr("coordination.engine.plan_executor.dispatch_agent", mock)
     monkeypatch.setattr("implementation.service.scope_delta_aggregator.dispatch_agent", mock)

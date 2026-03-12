@@ -9,13 +9,13 @@ from typing import Any
 
 from signals.repository.artifact_io import read_json, write_json
 from staleness.helpers.hashing import content_hash
-from dispatch.service.model_policy import resolve
+from dispatch.service.model_policy import load_model_policy, resolve
 from orchestrator.path_registry import PathRegistry
-from dispatch.prompt.template import SRC_TEMPLATE_DIR, load_template, render
-from dispatch.service.prompt_guard import write_validated_prompt
 from signals.service.communication import log, mailbox_send
-from coordination.engine.fix_dispatch import _dispatch_fix_group
+from coordination.prompt.writers import write_bridge_prompt, write_fix_prompt
 from dispatch.engine.section_dispatch import dispatch_agent
+from dispatch.helpers.utils import write_model_choice_signal
+from flow.service.section_ingestion import ingest_and_submit
 from orchestrator.service.pipeline_control import poll_control_messages
 from orchestrator.types import Section
 from taskrouter import agent_for
@@ -166,66 +166,18 @@ def _run_bridge_for_group(
 ) -> None:
     paths = PathRegistry(planspace)
     coord_dir = paths.coordination_dir()
-    coord_dir.mkdir(parents=True, exist_ok=True)
     group_sections = sorted({problem["section"] for problem in group})
-    group_files = sorted(
-        {file_path for problem in group for file_path in problem.get("files", [])},
-    )
-    bridge_prompt = coord_dir / f"bridge-{group_index}-prompt.md"
-    bridge_output = coord_dir / f"bridge-{group_index}-output.md"
-    contract_path = coord_dir / f"contract-patch-{group_index}.md"
     contract_delta_path = paths.contracts_dir() / f"contract-delta-group-{group_index}.md"
     notes_dir = paths.notes_dir()
-    notes_dir.mkdir(parents=True, exist_ok=True)
-    bridge_prompt.parent.mkdir(parents=True, exist_ok=True)
-    sections_dir = paths.sections_dir()
-    proposals_dir = paths.proposals_dir()
+    bridge_output = coord_dir / f"bridge-{group_index}-output.md"
 
-    section_refs = "\n".join(
-        f"- Section {section_num}: "
-        f"`{sections_dir / f'section-{section_num}-proposal-excerpt.md'}`"
-        for section_num in group_sections
+    bridge_prompt = write_bridge_prompt(
+        group, group_index, group_sections,
+        planspace, codespace, bridge_reason,
     )
-    alignment_refs = "\n".join(
-        f"- Section {section_num}: "
-        f"`{sections_dir / f'section-{section_num}-alignment-excerpt.md'}`"
-        for section_num in group_sections
-    )
-    proposal_refs = "\n".join(
-        f"- `{proposals_dir / f'section-{section_num}-integration-proposal.md'}`"
-        for section_num in group_sections
-    )
-
-    consequence_refs = []
-    for section_num in group_sections:
-        for note in sorted(notes_dir.glob(f"from-*-to-{section_num}.md")):
-            consequence_refs.append(f"- `{note}`")
-    consequence_block = ""
-    if consequence_refs:
-        consequence_block = "\n\n## Existing Consequence Notes\n" + "\n".join(
-            consequence_refs,
-        )
-
-    note_output_refs = "\n".join(
-        f"- `{notes_dir / f'from-bridge-{group_index}-to-{section_num}.md'}`"
-        for section_num in group_sections
-    )
-    shared_files_list = "\n".join(f"- `{fp}`" for fp in group_files)
-    template = load_template("coordination/bridge-resolve.md", SRC_TEMPLATE_DIR)
-    bridge_prompt_text = render(template, {
-        "group_index": str(group_index),
-        "bridge_reason": bridge_reason,
-        "section_refs": section_refs,
-        "alignment_refs": alignment_refs,
-        "proposal_refs": proposal_refs,
-        "shared_files": shared_files_list,
-        "consequence_block": consequence_block,
-        "contract_path": str(contract_path),
-        "contract_delta_path": str(contract_delta_path),
-        "note_output_refs": note_output_refs,
-    })
-    if not write_validated_prompt(bridge_prompt_text, bridge_prompt):
+    if bridge_prompt is None:
         return
+
     log(
         f"  coordinator: dispatching bridge agent for group "
         f"{group_index} ({group_sections}) — reason: {bridge_reason}",
@@ -294,6 +246,96 @@ def _run_bridge_for_group(
         f"  coordinator: bridge complete for group {group_index}, "
         f"contract delta at {contract_delta_path}",
     )
+
+
+def _dispatch_fix_group(
+    group: list[dict[str, Any]], group_id: int,
+    planspace: Path, codespace: Path, parent: str,
+    default_fix_model: str = "",
+) -> tuple[int, list[str] | None]:
+    """Dispatch an agent to fix a single problem group.
+
+    Returns (group_id, list_of_modified_files) on success.
+    Returns (group_id, None) if ALIGNMENT_CHANGED_PENDING sentinel received.
+    """
+    paths = PathRegistry(planspace)
+    coord_dir = paths.coordination_dir()
+    policy = load_model_policy(planspace)
+    fix_prompt = write_fix_prompt(group, planspace, codespace, group_id)
+    if fix_prompt is None:
+        log(f"  coordinator: fix group {group_id} prompt blocked "
+            f"by template safety — skipping dispatch")
+        return group_id, None
+    fix_output = coord_dir / f"fix-{group_id}-output.md"
+    modified_report = coord_dir / f"fix-{group_id}-modified.txt"
+
+    if not default_fix_model:
+        default_fix_model = resolve(policy, "coordination_fix")
+    fix_model = default_fix_model
+    coord_escalated_from = None
+    escalation_file = coord_dir / "model-escalation.txt"
+    if escalation_file.exists():
+        coord_escalated_from = fix_model
+        fix_model = escalation_file.read_text(encoding="utf-8").strip()
+        log(f"  coordinator: using escalated model {fix_model}")
+
+    write_model_choice_signal(
+        planspace, f"coord-{group_id}", "coordination-fix",
+        fix_model,
+        "escalated due to coordination churn" if coord_escalated_from
+        else "default model",
+        coord_escalated_from,
+    )
+
+    log(f"  coordinator: dispatching fix for group {group_id} "
+        f"({len(group)} problems)")
+    result = dispatch_agent(
+        fix_model, fix_prompt, fix_output,
+        planspace, parent, codespace=codespace,
+        agent_file=agent_for("coordination.fix"),
+    )
+    if result == "ALIGNMENT_CHANGED_PENDING":
+        return group_id, None
+
+    ingest_and_submit(
+        planspace,
+        db_path=paths.run_db(),
+        submitted_by=f"coordination-fix-{group_id}",
+        signal_path=coord_dir / f"signals/task-requests-coord-{group_id}.json",
+        origin_refs=[str(fix_prompt)],
+    )
+
+    return group_id, _collect_modified_files(modified_report, codespace)
+
+
+def _collect_modified_files(modified_report: Path, codespace: Path) -> list[str]:
+    """Parse the modified-files report, validating paths stay within codespace."""
+    if not modified_report.exists():
+        return []
+    codespace_resolved = codespace.resolve()
+    modified: list[str] = []
+    for line in modified_report.read_text(encoding="utf-8").strip().split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        pp = Path(line)
+        if pp.is_absolute():
+            try:
+                rel = pp.resolve().relative_to(codespace_resolved)
+            except ValueError:
+                log(f"  coordinator: WARNING — fix path outside "
+                    f"codespace, skipping: {line}")
+                continue
+        else:
+            full = (codespace / pp).resolve()
+            try:
+                rel = full.relative_to(codespace_resolved)
+            except ValueError:
+                log(f"  coordinator: WARNING — fix path escapes "
+                    f"codespace, skipping: {line}")
+                continue
+        modified.append(str(rel))
+    return modified
 
 
 def _persist_modified_files(planspace: Path, modified_files: list[str]) -> None:
