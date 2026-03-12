@@ -10,7 +10,7 @@ from implementation.engine.implementation_phase import (
     run_implementation_pass,
 )
 from implementation.repository.roal_index import read_roal_input_index
-from implementation.service.risk_history import append_risk_history
+from implementation.service.risk_history_recorder import append_risk_history
 from risk.repository.history import read_history
 from risk.repository.serialization import serialize_assessment, serialize_package
 from risk.types import (

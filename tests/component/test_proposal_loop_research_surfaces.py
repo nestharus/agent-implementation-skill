@@ -9,7 +9,7 @@ from dependency_injector import providers
 from conftest import NoOpFlow, NoOpSectionAlignment, StubPolicies, make_dispatcher
 from containers import CrossSectionService, Services
 from src.proposal.engine.proposal_cycle import run_proposal_loop
-from src.intent.service.expansion import run_expansion_cycle
+from src.intent.service.expansion_facade import run_expansion_cycle
 from src.orchestrator.types import Section
 
 def _section(planspace: Path, number: str = "01") -> Section:
@@ -106,7 +106,7 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "proposal.service.intent_expansion.run_expansion_cycle",
+        "proposal.service.expansion_handler.run_expansion_cycle",
         lambda section_number, *_args, **_kwargs: (
             expansion_calls.append(section_number)
             or {
@@ -116,7 +116,7 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         ),
     )
     monkeypatch.setattr(
-        "proposal.service.intent_expansion.handle_user_gate",
+        "proposal.service.expansion_handler.handle_user_gate",
         lambda *_args, **_kwargs: None,
     )
 
@@ -167,7 +167,7 @@ def test_run_expansion_cycle_merges_research_surfaces_into_pending_payload(
 
     Services.policies.override(providers.Object(StubPolicies()))
     monkeypatch.setattr(
-        "intent.engine.surface.run_problem_expander",
+        "intent.engine.expansion_orchestrator.run_problem_expander",
         lambda *_args, **_kwargs: {
             "applied": {
                 "problem_definition_updated": False,
@@ -180,7 +180,7 @@ def test_run_expansion_cycle_merges_research_surfaces_into_pending_payload(
         },
     )
     monkeypatch.setattr(
-        "src.intent.engine.surface.run_problem_expander",
+        "src.intent.engine.expansion_orchestrator.run_problem_expander",
         lambda *_args, **_kwargs: {
             "applied": {
                 "problem_definition_updated": False,

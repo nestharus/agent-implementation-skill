@@ -19,7 +19,7 @@ from risk.types import RiskPackage, RiskType
 from scan.service.section_loader import parse_related_files
 from _config import AGENT_NAME, DB_SH
 from containers import Services
-from implementation.service.reexplore import _reexplore_section
+from implementation.service.section_reexplorer import _reexplore_section
 from implementation.engine.section_pipeline import run_section
 from orchestrator.types import ProposalPassResult, Section
 

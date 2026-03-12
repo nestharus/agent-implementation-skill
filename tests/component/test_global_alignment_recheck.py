@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from src.staleness.service import global_recheck
-from src.staleness.service.global_recheck import run_global_alignment_recheck
+from src.staleness.service import global_alignment_rechecker
+from src.staleness.service.global_alignment_rechecker import run_global_alignment_recheck
 from orchestrator.types import Section, SectionResult
 
 
@@ -29,7 +29,7 @@ def test_run_global_alignment_recheck_skips_unchanged_aligned_sections(
 
     noop_pipeline_control.section_inputs_hash = lambda *_args, **_kwargs: "hash-1"
     monkeypatch.setattr(
-        global_recheck,
+        global_alignment_rechecker,
         "_run_alignment_check_with_retries",
         lambda *_args, **_kwargs: pytest.fail("alignment check should not run"),
     )
@@ -64,12 +64,12 @@ def test_run_global_alignment_recheck_marks_invalid_frame_and_preserves_files(
 
     noop_pipeline_control.section_inputs_hash = lambda *_args, **_kwargs: "hash-1"
     monkeypatch.setattr(
-        global_recheck,
+        global_alignment_rechecker,
         "read_incoming_notes",
         lambda *_args, **_kwargs: "",
     )
     monkeypatch.setattr(
-        global_recheck,
+        global_alignment_rechecker,
         "_run_alignment_check_with_retries",
         lambda *_args, **_kwargs: "INVALID_FRAME",
     )

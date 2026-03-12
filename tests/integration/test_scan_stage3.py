@@ -55,13 +55,13 @@ def mock_scan_dispatch(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     mock.return_value = subprocess.CompletedProcess(
         args=[], returncode=0, stdout="", stderr="",
     )
-    monkeypatch.setattr("scan.cli_dispatch.dispatch_agent", mock)
+    monkeypatch.setattr("scan.scan_dispatcher.dispatch_agent", mock)
     # Also patch at import sites
-    monkeypatch.setattr("scan.codemap.lifecycle.dispatch_agent", mock)
-    monkeypatch.setattr("scan.explore.deep_scan.dispatch_agent", mock)
-    monkeypatch.setattr("scan.explore.exploration.dispatch_agent", mock)
-    monkeypatch.setattr("scan.service.feedback.dispatch_agent", mock)
-    monkeypatch.setattr("scan.explore.tier_ranking.dispatch_agent", mock)
+    monkeypatch.setattr("scan.codemap.codemap_builder.dispatch_agent", mock)
+    monkeypatch.setattr("scan.explore.deep_scanner.dispatch_agent", mock)
+    monkeypatch.setattr("scan.explore.section_explorer.dispatch_agent", mock)
+    monkeypatch.setattr("scan.service.feedback_collector.dispatch_agent", mock)
+    monkeypatch.setattr("scan.explore.tier_ranker.dispatch_agent", mock)
     monkeypatch.setattr("scan.explore.analyzer.dispatch_agent", mock)
     return mock
 
@@ -73,7 +73,7 @@ class TestFeedbackSchemaEnforcement:
         self, scan_planspace: Path, scan_codespace: Path,
     ) -> None:
         """Feedback without 'relevant' is logged and skipped."""
-        from scan.service.feedback import collect_and_route_feedback
+        from scan.service.feedback_collector import collect_and_route_feedback
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"
@@ -109,7 +109,7 @@ class TestFeedbackSchemaEnforcement:
         self, scan_planspace: Path, scan_codespace: Path,
     ) -> None:
         """Feedback without 'source_file' is logged and skipped."""
-        from scan.service.feedback import collect_and_route_feedback
+        from scan.service.feedback_collector import collect_and_route_feedback
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"
@@ -142,7 +142,7 @@ class TestFeedbackSchemaEnforcement:
         self, scan_planspace: Path, scan_codespace: Path,
     ) -> None:
         """Feedback with all required fields is processed normally."""
-        from scan.service.feedback import collect_and_route_feedback
+        from scan.service.feedback_collector import collect_and_route_feedback
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"
@@ -190,7 +190,7 @@ class TestCorrectionsInUpdaterPrompt:
         mock_scan_dispatch: MagicMock,
     ) -> None:
         """When corrections exist, updater prompt references them."""
-        from scan.service.feedback import _apply_feedback
+        from scan.service.feedback_collector import _apply_feedback
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"
@@ -302,7 +302,7 @@ class TestCodemapReuseMissingFingerprint:
     ) -> None:
         """When codemap exists but fingerprint is missing, verifier is
         dispatched instead of blind reuse."""
-        from scan.codemap.lifecycle import run_codemap_build
+        from scan.codemap.codemap_builder import run_codemap_build
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"
@@ -372,7 +372,7 @@ class TestCodemapReuseMissingFingerprint:
         mock_scan_dispatch: MagicMock,
     ) -> None:
         """When verifier says reuse, codemap is kept and fingerprint stored."""
-        from scan.codemap.lifecycle import run_codemap_build
+        from scan.codemap.codemap_builder import run_codemap_build
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"
@@ -436,7 +436,7 @@ class TestScanSummaryIdempotency:
 
     def test_update_match_idempotent(self, tmp_path: Path) -> None:
         """Repeated update_match calls don't accumulate duplicate blocks."""
-        from scan.explore.deep_scan import update_match
+        from scan.explore.deep_scanner import update_match
 
         section = tmp_path / "section.md"
         section.write_text(
@@ -565,7 +565,7 @@ class TestScanModelPolicy:
 
     def test_default_policy_has_all_tasks(self) -> None:
         """Default policy covers all scan task types."""
-        from scan.cli_dispatch import _DEFAULT_MODELS
+        from scan.scan_dispatcher import _DEFAULT_MODELS
         required = {
             "codemap_build", "codemap_freshness", "exploration",
             "validation", "tier_ranking", "deep_analysis",
@@ -577,7 +577,7 @@ class TestScanModelPolicy:
 
     def test_policy_override_from_file(self, tmp_path: Path) -> None:
         """model-policy.json overrides default scan models."""
-        from scan.cli_dispatch import read_scan_model_policy
+        from scan.scan_dispatcher import read_scan_model_policy
 
         planspace = tmp_path / "planspace"
         artifacts_dir = planspace / "artifacts"
@@ -635,7 +635,7 @@ class TestScanLoopClosure:
 
     def test_max_scan_passes_is_bounded(self) -> None:
         """_MAX_SCAN_PASSES prevents unbounded iteration."""
-        from scan.explore.deep_scan import _MAX_SCAN_PASSES
+        from scan.explore.deep_scanner import _MAX_SCAN_PASSES
         assert 1 < _MAX_SCAN_PASSES <= 3, (
             f"_MAX_SCAN_PASSES={_MAX_SCAN_PASSES} must be 2-3"
         )
@@ -645,7 +645,7 @@ class TestScanLoopClosure:
         mock_scan_dispatch: MagicMock,
     ) -> None:
         """Files already in already_scanned set are not re-dispatched."""
-        from scan.explore.deep_scan import _scan_sections
+        from scan.explore.deep_scanner import _scan_sections
         from scan.codemap.cache import FileCardCache
 
         artifacts = scan_planspace / "artifacts"
@@ -717,7 +717,7 @@ class TestDeepScanTierRankingFailureUnit:
     ) -> None:
         """_scan_sections returns True (failure) when no tier ranking."""
         from scan.codemap.cache import FileCardCache
-        from scan.explore.deep_scan import _scan_sections
+        from scan.explore.deep_scanner import _scan_sections
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"

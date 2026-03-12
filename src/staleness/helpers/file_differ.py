@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from staleness.helpers.hashing import file_hash
+from staleness.helpers.content_hasher import file_hash
 
 
 def hash_file(path: Path) -> str:

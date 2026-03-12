@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from containers import Services
-from intent.service.philosophy_bootstrap import (
+from intent.service.philosophy_bootstrapper import (
     ensure_global_philosophy as _ensure_global_philosophy,
     sha256_file as _sha256_file_impl,
     validate_philosophy_grounding as _validate_grounding,

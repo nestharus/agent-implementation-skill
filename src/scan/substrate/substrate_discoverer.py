@@ -17,8 +17,8 @@ import sys
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
-from scan.substrate.dispatch import dispatch_substrate_agent as _dispatch_agent
-from scan.substrate.helpers import (
+from scan.substrate.substrate_dispatcher import dispatch_substrate_agent as _dispatch_agent
+from scan.substrate.substrate_state_reader import (
     count_existing_related as _count_existing_related,
     list_section_files as _list_section_files,
     read_project_mode as _read_project_mode,

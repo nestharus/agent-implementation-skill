@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from staleness.helpers.hashing import content_hash, file_hash
+from staleness.helpers.content_hasher import content_hash, file_hash
 from orchestrator.path_registry import PathRegistry
 
 

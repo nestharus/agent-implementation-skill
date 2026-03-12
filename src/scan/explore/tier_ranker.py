@@ -7,7 +7,7 @@ from pathlib import Path
 from containers import Services
 from scan.service.template_loader import load_scan_template
 from scan.codemap.cache import strip_scan_summaries
-from scan.cli_dispatch import dispatch_agent
+from scan.scan_dispatcher import dispatch_agent
 
 
 def validate_tier_file(tier_file: Path) -> bool:

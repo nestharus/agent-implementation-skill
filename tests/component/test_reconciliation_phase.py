@@ -7,8 +7,8 @@ from dependency_injector import providers
 
 from conftest import CapturingCommunicator, CapturingPipelineControl
 from containers import Services
-from src.reconciliation.engine import phase
-from src.reconciliation.engine.phase import (
+from src.reconciliation.engine import reconciliation_phase
+from src.reconciliation.engine.reconciliation_phase import (
     ReconciliationPhaseExit,
     run_reconciliation_phase,
 )
@@ -36,7 +36,7 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
     }
 
     monkeypatch.setattr(
-        phase,
+        reconciliation_phase,
         "run_reconciliation_loop",
         lambda *_args, **_kwargs: {
             "conflicts_found": 1,
@@ -46,12 +46,12 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
         },
     )
     monkeypatch.setattr(
-        phase,
+        reconciliation_phase,
         "_check_and_clear_alignment_changed",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        phase,
+        reconciliation_phase,
         "run_section",
         lambda *_args, **_kwargs: ProposalPassResult(
             section_number="01",
@@ -90,7 +90,7 @@ def test_run_reconciliation_phase_restarts_on_alignment_change(
     capturing_pipeline_control._alignment_changed_return = True
 
     monkeypatch.setattr(
-        phase,
+        reconciliation_phase,
         "run_reconciliation_loop",
         lambda *_args, **_kwargs: {
             "conflicts_found": 1,
@@ -100,7 +100,7 @@ def test_run_reconciliation_phase_restarts_on_alignment_change(
         },
     )
     monkeypatch.setattr(
-        phase,
+        reconciliation_phase,
         "_check_and_clear_alignment_changed",
         lambda *_args, **_kwargs: True,
     )
@@ -135,7 +135,7 @@ def test_run_reconciliation_phase_exits_when_parent_aborts(
     capturing_pipeline_control._pending_return = True
 
     monkeypatch.setattr(
-        phase,
+        reconciliation_phase,
         "run_reconciliation_loop",
         lambda *_args, **_kwargs: {
             "conflicts_found": 1,

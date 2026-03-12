@@ -89,7 +89,7 @@ def ingest_and_submit(
     # Lazy import to break circular dependency:
     # task_dispatcher → task_flow → flow_reconciler → plan_executor
     # → section_engine → reexplore → task_ingestion → task_flow
-    from flow.service.task_flow import (
+    from flow.service.flow_facade import (
         submit_chain,
         submit_fanout,
     )

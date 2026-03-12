@@ -14,7 +14,7 @@ from dispatch.prompt.context_assembler import (
     build_proposal_context_extras,
 )
 from orchestrator.path_registry import PathRegistry
-from dispatch.prompt.helpers import (
+from dispatch.prompt.prompt_formatters import (
     agent_mail_instructions,
     format_existing_file_listing,
     scoped_context_block,
@@ -24,7 +24,7 @@ from dispatch.prompt.helpers import (
 from containers import Services
 from dispatch.service.context_sidecar import materialize_context_sidecar
 from orchestrator.types import Section
-from dispatch.prompt.context import build_prompt_context
+from dispatch.prompt.context_builder import build_prompt_context
 from pipeline.template import load_template, render
 
 

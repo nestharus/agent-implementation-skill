@@ -36,7 +36,7 @@ from flow.service.notifier import (
 )
 from flow.helpers.task_parser import parse_task_output
 from flow.exceptions import FlowCorruptionError
-from flow.service.task_flow import (
+from flow.service.flow_facade import (
     build_flow_context,
     reconcile_task_completion,
     write_dispatch_prompt,

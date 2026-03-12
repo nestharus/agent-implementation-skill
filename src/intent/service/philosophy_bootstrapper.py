@@ -29,7 +29,7 @@ from intent.service.philosophy_catalog import (
     _declared_principle_ids,
     build_philosophy_catalog,
 )
-from intent.service.philosophy_dispatch import (
+from intent.service.philosophy_dispatcher import (
     _attempt_output_path,
     _dispatch_classified_signal_stage,
 )

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
 from containers import Services
-from intent.service.expansion import handle_user_gate, run_expansion_cycle
+from intent.service.expansion_facade import handle_user_gate, run_expansion_cycle
 
 
 def run_aligned_expansion(

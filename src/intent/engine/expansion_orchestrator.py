@@ -6,7 +6,7 @@ from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
 from containers import Services
-from intent.service.surfaces import (
+from intent.service.surface_registry import (
     find_discarded_recurrences,
     load_combined_intent_surfaces,
     load_surface_registry,

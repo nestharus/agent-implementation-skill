@@ -10,14 +10,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
-from intent.service.loop_bootstrap import (
+from intent.service.intent_pack_generator import (
     ensure_global_philosophy,
     generate_intent_pack,
 )
-from intent.service.triage import run_intent_triage
+from intent.service.intent_triager import run_intent_triage
 from containers import Services
-from signals.service.blockers import _update_blocker_rollup
-from intake.service.packet import build_section_governance_packet
+from signals.service.blocker_manager import _update_blocker_rollup
+from intake.service.governance_packet_builder import build_section_governance_packet
 from orchestrator.types import Section
 
 from pipeline import AlignmentGuard, Pipeline, PipelineContext, Step
@@ -256,7 +256,7 @@ def run_intent_bootstrap(
 
 
 def _extract_todos_from_files(codespace: Path, related_files: list[str]) -> str:
-    from implementation.service.microstrategy_decision import (
+    from implementation.service.microstrategy_decider import (
         _extract_todos_from_files as extract_todos,
     )
 

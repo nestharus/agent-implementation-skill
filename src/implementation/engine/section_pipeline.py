@@ -6,28 +6,28 @@ from intent.engine.intent_initializer import run_intent_bootstrap
 from proposal.service.problem_frame_gate import validate_problem_frame
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from implementation.service.microstrategy import run_microstrategy
+from implementation.service.microstrategy_generator import run_microstrategy
 from proposal.engine.proposal_cycle import run_proposal_loop
 from proposal.service.readiness_resolver import resolve_readiness
 from proposal.service.excerpt_extractor import extract_excerpts
 from implementation.engine.implementation_cycle import run_implementation_loop
-from intent.service.recurrence import emit_recurrence_signal
+from intent.service.recurrence_emitter import emit_recurrence_signal
 from dispatch.service.tool_registry_manager import (
     handle_tool_friction,
     surface_tool_registry,
     validate_tool_registry_after_implementation,
 )
 
-from coordination.service.completion import (
+from coordination.service.completion_handler import (
     post_section_completion,
     read_incoming_notes,
 )
 from orchestrator.types import ProposalPassResult, Section
-from intent.service.loop_bootstrap import ensure_global_philosophy, generate_intent_pack
-from intent.service.triage import run_intent_triage
+from intent.service.intent_pack_generator import ensure_global_philosophy, generate_intent_pack
+from intent.service.intent_triager import run_intent_triage
 from reconciliation.engine.cross_section_reconciler import load_reconciliation_result
-from signals.service.blockers import _update_blocker_rollup
-from implementation.service.microstrategy_decision import _extract_todos_from_files
+from signals.service.blocker_manager import _update_blocker_rollup
+from implementation.service.microstrategy_decider import _extract_todos_from_files
 
 
 # ---------------------------------------------------------------------------

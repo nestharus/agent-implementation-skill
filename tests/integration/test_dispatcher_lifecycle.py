@@ -20,11 +20,11 @@ from conftest import override_dispatcher_and_guard
 from containers import FreshnessService, Services
 
 from flow.types.schema import TaskSpec
-from flow.service.task_flow import (
+from flow.service.flow_facade import (
     reconcile_task_completion,
     submit_chain,
 )
-from staleness.service.freshness import compute_section_freshness
+from staleness.service.freshness_calculator import compute_section_freshness
 
 
 # ---------------------------------------------------------------------------

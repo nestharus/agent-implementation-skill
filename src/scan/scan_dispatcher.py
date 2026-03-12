@@ -16,7 +16,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from scan.service.scan_dispatch import (
+from scan.service.scan_dispatch_config import (
     DEFAULT_SCAN_MODELS,
     build_scan_dispatch_command,
     read_scan_model_policy,

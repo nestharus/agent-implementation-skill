@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from containers import Services
 from _config import AGENT_NAME, DB_SH
 from orchestrator.path_registry import PathRegistry
-from orchestrator.service.section_decisions import (
+from orchestrator.service.section_decision_store import (
     build_section_number_map,
     normalize_section_number,
 )

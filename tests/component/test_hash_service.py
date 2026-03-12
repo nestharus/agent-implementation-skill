@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from src.staleness.helpers.hashing import content_hash, file_hash, fingerprint
+from src.staleness.helpers.content_hasher import content_hash, file_hash, fingerprint
 
 
 class TestFileHash:

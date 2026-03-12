@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from staleness.helpers.hashing import content_hash
+from staleness.helpers.content_hasher import content_hash
 from orchestrator.path_registry import PathRegistry
 
 

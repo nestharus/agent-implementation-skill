@@ -10,7 +10,7 @@ from typing import Any
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from coordination.prompt.writers import write_bridge_prompt, write_fix_prompt
-from flow.service.section_ingestion import ingest_and_submit
+from flow.service.task_request_ingestor import ingest_and_submit
 from orchestrator.types import Section
 
 

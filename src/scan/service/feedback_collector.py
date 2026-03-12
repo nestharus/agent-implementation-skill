@@ -13,10 +13,10 @@ from scan.service.feedback_router import (
     _route_scope_deltas,
     _validate_feedback_schema,
 )
-from scan.related.discovery import apply_related_files_update
+from scan.related.related_file_resolver import apply_related_files_update
 from scan.service.template_loader import load_scan_template
 
-from scan.cli_dispatch import dispatch_agent, read_scan_model_policy
+from scan.scan_dispatcher import dispatch_agent, read_scan_model_policy
 from containers import Services
 
 

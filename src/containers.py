@@ -47,7 +47,7 @@ class AgentDispatcher:
         *,
         agent_file: str,
     ) -> str:
-        from dispatch.engine.section_dispatch import dispatch_agent
+        from dispatch.engine.section_dispatcher import dispatch_agent
         return dispatch_agent(
             model, prompt_path, output_path, planspace, parent,
             agent_name, codespace, section_number,
@@ -159,15 +159,15 @@ class Communicator:
     """Inter-agent communication: mailbox, artifact logging, traceability."""
 
     def mailbox_send(self, planspace, target, message):
-        from signals.service.communication import mailbox_send
+        from signals.service.section_communicator import mailbox_send
         return mailbox_send(planspace, target, message)
 
     def log_artifact(self, planspace, artifact_name):
-        from signals.service.communication import _log_artifact
+        from signals.service.section_communicator import _log_artifact
         return _log_artifact(planspace, artifact_name)
 
     def record_traceability(self, planspace, section_number, file_path, source, category=""):
-        from signals.service.communication import _record_traceability
+        from signals.service.section_communicator import _record_traceability
         return _record_traceability(planspace, section_number, file_path, source, category)
 
 
@@ -175,7 +175,7 @@ class LogService:
     """Structured logging to coordination database."""
 
     def log(self, msg: str) -> None:
-        from signals.service.communication import log
+        from signals.service.section_communicator import log
         log(msg)
 
 
@@ -195,15 +195,15 @@ class HasherService:
     """Content and file hashing."""
 
     def file_hash(self, path) -> str:
-        from staleness.helpers.hashing import file_hash
+        from staleness.helpers.content_hasher import file_hash
         return file_hash(path)
 
     def content_hash(self, data) -> str:
-        from staleness.helpers.hashing import content_hash
+        from staleness.helpers.content_hasher import content_hash
         return content_hash(data)
 
     def fingerprint(self, items: list[str]) -> str:
-        from staleness.helpers.hashing import fingerprint
+        from staleness.helpers.content_hasher import fingerprint
         return fingerprint(items)
 
 
@@ -238,20 +238,20 @@ class DispatchHelperService:
         self, output, signal_path=None, output_path=None,
         planspace=None, parent=None, codespace=None,
     ):
-        from dispatch.helpers.utils import check_agent_signals
+        from dispatch.helpers.signal_checker import check_agent_signals
         return check_agent_signals(
             output, signal_path, output_path, planspace, parent, codespace,
         )
 
     def summarize_output(self, output: str, max_len: int = 200) -> str:
-        from dispatch.helpers.utils import summarize_output
+        from dispatch.helpers.signal_checker import summarize_output
         return summarize_output(output, max_len)
 
     def write_model_choice_signal(
         self, planspace, section, step, model, reason,
         escalated_from=None,
     ) -> None:
-        from dispatch.helpers.utils import write_model_choice_signal
+        from dispatch.helpers.signal_checker import write_model_choice_signal
         write_model_choice_signal(
             planspace, section, step, model, reason, escalated_from,
         )
@@ -269,11 +269,11 @@ class CrossSectionService:
     """Cross-section decision persistence, summaries, and note exchange."""
 
     def persist_decision(self, planspace, section_number: str, payload: str) -> None:
-        from coordination.service.cross_section import persist_decision
+        from coordination.service.decision_recorder import persist_decision
         persist_decision(planspace, section_number, payload)
 
     def extract_section_summary(self, path) -> str:
-        from orchestrator.service.section_decisions import extract_section_summary
+        from orchestrator.service.section_decision_store import extract_section_summary
         return extract_section_summary(path)
 
     def write_consequence_note(self, planspace, from_section, to_section, content):
@@ -285,7 +285,7 @@ class FlowIngestionService:
     """Flow task submission and ingestion."""
 
     def ingest_and_submit(self, planspace, db_path, submitted_by, signal_path, **kwargs):
-        from flow.service.section_ingestion import ingest_and_submit
+        from flow.service.task_request_ingestor import ingest_and_submit
         return ingest_and_submit(planspace, db_path, submitted_by, signal_path, **kwargs)
 
     def submit_chain(self, db_path, submitted_by, steps, **kwargs):
@@ -297,11 +297,11 @@ class StalenessDetectionService:
     """File snapshot and diff detection for implementation tracking."""
 
     def snapshot_files(self, codespace, rel_paths: list[str]) -> dict[str, str]:
-        from staleness.helpers.detection import snapshot_files
+        from staleness.helpers.file_differ import snapshot_files
         return snapshot_files(codespace, rel_paths)
 
     def diff_files(self, codespace, before: dict[str, str], reported: list[str]) -> list[str]:
-        from staleness.helpers.detection import diff_files
+        from staleness.helpers.file_differ import diff_files
         return diff_files(codespace, before, reported)
 
 
@@ -327,7 +327,7 @@ class FreshnessService:
     """Section freshness token computation."""
 
     def compute(self, planspace, section_number: str) -> str:
-        from staleness.service.freshness import compute_section_freshness
+        from staleness.service.freshness_calculator import compute_section_freshness
         return compute_section_freshness(planspace, section_number)
 
 
@@ -338,21 +338,21 @@ class SectionAlignmentService:
         self, result, output_path=None, planspace=None,
         parent=None, codespace=None, *, adjudicator_model: str,
     ) -> str | None:
-        from staleness.service.section_alignment import _extract_problems
+        from staleness.service.section_alignment_checker import _extract_problems
         return _extract_problems(
             result, output_path, planspace, parent, codespace,
             adjudicator_model=adjudicator_model,
         )
 
     def collect_modified_files(self, planspace, section, codespace) -> list[str]:
-        from staleness.service.section_alignment import collect_modified_files
+        from staleness.service.section_alignment_checker import collect_modified_files
         return collect_modified_files(planspace, section, codespace)
 
     def run_alignment_check(
         self, section, planspace, codespace, parent, sec_num,
         output_prefix="align", max_retries=2, *, model: str, adjudicator_model: str,
     ):
-        from staleness.service.section_alignment import _run_alignment_check_with_retries
+        from staleness.service.section_alignment_checker import _run_alignment_check_with_retries
         return _run_alignment_check_with_retries(
             section, planspace, codespace, parent, sec_num,
             output_prefix, max_retries,
@@ -367,7 +367,7 @@ class SectionAlignmentService:
         self, sections_by_num, section_results,
         planspace, codespace, parent, policy,
     ) -> str:
-        from staleness.service.global_recheck import run_global_alignment_recheck
+        from staleness.service.global_alignment_rechecker import run_global_alignment_recheck
         return run_global_alignment_recheck(
             sections_by_num, section_results,
             planspace, codespace, parent, policy,

@@ -23,7 +23,7 @@ from implementation.engine.implementation_phase import (
     run_implementation_pass,
 )
 from proposal.engine.proposal_phase import ProposalPassExit, run_proposal_pass
-from reconciliation.engine.phase import run_reconciliation_phase
+from reconciliation.engine.reconciliation_phase import run_reconciliation_phase
 from orchestrator.types import ProposalPassResult, Section, SectionResult
 
 
@@ -344,7 +344,7 @@ class TestBlockedSectionsExcludedFromImplementation:
             return _make_proposal_result(sec.number, execution_ready=True)
 
         with patch(
-            "reconciliation.engine.phase.run_section",
+            "reconciliation.engine.reconciliation_phase.run_section",
             side_effect=mock_run_section,
         ):
             result = run_reconciliation_phase(

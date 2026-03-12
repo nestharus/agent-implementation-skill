@@ -5,15 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
-from scan.service.section_notes import log_phase_failure
+from scan.service.phase_failure_logger import log_phase_failure
 from scan.service.template_loader import load_scan_template
-from scan.related.discovery import (
+from scan.related.related_file_resolver import (
     apply_related_files_update,
     list_section_files,
     validate_existing_related_files,
 )
 
-from scan.cli_dispatch import dispatch_agent, read_scan_model_policy
+from scan.scan_dispatcher import dispatch_agent, read_scan_model_policy
 from containers import Services
 
 

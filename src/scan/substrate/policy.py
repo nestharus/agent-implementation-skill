@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from containers import Services
-from scan.substrate.helpers import _registry_for_artifacts
+from scan.substrate.substrate_state_reader import _registry_for_artifacts
 
 DEFAULT_SUBSTRATE_MODELS: dict[str, str] = {
     "substrate_shard": "gpt-high",

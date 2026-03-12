@@ -21,8 +21,8 @@ from _paths import DB_SH
 from conftest import override_dispatcher_and_guard
 
 import dispatch.engine.agent_executor as executor_mod
-import dispatch.engine.section_dispatch as dispatch_mod
-from dispatch.engine.section_dispatch import dispatch_agent
+import dispatch.engine.section_dispatcher as dispatch_mod
+from dispatch.engine.section_dispatcher import dispatch_agent
 from containers import TaskRouterService
 
 

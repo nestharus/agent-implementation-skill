@@ -157,7 +157,7 @@ def record_assessment_governance(
     if not isinstance(profile_id, str):
         profile_id = ""
 
-    from implementation.service.traceability import update_trace_governance
+    from implementation.service.traceability_writer import update_trace_governance
     update_trace_governance(
         planspace,
         section_number,

@@ -6,11 +6,11 @@ from pathlib import Path
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from staleness.service.section_alignment import (
+from staleness.service.section_alignment_checker import (
     _extract_problems,
     _run_alignment_check_with_retries,
 )
-from coordination.service.completion import read_incoming_notes
+from coordination.service.completion_handler import read_incoming_notes
 from orchestrator.types import Section, SectionResult
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.dispatch.helpers.utils import (
+from src.dispatch.helpers.signal_checker import (
     check_agent_signals,
     summarize_output,
     write_model_choice_signal,

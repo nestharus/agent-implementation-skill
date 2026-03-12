@@ -8,8 +8,8 @@ from pathlib import Path
 from containers import Services
 from scan.explore.analyzer import analyze_file
 from scan.related.match_updater import deep_scan_related_files
-from scan.service.section_notes import log_phase_failure
-from scan.explore.tier_ranking import run_tier_ranking
+from scan.service.phase_failure_logger import log_phase_failure
+from scan.explore.tier_ranker import run_tier_ranking
 from scan.codemap.cache import FileCardCache
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.staleness.service.alignment import collect_modified_files, extract_problems
+from src.staleness.service.alignment_collector import collect_modified_files, extract_problems
 from src.orchestrator.types import Section
 
 

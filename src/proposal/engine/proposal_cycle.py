@@ -4,9 +4,9 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from containers import Services
-from intent.service.triage import load_triage_result
+from intent.service.intent_triager import load_triage_result
 from orchestrator.path_registry import PathRegistry
-from intent.service.surfaces import (
+from intent.service.surface_registry import (
     load_combined_intent_surfaces,
     load_surface_registry,
     merge_surfaces_into_registry,
@@ -18,12 +18,12 @@ from dispatch.prompt.writers import (
     write_integration_proposal_prompt,
 )
 from reconciliation.engine.cross_section_reconciler import load_reconciliation_result
-from signals.service.blockers import (
+from signals.service.blocker_manager import (
     _append_open_problem,
     _update_blocker_rollup,
 )
-from implementation.service.reexplore import _write_alignment_surface
-from proposal.service.intent_expansion import run_aligned_expansion, run_misaligned_expansion
+from implementation.service.section_reexplorer import _write_alignment_surface
+from proposal.service.expansion_handler import run_aligned_expansion, run_misaligned_expansion
 
 
 DEFINITION_GAP_KINDS = {

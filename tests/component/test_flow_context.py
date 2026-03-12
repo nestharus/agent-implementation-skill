@@ -5,7 +5,7 @@ import json
 import pytest
 
 from flow.exceptions import FlowCorruptionError
-from flow.repository.context import (
+from flow.repository.flow_context_store import (
     build_flow_context,
     continuation_relpath,
     dispatch_prompt_relpath,

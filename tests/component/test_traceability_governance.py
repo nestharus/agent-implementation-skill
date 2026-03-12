@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from orchestrator.types import Section
-from src.implementation.service.traceability import (
+from src.implementation.service.traceability_writer import (
     _write_traceability_index,
     update_trace_governance,
 )

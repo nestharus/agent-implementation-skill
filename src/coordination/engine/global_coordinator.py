@@ -21,11 +21,11 @@ from implementation.service.scope_delta_aggregator import (
     aggregate_scope_deltas,
 )
 
-from signals.service.communication import (
+from signals.service.section_communicator import (
     _log_artifact,
     mailbox_send,
 )
-from coordination.service.completion import read_incoming_notes
+from coordination.service.completion_handler import read_incoming_notes
 from orchestrator.types import Section, SectionResult
 
 

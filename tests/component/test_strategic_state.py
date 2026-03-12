@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 from src.signals.repository.artifact_io import write_json
 from src.orchestrator.repository.decisions import Decision, record_decision
-from src.orchestrator.engine.strategic_state import build_strategic_state
+from src.orchestrator.engine.strategic_state_builder import build_strategic_state
 
 
 def test_build_strategic_state_writes_snapshot_and_derives_fields(

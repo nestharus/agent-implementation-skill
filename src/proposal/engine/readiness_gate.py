@@ -14,7 +14,7 @@ from proposal.repository.state import load_proposal_state
 from proposal.service.readiness_resolver import resolve_readiness
 from reconciliation.repository.queue import queue_reconciliation_request
 from containers import Services
-from signals.service.blockers import (
+from signals.service.blocker_manager import (
     _append_open_problem,
     _update_blocker_rollup,
 )

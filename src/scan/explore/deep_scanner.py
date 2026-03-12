@@ -9,12 +9,12 @@ from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
 from scan.related.match_updater import deep_scan_related_files, update_match
-from scan.related.discovery import list_section_files
+from scan.related.related_file_resolver import list_section_files
 from scan.related.section_iterator import scan_sections as _scan_sections
 
 from scan.codemap.cache import FileCardCache
-from scan.cli_dispatch import dispatch_agent, read_scan_model_policy
-from scan.service.feedback import collect_and_route_feedback
+from scan.scan_dispatcher import dispatch_agent, read_scan_model_policy
+from scan.service.feedback_collector import collect_and_route_feedback
 _MAX_SCAN_PASSES = 2
 
 

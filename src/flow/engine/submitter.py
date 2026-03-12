@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 
 from flow.repository.catalog import resolve_chain_ref
-from flow.repository.context import (
+from flow.repository.flow_context_store import (
     continuation_relpath,
     flow_context_relpath,
     result_manifest_relpath,

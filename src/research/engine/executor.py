@@ -19,7 +19,7 @@ from research.prompt.writers import (
     write_research_verify_prompt,
 )
 from containers import Services
-from signals.service.blockers import _update_blocker_rollup
+from signals.service.blocker_manager import _update_blocker_rollup
 
 
 def _ordered_ticket_ids(plan: dict) -> list[str]:

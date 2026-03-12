@@ -6,7 +6,7 @@ from proposal.repository.excerpts import exists as excerpt_exists
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 from dispatch.prompt.writers import write_section_setup_prompt
-from signals.service.blockers import (
+from signals.service.blocker_manager import (
     _append_open_problem,
     _update_blocker_rollup,
 )

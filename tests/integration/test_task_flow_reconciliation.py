@@ -25,7 +25,7 @@ import pytest
 from _paths import DB_SH
 
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
-from flow.service.task_flow import (
+from flow.service.flow_facade import (
     build_gate_aggregate_manifest,
     build_result_manifest,
     reconcile_task_completion,

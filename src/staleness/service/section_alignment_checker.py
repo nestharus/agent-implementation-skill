@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from staleness.service.alignment import (
+from staleness.service.alignment_collector import (
     collect_modified_files as _collect_modified_files,
     extract_problems,
 )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dispatch.helpers.log_extract import (
+from dispatch.helpers.log_extract_helpers import (
     infer_section,
     parse_timestamp,
     prompt_signature,

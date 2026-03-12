@@ -19,7 +19,7 @@ from _paths import DB_SH
 
 from flow.repository.catalog import KNOWN_PACKAGES, resolve_chain_ref
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
-from flow.service.task_flow import submit_chain, submit_fanout
+from flow.service.flow_facade import submit_chain, submit_fanout
 
 
 # ---------------------------------------------------------------------------

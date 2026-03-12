@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.intent.service.surfaces import load_research_derived_surfaces
+from src.intent.service.surface_registry import load_research_derived_surfaces
 
 
 def test_load_research_derived_surfaces_preserves_schema_mismatch(

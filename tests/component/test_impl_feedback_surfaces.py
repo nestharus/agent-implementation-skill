@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from signals.repository.artifact_io import write_json
-from src.intent.service.surfaces import (
+from src.intent.service.surface_registry import (
     load_implementation_feedback_surfaces,
 )
 

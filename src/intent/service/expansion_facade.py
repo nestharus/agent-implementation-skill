@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from intent.engine import surface as _intent_surface
+from intent.engine import expansion_orchestrator as _intent_surface
 
 
 def run_expansion_cycle(

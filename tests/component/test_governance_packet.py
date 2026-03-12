@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from src.intake.repository.loader import build_governance_indexes
-from src.intake.service.packet import build_section_governance_packet
+from src.intake.service.governance_packet_builder import build_section_governance_packet
 
 
 def test_build_section_governance_packet_uses_indexes_and_default_profile(

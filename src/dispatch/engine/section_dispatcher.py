@@ -9,7 +9,7 @@ from orchestrator.path_registry import PathRegistry
 from pipeline.template import SRC_TEMPLATE_DIR, load_template, render, render_template
 from dispatch.service.prompt_guard import validate_dynamic_content
 from _config import AGENT_NAME, DB_SH
-from signals.service.communication import (
+from signals.service.section_communicator import (
     _log_artifact,
 )
 from dispatch.service.context_sidecar import materialize_context_sidecar

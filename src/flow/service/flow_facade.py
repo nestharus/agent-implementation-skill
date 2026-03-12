@@ -6,7 +6,7 @@ and context construction.
 
 from __future__ import annotations
 
-from flow.repository.context import (
+from flow.repository.flow_context_store import (
     build_flow_context,
     read_flow_json as _read_flow_json,
     write_dispatch_prompt,
@@ -16,7 +16,7 @@ from flow.engine.reconciler import (
     build_result_manifest,
     reconcile_task_completion,
 )
-from flow.repository.gate_operations import (
+from flow.repository.gate_repository import (
     read_origin_refs as _read_origin_refs,
 )
 from flow.engine.submitter import (

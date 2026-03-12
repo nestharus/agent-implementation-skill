@@ -13,8 +13,8 @@ from containers import (
     Services,
     SignalReader,
 )
-from src.intent.service import triage
-from src.intent.service.triage import (
+from src.intent.service import intent_triager
+from src.intent.service.intent_triager import (
     _augment_risk_hints,
     _full_default,
     load_triage_result,

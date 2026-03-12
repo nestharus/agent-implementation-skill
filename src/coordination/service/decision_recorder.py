@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from orchestrator.service.section_decisions import (
+from orchestrator.service.section_decision_store import (
     persist_decision as _persist_decision,
 )
 from containers import Services

@@ -6,7 +6,7 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 from pipeline.template import TASK_SUBMISSION_SEMANTICS
 from dispatch.prompt.writers import agent_mail_instructions
-from implementation.service.microstrategy_decision import _check_needs_microstrategy
+from implementation.service.microstrategy_decider import _check_needs_microstrategy
 
 
 def run_microstrategy(

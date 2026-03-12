@@ -27,7 +27,7 @@ import pytest
 from _paths import DB_SH
 
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
-from flow.service.task_flow import (
+from flow.service.flow_facade import (
     reconcile_task_completion,
     submit_chain,
     submit_fanout,
@@ -265,7 +265,7 @@ class TestLegacySingleTaskCompatibility:
     ) -> None:
         """Legacy task enters queue, gets dispatched, completes, has result manifest."""
         # Submit via ingest_and_submit
-        from flow.service.section_ingestion import ingest_and_submit
+        from flow.service.task_request_ingestor import ingest_and_submit
 
         sig = planspace / "artifacts" / "signals" / "legacy-task.json"
         sig.write_text(json.dumps({
@@ -302,7 +302,7 @@ class TestLegacySingleTaskCompatibility:
         self, db_path: Path, planspace: Path,
     ) -> None:
         """Signal file is deleted after successful ingestion."""
-        from flow.service.section_ingestion import ingest_and_submit
+        from flow.service.task_request_ingestor import ingest_and_submit
 
         sig = planspace / "artifacts" / "signals" / "cleanup-test.json"
         sig.write_text(json.dumps({"task_type": "signals.impact_analysis"}))

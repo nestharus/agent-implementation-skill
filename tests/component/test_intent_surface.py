@@ -9,11 +9,11 @@ from dependency_injector import providers
 
 from conftest import StubPolicies
 from containers import Services
-from src.intent.engine import surface
+from src.intent.engine import expansion_orchestrator
 
 
 def test_build_pending_surface_payload_reconstructs_backlog_entries() -> None:
-    payload = surface.build_pending_surface_payload(
+    payload = expansion_orchestrator.build_pending_surface_payload(
         [
             {"id": "P-01-0001", "kind": "gap"},
             {
@@ -63,10 +63,10 @@ def test_run_expansion_cycle_returns_no_work_when_no_surfaces(
     tmp_path: Path,
 ) -> None:
     Services.policies.override(providers.Object(StubPolicies()))
-    monkeypatch.setattr(surface, "load_combined_intent_surfaces", lambda *_: None)
+    monkeypatch.setattr(expansion_orchestrator, "load_combined_intent_surfaces", lambda *_: None)
 
     try:
-        result = surface.run_expansion_cycle(
+        result = expansion_orchestrator.run_expansion_cycle(
             "01",
             tmp_path,
             tmp_path / "codespace",
@@ -89,7 +89,7 @@ def test_handle_user_gate_writes_philosophy_specific_blocker(
 ) -> None:
     capturing_pipeline_control._pause_return = "ack"
 
-    response = surface.handle_user_gate(
+    response = expansion_orchestrator.handle_user_gate(
         "01",
         tmp_path,
         "parent",

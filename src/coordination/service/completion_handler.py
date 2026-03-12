@@ -22,8 +22,8 @@ from coordination.repository.notes import (
 )
 from implementation.service.impact_analyzer import analyze_impacts
 from orchestrator.path_registry import PathRegistry
-from orchestrator.service.section_decisions import extract_section_summary
-from implementation.service.snapshot import compute_text_diff, snapshot_modified_files
+from orchestrator.service.section_decision_store import extract_section_summary
+from implementation.service.file_snapshotter import compute_text_diff, snapshot_modified_files
 
 if TYPE_CHECKING:
     from orchestrator.types import Section

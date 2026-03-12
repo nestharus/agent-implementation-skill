@@ -18,8 +18,8 @@ How to find messes systematically. Apply these lenses in order.
 
 ### 2. Naming & Identity (files must be nouns/components, not verbs/actions)
 - **Files named like functions**: `bootstrap.py`, `loop.py`, `runner.py`, `implementation_pass.py` — these are verbs/actions, not components. A well-named file describes *what it is* (a thing), not *what it does* (an action). E.g., `bootstrap.py` → what component IS this? `intent_assembler.py`? `section_initializer.py`?
-- **Modules that are really a single function**: `triage_orchestrator.py`, `microstrategy.py`, `snapshot.py`, `microstrategy_decision.py`, `reexplore.py`, `traceability.py` — if a file contains one function that does one thing, it's a function not a module. These belong *inside* a component that uses them, or are utilities that should be composed into the calling component.
-- **Services that aren't services**: A service owns a domain concern and provides an API to it. Files like `context_sidecar.py`, `prompt_guard.py`, `tool_registry_manager.py`, `section_ingestion.py`, `task_flow.py`, `flow_signal_parser.py` are not services — they're functions/utilities placed in `service/` because there was nowhere else to put them.
+- **Modules that are really a single function**: `triage_orchestrator.py` — if a file contains one function that does one thing, it's a function not a module. These belong *inside* a component that uses them, or are utilities that should be composed into the calling component.
+- **Services that aren't services**: A service owns a domain concern and provides an API to it. Files like `context_sidecar.py`, `prompt_guard.py`, `tool_registry_manager.py`, `flow_signal_parser.py` are not services — they're functions/utilities placed in `service/` because there was nowhere else to put them.
 - **Files in the wrong system**: ~~`dispatch/service/qa_interceptor.py`, `dispatch/qa-harness.sh`~~ → moved to `qa/` system (#58). Check for similar boundary violations in other systems.
 
 ### 3. `engine/` Folders Are Code Smells
@@ -101,18 +101,20 @@ Missing/problematic patterns:
 
 *No open items. All backlog items resolved.*
 
+*No open items. All backlog items resolved.*
+
 ---
 
 ## NOT A BUG
 
-### 81. `staleness/service/section_alignment.py` imports `write_impl_alignment_prompt` from `dispatch.prompt.writers`
-- **Resolution**: Not a layer violation. `dispatch/` is a shared service layer (prompt construction + agent dispatch) consumed by multiple systems including `implementation/` and `staleness/`. The lazy import at line 144 avoids circular imports at module load time. Both consumers need to construct prompts before dispatching alignment check agents — this is a legitimate service dependency, not a forward dependency.
+### 81. `staleness/service/section_alignment_checker.py` imports `write_impl_alignment_prompt` from `dispatch.prompt.writers`
+- **Resolution**: Not a layer violation. `dispatch/` is a shared service layer (prompt construction + agent dispatch) consumed by multiple systems including `implementation/` and `staleness/`. The lazy import avoids circular imports at module load time. Both consumers need to construct prompts before dispatching alignment check agents — this is a legitimate service dependency, not a forward dependency.
 
 ### 44. `ensure_global_philosophy` defined in 2 files
-- `loop_bootstrap.py` is a dependency-injection wrapper around `philosophy.py`. Same pattern as `expansion.py`/`surface.py`.
+- `intent_pack_generator.py` is a dependency-injection wrapper around `philosophy_bootstrapper.py`. Same pattern as `expansion_facade.py`/`expansion_orchestrator.py`.
 
 ### 45. `handle_user_gate`/`run_expansion_cycle` duplicated
-- `expansion.py` wraps `surface.py` with dependency injection. All callers import from `expansion.py`. Same pattern as `loop_bootstrap.py`/`philosophy.py`.
+- `expansion_facade.py` wraps `expansion_orchestrator.py` with dependency injection. All callers import from `expansion_facade.py`. Same pattern as `intent_pack_generator.py`/`philosophy_bootstrapper.py`.
 
 ---
 
@@ -128,6 +130,9 @@ Missing/problematic patterns:
 ---
 
 ## DONE
+
+### 87. Comprehensive file rename: verb/action names → component nouns (52 files)
+- **Status**: DONE — renamed 52 files across all service/, helpers/, engine/, and explore/ directories to component noun names. Examples: `completion.py` → `completion_handler.py`, `cross_section.py` → `decision_recorder.py`, `microstrategy.py` → `microstrategy_generator.py`, `reexplore.py` → `section_reexplorer.py`, `snapshot.py` → `file_snapshotter.py`, `assessment.py` → `assessment_evaluator.py`, `packet.py` → `governance_packet_builder.py`, `blockers.py` → `blocker_manager.py`, `communication.py` → `section_communicator.py`, `freshness.py` → `freshness_calculator.py`, `deep_scan.py` → `deep_scanner.py`, `cli_dispatch.py` → `scan_dispatcher.py`. Updated 113 source/test files with import path changes + 3 test files with stale module-alias variable references. Full rename map: 52 entries across coordination/, dispatch/, flow/, implementation/, intake/, intent/, orchestrator/, proposal/, reconciliation/, scan/, signals/, staleness/.
 
 ### 82. Dead re-exports in `scan/service/section_notes.py`
 - **Status**: DONE — removed `post_section_completion` and `read_incoming_notes` re-exports. Zero consumers imported them from this module after #72 moved them to `coordination/service/completion.py`.

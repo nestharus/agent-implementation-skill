@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from conftest import override_dispatcher_and_guard
-from staleness.service.section_alignment import (
+from staleness.service.section_alignment_checker import (
     _extract_problems,
     _parse_alignment_verdict,
     collect_modified_files,

@@ -23,7 +23,7 @@ from conftest import override_dispatcher_and_guard
 
 from flow.types.schema import TaskSpec
 from flow.exceptions import FlowCorruptionError
-from flow.service.task_flow import (
+from flow.service.flow_facade import (
     build_flow_context,
     submit_chain,
     submit_fanout,
@@ -629,7 +629,7 @@ class TestEndToEndFlowContext:
         self, db_path: Path, planspace: Path,
     ) -> None:
         """Synthesis task can discover its gate aggregate manifest."""
-        from flow.service.task_flow import reconcile_task_completion
+        from flow.service.flow_facade import reconcile_task_completion
 
         # Create a fanout with a synthesis gate.
         branches = [

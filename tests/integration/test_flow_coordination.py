@@ -27,7 +27,7 @@ from flow.repository.catalog import (
     resolve_chain_ref,
 )
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
-from flow.service.task_flow import (
+from flow.service.flow_facade import (
     reconcile_task_completion,
     submit_chain,
     submit_fanout,

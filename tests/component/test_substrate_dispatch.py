@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from src.scan.substrate import dispatch
+from src.scan.substrate import substrate_dispatcher
 from src.taskrouter.agents import resolve_agent_path
 from containers import TaskRouterService
 
 
 def test_dispatch_substrate_agent_requires_agent_file(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
-        dispatch.dispatch_substrate_agent(
+        substrate_dispatcher.dispatch_substrate_agent(
             model="model",
             prompt_path=tmp_path / "prompt.md",
             output_path=tmp_path / "output.txt",
@@ -32,7 +32,7 @@ def test_dispatch_substrate_agent_validates_agent_path(
     )
 
     with pytest.raises(FileNotFoundError):
-        dispatch.dispatch_substrate_agent(
+        substrate_dispatcher.dispatch_substrate_agent(
             model="model",
             prompt_path=tmp_path / "prompt.md",
             output_path=tmp_path / "output.txt",
@@ -69,9 +69,9 @@ def test_dispatch_substrate_agent_writes_combined_output(
             stderr="stderr\n",
         )
 
-    monkeypatch.setattr(dispatch.subprocess, "run", fake_run)
+    monkeypatch.setattr(substrate_dispatcher.subprocess, "run", fake_run)
 
-    ok = dispatch.dispatch_substrate_agent(
+    ok = substrate_dispatcher.dispatch_substrate_agent(
         model="gpt-high",
         prompt_path=prompt_path,
         output_path=output_path,
@@ -106,9 +106,9 @@ def test_dispatch_substrate_agent_handles_timeout(
     def fake_run(*_args, **_kwargs):
         raise subprocess.TimeoutExpired(cmd="agents", timeout=600)
 
-    monkeypatch.setattr(dispatch.subprocess, "run", fake_run)
+    monkeypatch.setattr(substrate_dispatcher.subprocess, "run", fake_run)
 
-    ok = dispatch.dispatch_substrate_agent(
+    ok = substrate_dispatcher.dispatch_substrate_agent(
         model="gpt-high",
         prompt_path=prompt_path,
         output_path=output_path,

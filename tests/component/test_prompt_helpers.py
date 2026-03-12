@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.dispatch.prompt.helpers import (
+from src.dispatch.prompt.prompt_formatters import (
     agent_mail_instructions,
     format_existing_file_listing,
     scoped_context_block,

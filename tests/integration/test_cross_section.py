@@ -10,9 +10,9 @@ import pytest
 
 from _paths import SRC_DIR
 
-from coordination.service.cross_section import persist_decision
-from implementation.service.snapshot import compute_text_diff
-from orchestrator.service.section_decisions import (
+from coordination.service.decision_recorder import persist_decision
+from implementation.service.file_snapshotter import compute_text_diff
+from orchestrator.service.section_decision_store import (
     build_section_number_map,
     extract_section_summary,
     normalize_section_number,

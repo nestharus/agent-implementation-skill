@@ -163,7 +163,7 @@ class TestMonitorPromptIntegration:
     ) -> None:
         from pathlib import Path
 
-        from dispatch.engine.section_dispatch import _write_agent_monitor_prompt
+        from dispatch.engine.section_dispatcher import _write_agent_monitor_prompt
 
         prompt_path = _write_agent_monitor_prompt(
             planspace, "impl-01", "impl-01-monitor",
@@ -196,7 +196,7 @@ class TestAdjudicatePromptIntegration:
         # We need to call adjudicate_agent_output but mock dispatch_agent
         # so no actual agent runs.
         with patch(
-            "dispatch.engine.section_dispatch.dispatch_agent",
+            "dispatch.engine.section_dispatcher.dispatch_agent",
             return_value='{"state": "ALIGNED", "detail": "all good"}',
         ):
             from dispatch.service.output_adjudicator import adjudicate_agent_output

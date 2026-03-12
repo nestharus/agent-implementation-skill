@@ -24,7 +24,7 @@ from conftest import override_dispatcher_and_guard
 
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from flow.exceptions import FlowCorruptionError
-from flow.service.task_flow import (
+from flow.service.flow_facade import (
     _read_flow_json,
     _read_origin_refs,
     build_flow_context,
