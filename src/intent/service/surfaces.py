@@ -1,5 +1,6 @@
 """Surface registry: deduplication, tracking, and diminishing returns."""
 
+from collections.abc import Mapping
 from pathlib import Path
 
 from signals.repository.artifact_io import read_json, rename_malformed, write_json
@@ -95,7 +96,7 @@ def merge_surface_payloads(
     surfaces: dict | None, additional_surfaces: dict | None,
 ) -> dict | None:
     """Merge problem/philosophy surface lists into a single payload."""
-    if not isinstance(additional_surfaces, dict):
+    if not isinstance(additional_surfaces, (dict, Mapping)):
         return surfaces
     if surfaces is None:
         return additional_surfaces

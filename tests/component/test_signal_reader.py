@@ -5,22 +5,22 @@ from __future__ import annotations
 import json
 
 from src.signals.repository.signal_reader import read_agent_signal, read_signal_tuple
+from signals.types import AgentSignal
 
 
 def test_read_agent_signal_returns_parsed_object(tmp_path) -> None:
     signal_path = tmp_path / "signal.json"
     signal_path.write_text(json.dumps({"state": "NEEDS_PARENT", "detail": "help"}))
 
-    result = read_agent_signal(signal_path, expected_fields=["state"])
+    result = read_agent_signal(signal_path)
 
-    assert result == {"state": "NEEDS_PARENT", "detail": "help"}
+    assert isinstance(result, AgentSignal)
+    assert result.state == "NEEDS_PARENT"
+    assert result.detail == "help"
 
 
-def test_read_agent_signal_returns_none_for_missing_expected_field(tmp_path) -> None:
-    signal_path = tmp_path / "signal.json"
-    signal_path.write_text(json.dumps({"state": "NEEDS_PARENT"}))
-
-    assert read_agent_signal(signal_path, expected_fields=["detail"]) is None
+def test_read_agent_signal_returns_none_for_missing_file(tmp_path) -> None:
+    assert read_agent_signal(tmp_path / "nope.json") is None
 
 
 def test_read_agent_signal_renames_non_object_json(tmp_path) -> None:

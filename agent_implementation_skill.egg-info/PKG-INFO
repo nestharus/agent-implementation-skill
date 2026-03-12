@@ -4,5 +4,7 @@ Version: 0.1.0
 Summary: Multi-model agent implementation workflow for software development
 Requires-Python: >=3.14
 License-File: LICENSE
+Requires-Dist: dependency-injector==4.48.3
+Requires-Dist: pydantic>=2.0
 Requires-Dist: PyYAML>=6.0
 Dynamic: license-file

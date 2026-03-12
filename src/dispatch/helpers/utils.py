@@ -7,6 +7,7 @@ from pathlib import Path
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from signals.repository.signal_reader import read_signal_tuple
+from signals.types import SignalResult
 
 
 def summarize_output(output: str, max_len: int = 200) -> str:
@@ -51,11 +52,11 @@ def check_agent_signals(
     planspace: Path | None = None,
     parent: str | None = None,
     codespace: Path | None = None,
-) -> tuple[str | None, str]:
+) -> SignalResult:
     """Check for agent signals via the structured JSON file."""
     del output, output_path, planspace, parent, codespace
     if signal_path:
-        sig, detail = read_signal_tuple(signal_path)
-        if sig:
-            return sig, detail
-    return None, ""
+        result = read_signal_tuple(signal_path)
+        if result.signal_type:
+            return result
+    return SignalResult(signal_type=None, detail="")

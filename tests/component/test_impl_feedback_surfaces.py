@@ -34,7 +34,10 @@ def test_load_implementation_feedback_surfaces_reads_valid_payload(
     }
     write_json(feedback_path, payload)
 
-    assert load_implementation_feedback_surfaces("01", tmp_path) == payload
+    result = load_implementation_feedback_surfaces("01", tmp_path)
+    assert result is not None
+    assert result.get("problem_surfaces") == payload["problem_surfaces"]
+    assert result.get("philosophy_surfaces") == payload["philosophy_surfaces"]
 
 
 def test_load_implementation_feedback_surfaces_returns_none_for_malformed_json(

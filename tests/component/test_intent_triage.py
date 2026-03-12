@@ -43,14 +43,14 @@ def test_load_triage_result_reads_signal_from_planspace(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    assert load_triage_result("01", tmp_path) == {
-        "intent_mode": "lightweight",
-        "confidence": "high",
-        "risk_mode": "full",
-        "risk_confidence": "high",
-        "risk_budget_hint": 0,
-        "posture_floor": None,
-    }
+    result = load_triage_result("01", tmp_path)
+    assert result is not None
+    assert result["intent_mode"] == "lightweight"
+    assert result["confidence"] == "high"
+    assert result["risk_mode"] == "full"
+    assert result["risk_confidence"] == "high"
+    assert result["risk_budget_hint"] == 0
+    assert result["posture_floor"] is None
 
 
 def test_augment_risk_hints_passes_through_agent_risk_fields(tmp_path: Path) -> None:

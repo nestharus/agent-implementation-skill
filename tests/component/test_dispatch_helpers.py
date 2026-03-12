@@ -62,7 +62,6 @@ def test_check_agent_signals_reads_structured_signal_file(tmp_path) -> None:
 
 
 def test_check_agent_signals_returns_none_when_signal_missing(tmp_path) -> None:
-    assert check_agent_signals("ignored", signal_path=tmp_path / "missing.json") == (
-        None,
-        "",
-    )
+    result = check_agent_signals("ignored", signal_path=tmp_path / "missing.json")
+    assert result.signal_type is None
+    assert result.detail == ""

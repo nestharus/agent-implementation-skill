@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, Iterator, Mapping, cast
 
@@ -10,65 +9,89 @@ from signals.repository.artifact_io import read_json, rename_malformed
 from orchestrator.path_registry import PathRegistry
 
 
-@dataclass
-class ModelPolicy(Mapping[str, Any]):
-    """Model policy with attribute and mapping-style access."""
+# ---------------------------------------------------------------------------
+# Field defaults — single source of truth for known policy keys.
+# ---------------------------------------------------------------------------
 
-    setup: str = "claude-opus"
-    proposal: str = "gpt-high"
-    alignment: str = "claude-opus"
-    implementation: str = "gpt-high"
-    coordination_plan: str = "claude-opus"
-    coordination_fix: str = "gpt-high"
-    coordination_bridge: str = "gpt-xhigh"
-    exploration: str = "glm"
-    adjudicator: str = "glm"
-    impact_analysis: str = "glm"
-    impact_normalizer: str = "glm"
-    triage: str = "glm"
-    microstrategy_decider: str = "glm"
-    tool_registrar: str = "glm"
-    bridge_tools: str = "gpt-high"
-    risk_assessor: str = "gpt-high"
-    execution_optimizer: str = "gpt-high"
-    qa_interceptor: str = "claude-opus"
-    escalation_model: str = "gpt-xhigh"
-    intent_triage: str = "glm"
-    intent_philosophy: str = "claude-opus"
-    intent_pack: str = "gpt-high"
-    intent_judge: str = "claude-opus"
-    intent_problem_expander: str = "claude-opus"
-    intent_philosophy_expander: str = "claude-opus"
-    intent_triage_escalation: str = "claude-opus"
-    intent_recurrence_adjudicator: str = "glm"
-    intent_philosophy_selector: str = "gpt-high"
-    intent_philosophy_selector_escalation: str = "claude-opus"
-    intent_philosophy_verifier: str = "claude-opus"
-    intent_philosophy_bootstrap_prompter: str = "glm"
-    substrate_shard: str = "gpt-high"
-    substrate_pruner: str = "gpt-xhigh"
-    substrate_seeder: str = "gpt-high"
-    reconciliation_adjudicate: str = "claude-opus"
+_FIELD_DEFAULTS: dict[str, Any] = {
+    "setup": "claude-opus",
+    "proposal": "gpt-high",
+    "alignment": "claude-opus",
+    "implementation": "gpt-high",
+    "coordination_plan": "claude-opus",
+    "coordination_fix": "gpt-high",
+    "coordination_bridge": "gpt-xhigh",
+    "exploration": "glm",
+    "adjudicator": "glm",
+    "impact_analysis": "glm",
+    "impact_normalizer": "glm",
+    "triage": "glm",
+    "microstrategy_decider": "glm",
+    "tool_registrar": "glm",
+    "bridge_tools": "gpt-high",
+    "risk_assessor": "gpt-high",
+    "execution_optimizer": "gpt-high",
+    "qa_interceptor": "claude-opus",
+    "escalation_model": "gpt-xhigh",
+    "intent_triage": "glm",
+    "intent_philosophy": "claude-opus",
+    "intent_pack": "gpt-high",
+    "intent_judge": "claude-opus",
+    "intent_problem_expander": "claude-opus",
+    "intent_philosophy_expander": "claude-opus",
+    "intent_triage_escalation": "claude-opus",
+    "intent_recurrence_adjudicator": "glm",
+    "intent_philosophy_selector": "gpt-high",
+    "intent_philosophy_selector_escalation": "claude-opus",
+    "intent_philosophy_verifier": "claude-opus",
+    "intent_philosophy_bootstrap_prompter": "glm",
+    "substrate_shard": "gpt-high",
+    "substrate_pruner": "gpt-xhigh",
+    "substrate_seeder": "gpt-high",
+    "reconciliation_adjudicate": "claude-opus",
     # Research-first intent layer
-    research_plan: str = "claude-opus"
-    research_domain_ticket: str = "gpt-high"
-    research_synthesis: str = "gpt-high"
-    research_verify: str = "glm"
+    "research_plan": "claude-opus",
+    "research_domain_ticket": "gpt-high",
+    "research_synthesis": "gpt-high",
+    "research_verify": "glm",
     # Intake / trust / verification layer
-    intake_triage: str = "gpt-high"
-    claim_extractor: str = "gpt-high"
-    hypothesis_builder: str = "claude-opus"
-    verification_builder: str = "gpt-high"
-    codebase_governance_assessor: str = "claude-opus"
-    value_scale_enumerator: str = "gpt-high"
-    stack_evaluator: str = "gpt-high"
-    escalation_triggers: dict[str, int] = field(default_factory=lambda: {
+    "intake_triage": "gpt-high",
+    "claim_extractor": "gpt-high",
+    "hypothesis_builder": "claude-opus",
+    "verification_builder": "gpt-high",
+    "codebase_governance_assessor": "claude-opus",
+    "value_scale_enumerator": "gpt-high",
+    "stack_evaluator": "gpt-high",
+    "escalation_triggers": {
         "stall_count": 2,
         "max_attempts_before_escalation": 3,
-    })
-    scan: dict[str, str] = field(default_factory=dict)
-    substrate_trigger_min_vacuum_sections: int = 2
-    extras: dict[str, Any] = field(default_factory=dict)
+    },
+    "scan": {},
+    "substrate_trigger_min_vacuum_sections": 2,
+}
+
+_FIELD_NAMES = tuple(_FIELD_DEFAULTS.keys())
+
+
+class ModelPolicy(Mapping[str, Any]):
+    """Model policy with attribute and mapping-style access.
+
+    Not a dataclass — implements the full :class:`~collections.abc.Mapping`
+    protocol with conditional fallback into an ``extras`` dict for
+    forward-compatible keys.
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        extras = kwargs.pop("extras", {})
+        for name in _FIELD_NAMES:
+            default = _FIELD_DEFAULTS[name]
+            # Deep-copy mutable defaults (dicts) to avoid sharing state.
+            if isinstance(default, dict):
+                default = default.copy()
+            setattr(self, name, kwargs.pop(name, default))
+        self.extras: dict[str, Any] = extras
+
+    # -- Mapping protocol ---------------------------------------------------
 
     def __getitem__(self, key: str) -> Any:
         if key == "extras":
@@ -91,11 +114,6 @@ class ModelPolicy(Mapping[str, Any]):
             return self[key]
         except KeyError:
             return default
-
-
-_FIELD_NAMES = tuple(
-    info.name for info in fields(ModelPolicy) if info.name != "extras"
-)
 
 
 def load_model_policy(planspace: Path) -> ModelPolicy:

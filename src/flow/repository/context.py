@@ -7,7 +7,12 @@ from pathlib import Path
 from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
 from flow.exceptions import FlowCorruptionError
-from flow.types.context import FlowContext, FlowTask
+from flow.types.context import (
+    FlowContext,
+    FlowTask,
+    flow_context_from_dict,
+    flow_context_to_dict,
+)
 
 
 def flow_context_relpath(task_id: int) -> str:
@@ -70,7 +75,7 @@ def build_flow_context(
             f"flow context declared but file corrupt: {ctx_file}"
         )
 
-    context = FlowContext.from_dict(raw)
+    context = flow_context_from_dict(raw)
 
     gate_id = trigger_gate_id or context.task.trigger_gate_id
     if gate_id and not context.gate_aggregate_manifest:
@@ -158,4 +163,4 @@ def write_flow_context(
     )
 
     context_path = flows_dir / f"task-{task_id}-context.json"
-    write_json(context_path, context.to_dict())
+    write_json(context_path, flow_context_to_dict(context))

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 from staleness.service.change_tracker import check_pending as alignment_changed_pending
@@ -52,7 +53,7 @@ def _load_combined_surfaces(section_number: str, planspace: Path) -> dict | None
 
 def _has_definition_gap_surfaces(surfaces: dict | None) -> bool:
     """Return whether any surfaced issue implies definition growth."""
-    if not isinstance(surfaces, dict):
+    if not isinstance(surfaces, (dict, Mapping)):
         return False
     return any(
         surface.get("kind") in DEFINITION_GAP_KINDS
@@ -64,7 +65,7 @@ def _has_definition_gap_surfaces(surfaces: dict | None) -> bool:
 
 def _count_surfaces(surfaces: dict | None) -> int:
     """Count all structured surfaces in a payload."""
-    if not isinstance(surfaces, dict):
+    if not isinstance(surfaces, (dict, Mapping)):
         return 0
     return sum(
         len(surfaces.get(kind_key, []))

@@ -34,44 +34,45 @@ class FlowContext:
     continuation_path: str | None = None
     result_manifest_path: str | None = None
 
-    def to_dict(self) -> dict:
-        """Serialize to the JSON-compatible dict format."""
-        return {
-            "task": {
-                "task_id": self.task.task_id,
-                "instance_id": self.task.instance_id,
-                "flow_id": self.task.flow_id,
-                "chain_id": self.task.chain_id,
-                "task_type": self.task.task_type,
-                "declared_by_task_id": self.task.declared_by_task_id,
-                "depends_on": self.task.depends_on,
-                "trigger_gate_id": self.task.trigger_gate_id,
-            },
-            "origin_refs": self.origin_refs,
-            "previous_result_manifest": self.previous_result_manifest,
-            "gate_aggregate_manifest": self.gate_aggregate_manifest,
-            "continuation_path": self.continuation_path,
-            "result_manifest_path": self.result_manifest_path,
-        }
 
-    @classmethod
-    def from_dict(cls, data: dict) -> FlowContext:
-        """Deserialize from the JSON-compatible dict format."""
-        task_data = data.get("task", {})
-        return cls(
-            task=FlowTask(
-                task_id=task_data.get("task_id", 0),
-                instance_id=task_data.get("instance_id", ""),
-                flow_id=task_data.get("flow_id", ""),
-                chain_id=task_data.get("chain_id", ""),
-                task_type=task_data.get("task_type", ""),
-                declared_by_task_id=task_data.get("declared_by_task_id"),
-                depends_on=task_data.get("depends_on"),
-                trigger_gate_id=task_data.get("trigger_gate_id"),
-            ),
-            origin_refs=data.get("origin_refs", []),
-            previous_result_manifest=data.get("previous_result_manifest"),
-            gate_aggregate_manifest=data.get("gate_aggregate_manifest"),
-            continuation_path=data.get("continuation_path"),
-            result_manifest_path=data.get("result_manifest_path"),
-        )
+def flow_context_to_dict(ctx: FlowContext) -> dict:
+    """Serialize a :class:`FlowContext` to the JSON-compatible dict format."""
+    return {
+        "task": {
+            "task_id": ctx.task.task_id,
+            "instance_id": ctx.task.instance_id,
+            "flow_id": ctx.task.flow_id,
+            "chain_id": ctx.task.chain_id,
+            "task_type": ctx.task.task_type,
+            "declared_by_task_id": ctx.task.declared_by_task_id,
+            "depends_on": ctx.task.depends_on,
+            "trigger_gate_id": ctx.task.trigger_gate_id,
+        },
+        "origin_refs": ctx.origin_refs,
+        "previous_result_manifest": ctx.previous_result_manifest,
+        "gate_aggregate_manifest": ctx.gate_aggregate_manifest,
+        "continuation_path": ctx.continuation_path,
+        "result_manifest_path": ctx.result_manifest_path,
+    }
+
+
+def flow_context_from_dict(data: dict) -> FlowContext:
+    """Deserialize a :class:`FlowContext` from the JSON-compatible dict format."""
+    task_data = data.get("task", {})
+    return FlowContext(
+        task=FlowTask(
+            task_id=task_data.get("task_id", 0),
+            instance_id=task_data.get("instance_id", ""),
+            flow_id=task_data.get("flow_id", ""),
+            chain_id=task_data.get("chain_id", ""),
+            task_type=task_data.get("task_type", ""),
+            declared_by_task_id=task_data.get("declared_by_task_id"),
+            depends_on=task_data.get("depends_on"),
+            trigger_gate_id=task_data.get("trigger_gate_id"),
+        ),
+        origin_refs=data.get("origin_refs", []),
+        previous_result_manifest=data.get("previous_result_manifest"),
+        gate_aggregate_manifest=data.get("gate_aggregate_manifest"),
+        continuation_path=data.get("continuation_path"),
+        result_manifest_path=data.get("result_manifest_path"),
+    )

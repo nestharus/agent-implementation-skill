@@ -65,6 +65,7 @@ src/scripts/log_extract/extractors/__init__.py
 src/scripts/log_extract/extractors/artifacts.py
 src/scripts/log_extract/extractors/claude.py
 src/scripts/log_extract/extractors/codex.py
+src/scripts/log_extract/extractors/common.py
 src/scripts/log_extract/extractors/gemini.py
 src/scripts/log_extract/extractors/opencode.py
 src/scripts/log_extract/extractors/run_db.py

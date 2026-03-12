@@ -32,7 +32,13 @@ def read_json(path: Path) -> dict | list | None:
 
 
 def write_json(path: Path, data: object, *, indent: int = 2) -> None:
-    """Write data as JSON to a file. Creates parent directories."""
+    """Write data as JSON to a file. Creates parent directories.
+
+    Accepts pydantic models (converted via ``model_dump()``), dicts,
+    lists, and other JSON-serializable objects.
+    """
+    if hasattr(data, "model_dump"):
+        data = data.model_dump()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(data, indent=indent) + "\n",

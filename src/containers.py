@@ -93,7 +93,14 @@ class SignalReader:
 
     def read(self, signal_path, expected_fields=None):
         from signals.repository.signal_reader import read_agent_signal
-        return read_agent_signal(signal_path, expected_fields)
+        signal = read_agent_signal(signal_path)
+        if signal is None:
+            return None
+        if expected_fields:
+            for field_name in expected_fields:
+                if field_name not in signal:
+                    return None
+        return signal
 
     def read_tuple(self, signal_path):
         from signals.repository.signal_reader import read_signal_tuple

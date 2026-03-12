@@ -6,4 +6,5 @@ Public API (import from submodules):
     mailbox_service: MailboxService
     section_loop_communication: AGENT_NAME, DB_SH, log, mailbox_send
     signal_reader: read_agent_signal, read_signal_tuple
+    types: AgentSignal, SignalResult
 """

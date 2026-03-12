@@ -122,19 +122,18 @@ class TestReadAgentSignal:
         p = tmp_path / "signal.json"
         p.write_text(json.dumps({"action": "rebuild", "reason": "stale"}))
         result = read_agent_signal(p)
-        assert result == {"action": "rebuild", "reason": "stale"}
+        assert result is not None
+        assert result.get("action") == "rebuild"
+        assert result.get("reason") == "stale"
 
-    def test_expected_fields_present(self, tmp_path: Path) -> None:
+    def test_extra_fields_accessible(self, tmp_path: Path) -> None:
         p = tmp_path / "signal.json"
         p.write_text(json.dumps({"action": "rebuild", "reason": "stale"}))
-        result = read_agent_signal(p, expected_fields=["action", "reason"])
+        result = read_agent_signal(p)
         assert result is not None
-
-    def test_expected_fields_missing(self, tmp_path: Path) -> None:
-        p = tmp_path / "signal.json"
-        p.write_text(json.dumps({"action": "rebuild"}))
-        result = read_agent_signal(p, expected_fields=["action", "reason"])
-        assert result is None
+        assert "action" in result
+        assert "reason" in result
+        assert "nonexistent" not in result
 
     def test_malformed_json(self, tmp_path: Path) -> None:
         p = tmp_path / "signal.json"
