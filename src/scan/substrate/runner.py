@@ -26,7 +26,6 @@ from scan.substrate.helpers import (
     write_status as _write_status,
 )
 from scan.substrate.policy import (
-    DEFAULT_TRIGGER_THRESHOLD as _DEFAULT_TRIGGER_THRESHOLD,
     read_substrate_model_policy as _read_model_policy,
     read_trigger_signals as _read_trigger_signals,
     read_trigger_threshold as _read_trigger_threshold,
