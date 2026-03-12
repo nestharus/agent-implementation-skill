@@ -55,10 +55,6 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
     impl_modified = planspace / "artifacts" / "impl-09-modified.txt"
 
     monkeypatch.setattr(
-        "src.implementation.engine.loop.alignment_changed_pending",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
         "src.implementation.engine.loop.write_strategic_impl_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "impl-prompt.md",
     )
@@ -144,10 +140,6 @@ def test_run_implementation_loop_retries_after_alignment_problems(
     problems = iter(["fix edge case", None])
     impl_calls = {"count": 0}
 
-    monkeypatch.setattr(
-        "src.implementation.engine.loop.alignment_changed_pending",
-        lambda *_args, **_kwargs: False,
-    )
     monkeypatch.setattr(
         "src.implementation.engine.loop.write_strategic_impl_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "impl-prompt.md",

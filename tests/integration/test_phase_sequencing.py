@@ -380,6 +380,7 @@ class TestImplementationPassRestartOnAlignmentChange:
         planspace: Path,
         codespace: Path,
         mock_dispatch: MagicMock,
+        capturing_pipeline_control,
     ) -> None:
         """ImplementationPassRestart raised when alignment changes mid-pass."""
         section = _make_section(planspace, codespace, "01")
@@ -390,11 +391,9 @@ class TestImplementationPassRestartOnAlignmentChange:
         }
         _write_proposal_state(planspace, "01", execution_ready=True)
 
-        # Mock alignment_changed_pending to return True
+        # Configure pipeline control to report alignment changed
+        capturing_pipeline_control._alignment_changed_return = True
         with patch(
-            "implementation.engine.implementation_pass.alignment_changed_pending",
-            return_value=True,
-        ), patch(
             "implementation.engine.implementation_pass._check_and_clear_alignment_changed",
             return_value=True,
         ):

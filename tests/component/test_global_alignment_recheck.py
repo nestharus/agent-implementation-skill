@@ -19,6 +19,7 @@ def test_run_global_alignment_recheck_skips_unchanged_aligned_sections(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
+    noop_pipeline_control,
 ) -> None:
     section = _make_section(planspace, "01")
     section_results = {"01": SectionResult(section_number="01", aligned=True)}
@@ -26,11 +27,7 @@ def test_run_global_alignment_recheck_skips_unchanged_aligned_sections(
     hash_path.parent.mkdir(parents=True, exist_ok=True)
     hash_path.write_text("hash-1", encoding="utf-8")
 
-    monkeypatch.setattr(
-        global_recheck,
-        "_section_inputs_hash",
-        lambda *_args, **_kwargs: "hash-1",
-    )
+    noop_pipeline_control.section_inputs_hash = lambda *_args, **_kwargs: "hash-1"
     monkeypatch.setattr(
         global_recheck,
         "_run_alignment_check_with_retries",
@@ -65,11 +62,7 @@ def test_run_global_alignment_recheck_marks_invalid_frame_and_preserves_files(
         ),
     }
 
-    monkeypatch.setattr(
-        global_recheck,
-        "_section_inputs_hash",
-        lambda *_args, **_kwargs: "hash-1",
-    )
+    noop_pipeline_control.section_inputs_hash = lambda *_args, **_kwargs: "hash-1"
     monkeypatch.setattr(
         global_recheck,
         "read_incoming_notes",
@@ -104,11 +97,7 @@ def test_run_global_alignment_recheck_restarts_when_control_message_arrives(
 ) -> None:
     section = _make_section(planspace, "01")
 
-    monkeypatch.setattr(
-        global_recheck,
-        "_section_inputs_hash",
-        lambda *_args, **_kwargs: "hash-1",
-    )
+    capturing_pipeline_control._section_inputs_hash_return = "hash-1"
 
     capturing_pipeline_control._poll_return = "alignment_changed"
 

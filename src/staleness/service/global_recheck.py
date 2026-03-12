@@ -10,7 +10,6 @@ from staleness.service.section_alignment import (
     _extract_problems,
     _run_alignment_check_with_retries,
 )
-from orchestrator.service.pipeline_control import _section_inputs_hash
 from scan.service.section_notes import read_incoming_notes
 from orchestrator.types import Section, SectionResult
 
@@ -32,7 +31,7 @@ def run_global_alignment_recheck(
     phase2_hash_dir.mkdir(parents=True, exist_ok=True)
 
     for sec_num, section in sections_by_num.items():
-        cur_hash = _section_inputs_hash(
+        cur_hash = Services.pipeline_control().section_inputs_hash(
             sec_num,
             planspace,
             codespace,

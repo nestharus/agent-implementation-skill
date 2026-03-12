@@ -31,7 +31,6 @@ from signals.service.communication import (
     mailbox_send,
 )
 from coordination.service.cross_section import read_incoming_notes
-from orchestrator.service.pipeline_control import coordination_recheck_hash
 from orchestrator.types import Section, SectionResult
 
 
@@ -229,7 +228,7 @@ def run_global_coordination(
             continue
 
         # Canonical section-input hash + coordinator-modified files
-        current_hash = coordination_recheck_hash(
+        current_hash = Services.pipeline_control().coordination_recheck_hash(
             sec_num, planspace, codespace, sections_by_num,
             list(all_modified),
         )

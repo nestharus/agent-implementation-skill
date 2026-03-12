@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from staleness.service.change_tracker import check_pending as alignment_changed_pending
 from containers import Services
 from intent.service.triage import load_triage_result
 from orchestrator.path_registry import PathRegistry
@@ -111,7 +110,7 @@ def _check_early_abort(
         Services.communicator().mailbox_send(planspace, parent, f"fail:{section_number}:aborted")
         return True
 
-    if alignment_changed_pending(planspace):
+    if Services.pipeline_control().alignment_changed_pending(planspace):
         Services.logger().log(
             f"Section {section_number}: alignment changed — "
             "aborting section to restart Phase 1"
@@ -394,7 +393,7 @@ def _handle_proposal_signals(
     payload = response.partition(":")[2].strip()
     if payload:
         Services.cross_section().persist_decision(planspace, section_number, payload)
-    if alignment_changed_pending(planspace):
+    if Services.pipeline_control().alignment_changed_pending(planspace):
         return "abort"
     return "continue"
 
@@ -485,7 +484,7 @@ def _handle_alignment_signals(
     payload = response.partition(":")[2].strip()
     if payload:
         Services.cross_section().persist_decision(planspace, section_number, payload)
-    if alignment_changed_pending(planspace):
+    if Services.pipeline_control().alignment_changed_pending(planspace):
         return "abort"
     return "continue"
 

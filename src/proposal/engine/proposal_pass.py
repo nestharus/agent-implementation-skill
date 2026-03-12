@@ -17,13 +17,11 @@ from risk.service.package_builder import build_package_from_proposal
 from risk.repository.serialization import load_risk_assessment
 from risk.types import RiskMode, RiskPackage, RiskType
 from staleness.service.change_tracker import (
-    check_pending as alignment_changed_pending,
     make_alignment_checker,
 )
 from scan.service.section_loader import parse_related_files
 from signals.service.communication import AGENT_NAME, DB_SH
 from containers import Services
-from orchestrator.service.pipeline_control import requeue_changed_sections
 from implementation.service.reexplore import _reexplore_section
 from implementation.engine.runner import run_section
 from orchestrator.types import ProposalPassResult, Section
@@ -263,9 +261,9 @@ def run_proposal_pass(
             Services.communicator().mailbox_send(planspace, parent, "fail:aborted")
             raise ProposalPassExit
 
-        if alignment_changed_pending(planspace):  # noqa: SIM102
+        if Services.pipeline_control().alignment_changed_pending(planspace):  # noqa: SIM102
             if _check_and_clear_alignment_changed(planspace):
-                requeue_changed_sections(
+                Services.pipeline_control().requeue_changed_sections(
                     completed,
                     queue,
                     sections_by_num,
@@ -315,7 +313,7 @@ def run_proposal_pass(
             )
             if reexplore_result == "ALIGNMENT_CHANGED_PENDING":
                 if _check_and_clear_alignment_changed(planspace):
-                    requeue_changed_sections(
+                    Services.pipeline_control().requeue_changed_sections(
                         completed,
                         queue,
                         sections_by_num,
@@ -347,7 +345,7 @@ def run_proposal_pass(
         )
 
         if _check_and_clear_alignment_changed(planspace):
-            requeue_changed_sections(
+            Services.pipeline_control().requeue_changed_sections(
                 completed,
                 queue,
                 sections_by_num,

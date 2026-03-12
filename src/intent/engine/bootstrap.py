@@ -19,9 +19,13 @@ from containers import Services
 from signals.service.blockers import _update_blocker_rollup
 from intake.service.packet import build_section_governance_packet
 from orchestrator.types import Section
-from staleness.service.change_tracker import check_pending as alignment_changed_pending
 
 from pipeline import AlignmentGuard, Pipeline, PipelineContext, Step
+
+
+# Module-level callback — monkey-patched by runner before use; default
+# routes through the DI container so standalone calls also work.
+alignment_changed_pending = lambda planspace: Services.pipeline_control().alignment_changed_pending(planspace)
 
 
 # -- Step functions (each has exactly ONE concern) -------------------------

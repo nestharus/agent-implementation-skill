@@ -61,10 +61,6 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         lambda *_args, **_kwargs: {"intent_mode": "full", "budgets": {}},
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.alignment_changed_pending",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
         Services.dispatch_helpers(),
         "write_model_choice_signal",
         lambda *_args, **_kwargs: None,
@@ -128,10 +124,6 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
                 "needs_user_input": False,
             }
         ),
-    )
-    monkeypatch.setattr(
-        "proposal.service.intent_expansion.alignment_changed_pending",
-        lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
         "proposal.service.intent_expansion.handle_user_gate",

@@ -28,7 +28,6 @@ def test_run_proposal_pass_reexplores_then_records_result(
     section_path.write_text("# Section 01\n", encoding="utf-8")
     section = Section(number="01", path=section_path, related_files=[])
 
-    monkeypatch.setattr(proposal_pass, "alignment_changed_pending", lambda *args: False)
     monkeypatch.setattr(
         proposal_pass,
         "_check_and_clear_alignment_changed",

@@ -108,7 +108,7 @@ class SignalReader:
 
 
 class PipelineControlService:
-    """Pipeline control: parent pausing, message polling, pending handling."""
+    """Pipeline control: pausing, polling, alignment, requeue, hashing."""
 
     def pause_for_parent(self, planspace, parent, message) -> str:
         from orchestrator.service.pipeline_control import pause_for_parent
@@ -121,6 +121,38 @@ class PipelineControlService:
     def handle_pending_messages(self, planspace, sections, affected) -> bool:
         from orchestrator.service.pipeline_control import handle_pending_messages
         return handle_pending_messages(planspace, sections, affected)
+
+    def alignment_changed_pending(self, planspace) -> bool:
+        from staleness.service.change_tracker import check_pending
+        return check_pending(planspace)
+
+    def wait_if_paused(self, planspace, parent) -> None:
+        from orchestrator.service.pipeline_control import wait_if_paused
+        wait_if_paused(planspace, parent)
+
+    def requeue_changed_sections(
+        self, completed, queue, sections_by_num, planspace, codespace,
+        *, current_section=None,
+    ) -> list[str]:
+        from orchestrator.service.pipeline_control import requeue_changed_sections
+        return requeue_changed_sections(
+            completed, queue, sections_by_num, planspace, codespace,
+            current_section=current_section,
+        )
+
+    def section_inputs_hash(self, section_number, planspace, codespace, sections_by_num=None) -> str:
+        from staleness.service.input_hasher import section_inputs_hash
+        if sections_by_num is None:
+            sections_by_num = {}
+        return section_inputs_hash(section_number, planspace, codespace, sections_by_num)
+
+    def coordination_recheck_hash(self, sec_num, planspace, codespace, sections_by_num=None, modified_files=None) -> str:
+        from staleness.service.input_hasher import coordination_recheck_hash
+        if sections_by_num is None:
+            sections_by_num = {}
+        if modified_files is None:
+            modified_files = []
+        return coordination_recheck_hash(sec_num, planspace, codespace, sections_by_num, modified_files)
 
 
 class Communicator:

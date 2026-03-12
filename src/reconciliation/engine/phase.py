@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from staleness.service.change_tracker import (
-    check_pending as alignment_changed_pending,
     make_alignment_checker,
 )
 from containers import Services
@@ -110,7 +109,7 @@ def run_reconciliation_phase(
                 Services.communicator().mailbox_send(planspace, parent, "fail:aborted")
                 raise ReconciliationPhaseExit
 
-            if alignment_changed_pending(planspace):
+            if Services.pipeline_control().alignment_changed_pending(planspace):
                 if _check_and_clear_alignment_changed(planspace):
                     Services.logger().log("Alignment changed during re-proposal pass — restarting from Phase 1")
                     restart_phase1 = True

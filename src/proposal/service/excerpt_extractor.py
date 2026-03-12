@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from staleness.service.change_tracker import check_pending as alignment_changed_pending
 from proposal.repository.excerpts import exists as excerpt_exists
 from orchestrator.path_registry import PathRegistry
 from containers import Services
@@ -103,7 +102,7 @@ def extract_excerpts(
             payload = response.partition(":")[2].strip()
             if payload:
                 Services.cross_section().persist_decision(planspace, section.number, payload)
-            if alignment_changed_pending(planspace):
+            if Services.pipeline_control().alignment_changed_pending(planspace):
                 return None
             continue
 

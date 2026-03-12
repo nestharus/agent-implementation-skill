@@ -133,10 +133,6 @@ def test_extract_excerpts_routes_out_of_scope_then_retries(
         "src.proposal.service.excerpt_extractor._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
-    monkeypatch.setattr(
-        "src.proposal.service.excerpt_extractor.alignment_changed_pending",
-        lambda *_args, **_kwargs: False,
-    )
 
     try:
         result = extract_excerpts(

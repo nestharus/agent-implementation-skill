@@ -702,13 +702,11 @@ def test_reassessment_executes_newly_accepted_frontier_end_to_end(
     reassessment_packages: list[list[str]] = []
     run_calls: list[list[str]] = []
 
-    monkeypatch.setattr("implementation.engine.implementation_pass.alignment_changed_pending", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
     monkeypatch.setattr("implementation.engine.implementation_pass._run_risk_review", lambda *_args, **_kwargs: initial_plan)
     monkeypatch.setattr("implementation.engine.implementation_pass.append_risk_history", lambda *args, **kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_pass.read_package", lambda *_args, **_kwargs: package)
-    monkeypatch.setattr("implementation.engine.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
     monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
 
     def _run_section(*_args, **_kwargs) -> list[str]:

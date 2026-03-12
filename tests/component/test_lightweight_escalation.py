@@ -70,10 +70,6 @@ def _install_common_patches(
         },
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.alignment_changed_pending",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
         Services.dispatch_helpers(),
         "write_model_choice_signal",
         lambda *_args, **_kwargs: None,
@@ -107,10 +103,6 @@ def _install_common_patches(
     monkeypatch.setattr(
         "proposal.service.intent_expansion.handle_user_gate",
         lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        "proposal.service.intent_expansion.alignment_changed_pending",
-        lambda *_args, **_kwargs: False,
     )
     def _dispatch(*args, **kwargs):
         output_path = args[2]

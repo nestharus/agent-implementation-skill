@@ -47,11 +47,6 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
     )
     monkeypatch.setattr(
         phase,
-        "alignment_changed_pending",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
-        phase,
         "_check_and_clear_alignment_changed",
         lambda *_args, **_kwargs: False,
     )
@@ -84,13 +79,15 @@ def test_run_reconciliation_phase_restarts_on_alignment_change(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
-    noop_pipeline_control,
+    capturing_pipeline_control,
     noop_communicator,
 ) -> None:
     section = _make_section(planspace, "01")
     proposal_results = {
         "01": ProposalPassResult(section_number="01", execution_ready=True),
     }
+
+    capturing_pipeline_control._alignment_changed_return = True
 
     monkeypatch.setattr(
         phase,
@@ -101,11 +98,6 @@ def test_run_reconciliation_phase_restarts_on_alignment_change(
             "substrate_needed": False,
             "sections_affected": ["01"],
         },
-    )
-    monkeypatch.setattr(
-        phase,
-        "alignment_changed_pending",
-        lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
         phase,

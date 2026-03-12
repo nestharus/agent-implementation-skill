@@ -54,10 +54,6 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
         lambda *_args, **_kwargs: {"intent_mode": "lightweight", "budgets": {}},
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.alignment_changed_pending",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
         Services.dispatch_helpers(),
         "write_model_choice_signal",
         lambda *_args, **_kwargs: None,
@@ -144,10 +140,6 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
     monkeypatch.setattr(
         "src.proposal.engine.loop.load_triage_result",
         lambda *_args, **_kwargs: {"intent_mode": "lightweight", "budgets": {}},
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.loop.alignment_changed_pending",
-        lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
         Services.dispatch_helpers(),
@@ -237,10 +229,6 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
     monkeypatch.setattr(
         "src.proposal.engine.loop.load_triage_result",
         lambda *_args, **_kwargs: {"intent_mode": "lightweight", "budgets": {}},
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.loop.alignment_changed_pending",
-        lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
         Services.dispatch_helpers(),

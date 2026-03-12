@@ -221,6 +221,24 @@ class NoOpPipelineControl(PipelineControlService):
     def handle_pending_messages(self, planspace, sections, affected) -> bool:
         return False
 
+    def alignment_changed_pending(self, planspace) -> bool:
+        return False
+
+    def wait_if_paused(self, planspace, parent) -> None:
+        pass
+
+    def requeue_changed_sections(
+        self, completed, queue, sections_by_num, planspace, codespace,
+        *, current_section=None,
+    ) -> list[str]:
+        return []
+
+    def section_inputs_hash(self, section_number, planspace, codespace, *args) -> str:
+        return "noop-hash"
+
+    def coordination_recheck_hash(self, sec_num, planspace, codespace, *args) -> str:
+        return "noop-hash"
+
 
 class CapturingPipelineControl(PipelineControlService):
     """Test double that captures pipeline control calls for assertions."""
@@ -232,9 +250,13 @@ class CapturingPipelineControl(PipelineControlService):
         self._pause_return: str = "resume"
         self._poll_return: str | None = None
         self._pending_return: bool = False
+        self._alignment_changed_return: bool = False
         self._pause_side_effect = None
         self._poll_side_effect = None
         self._pending_side_effect = None
+        self._alignment_changed_side_effect = None
+        self._section_inputs_hash_return: str = "hash-stub"
+        self._coordination_recheck_hash_return: str = "hash-stub"
 
     def pause_for_parent(self, planspace, parent, message) -> str:
         self.pause_calls.append((planspace, parent, message))
@@ -253,6 +275,26 @@ class CapturingPipelineControl(PipelineControlService):
         if self._pending_side_effect:
             return self._pending_side_effect(planspace, sections, affected)
         return self._pending_return
+
+    def alignment_changed_pending(self, planspace) -> bool:
+        if self._alignment_changed_side_effect:
+            return self._alignment_changed_side_effect(planspace)
+        return self._alignment_changed_return
+
+    def wait_if_paused(self, planspace, parent) -> None:
+        pass
+
+    def requeue_changed_sections(
+        self, completed, queue, sections_by_num, planspace, codespace,
+        *, current_section=None,
+    ) -> list[str]:
+        return []
+
+    def section_inputs_hash(self, section_number, planspace, codespace, *args) -> str:
+        return self._section_inputs_hash_return
+
+    def coordination_recheck_hash(self, sec_num, planspace, codespace, *args) -> str:
+        return self._coordination_recheck_hash_return
 
 
 @pytest.fixture()

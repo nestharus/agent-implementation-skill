@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from intent.engine import bootstrap as intent_bootstrap_module
-from staleness.service.change_tracker import check_pending as alignment_changed_pending
 from implementation.service.triage_orchestrator import run_impact_triage
 from intent.engine.bootstrap import run_intent_bootstrap
 from proposal.service.problem_frame_gate import validate_problem_frame
@@ -129,7 +128,7 @@ def _run_intent_bootstrap_phase(
     intent_bootstrap_module.ensure_global_philosophy = ensure_global_philosophy
     intent_bootstrap_module.generate_intent_pack = generate_intent_pack
     intent_bootstrap_module._extract_todos_from_files = _extract_todos_from_files
-    intent_bootstrap_module.alignment_changed_pending = alignment_changed_pending
+    intent_bootstrap_module.alignment_changed_pending = Services.pipeline_control().alignment_changed_pending
     return run_intent_bootstrap(
         section,
         planspace,

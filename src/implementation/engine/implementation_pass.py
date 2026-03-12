@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Callable
 
 from staleness.service.change_tracker import (
-    check_pending as alignment_changed_pending,
     make_alignment_checker,
 )
 from orchestrator.path_registry import PathRegistry
@@ -25,7 +24,6 @@ from risk.types import (
 from proposal.service.readiness_resolver import resolve_readiness
 from containers import Services
 from signals.service.communication import AGENT_NAME, DB_SH
-from orchestrator.service.pipeline_control import _section_inputs_hash
 from implementation.engine.runner import run_section
 from implementation.repository.roal_index import (
     IMPLEMENTATION_ROAL_KINDS,
@@ -344,7 +342,7 @@ def run_implementation_pass(
             Services.communicator().mailbox_send(planspace, parent, "fail:aborted")
             raise ImplementationPassExit
 
-        if alignment_changed_pending(planspace):
+        if Services.pipeline_control().alignment_changed_pending(planspace):
             if _check_and_clear_alignment_changed(planspace):
                 Services.logger().log("Alignment changed during implementation pass "
                     "— restarting from Phase 1")
@@ -556,14 +554,14 @@ def run_implementation_pass(
         baseline_hash_dir = paths.section_inputs_hashes_dir()
         baseline_hash_dir.mkdir(parents=True, exist_ok=True)
         paths.section_input_hash(sec_num).write_text(
-            _section_inputs_hash(sec_num, planspace, codespace, sections_by_num),
+            Services.pipeline_control().section_inputs_hash(sec_num, planspace, codespace, sections_by_num),
             encoding="utf-8",
         )
 
         phase2_hash_dir = paths.phase2_inputs_hashes_dir()
         phase2_hash_dir.mkdir(parents=True, exist_ok=True)
         paths.phase2_input_hash(sec_num).write_text(
-            _section_inputs_hash(sec_num, planspace, codespace, sections_by_num),
+            Services.pipeline_control().section_inputs_hash(sec_num, planspace, codespace, sections_by_num),
             encoding="utf-8",
         )
 

@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from dispatch.engine import agent_executor
-from staleness.service.change_tracker import check_pending as alignment_changed_pending
 from signals.service.database_client import DatabaseClient
 from dispatch.repository.metadata import write_dispatch_metadata
 from dispatch.service.monitor_service import MonitorService
@@ -15,7 +14,6 @@ from signals.service.communication import (
     _log_artifact,
 )
 from orchestrator.service.context_assembly import materialize_context_sidecar
-from orchestrator.service.pipeline_control import wait_if_paused
 from containers import Services
 
 
@@ -58,10 +56,10 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
         )
     agent_path = Services.task_router().resolve_agent_path(agent_file)
     if planspace and parent:
-        wait_if_paused(planspace, parent)
+        Services.pipeline_control().wait_if_paused(planspace, parent)
         # If alignment_changed was received during the pause (or was
         # already pending), do NOT launch the agent — excerpts are stale.
-        if alignment_changed_pending(planspace):
+        if Services.pipeline_control().alignment_changed_pending(planspace):
             Services.logger().log("  dispatch_agent: alignment_changed pending — skipping")
             return "ALIGNMENT_CHANGED_PENDING"
 
