@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.intake.repository.loader import build_governance_indexes
+from src.intake.repository.governance_loader import build_governance_indexes
 from src.intake.service.governance_packet_builder import build_section_governance_packet
 
 

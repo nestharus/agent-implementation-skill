@@ -131,7 +131,7 @@ def _dispatch_and_capture(
         return "ok"
 
     # Track fail-task calls
-    from flow.engine import dispatcher as task_dispatcher
+    from flow.engine import task_dispatcher as task_dispatcher
 
     original_db_cmd = task_dispatcher.db_cmd
     fail_errors: list[str] = []

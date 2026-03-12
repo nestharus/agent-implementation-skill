@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from taskrouter.core import TaskRegistry, TaskRoute, TaskRouter
+from taskrouter.route_registry import TaskRegistry, TaskRoute, TaskRouter
 
 
 @pytest.fixture()

@@ -460,7 +460,7 @@ class TestDispatcherQaIntegration:
         payload = artifacts / "test-payload.md"
         payload.write_text("# Test\n", encoding="utf-8")
 
-        import flow.engine.dispatcher as task_dispatcher
+        import flow.engine.task_dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             return "normal output"
@@ -501,7 +501,7 @@ class TestDispatcherQaIntegration:
             json.dumps({"qa_mode": True}), encoding="utf-8",
         )
 
-        import flow.engine.dispatcher as task_dispatcher
+        import flow.engine.task_dispatcher as task_dispatcher
 
         call_count = {"n": 0}
 
@@ -549,7 +549,7 @@ class TestDispatcherQaIntegration:
             json.dumps({"qa_mode": True}), encoding="utf-8",
         )
 
-        import flow.engine.dispatcher as task_dispatcher
+        import flow.engine.task_dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             agent_file = kwargs.get("agent_file", "")
@@ -597,7 +597,7 @@ class TestDispatcherQaIntegration:
             json.dumps({"qa_mode": True}), encoding="utf-8",
         )
 
-        import flow.engine.dispatcher as task_dispatcher
+        import flow.engine.task_dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             agent_file = kwargs.get("agent_file", "")
@@ -643,7 +643,7 @@ class TestDispatcherQaIntegration:
             json.dumps({"qa_mode": True}), encoding="utf-8",
         )
 
-        import flow.engine.dispatcher as task_dispatcher
+        import flow.engine.task_dispatcher as task_dispatcher
 
         call_count = {"n": 0}
 
@@ -689,7 +689,7 @@ class TestDispatcherQaIntegration:
             json.dumps({"qa_mode": True}), encoding="utf-8",
         )
 
-        import flow.engine.dispatcher as task_dispatcher
+        import flow.engine.task_dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             agent_file = kwargs.get("agent_file", "")

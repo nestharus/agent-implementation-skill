@@ -188,7 +188,7 @@ class TestDispatcherReadsMetaSidecar:
             encoding="utf-8",
         )
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         # Mock dispatch_agent to return the output (files already written)
         def fake_dispatch(*args, **kwargs):
@@ -235,7 +235,7 @@ class TestDispatcherReadsMetaSidecar:
             encoding="utf-8",
         )
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             return "success output"
@@ -279,7 +279,7 @@ class TestDispatcherReadsMetaSidecar:
             encoding="utf-8",
         )
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             return "error output preserved"

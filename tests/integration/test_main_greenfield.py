@@ -28,7 +28,7 @@ class TestNoModeRouting:
         The runtime resolves project_mode for telemetry only — it does not
         branch on the value to skip proposal or readiness paths.
         """
-        main_path = (SRC_DIR / "orchestrator" / "engine" / "main.py")
+        main_path = (SRC_DIR / "orchestrator" / "engine" / "pipeline_orchestrator.py")
         content = main_path.read_text()
         # Positive assertion: mode is resolved but only for contract writing
         assert "resolve_project_mode" in content, (

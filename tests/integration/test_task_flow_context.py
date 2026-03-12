@@ -357,7 +357,7 @@ class TestDispatcherFlowIntegration:
             "payload": str(prompt),
         }
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         captured: dict = {}
 
@@ -368,8 +368,8 @@ class TestDispatcherFlowIntegration:
 
         with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.dispatcher.db_cmd") as mock_db, \
-             patch("flow.engine.dispatcher.notify_task_result"):
+             patch("flow.engine.task_dispatcher.db_cmd") as mock_db, \
+             patch("flow.engine.task_dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 
             task_dispatcher.dispatch_task(str(db_path), planspace, task)
@@ -407,7 +407,7 @@ class TestDispatcherFlowIntegration:
             "continuation": "artifacts/flows/task-1-continuation.json",
         }
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         captured: dict = {}
 
@@ -418,8 +418,8 @@ class TestDispatcherFlowIntegration:
 
         with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.dispatcher.db_cmd") as mock_db, \
-             patch("flow.engine.dispatcher.notify_task_result"):
+             patch("flow.engine.task_dispatcher.db_cmd") as mock_db, \
+             patch("flow.engine.task_dispatcher.notify_task_result"):
             mock_resolve.return_value = ("impact-analyzer.md", "glm")
 
             task_dispatcher.dispatch_task(str(db_path), planspace, task)
@@ -464,12 +464,12 @@ class TestDispatcherFlowIntegration:
             "continuation": "artifacts/flows/task-2-continuation.json",
         }
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         with override_dispatcher_and_guard(lambda *a, **kw: "done"), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.dispatcher.db_cmd"), \
-             patch("flow.engine.dispatcher.notify_task_result"):
+             patch("flow.engine.task_dispatcher.db_cmd"), \
+             patch("flow.engine.task_dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 
             task_dispatcher.dispatch_task(str(db_path), planspace, task)

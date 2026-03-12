@@ -21,7 +21,7 @@ Usage from dispatcher::
     agent_file, model = route.agent, route.model
 """
 
-from taskrouter.core import TaskRegistry, TaskRoute, TaskRouter
+from taskrouter.route_registry import TaskRegistry, TaskRoute, TaskRouter
 
 registry: TaskRegistry = TaskRegistry()
 

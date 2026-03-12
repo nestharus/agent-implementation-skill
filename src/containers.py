@@ -289,7 +289,7 @@ class FlowIngestionService:
         return ingest_and_submit(planspace, db_path, submitted_by, signal_path, **kwargs)
 
     def submit_chain(self, db_path, submitted_by, steps, **kwargs):
-        from flow.engine.submitter import submit_chain
+        from flow.engine.flow_submitter import submit_chain
         return submit_chain(db_path, submitted_by, steps, **kwargs)
 
 

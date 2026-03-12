@@ -6,7 +6,7 @@ from pathlib import Path
 
 from _paths import DB_SH
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
-from src.flow.engine.submitter import (
+from src.flow.engine.flow_submitter import (
     new_chain_id,
     new_flow_id,
     new_gate_id,

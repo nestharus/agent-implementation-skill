@@ -12,7 +12,7 @@ from pathlib import Path
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from flow.service.task_db_client import task_db
-from flow.engine.submitter import (
+from flow.engine.flow_submitter import (
     submit_chain,
     submit_fanout,
 )
@@ -22,7 +22,7 @@ from research.engine.orchestrator import (
     validate_research_plan,
     write_research_status,
 )
-from research.engine.executor import (
+from research.engine.research_plan_executor import (
     execute_research_plan,
     submit_research_verify,
 )

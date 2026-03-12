@@ -107,7 +107,7 @@ def _dispatch_with_captured_kwargs(
         captured["kwargs"] = kwargs
         return "ok"
 
-    from flow.engine import dispatcher as task_dispatcher
+    from flow.engine import task_dispatcher as task_dispatcher
 
     with (
         override_dispatcher_and_guard(fake_dispatch),

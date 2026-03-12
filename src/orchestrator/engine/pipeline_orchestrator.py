@@ -10,7 +10,7 @@ logging.basicConfig(
 )
 
 from intake.service.assessment_evaluator import promote_debt_signals
-from intake.repository.loader import bootstrap_governance_if_missing, build_governance_indexes
+from intake.repository.governance_loader import bootstrap_governance_if_missing, build_governance_indexes
 from coordination.engine.coordination_controller import run_coordination_loop
 from implementation.engine.implementation_phase import (
     ImplementationPassExit,

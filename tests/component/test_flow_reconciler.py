@@ -14,7 +14,7 @@ from src.flow.engine.reconciler import (
     build_result_manifest,
     reconcile_task_completion,
 )
-from src.flow.engine.submitter import submit_chain
+from src.flow.engine.flow_submitter import submit_chain
 
 
 def _init_db(db_path: Path) -> None:

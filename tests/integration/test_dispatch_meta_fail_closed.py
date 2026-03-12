@@ -66,14 +66,14 @@ class TestReadDispatchMeta:
 
     def test_returns_none_when_file_absent(self, tmp_path: Path) -> None:
         """Non-existent file returns None (not an error)."""
-        from flow.engine.dispatcher import _read_dispatch_meta
+        from flow.engine.task_dispatcher import _read_dispatch_meta
 
         result = _read_dispatch_meta(tmp_path / "nonexistent.meta.json")
         assert result is None
 
     def test_returns_dict_on_valid_json(self, tmp_path: Path) -> None:
         """Valid JSON file returns parsed dict."""
-        from flow.engine.dispatcher import _read_dispatch_meta
+        from flow.engine.task_dispatcher import _read_dispatch_meta
 
         meta_path = tmp_path / "task-1-output.meta.json"
         meta_path.write_text(
@@ -88,7 +88,7 @@ class TestReadDispatchMeta:
 
     def test_renames_malformed_to_dotmalformed(self, tmp_path: Path) -> None:
         """Malformed JSON is renamed to .malformed.json and sentinel returned."""
-        from flow.engine.dispatcher import _DISPATCH_META_CORRUPT, _read_dispatch_meta
+        from flow.engine.task_dispatcher import _DISPATCH_META_CORRUPT, _read_dispatch_meta
 
         meta_path = tmp_path / "task-2-output.meta.json"
         meta_path.write_text("{not valid json at all", encoding="utf-8")
@@ -103,7 +103,7 @@ class TestReadDispatchMeta:
 
     def test_malformed_preserves_content(self, tmp_path: Path) -> None:
         """Renamed file preserves the original corrupt content."""
-        from flow.engine.dispatcher import _read_dispatch_meta
+        from flow.engine.task_dispatcher import _read_dispatch_meta
 
         meta_path = tmp_path / "task-3-output.meta.json"
         corrupt_content = "{this is definitely not valid json"
@@ -116,7 +116,7 @@ class TestReadDispatchMeta:
 
     def test_malformed_logs_warning(self, tmp_path: Path, capsys) -> None:
         """Malformed file logs a warning mentioning the path."""
-        from flow.engine.dispatcher import _read_dispatch_meta
+        from flow.engine.task_dispatcher import _read_dispatch_meta
 
         meta_path = tmp_path / "task-4-output.meta.json"
         meta_path.write_text("{bad", encoding="utf-8")
@@ -153,7 +153,7 @@ class TestDispatcherMetaCorruptionFailsClosed:
         meta_path = output_path.with_suffix(".meta.json")
         meta_path.write_text("{broken json here", encoding="utf-8")
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             return "agent produced output"
@@ -195,7 +195,7 @@ class TestDispatcherMetaCorruptionFailsClosed:
         meta_path = output_path.with_suffix(".meta.json")
         meta_path.write_text("{not json}", encoding="utf-8")
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             return "ok"
@@ -232,7 +232,7 @@ class TestDispatcherMetaCorruptionFailsClosed:
         meta_path = output_path.with_suffix(".meta.json")
         meta_path.write_text("{{{{", encoding="utf-8")
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             return "ok"
@@ -275,7 +275,7 @@ class TestAbsentMetaAllowsFallback:
 
         # Do NOT write a .meta.json — simulate legacy dispatch
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             # dispatch_agent returns TIMEOUT: prefix (legacy behavior)
@@ -314,7 +314,7 @@ class TestAbsentMetaAllowsFallback:
         payload = artifacts / "test-payload.md"
         payload.write_text("# Test\n", encoding="utf-8")
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             return "normal agent output"

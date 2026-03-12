@@ -19,7 +19,7 @@ from flow.engine.reconciler import (
 from flow.repository.gate_repository import (
     read_origin_refs as _read_origin_refs,
 )
-from flow.engine.submitter import (
+from flow.engine.flow_submitter import (
     submit_chain,
     submit_fanout,
 )

@@ -29,7 +29,7 @@ from flow.types.schema import (
     ChainAction,
     FanoutAction,
 )
-from flow.engine.submitter import new_flow_id
+from flow.engine.flow_submitter import new_flow_id
 
 from containers import Services
 

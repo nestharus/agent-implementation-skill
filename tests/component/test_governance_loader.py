@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from src.orchestrator.path_registry import PathRegistry
-from src.intake.repository.loader import (
+from src.intake.repository.governance_loader import (
     bootstrap_governance_if_missing,
     build_governance_indexes,
     parse_pattern_index,

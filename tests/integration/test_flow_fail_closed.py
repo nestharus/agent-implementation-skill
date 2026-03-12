@@ -494,7 +494,7 @@ class TestDispatcherFlowCorruption:
             "flow_context": ctx_relpath,
         }
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         dispatch_called = False
 
@@ -505,8 +505,8 @@ class TestDispatcherFlowCorruption:
 
         with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.dispatcher.db_cmd") as mock_db, \
-             patch("flow.engine.dispatcher.notify_task_result") as mock_notify:
+             patch("flow.engine.task_dispatcher.db_cmd") as mock_db, \
+             patch("flow.engine.task_dispatcher.notify_task_result") as mock_notify:
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 
             task_dispatcher.dispatch_task(str(db_path), planspace, task)
@@ -541,7 +541,7 @@ class TestDispatcherFlowCorruption:
             "flow_context": "artifacts/flows/task-2-context.json",
         }
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         dispatch_called = False
 
@@ -552,8 +552,8 @@ class TestDispatcherFlowCorruption:
 
         with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.dispatcher.db_cmd") as mock_db, \
-             patch("flow.engine.dispatcher.notify_task_result"):
+             patch("flow.engine.task_dispatcher.db_cmd") as mock_db, \
+             patch("flow.engine.task_dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 
             task_dispatcher.dispatch_task(str(db_path), planspace, task)
@@ -591,7 +591,7 @@ class TestDispatcherFlowCorruption:
             "continuation": "artifacts/flows/task-3-continuation.json",
         }
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         dispatch_called = False
 
@@ -602,8 +602,8 @@ class TestDispatcherFlowCorruption:
 
         with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.dispatcher.db_cmd"), \
-             patch("flow.engine.dispatcher.notify_task_result"):
+             patch("flow.engine.task_dispatcher.db_cmd"), \
+             patch("flow.engine.task_dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 
             task_dispatcher.dispatch_task(str(db_path), planspace, task)

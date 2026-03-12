@@ -11,7 +11,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from orchestrator.path_registry import PathRegistry
-from flow.engine.submitter import new_flow_id, submit_fanout
+from flow.engine.flow_submitter import new_flow_id, submit_fanout
 from research.engine.orchestrator import load_research_status, validate_research_plan, write_research_status
 from research.prompt.writers import (
     write_research_synthesis_prompt,

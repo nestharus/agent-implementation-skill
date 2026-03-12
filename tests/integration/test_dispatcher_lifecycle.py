@@ -171,7 +171,7 @@ class TestDispatchTaskClaimsDispatchesCompletes:
         # Submit a task via db.sh to get a real DB row.
         task_id, payload = _submit_simple_task(db_path, ps)
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
             # args: model, prompt_path, output_path, planspace, parent
@@ -223,7 +223,7 @@ class TestDispatchTaskAgentTimeoutFails:
         db_path = str(ps / "run.db")
         task_id, payload = _submit_simple_task(db_path, ps)
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         artifacts = ps / "artifacts"
         output_path = artifacts / f"task-{task_id}-output.md"
@@ -271,7 +271,7 @@ class TestDispatchTaskAgentNonzeroExitFails:
         db_path = str(ps / "run.db")
         task_id, payload = _submit_simple_task(db_path, ps)
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         artifacts = ps / "artifacts"
         output_path = artifacts / f"task-{task_id}-output.md"
@@ -352,7 +352,7 @@ class TestDispatchChainContinuation:
         assert t2["depends_on"] == str(tid1)
 
         # Dispatch the first task (let reconcile run for real).
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         def fake_dispatch_1(*args, **kwargs):
             return "step 1 output"
@@ -430,7 +430,7 @@ class TestDispatchChainFailureCancelsDescendants:
         tid1, tid2, tid3 = task_ids
 
         # Dispatch the first task with a nonzero exit code (failure).
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         output_path = artifacts / f"task-{tid1}-output.md"
         meta_path = output_path.with_suffix(".meta.json")
@@ -475,7 +475,7 @@ class TestDispatchMissingPayload:
         db_path = str(ps / "run.db")
         task_id, _ = _submit_simple_task(db_path, ps)
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         # Point to a payload that doesn't exist.
         nonexistent_payload = ps / "artifacts" / "does-not-exist.md"
@@ -520,7 +520,7 @@ class TestDispatchUnresolvableTaskType:
         )
         task_id = result.stdout.strip().split(":")[1]
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         task = {
             "id": task_id,
@@ -561,7 +561,7 @@ class TestDispatchStaleFreshnessToken:
         # Submit a task with a stale (fabricated) freshness token.
         task_id, payload = _submit_simple_task(db_path, ps)
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         # Patch compute_section_freshness to return a DIFFERENT token,
         # simulating that section inputs have changed since submission.

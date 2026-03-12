@@ -18,7 +18,7 @@ from flow.repository.flow_context_store import (
     result_manifest_relpath,
     write_flow_context,
 )
-from flow.engine.submitter import new_chain_id, new_instance_id
+from flow.engine.flow_submitter import new_chain_id, new_instance_id
 from flow.types.routing import submit_task
 
 

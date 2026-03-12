@@ -76,7 +76,7 @@ class TestDispatcherPayloadRequired:
         db_path = str(ps / "run.db")
         task_id = _submit_task(db_path)
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         dispatch_called = False
 
@@ -127,7 +127,7 @@ class TestDispatcherPayloadRequired:
             encoding="utf-8",
         )
 
-        from flow.engine import dispatcher as task_dispatcher
+        from flow.engine import task_dispatcher as task_dispatcher
 
         dispatch_called = False
 
