@@ -275,20 +275,12 @@ def execute_research_plan(
 ) -> bool:
     """Translate semantic research plan into flow submissions."""
     paths = PathRegistry(planspace)
-    plan = validate_research_plan(paths.research_plan(section_number))
     status = load_research_status(section_number, planspace) or {}
     trigger_hash = str(status.get("trigger_hash", ""))
     cycle_id = str(status.get("cycle_id", ""))
 
+    plan = _validate_plan(paths, section_number, trigger_hash, cycle_id, planspace)
     if plan is None:
-        write_research_status(
-            section_number,
-            planspace,
-            "failed",
-            detail="research-plan.json missing or malformed",
-            trigger_hash=trigger_hash,
-            cycle_id=cycle_id,
-        )
         return False
 
     not_researchable = [
@@ -296,6 +288,78 @@ def execute_research_plan(
     ]
     _emit_not_researchable_signals(section_number, planspace, not_researchable)
 
+    branches = _collect_branches(
+        plan, section_number, planspace, codespace, trigger_hash, cycle_id,
+    )
+    if branches is None:
+        return False
+
+    if not branches:
+        _fail_status(section_number, planspace, trigger_hash, cycle_id,
+                     "planner returned no researchable tickets")
+        return bool(not_researchable)
+
+    synthesis_prompt = _write_synthesis(
+        section_number, planspace, len(branches), trigger_hash, cycle_id,
+    )
+    if synthesis_prompt is None:
+        return False
+
+    _submit_fanout(
+        paths, section_number, planspace, branches, synthesis_prompt,
+        plan_output_path, trigger_hash, cycle_id,
+    )
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Extracted concerns: status validation, branch collection, synthesis,
+# freshness computation, fanout submission, status writing
+# ---------------------------------------------------------------------------
+
+
+def _fail_status(
+    section_number: str,
+    planspace: Path,
+    trigger_hash: str,
+    cycle_id: str,
+    detail: str,
+) -> None:
+    """Write a failure status entry."""
+    write_research_status(
+        section_number, planspace, "failed",
+        detail=detail, trigger_hash=trigger_hash, cycle_id=cycle_id,
+    )
+
+
+def _validate_plan(
+    paths: PathRegistry,
+    section_number: str,
+    trigger_hash: str,
+    cycle_id: str,
+    planspace: Path,
+) -> dict | None:
+    """Validate the research plan, writing a failure status if invalid."""
+    plan = validate_research_plan(paths.research_plan(section_number))
+    if plan is None:
+        _fail_status(section_number, planspace, trigger_hash, cycle_id,
+                     "research-plan.json missing or malformed")
+    return plan
+
+
+def _collect_branches(
+    plan: dict,
+    section_number: str,
+    planspace: Path,
+    codespace: Path | None,
+    trigger_hash: str,
+    cycle_id: str,
+) -> list[BranchSpec] | None:
+    """Build branch specs from ordered tickets.
+
+    Returns ``None`` if any branch fails to build (and writes failure status).
+    Returns an empty list if no tickets matched.
+    """
     tickets_by_id = {
         str(ticket.get("ticket_id", "")): ticket
         for ticket in plan.get("tickets", [])
@@ -315,53 +379,48 @@ def execute_research_plan(
             ticket_index=ticket_index,
         )
         if branch is None:
-            write_research_status(
-                section_number,
-                planspace,
-                "failed",
-                detail=f"failed to build research branch for {ticket_id}",
-                trigger_hash=trigger_hash,
-                cycle_id=cycle_id,
-            )
-            return False
+            _fail_status(section_number, planspace, trigger_hash, cycle_id,
+                         f"failed to build research branch for {ticket_id}")
+            return None
         branches.append(branch)
 
-    if not branches:
-        write_research_status(
-            section_number,
-            planspace,
-            "failed",
-            detail="planner returned no researchable tickets",
-            trigger_hash=trigger_hash,
-            cycle_id=cycle_id,
-        )
-        return bool(not_researchable)
+    return branches
 
+
+def _write_synthesis(
+    section_number: str,
+    planspace: Path,
+    branch_count: int,
+    trigger_hash: str,
+    cycle_id: str,
+) -> Path | None:
+    """Write the synthesis prompt, returning ``None`` on failure."""
     synthesis_prompt = write_research_synthesis_prompt(
-        section_number,
-        planspace,
-        len(branches),
+        section_number, planspace, branch_count,
     )
     if synthesis_prompt is None:
-        write_research_status(
-            section_number,
-            planspace,
-            "failed",
-            detail="failed to write research synthesis prompt",
-            trigger_hash=trigger_hash,
-            cycle_id=cycle_id,
-        )
-        return False
+        _fail_status(section_number, planspace, trigger_hash, cycle_id,
+                     "failed to write research synthesis prompt")
+    return synthesis_prompt
 
+
+def _submit_fanout(
+    paths: PathRegistry,
+    section_number: str,
+    planspace: Path,
+    branches: list[BranchSpec],
+    synthesis_prompt: Path,
+    plan_output_path: Path,
+    trigger_hash: str,
+    cycle_id: str,
+) -> None:
+    """Write submission status, compute freshness, and submit the fanout."""
     # Write status BEFORE computing freshness so the hash includes
     # research-status.json at both submission and dispatch time.
     write_research_status(
-        section_number,
-        planspace,
-        "tickets_submitted",
+        section_number, planspace, "tickets_submitted",
         detail=f"submitted {len(branches)} research ticket branches",
-        trigger_hash=trigger_hash,
-        cycle_id=cycle_id,
+        trigger_hash=trigger_hash, cycle_id=cycle_id,
     )
 
     # Compute freshness AFTER all writes (prompts, specs, status) so
@@ -391,7 +450,6 @@ def execute_research_plan(
         planspace=planspace,
         freshness_token=post_write_freshness,
     )
-    return True
 
 
 def submit_research_verify(

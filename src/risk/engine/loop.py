@@ -51,108 +51,36 @@ def run_risk_loop(
     last_plan: RiskPlan | None = None
 
     for iteration in range(1, max_iterations + 1):
-        assessment_prompt = build_risk_assessment_prompt(package, planspace, scope)
-        assessment_prompt_path = (
-            paths.risk_dir() / f"{scope}-risk-assessment-prompt.md"
+        assessment = _validate_and_dispatch_assessment(
+            paths, planspace, scope, package, dispatch_fn,
         )
-        if not Services.prompt_guard().write_validated(assessment_prompt, assessment_prompt_path):
-            fallback = fallback_plan(
-                package,
-                layer,
-                assessment_id=f"{package.package_id}-assessment-fallback",
-                reason="fail-closed: risk assessment prompt failed safety validation",
-            )
-            write_risk_artifact(paths.risk_plan(scope), serialize_plan(fallback))
-            return fallback
-        assessment_output_path = (
-            paths.risk_dir() / f"{scope}-risk-assessment-output.md"
-        )
-        assessment_response = dispatch_fn(
-            _risk_assessor_model(planspace),
-            assessment_prompt_path,
-            assessment_output_path,
-            planspace,
-            None,
-            f"risk-assessor-{scope}",
-            agent_file=agent_for("risk.assess"),
-        )
-        assessment = parse_risk_assessment(assessment_response)
         if assessment is None:
-            fallback = fallback_plan(
-                package,
-                layer,
+            return _write_and_return_fallback(
+                paths, scope, package, layer,
                 assessment_id=f"{package.package_id}-assessment-fallback",
-                reason="fail-closed: risk assessment could not be parsed",
+                reason="fail-closed: risk assessment prompt failed safety validation or could not be parsed",
             )
-            write_risk_artifact(paths.risk_plan(scope), serialize_plan(fallback))
-            return fallback
 
         _apply_history_adjustment(assessment, paths.risk_history(), history_entries, parameters)
         last_assessment = assessment
         write_risk_artifact(paths.risk_assessment(scope), serialize_assessment(assessment))
 
-        optimization_prompt = build_optimization_prompt(
-            assessment=assessment,
-            package=package,
-            parameters=parameters,
-            planspace=planspace,
-            scope=scope,
+        plan = _validate_and_dispatch_optimization(
+            paths, planspace, scope, package, parameters, assessment,
+            dispatch_fn, retry_hint=(iteration > 1 and last_plan is not None),
         )
-        if iteration > 1 and last_plan is not None:
-            optimization_prompt += (
-                "\n\n## Previous Enforcement Outcome\n\n"
-                "The previous optimizer response failed mechanical enforcement. "
-                "Produce a strictly more conservative plan.\n"
-            )
-        optimization_prompt_path = paths.risk_dir() / f"{scope}-risk-plan-prompt.md"
-        if not Services.prompt_guard().write_validated(optimization_prompt, optimization_prompt_path):
-            fallback = fallback_plan(
-                package,
-                layer,
-                assessment_id=assessment.assessment_id,
-                reason="fail-closed: execution optimizer prompt failed safety validation",
-            )
-            write_risk_artifact(paths.risk_plan(scope), serialize_plan(fallback))
-            return fallback
-        optimization_output_path = paths.risk_dir() / f"{scope}-risk-plan-output.md"
-        optimization_response = dispatch_fn(
-            _execution_optimizer_model(planspace),
-            optimization_prompt_path,
-            optimization_output_path,
-            planspace,
-            None,
-            f"execution-optimizer-{scope}",
-            agent_file=agent_for("risk.optimize"),
-        )
-        plan = parse_risk_plan(optimization_response)
         if plan is None:
-            fallback = fallback_plan(
-                package,
-                layer,
+            return _write_and_return_fallback(
+                paths, scope, package, layer,
                 assessment_id=assessment.assessment_id,
-                reason="fail-closed: execution optimizer could not be parsed",
+                reason="fail-closed: execution optimizer prompt failed safety validation or could not be parsed",
             )
-            write_risk_artifact(paths.risk_plan(scope), serialize_plan(fallback))
-            return fallback
 
         apply_posture_hysteresis(
-            plan,
-            assessment,
-            history_entries,
-            parameters,
+            plan, assessment, history_entries, parameters,
             posture_floor=posture_floor,
         )
-        assessments = {
-            item.step_id: item
-            for item in assessment.step_assessments
-        }
-        enriched_parameters = dict(parameters)
-        enriched_parameters["assessment_classes"] = {
-            step_id: step_assessment.assessment_class
-            for step_id, step_assessment in assessments.items()
-        }
-        enforced_plan = enforce_thresholds(plan, assessments, enriched_parameters)
-        violations = validate_risk_plan(enforced_plan, enriched_parameters)
+        enforced_plan, violations = _enforce_and_validate(plan, assessment, parameters)
         if not violations:
             write_risk_artifact(paths.risk_plan(scope), serialize_plan(enforced_plan))
             return enforced_plan
@@ -164,14 +92,11 @@ def run_risk_loop(
         if last_assessment is not None
         else f"{package.package_id}-assessment-fallback"
     )
-    final_fallback = fallback_plan(
-        package,
-        layer,
+    return _write_and_return_fallback(
+        paths, scope, package, layer,
         assessment_id=fallback_assessment_id,
         reason="fail-closed: risk loop exhausted without a threshold-compliant plan",
     )
-    write_risk_artifact(paths.risk_plan(scope), serialize_plan(final_fallback))
-    return final_fallback
 
 
 def run_lightweight_risk_check(
@@ -185,43 +110,141 @@ def run_lightweight_risk_check(
     """Run a lightweight risk check (single assessment, no full loop)."""
     paths = PathRegistry(planspace)
     write_package(paths, package)
-    prompt = build_risk_assessment_prompt(package, planspace, scope)
-    prompt_path = paths.risk_dir() / f"{scope}-light-risk-assessment-prompt.md"
-    if not Services.prompt_guard().write_validated(prompt, prompt_path):
-        fallback = fallback_plan(
-            package,
-            layer,
+
+    assessment = _validate_and_dispatch_assessment(
+        paths, planspace, scope, package, dispatch_fn, prefix="light",
+    )
+    if assessment is None:
+        return _write_and_return_fallback(
+            paths, scope, package, layer,
             assessment_id=f"{package.package_id}-assessment-fallback",
-            reason="fail-closed: lightweight risk assessment prompt failed safety validation",
+            reason="fail-closed: lightweight risk assessment prompt failed safety validation or could not be parsed",
         )
-        write_risk_artifact(paths.risk_plan(scope), serialize_plan(fallback))
-        return fallback
-    output_path = paths.risk_dir() / f"{scope}-light-risk-assessment-output.md"
+
+    parameters = _load_parameters(paths)
+    history_entries = read_history(paths.risk_history())
+    _apply_history_adjustment(assessment, paths.risk_history(), history_entries, parameters)
+    write_risk_artifact(paths.risk_assessment(scope), serialize_assessment(assessment))
+
+    plan = _validate_and_dispatch_lightweight_optimization(
+        paths, planspace, scope, package, parameters, assessment, dispatch_fn,
+    )
+    if plan is None:
+        return _write_and_return_lightweight_fallback(
+            paths, scope, package, layer,
+            assessment_id=assessment.assessment_id,
+            reason="fail-closed: lightweight execution optimizer failed",
+        )
+
+    apply_posture_hysteresis(
+        plan, assessment, history_entries, parameters,
+        posture_floor=posture_floor,
+    )
+    enforced_plan, violations = _enforce_and_validate(plan, assessment, parameters)
+    if violations:
+        return _write_and_return_lightweight_fallback(
+            paths, scope, package, layer,
+            assessment_id=assessment.assessment_id,
+            reason="fail-closed: lightweight execution optimizer produced invalid plan",
+        )
+
+    write_risk_artifact(paths.risk_plan(scope), serialize_plan(enforced_plan))
+    return enforced_plan
+
+
+# ---------------------------------------------------------------------------
+# Extracted concerns: prompt building, agent dispatch, response parsing
+# ---------------------------------------------------------------------------
+
+
+def _validate_and_dispatch_assessment(
+    paths: PathRegistry,
+    planspace: Path,
+    scope: str,
+    package: RiskPackage,
+    dispatch_fn: Callable,
+    *,
+    prefix: str = "",
+) -> RiskAssessment | None:
+    """Build assessment prompt, validate, dispatch, and parse the response.
+
+    Returns ``None`` when the prompt fails validation *or* the response cannot
+    be parsed -- the caller decides what fallback to use.
+    """
+    tag = f"{prefix}-" if prefix else ""
+    prompt = build_risk_assessment_prompt(package, planspace, scope)
+    prompt_path = paths.risk_dir() / f"{scope}-{tag}risk-assessment-prompt.md"
+    if not Services.prompt_guard().write_validated(prompt, prompt_path):
+        return None
+    output_path = paths.risk_dir() / f"{scope}-{tag}risk-assessment-output.md"
     response = dispatch_fn(
         _risk_assessor_model(planspace),
         prompt_path,
         output_path,
         planspace,
         None,
-        f"risk-assessor-light-{scope}",
+        f"risk-assessor-{tag}{scope}",
         agent_file=agent_for("risk.assess"),
     )
-    assessment = parse_risk_assessment(response)
-    if assessment is None:
-        fallback = fallback_plan(
-            package,
-            layer,
-            assessment_id=f"{package.package_id}-assessment-fallback",
-            reason="fail-closed: lightweight risk assessment could not be parsed",
-        )
-        write_risk_artifact(paths.risk_plan(scope), serialize_plan(fallback))
-        return fallback
+    return parse_risk_assessment(response)
 
-    parameters = _load_parameters(paths)
-    history_entries = read_history(paths.risk_history())
-    _apply_history_adjustment(assessment, paths.risk_history(), history_entries, parameters)
-    write_risk_artifact(paths.risk_assessment(scope), serialize_assessment(assessment))
-    optimization_prompt = build_optimization_prompt(
+
+def _validate_and_dispatch_optimization(
+    paths: PathRegistry,
+    planspace: Path,
+    scope: str,
+    package: RiskPackage,
+    parameters: dict,
+    assessment: RiskAssessment,
+    dispatch_fn: Callable,
+    *,
+    retry_hint: bool = False,
+) -> RiskPlan | None:
+    """Build optimization prompt, validate, dispatch, and parse the response.
+
+    Returns ``None`` when the prompt fails validation *or* the response cannot
+    be parsed.
+    """
+    prompt = build_optimization_prompt(
+        assessment=assessment,
+        package=package,
+        parameters=parameters,
+        planspace=planspace,
+        scope=scope,
+    )
+    if retry_hint:
+        prompt += (
+            "\n\n## Previous Enforcement Outcome\n\n"
+            "The previous optimizer response failed mechanical enforcement. "
+            "Produce a strictly more conservative plan.\n"
+        )
+    prompt_path = paths.risk_dir() / f"{scope}-risk-plan-prompt.md"
+    if not Services.prompt_guard().write_validated(prompt, prompt_path):
+        return None
+    output_path = paths.risk_dir() / f"{scope}-risk-plan-output.md"
+    response = dispatch_fn(
+        _execution_optimizer_model(planspace),
+        prompt_path,
+        output_path,
+        planspace,
+        None,
+        f"execution-optimizer-{scope}",
+        agent_file=agent_for("risk.optimize"),
+    )
+    return parse_risk_plan(response)
+
+
+def _validate_and_dispatch_lightweight_optimization(
+    paths: PathRegistry,
+    planspace: Path,
+    scope: str,
+    package: RiskPackage,
+    parameters: dict,
+    assessment: RiskAssessment,
+    dispatch_fn: Callable,
+) -> RiskPlan | None:
+    """Lightweight variant of optimization dispatch (includes try/except)."""
+    prompt = build_optimization_prompt(
         assessment=assessment,
         package=package,
         parameters=parameters,
@@ -229,58 +252,36 @@ def run_lightweight_risk_check(
         scope=scope,
         lightweight=True,
     )
-    optimization_prompt_path = paths.risk_dir() / f"{scope}-light-risk-plan-prompt.md"
-    if not Services.prompt_guard().write_validated(optimization_prompt, optimization_prompt_path):
-        fallback = lightweight_fallback_plan(
-            package,
-            layer,
-            assessment_id=assessment.assessment_id,
-            reason="fail-closed: lightweight execution optimizer prompt failed safety validation",
-        )
-        write_risk_artifact(paths.risk_plan(scope), serialize_plan(fallback))
-        return fallback
-    optimization_output_path = paths.risk_dir() / f"{scope}-light-risk-plan-output.md"
+    prompt_path = paths.risk_dir() / f"{scope}-light-risk-plan-prompt.md"
+    if not Services.prompt_guard().write_validated(prompt, prompt_path):
+        return None
+    output_path = paths.risk_dir() / f"{scope}-light-risk-plan-output.md"
     try:
-        optimization_response = dispatch_fn(
+        response = dispatch_fn(
             _execution_optimizer_model(planspace),
-            optimization_prompt_path,
-            optimization_output_path,
+            prompt_path,
+            output_path,
             planspace,
             None,
             f"execution-optimizer-light-{scope}",
             agent_file=agent_for("risk.optimize"),
         )
-    except Exception as exc:
-        fallback = lightweight_fallback_plan(
-            package,
-            layer,
-            assessment_id=assessment.assessment_id,
-            reason=(
-                "fail-closed: lightweight execution optimizer dispatch failed"
-                f" ({exc})"
-            ),
-        )
-        write_risk_artifact(paths.risk_plan(scope), serialize_plan(fallback))
-        return fallback
+    except Exception:
+        return None
+    return parse_risk_plan(response)
 
-    plan = parse_risk_plan(optimization_response)
-    if plan is None:
-        fallback = lightweight_fallback_plan(
-            package,
-            layer,
-            assessment_id=assessment.assessment_id,
-            reason="fail-closed: lightweight execution optimizer could not be parsed",
-        )
-        write_risk_artifact(paths.risk_plan(scope), serialize_plan(fallback))
-        return fallback
 
-    apply_posture_hysteresis(
-        plan,
-        assessment,
-        history_entries,
-        parameters,
-        posture_floor=posture_floor,
-    )
+# ---------------------------------------------------------------------------
+# Extracted concerns: threshold enforcement, fallback writing
+# ---------------------------------------------------------------------------
+
+
+def _enforce_and_validate(
+    plan: RiskPlan,
+    assessment: RiskAssessment,
+    parameters: dict,
+) -> tuple[RiskPlan, list]:
+    """Apply threshold enforcement and return (enforced_plan, violations)."""
     assessments = {
         item.step_id: item
         for item in assessment.step_assessments
@@ -292,18 +293,39 @@ def run_lightweight_risk_check(
     }
     enforced_plan = enforce_thresholds(plan, assessments, enriched_parameters)
     violations = validate_risk_plan(enforced_plan, enriched_parameters)
-    if violations:
-        fallback = lightweight_fallback_plan(
-            package,
-            layer,
-            assessment_id=assessment.assessment_id,
-            reason="fail-closed: lightweight execution optimizer produced invalid plan",
-        )
-        write_risk_artifact(paths.risk_plan(scope), serialize_plan(fallback))
-        return fallback
+    return enforced_plan, violations
 
-    write_risk_artifact(paths.risk_plan(scope), serialize_plan(enforced_plan))
-    return enforced_plan
+
+def _write_and_return_fallback(
+    paths: PathRegistry,
+    scope: str,
+    package: RiskPackage,
+    layer: str,
+    *,
+    assessment_id: str,
+    reason: str,
+) -> RiskPlan:
+    """Build a fallback plan, persist it, and return it."""
+    fb = fallback_plan(package, layer, assessment_id=assessment_id, reason=reason)
+    write_risk_artifact(paths.risk_plan(scope), serialize_plan(fb))
+    return fb
+
+
+def _write_and_return_lightweight_fallback(
+    paths: PathRegistry,
+    scope: str,
+    package: RiskPackage,
+    layer: str,
+    *,
+    assessment_id: str,
+    reason: str,
+) -> RiskPlan:
+    """Build a lightweight fallback plan, persist it, and return it."""
+    fb = lightweight_fallback_plan(
+        package, layer, assessment_id=assessment_id, reason=reason,
+    )
+    write_risk_artifact(paths.risk_plan(scope), serialize_plan(fb))
+    return fb
 
 
 def _load_parameters(paths: PathRegistry) -> dict:
