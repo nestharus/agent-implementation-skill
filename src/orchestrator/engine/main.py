@@ -20,7 +20,7 @@ from implementation.engine.implementation_pass import (
 from orchestrator.path_registry import PathRegistry
 from scan.service.project_mode import resolve_project_mode, write_mode_contract
 from proposal.engine.proposal_pass import ProposalPassExit, run_proposal_pass
-from reconciliation.engine.phase import ReconciliationPhaseExit, ReconciliationResult, run_reconciliation_phase
+from reconciliation.engine.phase import ReconciliationPhaseExit, run_reconciliation_phase
 from scan.service.section_loader import load_sections
 
 from _config import AGENT_NAME, DB_SH

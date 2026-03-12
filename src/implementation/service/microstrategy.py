@@ -4,7 +4,7 @@ from pathlib import Path
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from dispatch.prompt.template import TASK_SUBMISSION_SEMANTICS
+from pipeline.template import TASK_SUBMISSION_SEMANTICS
 from dispatch.prompt.writers import agent_mail_instructions
 from implementation.service.microstrategy_decision import _check_needs_microstrategy
 

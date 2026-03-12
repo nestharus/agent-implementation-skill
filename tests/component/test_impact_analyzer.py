@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dependency_injector import providers
 
-from containers import AgentDispatcher, ContextAssemblyService, PromptGuard, Services
+from conftest import WritingGuard, make_dispatcher
+from containers import ContextAssemblyService, Services
 from src.implementation.service import impact_analyzer
 from src.orchestrator.types import Section
 
@@ -66,24 +67,15 @@ def test_analyze_impacts_parses_material_impacts_from_primary_output(
         def materialize_context_sidecar(self, *_args, **_kwargs):
             return None
 
-    class _MockGuard(PromptGuard):
-        def validate_dynamic(self, content):
-            return []
-        def write_validated(self, content, path):
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
-            return True
+    def _dispatch(*args, **kwargs):
+        return (
+            '{"impacts": [{"to": "2", "impact": "MATERIAL", '
+            '"reason": "Changed API", "contract_risk": true, '
+            '"note_markdown": "Update consumer"}]}'
+        )
 
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *args, **kwargs):
-            return (
-                '{"impacts": [{"to": "2", "impact": "MATERIAL", '
-                '"reason": "Changed API", "contract_risk": true, '
-                '"note_markdown": "Update consumer"}]}'
-            )
-
-    Services.prompt_guard.override(providers.Object(_MockGuard()))
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     Services.context_assembly.override(providers.Object(_NoopContext()))
     try:
         impacts = impact_analyzer.analyze_impacts(
@@ -129,25 +121,16 @@ def test_analyze_impacts_falls_back_to_normalizer_when_primary_is_invalid(
         def materialize_context_sidecar(self, *_args, **_kwargs):
             return None
 
-    class _MockGuard(PromptGuard):
-        def validate_dynamic(self, content):
-            return []
-        def write_validated(self, content, path):
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
-            return True
+    def _dispatch(*args, **kwargs):
+        if kwargs.get("agent_file") == "impact-analyzer.md":
+            return "not valid json"
+        return (
+            '{"impacts": [{"to": "03", "impact": "MATERIAL", '
+            '"reason": "Normalized reason", "note_markdown": "Normalized note"}]}'
+        )
 
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *args, **kwargs):
-            if kwargs.get("agent_file") == "impact-analyzer.md":
-                return "not valid json"
-            return (
-                '{"impacts": [{"to": "03", "impact": "MATERIAL", '
-                '"reason": "Normalized reason", "note_markdown": "Normalized note"}]}'
-            )
-
-    Services.prompt_guard.override(providers.Object(_MockGuard()))
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     Services.context_assembly.override(providers.Object(_NoopContext()))
     try:
         impacts = impact_analyzer.analyze_impacts(

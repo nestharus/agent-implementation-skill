@@ -8,7 +8,7 @@ from pathlib import Path
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from dispatch.prompt.template import render_template
+from pipeline.template import render_template
 
 logger = logging.getLogger(__name__)
 

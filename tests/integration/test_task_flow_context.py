@@ -486,14 +486,14 @@ class TestContextAssemblyFlowContext:
     """Verify flow_context is a valid context category."""
 
     def test_flow_context_in_valid_categories(self) -> None:
-        from orchestrator.service.context_assembly import VALID_CATEGORIES
+        from dispatch.service.context_sidecar import VALID_CATEGORIES
         assert "flow_context" in VALID_CATEGORIES
 
     def test_flow_context_resolver_returns_empty_without_files(
         self, planspace: Path,
     ) -> None:
         """No flow context files -> empty string."""
-        from orchestrator.service.context_assembly import _resolve_flow_context
+        from dispatch.service.context_sidecar import _resolve_flow_context
         result = _resolve_flow_context(planspace, None)
         assert result == ""
 
@@ -501,7 +501,7 @@ class TestContextAssemblyFlowContext:
         self, planspace: Path,
     ) -> None:
         """Single flow context file -> returns its content."""
-        from orchestrator.service.context_assembly import _resolve_flow_context
+        from dispatch.service.context_sidecar import _resolve_flow_context
 
         flows_dir = planspace / "artifacts" / "flows"
         flows_dir.mkdir(parents=True, exist_ok=True)
@@ -520,7 +520,7 @@ class TestContextAssemblyFlowContext:
         self, planspace: Path,
     ) -> None:
         """Multiple flow context files -> empty (ambiguous)."""
-        from orchestrator.service.context_assembly import _resolve_flow_context
+        from dispatch.service.context_sidecar import _resolve_flow_context
 
         flows_dir = planspace / "artifacts" / "flows"
         flows_dir.mkdir(parents=True, exist_ok=True)
@@ -535,7 +535,7 @@ class TestContextAssemblyFlowContext:
         self, planspace: Path, tmp_path: Path,
     ) -> None:
         """An agent file declaring flow_context gets it resolved."""
-        from orchestrator.service.context_assembly import resolve_context
+        from dispatch.service.context_sidecar import resolve_context
 
         # Create an agent file with flow_context in its context list.
         agent_file = tmp_path / "test-agent.md"

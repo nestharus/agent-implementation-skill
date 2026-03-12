@@ -5,7 +5,7 @@ from staleness.service.alignment import (
     extract_problems,
 )
 from orchestrator.path_registry import PathRegistry
-from dispatch.prompt.template import render_template
+from pipeline.template import render_template
 from containers import Services
 from proposal.helpers.verdict_parsers import parse_alignment_verdict as _parse_alignment_verdict
 from orchestrator.types import Section

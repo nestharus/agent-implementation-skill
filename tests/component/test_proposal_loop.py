@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
-from conftest import NoOpSectionAlignment
-from containers import AgentDispatcher, CrossSectionService, FlowIngestionService, Services
+from conftest import NoOpFlow, NoOpSectionAlignment, make_dispatcher
+from containers import CrossSectionService, Services
 from src.proposal.engine.loop import run_proposal_loop
 from src.orchestrator.types import Section
 
@@ -77,16 +77,8 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
         output_path.write_text("aligned", encoding="utf-8")
         return '{"aligned": true}'
 
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *args, **kwargs):
-            return _dispatch(*args, **kwargs)
-
-    class _NoopFlow(FlowIngestionService):
-        def ingest_and_submit(self, *_args, **_kwargs):
-            return None
-
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
-    Services.flow_ingestion.override(providers.Object(_NoopFlow()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    Services.flow_ingestion.override(providers.Object(NoOpFlow()))
     Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
     monkeypatch.setattr(
         Services.dispatch_helpers(),
@@ -160,17 +152,9 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
             return "proposal output"
         return "alignment output"
 
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *args, **kwargs):
-            return _dispatch(*args, **kwargs)
-
-    class _NoopFlow(FlowIngestionService):
-        def ingest_and_submit(self, *_args, **_kwargs):
-            return None
-
     sa = NoOpSectionAlignment()
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
-    Services.flow_ingestion.override(providers.Object(_NoopFlow()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    Services.flow_ingestion.override(providers.Object(NoOpFlow()))
     Services.section_alignment.override(providers.Object(sa))
     monkeypatch.setattr(
         Services.dispatch_helpers(),
@@ -257,20 +241,12 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
             return ("out_of_scope", "new work")
         return (None, "")
 
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *args, **kwargs):
-            return _dispatch(*args, **kwargs)
-
-    class _NoopFlow(FlowIngestionService):
-        def ingest_and_submit(self, *_args, **_kwargs):
-            return None
-
     class _CapturingCrossSection(CrossSectionService):
         def persist_decision(self, _planspace, _section_number, payload):
             persisted.append(payload)
 
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
-    Services.flow_ingestion.override(providers.Object(_NoopFlow()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    Services.flow_ingestion.override(providers.Object(NoOpFlow()))
     Services.cross_section.override(providers.Object(_CapturingCrossSection()))
     Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
     monkeypatch.setattr(Services.dispatch_helpers(), "check_agent_signals", _signals)

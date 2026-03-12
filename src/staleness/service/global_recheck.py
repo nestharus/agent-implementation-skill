@@ -10,7 +10,7 @@ from staleness.service.section_alignment import (
     _extract_problems,
     _run_alignment_check_with_retries,
 )
-from scan.service.section_notes import read_incoming_notes
+from coordination.service.completion import read_incoming_notes
 from orchestrator.types import Section, SectionResult
 
 

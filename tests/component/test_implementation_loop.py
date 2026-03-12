@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
-from conftest import NoOpSectionAlignment
-from containers import AgentDispatcher, DispatchHelperService, FlowIngestionService, Services
+from conftest import NoOpFlow, NoOpSectionAlignment, make_dispatcher
+from containers import DispatchHelperService, Services
 from src.implementation.engine.loop import run_implementation_loop
 from src.orchestrator.types import Section
 
@@ -74,24 +74,13 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
             return "implementation output"
         return "alignment output"
 
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *args, **kwargs):
-            return _dispatch(*args, **kwargs)
-
     class _NoopHelpers(DispatchHelperService):
         def check_agent_signals(self, *_args, **_kwargs):
             return (None, "")
 
-    class _NoopFlow(FlowIngestionService):
-        def ingest_and_submit(self, *_args, **_kwargs):
-            return None
-
-        def submit_chain(self, *_args, **_kwargs):
-            return [1]
-
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     Services.dispatch_helpers.override(providers.Object(_NoopHelpers()))
-    Services.flow_ingestion.override(providers.Object(_NoopFlow()))
+    Services.flow_ingestion.override(providers.Object(NoOpFlow()))
     Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
     monkeypatch.setattr(
         "src.implementation.engine.loop._write_traceability_index",
@@ -159,25 +148,14 @@ def test_run_implementation_loop_retries_after_alignment_problems(
             return "implementation output"
         return "alignment output"
 
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *args, **kwargs):
-            return _dispatch(*args, **kwargs)
-
     class _NoopHelpers(DispatchHelperService):
         def check_agent_signals(self, *_args, **_kwargs):
             return (None, "")
 
-    class _NoopFlow(FlowIngestionService):
-        def ingest_and_submit(self, *_args, **_kwargs):
-            return None
-
-        def submit_chain(self, *_args, **_kwargs):
-            return [1]
-
     sa = NoOpSectionAlignment()
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     Services.dispatch_helpers.override(providers.Object(_NoopHelpers()))
-    Services.flow_ingestion.override(providers.Object(_NoopFlow()))
+    Services.flow_ingestion.override(providers.Object(NoOpFlow()))
     Services.section_alignment.override(providers.Object(sa))
     monkeypatch.setattr(
         sa, "extract_problems",

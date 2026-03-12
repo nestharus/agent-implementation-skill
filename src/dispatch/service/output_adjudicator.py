@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from containers import Services
-from dispatch.prompt.template import render_template
+from pipeline.template import render_template
 from orchestrator.path_registry import PathRegistry
 
 

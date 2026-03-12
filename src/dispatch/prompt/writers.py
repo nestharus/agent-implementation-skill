@@ -22,10 +22,10 @@ from dispatch.prompt.helpers import (
 )
 
 from containers import Services
-from orchestrator.service.context_assembly import materialize_context_sidecar
+from dispatch.service.context_sidecar import materialize_context_sidecar
 from orchestrator.types import Section
 from dispatch.prompt.context import build_prompt_context
-from dispatch.prompt.template import load_template, render
+from pipeline.template import load_template, render
 
 
 # ---------------------------------------------------------------------------

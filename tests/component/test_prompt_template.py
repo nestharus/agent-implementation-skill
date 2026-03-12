@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.dispatch.prompt.template import (
+from src.pipeline.template import (
     SYSTEM_CONSTRAINTS,
     TASK_SUBMISSION_SEMANTICS,
     load_template,

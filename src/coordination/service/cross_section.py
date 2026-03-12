@@ -9,7 +9,7 @@ from orchestrator.service.section_decisions import (
     persist_decision as _persist_decision,
     read_decisions,
 )
-from scan.service.section_notes import post_section_completion, read_incoming_notes
+from coordination.service.completion import post_section_completion, read_incoming_notes
 from implementation.service.snapshot import compute_text_diff
 
 from containers import Services

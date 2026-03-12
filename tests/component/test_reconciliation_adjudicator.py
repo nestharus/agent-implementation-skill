@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
-from containers import AgentDispatcher, ModelPolicyService, PromptGuard, Services
+from conftest import StubPolicies, WritingGuard, make_dispatcher
+from containers import Services
 from src.reconciliation.service import adjudicator
 
 
@@ -42,25 +43,9 @@ def test_adjudicate_ungrouped_candidates_writes_artifact_and_parses_json(
             '"members": ["shared auth", "auth seam"], "rationale": "same"}]}'
         )
 
-    class _MockGuard(PromptGuard):
-        def validate_dynamic(self, content):
-            return []
-        def write_validated(self, content, path):
-            return True
-
-    class _MockPolicies(ModelPolicyService):
-        def load(self, planspace):
-            return {"reconciliation_adjudicate": "policy-model"}
-        def resolve(self, policy, key):
-            return policy.get(key, "test-model")
-
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *args, **kwargs):
-            return fake_dispatch(*args, **kwargs)
-
-    Services.prompt_guard.override(providers.Object(_MockGuard()))
-    Services.policies.override(providers.Object(_MockPolicies()))
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
+    Services.policies.override(providers.Object(StubPolicies({"reconciliation_adjudicate": "policy-model"})))
+    Services.dispatcher.override(providers.Object(make_dispatcher(fake_dispatch)))
     try:
         result = adjudicator.adjudicate_ungrouped_candidates(
             candidates,
@@ -96,25 +81,9 @@ def test_adjudicate_ungrouped_candidates_returns_empty_on_bad_json(
         {"title": "auth seam", "source_section": "02"},
     ]
 
-    class _MockGuard(PromptGuard):
-        def validate_dynamic(self, content):
-            return []
-        def write_validated(self, content, path):
-            return True
-
-    class _MockPolicies(ModelPolicyService):
-        def load(self, planspace):
-            return {}
-        def resolve(self, policy, key):
-            return "test-model"
-
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *args, **kwargs):
-            return "not json"
-
-    Services.prompt_guard.override(providers.Object(_MockGuard()))
-    Services.policies.override(providers.Object(_MockPolicies()))
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
+    Services.policies.override(providers.Object(StubPolicies()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(lambda *_a, **_kw: "not json")))
     try:
         result = adjudicator.adjudicate_ungrouped_candidates(
             candidates,

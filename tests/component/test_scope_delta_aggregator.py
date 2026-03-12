@@ -3,21 +3,12 @@ import json
 import pytest
 from dependency_injector import providers
 
-from containers import AgentDispatcher, PromptGuard, Services
+from conftest import WritingGuard, make_dispatcher
+from containers import Services
 from implementation.service.scope_delta_aggregator import (
     ScopeDeltaAggregationExit,
     aggregate_scope_deltas,
 )
-
-
-class _NoOpGuard(PromptGuard):
-    def write_validated(self, content, path):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
-        return True
-
-    def validate_dynamic(self, content):
-        return []
 
 
 def test_aggregate_scope_deltas_adjudicates_and_records_decisions(
@@ -38,15 +29,14 @@ def test_aggregate_scope_deltas_adjudicates_and_records_decisions(
         encoding="utf-8",
     )
 
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *args, **kwargs):
-            return (
-                '{"decisions":[{"delta_id":"delta-01","section":"01",'
-                '"action":"reject","reason":"defer"}]}'
-            )
+    def _dispatch(*args, **kwargs):
+        return (
+            '{"decisions":[{"delta_id":"delta-01","section":"01",'
+            '"action":"reject","reason":"defer"}]}'
+        )
 
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
-    Services.prompt_guard.override(providers.Object(_NoOpGuard()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
     try:
         decisions = aggregate_scope_deltas(
             planspace,
@@ -93,13 +83,12 @@ def test_aggregate_scope_deltas_retries_then_fails_closed_on_bad_output(
     )
     calls: list[str] = []
 
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, model, *args, **kwargs):
-            calls.append(model)
-            return "not json"
+    def _dispatch(model, *args, **kwargs):
+        calls.append(model)
+        return "not json"
 
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
-    Services.prompt_guard.override(providers.Object(_NoOpGuard()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
 
     try:
         with pytest.raises(ScopeDeltaAggregationExit):
@@ -140,31 +129,30 @@ def test_aggregate_scope_deltas_includes_root_reframing_in_prompt_payload(
         encoding="utf-8",
     )
 
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, _model, prompt_path, _output_path, *_args, **_kwargs):
-            prompt = prompt_path.read_text(encoding="utf-8")
-            pending = json.loads(
-                (
-                    planspace / "artifacts" / "coordination" / "scope-deltas-pending.json"
-                ).read_text(encoding="utf-8"),
-            )
-            assert "requires_root_reframing" in prompt
-            assert pending == [
-                {
-                    "delta_id": "delta-01",
-                    "section": "01",
-                    "origin": "proposal",
-                    "summary": "Need auth middleware",
-                    "requires_root_reframing": True,
-                },
-            ]
-            return (
-                '{"decisions":[{"delta_id":"delta-01","section":"01",'
-                '"action":"reject","reason":"defer"}]}'
-            )
+    def _dispatch(_model, prompt_path, _output_path, *_args, **_kwargs):
+        prompt = prompt_path.read_text(encoding="utf-8")
+        pending = json.loads(
+            (
+                planspace / "artifacts" / "coordination" / "scope-deltas-pending.json"
+            ).read_text(encoding="utf-8"),
+        )
+        assert "requires_root_reframing" in prompt
+        assert pending == [
+            {
+                "delta_id": "delta-01",
+                "section": "01",
+                "origin": "proposal",
+                "summary": "Need auth middleware",
+                "requires_root_reframing": True,
+            },
+        ]
+        return (
+            '{"decisions":[{"delta_id":"delta-01","section":"01",'
+            '"action":"reject","reason":"defer"}]}'
+        )
 
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
-    Services.prompt_guard.override(providers.Object(_NoOpGuard()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
     try:
         aggregate_scope_deltas(
             planspace,

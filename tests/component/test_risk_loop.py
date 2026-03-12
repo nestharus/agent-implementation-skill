@@ -9,22 +9,22 @@ from dependency_injector import providers
 
 from containers import PromptGuard, Services
 from risk.engine import loop as risk_loop
-from risk.prompt import builders as risk_prompt_builders
+from risk.prompt import writers as risk_prompt_writers
 from risk.repository.history import append_history_entry
 from risk.engine.loop import (
     run_lightweight_risk_check,
     run_risk_loop,
 )
-from risk.prompt.builders import (
+from risk.prompt.writers import (
     _collect_roal_evidence,
-    build_optimization_prompt,
-    build_risk_assessment_prompt,
+    write_optimization_prompt,
+    write_risk_assessment_prompt,
 )
 from risk.service.response_parser import (
     parse_risk_assessment,
     parse_risk_plan,
 )
-from risk.repository.serialization import read_risk_artifact, serialize_assessment, serialize_plan
+from risk.repository.serialization import load_risk_artifact, serialize_assessment, serialize_plan
 from risk.types import (
     PackageStep,
     PostureProfile,
@@ -43,7 +43,7 @@ from risk.types import (
 )
 
 
-def test_build_risk_assessment_prompt_includes_expected_context(tmp_path: Path) -> None:
+def test_write_risk_assessment_prompt_includes_expected_context(tmp_path: Path) -> None:
     package = _package()
     _write_artifacts(tmp_path)
     append_history_entry(
@@ -60,7 +60,7 @@ def test_build_risk_assessment_prompt_includes_expected_context(tmp_path: Path) 
         ),
     )
 
-    prompt = build_risk_assessment_prompt(package, tmp_path, "section-03")
+    prompt = write_risk_assessment_prompt(package, tmp_path, "section-03")
 
     assert "Section spec" in prompt
     assert "`" + str(tmp_path / "artifacts" / "sections" / "section-03.md") + "`" in prompt
@@ -83,14 +83,14 @@ def test_build_risk_assessment_prompt_includes_expected_context(tmp_path: Path) 
     assert '"package_id": "pkg-implementation-section-03"' not in prompt
 
 
-def test_build_optimization_prompt_includes_assessment_and_parameters(
+def test_write_optimization_prompt_includes_assessment_and_parameters(
     tmp_path: Path,
 ) -> None:
     package = _package()
     assessment = _assessment()
     _write_artifacts(tmp_path)
 
-    prompt = build_optimization_prompt(
+    prompt = write_optimization_prompt(
         assessment,
         package,
         {"class_thresholds": {"explore": 60, "edit": 45}},
@@ -109,12 +109,12 @@ def test_build_optimization_prompt_includes_assessment_and_parameters(
     assert '"package_id": "pkg-implementation-section-03"' not in prompt
 
 
-def test_build_optimization_prompt_marks_lightweight_single_pass_mode(
+def test_write_optimization_prompt_marks_lightweight_single_pass_mode(
     tmp_path: Path,
 ) -> None:
     _write_artifacts(tmp_path)
 
-    prompt = build_optimization_prompt(
+    prompt = write_optimization_prompt(
         _assessment(),
         _package(),
         {"class_thresholds": {"explore": 60}},
@@ -135,15 +135,15 @@ def test_prompt_builders_do_not_use_inline_json_blocks(
 ) -> None:
     _write_artifacts(tmp_path)
     monkeypatch.setattr(
-        risk_prompt_builders,
+        risk_prompt_writers,
         "_inline_json_block",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             AssertionError("_inline_json_block should not be used by prompt builders")
         ),
     )
 
-    build_risk_assessment_prompt(_package(), tmp_path, "section-03")
-    build_optimization_prompt(
+    write_risk_assessment_prompt(_package(), tmp_path, "section-03")
+    write_optimization_prompt(
         _assessment(),
         _package(),
         {"class_thresholds": {"explore": 60}},
@@ -392,7 +392,7 @@ def test_run_risk_loop_applies_history_adjustment_to_assessment(tmp_path: Path) 
         _dispatch,
     )
 
-    assessment_payload = read_risk_artifact(
+    assessment_payload = load_risk_artifact(
         tmp_path / "artifacts" / "risk" / "section-03-risk-assessment.json",
     )
 

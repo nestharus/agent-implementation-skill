@@ -115,6 +115,9 @@ Missing/problematic patterns:
 
 ## CLOSED (won't fix)
 
+### 73. `_handle_aligned_surfaces()` takes 8 parameters
+- **Resolution**: Won't fix. Introducing `ExecutionContext` benefits only one module's internal helpers — premature abstraction. Parameters are derivable from planspace and services.
+
 ### 63. Missing domain concept: `planspace` + `codespace` always travel together
 - **Category**: Missing abstraction
 - **Resolution**: Won't fix. PathRegistry is semantically a path builder for planspace artifacts. Codespace is the user's source code directory — a different domain. Combining them would create a 91+ file blast radius for constructor changes with low payoff. Only 5 functions take both as direct parameters; the rest thread them through call chains where they serve distinct purposes.
@@ -122,6 +125,33 @@ Missing/problematic patterns:
 ---
 
 ## DONE
+
+### 71. `run_global_coordination()` — 336-line god function decomposed
+- **Status**: DONE — decomposed into 6 phase functions: `_collect_and_persist_problems()`, `_build_coordination_plan()`, `_execute_plan()`, `_recheck_section_alignment()`, `_record_recurrence_resolution()`, `_recheck_affected_sections()`. Main function reduced to ~30 lines of phase orchestration.
+
+### 72. `scan/service/section_notes.py` orchestration moved to coordination/
+- **Status**: DONE — moved `post_section_completion()` and `read_incoming_notes()` to `coordination/service/completion.py`. `scan/service/section_notes.py` retains `log_phase_failure()` (scan-specific) + re-exports for backward compatibility. Updated 3 production importers + 1 test file.
+
+### 74. `dispatch/prompt/template.py` moved to `pipeline/template.py`
+- **Status**: DONE — generic template rendering utility moved from domain-specific `dispatch/prompt/` to shared `pipeline/`. Updated 12 import sites across 10 production files + 2 test files.
+
+### 68. Unused import: `ReconciliationResult` in orchestrator/engine/main.py
+- **Status**: DONE — removed unused import from line 23.
+
+### 69. Duplicate test doubles — `_MockDispatcher` in 9 files, `_MockGuard` in 6+, `_NoopFlow` in 7
+- **Status**: DONE — consolidated 31 duplicate class definitions across 10 test files into 4 shared doubles in `tests/conftest.py`: `make_dispatcher(fn)`, `WritingGuard`, `NoOpFlow`, `StubPolicies`.
+
+### 70. `orchestrator/service/context_assembly.py` is a re-export wrapper creating circular dependency
+- **Status**: DONE — deleted wrapper file, updated 4 import sites to import directly from `dispatch.service.context_sidecar`. Eliminated `dispatch → orchestrator → dispatch` circular dependency.
+
+### 75. Naming inconsistency: `run_reconciliation()` → `run_reconciliation_loop()`
+- **Status**: DONE — renamed function and updated 3 callers + 3 test monkeypatch targets.
+
+### 76. `risk/prompt/builders.py` → `risk/prompt/writers.py`
+- **Status**: DONE — renamed file and functions (`build_*_prompt` → `write_*_prompt`). Updated 2 production importers + 1 test file.
+
+### 77. `risk/repository/serialization.py` — `read_risk_artifact` → `load_risk_artifact`
+- **Status**: DONE — standardized verb to `load_*` consistent with rest of codebase. Updated 3 test files.
 
 ### 1. Agent files in shared `src/agents/` instead of per-system ownership
 - **Status**: DONE — 53 agents in `src/<system>/agents/`, resolver in `taskrouter/agents.py`

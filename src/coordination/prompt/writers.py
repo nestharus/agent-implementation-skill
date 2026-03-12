@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from orchestrator.path_registry import PathRegistry
-from dispatch.prompt.template import SRC_TEMPLATE_DIR, TASK_SUBMISSION_SEMANTICS, load_template, render
+from pipeline.template import SRC_TEMPLATE_DIR, TASK_SUBMISSION_SEMANTICS, load_template, render
 from containers import Services
-from orchestrator.service.context_assembly import materialize_context_sidecar
+from dispatch.service.context_sidecar import materialize_context_sidecar
 
 
 def write_fix_prompt(

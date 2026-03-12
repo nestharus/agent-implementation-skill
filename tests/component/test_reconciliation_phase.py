@@ -37,7 +37,7 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
 
     monkeypatch.setattr(
         phase,
-        "run_reconciliation",
+        "run_reconciliation_loop",
         lambda *_args, **_kwargs: {
             "conflicts_found": 1,
             "new_sections_proposed": 0,
@@ -91,7 +91,7 @@ def test_run_reconciliation_phase_restarts_on_alignment_change(
 
     monkeypatch.setattr(
         phase,
-        "run_reconciliation",
+        "run_reconciliation_loop",
         lambda *_args, **_kwargs: {
             "conflicts_found": 1,
             "new_sections_proposed": 0,
@@ -136,7 +136,7 @@ def test_run_reconciliation_phase_exits_when_parent_aborts(
 
     monkeypatch.setattr(
         phase,
-        "run_reconciliation",
+        "run_reconciliation_loop",
         lambda *_args, **_kwargs: {
             "conflicts_found": 1,
             "new_sections_proposed": 0,

@@ -62,7 +62,7 @@ TASK_SUBMISSION_SEMANTICS = (
     "The dispatcher handles agent selection and model choice."
 )
 
-SRC_TEMPLATE_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
+SRC_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 DEFAULT_TEMPLATE_DIR = SRC_TEMPLATE_DIR
 
 

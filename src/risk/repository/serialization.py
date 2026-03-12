@@ -128,7 +128,7 @@ def write_risk_artifact(path: Path, data: dict[str, Any]) -> None:
     Services.artifact_io().write_json(path, data)
 
 
-def read_risk_artifact(path: Path) -> dict[str, Any] | None:
+def load_risk_artifact(path: Path) -> dict[str, Any] | None:
     data = Services.artifact_io().read_json(path)
     if isinstance(data, dict):
         return data

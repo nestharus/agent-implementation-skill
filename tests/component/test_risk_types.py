@@ -14,7 +14,7 @@ from src.risk.repository.serialization import (
     load_risk_assessment,
     load_risk_package,
     load_risk_plan,
-    read_risk_artifact,
+    load_risk_artifact,
     serialize_assessment,
     serialize_history_entry,
     serialize_package,
@@ -317,9 +317,9 @@ class TestSerialization:
 
         write_risk_artifact(artifact_path, payload)
 
-        assert read_risk_artifact(artifact_path) == payload
+        assert load_risk_artifact(artifact_path) == payload
 
-    def test_read_risk_artifact_returns_none_for_non_dict_json(
+    def test_load_risk_artifact_returns_none_for_non_dict_json(
         self,
         tmp_path: Path,
     ) -> None:
@@ -327,7 +327,7 @@ class TestSerialization:
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text("[1, 2, 3]\n", encoding="utf-8")
 
-        assert read_risk_artifact(artifact_path) is None
+        assert load_risk_artifact(artifact_path) is None
 
     @pytest.mark.parametrize(
         ("loader", "serializer", "artifact", "filename"),

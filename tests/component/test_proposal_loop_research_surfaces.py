@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
-from conftest import NoOpSectionAlignment
-from containers import AgentDispatcher, CrossSectionService, FlowIngestionService, ModelPolicyService, Services
+from conftest import NoOpFlow, NoOpSectionAlignment, StubPolicies, make_dispatcher
+from containers import CrossSectionService, Services
 from src.proposal.engine.loop import run_proposal_loop
 from src.intent.service.expansion import run_expansion_cycle
 from src.orchestrator.types import Section
@@ -84,20 +84,12 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         output_path.write_text("aligned", encoding="utf-8")
         return '{"aligned": true}'
 
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *args, **kwargs):
-            return _dispatch(*args, **kwargs)
-
-    class _NoopFlow(FlowIngestionService):
-        def ingest_and_submit(self, *_args, **_kwargs):
-            return None
-
     class _NoopCrossSection(CrossSectionService):
         def persist_decision(self, *_args, **_kwargs):
             return None
 
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
-    Services.flow_ingestion.override(providers.Object(_NoopFlow()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    Services.flow_ingestion.override(providers.Object(NoOpFlow()))
     Services.cross_section.override(providers.Object(_NoopCrossSection()))
     Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
     monkeypatch.setattr(
@@ -173,13 +165,7 @@ def test_run_expansion_cycle_merges_research_surfaces_into_pending_payload(
         },
     )
 
-    class _MockPolicies(ModelPolicyService):
-        def load(self, planspace):
-            return {}
-        def resolve(self, policy, key):
-            return "test-model"
-
-    Services.policies.override(providers.Object(_MockPolicies()))
+    Services.policies.override(providers.Object(StubPolicies()))
     monkeypatch.setattr(
         "intent.engine.surface.run_problem_expander",
         lambda *_args, **_kwargs: {

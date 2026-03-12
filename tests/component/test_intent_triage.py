@@ -7,9 +7,8 @@ from pathlib import Path
 
 from dependency_injector import providers
 
+from conftest import StubPolicies, WritingGuard, make_dispatcher
 from containers import (
-    AgentDispatcher,
-    ModelPolicyService,
     PromptGuard,
     Services,
     SignalReader,
@@ -104,41 +103,26 @@ def test_run_intent_triage_returns_signal_from_agent(
     codespace = tmp_path / "codespace"
     codespace.mkdir()
 
-    class _MockPolicies(ModelPolicyService):
-        def load(self, planspace):
-            return {"intent_triage": "glm"}
-        def resolve(self, policy, key):
-            return policy.get(key, "test-model")
+    def _dispatch(*args, **kwargs):
+        signal_path = artifacts / "signals" / "intent-triage-01.json"
+        signal_path.parent.mkdir(parents=True, exist_ok=True)
+        signal_path.write_text(
+            json.dumps({
+                "section": "01",
+                "intent_mode": "lightweight",
+                "confidence": "medium",
+                "risk_mode": "light",
+                "risk_budget_hint": 2,
+                "budgets": {"proposal_max": 3},
+                "reason": "narrow surface",
+            }),
+            encoding="utf-8",
+        )
+        return ""
 
-    class _MockGuard(PromptGuard):
-        def write_validated(self, content, path):
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
-            return True
-        def validate_dynamic(self, content):
-            return []
-
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *args, **kwargs):
-            signal_path = artifacts / "signals" / "intent-triage-01.json"
-            signal_path.parent.mkdir(parents=True, exist_ok=True)
-            signal_path.write_text(
-                json.dumps({
-                    "section": "01",
-                    "intent_mode": "lightweight",
-                    "confidence": "medium",
-                    "risk_mode": "light",
-                    "risk_budget_hint": 2,
-                    "budgets": {"proposal_max": 3},
-                    "reason": "narrow surface",
-                }),
-                encoding="utf-8",
-            )
-            return ""
-
-    Services.policies.override(providers.Object(_MockPolicies()))
-    Services.prompt_guard.override(providers.Object(_MockGuard()))
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    Services.policies.override(providers.Object(StubPolicies({"intent_triage": "glm"})))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
 
     try:
         result = run_intent_triage("01", planspace, codespace, "parent")
@@ -167,12 +151,6 @@ def test_triage_prompt_does_not_advertise_skip(
 
     written_prompts: list[str] = []
 
-    class _MockPolicies(ModelPolicyService):
-        def load(self, planspace):
-            return {"intent_triage": "glm"}
-        def resolve(self, policy, key):
-            return policy.get(key, "test-model")
-
     class _CaptureGuard(PromptGuard):
         def write_validated(self, content, path):
             written_prompts.append(content)
@@ -182,19 +160,15 @@ def test_triage_prompt_does_not_advertise_skip(
         def validate_dynamic(self, content):
             return []
 
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *args, **kwargs):
-            return ""
-
     class _MockSignals(SignalReader):
         def read(self, *args, **kwargs):
             return None
         def read_tuple(self, signal_path):
             return None
 
-    Services.policies.override(providers.Object(_MockPolicies()))
+    Services.policies.override(providers.Object(StubPolicies({"intent_triage": "glm"})))
     Services.prompt_guard.override(providers.Object(_CaptureGuard()))
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(lambda *_a, **_kw: "")))
     Services.signals.override(providers.Object(_MockSignals()))
 
     try:

@@ -7,7 +7,7 @@ candidates, and shared seam candidates.  Writes per-section
 reconciliation-result artifacts and, when needed, consolidated
 scope-delta and substrate-trigger artifacts.
 
-Entry point: ``run_reconciliation(run_dir, proposal_results)``.
+Entry point: ``run_reconciliation_loop(run_dir, proposal_results)``.
 """
 
 import logging
@@ -78,7 +78,7 @@ def was_section_affected(run_dir: Path, section_number: str) -> bool:
     return repository_was_section_affected(run_dir, section_number)
 
 
-def run_reconciliation(
+def run_reconciliation_loop(
     run_dir: Path,
     proposal_results: list,
 ) -> dict:

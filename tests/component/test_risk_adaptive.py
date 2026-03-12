@@ -7,7 +7,7 @@ from pathlib import Path
 
 from risk.repository.history import append_history_entry
 from risk.engine.loop import run_risk_loop
-from risk.repository.serialization import read_risk_artifact, serialize_assessment, serialize_plan
+from risk.repository.serialization import load_risk_artifact, serialize_assessment, serialize_plan
 from risk.types import (
     PackageStep,
     PostureProfile,
@@ -44,7 +44,7 @@ def test_history_adjustment_modifies_assessment_risk_score(tmp_path: Path) -> No
 
     run_risk_loop(tmp_path, "section-03", "implementation", package, _dispatch)
 
-    assessment_payload = read_risk_artifact(
+    assessment_payload = load_risk_artifact(
         tmp_path / "artifacts" / "risk" / "section-03-risk-assessment.json",
     )
 

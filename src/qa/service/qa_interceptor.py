@@ -135,7 +135,7 @@ def _build_qa_prompt(
     Uses ``render_template`` from ``agent_templates`` to wrap with
     system constraints.
     """
-    from dispatch.prompt.template import render_template
+    from pipeline.template import render_template
 
     task_id = task.get("id", "?")
     task_type = task.get("type", "?")

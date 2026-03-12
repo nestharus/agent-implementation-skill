@@ -6,13 +6,13 @@ from dispatch.repository.metadata import write_dispatch_metadata
 from dispatch.service.monitor_service import MonitorService
 from orchestrator.path_registry import PathRegistry
 
-from dispatch.prompt.template import SRC_TEMPLATE_DIR, load_template, render, render_template
+from pipeline.template import SRC_TEMPLATE_DIR, load_template, render, render_template
 from dispatch.service.prompt_guard import validate_dynamic_content
 from _config import AGENT_NAME, DB_SH
 from signals.service.communication import (
     _log_artifact,
 )
-from orchestrator.service.context_assembly import materialize_context_sidecar
+from dispatch.service.context_sidecar import materialize_context_sidecar
 from containers import Services
 
 

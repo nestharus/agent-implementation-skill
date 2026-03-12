@@ -3,7 +3,7 @@ from pathlib import Path
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 
-from dispatch.prompt.template import TASK_SUBMISSION_SEMANTICS
+from pipeline.template import TASK_SUBMISSION_SEMANTICS
 from orchestrator.types import Section
 
 

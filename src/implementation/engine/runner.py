@@ -18,7 +18,7 @@ from dispatch.service.tool_registry_manager import (
     validate_tool_registry_after_implementation,
 )
 
-from scan.service.section_notes import (
+from coordination.service.completion import (
     post_section_completion,
     read_incoming_notes,
 )

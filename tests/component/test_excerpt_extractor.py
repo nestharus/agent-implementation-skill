@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
-from containers import AgentDispatcher, CrossSectionService, Services
+from conftest import make_dispatcher
+from containers import CrossSectionService, Services
 from src.proposal.service.excerpt_extractor import extract_excerpts
 from src.orchestrator.types import Section
 
@@ -59,12 +60,11 @@ def test_extract_excerpts_returns_ok_when_setup_creates_files(
         lambda *_args, **_kwargs: prompt_path,
     )
 
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *_args, **_kwargs):
-            _write_excerpts(planspace, section.number)
-            return "ok"
+    def _dispatch(*_args, **_kwargs):
+        _write_excerpts(planspace, section.number)
+        return "ok"
 
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     monkeypatch.setattr(
         Services.dispatch_helpers(),
         "check_agent_signals",
@@ -113,15 +113,11 @@ def test_extract_excerpts_routes_out_of_scope_then_retries(
             return ("out_of_scope", "needs root")
         return (None, "")
 
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *args, **kwargs):
-            return _dispatch_fn(*args, **kwargs)
-
     class _CapturingCrossSection(CrossSectionService):
         def persist_decision(self, _planspace, _section_number, payload):
             persisted.append(payload)
 
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch_fn)))
     Services.cross_section.override(providers.Object(_CapturingCrossSection()))
     monkeypatch.setattr(Services.dispatch_helpers(), "check_agent_signals", _check)
     capturing_pipeline_control._pause_return = "resume:accept root decision"
@@ -165,11 +161,7 @@ def test_extract_excerpts_returns_none_when_parent_does_not_resume(
         "src.proposal.service.excerpt_extractor.write_section_setup_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "setup-prompt.md",
     )
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, *_args, **_kwargs):
-            return "out"
-
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(lambda *_a, **_kw: "out")))
     monkeypatch.setattr(
         Services.dispatch_helpers(),
         "check_agent_signals",

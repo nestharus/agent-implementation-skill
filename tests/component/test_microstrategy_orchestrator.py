@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
-from containers import AgentDispatcher, FlowIngestionService, PromptGuard, Services
+from conftest import NoOpFlow, WritingGuard, make_dispatcher
+from containers import Services
 from src.implementation.service.microstrategy import run_microstrategy
 from src.orchestrator.types import Section
 
@@ -80,28 +81,15 @@ def test_run_microstrategy_retries_with_escalation_and_returns_path(
         lambda *_args, **_kwargs: True,
     )
 
-    class _MockGuard(PromptGuard):
-        def validate_dynamic(self, content):
-            return []
-        def write_validated(self, content, path):
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
-            return True
+    def _dispatch(model, *_args, **_kwargs):
+        dispatch_calls.append(model)
+        if len(dispatch_calls) == 2:
+            micro_path.write_text("micro", encoding="utf-8")
+        return "ok"
 
-    class _MockDispatcher(AgentDispatcher):
-        def dispatch(self, model, *_args, **_kwargs):
-            dispatch_calls.append(model)
-            if len(dispatch_calls) == 2:
-                micro_path.write_text("micro", encoding="utf-8")
-            return "ok"
-
-    class _NoopFlow(FlowIngestionService):
-        def ingest_and_submit(self, *_args, **_kwargs):
-            return None
-
-    Services.prompt_guard.override(providers.Object(_MockGuard()))
-    Services.dispatcher.override(providers.Object(_MockDispatcher()))
-    Services.flow_ingestion.override(providers.Object(_NoopFlow()))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    Services.flow_ingestion.override(providers.Object(NoOpFlow()))
 
     try:
         result = run_microstrategy(

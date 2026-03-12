@@ -9,7 +9,7 @@ from conftest import NoOpChangeTracker
 from containers import ChangeTrackerService, Services
 from orchestrator.types import Section
 
-from src.scan.service import section_notes
+from src.coordination.service import completion as section_notes
 
 
 def _make_section(tmp_path: Path, number: str = "01") -> tuple[Path, Path, Section]:

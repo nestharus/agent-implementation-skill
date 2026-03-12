@@ -42,45 +42,34 @@ MAX_COORDINATION_ROUNDS = 10  # hard safety cap
 MIN_COORDINATION_ROUNDS = 2   # always try at least this many
 
 
-def run_global_coordination(
-    sections: list[Section],
+# ---------------------------------------------------------------------------
+# Phase 1: Collect problems + escalate recurring patterns
+# ---------------------------------------------------------------------------
+
+def _collect_and_persist_problems(
     section_results: dict[str, SectionResult],
     sections_by_num: dict[str, Section],
     planspace: Path,
-    codespace: Path,
-    parent: str,
-) -> bool:
-    """Run the global problem coordinator.
+    paths: PathRegistry,
+    policy: dict,
+) -> tuple[list[dict], dict | None] | None:
+    """Collect outstanding problems, detect recurrence, persist state.
 
-    Collects outstanding problems across all sections, groups related
-    problems, dispatches coordinated fixes, and re-runs alignment on
-    affected sections.
-
-    Returns True if all sections are ALIGNED (or no problems remain).
+    Returns ``(problems, recurrence)`` or ``None`` if no problems exist.
     """
-    paths = PathRegistry(planspace)
     coord_dir = paths.coordination_dir()
-    coord_dir.mkdir(parents=True, exist_ok=True)
-    policy = Services.policies().load(planspace)
-
-    # -----------------------------------------------------------------
-    # Step 1: Collect all outstanding problems
-    # -----------------------------------------------------------------
     problems = _collect_outstanding_problems(
         section_results, sections_by_num, planspace,
     )
 
     if not problems:
         Services.logger().log("  coordinator: no outstanding problems — all ALIGNED")
-        return True
+        return None
 
     Services.logger().log(f"  coordinator: {len(problems)} outstanding problems across "
         f"{len({p['section'] for p in problems})} sections")
 
-    # Detect recurrence patterns for escalated handling
     recurrence = _detect_recurrence_patterns(planspace, problems)
-
-    # If recurrence detected, escalate model for affected groups
     if recurrence:
         escalation_file = coord_dir / "model-escalation.txt"
         escalation_file.write_text(
@@ -90,25 +79,34 @@ def run_global_coordination(
             f"{recurrence['recurring_problem_count']} recurring problems "
             f"across sections {recurrence['recurring_sections']}")
 
-    # Save coordination state for debugging / inspection
     state_path = coord_dir / "problems.json"
     Services.artifact_io().write_json(state_path, problems)
     _log_artifact(planspace, "coordination:problems")
 
-    # -----------------------------------------------------------------
-    # Step 1b: Aggregate scope deltas for coordinator adjudication
-    # -----------------------------------------------------------------
-    try:
-        aggregate_scope_deltas(planspace, parent, policy)
-    except ScopeDeltaAggregationExit:
-        return False
+    return problems, recurrence
 
-    # -----------------------------------------------------------------
-    # Step 2: Dispatch coordination-planner agent to group problems
-    # -----------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Phase 2: Build coordination plan via planner agent
+# ---------------------------------------------------------------------------
+
+def _build_coordination_plan(
+    problems: list[dict],
+    planspace: Path,
+    parent: str,
+    paths: PathRegistry,
+    policy: dict,
+) -> tuple[list[list[dict[str, Any]]], list[str], dict] | None:
+    """Dispatch planner agent, parse plan, build confirmed groups.
+
+    Returns ``(confirmed_groups, group_strategies, coord_plan)`` or
+    ``None`` on failure (alignment changed, parse failures).
+    """
+    coord_dir = paths.coordination_dir()
+
     ctrl = Services.pipeline_control().poll_control_messages(planspace, parent)
     if ctrl == "alignment_changed":
-        return False
+        return None
 
     plan_prompt = write_coordination_plan_prompt(problems, planspace)
     plan_output = coord_dir / "coordination-plan-output.md"
@@ -118,13 +116,10 @@ def run_global_coordination(
         planspace, parent, agent_file=Services.task_router().agent_for("coordination.plan"),
     )
     if plan_result == "ALIGNMENT_CHANGED_PENDING":
-        return False
+        return None
 
-    # Parse the JSON coordination plan from agent output
     coord_plan = _parse_coordination_plan(plan_result, problems)
     if coord_plan is None:
-        # Retry once with escalation model — scripts must not decide
-        # problem grouping (that is a strategic agent decision).
         Services.logger().log("  coordinator: plan parse failed — retrying with "
             "escalation model")
         plan_output_retry = coord_dir / "coordination-plan-output-retry.md"
@@ -133,12 +128,10 @@ def run_global_coordination(
             planspace, parent, agent_file=Services.task_router().agent_for("coordination.plan"),
         )
         if retry_result == "ALIGNMENT_CHANGED_PENDING":
-            return False
+            return None
         coord_plan = _parse_coordination_plan(retry_result, problems)
 
     if coord_plan is None:
-        # Fail closed: write failure artifact + mailbox, return False.
-        # Scripts must not invent grouping — only the agent decides.
         Services.logger().log("  coordinator: plan parse failed after retry — fail closed")
         failure_path = coord_dir / "coordination-plan-failure.md"
         Services.artifact_io().write_json(failure_path, {
@@ -149,9 +142,8 @@ def run_global_coordination(
             planspace, parent,
             "fail:coordination:unparseable_plan_json",
         )
-        return False
+        return None
 
-    # Build confirmed groups from the plan
     confirmed_groups: list[list[dict[str, Any]]] = []
     group_strategies: list[str] = []
     for g in coord_plan["groups"]:
@@ -184,12 +176,23 @@ def run_global_coordination(
     Services.artifact_io().write_json(groups_path, groups_data)
     _log_artifact(planspace, "coordination:groups")
 
-    # -----------------------------------------------------------------
-    # Step 3: Execute the coordination plan
-    # -----------------------------------------------------------------
-    # Bridge directive type-safety still applies after extraction:
-    # execute_coordination_plan defensively checks
-    # isinstance(bridge_directive, dict) before reading bridge fields.
+    return confirmed_groups, group_strategies, coord_plan
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Execute plan + collect modified files
+# ---------------------------------------------------------------------------
+
+def _execute_plan(
+    coord_plan: dict,
+    confirmed_groups: list[list[dict[str, Any]]],
+    sections_by_num: dict[str, Section],
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+    policy: dict,
+) -> tuple[list[str], set[str]] | None:
+    """Execute coordination plan. Returns (affected_sections, all_modified) or None."""
     try:
         affected_sections = execute_coordination_plan(
             {
@@ -203,31 +206,188 @@ def run_global_coordination(
             policy,
         )
     except CoordinationExecutionExit:
-        return False
+        return None
     all_modified = read_execution_modified_files(planspace)
+    return affected_sections, all_modified
 
-    # -----------------------------------------------------------------
-    # Step 4: Re-run per-section alignment on affected sections
-    # -----------------------------------------------------------------
-    Services.logger().log(f"  coordinator: re-checking alignment for sections "
-        f"{affected_sections}")
 
-    # Incremental alignment: track per-section input hashes to skip
-    # unchanged sections
+# ---------------------------------------------------------------------------
+# Phase 4: Re-check alignment on affected sections
+# ---------------------------------------------------------------------------
+
+def _recheck_section_alignment(
+    sec_num: str,
+    section: Section,
+    section_results: dict[str, SectionResult],
+    problems: list[dict],
+    recurrence: dict | None,
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+    paths: PathRegistry,
+    policy: dict,
+) -> bool | None:
+    """Re-run alignment check on one section after coordination fixes.
+
+    Returns ``True`` if aligned, ``False`` if still has problems,
+    or ``None`` if alignment changed (caller should abort).
+    """
+    coord_dir = paths.coordination_dir()
+
+    notes = read_incoming_notes(section, planspace, codespace)
+    if notes:
+        Services.logger().log(f"  coordinator: section {sec_num} has incoming notes "
+            f"from other sections")
+
+    align_result = Services.section_alignment().run_alignment_check(
+        section, planspace, codespace, parent, sec_num,
+        output_prefix="coord-align",
+        model=Services.policies().resolve(policy, "alignment"),
+        adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
+    )
+    if align_result == "ALIGNMENT_CHANGED_PENDING":
+        return None
+    if align_result == "INVALID_FRAME":
+        Services.logger().log(f"  coordinator: section {sec_num} invalid alignment "
+            f"frame — requires parent intervention")
+        mailbox_send(
+            planspace, parent,
+            f"fail:invalid_alignment_frame:{sec_num}",
+        )
+        section_results[sec_num] = SectionResult(
+            section_number=sec_num,
+            aligned=False,
+            problems="invalid alignment frame — requires "
+                     "parent intervention",
+        )
+        return False
+    if align_result is None:
+        Services.logger().log(f"  coordinator: section {sec_num} alignment check "
+            f"timed out after retries")
+        section_results[sec_num] = SectionResult(
+            section_number=sec_num,
+            aligned=False,
+            problems="alignment check timed out after retries",
+        )
+        return False
+
+    coord_align_output = (
+        paths.artifacts / f"coord-align-{sec_num}-output.md"
+    )
+    align_problems = Services.section_alignment().extract_problems(
+        align_result, output_path=coord_align_output,
+        planspace=planspace, parent=parent, codespace=codespace,
+        adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
+    )
+    coord_signal_dir = coord_dir / "signals"
+    coord_signal_dir.mkdir(parents=True, exist_ok=True)
+    signal, detail = Services.dispatch_helpers().check_agent_signals(
+        align_result,
+        signal_path=(coord_signal_dir
+                     / f"coord-align-{sec_num}-signal.json"),
+        output_path=coord_dir / f"coord-align-{sec_num}-output.md",
+        planspace=planspace, parent=parent, codespace=codespace,
+    )
+
+    if align_problems is None and signal is None:
+        Services.logger().log(f"  coordinator: section {sec_num} now ALIGNED")
+        section_results[sec_num] = SectionResult(
+            section_number=sec_num,
+            aligned=True,
+        )
+        _record_recurrence_resolution(
+            sec_num, problems, recurrence, coord_dir, policy,
+        )
+        return True
+
+    Services.logger().log(f"  coordinator: section {sec_num} still has problems")
+    combined_problems = align_problems or ""
+    if signal:
+        combined_problems += (
+            f"\n[signal:{signal}] {detail}" if combined_problems
+            else f"[signal:{signal}] {detail}"
+        )
+    section_results[sec_num] = SectionResult(
+        section_number=sec_num,
+        aligned=False,
+        problems=combined_problems or None,
+    )
+    return False
+
+
+def _record_recurrence_resolution(
+    sec_num: str,
+    problems: list[dict],
+    recurrence: dict | None,
+    coord_dir: Path,
+    policy: dict,
+) -> None:
+    """Write resolution artifact if this section had a recurring problem."""
+    if not recurrence:
+        return
+    if sec_num not in [str(s) for s in recurrence.get("recurring_sections", [])]:
+        return
+    prev_problem = next(
+        (p for p in problems if p["section"] == sec_num),
+        None,
+    )
+    if not prev_problem:
+        return
+    resolution_path = coord_dir / f"resolution-{sec_num}.md"
+    resolution_path.write_text(
+        f"# Resolution: Section {sec_num}\n\n"
+        f"## Recurring Problem\n\n"
+        f"{prev_problem.get('description', 'unknown')}\n\n"
+        f"## Resolution\n\n"
+        f"Resolved during coordination round via "
+        f"coordinated fix with escalated model "
+        f"({Services.policies().resolve(policy, 'escalation_model')}). Section is now ALIGNED.\n\n"
+        f"## Files Involved\n\n"
+        + "\n".join(
+            f"- `{f}`"
+            for f in prev_problem.get("files", [])
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    Services.logger().log(f"  coordinator: recorded resolution for "
+        f"recurring section {sec_num}")
+
+
+def _recheck_affected_sections(
+    affected_sections: list[str],
+    all_modified: set[str],
+    sections_by_num: dict[str, Section],
+    section_results: dict[str, SectionResult],
+    problems: list[dict],
+    recurrence: dict | None,
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+    paths: PathRegistry,
+    policy: dict,
+) -> bool | None:
+    """Re-check alignment for all affected sections.
+
+    Returns ``True`` if all aligned, ``False`` if some remain,
+    or ``None`` if alignment changed (caller should return False).
+    """
+    coord_dir = paths.coordination_dir()
     inputs_hash_dir = coord_dir / "inputs-hashes"
     inputs_hash_dir.mkdir(parents=True, exist_ok=True)
+
+    Services.logger().log(f"  coordinator: re-checking alignment for sections "
+        f"{affected_sections}")
 
     for sec_num in affected_sections:
         section = sections_by_num.get(sec_num)
         if not section:
             continue
 
-        # Canonical section-input hash + coordinator-modified files
         current_hash = Services.pipeline_control().coordination_recheck_hash(
             sec_num, planspace, codespace, sections_by_num,
             list(all_modified),
         )
-
         prev_hash_file = inputs_hash_dir / f"section-{sec_num}.hash"
         if prev_hash_file.exists():
             prev_hash = prev_hash_file.read_text(encoding="utf-8").strip()
@@ -237,134 +397,21 @@ def run_global_coordination(
                 continue
         prev_hash_file.write_text(current_hash, encoding="utf-8")
 
-        # Poll for control messages before each re-check
         ctrl = Services.pipeline_control().poll_control_messages(planspace, parent, sec_num)
         if ctrl == "alignment_changed":
             Services.logger().log("  coordinator: alignment changed — aborting re-checks")
-            return False
+            return None
 
-        # Read any incoming notes for this section (cross-section context)
-        notes = read_incoming_notes(section, planspace, codespace)
-        if notes:
-            Services.logger().log(f"  coordinator: section {sec_num} has incoming notes "
-                f"from other sections")
-
-        # Re-run implementation alignment check with TIMEOUT retry
-        align_result = Services.section_alignment().run_alignment_check(
-            section, planspace, codespace, parent, sec_num,
-            output_prefix="coord-align",
-            model=Services.policies().resolve(policy, "alignment"),
-            adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
+        result = _recheck_section_alignment(
+            sec_num, section, section_results, problems, recurrence,
+            planspace, codespace, parent, paths, policy,
         )
-        if align_result == "ALIGNMENT_CHANGED_PENDING":
-            return False  # Let outer loop restart Phase 1
-        if align_result == "INVALID_FRAME":
-            # Structural failure — alignment prompt frame is wrong.
-            # Surface upward, don't continue with broken evaluation.
-            Services.logger().log(f"  coordinator: section {sec_num} invalid alignment "
-                f"frame — requires parent intervention")
-            mailbox_send(
-                planspace, parent,
-                f"fail:invalid_alignment_frame:{sec_num}",
-            )
-            section_results[sec_num] = SectionResult(
-                section_number=sec_num,
-                aligned=False,
-                problems="invalid alignment frame — requires "
-                         "parent intervention",
-            )
-            continue
-        if align_result is None:
-            # All retries timed out
-            Services.logger().log(f"  coordinator: section {sec_num} alignment check "
-                f"timed out after retries")
-            section_results[sec_num] = SectionResult(
-                section_number=sec_num,
-                aligned=False,
-                problems="alignment check timed out after retries",
-            )
-            continue
-
-        coord_align_output = (
-            paths.artifacts / f"coord-align-{sec_num}-output.md"
-        )
-        align_problems = Services.section_alignment().extract_problems(
-            align_result, output_path=coord_align_output,
-            planspace=planspace, parent=parent, codespace=codespace,
-            adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
-        )
-        coord_signal_dir = coord_dir / "signals"
-        coord_signal_dir.mkdir(parents=True, exist_ok=True)
-        signal, detail = Services.dispatch_helpers().check_agent_signals(
-            align_result,
-            signal_path=(coord_signal_dir
-                         / f"coord-align-{sec_num}-signal.json"),
-            output_path=coord_dir / f"coord-align-{sec_num}-output.md",
-            planspace=planspace, parent=parent, codespace=codespace,
-        )
-
-        if align_problems is None and signal is None:
-            Services.logger().log(f"  coordinator: section {sec_num} now ALIGNED")
-            section_results[sec_num] = SectionResult(
-                section_number=sec_num,
-                aligned=True,
-            )
-
-            # Record resolution if this section had a recurring problem
-            if recurrence and sec_num in [
-                str(s) for s in recurrence.get("recurring_sections", [])
-            ]:
-                # Find what the previous problem was
-                prev_problem = next(
-                    (p for p in problems if p["section"] == sec_num),
-                    None,
-                )
-                if prev_problem:
-                    resolution_dir = coord_dir
-                    resolution_dir.mkdir(parents=True, exist_ok=True)
-                    resolution_path = (
-                        resolution_dir
-                        / f"resolution-{sec_num}.md"
-                    )
-                    resolution_path.write_text(
-                        f"# Resolution: Section {sec_num}\n\n"
-                        f"## Recurring Problem\n\n"
-                        f"{prev_problem.get('description', 'unknown')}\n\n"
-                        f"## Resolution\n\n"
-                        f"Resolved during coordination round via "
-                        f"coordinated fix with escalated model "
-                        f"({Services.policies().resolve(policy, 'escalation_model')}). Section is now ALIGNED.\n\n"
-                        f"## Files Involved\n\n"
-                        + "\n".join(
-                            f"- `{f}`"
-                            for f in prev_problem.get("files", [])
-                        )
-                        + "\n",
-                        encoding="utf-8",
-                    )
-                    Services.logger().log(f"  coordinator: recorded resolution for "
-                        f"recurring section {sec_num}")
-        else:
-            Services.logger().log(f"  coordinator: section {sec_num} still has problems")
-            # Fold signal info into problems string (SectionResult has
-            # no signal fields — only problems)
-            combined_problems = align_problems or ""
-            if signal:
-                combined_problems += (
-                    f"\n[signal:{signal}] {detail}" if combined_problems
-                    else f"[signal:{signal}] {detail}"
-                )
-            section_results[sec_num] = SectionResult(
-                section_number=sec_num,
-                aligned=False,
-                problems=combined_problems or None,
-            )
+        if result is None:
+            return None
 
     # Check if everything is now aligned
     remaining = [r for r in section_results.values() if not r.aligned]
     if not remaining:
-        # Re-check outstanding problems (notes may have been generated
-        # during coordination fixes).
         outstanding_after = _collect_outstanding_problems(
             section_results, sections_by_num, planspace,
         )
@@ -379,3 +426,72 @@ def run_global_coordination(
 
     Services.logger().log(f"  coordinator: {len(remaining)} sections still not aligned")
     return False
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def run_global_coordination(
+    sections: list[Section],
+    section_results: dict[str, SectionResult],
+    sections_by_num: dict[str, Section],
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+) -> bool:
+    """Run the global problem coordinator.
+
+    Collects outstanding problems across all sections, groups related
+    problems, dispatches coordinated fixes, and re-runs alignment on
+    affected sections.
+
+    Returns True if all sections are ALIGNED (or no problems remain).
+    """
+    paths = PathRegistry(planspace)
+    coord_dir = paths.coordination_dir()
+    coord_dir.mkdir(parents=True, exist_ok=True)
+    policy = Services.policies().load(planspace)
+
+    # Phase 1: Collect problems + detect recurrence
+    collected = _collect_and_persist_problems(
+        section_results, sections_by_num, planspace, paths, policy,
+    )
+    if collected is None:
+        return True
+    problems, recurrence = collected
+
+    # Phase 1b: Aggregate scope deltas
+    try:
+        aggregate_scope_deltas(planspace, parent, policy)
+    except ScopeDeltaAggregationExit:
+        return False
+
+    # Phase 2: Build coordination plan via planner agent
+    plan_result = _build_coordination_plan(
+        problems, planspace, parent, paths, policy,
+    )
+    if plan_result is None:
+        return False
+    confirmed_groups, _group_strategies, coord_plan = plan_result
+
+    # Phase 3: Execute the coordination plan
+    # Bridge directive type-safety: execute_coordination_plan defensively
+    # checks isinstance(bridge_directive, dict) before reading bridge fields.
+    exec_result = _execute_plan(
+        coord_plan, confirmed_groups, sections_by_num,
+        planspace, codespace, parent, policy,
+    )
+    if exec_result is None:
+        return False
+    affected_sections, all_modified = exec_result
+
+    # Phase 4: Re-check alignment on affected sections
+    recheck = _recheck_affected_sections(
+        affected_sections, all_modified, sections_by_num,
+        section_results, problems, recurrence,
+        planspace, codespace, parent, paths, policy,
+    )
+    if recheck is None:
+        return False
+    return recheck

@@ -15,7 +15,7 @@ from risk.service.package_builder import read_text, scope_number
 from risk.types import RiskAssessment, RiskPackage
 
 
-def build_risk_assessment_prompt(
+def write_risk_assessment_prompt(
     package: RiskPackage,
     planspace: Path,
     scope: str,
@@ -91,7 +91,7 @@ def build_risk_assessment_prompt(
     return "\n".join(lines).strip() + "\n"
 
 
-def build_optimization_prompt(
+def write_optimization_prompt(
     assessment: RiskAssessment,
     package: RiskPackage,
     parameters: dict,

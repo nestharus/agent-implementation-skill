@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from containers import Services
-from reconciliation.engine.loop import run_reconciliation
+from reconciliation.engine.loop import run_reconciliation_loop
 from implementation.engine.runner import run_section
 from orchestrator.types import ProposalPassResult, Section
 
@@ -45,7 +45,7 @@ def run_reconciliation_phase(
         if not proposal_result.execution_ready
     )
 
-    recon_summary = run_reconciliation(
+    recon_summary = run_reconciliation_loop(
         planspace,
         list(proposal_results.values()),
     )

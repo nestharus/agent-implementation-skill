@@ -7,7 +7,8 @@ from pathlib import Path
 
 from dependency_injector import providers
 
-from containers import ModelPolicyService, Services
+from conftest import StubPolicies
+from containers import Services
 from src.intent.engine import surface
 
 
@@ -61,13 +62,7 @@ def test_run_expansion_cycle_returns_no_work_when_no_surfaces(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    class _MockPolicies(ModelPolicyService):
-        def load(self, planspace):
-            return {}
-        def resolve(self, policy, key):
-            return "test-model"
-
-    Services.policies.override(providers.Object(_MockPolicies()))
+    Services.policies.override(providers.Object(StubPolicies()))
     monkeypatch.setattr(surface, "load_combined_intent_surfaces", lambda *_: None)
 
     try:

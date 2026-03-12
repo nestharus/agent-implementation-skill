@@ -25,7 +25,7 @@ from risk.types import (
     clamp_int,
 )
 from risk.service.package_builder import write_package
-from risk.prompt.builders import build_risk_assessment_prompt, build_optimization_prompt
+from risk.prompt.writers import write_risk_assessment_prompt, write_optimization_prompt
 from risk.service.response_parser import parse_risk_assessment, parse_risk_plan
 from risk.service.posture_hysteresis import apply_posture_hysteresis
 from risk.service.fallback import fallback_plan, lightweight_fallback_plan
@@ -170,7 +170,7 @@ def _validate_and_dispatch_assessment(
     be parsed -- the caller decides what fallback to use.
     """
     tag = f"{prefix}-" if prefix else ""
-    prompt = build_risk_assessment_prompt(package, planspace, scope)
+    prompt = write_risk_assessment_prompt(package, planspace, scope)
     prompt_path = paths.risk_dir() / f"{scope}-{tag}risk-assessment-prompt.md"
     if not Services.prompt_guard().write_validated(prompt, prompt_path):
         return None
@@ -203,7 +203,7 @@ def _validate_and_dispatch_optimization(
     Returns ``None`` when the prompt fails validation *or* the response cannot
     be parsed.
     """
-    prompt = build_optimization_prompt(
+    prompt = write_optimization_prompt(
         assessment=assessment,
         package=package,
         parameters=parameters,
@@ -242,7 +242,7 @@ def _validate_and_dispatch_lightweight_optimization(
     dispatch_fn: Callable,
 ) -> RiskPlan | None:
     """Lightweight variant of optimization dispatch (includes try/except)."""
-    prompt = build_optimization_prompt(
+    prompt = write_optimization_prompt(
         assessment=assessment,
         package=package,
         parameters=parameters,

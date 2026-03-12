@@ -22,6 +22,7 @@ from containers import (
     CrossSectionService,
     FlowIngestionService,
     FreshnessService,
+    ModelPolicyService,
     PipelineControlService,
     PromptGuard,
     SectionAlignmentService,
@@ -39,6 +40,51 @@ class MockDispatcher(AgentDispatcher):
         return self.mock(*args, **kwargs)
 
 
+def make_dispatcher(dispatch_fn) -> AgentDispatcher:
+    """Factory: create a dispatcher that delegates to *dispatch_fn*."""
+
+    class _Dispatcher(AgentDispatcher):
+        def dispatch(self, *args, **kwargs):
+            return dispatch_fn(*args, **kwargs)
+
+    return _Dispatcher()
+
+
+class WritingGuard(PromptGuard):
+    """Test double that writes prompts to disk without validation."""
+
+    def validate_dynamic(self, content):
+        return []
+
+    def write_validated(self, content, path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return True
+
+
+class NoOpFlow(FlowIngestionService):
+    """Test double that silently discards flow ingestion calls."""
+
+    def ingest_and_submit(self, *_args, **_kwargs):
+        return None
+
+    def submit_chain(self, *_args, **_kwargs):
+        return [1]
+
+
+class StubPolicies(ModelPolicyService):
+    """Test double returning configurable model policy defaults."""
+
+    def __init__(self, overrides: dict[str, str] | None = None) -> None:
+        self._overrides = overrides or {}
+
+    def load(self, planspace):
+        return self._overrides
+
+    def resolve(self, policy, key):
+        return policy.get(key, "test-model")
+
+
 @contextlib.contextmanager
 def override_dispatcher_and_guard(fake_dispatch_fn):
     """Context manager that overrides Services.dispatcher and prompt_guard.
@@ -53,26 +99,6 @@ def override_dispatcher_and_guard(fake_dispatch_fn):
     call state if needed.
     """
 
-    class _Dispatcher(AgentDispatcher):
-        def dispatch(self, *args, **kwargs):
-            return fake_dispatch_fn(*args, **kwargs)
-
-    class _Guard(PromptGuard):
-        def validate_dynamic(self, content):
-            return []
-
-        def write_validated(self, content, path):
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
-            return True
-
-    class _NoopFlow(FlowIngestionService):
-        def ingest_and_submit(self, *_args, **_kwargs):
-            return None
-
-        def submit_chain(self, *_args, **_kwargs):
-            return [1]
-
     class _NoopCrossSection(CrossSectionService):
         def persist_decision(self, *_args, **_kwargs):
             return None
@@ -86,11 +112,11 @@ def override_dispatcher_and_guard(fake_dispatch_fn):
         def write_consequence_note(self, *_args, **_kwargs):
             return None
 
-    Services.dispatcher.override(providers.Object(_Dispatcher()))
-    Services.prompt_guard.override(providers.Object(_Guard()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(fake_dispatch_fn)))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
     Services.pipeline_control.override(providers.Object(NoOpPipelineControl()))
     Services.communicator.override(providers.Object(NoOpCommunicator()))
-    Services.flow_ingestion.override(providers.Object(_NoopFlow()))
+    Services.flow_ingestion.override(providers.Object(NoOpFlow()))
     Services.cross_section.override(providers.Object(_NoopCrossSection()))
     Services.change_tracker.override(providers.Object(NoOpChangeTracker()))
     Services.freshness.override(providers.Object(NoOpFreshness()))

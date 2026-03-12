@@ -6,7 +6,7 @@ No LLM mocks needed — these are pure string operations.
 
 from __future__ import annotations
 
-from dispatch.prompt.template import (
+from pipeline.template import (
     SYSTEM_CONSTRAINTS,
     render_template,
 )
