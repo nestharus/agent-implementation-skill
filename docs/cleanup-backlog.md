@@ -126,17 +126,15 @@ Missing/problematic patterns:
   5. **ChangeTracker**: `check_pending`, `snapshot_files`, `content_hash` (28+ imports)
   6. **PipelineControl**: `pause_for_parent`, `poll_control_messages`, `handle_pending_messages`
 
-### 62. `engine/loop.py` files are still god functions, not components
-- **Category**: Naming/identity + inlined concerns
-- **Problem**: Despite item #56 being marked DONE, 7 god functions remain. Three are EXTREME severity.
-- **Scan results** (sorted by severity):
-  - **EXTREME** `proposal/engine/loop.py:run_proposal_loop` — 418 lines, 16 imports, 19 concerns. Worst god function in the codebase. `while True:` with 7 levels of nested conditionals mixing orchestration, budget tracking, model escalation, intent surface detection, expansion triggering, alignment checking, multi-path recovery.
-  - **EXTREME** `implementation/engine/loop.py:run_implementation_loop` — 250 lines, 21 imports, 20 concerns. State machine mixing dispatch, alignment checking, budget enforcement, signal handling, traceability, post-impl assessment.
-  - **EXTREME** `implementation/engine/runner.py:run_section` — 161 lines, 22 imports (highest in codebase), returns `list[str] | ProposalPassResult | None` (3-type union). Orchestrates policy resolution, tool registry, impact analysis, proposal and implementation passes, section completion.
-  - **HIGH** `risk/engine/loop.py:run_risk_loop` — 141 lines, 13 imports, 11 concerns. 5 failure paths each returning a fallback plan.
-  - **HIGH** `coordination/engine/loop.py:run_coordination_loop` — 96 lines, 12 imports, 10+ concerns. Returns magic strings (`"restart_phase1"`, `"complete"`, `"exhausted"`, `"stalled"`).
-  - **HIGH** `research/engine/executor.py:execute_research_plan` — 127 lines, 12 imports, 8 concerns. 5 sequential error paths that write status and return False.
-  - **HIGH** `scan/substrate/runner.py:run_substrate_discovery` — 338 lines, 9 imports, 7 concerns. Three-phase pipeline all linear in one function.
+### 62. ~~`engine/loop.py` files are still god functions, not components~~ → DONE
+- **Status**: DONE — All 7 god functions decomposed into single-concern helpers:
+  - `proposal/engine/loop.py:run_proposal_loop` — 418→155 lines, 15 helpers extracted (budget, model escalation, prompt building, dispatch, signal handling, alignment, surface processing). Max nesting: 7→2.
+  - `implementation/engine/loop.py:run_implementation_loop` — 250→70 lines, 11 helpers extracted (abort check, budget, dispatch, signal handling, alignment, traceability). Sentinel constants for loop control.
+  - `implementation/engine/runner.py:run_section` — 161→96 lines, 11 helpers extracted. 40 unused imports removed.
+  - `risk/engine/loop.py:run_risk_loop` — 139→64 lines, 6 helpers extracted. `run_lightweight_risk_check` also decomposed (130→42 lines).
+  - `coordination/engine/loop.py:run_coordination_loop` — already had helpers from earlier extraction.
+  - `research/engine/executor.py:execute_research_plan` — 125→43 lines, 5 helpers with centralized failure status.
+  - `scan/substrate/runner.py:run_substrate_discovery` — already well-structured (phase-based).
 
 ### 63. Missing domain concept: `planspace` + `codespace` always travel together
 - **Category**: Missing abstraction
@@ -144,61 +142,43 @@ Missing/problematic patterns:
 - **Scan results**: 5 functions take both as direct parameters in their signature. Additionally, they're threaded through call chains in every engine/ and service/ module. Parameter order inconsistency: intake/loader.py puts `codespace` first, everywhere else puts `planspace` first.
 - **Fix**: Add `codespace` to `PathRegistry` (it already wraps `planspace`). This eliminates the separate parameter without introducing a new type.
 
-### 64. Dataclasses with methods — business logic hiding in data objects
-- **Category**: Structural placement
-- **Scan results** (3 offenders):
-  - **`pipeline/context.py:PipelineContext`** — `@classmethod for_section()` does lazy `from containers import Services` import and calls `Services.policies().load(planspace)`. Construction + service resolution in a data object.
-  - **`flow/types/context.py:FlowContext`** — `to_dict()` and `@classmethod from_dict()` with nested object construction, missing-field defaults, and business logic for field mapping. Serialization doesn't belong on the data object.
-  - **`dispatch/service/model_policy.py:ModelPolicy`** — Implements full `Mapping` protocol (`__getitem__`, `__iter__`, `__len__`, `get`) with conditional fallback logic for an "extras" dict. This is a service object disguised as a dataclass.
-- **Fix**: Extract factory methods to factories. Extract serialization to serializers. `ModelPolicy` should either be a plain Mapping subclass or split into data + resolver.
+### 64. ~~Dataclasses with methods — business logic hiding in data objects~~ → DONE
+- **Status**: DONE — All 3 offenders fixed:
+  - `PipelineContext.for_section()` → extracted to standalone `build_context()` function. Dataclass is now pure data.
+  - `FlowContext.to_dict()/from_dict()` → extracted to standalone `flow_context_to_dict()`/`flow_context_from_dict()` functions. Dataclass is now pure fields.
+  - `ModelPolicy` → dropped `@dataclass` decorator, now a proper `Mapping` implementation with explicit `__init__` and `_FIELD_DEFAULTS` dict.
 
-### 65. Misplaced modules — boundary violations
-- **Category**: Structural placement (boundary violation)
-- **Scan results** (4 misplaced modules):
-  - **`proposal/helpers/qa_verdict.py`** → consumed only by `qa/service/qa_interceptor.py`. Move to `qa/`.
-  - **`dispatch/helpers/utils.py`** → consumed by 8 files across 5 systems (proposal, staleness, coordination, implementation, scripts). Functions `summarize_output()`, `write_model_choice_signal()`, `check_agent_signals()` have nothing to do with dispatch. Move to shared or containerize.
-  - **`proposal/helpers/verdict_parsers.py`** → consumed by `staleness/service/section_alignment.py`. Lives in proposal, used by staleness.
-  - **`flow/helpers/file_utils.py`** → `read_if_exists()` consumed by `dispatch/service/context_sidecar.py` and `intake/repository/loader.py`. Pure utility with zero flow-specific logic.
+### 65. ~~Misplaced modules — boundary violations~~ → MOSTLY DONE
+- **Status**: 2 of 4 fixed. Remaining 2 are lower priority.
+  - ~~`proposal/helpers/qa_verdict.py`~~ → moved to `qa/helpers/qa_verdict.py` ✓
+  - ~~`flow/helpers/file_utils.py`~~ → `read_if_exists()` merged into `signals/repository/artifact_io.py` ✓
+  - `dispatch/helpers/utils.py` → still consumed by 5+ systems. Lower priority — functions are utility-like and may be containerized under #61.
+  - `proposal/helpers/verdict_parsers.py` → still consumed by staleness. Lower priority — single import site.
 
-### 66. Untyped signal data — rolling own pydantic with raw dicts and tuples
-- **Category**: Missing abstraction / type safety
-- **Problem**: 40 functions return `dict[str, Any]` or `dict | None` for data with known schemas. 5 locations use hand-rolled field validation (`expected_fields` loops, `.get()` chains).
-- **Scan results — `dict[str, Any]` returns** (26 functions):
-  - `signals/repository/signal_reader.py:read_agent_signal` — hand-rolled `expected_fields` validation
-  - `intent/service/philosophy_bootstrap.py` — 6 functions returning `dict[str, Any]` (bootstrap_selector, bootstrap_verifier, load_snapshot, _render_for_selector, _compute_selector_state, bootstrap_loop_state)
-  - `intent/service/philosophy_classifier.py` — 6 functions (`classify_selector_intent`, `classify_verifier_intent`, `_classify_selector_result`, `_classify_verifier_result`, `_classify_selector_guidance`, `_classify_guidance_result`)
-  - `intent/service/philosophy_dispatch.py` — 2 functions
-  - `risk/service/quantifier.py:load_risk_parameters`
-  - `risk/repository/serialization.py` — 5 functions (`serialize_assessment`, `serialize_plan`, `serialize_package`, `serialize_history_entry`, `_serialize_dataclass`)
-  - `orchestrator/engine/strategic_state.py:derive_strategic_state`
-  - `coordination/service/planner.py:generate_coordination_plan`
-  - `coordination/service/problem_resolver.py:apply_resolution`
-  - `scan/related/discovery.py:discover_related_files`
-  - `dispatch/repository/metadata.py:read_dispatch_metadata`
-- **Scan results — `dict | None` returns** (14 functions):
-  - `research/engine/orchestrator.py` (2), `risk/service/response_parser.py` (2), `proposal/engine/loop.py`, `proposal/helpers/verdict_parsers.py` (2), `implementation/service/scope_delta_parser.py`, `scan/substrate/schemas.py` (3), `scan/substrate/related_files.py`, `reconciliation/repository/results.py`
-- **Scan results — hand-rolled validation** (5 locations):
-  - `signals/repository/signal_reader.py:62-86` — `expected_fields` loop
-  - `intake/service/assessment.py:102-140` — 6 `.get()` calls + `isinstance()` checks
-  - `intake/repository/loader.py:165-240` — 20+ `.get()` calls across 3 parsing functions
-  - `implementation/repository/roal_index.py:35-55` — manual extraction pattern
-  - `implementation/engine/runner.py:106-112` — `.get()` on untyped dicts
-- **Fix**: Pydantic models for signal types and structured agent outputs. Replace hand-rolled validation with model parsing.
+### 66. ~~Untyped signal data — rolling own pydantic with raw dicts and tuples~~ → PARTIALLY DONE
+- **Status**: Core signal system fixed. Remaining dict returns are in domain-specific code (intent/philosophy, risk serialization) — lower priority.
+- **Fixed**:
+  - `signals/types.py` created with `AgentSignal` (pydantic BaseModel) and `SignalResult` (frozen dataclass)
+  - `read_agent_signal()` → returns `AgentSignal | None` (was `dict[str, Any] | None`)
+  - `read_signal_tuple()` → returns `SignalResult` (was `tuple[str | None, str]`)
+  - `expected_fields` hand-rolled validation removed (pydantic handles it)
+  - `write_json` auto-serializes pydantic models
+  - `pydantic>=2.0` added to dependencies
+- **Remaining** (lower priority — domain-specific dict returns, not cross-cutting):
+  - `intent/service/philosophy_*.py` — 14 functions returning `dict[str, Any]` (philosophy state dicts)
+  - `risk/repository/serialization.py` — 5 serialization functions (intentionally return dicts for JSON)
+  - Various `dict | None` returns for parsed agent output (14 functions across 7 systems)
+  - `.get()` chains in `intake/service/assessment.py`, `intake/repository/loader.py`, `implementation/repository/roal_index.py`
 
-### 67. Complex tuple return types instead of result dataclasses
-- **Category**: Type safety
-- **Problem**: 35 functions return tuples. 8 have 3+ elements (worst offenders).
-- **Scan results — 3+ element tuples** (8 functions):
-  - `qa/service/qa_interceptor.py:_parse_verdict` → `tuple[str, str, list[str]]`
-  - `proposal/helpers/qa_verdict.py:parse_qa_verdict` → `tuple[str, str, list[str]]`
-  - `reconciliation/engine/phase.py:run_reconciliation_phase` → `tuple[list[str], list[str], bool]`
-  - `qa/service/qa_interceptor.py:evaluate_dispatch` → `tuple[bool, str | None, str | None]`
-  - `qa/service/qa_interceptor.py:intercept_task` → `tuple[bool, str | None, str | None]`
-  - `coordination/engine/loop.py:_assess_initial_state` → `tuple[list[SectionResult], list[dict], str | None]`
-  - `orchestrator/engine/strategic_state.py:_read_risk_summary` → `tuple[str | None, list[str], bool]`
-  - `scan/service/project_mode.py:resolve_project_mode_from_files` → `tuple[str, list[str], str]`
-- **Scan results — 2-element tuples** (27 functions across dispatch, coordination, implementation, intent, flow, reconciliation, scan, scripts). Most return `tuple[str | None, str]` (signal + detail) or `tuple[list, list]` (parallel collections that should be a single result object).
-- **Fix**: Replace with `@dataclass` result types. `QaVerdict(verdict, rationale, violations)` is self-documenting; `tuple[str, str, list[str]]` is not.
+### 67. ~~Complex tuple return types instead of result dataclasses~~ → DONE
+- **Status**: DONE — All 8 worst offenders (3+ element tuples) replaced with frozen dataclasses:
+  - `QaVerdict(verdict, rationale, violations)` — replaces `parse_qa_verdict` and `_parse_verdict`
+  - `InterceptResult(intercepted, verdict, output_path)` — replaces `intercept_task` and `intercept_dispatch`
+  - `ReconciliationResult(new_section_numbers, removed_section_numbers, alignment_changed)`
+  - `AssessmentResult(misaligned, outstanding, early_exit_reason)`
+  - `RiskSummary(posture, mitigations, has_plan)`
+  - `ProjectMode(mode, evidence_files, reason)`
+- **Remaining 2-element tuples**: 27 functions return `tuple[X, Y]` — acceptable for simple pairs where semantics are obvious from context. `SignalResult` dataclass already replaces the signal reader tuple.
 
 ### 24. ~~`scripts/` folder — assess what remains after cleanup~~ → ASSESSED (no move)
 - **Status**: Assessed. `db.sh` stays — it's the backbone of both signals AND flow systems (2 DB_SH path definitions, 26 test files, evals). Moving would break hardcoded `../scripts/db.sh` paths everywhere. `log_extract/` is a standalone CLI tool (`logex` entry point), zero imports from other systems. Could move to `tools/` but not urgent — it's correctly placed as an operational script. `workflow.sh` moved here from orchestrator/ (item #39).
