@@ -38,6 +38,8 @@ debugging evidence instead of hiding it.
 
 **Template**:
 1. Use `read_json(path)` or a typed loader built on it for syntax-level parsing.
+   Typed loaders must delegate malformed-artifact handling to the shared
+   primitive rather than re-implementing local rename/copy conventions.
 2. If parse succeeds, validate schema shape and semantic invariants.
 3. On malformed JSON or schema mismatch, call `rename_malformed(path)`.
 4. Return `None` or a documented fail-closed default.
@@ -149,8 +151,9 @@ consumer migration, runtime-shape tests.
 
 **Template**:
 1. Durable artifact paths come from `PathRegistry(planspace)`.
-2. New artifact classes get a dedicated accessor before any writer or reader
-   uses them.
+2. New artifact classes — including repeated section-scoped durable
+   filename families — get a dedicated accessor before any writer or
+   reader uses them.
 3. Writers, readers, prompts, origin refs, and freshness/hash inputs all use
    the same accessor for a durable family.
 4. Manual path construction is permitted only for scratch / ephemeral paths or
@@ -183,12 +186,21 @@ consumer migration, runtime-shape tests.
 - Readiness / proposal-state / trace / signal / input-ref accessors
 - `src/dispatch/service/model_policy.py`
 - `src/scan/service/scan_dispatch.py`
-- `src/scan/substrate/policy.py`
+- `src/scan/substrate/policy.py`,
+  `src/scan/substrate/related_files.py`, and
+  `src/scan/substrate/schemas.py`
 - `src/implementation/service/microstrategy.py`
 - `src/implementation/engine/loop.py`
 - `src/proposal/service/readiness_resolver.py`
 - `src/dispatch/service/context_sidecar.py` — context sidecar
   materialization via `PathRegistry.context_sidecar()` accessor (R109)
+- `src/dispatch/prompt/context.py`,
+  `src/implementation/service/reexplore.py`,
+  `src/implementation/service/traceability.py`, and
+  `src/implementation/engine/runner.py`
+- `src/proposal/engine/readiness_gate.py`,
+  `src/orchestrator/engine/strategic_state.py`, and
+  `src/scan/codemap/lifecycle.py`
 - Scan-stage durable-path consumers in
   `src/scan/related/discovery.py` and
   `src/scripts/scan/{codemap,exploration,deep_scan,feedback}.py`
@@ -288,14 +300,16 @@ centrally from policy.
    to helper functions, eval/dev harnesses that dispatch real agents, and
    any function that ultimately feeds a model name into `dispatch_agent()`.
 
-**Canonical instance**: `TASK_ROUTES` in `src/flow/types/routing.py` plus
+**Canonical instance**: `src/taskrouter/` registry plus
 `ModelPolicy` in `src/dispatch/service/model_policy.py`
 
 **Known instances**:
-- `src/flow/types/routing.py`
+- `src/taskrouter/` — centralized task routing with per-route policy keys
 - `src/dispatch/service/model_policy.py`
 - `src/scan/service/scan_dispatch.py`
-- `src/scan/substrate/policy.py`
+- `src/scan/substrate/policy.py`,
+  `src/scan/substrate/related_files.py`, and
+  `src/scan/substrate/schemas.py`
 - `src/flow/engine/dispatcher.py` — long-lived dispatcher poll loop
 - `src/orchestrator/engine/main.py` — outer orchestration loop
 - Policy lookups across `src/intent/`, `src/research/`, `src/coordination/`
@@ -712,13 +726,13 @@ decide the actual governance claims.
    this identity rather than inventing it from empty state.
 
 **Canonical instance**: `proposal-state.json` plus the integration-proposer
-contract in `src/agents/integration-proposer.md`
+contract in `src/proposal/agents/integration-proposer.md`
 
 **Known instances**:
 - `src/proposal/repository/state.py`
-- `src/agents/integration-proposer.md`
+- `src/proposal/agents/integration-proposer.md`
 - `src/dispatch/templates/integration-proposal.md`
-- `src/agents/alignment-judge.md`
+- `src/staleness/agents/alignment-judge.md`
 - `src/proposal/engine/readiness_gate.py`
 - `src/proposal/service/readiness_resolver.py`
 - `src/implementation/engine/loop.py`
@@ -830,98 +844,116 @@ a false pass — either way it says nothing about whether the behavior is correc
 6. Corruption-preservation, path-identity, and writer→reader handoff invariants
    should be tested with realistic fixture round-trips rather than grepping
    implementation source for warning text or filename suffixes.
+7. When human-facing docs publish live runtime inventories (agents, routes,
+   entrypoints, authoritative paths), test the live registry or generated
+   artifact that authorizes those claims rather than grepping for stale
+   literals.
 
-**Canonical instance**: `test_mode_is_observation_in_main()` in
-`tests/integration/test_main_greenfield.py`
+**Canonical instance**: `run_structural_checks()` in
+`evals/agentic/structural_checks.py`
 
 **Known instances**:
-- `tests/integration/test_main_greenfield.py` — mode-is-observation contract
-- `tests/integration/test_intent_layer.py` — positive contract tests for
-  heuristic judgment, evidence-driven axes, agent-adjudicated recurrence, and
-  dynamic philosophy source discovery
-- `tests/component/test_governance_loader.py` — representative wrapped-bullet
-  and numbered-template fixture for governance loader projection (R110)
-- `tests/component/test_governance_loader.py` — related-files signal path
-  distinctness contract (R110)
-- `tests/component/test_artifact_io.py` — corruption-preservation round-trip
-  assertions on malformed JSON handling
+- `evals/agentic/structural_checks.py` — positive assertions over current
+  collected outputs (existence, JSON validity, keys, headings, DB rows,
+  signal states)
+- `evals/agentic/fixtures/readiness-triggers-research-planner/scenario.yaml`
+  — writer→reader / flow-submission contract
+- `evals/agentic/fixtures/philosophy-stale-source-blocks/scenario.yaml`
+  — fail-closed bootstrap status contract
+- `evals/agentic/fixtures/qa-intercept-on-dispatch/scenario.yaml`
+  — advisory interception artifact contract
 
 **Conformance**: New regression tests MUST express invariants as positive
 assertions about current behavior. Source-text grep for absent strings is a
 violation unless the invariant genuinely requires source-level verification.
 Converting existing source-grep tests to positive contracts is expected during
-audit rounds. High-risk archive→runtime projection contracts and
-writer→reader handoff contracts should have at least one representative
-round-trip test with realistic fixture shapes.
+audit rounds. High-risk archive→runtime projection contracts,
+writer→reader handoff contracts, and authoritative runtime-inventory
+contracts should have at least one representative positive test with
+realistic fixture or registry shapes.
 
 ---
 
+
 ## PAT-0016: Runtime Inventory Truth & Surface Retirement
 
-**Problem class**: Authoritative runtime inventories, operator docs, and eval
-adapters drift from live code after structural migrations. Hand-maintained
-counts, path references, and import targets silently diverge from registry
-truth.
+**Problem class**: Authoritative docs, audit prompts, and inventory claims
+drift away from the live runtime, while retired execution surfaces remain in
+active discovery trees and silently reintroduce split-brain instructions.
 
-**Regions**: system-synthesis.md, governance/audit/prompt.md, src/SKILL.md,
-src/implement.md, eval trigger adapters, taskrouter agent inventory
+**Regions**: architecture docs, audit prompts, agent inventory, route
+inventory, live-vs-legacy execution surfaces
 
-**Solution surfaces**: Registry-derived inventory, live surface retirement,
-migration completion verification.
+**Solution surfaces**: live registry derivation, generated or contract-checked
+inventory summaries, archive quarantine for retired surfaces, discovery-boundary
+enforcement.
 
-**Philosophy**: Accuracy over shortcuts. Context optimization. Migration
-atomicity — split-brain is worse than either model alone. The first routing
-map must be truthful.
+**Philosophy**: Accuracy over shortcuts. Context optimization. Migration must be
+atomic per surface. A retired path that remains in a live discovery tree is not
+retired.
 
 **Template**:
-1. Agent inventory claims MUST match `taskrouter.agents.all_agent_files()`.
-2. Task vocabulary claims MUST match `taskrouter.discovery.discover()`.
-3. Path references in docs MUST point to files that exist in the current tree.
-4. Legacy agent files MUST be removed from `src/*/agents/` when they have no
-   live consumers; they pollute runtime inventory via auto-discovery.
-5. Eval adapters MUST import from current package paths; stale imports break
-   positive contract coverage silently.
-6. Migration completion = new path active + old path out of discovery + docs
-   updated. Any step missing means migration is incomplete.
+1. Any document that claims live agent counts, task counts, namespaces,
+   entrypoints, or authoritative path layout must derive those claims from live
+   runtime registries (`taskrouter.agents`, `taskrouter.discovery`,
+   `src/*/routes.py`) or be covered by positive contract tests against those
+   registries.
+2. Hand-maintained inventory counts may appear in human docs only when a
+   generator or positive contract keeps them synchronized with runtime.
+3. Retired execution surfaces must be removed from live discovery trees
+   (`src/*/agents`, live scripts, active templates) or moved to an explicit
+   archive/legacy location excluded from runtime discovery.
+4. Migration of an execution surface is incomplete until the new runtime path,
+   its agent/template contracts, and the human-facing authoritative docs all
+   agree.
+5. Historical material kept for archaeology must be clearly marked non-runtime
+   and must not be scanned by live resolvers such as `all_agent_files()` or
+   live route discovery.
+6. Eval and audit prompts that direct humans or agents into key runtime surfaces
+   are authoritative contracts and must follow the same synchronization rule.
 
-**Canonical instance**: R111 deletion of 3 dead agent files
-(`orchestrator.md`, `exception-handler.md`, `state-detector.md`) from
-`src/dispatch/agents/` and correction of system-synthesis.md counts.
+**Canonical instance**: `src/taskrouter/agents.py` +
+`src/taskrouter/discovery.py`
 
 **Known instances**:
-- `system-synthesis.md` — agent count and task vocabulary (R111: 52→50
-  agents, 28→48 routes, 9→11 namespaces)
-- `governance/audit/prompt.md` — agent path and count references (R111:
-  `src/agents/*.md` → `src/*/agents/*.md`, 47→50)
-- `src/dispatch/agents/` — legacy surface retirement (R111: 3 files deleted)
+- `src/taskrouter/agents.py` — live agent inventory
+- `src/taskrouter/discovery.py` and all `src/*/routes.py` — live task
+  vocabulary
+- `system-synthesis.md` — published architecture + inventory summary
+- `governance/audit/prompt.md` — audit-facing codebase map
+- `src/SKILL.md`, `src/implement.md`, and `src/models.md` — operator-facing
+  runtime docs
+- `src/dispatch/agents/` legacy residues and `src/scripts/section-loop.py` —
+  retirement-boundary surfaces
+- `evals/agentic/structural_checks.py` and
+  `evals/agentic/trigger_adapters.py` — positive contract harness and
+  runtime-entry adapters that should enforce inventory truth once wired
 
-**Conformance**: After any structural migration that adds, removes, or
-relocates agents or routes, all authoritative doc surfaces must be updated
-atomically with the code change. Hand-maintained counts are a violation
-waiting to happen; prefer registry-derived truth where feasible.
+**Conformance**: No authoritative runtime document may hand-wave counts or
+paths that disagree with live registries. No retired surface may remain
+discoverable by live agent/path resolution. Migration rounds are incomplete
+until inventories, docs, and discovery boundaries agree.
 
 ---
 
 ## Health Notes
 
-- **PAT-0001 (Corruption Preservation)**: Healthy. R111 migrated last two
+- **PAT-0001 (Corruption Preservation)**: Healthy. R111 migrated the last two
   local malformed-artifact conventions (`scan/substrate/related_files.py` and
   `scan/substrate/schemas.py`) to shared `read_json()`/`rename_malformed()`
-  primitives. All authoritative readers now delegate to `artifact_io`.
+  primitives. `tool_surface.py` was confirmed clean (already delegates to
+  `read_json()`). All authoritative readers now use the shared contract.
 - **PAT-0002 (Prompt Safety)**: Healthy. R109 clarified that payload-file
   contents are untrusted dynamic content even when delivered through internal
   tasks. QA interceptor now validates payload content before dispatch.
-- **PAT-0003 (Path Registry)**: **Unhealthy.** R110 correctly distinguished the
-  scan-stage and substrate-stage related-files signal families, but the
-  migration stopped at accessor creation and representative path-shape tests.
-  CP-1 saturation sweep migrated authoritative consumers across scan
-  (`scan_related_files.py`, `codemap.py`, `exploration.py`, `deep_scan.py`,
-  `feedback.py`), intent/prompt assembly (`intent_triage.py`,
-  `prompt_context_assembler.py`, `bootstrap.py`, `writers.py`), tool-surface
-  blocker writers (`tool_surface.py`), and freshness/hash services. The
-  `section-<N>-mode.txt` family now has a dedicated `section_mode_txt()`
-  accessor. Template extended with rules 8-9 (accessor ≠ migration complete;
-  accessor required before family spreads).
+- **PAT-0003 (Path Registry)**: **Unhealthy.** The template remains correct,
+  but saturation is still incomplete for several durable families. Current live
+  islands include repeated manual construction of `tools-available`,
+  `alignment-surface`, `tool-friction`, `open-problems`,
+  `codemap-corrections`, `strategic-state`, and some proposal/reconciliation /
+  readiness references across dispatch, implementation, proposal, orchestrator,
+  scan, and staleness modules. The next round must finish consumer saturation
+  and add missing accessors for repeated section-scoped durable families.
 - **PAT-0004 (Flow System)**: Healthy.
 - **PAT-0005 (Policy-Driven Models)**: Healthy. R110 replaced the last two
   local `policy.get()` fallback sites (`proposal_loop.py` intent_judge,
@@ -954,17 +986,17 @@ waiting to happen; prefer registry-derived truth where feasible.
   `safety_blocked`); dispatcher logs `qa:degraded` distinctly from
   `qa:passed`; notifier carries reason_code through lifecycle events;
   reconciliation adjudicator references PAT-0014 degraded states in warnings.
-- **PAT-0015 (Positive Contract Testing)**: **Unhealthy.** R109-R110 moved the
-  suite toward positive contract tests and added representative round-trip
-  coverage. CP-2 replaced the last two source-archaeology tests in
-  `tests/integration/test_intent_layer.py` (conftest path resolution →
-  `DB_SH.exists()` behavioral contract; malformed updater-signal preservation →
-  `read_json` + `rename_malformed` round-trip). Template extended with rules
-  5-6 (published-contract presence assertions, round-trip fixture tests).
-  Added `test_artifact_io.py` corruption-preservation round-trip to known
-  instances.
-- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: **New.** R111
-  established the pattern. Deleted 3 dead legacy agent files, corrected
-  system-synthesis.md (50 agents, 48 routes, 11 namespaces), and fixed
-  governance/audit/prompt.md paths. Remaining work: eval adapter import
-  repair (V3), operator doc path updates (SKILL.md, implement.md).
+- **PAT-0015 (Positive Contract Testing)**: **Unhealthy.** The philosophy is
+  settled, and the current snapshot's eval harness already uses positive
+  structural assertions over current outputs. However, the archive snapshot no
+  longer includes the `tests/` surfaces cited by the previous catalog, and no
+  current positive contract checks authoritative runtime-inventory truth or
+  retirement-boundary correctness. The pattern therefore remains directionally
+  correct but incompletely instantiated in the delivered codebase.
+- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**:
+  **Unhealthy.** R111 corrected `system-synthesis.md` (50 agents, 48 routes,
+  11 namespaces) and `governance/audit/prompt.md` (paths and counts), and
+  deleted 3 dead legacy agent files. Remaining: `src/SKILL.md`,
+  `src/implement.md`, and `src/models.md` still reference legacy layout;
+  `qa-monitor.md` and `monitor.md` remain in live discovery (section-loop.py
+  dependency); eval trigger adapters still target stale imports.
