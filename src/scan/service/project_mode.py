@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from signals.repository.artifact_io import read_json, write_json
@@ -10,19 +11,28 @@ from signals.service.communication import log
 from orchestrator.service.pipeline_control import pause_for_parent
 
 
+@dataclass(frozen=True)
+class ProjectMode:
+    """Structured result from ``_read_project_mode_signal``."""
+
+    mode: str
+    evidence_files: list[str] = field(default_factory=list)
+    reason: str = ""
+
+
 def _read_project_mode_signal(
     mode_json_path: Path,
     mode_txt_path: Path,
     *,
     post_resume: bool,
-) -> tuple[str, list[str], str]:
+) -> ProjectMode:
     if mode_json_path.exists():
         mode_data = read_json(mode_json_path)
         if mode_data is not None:
-            return (
-                str(mode_data.get("mode", "unknown")),
-                list(mode_data.get("constraints", [])),
-                "JSON signal (post-resume)" if post_resume else "JSON signal",
+            return ProjectMode(
+                mode=str(mode_data.get("mode", "unknown")),
+                evidence_files=list(mode_data.get("constraints", [])),
+                reason="JSON signal (post-resume)" if post_resume else "JSON signal",
             )
 
         log(
@@ -31,24 +41,26 @@ def _read_project_mode_signal(
             + " — preserved as .malformed.json, trying text fallback",
         )
         if mode_txt_path.exists():
-            return (
-                mode_txt_path.read_text(encoding="utf-8").strip(),
-                [],
-                ("text (post-resume)"
-                 if post_resume else "text (JSON malformed)"),
+            return ProjectMode(
+                mode=mode_txt_path.read_text(encoding="utf-8").strip(),
+                reason=("text (post-resume)"
+                        if post_resume else "text (JSON malformed)"),
             )
-        return "unknown", [], (
-            "default (post-resume)" if post_resume else "default"
+        return ProjectMode(
+            mode="unknown",
+            reason="default (post-resume)" if post_resume else "default",
         )
 
     if mode_txt_path.exists():
-        return (
-            mode_txt_path.read_text(encoding="utf-8").strip(),
-            [],
-            "text (post-resume)" if post_resume else "text",
+        return ProjectMode(
+            mode=mode_txt_path.read_text(encoding="utf-8").strip(),
+            reason="text (post-resume)" if post_resume else "text",
         )
 
-    return "unknown", [], "default (post-resume)" if post_resume else "default"
+    return ProjectMode(
+        mode="unknown",
+        reason="default (post-resume)" if post_resume else "default",
+    )
 
 
 def resolve_project_mode(planspace: Path, parent: str) -> tuple[str, list[str]]:
@@ -57,13 +69,13 @@ def resolve_project_mode(planspace: Path, parent: str) -> tuple[str, list[str]]:
     mode_json_path = paths.project_mode_json()
     mode_txt_path = paths.project_mode_txt()
 
-    project_mode, mode_constraints, mode_source = _read_project_mode_signal(
+    pm = _read_project_mode_signal(
         mode_json_path,
         mode_txt_path,
         post_resume=False,
     )
 
-    if mode_source == "default":
+    if pm.reason == "default":
         if mode_json_path.exists():
             log("No text fallback — pausing for parent (fail-closed)")
             pause_for_parent(
@@ -82,14 +94,14 @@ def resolve_project_mode(planspace: Path, parent: str) -> tuple[str, list[str]]:
                 "scan stage did not write project-mode signal",
             )
 
-        project_mode, mode_constraints, mode_source = _read_project_mode_signal(
+        pm = _read_project_mode_signal(
             mode_json_path,
             mode_txt_path,
             post_resume=True,
         )
 
-    log(f"Project mode: {project_mode} (from {mode_source})")
-    return project_mode, mode_constraints
+    log(f"Project mode: {pm.mode} (from {pm.reason})")
+    return pm.mode, pm.evidence_files
 
 
 def write_mode_contract(

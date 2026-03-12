@@ -70,7 +70,7 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
         lambda _planspace, _parent, message: messages.append(message),
     )
 
-    ready, blocked, restart_phase1 = run_reconciliation_phase(
+    result = run_reconciliation_phase(
         proposal_results,
         {"01": section, "02": other},
         [section, other],
@@ -80,9 +80,9 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
         {},
     )
 
-    assert ready == ["01"]
-    assert blocked == ["02"]
-    assert restart_phase1 is False
+    assert result.new_section_numbers == ["01"]
+    assert result.removed_section_numbers == ["02"]
+    assert result.alignment_changed is False
     assert messages == ["reproposal-done:01:ready"]
 
 
@@ -122,7 +122,7 @@ def test_run_reconciliation_phase_restarts_on_alignment_change(
         lambda *_args, **_kwargs: True,
     )
 
-    ready, blocked, restart_phase1 = run_reconciliation_phase(
+    result = run_reconciliation_phase(
         proposal_results,
         {"01": section},
         [section],
@@ -132,9 +132,9 @@ def test_run_reconciliation_phase_restarts_on_alignment_change(
         {},
     )
 
-    assert ready == []
-    assert blocked == ["01"]
-    assert restart_phase1 is True
+    assert result.new_section_numbers == []
+    assert result.removed_section_numbers == ["01"]
+    assert result.alignment_changed is True
 
 
 def test_run_reconciliation_phase_exits_when_parent_aborts(

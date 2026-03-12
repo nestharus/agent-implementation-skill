@@ -142,68 +142,68 @@ class TestReadQaParameters:
 
 
 # ---------------------------------------------------------------------------
-# Unit tests: _parse_verdict
+# Unit tests: parse_qa_verdict
 # ---------------------------------------------------------------------------
 
 class TestParseVerdict:
     """Tests for QA verdict parsing."""
 
     def test_pass_verdict(self) -> None:
-        from qa.service.qa_interceptor import _parse_verdict
+        from qa.helpers.qa_verdict import parse_qa_verdict
 
         output = '{"verdict": "PASS", "rationale": "All good"}'
-        verdict, rationale, violations = _parse_verdict(output)
-        assert verdict == "PASS"
-        assert rationale == "All good"
-        assert violations == []
+        result = parse_qa_verdict(output)
+        assert result.verdict == "PASS"
+        assert result.rationale == "All good"
+        assert result.violations == []
 
     def test_reject_verdict(self) -> None:
-        from qa.service.qa_interceptor import _parse_verdict
+        from qa.helpers.qa_verdict import parse_qa_verdict
 
         output = json.dumps({
             "verdict": "REJECT",
             "rationale": "Scope violation",
             "violations": ["v1", "v2"],
         })
-        verdict, rationale, violations = _parse_verdict(output)
-        assert verdict == "REJECT"
-        assert "Scope violation" in rationale
-        assert violations == ["v1", "v2"]
+        result = parse_qa_verdict(output)
+        assert result.verdict == "REJECT"
+        assert "Scope violation" in result.rationale
+        assert result.violations == ["v1", "v2"]
 
     def test_verdict_in_code_fences(self) -> None:
-        from qa.service.qa_interceptor import _parse_verdict
+        from qa.helpers.qa_verdict import parse_qa_verdict
 
         output = (
             "Here is my verdict:\n"
             '```json\n{"verdict": "PASS", "rationale": "OK"}\n```'
         )
-        verdict, rationale, violations = _parse_verdict(output)
-        assert verdict == "PASS"
+        result = parse_qa_verdict(output)
+        assert result.verdict == "PASS"
 
     def test_garbage_output_degrades(self) -> None:
         """PAT-0014: garbage output maps to DEGRADED, not PASS."""
-        from qa.service.qa_interceptor import _parse_verdict
+        from qa.helpers.qa_verdict import parse_qa_verdict
 
         output = "This is total garbage with no JSON at all"
-        verdict, rationale, violations = _parse_verdict(output)
-        assert verdict == "DEGRADED"
-        assert "could not be parsed" in rationale
+        result = parse_qa_verdict(output)
+        assert result.verdict == "DEGRADED"
+        assert "could not be parsed" in result.rationale
 
     def test_unknown_verdict_degrades(self) -> None:
         """PAT-0014: unknown verdict maps to DEGRADED, not PASS."""
-        from qa.service.qa_interceptor import _parse_verdict
+        from qa.helpers.qa_verdict import parse_qa_verdict
 
         output = '{"verdict": "MAYBE", "rationale": "dunno"}'
-        verdict, rationale, violations = _parse_verdict(output)
-        assert verdict == "DEGRADED"
-        assert "Unknown verdict" in rationale
+        result = parse_qa_verdict(output)
+        assert result.verdict == "DEGRADED"
+        assert "Unknown verdict" in result.rationale
 
     def test_empty_output_degrades(self) -> None:
         """PAT-0014: empty output maps to DEGRADED, not PASS."""
-        from qa.service.qa_interceptor import _parse_verdict
+        from qa.helpers.qa_verdict import parse_qa_verdict
 
-        verdict, rationale, violations = _parse_verdict("")
-        assert verdict == "DEGRADED"
+        result = parse_qa_verdict("")
+        assert result.verdict == "DEGRADED"
 
 
 # ---------------------------------------------------------------------------
@@ -239,13 +239,13 @@ class TestInterceptTask:
         })
 
         with override_dispatcher_and_guard(lambda *a, **kw: mock_output):
-            passed, rationale_path, reason_code = intercept_task(
+            result = intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
-        assert passed is True
-        assert rationale_path is None
-        assert reason_code is None
+        assert result.intercepted is True
+        assert result.verdict is None
+        assert result.output_path is None
 
     def test_dispatch_uses_model_policy_key(self, tmp_path: Path) -> None:
         """QA dispatch resolves its model through model-policy.json."""
@@ -280,12 +280,12 @@ class TestInterceptTask:
             return mock_output
 
         with override_dispatcher_and_guard(capture_dispatch):
-            passed, rationale_path, reason_code = intercept_task(
+            result = intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
-        assert passed is True
-        assert rationale_path is None
+        assert result.intercepted is True
+        assert result.verdict is None
         assert captured_model[0] == "policy-qa-model"
 
     def test_reject_returns_false_with_rationale(
@@ -313,16 +313,16 @@ class TestInterceptTask:
         })
 
         with override_dispatcher_and_guard(lambda *a, **kw: mock_output):
-            passed, rationale_path, reason_code = intercept_task(
+            result = intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
-        assert passed is False
-        assert rationale_path is not None
-        assert Path(rationale_path).exists()
+        assert result.intercepted is False
+        assert result.verdict is not None
+        assert Path(result.verdict).exists()
 
         # Verify rationale file contents.
-        rationale = json.loads(Path(rationale_path).read_text(encoding="utf-8"))
+        rationale = json.loads(Path(result.verdict).read_text(encoding="utf-8"))
         assert rationale["task_id"] == "100"
         assert rationale["verdict"] == "REJECT"
         assert rationale["violations"] == ["v1"]
@@ -348,13 +348,13 @@ class TestInterceptTask:
             raise RuntimeError("agent crashed")
 
         with override_dispatcher_and_guard(raise_error):
-            passed, rationale_path, reason_code = intercept_task(
+            result = intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
-        assert passed is True
-        assert rationale_path is None
-        assert reason_code == "dispatch_error"
+        assert result.intercepted is True
+        assert result.verdict is None
+        assert result.output_path == "dispatch_error"
 
     def test_garbage_output_fails_open_with_degraded(self, tmp_path: Path) -> None:
         """Unparseable QA output -> passes with degraded reason_code."""
@@ -373,13 +373,13 @@ class TestInterceptTask:
         )
 
         with override_dispatcher_and_guard(lambda *a, **kw: "This is not JSON at all"):
-            passed, rationale_path, reason_code = intercept_task(
+            result = intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
-        assert passed is True
-        assert rationale_path is not None  # degraded writes rationale
-        assert reason_code == "unparseable"
+        assert result.intercepted is True
+        assert result.verdict is not None  # degraded writes rationale
+        assert result.output_path == "unparseable"
 
     def test_missing_target_agent_fails_open_with_degraded(self, tmp_path: Path) -> None:
         """Missing target agent file -> passes with degraded reason_code."""
@@ -405,13 +405,13 @@ class TestInterceptTask:
             return ""
 
         with override_dispatcher_and_guard(tracking_dispatch):
-            passed, rationale_path, reason_code = intercept_task(
+            result = intercept_task(
                 task, "nonexistent-agent-xyz.md", ps,
             )
 
-        assert passed is True
-        assert rationale_path is None
-        assert reason_code == "target_unavailable"
+        assert result.intercepted is True
+        assert result.verdict is None
+        assert result.output_path == "target_unavailable"
         # dispatch should NOT have been called.
         assert not dispatch_called
 
@@ -736,15 +736,15 @@ class TestInterceptDispatch:
 
         mock_output = '{"verdict": "PASS", "rationale": "OK"}'
         with override_dispatcher_and_guard(lambda *a, **kw: mock_output):
-            passed, rationale_path, reason_code = intercept_dispatch(
+            result = intercept_dispatch(
                 agent_file="alignment-judge.md",
                 prompt_path=prompt,
                 planspace=ps,
                 submitted_by="section-loop",
             )
 
-        assert passed is True
-        assert reason_code is None
+        assert result.intercepted is True
+        assert result.output_path is None
 
     def test_intercept_dispatch_reject_returns_false(
         self, tmp_path: Path,
@@ -762,15 +762,15 @@ class TestInterceptDispatch:
             "violations": ["scope"],
         })
         with override_dispatcher_and_guard(lambda *a, **kw: mock_output):
-            passed, rationale_path, reason_code = intercept_dispatch(
+            result = intercept_dispatch(
                 agent_file="alignment-judge.md",
                 prompt_path=prompt,
                 planspace=ps,
             )
 
-        assert passed is False
-        assert rationale_path is not None
-        assert Path(rationale_path).exists()
+        assert result.intercepted is False
+        assert result.verdict is not None
+        assert Path(result.verdict).exists()
 
     def test_intercept_dispatch_missing_agent_fails_open(
         self, tmp_path: Path,
@@ -790,14 +790,14 @@ class TestInterceptDispatch:
             return ""
 
         with override_dispatcher_and_guard(tracking_dispatch):
-            passed, rationale_path, reason_code = intercept_dispatch(
+            result = intercept_dispatch(
                 agent_file="nonexistent-agent-xyz.md",
                 prompt_path=prompt,
                 planspace=ps,
             )
 
-        assert passed is True
-        assert reason_code == "target_unavailable"
+        assert result.intercepted is True
+        assert result.output_path == "target_unavailable"
         assert not dispatch_called
 
 

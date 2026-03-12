@@ -57,6 +57,13 @@ def rename_malformed(path: Path) -> Path | None:
         return None
 
 
+def read_if_exists(path: Path) -> str:
+    """Return file contents as a string, or empty string if the file does not exist."""
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    return ""
+
+
 def read_json_or_default(path: Path, default: object) -> dict | list:
     """Read JSON, returning default if missing or corrupt."""
     result = read_json(path)

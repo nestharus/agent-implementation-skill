@@ -3,10 +3,20 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 
 
-def parse_qa_verdict(output: str) -> tuple[str, str, list[str]]:
-    """Return ``(verdict, rationale, violations)`` from QA output.
+@dataclass(frozen=True)
+class QaVerdict:
+    """Structured result from QA verdict parsing."""
+
+    verdict: str
+    rationale: str
+    violations: list[str] = field(default_factory=list)
+
+
+def parse_qa_verdict(output: str) -> QaVerdict:
+    """Return a ``QaVerdict`` parsed from QA output.
 
     Parsing is fail-open. Any malformed or unrecognised output yields a
     DEGRADED verdict (PAT-0014) so downstream consumers can distinguish
@@ -21,9 +31,9 @@ def parse_qa_verdict(output: str) -> tuple[str, str, list[str]]:
             rationale = data.get("rationale", "")
             violations = data.get("violations", [])
             if verdict in ("PASS", "REJECT"):
-                return verdict, rationale, violations
-            return "DEGRADED", f"Unknown verdict '{verdict}' — failing open", []
+                return QaVerdict(verdict=verdict, rationale=rationale, violations=violations)
+            return QaVerdict(verdict="DEGRADED", rationale=f"Unknown verdict '{verdict}' — failing open")
     except (json.JSONDecodeError, KeyError, TypeError):
         pass
 
-    return "DEGRADED", "QA agent output could not be parsed — failing open", []
+    return QaVerdict(verdict="DEGRADED", rationale="QA agent output could not be parsed — failing open")

@@ -156,7 +156,7 @@ class TestProposalResultsValidForReconciliation:
         # Write the proposal-state artifact that reconciliation loads
         _write_proposal_state(planspace, "01", execution_ready=True)
 
-        ready, blocked, restart = run_reconciliation_phase(
+        result = run_reconciliation_phase(
             proposal_results,
             sections_by_num,
             all_sections,
@@ -167,9 +167,9 @@ class TestProposalResultsValidForReconciliation:
         )
 
         # No conflicts → section stays ready
-        assert "01" in ready
-        assert blocked == []
-        assert restart is False
+        assert "01" in result.new_section_numbers
+        assert result.removed_section_numbers == []
+        assert result.alignment_changed is False
 
     def test_proposal_results_with_multiple_sections(
         self,
@@ -194,7 +194,7 @@ class TestProposalResultsValidForReconciliation:
         _write_proposal_state(planspace, "01", execution_ready=True)
         _write_proposal_state(planspace, "02", execution_ready=False)
 
-        ready, blocked, restart = run_reconciliation_phase(
+        result = run_reconciliation_phase(
             proposal_results,
             sections_by_num,
             all_sections,
@@ -204,9 +204,9 @@ class TestProposalResultsValidForReconciliation:
             _default_policy(),
         )
 
-        assert "01" in ready
-        assert "02" in blocked
-        assert restart is False
+        assert "01" in result.new_section_numbers
+        assert "02" in result.removed_section_numbers
+        assert result.alignment_changed is False
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +347,7 @@ class TestBlockedSectionsExcludedFromImplementation:
             "reconciliation.engine.phase.run_section",
             side_effect=mock_run_section,
         ):
-            ready, blocked, restart = run_reconciliation_phase(
+            result = run_reconciliation_phase(
                 proposal_results,
                 sections_by_num,
                 all_sections,
@@ -364,7 +364,7 @@ class TestBlockedSectionsExcludedFromImplementation:
         # the re-proposal path.
         # Whether they end up ready or blocked depends on the mock —
         # the contract we test is that reconciliation processes them.
-        total = len(ready) + len(blocked)
+        total = len(result.new_section_numbers) + len(result.removed_section_numbers)
         assert total == 2
 
 
@@ -438,7 +438,7 @@ class TestFullPhaseSequence:
         _write_proposal_state(planspace, "02", execution_ready=True)
 
         # --- Phase 1b: Reconciliation ---
-        ready, blocked, restart = run_reconciliation_phase(
+        reconciliation = run_reconciliation_phase(
             proposal_results,
             sections_by_num,
             all_sections,
@@ -448,9 +448,9 @@ class TestFullPhaseSequence:
             _default_policy(),
         )
 
-        assert sorted(ready) == ["01", "02"]
-        assert blocked == []
-        assert restart is False
+        assert sorted(reconciliation.new_section_numbers) == ["01", "02"]
+        assert reconciliation.removed_section_numbers == []
+        assert reconciliation.alignment_changed is False
 
         # Verify proposal_results are still valid after reconciliation
         for num, pr in proposal_results.items():
@@ -511,7 +511,7 @@ class TestFullPhaseSequence:
         _write_proposal_state(planspace, "02", execution_ready=False)
 
         # Reconciliation
-        ready, blocked, restart = run_reconciliation_phase(
+        reconciliation = run_reconciliation_phase(
             proposal_results,
             sections_by_num,
             all_sections,
@@ -521,8 +521,8 @@ class TestFullPhaseSequence:
             _default_policy(),
         )
 
-        assert "01" in ready
-        assert "02" in blocked
+        assert "01" in reconciliation.new_section_numbers
+        assert "02" in reconciliation.removed_section_numbers
 
         # Implementation
         def mock_run_section(

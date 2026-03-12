@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,15 @@ from risk.repository.serialization import (
     load_risk_plan,
 )
 from risk.types import PostureProfile, StepDecision
+
+
+@dataclass(frozen=True)
+class RiskSummary:
+    """Structured result from ``_read_risk_summary``."""
+
+    posture: str | None = None
+    mitigations: list[str] = field(default_factory=list)
+    has_plan: bool = False
 
 
 def build_strategic_state(
@@ -45,15 +55,12 @@ def build_strategic_state(
             problems = getattr(result, "problems", None)
 
         if planspace is not None:
-            posture, dominant_risks, risk_blocked = _read_risk_summary(
-                planspace,
-                sec_num,
-            )
-            if posture is not None:
-                risk_posture[sec_num] = posture
-            if dominant_risks:
-                dominant_risks_by_section[sec_num] = dominant_risks
-            if risk_blocked:
+            risk_summary = _read_risk_summary(planspace, sec_num)
+            if risk_summary.posture is not None:
+                risk_posture[sec_num] = risk_summary.posture
+            if risk_summary.mitigations:
+                dominant_risks_by_section[sec_num] = risk_summary.mitigations
+            if risk_summary.has_plan:
                 blocked_by_risk.append(sec_num)
 
         if aligned:
@@ -151,7 +158,7 @@ def _derive_next_action(
 def _read_risk_summary(
     planspace: Path,
     sec_num: str,
-) -> tuple[str | None, list[str], bool]:
+) -> RiskSummary:
     paths = PathRegistry(planspace)
     scope = f"section-{sec_num}"
     assessment = load_risk_assessment(paths.risk_assessment(scope))
@@ -177,7 +184,7 @@ def _read_risk_summary(
         if assessment is not None
         else []
     )
-    return posture, dominant_risks, blocked_by_risk
+    return RiskSummary(posture=posture, mitigations=dominant_risks, has_plan=blocked_by_risk)
 
 
 def _load_research_questions(planspace: Path) -> list[dict[str, Any]]:

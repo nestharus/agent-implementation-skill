@@ -178,32 +178,31 @@ def dispatch_task(
     if qa_params.get("qa_mode"):
         log(f"QA intercept: evaluating task {task_id} ({task_type})")
         try:
-            passed, rationale_path, reason_code = intercept_task(task, agent_file, planspace)
+            intercept = intercept_task(task, agent_file, planspace)
         except Exception as exc:
             # Fail-OPEN: QA errors must not block dispatch.
             log(f"QA ERROR for task {task_id}: {exc} — failing open (degraded)")
-            passed = True
-            rationale_path = None
-            reason_code = "dispatch_error"
+            from qa.service.qa_interceptor import InterceptResult
+            intercept = InterceptResult(intercepted=True, verdict=None, output_path="dispatch_error")
 
         record_qa_intercept(
             planspace,
             task_id,
             task_type,
-            None if passed else rationale_path,
+            None if intercept.intercepted else intercept.verdict,
             db_path=db_path,
-            reason_code=reason_code,
+            reason_code=intercept.output_path,
         )
 
-        if not passed:
-            err = f"QA interceptor rejected: see {rationale_path}"
+        if not intercept.intercepted:
+            err = f"QA interceptor rejected: see {intercept.verdict}"
             log(f"QA REJECT: task {task_id}: {err}")
             db_cmd(db_path, "fail-task", task_id, "--error", err)
             notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
             return
         # PAT-0014: distinguish genuine approval from degraded fallback
-        if reason_code:
-            log(f"QA DEGRADED: task {task_id} (reason: {reason_code}) — failing open")
+        if intercept.output_path:
+            log(f"QA DEGRADED: task {task_id} (reason: {intercept.output_path}) — failing open")
         else:
             log(f"QA PASS: task {task_id}")
 

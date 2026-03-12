@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from staleness.service.change_tracker import (
@@ -13,6 +14,15 @@ from orchestrator.service.pipeline_control import handle_pending_messages
 from reconciliation.engine.loop import run_reconciliation
 from implementation.engine.runner import run_section
 from orchestrator.types import ProposalPassResult, Section
+
+
+@dataclass(frozen=True)
+class ReconciliationResult:
+    """Structured result from ``run_reconciliation_phase``."""
+
+    new_section_numbers: list[str] = field(default_factory=list)
+    removed_section_numbers: list[str] = field(default_factory=list)
+    alignment_changed: bool = False
 
 
 class ReconciliationPhaseExit(Exception):
@@ -27,7 +37,7 @@ def run_reconciliation_phase(
     codespace: Path,
     parent: str,
     policy: dict,
-) -> tuple[list[str], list[str], bool]:
+) -> ReconciliationResult:
     """Run reconciliation blocking and any required re-proposal passes."""
     del policy
 
@@ -153,7 +163,11 @@ def run_reconciliation_phase(
         if blocked_sections:
             log(f"Still blocked after re-proposal: {blocked_sections}")
 
-    return ready_sections, blocked_sections, restart_phase1
+    return ReconciliationResult(
+        new_section_numbers=ready_sections,
+        removed_section_numbers=blocked_sections,
+        alignment_changed=restart_phase1,
+    )
 
 
 _check_and_clear_alignment_changed = make_alignment_checker(DB_SH, AGENT_NAME)

@@ -18,17 +18,36 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from containers import Services
 from signals.repository.artifact_io import read_json, rename_malformed, write_json
 from orchestrator.path_registry import PathRegistry
-from proposal.helpers.qa_verdict import parse_qa_verdict
+from qa.helpers.qa_verdict import QaVerdict, parse_qa_verdict
 
 from taskrouter.agents import resolve_agent_path
 from taskrouter import agent_for
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class DispatchEvaluation:
+    """Structured result from ``intercept_dispatch``."""
+
+    should_intercept: bool
+    reason: str | None
+    qa_prompt_path: str | None
+
+
+@dataclass(frozen=True)
+class InterceptResult:
+    """Structured result from ``intercept_task``."""
+
+    intercepted: bool
+    verdict: str | None
+    output_path: str | None
 
 # Infrastructure submitters that are not agent files.
 _INFRA_SUBMITTERS: dict[str, str] = {
@@ -172,15 +191,6 @@ REJECT example:
     return render_template("qa-intercept", dynamic_body)
 
 
-def _parse_verdict(output: str) -> tuple[str, str, list[str]]:
-    """Parse the QA agent's JSON verdict from its output.
-
-    Returns (verdict, rationale, violations).
-    On parse failure returns ("PASS", <error description>, []).
-    """
-    return parse_qa_verdict(output)
-
-
 def _write_rationale(
     planspace: Path,
     task: dict[str, str],
@@ -220,7 +230,7 @@ def intercept_dispatch(
     prompt_path: Path,
     planspace: Path,
     submitted_by: str = "section-loop",
-) -> tuple[bool, str | None, str | None]:
+) -> InterceptResult:
     """Evaluate a direct dispatch against agent contracts.
 
     Creates a synthetic task dict and delegates to ``intercept_task()``.
@@ -242,14 +252,14 @@ def intercept_task(
     task: dict[str, str],
     agent_file: str,
     planspace: Path,
-) -> tuple[bool, str | None, str | None]:
+) -> InterceptResult:
     """Evaluate a task against submitter and target agent contracts.
 
-    Returns ``(passed, rationale_path, reason_code)``:
+    Returns an ``InterceptResult``:
 
-    - ``(True, None, None)`` — task genuinely passed QA.
-    - ``(False, "/path/to/rationale.json", None)`` — task rejected.
-    - ``(True, path_or_None, "reason_code")`` — degraded advisory
+    - ``InterceptResult(True, None, None)`` — task genuinely passed QA.
+    - ``InterceptResult(False, "/path/to/rationale.json", None)`` — task rejected.
+    - ``InterceptResult(True, path_or_None, "reason_code")`` — degraded advisory
       (PAT-0014): QA failed internally, dispatch falls back to baseline.
 
     Fail-OPEN: any error during QA evaluation (timeout, parse failure,
@@ -272,7 +282,7 @@ def intercept_task(
                 f"{target_path} — failing open (task {task_id})",
                 flush=True,
             )
-            return True, None, "target_unavailable"
+            return InterceptResult(intercepted=True, verdict=None, output_path="target_unavailable")
         target_contract = target_path.read_text(encoding="utf-8")
 
         # 2. Resolve submitter contract.
@@ -311,7 +321,7 @@ def intercept_task(
                 f"failing open (PAT-0014 degraded)",
                 flush=True,
             )
-            return True, None, "safety_blocked"
+            return InterceptResult(intercepted=True, verdict=None, output_path="safety_blocked")
 
         output_path = intercepts_dir / f"qa-{task_id}-output.md"
 
@@ -328,25 +338,25 @@ def intercept_task(
         )
 
         # 7. Parse verdict.
-        verdict, rationale, violations = _parse_verdict(output)
+        qa_verdict = parse_qa_verdict(output)
 
-        if verdict == "REJECT":
+        if qa_verdict.verdict == "REJECT":
             rationale_path = _write_rationale(
                 planspace, task, agent_file,
-                verdict, rationale, violations,
+                qa_verdict.verdict, qa_verdict.rationale, qa_verdict.violations,
             )
-            return False, str(rationale_path), None
+            return InterceptResult(intercepted=False, verdict=str(rationale_path), output_path=None)
 
-        if verdict == "DEGRADED":
+        if qa_verdict.verdict == "DEGRADED":
             # PAT-0014: QA parse failure — fail open but preserve evidence
             rationale_path = _write_rationale(
                 planspace, task, agent_file,
-                verdict, rationale, violations,
+                qa_verdict.verdict, qa_verdict.rationale, qa_verdict.violations,
             )
-            return True, str(rationale_path), "unparseable"
+            return InterceptResult(intercepted=True, verdict=str(rationale_path), output_path="unparseable")
 
         # Genuine PASS
-        return True, None, None
+        return InterceptResult(intercepted=True, verdict=None, output_path=None)
 
     except Exception:
         # Fail-OPEN: any error during QA means the task passes.
@@ -356,4 +366,4 @@ def intercept_task(
             task_id,
             exc_info=True,
         )
-        return True, None, "dispatch_error"
+        return InterceptResult(intercepted=True, verdict=None, output_path="dispatch_error")

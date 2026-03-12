@@ -101,7 +101,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
         if qa_params.get("qa_mode"):
             log(f"  QA intercept: evaluating dispatch ({agent_file})")
             try:
-                passed, rationale_path, reason_code = intercept_dispatch(
+                intercept = intercept_dispatch(
                     agent_file=agent_file,
                     prompt_path=prompt_path,
                     planspace=planspace,
@@ -109,15 +109,14 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
                 )
             except Exception as exc:
                 log(f"  QA ERROR: {exc} — failing open (degraded)")
-                passed = True
-                rationale_path = None
-                reason_code = "dispatch_error"
+                from qa.service.qa_interceptor import InterceptResult
+                intercept = InterceptResult(intercepted=True, verdict=None, output_path="dispatch_error")
 
-            if not passed:
-                log(f"  QA REJECT: {agent_file} — see {rationale_path}")
-                return f"QA_REJECTED:{rationale_path}"
-            if reason_code:
-                log(f"  QA DEGRADED ({reason_code}) — failing open")
+            if not intercept.intercepted:
+                log(f"  QA REJECT: {agent_file} — see {intercept.verdict}")
+                return f"QA_REJECTED:{intercept.verdict}"
+            if intercept.output_path:
+                log(f"  QA DEGRADED ({intercept.output_path}) — failing open")
             else:
                 log(f"  QA PASS: {agent_file}")
 

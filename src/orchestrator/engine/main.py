@@ -22,7 +22,7 @@ from implementation.engine.implementation_pass import (
 from orchestrator.path_registry import PathRegistry
 from scan.service.project_mode import resolve_project_mode, write_mode_contract
 from proposal.engine.proposal_pass import ProposalPassExit, run_proposal_pass
-from reconciliation.engine.phase import ReconciliationPhaseExit, run_reconciliation_phase
+from reconciliation.engine.phase import ReconciliationPhaseExit, ReconciliationResult, run_reconciliation_phase
 from scan.service.section_loader import load_sections
 
 from signals.service.communication import (
@@ -138,21 +138,22 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             return
 
         try:
-            ready_sections, blocked_sections, reproposal_restart_phase1 = (
-                run_reconciliation_phase(
-                    proposal_results,
-                    sections_by_num,
-                    all_sections,
-                    planspace,
-                    codespace,
-                    parent,
-                    policy,
-                )
+            reconciliation = run_reconciliation_phase(
+                proposal_results,
+                sections_by_num,
+                all_sections,
+                planspace,
+                codespace,
+                parent,
+                policy,
             )
         except ReconciliationPhaseExit:
             return
 
-        if reproposal_restart_phase1:
+        ready_sections = reconciliation.new_section_numbers
+        blocked_sections = reconciliation.removed_section_numbers
+
+        if reconciliation.alignment_changed:
             continue  # outer while True → restart Phase 1
 
         # -----------------------------------------------------------------

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from signals.repository.artifact_io import write_json
@@ -20,6 +21,15 @@ from orchestrator.service.pipeline_control import poll_control_messages
 from orchestrator.types import Section, SectionResult
 
 
+@dataclass(frozen=True)
+class AssessmentResult:
+    """Structured result from ``_assess_initial_state``."""
+
+    misaligned: list[SectionResult] = field(default_factory=list)
+    outstanding: list[dict] = field(default_factory=list)
+    early_exit_reason: str | None = None
+
+
 def _check_alignment(planspace: Path, parent: str) -> bool:
     """Poll for alignment changes.  Returns True if changed."""
     ctrl = poll_control_messages(planspace, parent)
@@ -35,11 +45,11 @@ def _assess_initial_state(
     planspace: Path,
     parent: str,
     decisions_dir: Path,
-) -> tuple[list[SectionResult], list[dict], str | None]:
+) -> AssessmentResult:
     """Check if coordination is needed at all.
 
-    Returns (misaligned, outstanding, early_exit_reason).
-    If early_exit_reason is not None, the caller should return it.
+    Returns an ``AssessmentResult``.
+    If ``early_exit_reason`` is not None, the caller should return it.
     """
     misaligned = [r for r in section_results.values() if not r.aligned]
     outstanding: list[dict] = []
@@ -56,13 +66,13 @@ def _assess_initial_state(
             )
         else:
             if _check_alignment(planspace, parent):
-                return misaligned, outstanding, "restart_phase1"
+                return AssessmentResult(misaligned=misaligned, outstanding=outstanding, early_exit_reason="restart_phase1")
             log("=== All sections ALIGNED after initial pass ===")
             build_strategic_state(decisions_dir, section_results, planspace)
             mailbox_send(planspace, parent, "complete")
-            return misaligned, outstanding, "complete"
+            return AssessmentResult(misaligned=misaligned, outstanding=outstanding, early_exit_reason="complete")
 
-    return misaligned, outstanding, None
+    return AssessmentResult(misaligned=misaligned, outstanding=outstanding)
 
 
 def _report_result(
@@ -138,17 +148,17 @@ def run_coordination_loop(
     decisions_dir = paths.decisions_dir()
 
     # --- Initial assessment -----------------------------------------------
-    misaligned, outstanding, early_exit = _assess_initial_state(
+    assessment = _assess_initial_state(
         section_results, sections_by_num, planspace, parent, decisions_dir,
     )
-    if early_exit is not None:
-        return early_exit
+    if assessment.early_exit_reason is not None:
+        return assessment.early_exit_reason
 
-    outstanding_count = len(outstanding) if not misaligned else 0
-    if misaligned:
+    outstanding_count = len(assessment.outstanding) if not assessment.misaligned else 0
+    if assessment.misaligned:
         log(
-            f"{len(misaligned)} sections need coordination: "
-            f"{sorted(r.section_number for r in misaligned)}",
+            f"{len(assessment.misaligned)} sections need coordination: "
+            f"{sorted(r.section_number for r in assessment.misaligned)}",
         )
     else:
         log(
@@ -159,7 +169,7 @@ def run_coordination_loop(
 
     # --- Coordination loop ------------------------------------------------
     stall = StallDetector(planspace, parent, policy)
-    stall.set_initial(len(misaligned) + outstanding_count)
+    stall.set_initial(len(assessment.misaligned) + outstanding_count)
     termination_reason = "exhausted"
 
     for round_num in range(1, MAX_COORDINATION_ROUNDS + 1):

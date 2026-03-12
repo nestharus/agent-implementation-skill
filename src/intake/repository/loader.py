@@ -6,8 +6,7 @@ import logging
 import re
 from pathlib import Path
 
-from flow.helpers.file_utils import read_if_exists
-from signals.repository.artifact_io import write_json
+from signals.repository.artifact_io import read_if_exists, write_json
 from orchestrator.path_registry import PathRegistry
 
 logger = logging.getLogger(__name__)

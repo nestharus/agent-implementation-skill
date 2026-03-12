@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from flow.helpers.file_utils import read_if_exists
+from signals.repository.artifact_io import read_if_exists
 from orchestrator.path_registry import PathRegistry
 
 
