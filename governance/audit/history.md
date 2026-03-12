@@ -1,6 +1,6 @@
 # Audit History
 
-Concern-based audit log. 110 rounds completed in the philosophy audit cycle.
+Concern-based audit log. 111 rounds completed in the philosophy audit cycle.
 Rounds 1-20 are summarized as conclusions. Rounds 21-50 aggregated as settled
 concerns. Rounds 52-91 aggregated as settled concern threads with established
 patterns. Rounds 92+ are recent with full detail.
@@ -261,5 +261,7 @@ Intent layer audited normally from R52 onward as part of codebase.
 
 | 109 | 930b611 | 1499 | 6 | Advisory transparency and testing philosophy: TP-1 PAT-0002 (payload content trust boundary clarified), TP-2 PAT-0003 (context_sidecar accessor), TP-3 PAT-0011 (synthesis cues "must include"), TP-4 PAT-0014 (structured reason_code taxonomy), TP-5 PAT-0015 added (Positive Contract Testing), CP-1 QA verdict parser DEGRADED (not PASS) for malformed/unknown + interceptor 3-tuple with reason_codes + dispatcher distinct qa:degraded logging + notifier reason_code flow + reconciliation PAT-0014 refs, CP-2 QA interceptor payload content validation (PAT-0002), CP-3 PathRegistry.context_sidecar() accessor + context_sidecar.py uses it, CP-4 synthesis cue extraction from system-synthesis.md Regions + packet builder consumption, CP-5 5 source-grep tests → positive contract tests (PAT-0015), CP-6 governance doc sync (PRB-0017 added, RISK-0004 resolved, system-synthesis pattern count 15), circular import fix (task_ingestion lazy task_flow import) |
 | 110 | f12e10d | 1520 | 4 | Projection fidelity and contract coverage: TP-1 PAT-0003 (rule 7: distinct accessor names for related signal families, scan/substrate instances), TP-2 PAT-0015 (representative round-trip contract tests required, governance-loader and signal-path instances), CP-1 governance loader `_extract_bullets` fixed (continuation lines joined, numbered template items parsed as individual entries), CP-2 PathRegistry `scan_related_files_update_signal()` accessor + `related_files_update_dir()` docstring (scan/substrate families registry-distinguished), CP-3 representative contract tests (wrapped-bullet/numbered-template fixture, signal-path distinctness), CP-4 last two `policy.get()` fallbacks replaced (`proposal_loop.py` intent_judge → `resolve()`, `scan_related_files.py` validation → direct key access) + 4 stale GPT/Opus docstrings rewritten, governance docs (PRB-0010 R110, PRB-0017 R110, RISK-0005 resolved, RISK-0006 resolved) |
+
+| 111 | 57514d5 | 1550 | 5/3 | Legacy retirement, PAT-0001 conformance, inventory truth: V1 deleted 3 dead agent files (orchestrator.md, exception-handler.md, state-detector.md) from live discovery tree, V2 corrected system-synthesis.md (52→50 agents, 28→48 routes, 9→11 namespaces) + governance/audit/prompt.md (paths/counts), V5 migrated scan/substrate/related_files.py + schemas.py from local json.loads/rename to shared read_json/rename_malformed (PAT-0001). TP-1 PAT-0016 added (Runtime Inventory Truth & Surface Retirement). PRB-0015 reopened, PRB-0018 + PRB-0019 added. 2 violations noted for follow-up: V3 eval adapter imports (PRB-0015 recurrence), V4 PAT-0003 saturation |
 
 **Current state**: 1550 tests, ~380 files in codebase zip.
