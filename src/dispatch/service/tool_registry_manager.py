@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import shutil
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -64,8 +62,8 @@ def surface_tool_registry(
     if not tool_registry_path.exists():
         return pre_tool_total
 
-    try:
-        registry = json.loads(tool_registry_path.read_text(encoding="utf-8"))
+    registry = Services.artifact_io().read_json(tool_registry_path)
+    if registry is not None:
         all_tools = registry if isinstance(registry, list) else registry.get("tools", [])
         pre_tool_total = len(all_tools)
         relevant_count = write_tool_surface(
@@ -83,27 +81,27 @@ def surface_tool_registry(
                 f"Section {section_number}: removed stale "
                 f"tools-available surface (no relevant tools)"
             )
-    except (json.JSONDecodeError, ValueError) as exc:
+    else:
         if tools_available_path.exists():
             tools_available_path.unlink()
             log(
                 f"Section {section_number}: removed stale "
                 f"tools-available surface (malformed registry)"
             )
-        malformed_path = _preserve_tool_registry(tool_registry_path)
         log(
             f"Section {section_number}: tool-registry.json "
-            f"malformed ({exc}) — dispatching repair "
-            f"(original preserved as {malformed_path.name})"
+            f"malformed — dispatching repair "
+            f"(original preserved as .malformed.json)"
         )
+        malformed_path = tool_registry_path.with_suffix(".malformed.json")
         repair_prompt = artifacts / f"tool-registry-repair-{section_number}-prompt.md"
         repair_output = artifacts / f"tool-registry-repair-{section_number}-output.md"
         if not Services.prompt_guard().write_validated(
             f"# Task: Repair Tool Registry\n\n"
-            f"The tool registry at `{tool_registry_path}` contains "
-            f"malformed JSON.\n\nError: {exc}\n\n"
-            f"Read the file, reconstruct valid JSON preserving all "
-            f"tool entries, and write back to the same path.\n",
+            f"The tool registry was malformed. The preserved copy is at "
+            f"`{malformed_path}`.\n\n"
+            f"Read the malformed file, reconstruct valid JSON preserving all "
+            f"tool entries, and write back to `{tool_registry_path}`.\n",
             repair_prompt,
         ):
             return pre_tool_total
@@ -181,8 +179,8 @@ def validate_tool_registry_after_implementation(
     if not tool_registry_path.exists():
         return friction_signal_path
 
-    try:
-        post_registry = json.loads(tool_registry_path.read_text(encoding="utf-8"))
+    post_registry = Services.artifact_io().read_json(tool_registry_path)
+    if post_registry is not None:
         post_tools = (
             post_registry if isinstance(post_registry, list)
             else post_registry.get("tools", [])
@@ -237,11 +235,11 @@ def validate_tool_registry_after_implementation(
                 agent_file=Services.task_router().agent_for("dispatch.tool_registry_repair"),
                 section_number=section_number,
             )
-    except (json.JSONDecodeError, ValueError) as exc:
-        malformed_path = _preserve_tool_registry(tool_registry_path)
+    else:
+        malformed_path = tool_registry_path.with_suffix(".malformed.json")
         log(
             f"Section {section_number}: post-impl registry "
-            f"malformed ({exc}) — dispatching repair "
+            f"malformed — dispatching repair "
             f"(original preserved as {malformed_path.name})"
         )
         repair_prompt = (
@@ -252,11 +250,11 @@ def validate_tool_registry_after_implementation(
         )
         Services.prompt_guard().write_validated(
             f"# Task: Repair Tool Registry (Post-Implementation)\n\n"
-            f"The tool registry at `{tool_registry_path}` became "
-            f"malformed after section {section_number} implementation.\n\n"
-            f"Error: {exc}\n\n"
-            f"Read the file, reconstruct valid JSON preserving all "
-            f"tool entries, and write back to the same path.\n",
+            f"The tool registry was malformed after section {section_number} "
+            f"implementation. The preserved copy is at "
+            f"`{malformed_path}`.\n\n"
+            f"Read the malformed file, reconstruct valid JSON preserving all "
+            f"tool entries, and write back to `{tool_registry_path}`.\n",
             repair_prompt,
         )
         dispatch_agent(
@@ -538,10 +536,3 @@ with JSON:
         )
 
 
-def _preserve_tool_registry(tool_registry_path: Path) -> Path:
-    malformed_path = tool_registry_path.with_suffix(".malformed.json")
-    try:
-        shutil.copy2(tool_registry_path, malformed_path)
-    except OSError:
-        pass
-    return malformed_path

@@ -16,7 +16,7 @@ Each entry:
 
 ## Population
 
-Post-implementation assessment emits `accept_with_debt` verdicts with typed `debt_items` into `risk-register-signal.json` files. The `promote_debt_signals()` function in `lib/governance/assessment.py` consumes these signals into a staging artifact (`risk-register-staging.json`). Staged entries are promoted into this register during stabilization or audit rounds.
+Post-implementation assessment emits `accept_with_debt` verdicts with typed `debt_items` into `risk-register-signal.json` files. The `promote_debt_signals()` function in `src/intake/service/assessment_evaluator.py` consumes these signals into a staging artifact (`risk-register-staging.json`). Staged entries are promoted into this register during stabilization or audit rounds.
 
 ## Entries
 
@@ -95,9 +95,9 @@ Post-implementation assessment emits `accept_with_debt` verdicts with typed `deb
 ### RISK-0007: PathRegistry consumer saturation gap
 
 - **Category**: pattern-drift / operability
-- **Region**: PathRegistry consumers across scan, intent/prompt assembly, tool surfaces, freshness/hash services
+- **Region**: PathRegistry consumers across scan, intent/prompt assembly, tool surfaces, freshness/hash services, dispatch prompt assembly, implementation services, orchestrator
 - **Description**: PAT-0003 had correct accessors for several durable families, but authoritative consumers still reconstructed those paths manually. This created writer/reader drift risk and made governance health notes inaccurate (PAT-0003 claimed "Healthy" while ad-hoc construction remained widespread).
 - **Severity**: low-medium
-- **Status**: mitigated
-- **Acceptance rationale**: CP-1 saturation sweep migrated all known authoritative consumers. Remaining ad-hoc paths are either ephemeral or in coordination/pipeline modules that may need a future sweep.
-- **Mitigation**: CP-1 saturation sweep across 12 consumer files. PAT-0003 template extended with rules 8-9 (accessor ≠ migration complete; accessor required before family spreads). Health notes updated to reflect actual state.
+- **Status**: open → mitigated (R112)
+- **Acceptance rationale**: R110 CP-1 saturation sweep migrated 12 consumer files. R112 CP-4 migrated 4 remaining confirmed islands (`context_builder.py`, `section_reexplorer.py`, `strategic_state_builder.py`, `codemap_builder.py`). All known authoritative consumers now use PathRegistry accessors.
+- **Mitigation**: CP-1 saturation sweep (R110) + CP-4 sweep (R112) across all confirmed consumers. PAT-0003 template extended with rules 8-9. Health notes updated to reflect actual state.

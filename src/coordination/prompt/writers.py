@@ -243,16 +243,9 @@ def _format_tools_block(paths: PathRegistry) -> str:
         return ""
 
     malformed_path = tool_registry_path.with_suffix(".malformed.json")
-    if malformed_path.exists() and not tool_registry_path.exists():
-        try:
-            import shutil
-            shutil.copy2(malformed_path, tool_registry_path)
-        except OSError:
-            pass
     return (
         f"\n## Tool Registry Warning\n"
-        "Tool registry exists but is malformed; "
-        f"see `{tool_registry_path}`.\n"
+        "Tool registry is malformed. "
         f"Malformed artifact preserved at "
         f"`{malformed_path}`.\n"
         f"Consider dispatching tool-registrar repair before "

@@ -27,12 +27,12 @@ from pathlib import Path
 from typing import Callable
 
 # ---------------------------------------------------------------------------
-# Import dispatch infrastructure from section_loop
+# Import dispatch infrastructure
 # ---------------------------------------------------------------------------
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src" / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from dispatch.model_policy import resolve  # noqa: E402
-from dispatch.section_dispatch import dispatch_agent, read_model_policy  # noqa: E402
+from dispatch.service.model_policy import load_model_policy, resolve  # noqa: E402
+from dispatch.engine.section_dispatcher import dispatch_agent  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -144,8 +144,8 @@ def _run_scenario(scenario: Scenario) -> ScenarioResult:
     try:
         _bootstrap_planspace(planspace)
 
-        # Write a default model policy so read_model_policy works
-        policy = read_model_policy(planspace)
+        # Write a default model policy so load_model_policy works
+        policy = load_model_policy(planspace)
         model = resolve(policy, scenario.model_policy_key)
 
         # Run scenario setup -- creates fixtures and returns prompt path

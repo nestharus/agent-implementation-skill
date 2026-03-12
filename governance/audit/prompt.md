@@ -124,24 +124,23 @@ Output: pattern violations, new islands, unhealthy patterns, and candidate new p
 Now audit the codebase against BOTH the philosophy AND the patterns. For each principle in the philosophy and each template in the pattern catalog, search the codebase for violations.
 
 Key areas to examine in the codebase:
-- `src/scripts/section_loop/` — Stages 4-5 orchestrator (main.py, runner.py, dispatch.py, intent/, coordination/)
-- `src/scripts/lib/` — Core libraries:
-  - `lib/core/` — artifact_io, path_registry, hash_service, freshness_service
-  - `lib/flow/` — flow_schema, task_flow, flow_catalog, flow_reconciler
-  - `lib/risk/` — ROAL (types, serialization, quantifier, posture, loop)
-  - `lib/research/` — research prompt writers, plan executor, orchestrator
-  - `lib/governance/` — loader, packet, assessment
-  - `lib/intent/` — intent bootstrap, surfaces, expansion
-  - `lib/pipelines/` — implementation_loop, coordination pipelines
-  - `lib/services/` — freshness, section_input_hasher
-  - `lib/dispatch/` — context_sidecar, agent_templates
-  - `lib/prompts/` — prompt_context_assembler, prompt_guard
-  - `lib/repositories/` — proposal_state, readiness, reconciliation
-- `src/scripts/scan/` — Stage 3 coordinator (codemap, exploration, deep scan)
-- `src/scripts/substrate/` — Stage 3.5 SIS (shard, prune, seed)
+- `src/orchestrator/engine/` — Pipeline orchestrator, strategic state builder
+- `src/implementation/engine/` — Implementation cycle, section pipeline, implementation phase
+- `src/proposal/engine/` — Proposal cycle, proposal phase, readiness gate
+- `src/coordination/engine/` — Global coordinator, coordination controller
+- `src/dispatch/engine/` — Section dispatcher, agent executor
+- `src/scan/` — Stage 3 coordinator (codemap, exploration, deep scan)
+- `src/scan/substrate/` — Stage 3.5 SIS (shard, prune, seed)
+- `src/flow/engine/` — Task dispatcher, flow submitter
+- `src/risk/engine/` — Risk assessor, ROAL loop
+- `src/research/engine/` — Research plan executor
+- `src/intent/engine/` — Intent initializer, expansion orchestrator
+- `src/reconciliation/engine/` — Cross-section reconciler, reconciliation phase
+- `src/intake/` — Governance loader, assessment evaluator, governance packet builder
+- `src/staleness/` — Freshness calculator, alignment collector, content hasher
+- `src/signals/` — Blocker manager, section communicator, message poller
 - `src/taskrouter/` — Task routing, model policy, agent resolution
-- `src/flow/engine/dispatcher.py` — Queue dispatch with freshness/payload/QA checks
-- `src/*/agents/*.md` — Agent definitions (50 agents across 11 systems)
+- `src/*/agents/*.md` — Agent definitions (48 agents across 12 namespaces)
 - `src/SKILL.md` — Skill entry point
 - `src/implement.md` — Pipeline documentation
 - `evals/` — Evaluation scenarios

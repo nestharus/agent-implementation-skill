@@ -92,7 +92,7 @@ The execution pipeline itself introduces risk — proposals that don't solve the
 **Provenance**: user-authored (governance gaps analysis)
 **Regions**: post-implementation assessment, governance assessment, flow reconciler, risk register
 
-After code lands, we don't systematically assess what risks the implementation introduced: coupling, security surfaces, scalability bottlenecks, pattern drift, coherence friction. Post-implementation assessment was implemented in R101: queues assessment after implementation, validates result, routes verdict (accept/accept_with_debt/refactor_required) through structured signals. R102 added debt signal staging. R103 wired bounded stabilization consumer (`promote_debt_signals()` called after implementation pass in section-loop main). R104 made debt promotion idempotent. R105 made dedup material-payload-aware: key now covers severity, mitigation, acceptance_rationale, and governance lineage so changed risk re-promotes while unchanged debt stays idempotent.
+After code lands, we don't systematically assess what risks the implementation introduced: coupling, security surfaces, scalability bottlenecks, pattern drift, coherence friction. Post-implementation assessment was implemented in R101: queues assessment after implementation, validates result, routes verdict (accept/accept_with_debt/refactor_required) through structured signals. R102 added debt signal staging. R103 wired bounded stabilization consumer (`promote_debt_signals()` called after implementation pass in `pipeline_orchestrator.py`). R104 made debt promotion idempotent. R105 made dedup material-payload-aware: key now covers severity, mitigation, acceptance_rationale, and governance lineage so changed risk re-promotes while unchanged debt stays idempotent.
 
 **Solution surfaces**: Post-implementation assessment agent + prompt writer, flow reconciler verdict routing, debt signal staging, bounded stabilization consumer (R103), material-payload-aware idempotent debt promotion (R105, PAT-0012).
 
@@ -172,13 +172,13 @@ Governance packets mirror the full problem/pattern/profile archives into every s
 
 ## PRB-0015: Evaluation Surface Drift / Silent Coverage Loss
 
-**Status**: reopened (R111) — recurred after package-layout migration
-**Provenance**: audit-inferred (R106), reopened R111
+**Status**: reopened (R111), corrected R112
+**Provenance**: audit-inferred (R106), reopened R111, corrected R112
 **Regions**: evals harness, eval scenarios, import validation, trigger adapters
 
-Declared eval scenario modules can drift to stale import paths without detection. R106 fixed specific stale imports and made the harness fail-closed. R111: eval-surface drift recurred after the Phase B package reorganization — `evals/agentic/trigger_adapters.py` now targets pre-migration imports (`proposal.readiness_gate`, `intent.philosophy_bootstrap`, `dispatch.section_dispatch`, `intake.governance_loader`) and a nonexistent `src/scripts/task_dispatcher.py`.
+Declared eval scenario modules can drift to stale import paths without detection. R106 fixed specific stale imports and made the harness fail-closed. R111: eval-surface drift recurred after the Phase B package reorganization. R112: corrected all stale imports in `evals/harness.py` (legacy `src/scripts` bootstrap → `src/`, `dispatch.model_policy` → `dispatch.service.model_policy`, `dispatch.section_dispatch` → `dispatch.engine.section_dispatcher`) and `evals/agentic/trigger_adapters.py` (all subprocess PYTHONPATH, module imports, and script entrypoints updated to current layout).
 
-**Solution surfaces**: Eval harness fail-closed on import errors (PAT-0008 R106), corrected scenario imports, harness exit code enforcement. R111: remaining adapter fixes noted but not yet applied (requires subprocess mechanism analysis).
+**Solution surfaces**: Eval harness fail-closed on import errors (PAT-0008 R106), corrected scenario imports, harness exit code enforcement, centralized layout adapter (R112).
 
 ---
 
@@ -196,23 +196,23 @@ Advisory surfaces (QA interception, reconciliation adjudication) are deliberatel
 
 ## PRB-0017: Testing Philosophy Drift / Historical Regression Oracles
 
-**Status**: active — substantially addressed (R109-R110)
+**Status**: active — substantially addressed (R109-R110), scope expanded R112
 **Provenance**: audit-inferred (R109)
-**Regions**: integration tests, regression tests, component tests
+**Regions**: integration tests, regression tests, component tests, authoritative runtime surfaces
 
-Tests written as source-text archaeology (grepping codebase files for absent strings to confirm deleted code stays deleted) create fragile regressions that break when source text changes and say nothing about whether the behavior is correct. The test asserts "this string is not in the file" rather than "the system behaves correctly." When the code evolves, these tests either false-pass (the string changes form but the behavior returns) or false-fail (the string reappears in a different context). This testing philosophy drifts from behavioral contracts toward repository archaeology. R110 extended PAT-0015 to require representative round-trip contract tests for high-risk archive→runtime projection and writer→reader handoff contracts, and added governance-loader and related-files signal path contract tests as instances. CP-2 replaced the last two source-archaeology tests (`test_layout_agnostic_conftest` → `DB_SH.exists()` behavioral contract; `test_malformed_updater_signal_preserved` → `read_json` + `rename_malformed` round-trip). The suite has now converged on positive contract testing.
+Tests written as source-text archaeology create fragile regressions. R110 extended PAT-0015 to require representative round-trip contract tests. The suite has converged on positive contract testing. R112: PAT-0015 scope expanded to require that executable audit/eval surfaces themselves have positive current-layout contracts. Missing inventory-truth, retirement-boundary, and eval-entrypoint contracts are now explicitly scoped as gaps.
 
-**Solution surfaces**: PAT-0015 (Positive Contract Testing), positive behavioral assertions over source-grep absence tests, output-shape contracts, representative round-trip contract tests for high-risk handoffs (R110).
+**Solution surfaces**: PAT-0015 (Positive Contract Testing), positive behavioral assertions over source-grep absence tests, output-shape contracts, representative round-trip contract tests for high-risk handoffs (R110), executable eval/audit surface contracts (R112).
 
 ---
 
 ## PRB-0018: Legacy Surface Residue / Incomplete Surface Retirement
 
-**Status**: active — partially addressed (R111)
-**Provenance**: audit-inferred (R111)
+**Status**: resolved (R112)
+**Provenance**: audit-inferred (R111), resolved R112
 **Regions**: live agent inventory, legacy scripts, migration docs
 
-Legacy execution surfaces remain under live discovery trees after migration, reintroducing split-brain ambiguity and polluting runtime inventory. `taskrouter.agents.all_agent_files()` scans all `src/*/agents/*.md`, so dead agent files are not inert history — they alter the authoritative runtime inventory. R111 deleted 3 dead files (`orchestrator.md`, `exception-handler.md`, `state-detector.md`). Remaining: `qa-monitor.md` and `monitor.md` are referenced by `section-loop.py` which is itself a legacy orchestration surface.
+Legacy execution surfaces remain under live discovery trees after migration. R111 deleted 3 dead files (`orchestrator.md`, `exception-handler.md`, `state-detector.md`). R112 deleted `src/dispatch/agents/monitor.md` — the last unrouted agent in the live discovery tree. Runtime inventory now matches: 48 agents / 48 routes / 12 namespaces.
 
 **Solution surfaces**: PAT-0016 (Runtime Inventory Truth & Surface Retirement), dead file deletion, discovery tree hygiene.
 
@@ -220,10 +220,22 @@ Legacy execution surfaces remain under live discovery trees after migration, rei
 
 ## PRB-0019: Runtime Inventory Drift / Authoritative Interface Mismatch
 
-**Status**: active — partially addressed (R111)
+**Status**: active — substantially addressed (R111-R112)
 **Provenance**: audit-inferred (R111)
-**Regions**: system-synthesis.md, governance/audit/prompt.md, operator docs, eval adapters
+**Regions**: system-synthesis.md, governance/audit/prompt.md, operator docs, eval adapters, pyproject.toml
 
-Authoritative path/count/entrypoint claims are hand-maintained and diverge from live runtime registries after structural migrations. R111 corrected system-synthesis.md (52→50 agents, 28→48 routes, 9→11 namespaces) and governance/audit/prompt.md (path and count references). Remaining: SKILL.md, implement.md, models.md still reference legacy layout patterns.
+Authoritative path/count/entrypoint claims are hand-maintained and diverge from live runtime registries after structural migrations. R111 corrected system-synthesis.md and governance/audit/prompt.md (paths/counts). R112 corrected governance/audit/prompt.md region paths to current layout (48 agents / 12 namespaces), fixed pyproject.toml (stale pythonpath entries), and updated eval harness + trigger adapter imports. Remaining: `src/flow/engine/task_dispatcher.py` docstring, risk-agent references may need future review.
 
 **Solution surfaces**: PAT-0016 (Runtime Inventory Truth & Surface Retirement), registry-derived inventory, atomic doc updates with code changes.
+
+---
+
+## PRB-0020: Governance Self-Report Drift / False Health Reporting
+
+**Status**: active — partially addressed (R112)
+**Provenance**: audit-inferred (R112)
+**Regions**: governance/patterns/index.md, governance/risk-register.md, governance/problems/index.md, governance/audit/history.md
+
+Governance self-report surfaces (pattern health notes, risk register status, problem archive status, audit history counts) diverge from actual codebase state. R112 audit found: PAT-0001 health note claimed healthy while `tool_registry_manager.py` violated it; RISK-0007 marked mitigated while PAT-0003 islands remained; R111 history reported 50 agents / 11 namespaces vs live 49 / 12. This is not ordinary doc drift — it corrupts the audit/control loop itself. R112 corrected pattern catalog (TP-1 through TP-4), updated risk register (RISK-0007 reopened), and corrected audit history counts.
+
+**Solution surfaces**: PAT-0016 scope expansion to governance self-reports (R112), truthful pattern health notes, audit-time verification of present-tense claims.

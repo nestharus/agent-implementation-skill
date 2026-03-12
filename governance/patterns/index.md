@@ -41,28 +41,33 @@ debugging evidence instead of hiding it.
    Typed loaders must delegate malformed-artifact handling to the shared
    primitive rather than re-implementing local rename/copy conventions.
 2. If parse succeeds, validate schema shape and semantic invariants.
-3. On malformed JSON or schema mismatch, call `rename_malformed(path)`.
+3. On malformed JSON or schema mismatch, call `rename_malformed(path)` so the
+   corrupt canonical artifact stops being authoritative.
 4. Return `None` or a documented fail-closed default.
-5. Do not invent local corruption-preservation conventions unless the pattern is
+5. Do not restore malformed content back into the live path as an advisory
+   convenience, and do not preserve corruption by shadow-copying while leaving
+   the corrupt canonical file in place.
+6. Do not invent local corruption-preservation conventions unless the pattern is
    explicitly updated.
 
 **Canonical instance**: `load_surface_registry()` in
-`src/intent/engine/surface.py`
+`src/intent/service/surface_registry.py`
 
 **Known instances**:
 - `src/signals/repository/artifact_io.py` — `read_json()` / `rename_malformed()`
   primitives
-- `src/intent/engine/surface.py` — surface registry + research
+- `src/intent/service/surface_registry.py` — surface registry + research
   surface validation
 - `src/research/engine/orchestrator.py` — research plan / status loaders
-- `src/intake/service/assessment.py` — post-implementation assessment
+- `src/intake/service/assessment_evaluator.py` — post-implementation assessment
   reader
 - `src/proposal/repository/state.py`,
-  `decision_repository.py`, `reconciliation_queue.py`,
-  `reconciliation_result_repository.py`, and `strategic_state.py`
+  `decisions.py`, `queue.py`,
+  `results.py`, and `strategic_state_builder.py`
 - `src/dispatch/service/tool_registry_manager.py` — tool registry and friction signal
   readers
-- `src/signals/service/blockers.py` and
+- `src/coordination/prompt/writers.py` — tool-registry advisory surface
+- `src/signals/service/blocker_manager.py` and
   `src/coordination/service/problem_resolver.py`
 - `src/risk/repository/serialization.py` — ROAL package / assessment / plan
   loaders
@@ -110,26 +115,26 @@ mechanically before dispatch.
    mechanical baseline.
 
 **Canonical instance**: `write_research_plan_prompt()` in
-`src/research/prompt/writer.py`
+`src/research/prompt/writers.py`
 
 **Known instances**:
-- `src/research/prompt/writer.py` and
-  `src/research/engine/executor.py`
-- `src/intake/service/assessment.py`
-- `src/intent/service/triage.py`, `intent_surface.py`, and
-  `philosophy_bootstrap.py`
+- `src/research/prompt/writers.py` and
+  `src/research/engine/research_plan_executor.py`
+- `src/intake/service/assessment_evaluator.py`
+- `src/intent/service/intent_triager.py`, `expanders.py`, and
+  `philosophy_bootstrapper.py`
 - `src/dispatch/prompt/writers.py` and
-  `src/staleness/service/section_alignment.py`
+  `src/staleness/service/section_alignment_checker.py`
 - `src/reconciliation/service/adjudicator.py`,
-  `microstrategy_orchestrator.py`, `scope_delta_aggregator.py`,
-  `coordination_planner.py`, `coordination_executor.py`, and `triage_orchestrator.py`
+  `microstrategy_generator.py`, `scope_delta_aggregator.py`,
+  `planner.py`, `plan_executor.py`, and `triage_orchestrator.py`
 - `src/implementation/service/impact_analyzer.py`
-- `src/risk/engine/loop.py`
+- `src/risk/engine/risk_assessor.py`
 - `src/dispatch/service/tool_registry_manager.py`
 - `src/scan/substrate/prompt_builder.py`
-- `src/scan/codemap/lifecycle.py`, `exploration.py`, `feedback.py`
-  — validated scan prompts
-- `src/flow/engine/dispatcher.py` and `src/qa/service/qa_interceptor.py`
+- `src/scan/codemap/codemap_builder.py`, `section_explorer.py`,
+  `feedback_collector.py` — validated scan prompts
+- `src/flow/engine/task_dispatcher.py` and `src/qa/service/qa_interceptor.py`
 
 **Conformance**: Every dispatch must be payload-backed and pass prompt-safety
 validation through one of the sanctioned forms.
@@ -185,37 +190,40 @@ consumer migration, runtime-shape tests.
   post-implementation assessment, risk-register signal)
 - Readiness / proposal-state / trace / signal / input-ref accessors
 - `src/dispatch/service/model_policy.py`
-- `src/scan/service/scan_dispatch.py`
+- `src/scan/service/scan_dispatch_config.py`
 - `src/scan/substrate/policy.py`,
   `src/scan/substrate/related_files.py`, and
   `src/scan/substrate/schemas.py`
-- `src/implementation/service/microstrategy.py`
-- `src/implementation/engine/loop.py`
+- `src/implementation/service/microstrategy_generator.py`
+- `src/implementation/engine/implementation_cycle.py`
 - `src/proposal/service/readiness_resolver.py`
 - `src/dispatch/service/context_sidecar.py` — context sidecar
   materialization via `PathRegistry.context_sidecar()` accessor (R109)
-- `src/dispatch/prompt/context.py`,
-  `src/implementation/service/reexplore.py`,
-  `src/implementation/service/traceability.py`, and
-  `src/implementation/engine/runner.py`
+- `src/dispatch/prompt/context_builder.py`,
+  `src/implementation/service/section_reexplorer.py`,
+  `src/implementation/service/traceability_writer.py`, and
+  `src/implementation/engine/section_pipeline.py`
 - `src/proposal/engine/readiness_gate.py`,
-  `src/orchestrator/engine/strategic_state.py`, and
-  `src/scan/codemap/lifecycle.py`
+  `src/orchestrator/engine/strategic_state_builder.py`, and
+  `src/scan/codemap/codemap_builder.py`
 - Scan-stage durable-path consumers in
-  `src/scan/related/discovery.py` and
-  `src/scripts/scan/{codemap,exploration,deep_scan,feedback}.py`
+  `src/scan/related/related_file_resolver.py`,
+  `src/scan/codemap/codemap_builder.py`,
+  `src/scan/explore/section_explorer.py`,
+  `src/scan/explore/deep_scanner.py`, and
+  `src/scan/service/feedback_collector.py`
 - Intent/prompt durable-path consumers in
-  `src/intent/service/triage.py`,
+  `src/intent/service/intent_triager.py`,
   `src/dispatch/prompt/context_assembler.py`,
-  `src/intent/engine/bootstrap.py`, and
+  `src/intent/engine/intent_initializer.py`, and
   `src/dispatch/prompt/writers.py`
 - Coordination / proposal / problem-frame prompt surfaces in
-  `src/coordination/engine/execution.py`,
-  `src/coordination/engine/execution.py`,
+  `src/coordination/service/planner.py`,
+  `src/coordination/engine/plan_executor.py`,
   `src/proposal/service/problem_frame_gate.py`, and
-  `src/implementation/engine/loop.py`
+  `src/implementation/engine/implementation_cycle.py`
 - Tool-surface blocker writers in `src/dispatch/service/tool_registry_manager.py`
-- Freshness/hash consumers in `src/staleness/service/freshness.py`
+- Freshness/hash consumers in `src/staleness/service/freshness_calculator.py`
   and `src/staleness/service/input_hasher.py`
 - `src/scan/substrate/related_files.py` and
   `src/scan/substrate/prompt_builder.py` — substrate-stage
@@ -249,7 +257,7 @@ hoc spawning.
   `TaskSpec` sequences
 
 **Canonical instance**: `execute_research_plan()` in
-`src/research/engine/executor.py`
+`src/research/engine/research_plan_executor.py`
 
 **Known instances**:
 - Research flow (plan → tickets → synthesis → verify)
@@ -288,7 +296,7 @@ centrally from policy.
    dispatch cycle or use content-hash invalidation. A startup-only policy
    snapshot that goes stale during a long poll loop is a violation.
 6. Local fallback literals must be sourced from the authoritative default
-   module (e.g., `DEFAULT_SCAN_MODELS` in `scan_dispatch.py`), not retyped
+   module (e.g., `DEFAULT_SCAN_MODELS` in `scan_dispatch_config.py`), not retyped
    ad hoc at the callsite. Operational callsites must not use
    `policy.get("key", "literal")` with a retyped literal that duplicates
    the authoritative default — use `policy["key"]` or `resolve(policy, key)`
@@ -306,12 +314,12 @@ centrally from policy.
 **Known instances**:
 - `src/taskrouter/` — centralized task routing with per-route policy keys
 - `src/dispatch/service/model_policy.py`
-- `src/scan/service/scan_dispatch.py`
+- `src/scan/service/scan_dispatch_config.py`
 - `src/scan/substrate/policy.py`,
   `src/scan/substrate/related_files.py`, and
   `src/scan/substrate/schemas.py`
-- `src/flow/engine/dispatcher.py` — long-lived dispatcher poll loop
-- `src/orchestrator/engine/main.py` — outer orchestration loop
+- `src/flow/engine/task_dispatcher.py` — long-lived dispatcher poll loop
+- `src/orchestrator/engine/pipeline_orchestrator.py` — outer orchestration loop
 - Policy lookups across `src/intent/`, `src/research/`, `src/coordination/`
 - `evals/harness.py` — live scenario eval model lookup
 
@@ -344,10 +352,10 @@ hashing, codemap freshness.
    including governance packet inputs when they affect semantics.
 
 **Canonical instance**: `compute_section_freshness()` in
-`src/staleness/service/freshness.py`
+`src/staleness/service/freshness_calculator.py`
 
 **Known instances**:
-- `src/staleness/service/freshness.py`
+- `src/staleness/service/freshness_calculator.py`
 - `src/staleness/service/input_hasher.py`
 - Research trigger hashing in `src/research/engine/orchestrator.py`
 - Codemap freshness flow
@@ -431,7 +439,7 @@ violations erases the intentional design boundary.
 **Known instances**:
 - Readiness and freshness gating
 - `evals/harness.py` — live-eval scenario loading boundary
-- `src/intake/repository/loader.py` — governance index build with
+- `src/intake/repository/governance_loader.py` — governance index build with
   structured parse-failure status
 
 **Conformance**: Any skip, optimization, or early-exit path at an
@@ -466,7 +474,7 @@ silently.
   for governance origin) before logging, rollup, or downstream routing.
 
 **Canonical instance**: `_emit_not_researchable_signals()` in
-`src/research/engine/executor.py`
+`src/research/engine/research_plan_executor.py`
 
 **Known instances**:
 - Research `needs_parent` / `need_decision` routing
@@ -474,7 +482,7 @@ silently.
 - Coordination problem resolver signals
 - Post-implementation `refactor_required` blocker emission in
   ``src/flow/engine/reconciler.py``
-- Blocker rollup in `src/signals/service/blockers.py`
+- Blocker rollup in `src/signals/service/blocker_manager.py`
 - Readiness resolver governance blockers in
   `src/proposal/service/readiness_resolver.py`
 
@@ -506,10 +514,10 @@ surfaces, prompt context assembly.
    hoc context blocks everywhere.
 
 **Canonical instance**: `load_combined_intent_surfaces()` in
-`src/intent/engine/surface.py`
+`src/intent/service/surface_registry.py`
 
 **Known instances**:
-- `src/intent/engine/surface.py`
+- `src/intent/service/surface_registry.py`
 - Intent bootstrap and expansion flow
 - Research-derived surfaces and implementation-feedback surfaces
 - Prompt context assembly in `src/dispatch/prompt/context_assembler.py`
@@ -581,24 +589,24 @@ context assembly, freshness service, section-input hasher.
    the archive.
 
 **Canonical instance**: `build_governance_indexes()` +
-`build_section_governance_packet()` in `src/intake/repository/loader.py`
-and `src/intake/service/packet.py`
+`build_section_governance_packet()` in `src/intake/repository/governance_loader.py`
+and `src/intake/service/governance_packet_builder.py`
 
 **Known instances**:
-- `src/orchestrator/engine/main.py` — builds governance indexes and packets
-- `src/intake/repository/loader.py`
-- `src/intake/service/packet.py`
-- `src/intent/engine/bootstrap.py`
-- `src/dispatch/prompt/context.py` and
+- `src/orchestrator/engine/pipeline_orchestrator.py` — builds governance indexes and packets
+- `src/intake/repository/governance_loader.py`
+- `src/intake/service/governance_packet_builder.py`
+- `src/intent/engine/intent_initializer.py`
+- `src/dispatch/prompt/context_builder.py` and
   `src/dispatch/prompt/context_assembler.py`
 - `src/templates/dispatch/integration-proposal.md`
-- `src/implementation/service/microstrategy.py`
+- `src/implementation/service/microstrategy_generator.py`
 - `src/templates/dispatch/strategic-implementation.md`
 - `src/templates/dispatch/integration-alignment.md`
 - `src/templates/dispatch/implementation-alignment.md`
-- `src/risk/engine/loop.py`
-- `src/intake/service/assessment.py`
-- `src/staleness/service/freshness.py`
+- `src/risk/engine/risk_assessor.py`
+- `src/intake/service/assessment_evaluator.py`
+- `src/staleness/service/freshness_calculator.py`
 - `src/staleness/service/input_hasher.py`
 - `src/proposal/service/readiness_resolver.py`
 - `src/dispatch/service/context_sidecar.py`
@@ -662,17 +670,17 @@ hierarchy that shaped implementation.
    lineage appears.
 
 **Canonical instance**: `write_post_impl_assessment_prompt()` /
-`read_post_impl_assessment()` in `src/intake/service/assessment.py`
+`read_post_impl_assessment()` in `src/intake/service/assessment_evaluator.py`
 with completion handling in `src/flow/engine/reconciler.py`
 
 **Known instances**:
-- `src/implementation/engine/loop.py` — queues assessment and
+- `src/implementation/engine/implementation_cycle.py` — queues assessment and
   writes trace artifacts
-- `src/intake/service/assessment.py`
-- `src/implementation/service/traceability.py`
-- `src/signals/service/communication.py` — append-log traceability surface
+- `src/intake/service/assessment_evaluator.py`
+- `src/implementation/service/traceability_writer.py`
+- `src/signals/service/section_communicator.py` — append-log traceability surface
 - `src/flow/engine/reconciler.py` — assessment completion routing
-- `src/orchestrator/engine/main.py` — stabilization consumer invocation
+- `src/orchestrator/engine/pipeline_orchestrator.py` — stabilization consumer invocation
 - `governance/risk-register.md` — authoritative debt/risk target
 
 **Conformance**: Post-implementation assessment is not complete until debt /
@@ -735,8 +743,8 @@ contract in `src/proposal/agents/integration-proposer.md`
 - `src/staleness/agents/alignment-judge.md`
 - `src/proposal/engine/readiness_gate.py`
 - `src/proposal/service/readiness_resolver.py`
-- `src/implementation/engine/loop.py`
-- `src/implementation/service/traceability.py`
+- `src/implementation/engine/implementation_cycle.py`
+- `src/implementation/service/traceability_writer.py`
 
 **Conformance**: Structural work cannot descend with empty governance identity
 unless the governance packet explicitly records that no governing problem or
@@ -793,8 +801,8 @@ interception with deliberate fail-open behavior.
 
 **Known instances**:
 - `src/qa/service/qa_interceptor.py` — QA interception
-- `src/proposal/helpers/qa_verdict.py` — QA verdict parsing
-- `src/flow/engine/dispatcher.py` — QA lifecycle event logging
+- `src/qa/helpers/qa_verdict.py` — QA verdict parsing
+- `src/flow/engine/task_dispatcher.py` — QA lifecycle event logging
 - `src/flow/service/notifier.py` — QA result notification
 - `src/reconciliation/service/adjudicator.py` — reconciliation
   fail-open behavior
@@ -848,6 +856,10 @@ a false pass — either way it says nothing about whether the behavior is correc
    entrypoints, authoritative paths), test the live registry or generated
    artifact that authorizes those claims rather than grepping for stale
    literals.
+8. When an eval harness, trigger adapter, or other executable audit surface is
+   meant to exercise the live runtime, include at least one positive contract
+   that imports or executes that surface against the current package layout.
+   Import/bootstrap failure is a broken contract, not incidental drift.
 
 **Canonical instance**: `run_structural_checks()` in
 `evals/agentic/structural_checks.py`
@@ -877,29 +889,31 @@ realistic fixture or registry shapes.
 
 ## PAT-0016: Runtime Inventory Truth & Surface Retirement
 
-**Problem class**: Authoritative docs, audit prompts, and inventory claims
-drift away from the live runtime, while retired execution surfaces remain in
-active discovery trees and silently reintroduce split-brain instructions.
+**Problem class**: Authoritative docs, audit prompts, governance self-reports,
+and inventory claims drift away from the live runtime, while retired execution
+surfaces remain in active discovery trees and silently reintroduce split-brain
+instructions.
 
-**Regions**: architecture docs, audit prompts, agent inventory, route
-inventory, live-vs-legacy execution surfaces
+**Regions**: architecture docs, audit prompts, governance self-reports, agent
+inventory, route inventory, live-vs-legacy execution surfaces
 
 **Solution surfaces**: live registry derivation, generated or contract-checked
 inventory summaries, archive quarantine for retired surfaces, discovery-boundary
-enforcement.
+enforcement, audit-time self-verification of present-tense runtime claims.
 
 **Philosophy**: Accuracy over shortcuts. Context optimization. Migration must be
 atomic per surface. A retired path that remains in a live discovery tree is not
-retired.
+retired. Governance cannot steer the system if its own state reports are stale.
 
 **Template**:
 1. Any document that claims live agent counts, task counts, namespaces,
-   entrypoints, or authoritative path layout must derive those claims from live
-   runtime registries (`taskrouter.agents`, `taskrouter.discovery`,
-   `src/*/routes.py`) or be covered by positive contract tests against those
-   registries.
-2. Hand-maintained inventory counts may appear in human docs only when a
-   generator or positive contract keeps them synchronized with runtime.
+   entrypoints, authoritative path layout, or current migration/health status
+   for those surfaces must derive those claims from live runtime registries
+   (`taskrouter.agents`, `taskrouter.discovery`, `src/*/routes.py`) or be
+   covered by positive contract tests against those registries.
+2. Hand-maintained inventory counts or health/status summaries may appear in
+   human docs only when a generator or positive contract keeps them
+   synchronized with runtime.
 3. Retired execution surfaces must be removed from live discovery trees
    (`src/*/agents`, live scripts, active templates) or moved to an explicit
    archive/legacy location excluded from runtime discovery.
@@ -911,6 +925,11 @@ retired.
    live route discovery.
 6. Eval and audit prompts that direct humans or agents into key runtime surfaces
    are authoritative contracts and must follow the same synchronization rule.
+7. Governance self-reports that summarize current system state (pattern health
+   notes, problem statuses, risk statuses, audit history summaries) are
+   authoritative surfaces when they make present-tense claims about runtime or
+   migration state, and must be updated atomically with the corresponding code
+   or explicitly scoped as historical context.
 
 **Canonical instance**: `src/taskrouter/agents.py` +
 `src/taskrouter/discovery.py`
@@ -923,41 +942,55 @@ retired.
 - `governance/audit/prompt.md` — audit-facing codebase map
 - `src/SKILL.md`, `src/implement.md`, and `src/models.md` — operator-facing
   runtime docs
-- `src/dispatch/agents/` legacy residues and `src/scripts/section-loop.py` —
-  retirement-boundary surfaces
-- `evals/agentic/structural_checks.py` and
-  `evals/agentic/trigger_adapters.py` — positive contract harness and
-  runtime-entry adapters that should enforce inventory truth once wired
+- `src/dispatch/agents/` legacy residues — retirement-boundary surfaces
+- `evals/harness.py` and `evals/agentic/trigger_adapters.py` — executable
+  runtime-entry surfaces
+- `evals/agentic/structural_checks.py` — positive contract surface that should
+  enforce inventory truth once wired
+- `governance/problems/index.md`, `governance/risk-register.md`, and
+  `governance/audit/history.md` — governance self-report surfaces when they
+  make present-tense runtime or migration claims
 
-**Conformance**: No authoritative runtime document may hand-wave counts or
-paths that disagree with live registries. No retired surface may remain
-discoverable by live agent/path resolution. Migration rounds are incomplete
-until inventories, docs, and discovery boundaries agree.
+**Conformance**: No authoritative runtime document or governance self-report
+may hand-wave counts, paths, or health/status claims that disagree with live
+registries and code. No retired surface may remain discoverable by live
+agent/path resolution. Migration rounds are incomplete until inventories,
+docs, executable adapters, and discovery boundaries agree.
 
 ---
 
 ## Health Notes
 
-- **PAT-0001 (Corruption Preservation)**: Healthy. R111 migrated the last two
-  local malformed-artifact conventions (`scan/substrate/related_files.py` and
+- **PAT-0001 (Corruption Preservation)**: **Unhealthy.** R111 correctly
+  migrated the last two known scan/substrate local malformed-artifact
+  conventions (`scan/substrate/related_files.py` and
   `scan/substrate/schemas.py`) to shared `read_json()`/`rename_malformed()`
-  primitives. `tool_registry_manager.py` was confirmed clean (already delegates to
-  `read_json()`). All authoritative readers now use the shared contract.
+  primitives, but the delivered snapshot still has live violations in
+  `src/dispatch/service/tool_registry_manager.py` (local `json.loads()` +
+  `.copy2()` preservation that leaves the corrupt canonical file in place) and
+  `src/coordination/prompt/writers.py` (copy-back restoration from
+  `.malformed.json`). The pattern remains correct; conformance regressed or was
+  overstated in the catalog.
 - **PAT-0002 (Prompt Safety)**: Healthy. R109 clarified that payload-file
   contents are untrusted dynamic content even when delivered through internal
   tasks. QA interceptor now validates payload content before dispatch.
 - **PAT-0003 (Path Registry)**: **Unhealthy.** The template remains correct,
-  but saturation is still incomplete for several durable families. Current live
-  islands include repeated manual construction of `tools-available`,
-  `alignment-surface`, `tool-friction`, `open-problems`,
-  `codemap-corrections`, `strategic-state`, and some proposal/reconciliation /
-  readiness references across dispatch, implementation, proposal, orchestrator,
-  scan, and staleness modules. The next round must finish consumer saturation
-  and add missing accessors for repeated section-scoped durable families.
+  but saturation is still incomplete for several durable families. Confirmed
+  live islands in this snapshot include manual construction of
+  `tools-available` and `alignment-surface` in
+  `src/dispatch/prompt/context_builder.py`, manual `alignment-surface` and
+  `proposal-state` references in
+  `src/implementation/service/section_reexplorer.py`, manual
+  `strategic-state.json` in
+  `src/orchestrator/engine/strategic_state_builder.py`, and manual
+  `codemap-corrections.json` in `src/scan/codemap/codemap_builder.py`.
+  The next round must finish consumer saturation for these confirmed families
+  and then re-audit any remaining repeated section-scoped durable families
+  before declaring PAT-0003 healthy.
 - **PAT-0004 (Flow System)**: Healthy.
 - **PAT-0005 (Policy-Driven Models)**: Healthy. R110 replaced the last two
-  local `policy.get()` fallback sites (`proposal_loop.py` intent_judge,
-  `scan_related_files.py` validation) with `resolve()` / direct key access.
+  local `policy.get()` fallback sites (`proposal_cycle.py` intent_judge,
+  `related_file_resolver.py` validation) with `resolve()` / direct key access.
   Stale GPT/Opus docstrings rewritten to policy-based language.
 - **PAT-0006 (Freshness Computation)**: Healthy in mechanism. Governance packet
   overscoping fixed in R108 (no-match returns empty candidates, not full
@@ -967,7 +1000,7 @@ until inventories, docs, and discovery boundaries agree.
   surfaces in R108. Governance index loading now writes structured
   parse-failure status (R108). Advisory surfaces governed by PAT-0014.
 - **PAT-0009 (Blocker Taxonomy)**: Healthy. Governance blocker normalization
-  fixed in R106 — blockers.py handles both proposal-state and governance blocker
+  fixed in R106 — blocker_manager.py handles both proposal-state and governance blocker
   shapes.
 - **PAT-0010 (Intent Surfaces)**: Healthy.
 - **PAT-0011 (Applicable Governance Packet Threading)**: Healthy. R110 fixed
@@ -987,16 +1020,24 @@ until inventories, docs, and discovery boundaries agree.
   `qa:passed`; notifier carries reason_code through lifecycle events;
   reconciliation adjudicator references PAT-0014 degraded states in warnings.
 - **PAT-0015 (Positive Contract Testing)**: **Unhealthy.** The philosophy is
-  settled, and the current snapshot's eval harness already uses positive
-  structural assertions over current outputs. However, the archive snapshot no
-  longer includes the `tests/` surfaces cited by the previous catalog, and no
-  current positive contract checks authoritative runtime-inventory truth or
-  retirement-boundary correctness. The pattern therefore remains directionally
-  correct but incompletely instantiated in the delivered codebase.
+  settled, and the current snapshot's structural checks are positive assertions
+  over current outputs. However, no current positive contract checks
+  authoritative runtime-inventory truth, retirement-boundary correctness, or
+  the executable eval-entry surfaces themselves (`evals/harness.py`,
+  `evals/agentic/trigger_adapters.py`). `pyproject.toml` also still points
+  pytest at nonexistent legacy paths, reinforcing that the contract surface is
+  incomplete in the delivered codebase.
 - **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**:
-  **Unhealthy.** R111 corrected `system-synthesis.md` (50 agents, 48 routes,
-  11 namespaces) and `governance/audit/prompt.md` (paths and counts), and
-  deleted 3 dead legacy agent files. Remaining: `src/SKILL.md`,
-  `src/implement.md`, and `src/models.md` still reference legacy layout;
-  `qa-monitor.md` and `monitor.md` remain in live discovery (section-loop.py
-  dependency); eval trigger adapters still target stale imports.
+  **Unhealthy.** R111 correctly updated `system-synthesis.md` to
+  `49 agents / 48 routes / 12 namespaces`, but the delivered snapshot still
+  contains stale authoritative surfaces: `governance/audit/prompt.md` still
+  claims `50 agents across 11 systems` and points auditors to nonexistent
+  `src/scripts/*` regions; `src/SKILL.md`, `src/implement.md`, and
+  `src/models.md` still describe the legacy layout; `evals/harness.py` and
+  `evals/agentic/trigger_adapters.py` still target pre-migration import/script
+  paths; `src/flow/engine/task_dispatcher.py` and two risk agent files still
+  publish stale paths; `src/pyproject.toml` still declares legacy test/import
+  roots; `src/dispatch/agents/monitor.md` remains in live discovery despite no
+  runtime route; and `governance/problems/index.md`,
+  `governance/risk-register.md`, and `governance/audit/history.md` contain
+  present-tense claims that no longer match the code.

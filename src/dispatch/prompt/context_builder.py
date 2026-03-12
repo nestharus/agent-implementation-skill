@@ -74,7 +74,7 @@ def build_prompt_context(
         )
 
     # --- tools available ---
-    tools_path = sections_dir / f"section-{sec}-tools-available.md"
+    tools_path = paths.tools_available(sec)
     tools_ref = ""
     if tools_path.exists():
         tools_ref = f"\n6. Available tools from earlier sections: `{tools_path}`"
@@ -105,7 +105,7 @@ def build_prompt_context(
         )
 
     # --- alignment surface ---
-    alignment_surface = sections_dir / f"section-{sec}-alignment-surface.md"
+    alignment_surface = paths.alignment_surface(sec)
     surface_line = ""
     if alignment_surface.exists():
         surface_line = (

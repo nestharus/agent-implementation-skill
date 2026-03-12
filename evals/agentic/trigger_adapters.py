@@ -17,12 +17,6 @@ def _clean_env(**extra: str) -> dict[str, str]:
     return env
 
 
-def _prime_import_paths(project_root: Path) -> None:
-    scripts = str(project_root / "src" / "scripts")
-    if scripts not in sys.path:
-        sys.path.insert(0, scripts)
-
-
 def readiness_route(planspace: Path, codespace: Path, project_root: Path, **kwargs) -> None:
     """Call resolve_and_route for a section via subprocess to avoid circular imports."""
     section_number = kwargs["section_number"]
@@ -31,7 +25,7 @@ def readiness_route(planspace: Path, codespace: Path, project_root: Path, **kwar
 
     script = (
         "from types import SimpleNamespace; "
-        "from proposal.readiness_gate import resolve_and_route; "
+        "from proposal.engine.readiness_gate import resolve_and_route; "
         "from pathlib import Path; "
         f"resolve_and_route("
         f"SimpleNamespace(number={section_number!r}), "
@@ -44,23 +38,22 @@ def readiness_route(planspace: Path, codespace: Path, project_root: Path, **kwar
         [sys.executable, "-c", script],
         check=True,
         cwd=str(project_root),
-        env=_clean_env(PYTHONPATH=str(project_root / "src" / "scripts")),
+        env=_clean_env(PYTHONPATH=str(project_root / "src")),
     )
 
 
 def dispatcher_once(planspace: Path, codespace: Path, project_root: Path, **kwargs) -> None:
-    """Run task_dispatcher.py --once."""
+    """Run task_dispatcher --once."""
     del codespace, kwargs
     subprocess.run(
         [
-            sys.executable,
-            str(project_root / "src" / "scripts" / "task_dispatcher.py"),
+            sys.executable, "-m", "flow.engine.task_dispatcher",
             str(planspace),
             "--once",
         ],
         check=True,
         cwd=str(project_root),
-        env=_clean_env(PYTHONPATH=str(project_root / "src" / "scripts")),
+        env=_clean_env(PYTHONPATH=str(project_root / "src")),
     )
 
 
@@ -76,15 +69,14 @@ def dispatcher_until_quiescent(
     for _ in range(max_iter):
         result = subprocess.run(
             [
-                sys.executable,
-                str(project_root / "src" / "scripts" / "task_dispatcher.py"),
+                sys.executable, "-m", "flow.engine.task_dispatcher",
                 str(planspace),
                 "--once",
             ],
             capture_output=True,
             text=True,
             cwd=str(project_root),
-            env=_clean_env(PYTHONPATH=str(project_root / "src" / "scripts")),
+            env=_clean_env(PYTHONPATH=str(project_root / "src")),
         )
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "dispatcher failed")
@@ -101,7 +93,7 @@ def ensure_global_philosophy(
     """Call ensure_global_philosophy via subprocess."""
     parent = kwargs.get("parent", "eval-harness")
     script = (
-        "from intent.philosophy_bootstrap import ensure_global_philosophy; "
+        "from intent.service.philosophy_bootstrapper import ensure_global_philosophy; "
         "from pathlib import Path; "
         f"ensure_global_philosophy("
         f"Path({str(planspace)!r}), "
@@ -112,7 +104,7 @@ def ensure_global_philosophy(
         [sys.executable, "-c", script],
         check=True,
         cwd=str(project_root),
-        env=_clean_env(PYTHONPATH=str(project_root / "src" / "scripts")),
+        env=_clean_env(PYTHONPATH=str(project_root / "src")),
     )
 
 
@@ -122,8 +114,8 @@ def scan_quick(planspace: Path, codespace: Path, project_root: Path, **kwargs) -
     subprocess.run(
         [sys.executable, "-m", "scan", "quick", str(planspace), str(codespace)],
         check=True,
-        cwd=str(project_root / "src" / "scripts"),
-        env=_clean_env(PYTHONPATH=str(project_root / "src" / "scripts")),
+        cwd=str(project_root / "src"),
+        env=_clean_env(PYTHONPATH=str(project_root / "src")),
     )
 
 
@@ -163,7 +155,7 @@ def qa_dispatch_intercept(
     model = kwargs.get("model", "glm")
     script = (
         "from pathlib import Path; "
-        "from dispatch.section_dispatch import dispatch_agent; "
+        "from dispatch.engine.section_dispatcher import dispatch_agent; "
         f"planspace = Path({str(planspace)!r}); "
         f"codespace = Path({str(codespace)!r}); "
         "prompt = planspace / 'artifacts' / 'qa-test-prompt.md'; "
@@ -177,7 +169,7 @@ def qa_dispatch_intercept(
         [sys.executable, "-c", script],
         check=True,
         cwd=str(project_root),
-        env=_clean_env(PYTHONPATH=str(project_root / "src" / "scripts")),
+        env=_clean_env(PYTHONPATH=str(project_root / "src")),
     )
 
 
@@ -187,7 +179,7 @@ def governance_bootstrap(
     """Call bootstrap_governance_if_missing + build_governance_indexes."""
     del kwargs
     script = (
-        "from intake.governance_loader import bootstrap_governance_if_missing, build_governance_indexes; "
+        "from intake.repository.governance_loader import bootstrap_governance_if_missing, build_governance_indexes; "
         "from pathlib import Path; "
         f"bootstrap_governance_if_missing(Path({str(codespace)!r}), Path({str(planspace)!r})); "
         f"build_governance_indexes(Path({str(codespace)!r}), Path({str(planspace)!r}))"
@@ -196,7 +188,7 @@ def governance_bootstrap(
         [sys.executable, "-c", script],
         check=True,
         cwd=str(project_root),
-        env=_clean_env(PYTHONPATH=str(project_root / "src" / "scripts")),
+        env=_clean_env(PYTHONPATH=str(project_root / "src")),
     )
 
 

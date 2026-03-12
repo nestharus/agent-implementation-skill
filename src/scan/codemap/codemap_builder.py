@@ -274,7 +274,7 @@ def _run_verification(
     """P5: Lightweight codemap verifier — sample files to validate routing."""
     verifier_prompt = scan_log_dir / "codemap-verify-prompt.md"
     verifier_output = scan_log_dir / "codemap-verify-output.md"
-    corrections_signal = artifacts_dir / "signals" / "codemap-corrections.json"
+    corrections_signal = PathRegistry(artifacts_dir.parent).corrections()
 
     prompt = load_scan_template("codemap_verify.md").format(
         codemap_path=codemap_path,

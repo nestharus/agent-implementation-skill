@@ -2403,9 +2403,10 @@ class TestR58ToolRegistryCoordinationPreservation:
             "Malformed tool-registry must be preserved as .malformed.json")
         assert malformed.read_text(encoding="utf-8") == "{BROKEN JSON!"
 
-        # Original still exists (copy, not rename)
-        assert tool_reg.exists(), (
-            "Original tool-registry should still exist (copy, not rename)")
+        # Original is renamed away — malformed artifact must not remain
+        # at the canonical path (PAT-0001)
+        assert not tool_reg.exists(), (
+            "Malformed tool-registry must be renamed away from canonical path")
 
 
 # ---------------------------------------------------------------------------

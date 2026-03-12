@@ -21,9 +21,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = [".", "src/scripts"]
+where = [".", "src"]
 include = ["evals*", "log_extract*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["scripts", "src/scripts", "tests"]
+pythonpath = ["src", "tests"]

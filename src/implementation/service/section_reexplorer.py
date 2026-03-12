@@ -171,9 +171,7 @@ def _write_alignment_surface(
             f"- **Integration proposal**: `{integration_proposal}`")
 
     # Proposal-state artifact (machine-readable problem state)
-    proposal_state_path = (
-        paths.proposals_dir() / f"section-{sec}-proposal-state.json"
-    )
+    proposal_state_path = paths.proposal_state(sec)
     if proposal_state_path.exists():
         lines.append(
             f"- **Proposal-state artifact**: `{proposal_state_path}`")

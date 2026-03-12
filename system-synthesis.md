@@ -43,7 +43,7 @@ The task queue is not a workflow ladder. It is a typed blackboard of discovered 
 - **Philosophy**: PHI-global (bounded autonomy, fail-closed)
 - **Patterns**: PAT-0004 (Flow System), PAT-0005 (Policy-Driven Models), PAT-0006 (Freshness)
 
-The flow system expresses multi-step agent work as chains (sequential), fanout (parallel branches with gates), and named packages. ``src/flow/types/routing.py`` maps the typed task vocabulary to agent files and default models. ``src/flow/engine/dispatcher.py`` polls the queue, resolves task types, claims work, dispatches agents, and records completion. ``src/flow/engine/reconciler.py`` handles task completion hooks — research flow, post-implementation assessment, gate synthesis.
+The flow system expresses multi-step agent work as chains (sequential), fanout (parallel branches with gates), and named packages. ``src/flow/types/routing.py`` maps the typed task vocabulary to agent files and default models. ``src/flow/engine/task_dispatcher.py`` polls the queue, resolves task types, claims work, dispatches agents, and records completion. ``src/flow/engine/reconciler.py`` handles task completion hooks — research flow, post-implementation assessment, gate synthesis.
 
 Agents say what they need. The substrate decides how that need is executed. Task submission (not direct spawning) keeps agents short-lived, ensures every dispatch uses an approved agent file, keeps execution observable and resumable, and prevents arbitrary social behavior between agents.
 
@@ -55,7 +55,7 @@ Agents say what they need. The substrate decides how that need is executed. Task
 - **Philosophy**: PHI-global (strategy over brute force, alignment over audit)
 - **Patterns**: PAT-0010 (Intent Surfaces), PAT-0009 (Blocker Taxonomy)
 
-The section loop is a multi-pass orchestrator. `src/orchestrator/engine/main.py` orders: proposal pass → reconciliation → implementation pass → global alignment recheck → coordination. Per-section execution sequences: impact triage → excerpt extraction → problem-frame validation → intent bootstrap → proposal writing → readiness routing → microstrategy → implementation → tool validation → post-completion work.
+The section loop is a multi-pass orchestrator. `src/orchestrator/engine/pipeline_orchestrator.py` orders: proposal pass → reconciliation → implementation pass → global alignment recheck → coordination. Per-section execution sequences: impact triage → excerpt extraction → problem-frame validation → intent bootstrap → proposal writing → readiness routing → microstrategy → implementation → tool validation → post-completion work.
 
 Integration proposals are problem-state artifacts, not file-change plans. They emit resolved/unresolved anchors, contracts, research questions, user questions, new-section candidates, shared seam candidates, and execution readiness declarations.
 
@@ -94,7 +94,7 @@ Intent surfaces are passively discovered during alignment: missing axes, tension
 
 When proposals emit blocking_research_questions, the readiness gate dispatches a research flow: planner decomposes questions into tickets → domain researchers execute web/code research → synthesizer merges results into dossier + research-derived surfaces + proposal addendum → verifier checks citation integrity. Only questions research cannot resolve escalate to needs_parent.
 
-Research orchestration uses the flow system: plan_executor.py translates semantic plans into fanout branches with gates. Status is cycle-aware (trigger_hash + cycle_id) so new questions trigger new cycles without re-running stale ones.
+Research orchestration uses the flow system: research_plan_executor.py translates semantic plans into fanout branches with gates. Status is cycle-aware (trigger_hash + cycle_id) so new questions trigger new cycles without re-running stale ones.
 
 **Key modules**: `src/research/`, `src/intake/` (assessment), agents: research-planner, domain-researcher, research-synthesizer, research-verifier
 
@@ -122,7 +122,7 @@ After implementation, a bounded assessment inspects landed code through: couplin
 
 Assessment records governance IDs (problem_ids, pattern_ids, profile_id) into traceability, closing the loop from "what problems/patterns governed this work" to "what was actually addressed."
 
-**Key modules**: `src/intake/service/assessment.py`, agents: post-implementation-assessor
+**Key modules**: `src/intake/service/assessment_evaluator.py`, agents: post-implementation-assessor
 
 ### Coordination
 
@@ -133,7 +133,7 @@ The coordination layer handles non-locality: contracts, side effects, shared int
 
 Reconciliation runs after all proposals before implementation begins. It normalizes shared anchors, contracts, section boundaries, and shared seam candidates. It prevents independent proposals from silently diverging on shared assumptions.
 
-**Key modules**: `src/coordination/engine/`, `src/coordination/service/`, `src/intent/service/triage.py`, `src/intent/service/recurrence.py`
+**Key modules**: `src/coordination/engine/`, `src/coordination/service/`, `src/intent/service/intent_triager.py`, `src/intent/service/recurrence_emitter.py`
 
 ### SIS (Shared Integration Substrate)
 
@@ -141,7 +141,7 @@ Reconciliation runs after all proposals before implementation begins. It normali
 
 When sections lack enough shared structure for meaningful proposals, SIS activates: per-section shards describe needs/provides/seams → pruner identifies convergence/contradictions → seed plan defines minimal shared anchors → seeder creates anchor files. Sections then propose against real seams instead of inventing independent local structure.
 
-**Key modules**: `src/scan/substrate/runner.py`, `src/scan/substrate/`
+**Key modules**: `src/scan/substrate/substrate_discoverer.py`, `src/scan/substrate/`
 
 ### Artifact Infrastructure
 
@@ -149,9 +149,9 @@ When sections lack enough shared structure for meaningful proposals, SIS activat
 - **Philosophy**: PHI-global (evidence preservation, fail-closed)
 - **Patterns**: PAT-0001 (Corruption Preservation), PAT-0003 (Path Registry), PAT-0006 (Freshness), PAT-0008 (Fail-Closed)
 
-Cross-cutting infrastructure: `artifact_io.py` (read_json/write_json/rename_malformed), `path_registry.py` (all artifact paths from a single source), `hash_service.py` (content-based hashing), `freshness_service.py` (section freshness tokens from 18+ input categories), `section_input_hasher.py` (full section input hash including governance).
+Cross-cutting infrastructure: `artifact_io.py` (read_json/write_json/rename_malformed), `path_registry.py` (all artifact paths from a single source), `content_hasher.py` (content-based hashing), `freshness_calculator.py` (section freshness tokens from 18+ input categories), `input_hasher.py` (full section input hash including governance).
 
-**Key modules**: `src/signals/repository/artifact_io.py`, `src/orchestrator/path_registry.py`, `src/staleness/service/freshness.py`, `src/staleness/service/input_hasher.py`
+**Key modules**: `src/signals/repository/artifact_io.py`, `src/orchestrator/path_registry.py`, `src/staleness/service/freshness_calculator.py`, `src/staleness/service/input_hasher.py`
 
 ### Governance Layer
 
@@ -165,11 +165,11 @@ Post-implementation assessment queues after successful implementation, validates
 
 The governance hierarchy: problems (why) → philosophy (values) → patterns (how) → synthesis (connections) → proposals (changes under constraints) → implementation (bounded execution) → assessment (what risks landed) → stabilization (remove risks, re-align).
 
-**Key modules**: `governance/`, `philosophy/`, `src/intake/service/packet.py`, `src/intake/repository/loader.py`, `src/implementation/service/traceability.py`
+**Key modules**: `governance/`, `philosophy/`, `src/intake/service/governance_packet_builder.py`, `src/intake/repository/governance_loader.py`, `src/implementation/service/traceability_writer.py`
 
 ## Agent system
 
-50 agents organized by epistemic operations, not engineering domains.
+48 agents organized by epistemic operations, not engineering domains.
 
 | Category | Agents | Function |
 |----------|--------|----------|
@@ -180,7 +180,7 @@ The governance hierarchy: problems (why) → philosophy (values) → patterns (h
 | Alignment & adjudication | alignment-judge, alignment-output-adjudicator, state-adjudicator, consequence-note-triager, reconciliation-adjudicator | Prevent directional drift at layer boundaries |
 | Coordination | coordination-planner, coordination-fixer, bridge-agent, impact-analyzer, impact-output-normalizer | Handle non-locality and cross-section repair |
 | Substrate shaping | substrate-shard-explorer, substrate-pruner, substrate-seeder | Seed shared structure for vacuum regions |
-| Runtime hygiene | agent-monitor, tool-registrar, bridge-tools, qa-interceptor, qa-monitor, monitor | Detect loops, validate tools, bridge capability gaps |
+| Runtime hygiene | agent-monitor, tool-registrar, bridge-tools, qa-interceptor | Detect loops, validate tools, bridge capability gaps |
 | Risk assessment | risk-assessor, execution-optimizer, stack-evaluator | Scale guardrails to actual local risk |
 | Governance | post-implementation-assessor | Assess landed-code risks against governance |
 
@@ -204,13 +204,14 @@ The system spends more wall-clock time internally — exploring, aligning, propa
 
 ## Task vocabulary
 
-48 routed tasks across 11 system namespaces, using qualified names (`namespace.task`):
+48 routed tasks across 12 system namespaces, using qualified names (`namespace.task`):
 
 - **coordination** (5): `coordination.bridge`, `coordination.consequence_triage`, `coordination.fix`, `coordination.plan`, `coordination.recurrence_adjudication`
-- **dispatch** (3): `dispatch.bridge_tools`, `dispatch.qa_intercept`, `dispatch.tool_registry_repair`
+- **dispatch** (2): `dispatch.bridge_tools`, `dispatch.tool_registry_repair`
 - **implementation** (5): `implementation.microstrategy`, `implementation.microstrategy_decision`, `implementation.post_assessment`, `implementation.reexplore`, `implementation.strategic`
 - **intent** (10): `intent.pack_generator`, `intent.philosophy_bootstrap`, `intent.philosophy_distiller`, `intent.philosophy_expander`, `intent.philosophy_selector`, `intent.philosophy_verifier`, `intent.problem_expander`, `intent.recurrence_adjudicator`, `intent.triage`, `intent.triage_escalation`
 - **proposal** (2): `proposal.integration`, `proposal.section_setup`
+- **qa** (1): `qa.qa_intercept`
 - **reconciliation** (1): `reconciliation.adjudicate`
 - **research** (4): `research.domain_ticket`, `research.plan`, `research.synthesis`, `research.verify`
 - **risk** (3): `risk.assess`, `risk.optimize`, `risk.stack_eval`

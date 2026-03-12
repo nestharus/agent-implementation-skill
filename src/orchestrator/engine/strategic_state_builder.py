@@ -132,7 +132,10 @@ def build_strategic_state(
     if decision_warnings:
         snapshot["warnings"] = decision_warnings
 
-    state_path = decisions_dir.parent / "strategic-state.json"
+    if planspace is not None:
+        state_path = PathRegistry(planspace).strategic_state()
+    else:
+        state_path = decisions_dir.parent / "strategic-state.json"
     Services.artifact_io().write_json(state_path, snapshot)
     return snapshot
 
