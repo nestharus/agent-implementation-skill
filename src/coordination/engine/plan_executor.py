@@ -7,7 +7,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from signals.repository.artifact_io import read_json, write_json
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from coordination.prompt.writers import write_bridge_prompt, write_fix_prompt
@@ -333,7 +332,7 @@ def _collect_modified_files(modified_report: Path, codespace: Path) -> list[str]
 
 
 def _persist_modified_files(planspace: Path, modified_files: list[str]) -> None:
-    write_json(
+    Services.artifact_io().write_json(
         PathRegistry(planspace).coordination_dir() / "execution-modified-files.json",
         {"files": modified_files},
     )
@@ -341,7 +340,7 @@ def _persist_modified_files(planspace: Path, modified_files: list[str]) -> None:
 
 def read_execution_modified_files(planspace: Path) -> list[str]:
     """Read the persisted list of files modified during coordination."""
-    data = read_json(
+    data = Services.artifact_io().read_json(
         PathRegistry(planspace).coordination_dir() / "execution-modified-files.json",
     )
     if not isinstance(data, dict):

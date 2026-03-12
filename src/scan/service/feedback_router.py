@@ -5,12 +5,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, write_json
+from containers import Services
 
 
 def _is_valid_updater_signal(signal_path: Path) -> bool:
     """Check if an updater signal file contains valid JSON with status."""
-    data = read_json(signal_path)
+    data = Services.artifact_io().read_json(signal_path)
     if data is not None:
         return isinstance(data.get("status"), str)
     print(
@@ -87,7 +87,7 @@ def _route_scope_deltas(
 
         all_oos: list[str] = []
         for fb_file in sorted(sec_log_dir.glob("deep-*-feedback.json")):
-            data = read_json(fb_file)
+            data = Services.artifact_io().read_json(fb_file)
             if data is None:
                 print(
                     f"[SCOPE][WARN] Malformed feedback JSON in "
@@ -104,7 +104,7 @@ def _route_scope_deltas(
         delta_path = scope_deltas_dir / f"section-{sec_num}-scope-delta.json"
 
         if delta_path.is_file():
-            existing = read_json(delta_path)
+            existing = Services.artifact_io().read_json(delta_path)
             if existing is not None:
                 if existing.get("adjudicated"):
                     print(
@@ -135,7 +135,7 @@ def _route_scope_deltas(
             "items": all_oos,
             "adjudicated": False,
         }
-        write_json(delta_path, delta)
+        Services.artifact_io().write_json(delta_path, delta)
         print(
             f"[SCOPE] section-{sec_num}: {len(all_oos)} out-of-scope "
             "items routed to scope-deltas",

@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from research.engine.orchestrator import (
     compute_trigger_hash,
@@ -54,7 +53,7 @@ def _emit_needs_parent_research_signals(
             signal_dir
             / f"section-{section_number}-blocking-research-{i}-signal.json"
         )
-        write_json(sig_path, research_signal)
+        Services.artifact_io().write_json(sig_path, research_signal)
         Services.logger().log(
             f"Section {section_number}: {detail_log} "
             f"for blocking_research_question[{i}]"
@@ -87,7 +86,7 @@ def publish_discoveries(
             scope_delta_dir
             / f"section-{section_number}-candidate-{cand_hash}-scope-delta.json"
         )
-        write_json(delta_path, scope_delta)
+        Services.artifact_io().write_json(delta_path, scope_delta)
         Services.logger().log(
             f"Section {section_number}: wrote scope-delta for "
             f"new_section_candidate ({cand_hash})"
@@ -110,7 +109,7 @@ def publish_discoveries(
             "source": "proposal-state",
         }
         rq_path = open_problems_dir / f"section-{section_number}-research-questions.json"
-        write_json(rq_path, rq_artifact)
+        Services.artifact_io().write_json(rq_path, rq_artifact)
         Services.logger().log(
             f"Section {section_number}: wrote {len(rq_list)} "
             f"research questions to open-problems artifact"
@@ -143,7 +142,7 @@ def route_blockers(
             "source": "proposal-state:user_root_questions",
         }
         sig_path = signal_dir / f"section-{section_number}-proposal-q{i}-signal.json"
-        write_json(sig_path, q_signal)
+        Services.artifact_io().write_json(sig_path, q_signal)
         Services.logger().log(
             f"Section {section_number}: emitted NEED_DECISION "
             f"signal for user_root_question[{i}]"
@@ -185,7 +184,7 @@ def route_blockers(
                 "trigger_hash": trigger_hash,
                 "cycle_id": cycle_id,
             }
-            write_json(trigger_path, trigger)
+            Services.artifact_io().write_json(trigger_path, trigger)
             prompt_path = write_research_plan_prompt(
                 section_number,
                 planspace,
@@ -251,7 +250,7 @@ def route_blockers(
             "trigger_type": "shared_seam",
         }
         trigger_path = signal_dir / f"substrate-trigger-{section_number}-{i:02d}.json"
-        write_json(trigger_path, trigger)
+        Services.artifact_io().write_json(trigger_path, trigger)
         Services.logger().log(
             f"Section {section_number}: wrote substrate-trigger "
             f"for shared_seam_candidate[{i}]"
@@ -273,7 +272,7 @@ def route_blockers(
             "source": "proposal-state:shared_seam_candidates",
         }
         sig_path = signal_dir / f"section-{section_number}-seam-{i}-signal.json"
-        write_json(sig_path, seam_signal)
+        Services.artifact_io().write_json(sig_path, seam_signal)
 
     unresolved_contracts = [
         str(contract) for contract in proposal_state.get("unresolved_contracts", [])

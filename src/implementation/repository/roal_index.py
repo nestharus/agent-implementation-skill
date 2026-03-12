@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, write_json
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 IMPLEMENTATION_ROAL_KINDS = frozenset({
@@ -26,7 +26,7 @@ def read_roal_input_index(
 ) -> list[dict]:
     paths = PathRegistry(planspace)
     index_path = paths.input_refs_dir(sec_num) / f"section-{sec_num}-roal-input-index.json"
-    payload = read_json(index_path)
+    payload = Services.artifact_io().read_json(index_path)
     if not isinstance(payload, list):
         return []
     return [entry for entry in payload if isinstance(entry, dict)]
@@ -100,7 +100,7 @@ def write_roal_input_index(
             ):
                 artifact_path.unlink(missing_ok=True)
 
-    write_json(index_path, normalized_entries)
+    Services.artifact_io().write_json(index_path, normalized_entries)
     return index_path
 
 

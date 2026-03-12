@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, rename_malformed, write_json
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 # Lazy import to avoid circular dependency:
@@ -105,36 +104,36 @@ def read_post_impl_assessment(
 ) -> dict | None:
     """Read and validate an assessment result."""
     path = PathRegistry(planspace).post_impl_assessment(section_number)
-    data = read_json(path)
+    data = Services.artifact_io().read_json(path)
     if data is None:
         return None
     if not isinstance(data, dict):
-        rename_malformed(path)
+        Services.artifact_io().rename_malformed(path)
         return None
 
     verdict = data.get("verdict", "")
     if not isinstance(verdict, str) or verdict not in _VALID_VERDICTS:
-        rename_malformed(path)
+        Services.artifact_io().rename_malformed(path)
         return None
 
     if str(data.get("section", "")).strip() != section_number:
-        rename_malformed(path)
+        Services.artifact_io().rename_malformed(path)
         return None
 
     for key in ("problem_ids_addressed", "pattern_ids_followed", "debt_items", "refactor_reasons"):
         value = data.get(key, [])
         if not isinstance(value, list):
-            rename_malformed(path)
+            Services.artifact_io().rename_malformed(path)
             return None
 
     profile_id = data.get("profile_id", "")
     if not isinstance(profile_id, str):
-        rename_malformed(path)
+        Services.artifact_io().rename_malformed(path)
         return None
 
     lenses = data.get("lenses", {})
     if not isinstance(lenses, dict):
-        rename_malformed(path)
+        Services.artifact_io().rename_malformed(path)
         return None
 
     return data
@@ -210,7 +209,7 @@ def promote_debt_signals(planspace: Path) -> list[dict]:
     candidates: list[dict] = []
     consumed_signals: list[Path] = []
     for signal_path in sorted(signals_dir.glob("*-risk-register-signal.json")):
-        data = read_json(signal_path)
+        data = Services.artifact_io().read_json(signal_path)
         if not isinstance(data, dict):
             continue
         section = data.get("section", "unknown")
@@ -239,7 +238,7 @@ def promote_debt_signals(planspace: Path) -> list[dict]:
         return []
 
     # Deduplicate against existing staging entries
-    staging = read_json(paths.risk_register_staging())
+    staging = Services.artifact_io().read_json(paths.risk_register_staging())
     existing = staging if isinstance(staging, list) else []
     existing_keys = {_debt_key(entry) for entry in existing if isinstance(entry, dict)}
 
@@ -253,13 +252,13 @@ def promote_debt_signals(planspace: Path) -> list[dict]:
 
     if new_entries:
         existing.extend(new_entries)
-        write_json(paths.risk_register_staging(), existing)
+        Services.artifact_io().write_json(paths.risk_register_staging(), existing)
         logger.info("Staged %d new debt entries (skipped %d duplicates)",
                      len(new_entries), len(candidates) - len(new_entries))
 
     # Record promotion receipts so signals are not re-consumed
     receipts_path = paths.signals_dir() / "debt-promotion-receipts.json"
-    receipts = read_json(receipts_path)
+    receipts = Services.artifact_io().read_json(receipts_path)
     receipt_list = receipts if isinstance(receipts, list) else []
     for signal_path in consumed_signals:
         receipt_list.append({
@@ -270,6 +269,6 @@ def promote_debt_signals(planspace: Path) -> list[dict]:
                        for _ in [None])
             ]),
         })
-    write_json(receipts_path, receipt_list)
+    Services.artifact_io().write_json(receipts_path, receipt_list)
 
     return new_entries

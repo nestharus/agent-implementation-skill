@@ -13,7 +13,7 @@ Entry point: ``run_reconciliation(run_dir, proposal_results)``.
 import logging
 from pathlib import Path
 
-from signals.repository.artifact_io import write_json
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from proposal.repository.state import load_proposal_state
 from reconciliation.service.adjudicator import adjudicate_ungrouped_candidates
@@ -286,6 +286,6 @@ def run_reconciliation(
         run_dir / "artifacts" / "reconciliation"
         / "reconciliation-summary.json"
     )
-    write_json(summary_path, summary)
+    Services.artifact_io().write_json(summary_path, summary)
 
     return summary

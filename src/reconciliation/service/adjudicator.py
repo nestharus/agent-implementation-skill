@@ -7,7 +7,6 @@ import logging
 from pathlib import Path
 
 from containers import Services
-from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.template import render_template
 
@@ -25,7 +24,7 @@ def adjudicate_ungrouped_candidates(
 
     recon_dir = PathRegistry(planspace).reconciliation_dir()
     candidates_path = recon_dir / f"ungrouped-{candidate_type}.json"
-    write_json(candidates_path, ungrouped)
+    Services.artifact_io().write_json(candidates_path, ungrouped)
 
     dynamic_body = f"""# Reconciliation Adjudication: {candidate_type}
 

@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 
@@ -135,7 +134,7 @@ def write_coordination_plan_prompt(
     prompt_path = coord_dir / "coordination-plan-prompt.md"
 
     problems_path = coord_dir / "problems.json"
-    write_json(problems_path, problems)
+    Services.artifact_io().write_json(problems_path, problems)
 
     codemap_path = paths.codemap()
     corrections_path = paths.corrections()

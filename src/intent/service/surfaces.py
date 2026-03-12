@@ -3,7 +3,6 @@
 from collections.abc import Mapping
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, rename_malformed, write_json
 from orchestrator.path_registry import PathRegistry
 
 from containers import Services
@@ -23,14 +22,14 @@ def load_surface_registry(
     if not registry_path.exists():
         return {"section": section_number, "next_id": 1, "surfaces": []}
 
-    data = read_json(registry_path)
+    data = Services.artifact_io().read_json(registry_path)
     if isinstance(data, dict) and "surfaces" in data:
         return data
     if data is not None:
         # Schema mismatch: JSON valid but missing required keys (V6/R53)
         Services.logger().log(f"Section {section_number}: surface registry missing 'surfaces' "
             f"key — preserving and starting fresh")
-        malformed_path = rename_malformed(registry_path)
+        malformed_path = Services.artifact_io().rename_malformed(registry_path)
         if malformed_path is None and registry_path.exists():
             Services.logger().log(f"Section {section_number}: failed to rename schema-"
                 "mismatched registry")
@@ -49,7 +48,7 @@ def save_surface_registry(
         PathRegistry(planspace).intent_section_dir(section_number)
         / "surface-registry.json"
     )
-    write_json(registry_path, registry)
+    Services.artifact_io().write_json(registry_path, registry)
 
 
 def load_intent_surfaces(
@@ -76,16 +75,16 @@ def load_research_derived_surfaces(
     research_path = PathRegistry(planspace).research_derived_surfaces(section_number)
     if not research_path.exists():
         return None
-    data = read_json(research_path)
+    data = Services.artifact_io().read_json(research_path)
     if not isinstance(data, dict):
         if data is not None:
-            rename_malformed(research_path)
+            Services.artifact_io().rename_malformed(research_path)
         return None
     if (
         "problem_surfaces" not in data
         and "philosophy_surfaces" not in data
     ):
-        rename_malformed(research_path)
+        Services.artifact_io().rename_malformed(research_path)
         return None
     return data
 

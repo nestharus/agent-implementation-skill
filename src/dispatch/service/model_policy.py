@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Iterator, Mapping, cast
 
-from signals.repository.artifact_io import read_json, rename_malformed
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 
@@ -124,7 +124,7 @@ def load_model_policy(planspace: Path) -> ModelPolicy:
     if not policy_path.exists():
         return defaults
 
-    data = read_json(policy_path)
+    data = Services.artifact_io().read_json(policy_path)
     if isinstance(data, dict):
         merged = defaults.__dict__.copy()
         extras = {}
@@ -149,7 +149,7 @@ def load_model_policy(planspace: Path) -> ModelPolicy:
         flush=True,
     )
     if data is not None:
-        rename_malformed(policy_path)
+        Services.artifact_io().rename_malformed(policy_path)
     return defaults
 
 

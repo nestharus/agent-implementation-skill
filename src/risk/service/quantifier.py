@@ -6,7 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from signals.repository.artifact_io import read_json
+from containers import Services
 from risk.types import (
     AssessmentClass,
     DecisionClass,
@@ -290,7 +290,7 @@ def is_acceptable(raw_risk: int, assessment_class: AssessmentClass) -> bool:
 def load_risk_parameters(path: Path) -> dict[str, Any]:
     """Load optional risk parameter overrides from disk."""
     defaults = deepcopy(DEFAULT_RISK_PARAMETERS)
-    payload = read_json(path)
+    payload = Services.artifact_io().read_json(path)
     if not isinstance(payload, dict):
         return defaults
 

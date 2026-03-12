@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, write_json
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from orchestrator.repository.section_artifacts import write_section_input_artifact
 from staleness.service.freshness import compute_section_freshness
@@ -137,7 +137,7 @@ def write_reopen_blocker(
         "why_blocked": reason,
         "needs": "Resolve reopened ROAL steps before continuing local execution",
     }
-    write_json(paths.blocker_signal(sec_num), payload)
+    Services.artifact_io().write_json(paths.blocker_signal(sec_num), payload)
     return paths.blocker_signal(sec_num)
 
 
@@ -158,7 +158,7 @@ def write_risk_review_failure_blocker(
         "why_blocked": "ROAL review failed; fail-closed implementation skip engaged",
         "needs": "Repair risk review inputs or rerun ROAL successfully",
     }
-    write_json(paths.blocker_signal(sec_num), payload)
+    Services.artifact_io().write_json(paths.blocker_signal(sec_num), payload)
     return paths.blocker_signal(sec_num)
 
 
@@ -203,7 +203,7 @@ def has_recent_loop_detected_signal(
         return False
 
     for path in sorted(signals_dir.glob("*.json")):
-        payload = read_json(path)
+        payload = Services.artifact_io().read_json(path)
         if not isinstance(payload, dict):
             continue
         if str(payload.get("state", "")).strip().lower() != "loop_detected":
@@ -222,7 +222,7 @@ def has_recent_loop_detected_signal(
 
 
 def load_risk_hints(planspace: Path, sec_num: str) -> dict:
-    triage_signal = read_json(
+    triage_signal = Services.artifact_io().read_json(
         PathRegistry(planspace).signals_dir() / f"intent-triage-{sec_num}.json",
     )
     if not isinstance(triage_signal, dict):

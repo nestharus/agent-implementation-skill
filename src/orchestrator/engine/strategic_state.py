@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from signals.repository.artifact_io import read_json, write_json
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from orchestrator.repository.decisions import load_decisions
 from risk.repository.serialization import (
@@ -70,7 +70,7 @@ def build_strategic_state(
         if planspace is not None:
             blocker_path = PathRegistry(planspace).blocker_signal(sec_num)
             if blocker_path.exists():
-                blocker = read_json(blocker_path)
+                blocker = Services.artifact_io().read_json(blocker_path)
                 if blocker is None:
                     blocked[sec_num] = {
                         "problem_id": "",
@@ -133,7 +133,7 @@ def build_strategic_state(
         snapshot["warnings"] = decision_warnings
 
     state_path = decisions_dir.parent / "strategic-state.json"
-    write_json(state_path, snapshot)
+    Services.artifact_io().write_json(state_path, snapshot)
     return snapshot
 
 
@@ -196,7 +196,7 @@ def _load_research_questions(planspace: Path) -> list[dict[str, Any]]:
     for artifact_path in sorted(
         open_problems_dir.glob("section-*-research-questions.json")
     ):
-        artifact = read_json(artifact_path)
+        artifact = Services.artifact_io().read_json(artifact_path)
         if not isinstance(artifact, dict):
             continue
 

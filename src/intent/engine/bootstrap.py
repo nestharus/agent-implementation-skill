@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
 from intent.service.loop_bootstrap import (
     ensure_global_philosophy,
@@ -169,7 +168,7 @@ def _step_budget(ctx: PipelineContext) -> dict:
     if intent_budgets:
         triage_budget_keys = frozenset(("proposal_max", "implementation_max"))
         cycle_budget_path = paths.cycle_budget(ctx.section.number)
-        existing_budget = read_json(cycle_budget_path)
+        existing_budget = Services.artifact_io().read_json(cycle_budget_path)
         if existing_budget is not None:
             existing_budget.update({
                 key: value
@@ -180,11 +179,11 @@ def _step_budget(ctx: PipelineContext) -> dict:
                     or key in triage_budget_keys
                 )
             })
-            write_json(cycle_budget_path, existing_budget)
+            Services.artifact_io().write_json(cycle_budget_path, existing_budget)
 
     cycle_budget_path = paths.cycle_budget(ctx.section.number)
     cycle_budget = {"proposal_max": 5, "implementation_max": 5}
-    loaded_budget = read_json(cycle_budget_path)
+    loaded_budget = Services.artifact_io().read_json(cycle_budget_path)
     if loaded_budget is not None:
         cycle_budget.update(loaded_budget)
 

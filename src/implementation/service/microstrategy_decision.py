@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from containers import Services
-from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
 
 
@@ -21,7 +20,7 @@ def _gather_complexity_signals(
     # 1. Section mode signal
     mode_signal = paths.mode_signal(section_number)
     if mode_signal.exists():
-        mode_data = read_json(mode_signal)
+        mode_data = Services.artifact_io().read_json(mode_signal)
         if mode_data is not None:
             signals["section_mode"] = mode_data.get("mode", "unknown")
         else:
@@ -31,7 +30,7 @@ def _gather_complexity_signals(
 
     # 2. Related file count from mode signal (if it contains file info)
     if mode_signal.exists():
-        mode_data = read_json(mode_signal)
+        mode_data = Services.artifact_io().read_json(mode_signal)
         if mode_data is not None:
             file_count = len(mode_data.get("related_files", []))
             signals["related_file_count"] = str(file_count) if file_count else "unknown"
@@ -122,7 +121,7 @@ def _check_needs_microstrategy(
     paths = PathRegistry(planspace)
     signal_path = paths.microstrategy_signal(section_number)
     if signal_path.exists():
-        data = read_json(signal_path)
+        data = Services.artifact_io().read_json(signal_path)
         if data is not None:
             return data.get("needs_microstrategy", False) is True
         else:
@@ -173,7 +172,7 @@ Write a JSON signal to: `{signal_path}`
         agent_file=Services.task_router().agent_for("implementation.microstrategy_decision"),
     )
     if signal_path.exists():
-        data = read_json(signal_path)
+        data = Services.artifact_io().read_json(signal_path)
         if data is not None:
             return data.get("needs_microstrategy", False) is True
         else:
@@ -195,7 +194,7 @@ Write a JSON signal to: `{signal_path}`
         agent_file=Services.task_router().agent_for("implementation.microstrategy_decision"),
     )
     if signal_path.exists():
-        data = read_json(signal_path)
+        data = Services.artifact_io().read_json(signal_path)
         if data is not None:
             return data.get("needs_microstrategy", False) is True
         else:
@@ -213,5 +212,5 @@ Write a JSON signal to: `{signal_path}`
             "signal after retries (default + escalation model)"
         ),
     }
-    write_json(signal_path, fallback)
+    Services.artifact_io().write_json(signal_path, fallback)
     return True

@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from containers import Services
-from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from intent.service.philosophy import validate_philosophy_grounding
 
@@ -236,7 +235,7 @@ def adjudicate_recurrence(
     recurrence_path = (
         signals_dir / f"intent-surface-recurrence-{section_number}.json"
     )
-    write_json(recurrence_path, recurrence_signal)
+    Services.artifact_io().write_json(recurrence_path, recurrence_signal)
 
     adjudication_path = (
         signals_dir / f"intent-recurrence-adjudication-{section_number}.json"

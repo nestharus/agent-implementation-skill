@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import write_json
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 
@@ -22,7 +22,7 @@ def write_section_input_artifact(
     """
     input_dir = paths.input_refs_dir(sec_num)
     artifact_path = input_dir / artifact_name
-    write_json(artifact_path, payload)
+    Services.artifact_io().write_json(artifact_path, payload)
     ref_path = input_dir / f"{artifact_path.stem}.ref"
     ref_path.write_text(str(artifact_path.resolve()), encoding="utf-8")
     return artifact_path

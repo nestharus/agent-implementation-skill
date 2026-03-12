@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 from containers import Services
-from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
 
 from intent.service.philosophy_classifier import (
@@ -92,7 +91,7 @@ def _write_bootstrap_status(
     detail: str,
 ) -> None:
     signal_path = _bootstrap_signal_path(paths)
-    write_json(_bootstrap_status_path(paths), {
+    Services.artifact_io().write_json(_bootstrap_status_path(paths), {
         "bootstrap_state": bootstrap_state,
         "blocking_state": blocking_state,
         "source_mode": source_mode,
@@ -120,7 +119,7 @@ def _write_bootstrap_signal(
     }
     if extras:
         payload.update(extras)
-    write_json(_bootstrap_signal_path(paths), payload)
+    Services.artifact_io().write_json(_bootstrap_signal_path(paths), payload)
 
 
 def _bootstrap_result(
@@ -181,7 +180,7 @@ def _write_bootstrap_diagnostics(
     attempts: list[dict[str, Any]],
     final_outcome: str,
 ) -> None:
-    write_json(_bootstrap_diagnostics_path(paths), {
+    Services.artifact_io().write_json(_bootstrap_diagnostics_path(paths), {
         "stage": stage,
         "attempts": attempts,
         "final_outcome": final_outcome,
@@ -481,7 +480,7 @@ def _grounding_failure_source_mode(
         if source_types:
             return "repo_sources"
 
-    status = read_json(_bootstrap_status_path(paths))
+    status = Services.artifact_io().read_json(_bootstrap_status_path(paths))
     if isinstance(status, dict):
         mode = status.get("source_mode")
         if mode in {"user_source", "repo_sources"}:
@@ -514,7 +513,7 @@ def validate_philosophy_grounding(
         )
         extras = {}
     elif source_map_path.exists():
-        source_map = read_json(source_map_path)
+        source_map = Services.artifact_io().read_json(source_map_path)
         if source_map is None:
             Services.logger().log("Intent bootstrap: malformed source map — "
                 "preserving as .malformed.json")
@@ -638,7 +637,7 @@ def ensure_global_philosophy(
         else:
             manifest_path = intent_global / "philosophy-source-manifest.json"
             if manifest_path.exists():
-                manifest = read_json(manifest_path)
+                manifest = Services.artifact_io().read_json(manifest_path)
                 if isinstance(manifest, dict):
                     sources_changed = False
                     for entry in manifest.get("sources", []):
@@ -724,7 +723,7 @@ def ensure_global_philosophy(
 
     catalog = build_philosophy_catalog(planspace, codespace)
     catalog_path = paths.philosophy_candidate_catalog()
-    write_json(catalog_path, catalog)
+    Services.artifact_io().write_json(catalog_path, catalog)
     if source_records is None and not catalog:
         Services.logger().log("Intent bootstrap: no markdown files found for philosophy "
             "catalog — requesting user bootstrap input")
@@ -979,7 +978,7 @@ If NO files contain cross-cutting reasoning philosophy, write:
                 codespace,
                 extensions=expanded_exts,
             )
-            write_json(catalog_path, catalog)
+            Services.artifact_io().write_json(catalog_path, catalog)
 
             expanded_run = _dispatch_classified_signal_stage(
                 stage_name="selector-extension-pass",
@@ -1503,7 +1502,7 @@ genuinely ambiguous, do NOT invent filler. Instead:
         )
 
     manifest_path = intent_global / "philosophy-source-manifest.json"
-    write_json(manifest_path, {
+    Services.artifact_io().write_json(manifest_path, {
         "sources": [
             {
                 "path": str(source["path"]),

@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import Any
 
-from signals.repository.artifact_io import write_json
 from containers import Services
 from coordination.engine.plan_executor import (
     CoordinationExecutionExit,
@@ -99,7 +98,7 @@ def run_global_coordination(
 
     # Save coordination state for debugging / inspection
     state_path = coord_dir / "problems.json"
-    write_json(state_path, problems)
+    Services.artifact_io().write_json(state_path, problems)
     _log_artifact(planspace, "coordination:problems")
 
     # -----------------------------------------------------------------
@@ -148,7 +147,7 @@ def run_global_coordination(
         # Scripts must not invent grouping — only the agent decides.
         Services.logger().log("  coordinator: plan parse failed after retry — fail closed")
         failure_path = coord_dir / "coordination-plan-failure.md"
-        write_json(failure_path, {
+        Services.artifact_io().write_json(failure_path, {
             "reason": "unparseable_plan_json",
             "attempts": 2,
         })
@@ -175,7 +174,7 @@ def run_global_coordination(
 
     # Save plan and groups for debugging
     plan_path = coord_dir / "coordination-plan.json"
-    write_json(plan_path, coord_plan)
+    Services.artifact_io().write_json(plan_path, coord_plan)
     _log_artifact(planspace, "coordination:plan")
 
     groups_path = coord_dir / "groups.json"
@@ -188,7 +187,7 @@ def run_global_coordination(
             "sections": sorted({p["section"] for p in g}),
             "files": sorted({f for p in g for f in p.get("files", [])}),
         })
-    write_json(groups_path, groups_data)
+    Services.artifact_io().write_json(groups_path, groups_data)
     _log_artifact(planspace, "coordination:groups")
 
     # -----------------------------------------------------------------

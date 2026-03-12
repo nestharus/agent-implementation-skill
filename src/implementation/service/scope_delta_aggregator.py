@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from containers import Services
-from signals.repository.artifact_io import read_json, rename_malformed, write_json
 from orchestrator.repository.decisions import Decision, load_decisions, record_decision
 from orchestrator.path_registry import PathRegistry
 from implementation.service.scope_delta_parser import (
@@ -26,7 +25,7 @@ def _load_pending_deltas(scope_deltas_dir: Path) -> tuple[list[Path], list[dict]
     )
     pending_deltas: list[dict] = []
     for delta_file in delta_files:
-        delta = read_json(delta_file)
+        delta = Services.artifact_io().read_json(delta_file)
         if delta is not None:
             if delta.get("adjudicated"):
                 continue
@@ -53,7 +52,7 @@ def _write_adjudication_prompt(
             delta.get("requires_root_reframing", False),
         )
         prompt_deltas.append(prompt_delta)
-    write_json(pending_deltas_path, prompt_deltas)
+    Services.artifact_io().write_json(pending_deltas_path, prompt_deltas)
 
     prompt_text = f"""# Task: Adjudicate Scope Deltas
 
@@ -150,7 +149,7 @@ def _dispatch_adjudication(
 def _build_delta_id_map(delta_files: list[Path]) -> dict[str, Path]:
     delta_id_to_path: dict[str, Path] = {}
     for delta_file in delta_files:
-        delta = read_json(delta_file)
+        delta = Services.artifact_io().read_json(delta_file)
         if isinstance(delta, dict):
             delta_id = delta.get("delta_id")
             if delta_id:
@@ -174,7 +173,7 @@ def _apply_adjudication(
         delta_path = scope_deltas_dir / f"section-{section}-scope-delta.json"
 
     if delta_path.exists():
-        delta = read_json(delta_path)
+        delta = Services.artifact_io().read_json(delta_path)
         if delta is None:
             Services.logger().log(
                 f"  coordinator: WARNING — malformed scope-delta "
@@ -182,8 +181,8 @@ def _apply_adjudication(
                 "preserving as .malformed.json",
             )
             malformed = delta_path.with_suffix(".malformed.json")
-            rename_malformed(delta_path)
-            write_json(
+            Services.artifact_io().rename_malformed(delta_path)
+            Services.artifact_io().write_json(
                 delta_path,
                 {
                     "delta_id": delta_id,
@@ -203,7 +202,7 @@ def _apply_adjudication(
 
         delta["adjudicated"] = True
         delta["adjudication"] = decision
-        write_json(delta_path, delta)
+        Services.artifact_io().write_json(delta_path, delta)
 
     Services.logger().log(f"  coordinator: scope delta {delta_id or delta_path.name} → {action}")
 
@@ -217,7 +216,7 @@ def _record_decisions(
 ) -> None:
     paths = PathRegistry(planspace)
     decisions_rollup_path = paths.coordination_dir() / "scope-delta-decisions.json"
-    write_json(decisions_rollup_path, {"decisions": decisions})
+    Services.artifact_io().write_json(decisions_rollup_path, {"decisions": decisions})
     Services.communicator().log_artifact(planspace, "coordination:scope-delta-decisions")
 
     decisions_dir = paths.decisions_dir()
@@ -284,7 +283,7 @@ def aggregate_scope_deltas(
     if adj_data is None:
         Services.logger().log("  coordinator: scope-delta adjudication parse "
             "failed after retry — fail closed")
-        write_json(
+        Services.artifact_io().write_json(
             paths.coordination_dir() / "scope-delta-adjudication-failure.json",
             {
                 "error": "unparseable_adjudication_json",

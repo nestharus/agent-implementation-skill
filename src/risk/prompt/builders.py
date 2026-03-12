@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from risk.service.package_builder import read_text, scope_number
 from risk.types import RiskAssessment, RiskPackage
@@ -55,7 +55,7 @@ def build_risk_assessment_prompt(
     lines.extend(["## Artifact Paths", "", "Read these artifacts for context:", ""])
     for title, path, kind in artifact_specs:
         if kind == "json":
-            lines.extend(_json_block(title, path, read_json(path)))
+            lines.extend(_json_block(title, path, Services.artifact_io().read_json(path)))
         else:
             lines.extend(_artifact_block(title, path, kind))
 
@@ -113,8 +113,8 @@ def build_optimization_prompt(
         "Read these artifacts for context:",
         "",
     ]
-    lines.extend(_json_block("Risk parameters", paths.risk_parameters(), read_json(paths.risk_parameters())))
-    lines.extend(_json_block("Tool registry", paths.tool_registry(), read_json(paths.tool_registry())))
+    lines.extend(_json_block("Risk parameters", paths.risk_parameters(), Services.artifact_io().read_json(paths.risk_parameters())))
+    lines.extend(_json_block("Tool registry", paths.tool_registry(), Services.artifact_io().read_json(paths.tool_registry())))
     lines.extend(_json_block("Risk history", paths.risk_history(), None))
     if lightweight:
         lines.extend(

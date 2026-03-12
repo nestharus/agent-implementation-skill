@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json
+from containers import Services
 from scan.substrate.helpers import _registry_for_artifacts
 
 DEFAULT_SUBSTRATE_MODELS: dict[str, str] = {
@@ -21,7 +21,7 @@ def read_substrate_model_policy(artifacts_dir: Path) -> dict[str, str]:
     policy = dict(DEFAULT_SUBSTRATE_MODELS)
     policy_path = _registry_for_artifacts(artifacts_dir).model_policy()
     if policy_path.is_file():
-        data = read_json(policy_path)
+        data = Services.artifact_io().read_json(policy_path)
         if isinstance(data, dict):
             for key in DEFAULT_SUBSTRATE_MODELS:
                 if key in data and isinstance(data[key], str):
@@ -45,7 +45,7 @@ def read_trigger_signals(artifacts_dir: Path) -> list[str]:
         if not path.name.startswith("substrate-trigger-") or not path.name.endswith(".json"):
             continue
 
-        data = read_json(path)
+        data = Services.artifact_io().read_json(path)
         if isinstance(data, dict) and "section" in data:
             triggered.append(str(data["section"]))
         elif isinstance(data, dict) and "sections" in data:
@@ -63,7 +63,7 @@ def read_trigger_threshold(artifacts_dir: Path) -> int:
     """Read the vacuum section threshold from policy config."""
     policy_path = _registry_for_artifacts(artifacts_dir).model_policy()
     if policy_path.is_file():
-        data = read_json(policy_path)
+        data = Services.artifact_io().read_json(policy_path)
         if isinstance(data, dict):
             value = data.get("substrate_trigger_min_vacuum_sections")
             if isinstance(value, int) and value >= 1:

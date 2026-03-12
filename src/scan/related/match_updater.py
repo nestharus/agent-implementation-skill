@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json
+from containers import Services
 
 SUMMARY_BEGIN = "<!-- scan-summary:begin -->"
 SUMMARY_END = "<!-- scan-summary:end -->"
@@ -30,7 +30,7 @@ def update_match(
     if not feedback_file.exists():
         return True
 
-    feedback = read_json(feedback_file)
+    feedback = Services.artifact_io().read_json(feedback_file)
     if feedback is None:
         print(
             f"[DEEP][WARN] Malformed feedback JSON: {feedback_file}",

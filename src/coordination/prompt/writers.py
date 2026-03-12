@@ -8,7 +8,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from signals.repository.artifact_io import read_json
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.template import SRC_TEMPLATE_DIR, TASK_SUBMISSION_SEMANTICS, load_template, render
 from containers import Services
@@ -226,7 +225,7 @@ def _format_tools_block(paths: PathRegistry) -> str:
         )
     if not tool_registry_path.exists():
         return ""
-    reg = read_json(tool_registry_path)
+    reg = Services.artifact_io().read_json(tool_registry_path)
     if reg is not None:
         cross_tools = [
             t for t in (reg if isinstance(reg, list)

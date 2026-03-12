@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, rename_malformed
 from orchestrator.path_registry import PathRegistry
 from scan.service.section_notes import log_phase_failure
 from scan.service.template_loader import load_scan_template
@@ -235,14 +234,14 @@ def _run_freshness_check(
     )
 
     if result.returncode == 0 and freshness_signal.is_file():
-        data = read_json(freshness_signal)
+        data = Services.artifact_io().read_json(freshness_signal)
         if not isinstance(data, dict):
             print(
                 f"[CODEMAP][WARN] Malformed freshness signal at "
                 f"{freshness_signal} "
                 f"— renaming to .malformed.json")
             if data is not None:
-                rename_malformed(freshness_signal)
+                Services.artifact_io().rename_malformed(freshness_signal)
             rebuild = True
         else:
             rebuild = data.get("rebuild", True)

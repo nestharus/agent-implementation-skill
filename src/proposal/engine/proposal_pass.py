@@ -7,7 +7,6 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
-from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
 from orchestrator.repository.section_artifacts import write_section_input_artifact
 from implementation.repository.roal_index import refresh_roal_input_index
@@ -81,7 +80,7 @@ def _write_proposal_risk_blocker(
         f"high-risk proposal findings ({', '.join(reasons)})"
     )
     blocker_path = paths.signals_dir() / f"section-{sec_num}-proposal-risk-blocker.json"
-    write_json(
+    Services.artifact_io().write_json(
         blocker_path,
         {
             "state": "needs_parent",
@@ -127,7 +126,7 @@ def _risk_check_proposal(
         proposal_state = load_proposal_state(
             paths.proposals_dir() / f"{scope}-proposal-state.json"
         )
-        triage_signal = read_json(paths.signals_dir() / f"intent-triage-{sec_num}.json")
+        triage_signal = Services.artifact_io().read_json(paths.signals_dir() / f"intent-triage-{sec_num}.json")
         triage_confidence = "low"
         risk_mode_hint = ""
         if isinstance(triage_signal, dict):

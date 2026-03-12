@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from staleness.service.change_tracker import set_flag
-from signals.repository.artifact_io import read_json, rename_malformed
+from containers import Services
 from coordination.repository.notes import (
     read_incoming_notes as load_incoming_notes,
     write_consequence_note,
@@ -19,7 +19,6 @@ from orchestrator.path_registry import PathRegistry
 from orchestrator.service.section_decisions import extract_section_summary
 from implementation.service.snapshot import compute_text_diff, snapshot_modified_files
 
-from containers import Services
 from signals.service.communication import AGENT_NAME, DB_SH
 
 if TYPE_CHECKING:
@@ -192,7 +191,7 @@ def read_incoming_notes(
     ack_path = paths.note_ack_signal(sec_num)
     resolved_ids: set[str] = set()
     if ack_path.exists():
-        ack_data = read_json(ack_path)
+        ack_data = Services.artifact_io().read_json(ack_path)
         if isinstance(ack_data, dict):
             for entry in ack_data.get("acknowledged", []):
                 note_id = entry.get("note_id", "")
@@ -201,7 +200,7 @@ def read_incoming_notes(
                     resolved_ids.add(note_id)
         else:
             malformed_path = ack_path.with_suffix(".malformed.json")
-            rename_malformed(ack_path)
+            Services.artifact_io().rename_malformed(ack_path)
             Services.logger().log(
                 f"Section {sec_num}: note-ack malformed — "
                 f"preserved as {malformed_path.name}, treating as "

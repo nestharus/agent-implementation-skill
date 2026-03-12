@@ -5,7 +5,6 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, rename_malformed, write_json
 from containers import Services
 from scan.service.template_loader import load_scan_template
 from dispatch.service.prompt_guard import validate_dynamic_content
@@ -15,7 +14,7 @@ from scan.cli_dispatch import dispatch_agent
 
 def validate_tier_file(tier_file: Path) -> bool:
     """Validate tier file structure: valid JSON with required fields."""
-    data = read_json(tier_file)
+    data = Services.artifact_io().read_json(tier_file)
     if data is None:
         return False
 
@@ -62,7 +61,7 @@ def run_tier_ranking(
                 "(missing scan_now or bad schema) — preserving as "
                 ".malformed.json and regenerating",
             )
-            if rename_malformed(tier_file) is None:
+            if Services.artifact_io().rename_malformed(tier_file) is None:
                 tier_file.unlink()
         elif (
             tier_inputs_sidecar.is_file()
@@ -135,7 +134,7 @@ def run_tier_ranking(
             signals_dir = artifacts_dir / "signals"
             signals_dir.mkdir(parents=True, exist_ok=True)
             fail_path = signals_dir / f"{section_name}-tier-ranking-failed.json"
-            write_json(
+            Services.artifact_io().write_json(
                 fail_path,
                 {
                     "section": section_name,

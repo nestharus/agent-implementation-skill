@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from signals.repository.artifact_io import read_json, rename_malformed
+from containers import Services
 
 # ── Valid source types (shared with bootstrap) ────────────────────────
 VALID_SOURCE_TYPES = frozenset({"repo_source", "user_source"})
@@ -22,7 +22,7 @@ MIN_USER_SOURCE_BYTES = 100
 # ── low-level malformed helpers ───────────────────────────────────────
 
 def _preserve_malformed_signal(signal_path: Path) -> str | None:
-    malformed_path = rename_malformed(signal_path)
+    malformed_path = Services.artifact_io().rename_malformed(signal_path)
     if malformed_path is None:
         return None
     return str(malformed_path)
@@ -63,7 +63,7 @@ def _classify_list_signal_result(
     if not signal_path.exists():
         return {"state": "missing_signal", "data": None}
 
-    data = read_json(signal_path)
+    data = Services.artifact_io().read_json(signal_path)
     if data is None:
         return _malformed_signal_result(signal_path)
     if not isinstance(data, dict):
@@ -183,7 +183,7 @@ def _classify_distiller_result(
         return {"state": "malformed_signal", "data": None}
 
     if not philosophy_text.strip():
-        source_map = read_json(source_map_path)
+        source_map = Services.artifact_io().read_json(source_map_path)
         if source_map is None:
             return _malformed_signal_result(source_map_path)
         if not isinstance(source_map, dict):
@@ -206,7 +206,7 @@ def _classify_distiller_result(
             },
         }
 
-    source_map = read_json(source_map_path)
+    source_map = Services.artifact_io().read_json(source_map_path)
     if source_map is None:
         return _malformed_signal_result(source_map_path)
     if not isinstance(source_map, dict):
@@ -270,7 +270,7 @@ def _guidance_schema_error(payload: Any) -> str | None:
 def _classify_guidance_result(guidance_path: Path) -> dict[str, Any]:
     if not guidance_path.exists():
         return {"state": "missing_signal", "data": None}
-    data = read_json(guidance_path)
+    data = Services.artifact_io().read_json(guidance_path)
     if data is None:
         return _malformed_signal_result(guidance_path)
     schema_error = _guidance_schema_error(data)

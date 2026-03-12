@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, rename_malformed
+from containers import Services
 
 # ---- Enumerations ----
 
@@ -123,7 +123,7 @@ def validate_seed_plan(data: dict) -> list[str]:
 
 def _read_failclosed(path: Path, validator, label: str) -> dict | None:
     """Internal helper: read JSON, validate, rename on failure."""
-    data = read_json(path)
+    data = Services.artifact_io().read_json(path)
     if data is None:
         return None
 
@@ -132,7 +132,7 @@ def _read_failclosed(path: Path, validator, label: str) -> dict | None:
             f"[SUBSTRATE][WARN] {label} at {path} is not a JSON "
             f"object -- renaming to .malformed.json"
         )
-        rename_malformed(path)
+        Services.artifact_io().rename_malformed(path)
         return None
 
     errors = validator(data)
@@ -141,7 +141,7 @@ def _read_failclosed(path: Path, validator, label: str) -> dict | None:
             f"[SUBSTRATE][WARN] {label} at {path} has validation "
             f"errors: {'; '.join(errors)} -- renaming to .malformed.json"
         )
-        rename_malformed(path)
+        Services.artifact_io().rename_malformed(path)
         return None
 
     return data

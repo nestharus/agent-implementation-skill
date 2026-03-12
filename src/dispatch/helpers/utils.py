@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import write_json
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from signals.repository.signal_reader import read_signal_tuple
 from signals.types import SignalResult
@@ -42,7 +42,7 @@ def write_model_choice_signal(
         "escalated_from": escalated_from,
     }
     signal_path = signals_dir / f"model-choice-{section}-{step}.json"
-    write_json(signal_path, signal)
+    Services.artifact_io().write_json(signal_path, signal)
 
 
 def check_agent_signals(

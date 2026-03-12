@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, rename_malformed, write_json
+from containers import Services
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ def load_proposal_state(path: Path) -> dict:
     if not path.exists():
         return _fail_closed_default()
 
-    raw = read_json(path)
+    raw = Services.artifact_io().read_json(path)
     if raw is None:
         logger.warning(
             "Malformed proposal state at %s — returning fail-closed default",
@@ -99,7 +99,7 @@ def load_proposal_state(path: Path) -> dict:
             ".malformed.json",
             path,
         )
-        rename_malformed(path)
+        Services.artifact_io().rename_malformed(path)
         return _fail_closed_default()
 
     for key, expected_type in PROPOSAL_STATE_SCHEMA.items():
@@ -110,7 +110,7 @@ def load_proposal_state(path: Path) -> dict:
                 path,
                 key,
             )
-            rename_malformed(path)
+            Services.artifact_io().rename_malformed(path)
             return _fail_closed_default()
         if not isinstance(raw[key], expected_type):
             logger.warning(
@@ -121,7 +121,7 @@ def load_proposal_state(path: Path) -> dict:
                 expected_type.__name__,
                 type(raw[key]).__name__,
             )
-            rename_malformed(path)
+            Services.artifact_io().rename_malformed(path)
             return _fail_closed_default()
 
     return raw
@@ -129,7 +129,7 @@ def load_proposal_state(path: Path) -> dict:
 
 def save_proposal_state(state: dict, path: Path) -> None:
     """Write a proposal state dict to JSON."""
-    write_json(path, state)
+    Services.artifact_io().write_json(path, state)
 
 
 def has_blocking_fields(state: dict) -> bool:

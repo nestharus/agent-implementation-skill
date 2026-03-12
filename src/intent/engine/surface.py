@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 from intent.service.surfaces import (
@@ -103,7 +102,7 @@ def run_expansion_cycle(
     )
 
     surfaces_path = paths.intent_surfaces_signal(section_number)
-    write_json(surfaces_path, surfaces)
+    Services.artifact_io().write_json(surfaces_path, surfaces)
 
     if not new_surfaces:
         recurrences = find_discarded_recurrences(registry, duplicate_ids)
@@ -142,7 +141,7 @@ def run_expansion_cycle(
     pending_surfaces_path = (
         paths.signals_dir() / f"intent-surfaces-pending-{section_number}.json"
     )
-    write_json(pending_surfaces_path, budgeted_surfaces)
+    Services.artifact_io().write_json(pending_surfaces_path, budgeted_surfaces)
 
     axes_added = registry.get("axes_added_so_far", 0)
     max_axes = budget_config.get("max_new_axes_total", 6)
@@ -234,7 +233,7 @@ def run_expansion_cycle(
     save_surface_registry(section_number, planspace, registry)
 
     delta_path = paths.intent_delta_signal(section_number)
-    write_json(delta_path, delta)
+    Services.artifact_io().write_json(delta_path, delta)
 
     expansion_applied = (
         delta["applied"]["problem_definition_updated"]
@@ -301,7 +300,7 @@ def handle_user_gate(
         signals_dir / f"intent-expand-{section_number}-signal.json"
     )
     if not blocker_path.exists():
-        write_json(blocker_path, {
+        Services.artifact_io().write_json(blocker_path, {
             "state": "NEED_DECISION",
             "detail": message["detail"],
             "needs": message["needs"],

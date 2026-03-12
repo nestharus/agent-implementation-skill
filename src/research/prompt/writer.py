@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 
@@ -127,7 +126,7 @@ def write_research_ticket_prompt(
     ticket_payload.pop("_phase", None)
     ticket_payload["section"] = section_number
     ticket_payload["output_path"] = str(result_path)
-    write_json(spec_path, ticket_payload)
+    Services.artifact_io().write_json(spec_path, ticket_payload)
 
     research_type = str(ticket_payload.get("research_type", "web"))
     phase_note = ""

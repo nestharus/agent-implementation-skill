@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from signals.repository.artifact_io import write_json
 from coordination.service.problem_resolver import _collect_outstanding_problems
 from orchestrator.path_registry import PathRegistry
 from orchestrator.engine.strategic_state import build_strategic_state
@@ -115,7 +114,7 @@ def _report_result(
         build_strategic_state(decisions_dir, section_results, planspace)
         rollup_dir = paths.coordination_dir()
         rollup_dir.mkdir(parents=True, exist_ok=True)
-        write_json(
+        Services.artifact_io().write_json(
             rollup_dir / "coordination-exhausted.json",
             [
                 {

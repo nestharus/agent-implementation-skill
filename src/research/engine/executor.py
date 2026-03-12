@@ -10,7 +10,6 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
-from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from flow.engine.submitter import new_flow_id, submit_fanout
 from staleness.service.freshness import compute_section_freshness
@@ -133,7 +132,7 @@ def _emit_not_researchable_signals(
             "why_blocked": reason or "Planner marked this question as not researchable",
             "source": "research-plan:not_researchable",
         }
-        write_json(
+        Services.artifact_io().write_json(
             signals_dir / f"section-{section_number}-research-blocker-{index}.json",
             signal,
         )

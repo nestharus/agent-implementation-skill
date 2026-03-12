@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from intent.engine import bootstrap as intent_bootstrap_module
-from signals.repository.artifact_io import read_json
 from staleness.service.change_tracker import check_pending as alignment_changed_pending
 from implementation.service.triage_orchestrator import run_impact_triage
 from intent.engine.bootstrap import run_intent_bootstrap
@@ -208,7 +207,7 @@ def _load_cycle_budget(paths: PathRegistry, section_number: str) -> dict:
     """Load the per-section cycle budget, falling back to defaults."""
     cycle_budget_path = paths.cycle_budget(section_number)
     cycle_budget = {"proposal_max": 5, "implementation_max": 5}
-    loaded = read_json(cycle_budget_path)
+    loaded = Services.artifact_io().read_json(cycle_budget_path)
     if loaded is not None:
         cycle_budget.update(loaded)
     return cycle_budget
@@ -218,7 +217,7 @@ def _count_pre_impl_tools(paths: PathRegistry) -> tuple[Path, int]:
     """Read tool registry and return (registry_path, tool_count)."""
     tool_registry_path = paths.tool_registry()
     pre_tool_total = 0
-    registry = read_json(tool_registry_path)
+    registry = Services.artifact_io().read_json(tool_registry_path)
     if registry is not None:
         all_tools = (registry if isinstance(registry, list)
                      else registry.get("tools", []))

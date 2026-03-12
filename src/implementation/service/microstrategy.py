@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from containers import Services
-from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.template import TASK_SUBMISSION_SEMANTICS
 from dispatch.prompt.writers import agent_mail_instructions
@@ -182,7 +181,7 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
         "detail": "Microstrategy generation failed after primary + escalation attempts",
         "needs": "Tactical breakdown from upstream or decision to proceed without microstrategy",
     }
-    write_json(
+    Services.artifact_io().write_json(
         paths.microstrategy_blocker_signal(section.number),
         blocker,
     )

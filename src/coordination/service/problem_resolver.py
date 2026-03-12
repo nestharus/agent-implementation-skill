@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from signals.repository.artifact_io import read_json, rename_malformed, write_json
 from coordination.repository.notes import read_incoming_notes as load_incoming_notes
 from orchestrator.path_registry import PathRegistry
 from containers import Services
@@ -38,7 +37,7 @@ def _collect_outstanding_problems(
 
         blocker_path = paths.blocker_signal(sec_num)
         if blocker_path.exists():
-            blocker = read_json(blocker_path)
+            blocker = Services.artifact_io().read_json(blocker_path)
             if blocker is not None:
                 if blocker.get("state") == "needs_parent":
                     problems.append({
@@ -61,7 +60,7 @@ def _collect_outstanding_problems(
                     "needs": "Valid blocker signal JSON",
                     "files": files,
                 })
-                rename_malformed(blocker_path)
+                Services.artifact_io().rename_malformed(blocker_path)
                 continue
 
         if result.problems:
@@ -163,7 +162,7 @@ def _collect_outstanding_problems(
         if delta_path.suffix != ".json" or delta_path.name.endswith(".malformed.json"):
             continue
 
-        delta = read_json(delta_path)
+        delta = Services.artifact_io().read_json(delta_path)
         if delta is None:
             Services.logger().log(
                 f"  coordinator: WARNING — malformed scope-delta "
@@ -175,7 +174,7 @@ def _collect_outstanding_problems(
                 f"  coordinator: WARNING — invalid scope-delta "
                 f"{delta_path.name} (expected object), preserving as .malformed.json",
             )
-            rename_malformed(delta_path)
+            Services.artifact_io().rename_malformed(delta_path)
             continue
         if delta.get("adjudicated") or not delta.get("requires_root_reframing", False):
             continue
@@ -234,7 +233,7 @@ def _detect_recurrence_patterns(
 
     recurring_sections: list[dict[str, Any]] = []
     for sig_path in sorted(signals_dir.glob("section-*-recurrence.json")):
-        data = read_json(sig_path)
+        data = Services.artifact_io().read_json(sig_path)
         if data is not None:
             if data.get("recurring"):
                 recurring_sections.append(data)
@@ -243,7 +242,7 @@ def _detect_recurrence_patterns(
                 f"Recurrence signal malformed at {sig_path} "
                 "— preserving as .malformed.json",
             )
-            rename_malformed(sig_path)
+            Services.artifact_io().rename_malformed(sig_path)
             continue
 
     if not recurring_sections:
@@ -273,7 +272,7 @@ def _detect_recurrence_patterns(
     coord_dir = paths.coordination_dir()
     coord_dir.mkdir(parents=True, exist_ok=True)
     recurrence_path = coord_dir / "recurrence.json"
-    write_json(recurrence_path, report)
+    Services.artifact_io().write_json(recurrence_path, report)
     Services.communicator().log_artifact(planspace, "coordination:recurrence")
 
     Services.logger().log(

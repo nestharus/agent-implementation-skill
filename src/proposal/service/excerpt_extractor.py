@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json_or_default, write_json
 from staleness.service.change_tracker import check_pending as alignment_changed_pending
 from proposal.repository.excerpts import exists as excerpt_exists
 from orchestrator.path_registry import PathRegistry
@@ -79,7 +78,7 @@ def extract_excerpts(
                 scope_delta_dir = paths.scope_deltas_dir()
                 scope_delta_dir.mkdir(parents=True, exist_ok=True)
                 setup_sig_path = signal_dir / f"setup-{section.number}-signal.json"
-                signal_payload = read_json_or_default(setup_sig_path, {})
+                signal_payload = Services.artifact_io().read_json_or_default(setup_sig_path, {})
                 scope_delta = {
                     "delta_id": f"delta-{section.number}-setup-oos",
                     "section": section.number,
@@ -89,7 +88,7 @@ def extract_excerpts(
                     "signal_path": str(setup_sig_path),
                     "signal_payload": signal_payload,
                 }
-                write_json(
+                Services.artifact_io().write_json(
                     scope_delta_dir / f"section-{section.number}-scope-delta.json",
                     scope_delta,
                 )

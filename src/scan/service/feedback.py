@@ -6,7 +6,6 @@ Translates the post-scan feedback collection and routing from scan.sh.
 from __future__ import annotations
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
 from scan.service.feedback_router import (
     _append_to_log,
@@ -58,7 +57,7 @@ def collect_and_route_feedback(
         out_of_scope_items: list[str] = []
 
         for fb_file in sorted(sec_log_dir.glob("deep-*-feedback.json")):
-            data = read_json(fb_file)
+            data = Services.artifact_io().read_json(fb_file)
             if data is None:
                 print(
                     f"[DEEP SCAN] WARNING: Malformed feedback JSON: "
@@ -180,7 +179,7 @@ def _apply_feedback(
         all_irrelevant: list[str] = []
 
         for fb_file in sorted(sec_log_dir.glob("deep-*-feedback.json")):
-            data = read_json(fb_file)
+            data = Services.artifact_io().read_json(fb_file)
             if data is None:
                 print(
                     f"[FEEDBACK][WARN] Malformed feedback JSON in "
@@ -307,7 +306,7 @@ def _apply_feedback(
                 )
             continue
 
-        sig_data = read_json(updater_signal)
+        sig_data = Services.artifact_io().read_json(updater_signal)
         if sig_data is None:
             print(
                 f"[FEEDBACK][WARN] Malformed updater signal: "
@@ -323,7 +322,7 @@ def _apply_feedback(
             # re-applied on subsequent runs.
             try:
                 sig_data["status"] = "applied" if applied else "no_change"
-                write_json(updater_signal, sig_data)
+                Services.artifact_io().write_json(updater_signal, sig_data)
             except OSError:
                 pass  # Best-effort ack; signal file may be read-only
             if applied:

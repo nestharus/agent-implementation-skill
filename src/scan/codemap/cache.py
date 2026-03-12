@@ -10,7 +10,6 @@ import re
 import shutil
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json
 from containers import Services
 
 # Regex to strip scan-generated summary blocks from section text.
@@ -127,7 +126,7 @@ def is_valid_cached_feedback(feedback_path: Path) -> bool:
     """
     if not feedback_path.is_file():
         return False
-    data = read_json(feedback_path)
+    data = Services.artifact_io().read_json(feedback_path)
     if data is None:
         print(
             f"[CACHE][WARN] Malformed cached feedback: "

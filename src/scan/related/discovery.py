@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from signals.repository.artifact_io import read_json, write_json
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from scan.service.scan_dispatch import DEFAULT_SCAN_MODELS
@@ -33,7 +32,7 @@ def apply_related_files_update(section_file: Path, signal_file: Path) -> bool:
     if not signal_file.exists():
         return False
 
-    signal = read_json(signal_file)
+    signal = Services.artifact_io().read_json(signal_file)
     if signal is None:
         print(
             f"[RELATED FILES][WARN] Malformed update signal: "
@@ -122,7 +121,7 @@ def _normalize_validation_signal(
     if not signal_file.is_file():
         return None
 
-    data = read_json(signal_file)
+    data = Services.artifact_io().read_json(signal_file)
     if not isinstance(data, dict):
         return None
 
@@ -343,7 +342,7 @@ def validate_existing_related_files(
         )
         return
 
-    write_json(signal_file, normalized)
+    Services.artifact_io().write_json(signal_file, normalized)
 
     status = normalized["status"]
     if status == "stale":
@@ -355,7 +354,7 @@ def validate_existing_related_files(
             )
             return
         normalized["status"] = "applied"
-        write_json(signal_file, normalized)
+        Services.artifact_io().write_json(signal_file, normalized)
 
         section_text_updated = section_file.read_text() if section_file.is_file() else ""
         section_hash = Services.hasher().content_hash(strip_scan_summaries(section_text_updated))

@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 
@@ -26,7 +25,7 @@ def _read_project_mode_signal(
     post_resume: bool,
 ) -> ProjectMode:
     if mode_json_path.exists():
-        mode_data = read_json(mode_json_path)
+        mode_data = Services.artifact_io().read_json(mode_json_path)
         if mode_data is not None:
             return ProjectMode(
                 mode=str(mode_data.get("mode", "unknown")),
@@ -110,7 +109,7 @@ def write_mode_contract(
 ) -> None:
     """Write the formalized project-mode contract artifact."""
     paths = PathRegistry(planspace)
-    write_json(
+    Services.artifact_io().write_json(
         paths.mode_contract(),
         {
             "mode": mode,

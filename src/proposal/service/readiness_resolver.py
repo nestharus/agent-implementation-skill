@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, write_json
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from proposal.repository.state import (
     extract_blockers,
@@ -60,7 +60,7 @@ def _validate_governance_identity(
     # Load governance packet for validation
     paths = PathRegistry(planspace)
     packet_path = paths.governance_packet(section_number)
-    packet = read_json(packet_path)
+    packet = Services.artifact_io().read_json(packet_path)
 
     problem_ids = state.get("problem_ids", [])
     pattern_ids = state.get("pattern_ids", [])
@@ -241,7 +241,7 @@ def resolve_readiness(planspace: Path, section_number: str) -> dict:
     readiness_dir.mkdir(parents=True, exist_ok=True)
     artifact_path = readiness_dir / f"section-{section_number}-execution-ready.json"
     try:
-        write_json(artifact_path, result)
+        Services.artifact_io().write_json(artifact_path, result)
     except OSError:
         logger.warning("Could not write readiness artifact to %s", artifact_path)
 

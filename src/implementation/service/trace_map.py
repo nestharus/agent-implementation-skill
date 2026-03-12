@@ -9,7 +9,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from signals.repository.artifact_io import write_json
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from proposal.repository.state import load_proposal_state
@@ -51,7 +50,7 @@ def build_trace_map(
             "profile_id": ps.get("profile_id", "") or "",
         },
     }
-    write_json(trace_map_path, trace_map)
+    Services.artifact_io().write_json(trace_map_path, trace_map)
     Services.logger().log(f"Section {section_number}: trace-map written to {trace_map_path}")
     return trace_map
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, rename_malformed, write_json
+from containers import Services
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def queue_reconciliation_request(
     }
 
     request_path = recon_dir / f"section-{section_number}-reconciliation.json"
-    write_json(request_path, request)
+    Services.artifact_io().write_json(request_path, request)
     logger.info(
         "Reconciliation request written for section %s (%d contracts, %d anchors) at %s",
         section_number,
@@ -46,7 +46,7 @@ def load_reconciliation_requests(run_dir: Path) -> list[dict]:
 
     requests: list[dict] = []
     for req_path in sorted(recon_dir.glob("section-*-reconciliation.json")):
-        data = read_json(req_path)
+        data = Services.artifact_io().read_json(req_path)
         if data is None:
             logger.warning(
                 "Malformed reconciliation request at %s — skipped",
@@ -61,5 +61,5 @@ def load_reconciliation_requests(run_dir: Path) -> list[dict]:
                 "— renaming to .malformed.json",
                 req_path,
             )
-            rename_malformed(req_path)
+            Services.artifact_io().rename_malformed(req_path)
     return requests

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 
@@ -23,7 +22,7 @@ def emit_recurrence_signal(
         PathRegistry(planspace).signals_dir()
         / f"section-{section_number}-recurrence.json"
     )
-    write_json(recurrence_path, recurrence_signal)
+    Services.artifact_io().write_json(recurrence_path, recurrence_signal)
     Services.logger().log(
         f"Section {section_number}: recurrence signal written "
         f"(attempt {solve_count})"

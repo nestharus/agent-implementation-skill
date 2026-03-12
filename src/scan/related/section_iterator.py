@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json
+from containers import Services
 from scan.explore.analyzer import analyze_file
 from scan.related.match_updater import deep_scan_related_files
 from scan.service.section_notes import log_phase_failure
@@ -15,7 +15,7 @@ from scan.codemap.cache import FileCardCache
 
 def _get_scan_files(tier_file: Path) -> tuple[list[str], str]:
     """Read tier file and return (files_to_scan, tier_label)."""
-    data = read_json(tier_file)
+    data = Services.artifact_io().read_json(tier_file)
     if data is None:
         print(
             f"[TIER][WARN] Malformed tier file: {tier_file} "

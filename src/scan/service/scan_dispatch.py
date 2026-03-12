@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from signals.repository.artifact_io import rename_malformed
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 
@@ -37,7 +36,7 @@ def read_scan_model_policy(artifacts_dir: Path) -> dict[str, str]:
                 f"[SCAN] WARNING: model-policy.json exists but is "
                 f"invalid ({exc}) - renaming to .malformed.json",
             )
-            rename_malformed(policy_path)
+            Services.artifact_io().rename_malformed(policy_path)
     return policy
 
 

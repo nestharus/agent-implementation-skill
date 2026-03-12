@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 
 from containers import Services
-from signals.repository.artifact_io import read_json, read_json_or_default, write_json
 from orchestrator.path_registry import PathRegistry
 from staleness.service.section_alignment import (
     _parse_alignment_verdict,
@@ -101,7 +100,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         agent_file=Services.task_router().agent_for("coordination.consequence_triage"),
     )
 
-    triage = read_json(triage_signal_path)
+    triage = Services.artifact_io().read_json(triage_signal_path)
     if triage is None:
         return ("continue", None)
 
@@ -112,7 +111,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
 
     triage_acks = triage.get("acknowledge", [])
     ack_path = paths.note_ack_signal(section.number)
-    existing_acks: dict = read_json_or_default(ack_path, {"acknowledged": []})
+    existing_acks: dict = Services.artifact_io().read_json_or_default(ack_path, {"acknowledged": []})
     existing_ids = {
         entry.get("note_id")
         for entry in existing_acks.get("acknowledged", [])
@@ -122,7 +121,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         if note_id and note_id not in existing_ids:
             existing_acks.setdefault("acknowledged", []).append(ack)
             existing_ids.add(note_id)
-    write_json(ack_path, existing_acks)
+    Services.artifact_io().write_json(ack_path, existing_acks)
 
     incoming_note_ids = set(
         re.findall(r"\*\*Note ID\*\*:\s*`([^`]+)`", incoming_notes),

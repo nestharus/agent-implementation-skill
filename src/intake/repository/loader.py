@@ -6,7 +6,7 @@ import logging
 import re
 from pathlib import Path
 
-from signals.repository.artifact_io import read_if_exists, write_json
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 logger = logging.getLogger(__name__)
@@ -159,7 +159,7 @@ def _extract_section_text(text: str, heading: str) -> str:
 
 def parse_problem_index(codespace: Path) -> list[dict]:
     """Parse governance/problems/index.md into structured records."""
-    text = read_if_exists(codespace / "governance" / "problems" / "index.md")
+    text = Services.artifact_io().read_if_exists(codespace / "governance" / "problems" / "index.md")
     if not text:
         return []
 
@@ -180,7 +180,7 @@ def parse_problem_index(codespace: Path) -> list[dict]:
 
 def parse_pattern_index(codespace: Path) -> list[dict]:
     """Parse governance/patterns/index.md into structured records."""
-    text = read_if_exists(codespace / "governance" / "patterns" / "index.md")
+    text = Services.artifact_io().read_if_exists(codespace / "governance" / "patterns" / "index.md")
     if not text:
         return []
 
@@ -211,7 +211,7 @@ def parse_pattern_index(codespace: Path) -> list[dict]:
 
 def parse_constraint_index(codespace: Path) -> list[dict]:
     """Parse governance/constraints/index.md into structured records."""
-    text = read_if_exists(codespace / "governance" / "constraints" / "index.md")
+    text = Services.artifact_io().read_if_exists(codespace / "governance" / "constraints" / "index.md")
     if not text:
         return []
 
@@ -264,7 +264,7 @@ def parse_philosophy_profiles(codespace: Path) -> list[dict]:
 def parse_region_profile_map(codespace: Path) -> dict:
     """Parse philosophy/region-profile-map.md."""
     path = codespace / "philosophy" / "region-profile-map.md"
-    text = read_if_exists(path)
+    text = Services.artifact_io().read_if_exists(path)
     if not text:
         return {"default": "", "overrides": {}}
 
@@ -304,7 +304,7 @@ def parse_synthesis_cues(codespace: Path) -> dict[str, list[str]]:
     PAT-0011 (R109): synthesis cues must be consumed when available.
     """
     path = codespace / "system-synthesis.md"
-    text = read_if_exists(path)
+    text = Services.artifact_io().read_if_exists(path)
     if not text:
         return {}
 
@@ -451,12 +451,12 @@ def build_governance_indexes(codespace: Path, planspace: Path) -> bool:
         logger.warning("Failed to parse governance constraint index: %s", exc)
         parse_failures.append(f"constraint_index: {exc}")
 
-    write_json(paths.governance_problem_index(), problem_index)
-    write_json(paths.governance_pattern_index(), pattern_index)
-    write_json(paths.governance_profile_index(), profile_index)
-    write_json(paths.governance_region_profile_map(), region_profile_map)
-    write_json(paths.governance_dir() / "synthesis-cues.json", synthesis_cues)
-    write_json(paths.governance_constraint_index(), constraint_index)
+    Services.artifact_io().write_json(paths.governance_problem_index(), problem_index)
+    Services.artifact_io().write_json(paths.governance_pattern_index(), pattern_index)
+    Services.artifact_io().write_json(paths.governance_profile_index(), profile_index)
+    Services.artifact_io().write_json(paths.governance_region_profile_map(), region_profile_map)
+    Services.artifact_io().write_json(paths.governance_dir() / "synthesis-cues.json", synthesis_cues)
+    Services.artifact_io().write_json(paths.governance_constraint_index(), constraint_index)
 
     # Write index status so downstream consumers can distinguish parse
     # failure from true no-governance
@@ -464,7 +464,7 @@ def build_governance_indexes(codespace: Path, planspace: Path) -> bool:
         "ok": len(parse_failures) == 0,
         "parse_failures": parse_failures,
     }
-    write_json(paths.governance_dir() / "index-status.json", status)
+    Services.artifact_io().write_json(paths.governance_dir() / "index-status.json", status)
 
     if parse_failures:
         logger.warning(

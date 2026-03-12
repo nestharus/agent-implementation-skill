@@ -9,7 +9,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from signals.repository.artifact_io import rename_malformed, write_json
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from flow.service.task_db_client import task_db
 from flow.repository.context import (
@@ -132,7 +132,7 @@ def reconcile_task_completion(
     )
 
     if result_manifest_path:
-        write_json(planspace / result_manifest_path, manifest)
+        Services.artifact_io().write_json(planspace / result_manifest_path, manifest)
 
     origin_refs = read_origin_refs(planspace, task_id)
     _handle_research_completion(
@@ -182,7 +182,7 @@ def reconcile_task_completion(
                         f"[FLOW][WARN] Malformed continuation at {cont_file} "
                         f"({exc}) — renaming to .malformed.json",
                     )
-                    rename_malformed(cont_file)
+                    Services.artifact_io().rename_malformed(cont_file)
                     if chain_id:
                         cancel_chain_descendants(db_path, chain_id, task_id)
                         gate_id = find_gate_for_chain(db_path, chain_id)
@@ -414,7 +414,7 @@ def _emit_risk_register_signal(
         "debt_items": assessment.get("debt_items", []),
         "verdict": assessment.get("verdict", "accept_with_debt"),
     }
-    write_json(paths.risk_register_signal(section_number), payload)
+    Services.artifact_io().write_json(paths.risk_register_signal(section_number), payload)
 
 
 def _emit_refactor_blocker(
@@ -445,7 +445,7 @@ def _emit_refactor_blocker(
         "problem_ids": assessment.get("problem_ids_addressed", []),
         "pattern_ids": assessment.get("pattern_ids_followed", []),
     }
-    write_json(paths.post_impl_blocker_signal(section_number), payload)
+    Services.artifact_io().write_json(paths.post_impl_blocker_signal(section_number), payload)
 
 
 def check_and_fire_gate(

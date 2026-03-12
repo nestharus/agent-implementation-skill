@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json
 from orchestrator.path_registry import PathRegistry
 
 from containers import Services
@@ -180,7 +179,7 @@ def build_prompt_context(
     risk_inputs_block = ""
     if inputs_dir.exists():
         roal_index_path = inputs_dir / f"section-{sec}-roal-input-index.json"
-        roal_index = read_json(roal_index_path)
+        roal_index = Services.artifact_io().read_json(roal_index_path)
         roal_paths: set[str] = set()
         risk_lines = []
         if isinstance(roal_index, list):

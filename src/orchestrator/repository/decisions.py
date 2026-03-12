@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from signals.repository.artifact_io import read_json, rename_malformed, write_json
+from containers import Services
 
 
 @dataclasses.dataclass
@@ -40,7 +40,7 @@ def record_decision(decisions_dir: Path, decision: Decision) -> None:
     stem = f"section-{decision.section}" if decision.section else "global"
     json_path = decisions_dir / f"{stem}.json"
     existed = json_path.exists()
-    loaded = read_json(json_path)
+    loaded = Services.artifact_io().read_json(json_path)
     if loaded is None:
         if existed:
             print(
@@ -51,7 +51,7 @@ def record_decision(decisions_dir: Path, decision: Decision) -> None:
     else:
         existing = loaded
     existing.append(dataclasses.asdict(decision))
-    write_json(json_path, existing)
+    Services.artifact_io().write_json(json_path, existing)
 
     md_path = decisions_dir / f"{stem}.md"
     with md_path.open("a", encoding="utf-8") as handle:
@@ -77,7 +77,7 @@ def load_decisions(
     for json_path in paths:
         if not json_path.exists():
             continue
-        raw = read_json(json_path)
+        raw = Services.artifact_io().read_json(json_path)
         if raw is None:
             msg = (
                 f"Malformed decision JSON at {json_path} "
@@ -95,7 +95,7 @@ def load_decisions(
             print(f"[DECISIONS][WARN] {msg}")
             if warnings is not None:
                 warnings.append(msg)
-            rename_malformed(json_path)
+            Services.artifact_io().rename_malformed(json_path)
             continue
         for entry in raw:
             if not isinstance(entry, dict):

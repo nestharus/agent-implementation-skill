@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from staleness.service.change_tracker import check_pending as alignment_changed_pending
-from signals.repository.artifact_io import read_json, write_json
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from intake.service.assessment import write_post_impl_assessment_prompt
@@ -177,7 +176,7 @@ def _check_budget(
         "escalate": True,
     }
     budget_signal_path = paths.impl_budget_exhausted_signal(section_number)
-    write_json(budget_signal_path, budget_signal)
+    Services.artifact_io().write_json(budget_signal_path, budget_signal)
     Services.communicator().mailbox_send(
         planspace,
         parent,
@@ -191,7 +190,7 @@ def _check_budget(
     )
     if not response.startswith("resume"):
         return _ABORT
-    reloaded = read_json(cycle_budget_path)
+    reloaded = Services.artifact_io().read_json(cycle_budget_path)
     if reloaded is not None:
         cycle_budget.update(reloaded)
     return _PROCEED

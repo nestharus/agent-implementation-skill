@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from signals.repository.artifact_io import read_json
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from risk.repository.history import compute_history_adjustment, pattern_signature, read_history
@@ -329,7 +328,7 @@ def _write_and_return_lightweight_fallback(
 
 def _load_parameters(paths: PathRegistry) -> dict:
     parameters = load_default_parameters()
-    raw = read_json(paths.risk_parameters())
+    raw = Services.artifact_io().read_json(paths.risk_parameters())
     if not isinstance(raw, dict):
         return parameters
 

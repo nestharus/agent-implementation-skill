@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any
 
 from containers import Services
-from signals.repository.artifact_io import write_json
 from intent.service import philosophy as _philosophy_bootstrap
 from orchestrator.path_registry import PathRegistry
 
@@ -296,7 +295,7 @@ Write an empty surface registry to: `{intent_sec / "surface-registry.json"}`
     # Ensure surface registry exists
     registry_path = intent_sec / "surface-registry.json"
     if not registry_path.exists():
-        write_json(
+        Services.artifact_io().write_json(
             registry_path,
             {"section": sec, "next_id": 1, "surfaces": []},
         )

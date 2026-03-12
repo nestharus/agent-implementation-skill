@@ -9,7 +9,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from staleness.service.change_tracker import check_pending as alignment_changed_pending
-from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 from intent.service.expansion import handle_user_gate, run_expansion_cycle
@@ -47,7 +46,7 @@ def run_aligned_expansion(
             "reason": "expansion budget exhausted",
             "cycles": expansion_count,
         }
-        write_json(
+        Services.artifact_io().write_json(
             paths.intent_stalled_signal(section_number),
             stalled_signal,
         )

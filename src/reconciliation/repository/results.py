@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, rename_malformed, write_json
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 
@@ -18,7 +17,7 @@ def write_result(planspace: Path, section_number: str, result: dict) -> Path:
         PathRegistry(planspace).reconciliation_dir()
         / f"section-{section_number}-reconciliation-result.json"
     )
-    write_json(path, result)
+    Services.artifact_io().write_json(path, result)
     return path
 
 
@@ -41,7 +40,7 @@ def write_scope_delta(planspace: Path, scope_delta: dict) -> Path:
         ),
         "adjudicated": bool(scope_delta.get("adjudicated", False)),
     }
-    write_json(path, delta)
+    Services.artifact_io().write_json(path, delta)
     return path
 
 
@@ -56,7 +55,7 @@ def write_substrate_trigger(planspace: Path, trigger: dict) -> Path:
         "sections": trigger.get("sections", []),
         "trigger_type": "shared_seam_reconciliation",
     }
-    write_json(path, payload)
+    Services.artifact_io().write_json(path, payload)
     return path
 
 
@@ -66,7 +65,7 @@ def load_result(planspace: Path, section_number: str) -> dict | None:
         PathRegistry(planspace).reconciliation_dir()
         / f"section-{section_number}-reconciliation-result.json"
     )
-    data = read_json(path)
+    data = Services.artifact_io().read_json(path)
     if data is None:
         return None
     if isinstance(data, dict):
@@ -76,7 +75,7 @@ def load_result(planspace: Path, section_number: str) -> dict | None:
         "— renaming to .malformed.json",
         path,
     )
-    rename_malformed(path)
+    Services.artifact_io().rename_malformed(path)
     return None
 
 

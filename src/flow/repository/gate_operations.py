@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from signals.repository.artifact_io import write_json
+from containers import Services
 from flow.service.task_db_client import task_db
 from flow.repository.context import (
     flow_context_relpath,
@@ -176,7 +176,7 @@ def check_and_fire_gate(
         )
 
         agg_relpath = gate_aggregate_relpath(gate_id)
-        write_json(planspace / agg_relpath, aggregate)
+        Services.artifact_io().write_json(planspace / agg_relpath, aggregate)
 
         conn.execute(
             """UPDATE gates

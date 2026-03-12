@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from containers import Services
-from signals.repository.artifact_io import read_json, rename_malformed, write_json
 from orchestrator.path_registry import PathRegistry
 from qa.helpers.qa_verdict import QaVerdict, parse_qa_verdict
 
@@ -77,7 +76,7 @@ def read_qa_parameters(planspace: Path) -> dict:
     if not params_path.exists():
         return defaults
 
-    data = read_json(params_path)
+    data = Services.artifact_io().read_json(params_path)
     if data is None:
         print(
             f"[qa-interceptor] WARNING: Malformed parameters.json at "
@@ -92,7 +91,7 @@ def read_qa_parameters(planspace: Path) -> dict:
             f"object — renaming to .malformed.json",
             flush=True,
         )
-        rename_malformed(params_path)
+        Services.artifact_io().rename_malformed(params_path)
         return defaults
 
     # Merge with defaults so qa_mode always exists.
@@ -218,7 +217,7 @@ def _write_rationale(
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 
-    write_json(rationale_path, rationale_data)
+    Services.artifact_io().write_json(rationale_path, rationale_data)
     return rationale_path
 
 

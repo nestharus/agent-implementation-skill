@@ -6,7 +6,6 @@ import subprocess
 from pathlib import Path
 from typing import Callable
 
-from signals.repository.artifact_io import read_json
 from staleness.service.change_tracker import (
     check_pending as alignment_changed_pending,
     make_alignment_checker,
@@ -217,7 +216,7 @@ def _maybe_reassess_deferred_steps(
     deferred_path = (
         paths.input_refs_dir(sec_num) / f"{scope}-risk-deferred.json"
     )
-    deferred_payload = read_json(deferred_path)
+    deferred_payload = Services.artifact_io().read_json(deferred_path)
     if not isinstance(deferred_payload, dict):
         return None
     if not risk_plan.deferred_steps:

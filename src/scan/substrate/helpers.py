@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, write_json
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from scan.related.cli_handler import extract_related_files
 
@@ -23,7 +23,7 @@ def read_project_mode(artifacts_dir: Path) -> str | None:
     txt_path = registry.project_mode_txt()
 
     if json_path.is_file():
-        data = read_json(json_path)
+        data = Services.artifact_io().read_json(json_path)
         if isinstance(data, dict):
             mode = data.get("mode", "").strip().lower()
             if mode in VALID_PROJECT_MODES:
@@ -92,4 +92,4 @@ def write_status(
         "threshold": threshold,
         "notes": notes,
     }
-    write_json(status_dir / "status.json", status)
+    Services.artifact_io().write_json(status_dir / "status.json", status)

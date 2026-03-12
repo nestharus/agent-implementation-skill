@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from signals.repository.artifact_io import read_json, rename_malformed, write_json
+from containers import Services
 
 DISPATCH_META_CORRUPT = object()
 
@@ -20,7 +20,7 @@ def write_dispatch_metadata(
 ) -> Path:
     """Write the dispatch metadata sidecar next to the output file."""
     meta_path = dispatch_meta_path(output_path)
-    write_json(
+    Services.artifact_io().write_json(
         meta_path,
         {
             "returncode": returncode,
@@ -36,10 +36,10 @@ def read_dispatch_metadata(meta_path: Path) -> dict[str, Any] | None | object:
     if not meta_path.exists():
         return None
 
-    data = read_json(meta_path)
+    data = Services.artifact_io().read_json(meta_path)
     if data is None:
         return DISPATCH_META_CORRUPT
     if not isinstance(data, dict):
-        rename_malformed(meta_path)
+        Services.artifact_io().rename_malformed(meta_path)
         return DISPATCH_META_CORRUPT
     return data

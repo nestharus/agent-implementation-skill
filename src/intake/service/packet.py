@@ -4,19 +4,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, write_json
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 
 def _list_index(path: Path) -> list[dict]:
-    data = read_json(path)
+    data = Services.artifact_io().read_json(path)
     if isinstance(data, list):
         return [entry for entry in data if isinstance(entry, dict)]
     return []
 
 
 def _dict_index(path: Path) -> dict:
-    data = read_json(path)
+    data = Services.artifact_io().read_json(path)
     if isinstance(data, dict):
         return data
     return {"default": "", "overrides": {}}
@@ -136,7 +136,7 @@ def build_section_governance_packet(
 
     # Load synthesis cues for additional matching signal (PAT-0011 R109)
     synthesis_cues_path = PathRegistry(planspace).governance_dir() / "synthesis-cues.json"
-    synthesis_cues = read_json(synthesis_cues_path)
+    synthesis_cues = Services.artifact_io().read_json(synthesis_cues_path)
     if not isinstance(synthesis_cues, dict):
         synthesis_cues = {}
 
@@ -163,7 +163,7 @@ def build_section_governance_packet(
     # Check for authoritative parse failures (PAT-0008 R108)
     index_status_path = paths.governance_dir() / "index-status.json"
     index_parse_failures: list[str] = []
-    index_status = read_json(index_status_path)
+    index_status = Services.artifact_io().read_json(index_status_path)
     if isinstance(index_status, dict):
         index_parse_failures = index_status.get("parse_failures", [])
         if not isinstance(index_parse_failures, list):
@@ -302,7 +302,7 @@ def build_section_governance_packet(
     }
 
     try:
-        write_json(packet_path, packet)
+        Services.artifact_io().write_json(packet_path, packet)
     except OSError:
         return None
     return packet_path

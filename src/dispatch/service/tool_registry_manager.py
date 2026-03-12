@@ -6,7 +6,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from signals.repository.artifact_io import read_json, write_json
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 
@@ -118,7 +117,7 @@ def surface_tool_registry(
             section_number=section_number,
             agent_file=Services.task_router().agent_for("dispatch.tool_registry_repair"),
         )
-        registry = read_json(tool_registry_path)
+        registry = Services.artifact_io().read_json(tool_registry_path)
         if registry is not None:
             all_tools = registry if isinstance(registry, list) else registry.get("tools", [])
             pre_tool_total = len(all_tools)
@@ -153,7 +152,7 @@ def surface_tool_registry(
                     "invalid registry."
                 ),
             }
-            write_json(
+            Services.artifact_io().write_json(
                 PathRegistry(planspace).blocker_signal(section_number),
                 blocker,
             )
@@ -270,7 +269,7 @@ def validate_tool_registry_after_implementation(
             section_number=section_number,
             agent_file=Services.task_router().agent_for("dispatch.tool_registry_repair"),
         )
-        if read_json(tool_registry_path) is not None:
+        if Services.artifact_io().read_json(tool_registry_path) is not None:
             log(f"Section {section_number}: post-impl tool registry repaired")
         else:
             log(
@@ -290,7 +289,7 @@ def validate_tool_registry_after_implementation(
                     "sections' tool surfacing."
                 ),
             }
-            write_json(
+            Services.artifact_io().write_json(
                 paths.post_impl_blocker_signal(section_number),
                 blocker,
             )
@@ -320,7 +319,7 @@ def handle_tool_friction(
     paths = PathRegistry(planspace)
     tool_friction_detected = False
     if friction_signal_path.exists():
-        friction = read_json(friction_signal_path)
+        friction = Services.artifact_io().read_json(friction_signal_path)
         if friction is not None:
             tool_friction_detected = friction.get("friction", False)
         else:
@@ -396,7 +395,7 @@ with JSON:
     )
 
     bridge_valid = False
-    bridge_data = read_json(bridge_signal_path)
+    bridge_data = Services.artifact_io().read_json(bridge_signal_path)
     if bridge_data is not None:
         if bridge_data.get("status") in ("bridged", "no_action", "needs_parent"):
             proposal_path = Path(
@@ -424,7 +423,7 @@ with JSON:
             agent_file=Services.task_router().agent_for("dispatch.bridge_tools"),
             section_number=section_number,
         )
-        bridge_data = read_json(bridge_signal_path)
+        bridge_data = Services.artifact_io().read_json(bridge_signal_path)
         if bridge_data is not None:
             if bridge_data.get("status") in ("bridged", "no_action", "needs_parent"):
                 proposal_path = Path(
@@ -500,7 +499,7 @@ with JSON:
             f"failed after escalation — writing failure artifact"
         )
         failure_artifact = paths.bridge_tools_failure_signal(section_number)
-        write_json(
+        Services.artifact_io().write_json(
             failure_artifact,
             {
                 "section": section_number,
@@ -509,7 +508,7 @@ with JSON:
                 "signal after primary + escalation dispatch",
             },
         )
-        write_json(
+        Services.artifact_io().write_json(
             paths.post_impl_blocker_signal(section_number),
             {
                 "state": "needs_parent",
@@ -525,7 +524,7 @@ with JSON:
         update_blocker_rollup(planspace)
 
     try:
-        write_json(
+        Services.artifact_io().write_json(
             friction_signal_path,
             {
                 "friction": False,

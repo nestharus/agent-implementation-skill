@@ -16,7 +16,6 @@ import argparse
 import sys
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json
 from orchestrator.path_registry import PathRegistry
 from scan.substrate.dispatch import dispatch_substrate_agent as _dispatch_agent
 from scan.substrate.helpers import (
@@ -287,7 +286,7 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
 
     # Check prune-signal.json for NEEDS_PARENT
     if prune_signal_path.is_file():
-        prune_signal = read_json(prune_signal_path)
+        prune_signal = Services.artifact_io().read_json(prune_signal_path)
         if isinstance(prune_signal, dict):
             status_val = prune_signal.get("state", "").upper()
             if status_val == "NEEDS_PARENT":
@@ -332,7 +331,7 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
     # Verify seed-signal.json completion marker
     seed_signal_path = substrate_dir / "seed-signal.json"
     if seed_signal_path.is_file():
-        seed_signal = read_json(seed_signal_path)
+        seed_signal = Services.artifact_io().read_json(seed_signal_path)
         if isinstance(seed_signal, dict):
             print(
                 f"[SUBSTRATE] Seed signal: "

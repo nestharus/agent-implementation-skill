@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json, write_json
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from flow.exceptions import FlowCorruptionError
 from flow.types.context import (
@@ -40,7 +40,7 @@ def read_flow_json(path: Path) -> tuple[str, dict | list | None]:
     if not path.exists():
         return ("missing", None)
 
-    data = read_json(path)
+    data = Services.artifact_io().read_json(path)
     if data is None:
         print(
             f"[FLOW][WARN] Malformed JSON in {path} "
@@ -163,4 +163,4 @@ def write_flow_context(
     )
 
     context_path = flows_dir / f"task-{task_id}-context.json"
-    write_json(context_path, flow_context_to_dict(context))
+    Services.artifact_io().write_json(context_path, flow_context_to_dict(context))

@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Any, Callable, TypeVar, cast
 
-from signals.repository.artifact_io import read_json, rename_malformed, write_json
+from containers import Services
 
 from risk.types import (
     AssessmentClass,
@@ -125,11 +125,11 @@ def deserialize_history_entry(data: dict[str, Any]) -> RiskHistoryEntry:
 
 
 def write_risk_artifact(path: Path, data: dict[str, Any]) -> None:
-    write_json(path, data)
+    Services.artifact_io().write_json(path, data)
 
 
 def read_risk_artifact(path: Path) -> dict[str, Any] | None:
-    data = read_json(path)
+    data = Services.artifact_io().read_json(path)
     if isinstance(data, dict):
         return data
     return None
@@ -152,13 +152,13 @@ def _load_risk_artifact(
     loader: Callable[[dict[str, Any]], _ArtifactT],
     artifact_name: str,
 ) -> _ArtifactT | None:
-    data = read_json(path)
+    data = Services.artifact_io().read_json(path)
     if data is None:
         return None
     try:
         return loader(cast(dict[str, Any], data))
     except (KeyError, TypeError, ValueError) as exc:
-        rename_malformed(path)
+        Services.artifact_io().rename_malformed(path)
         logger.warning("Malformed %s at %s: %s", artifact_name, path, exc)
         return None
 

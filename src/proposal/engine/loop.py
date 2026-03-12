@@ -4,7 +4,6 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from staleness.service.change_tracker import check_pending as alignment_changed_pending
-from signals.repository.artifact_io import read_json, read_json_or_default, write_json
 from containers import Services
 from intent.service.triage import load_triage_result
 from orchestrator.path_registry import PathRegistry
@@ -89,7 +88,7 @@ def _write_intent_escalation_signal(
         "reason": reason,
         "surface_count": surface_count,
     }
-    write_json(
+    Services.artifact_io().write_json(
         paths.intent_escalation_signal(section_number),
         escalation_signal,
     )
@@ -156,7 +155,7 @@ def _check_budget_exceeded(
         paths.signals_dir()
         / f"section-{section_number}-proposal-budget-exhausted.json"
     )
-    write_json(budget_signal_path, budget_signal)
+    Services.artifact_io().write_json(budget_signal_path, budget_signal)
     Services.communicator().mailbox_send(
         planspace,
         parent,
@@ -170,7 +169,7 @@ def _check_budget_exceeded(
     )
     if not response.startswith("resume"):
         return True
-    reloaded = read_json(cycle_budget_path)
+    reloaded = Services.artifact_io().read_json(cycle_budget_path)
     if reloaded is not None:
         cycle_budget.update(reloaded)
     return False
@@ -370,7 +369,7 @@ def _handle_proposal_signals(
         scope_delta_dir = paths.scope_deltas_dir()
         scope_delta_dir.mkdir(parents=True, exist_ok=True)
         proposal_sig_path = paths.proposal_signal(section_number)
-        signal_payload = read_json_or_default(proposal_sig_path, {})
+        signal_payload = Services.artifact_io().read_json_or_default(proposal_sig_path, {})
         scope_delta = {
             "delta_id": f"delta-{section_number}-proposal-oos",
             "section": section_number,
@@ -380,7 +379,7 @@ def _handle_proposal_signals(
             "signal_path": str(proposal_sig_path),
             "signal_payload": signal_payload,
         }
-        write_json(
+        Services.artifact_io().write_json(
             scope_delta_dir / f"section-{section_number}-scope-delta.json",
             scope_delta,
         )

@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-from signals.repository.artifact_io import read_json
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from proposal.repository.state import load_proposal_state
 from risk.repository.serialization import (
@@ -63,7 +63,7 @@ def build_package_from_proposal(
     problem_frame = read_text(problem_frame_path)
     microstrategy = read_text(microstrategy_path)
     proposal_state = load_proposal_state(proposal_state_path)
-    readiness = read_json(readiness_path)
+    readiness = Services.artifact_io().read_json(readiness_path)
 
     microstrategy_steps = (
         _extract_microstrategy_steps(microstrategy) if microstrategy else []

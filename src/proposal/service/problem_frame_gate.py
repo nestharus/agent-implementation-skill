@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from signals.repository.artifact_io import write_json
 from proposal.repository.excerpts import exists as excerpt_exists
 from orchestrator.path_registry import PathRegistry
 from containers import Services
@@ -152,4 +151,4 @@ def validate_problem_frame(
 
 def _write_problem_frame_signal(signal_path: Path, payload: dict) -> None:
     signal_path.parent.mkdir(parents=True, exist_ok=True)
-    write_json(signal_path, payload)
+    Services.artifact_io().write_json(signal_path, payload)
