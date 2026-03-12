@@ -7,7 +7,7 @@ from pathlib import Path
 
 from signals.repository.artifact_io import rename_malformed
 from orchestrator.path_registry import PathRegistry
-from taskrouter.agents import resolve_agent_path as _resolve_agent_path
+from containers import Services
 
 DEFAULT_SCAN_MODELS: dict[str, str] = {
     "codemap_build": "claude-opus",
@@ -47,7 +47,7 @@ def resolve_scan_agent_path(workflow_home: Path, agent_file: str) -> Path:
     The ``workflow_home`` parameter is kept for call-site compatibility
     but is ignored — resolution goes through the central agent index.
     """
-    return _resolve_agent_path(agent_file)
+    return Services.task_router().resolve_agent_path(agent_file)
 
 
 def build_scan_dispatch_command(

@@ -21,7 +21,7 @@ from scan.service.template_loader import load_scan_template
 from dispatch.service.prompt_guard import validate_dynamic_content
 
 from scan.cli_dispatch import dispatch_agent, read_scan_model_policy
-from taskrouter import agent_for
+from containers import Services
 
 
 def collect_and_route_feedback(
@@ -270,7 +270,7 @@ def _apply_feedback(
             model=updater_model,
             project=codespace,
             prompt_file=updater_prompt,
-            agent_file=agent_for("scan.adjudicate"),
+            agent_file=Services.task_router().agent_for("scan.adjudicate"),
             stdout_file=updater_output,
         )
 
@@ -289,7 +289,7 @@ def _apply_feedback(
                 model=escalation_model,
                 project=codespace,
                 prompt_file=updater_prompt,
-                agent_file=agent_for("scan.adjudicate"),
+                agent_file=Services.task_router().agent_for("scan.adjudicate"),
                 stdout_file=updater_output,
             )
             valid_signal = (

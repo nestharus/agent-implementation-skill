@@ -11,7 +11,7 @@ from pathlib import Path
 from signals.repository.artifact_io import read_json
 from orchestrator.path_registry import PathRegistry
 
-from coordination.service.cross_section import extract_section_summary
+from containers import Services
 from orchestrator.types import Section
 
 
@@ -32,7 +32,7 @@ def build_prompt_context(
     sections_dir = paths.sections_dir()
 
     # --- summary ---
-    summary = extract_section_summary(section.path)
+    summary = Services.cross_section().extract_section_summary(section.path)
 
     # --- decisions ---
     decisions_file = paths.decisions_dir() / f"section-{sec}.md"

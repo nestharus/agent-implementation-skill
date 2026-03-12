@@ -4,7 +4,7 @@ from pathlib import Path
 
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
-from signals.service.communication import log
+from containers import Services
 
 
 def emit_recurrence_signal(
@@ -24,7 +24,7 @@ def emit_recurrence_signal(
         / f"section-{section_number}-recurrence.json"
     )
     write_json(recurrence_path, recurrence_signal)
-    log(
+    Services.logger().log(
         f"Section {section_number}: recurrence signal written "
         f"(attempt {solve_count})"
     )

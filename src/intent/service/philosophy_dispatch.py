@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, Callable
 
 from containers import Services
-from signals.service.communication import log
 
 
 def _attempt_output_path(output_path: Path, attempt: int) -> Path:
@@ -95,7 +94,7 @@ def _dispatch_classified_signal_stage(
         if attempt < len(models):
             next_model = models[attempt]
             action = "retrying" if next_model == model else "escalating"
-            log(
+            Services.logger().log(
                 f"Intent bootstrap: {stage_name} produced "
                 f"{classification['state']} on attempt {attempt}/{len(models)} "
                 f"— {action} with {next_model}"

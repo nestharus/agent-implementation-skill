@@ -9,9 +9,6 @@ from containers import Services
 from intent.service.triage import load_triage_result
 from orchestrator.path_registry import PathRegistry
 from staleness.service.section_alignment import _extract_problems
-from signals.service.communication import log
-from coordination.service.cross_section import persist_decision
-from dispatch.helpers.utils import check_agent_signals, summarize_output, write_model_choice_signal
 from intent.service.surfaces import (
     load_combined_intent_surfaces,
     load_surface_registry,
@@ -29,9 +26,7 @@ from signals.service.blockers import (
     _update_blocker_rollup,
 )
 from implementation.service.reexplore import _write_alignment_surface
-from flow.service.section_ingestion import ingest_and_submit
 from proposal.service.intent_expansion import run_aligned_expansion, run_misaligned_expansion
-from taskrouter import agent_for
 
 
 DEFINITION_GAP_KINDS = {
@@ -118,7 +113,7 @@ def _check_early_abort(
         return True
 
     if alignment_changed_pending(planspace):
-        log(
+        Services.logger().log(
             f"Section {section_number}: alignment changed — "
             "aborting section to restart Phase 1"
         )
@@ -146,7 +141,7 @@ def _check_budget_exceeded(
     if proposal_attempt <= cycle_budget["proposal_max"]:
         return None
 
-    log(
+    Services.logger().log(
         f"Section {section_number}: proposal cycle budget exhausted "
         f"({cycle_budget['proposal_max']} attempts)"
     )
@@ -201,7 +196,7 @@ def _resolve_proposal_model(
     if proposal_attempt >= max_attempts or notes_count >= stall_threshold:
         escalated_from = proposal_model
         proposal_model = Services.policies().resolve(policy, "escalation_model")
-        log(
+        Services.logger().log(
             f"Section {section_number}: escalating to "
             f"{proposal_model} (attempt={proposal_attempt}, notes={notes_count})"
         )
@@ -211,7 +206,7 @@ def _resolve_proposal_model(
         if escalated_from
         else "first attempt, default model"
     )
-    write_model_choice_signal(
+    Services.dispatch_helpers().write_model_choice_signal(
         planspace,
         section_number,
         "integration-proposal",
@@ -245,7 +240,7 @@ def _build_proposal_prompt(
         model_policy=policy,
     )
     if intg_prompt is None:
-        log(
+        Services.logger().log(
             f"Section {section.number}: integration proposal prompt "
             f"blocked by template safety — skipping dispatch"
         )
@@ -269,7 +264,7 @@ def _build_proposal_prompt(
                 "conflicts, and seam decisions:\n"
                 f"`{recon_path}`\n"
             )
-        log(
+        Services.logger().log(
             f"Section {section.number}: appended reconciliation "
             f"context to proposal prompt"
         )
@@ -303,18 +298,18 @@ def _dispatch_proposal(
         intg_agent,
         codespace=codespace,
         section_number=section_number,
-        agent_file=agent_for("proposal.integration"),
+        agent_file=Services.task_router().agent_for("proposal.integration"),
     )
     if intg_result == "ALIGNMENT_CHANGED_PENDING":
         return None
     Services.communicator().mailbox_send(
         planspace,
         parent,
-        f"summary:proposal:{section_number}:{summarize_output(intg_result)}",
+        f"summary:proposal:{section_number}:{Services.dispatch_helpers().summarize_output(intg_result)}",
     )
 
     if intg_result.startswith("TIMEOUT:"):
-        log(
+        Services.logger().log(
             f"Section {section_number}: integration proposal agent "
             f"timed out"
         )
@@ -325,7 +320,7 @@ def _dispatch_proposal(
         )
         return None
 
-    ingest_and_submit(
+    Services.flow_ingestion().ingest_and_submit(
         planspace,
         db_path=paths.run_db(),
         submitted_by=f"proposal-{section_number}",
@@ -353,7 +348,7 @@ def _handle_proposal_signals(
     """
     intg_output = paths.artifacts / f"intg-proposal-{section_number}-output.md"
     paths.signals_dir().mkdir(parents=True, exist_ok=True)
-    signal, detail = check_agent_signals(
+    signal, detail = Services.dispatch_helpers().check_agent_signals(
         intg_result,
         signal_path=paths.proposal_signal(section_number),
         output_path=intg_output,
@@ -399,7 +394,7 @@ def _handle_proposal_signals(
         return "abort"
     payload = response.partition(":")[2].strip()
     if payload:
-        persist_decision(planspace, section_number, payload)
+        Services.cross_section().persist_decision(planspace, section_number, payload)
     if alignment_changed_pending(planspace):
         return "abort"
     return "continue"
@@ -419,7 +414,7 @@ def _run_alignment_check(
     """
     section_number = section.number
     artifacts = paths.artifacts
-    log(f"Section {section_number}: proposal alignment check")
+    Services.logger().log(f"Section {section_number}: proposal alignment check")
     align_prompt = write_integration_alignment_prompt(
         section,
         planspace,
@@ -470,7 +465,7 @@ def _handle_alignment_signals(
         "abort" — caller should return None
         None — no underspec signal, proceed normally
     """
-    signal, detail = check_agent_signals(
+    signal, detail = Services.dispatch_helpers().check_agent_signals(
         align_result,
         signal_path=paths.signals_dir() / f"proposal-align-{section_number}-signal.json",
         output_path=align_output,
@@ -490,7 +485,7 @@ def _handle_alignment_signals(
         return "abort"
     payload = response.partition(":")[2].strip()
     if payload:
-        persist_decision(planspace, section_number, payload)
+        Services.cross_section().persist_decision(planspace, section_number, payload)
     if alignment_changed_pending(planspace):
         return "abort"
     return "continue"
@@ -518,7 +513,7 @@ def _handle_aligned_surfaces(
     if surface_count:
         if intent_mode != "full":
             _persist_surfaces(section_number, planspace, surfaces)
-            log(
+            Services.logger().log(
                 f"Section {section_number}: lightweight mode discovered "
                 f"{surface_count} structured surfaces — escalating to "
                 "full intent"
@@ -552,7 +547,7 @@ def _handle_aligned_surfaces(
                     "updated problem/philosophy definitions.",
                 )
 
-    log(f"Section {section_number}: integration proposal ALIGNED")
+    Services.logger().log(f"Section {section_number}: integration proposal ALIGNED")
     Services.communicator().mailbox_send(
         planspace,
         parent,
@@ -587,12 +582,12 @@ def _handle_misaligned_surfaces(
         planspace,
         misaligned_surfaces,
     )
-    log(
+    Services.logger().log(
         f"Section {section_number}: persisted intent "
         f"surfaces from misaligned pass"
     )
     if intent_mode != "full":
-        log(
+        Services.logger().log(
             f"Section {section_number}: lightweight mode discovered "
             f"{misaligned_surface_count} structured surfaces on "
             "misaligned pass — upgrading to full"
@@ -657,7 +652,7 @@ def run_proposal_loop(
         # budget_result is False means resumed; None means not exceeded
 
         tag = "revise " if proposal_problems else ""
-        log(
+        Services.logger().log(
             f"Section {section.number}: {tag}integration proposal "
             f"(attempt {proposal_attempt})"
         )
@@ -694,7 +689,7 @@ def run_proposal_loop(
 
         # --- proposal existence check ---
         if not integration_proposal.exists():
-            log(
+            Services.logger().log(
                 f"Section {section.number}: ERROR — integration proposal "
                 f"not written"
             )
@@ -714,7 +709,7 @@ def run_proposal_loop(
         align_result, align_output = align_check
 
         if align_result.startswith("TIMEOUT:"):
-            log(
+            Services.logger().log(
                 f"Section {section.number}: proposal alignment check "
                 f"timed out — retrying"
             )
@@ -763,7 +758,7 @@ def run_proposal_loop(
 
         proposal_problems = problems
         short = problems[:200]
-        log(
+        Services.logger().log(
             f"Section {section.number}: integration proposal problems "
             f"(attempt {proposal_attempt}): {short}"
         )

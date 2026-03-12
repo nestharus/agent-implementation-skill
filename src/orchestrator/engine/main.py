@@ -28,7 +28,6 @@ from scan.service.section_loader import load_sections
 from signals.service.communication import (
     AGENT_NAME,
     DB_SH,
-    log,
     mailbox_cleanup,
     mailbox_register,
 )
@@ -79,14 +78,14 @@ def main() -> None:
         check=True, capture_output=True, text=True,
     )
     mailbox_register(args.planspace)
-    log(f"Registered: {AGENT_NAME} (parent: {args.parent})")
+    Services.logger().log(f"Registered: {AGENT_NAME} (parent: {args.parent})")
 
     try:
         _run_loop(args.planspace, args.codespace, args.parent, sections_dir,
                   args.global_proposal, args.global_alignment)
     finally:
         mailbox_cleanup(args.planspace)
-        log("Mailbox cleaned up")
+        Services.logger().log("Mailbox cleaned up")
 
 
 def _run_loop(planspace: Path, codespace: Path, parent: str,
@@ -108,7 +107,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
 
     sections_by_num = {s.number: s for s in all_sections}
 
-    log(f"Loaded {len(all_sections)} sections")
+    Services.logger().log(f"Loaded {len(all_sections)} sections")
 
     # Outer loop: alignment_changed during Phase 2 restarts from Phase 1.
     # Each iteration runs Phase 1 (per-section) then Phase 2 (global).
@@ -192,7 +191,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             sec_num for sec_num, result in section_results.items()
             if result.aligned
         ]
-        log(f"=== Phase 1 complete: {len(implemented_sections)} sections "
+        Services.logger().log(f"=== Phase 1 complete: {len(implemented_sections)} sections "
             f"implemented, {len(blocked_sections)} blocked ===")
 
         # Write strategic state snapshot after Phase 1
@@ -203,7 +202,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
         # post-implementation assessment into risk-register staging.
         promoted = promote_debt_signals(planspace)
         if promoted:
-            log(f"Stabilization: promoted {len(promoted)} debt entries to staging")
+            Services.logger().log(f"Stabilization: promoted {len(promoted)} debt entries to staging")
 
         phase2_status = run_global_alignment_recheck(
             sections_by_num,

@@ -9,7 +9,6 @@ from typing import Any
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from containers import Services
-from signals.service.communication import log
 
 
 def _parse_coordination_plan(
@@ -42,43 +41,43 @@ def _parse_coordination_plan(
             json_text = agent_output[start:end + 1]
 
     if json_text is None:
-        log("  coordinator: no JSON found in coordination plan output")
+        Services.logger().log("  coordinator: no JSON found in coordination plan output")
         return None
 
     try:
         plan = json.loads(json_text)
     except json.JSONDecodeError as exc:
-        log(f"  coordinator: JSON parse error in coordination plan: {exc}")
+        Services.logger().log(f"  coordinator: JSON parse error in coordination plan: {exc}")
         return None
 
     if "groups" not in plan or not isinstance(plan["groups"], list):
-        log("  coordinator: coordination plan missing 'groups' array")
+        Services.logger().log("  coordinator: coordination plan missing 'groups' array")
         return None
 
     seen_indices: set[int] = set()
     n = len(problems)
     for group in plan["groups"]:
         if "problems" not in group or not isinstance(group["problems"], list):
-            log("  coordinator: group missing 'problems' array")
+            Services.logger().log("  coordinator: group missing 'problems' array")
             return None
         for idx in group["problems"]:
             if not isinstance(idx, int) or idx < 0 or idx >= n:
-                log(f"  coordinator: invalid problem index {idx}")
+                Services.logger().log(f"  coordinator: invalid problem index {idx}")
                 return None
             if idx in seen_indices:
-                log(f"  coordinator: duplicate problem index {idx}")
+                Services.logger().log(f"  coordinator: duplicate problem index {idx}")
                 return None
             seen_indices.add(idx)
 
     if len(seen_indices) != n:
         missing = set(range(n)) - seen_indices
-        log(f"  coordinator: coordination plan missing indices: {missing}")
+        Services.logger().log(f"  coordinator: coordination plan missing indices: {missing}")
         return None
 
     if "batches" in plan:
         batches = plan["batches"]
         if not isinstance(batches, list):
-            log("  coordinator: 'batches' is not an array — ignoring")
+            Services.logger().log("  coordinator: 'batches' is not an array — ignoring")
             del plan["batches"]
         else:
             n_groups = len(plan["groups"])
@@ -90,24 +89,24 @@ def _parse_coordination_plan(
                     break
                 for gidx in batch:
                     if not isinstance(gidx, int) or gidx < 0 or gidx >= n_groups:
-                        log(f"  coordinator: invalid group index {gidx} in batches")
+                        Services.logger().log(f"  coordinator: invalid group index {gidx} in batches")
                         batches_valid = False
                         break
                     if gidx in seen_gidx:
-                        log(f"  coordinator: duplicate group index {gidx} in batches")
+                        Services.logger().log(f"  coordinator: duplicate group index {gidx} in batches")
                         batches_valid = False
                         break
                     seen_gidx.add(gidx)
                 if not batches_valid:
                     break
             if batches_valid and len(seen_gidx) != n_groups:
-                log(
+                Services.logger().log(
                     "  coordinator: batches missing group indices: "
                     f"{set(range(n_groups)) - seen_gidx}",
                 )
                 batches_valid = False
             if not batches_valid:
-                log("  coordinator: invalid batches — will use file-safety batching")
+                Services.logger().log("  coordinator: invalid batches — will use file-safety batching")
                 del plan["batches"]
 
     for group in plan["groups"]:
@@ -117,7 +116,7 @@ def _parse_coordination_plan(
         elif isinstance(bridge, bool):
             group["bridge"] = {"needed": bridge}
         elif not isinstance(bridge, dict):
-            log(
+            Services.logger().log(
                 "  coordinator: bridge directive has unexpected type "
                 f"{type(bridge).__name__} — defaulting to disabled",
             )

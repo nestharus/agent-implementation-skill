@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
-from containers import AgentDispatcher, Services
+from containers import AgentDispatcher, DispatchHelperService, FlowIngestionService, Services
 from src.implementation.engine.loop import run_implementation_loop
 from src.orchestrator.types import Section
 
@@ -81,17 +81,22 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
         def dispatch(self, *args, **kwargs):
             return _dispatch(*args, **kwargs)
 
+    class _NoopHelpers(DispatchHelperService):
+        def check_agent_signals(self, *_args, **_kwargs):
+            return (None, "")
+
+    class _NoopFlow(FlowIngestionService):
+        def ingest_and_submit(self, *_args, **_kwargs):
+            return None
+
+        def submit_chain(self, *_args, **_kwargs):
+            return [1]
+
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
-    monkeypatch.setattr(
-        "src.implementation.engine.loop.check_agent_signals",
-        lambda *_args, **_kwargs: (None, ""),
-    )
+    Services.dispatch_helpers.override(providers.Object(_NoopHelpers()))
+    Services.flow_ingestion.override(providers.Object(_NoopFlow()))
     monkeypatch.setattr(
         "src.implementation.engine.loop._extract_problems",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        "src.implementation.engine.loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -101,10 +106,6 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
     monkeypatch.setattr(
         "src.implementation.engine.loop.write_post_impl_assessment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "post-impl-09-prompt.md",
-    )
-    monkeypatch.setattr(
-        "src.implementation.engine.loop.submit_chain",
-        lambda *_args, **_kwargs: [1],
     )
 
     try:
@@ -127,6 +128,8 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
         assert trace_map["todo_ids"] == [{"id": "A1", "file": "src/main.py"}]
     finally:
         Services.dispatcher.reset_override()
+        Services.dispatch_helpers.reset_override()
+        Services.flow_ingestion.reset_override()
 
 
 def test_run_implementation_loop_retries_after_alignment_problems(
@@ -169,18 +172,23 @@ def test_run_implementation_loop_retries_after_alignment_problems(
         def dispatch(self, *args, **kwargs):
             return _dispatch(*args, **kwargs)
 
+    class _NoopHelpers(DispatchHelperService):
+        def check_agent_signals(self, *_args, **_kwargs):
+            return (None, "")
+
+    class _NoopFlow(FlowIngestionService):
+        def ingest_and_submit(self, *_args, **_kwargs):
+            return None
+
+        def submit_chain(self, *_args, **_kwargs):
+            return [1]
+
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
-    monkeypatch.setattr(
-        "src.implementation.engine.loop.check_agent_signals",
-        lambda *_args, **_kwargs: (None, ""),
-    )
+    Services.dispatch_helpers.override(providers.Object(_NoopHelpers()))
+    Services.flow_ingestion.override(providers.Object(_NoopFlow()))
     monkeypatch.setattr(
         "src.implementation.engine.loop._extract_problems",
         lambda *_args, **_kwargs: next(problems),
-    )
-    monkeypatch.setattr(
-        "src.implementation.engine.loop.ingest_and_submit",
-        lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         "src.implementation.engine.loop._write_traceability_index",
@@ -189,10 +197,6 @@ def test_run_implementation_loop_retries_after_alignment_problems(
     monkeypatch.setattr(
         "src.implementation.engine.loop.write_post_impl_assessment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "post-impl-09-prompt.md",
-    )
-    monkeypatch.setattr(
-        "src.implementation.engine.loop.submit_chain",
-        lambda *_args, **_kwargs: [1],
     )
 
     try:
@@ -209,3 +213,5 @@ def test_run_implementation_loop_retries_after_alignment_problems(
         assert impl_calls["count"] == 2
     finally:
         Services.dispatcher.reset_override()
+        Services.dispatch_helpers.reset_override()
+        Services.flow_ingestion.reset_override()

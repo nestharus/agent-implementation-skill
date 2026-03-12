@@ -10,7 +10,6 @@ from pathlib import Path
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from signals.service.communication import log
 
 
 class StallDetector:
@@ -67,7 +66,7 @@ class StallDetector:
 
     def _escalate(self, round_num: int) -> None:
         """Write model-escalation signal and notify parent."""
-        log(
+        Services.logger().log(
             f"Coordination churning ({self._stall_count} rounds without "
             "improvement) — escalating model",
         )

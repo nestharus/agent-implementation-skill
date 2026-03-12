@@ -7,10 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from signals.repository.artifact_io import read_json, write_json
-from staleness.helpers.hashing import file_hash
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from taskrouter import agent_for
 
 
 def write_tool_surface(
@@ -118,7 +116,7 @@ def surface_tool_registry(
             parent,
             codespace=codespace,
             section_number=section_number,
-            agent_file=agent_for("dispatch.tool_registry_repair"),
+            agent_file=Services.task_router().agent_for("dispatch.tool_registry_repair"),
         )
         registry = read_json(tool_registry_path)
         if registry is not None:
@@ -237,7 +235,7 @@ def validate_tool_registry_after_implementation(
                 parent,
                 f"tool-registrar-{section_number}",
                 codespace=codespace,
-                agent_file=agent_for("dispatch.tool_registry_repair"),
+                agent_file=Services.task_router().agent_for("dispatch.tool_registry_repair"),
                 section_number=section_number,
             )
     except (json.JSONDecodeError, ValueError) as exc:
@@ -270,7 +268,7 @@ def validate_tool_registry_after_implementation(
             parent,
             codespace=codespace,
             section_number=section_number,
-            agent_file=agent_for("dispatch.tool_registry_repair"),
+            agent_file=Services.task_router().agent_for("dispatch.tool_registry_repair"),
         )
         if read_json(tool_registry_path) is not None:
             log(f"Section {section_number}: post-impl tool registry repaired")
@@ -383,7 +381,7 @@ with JSON:
 
     pre_bridge_registry_hash = ""
     if tool_registry_path.exists():
-        pre_bridge_registry_hash = file_hash(tool_registry_path)
+        pre_bridge_registry_hash = Services.hasher().file_hash(tool_registry_path)
 
     dispatch_agent(
         Services.policies().resolve(policy, "bridge_tools"),
@@ -393,7 +391,7 @@ with JSON:
         parent,
         f"bridge-tools-{section_number}",
         codespace=codespace,
-        agent_file=agent_for("dispatch.bridge_tools"),
+        agent_file=Services.task_router().agent_for("dispatch.bridge_tools"),
         section_number=section_number,
     )
 
@@ -423,7 +421,7 @@ with JSON:
             parent,
             f"bridge-tools-{section_number}-escalation",
             codespace=codespace,
-            agent_file=agent_for("dispatch.bridge_tools"),
+            agent_file=Services.task_router().agent_for("dispatch.bridge_tools"),
             section_number=section_number,
         )
         bridge_data = read_json(bridge_signal_path)
@@ -466,7 +464,7 @@ with JSON:
 
         post_bridge_registry_hash = ""
         if tool_registry_path.exists():
-            post_bridge_registry_hash = file_hash(tool_registry_path)
+            post_bridge_registry_hash = Services.hasher().file_hash(tool_registry_path)
         if post_bridge_registry_hash and pre_bridge_registry_hash != post_bridge_registry_hash:
             log(
                 f"Section {section_number}: tool registry modified "
@@ -494,7 +492,7 @@ with JSON:
                 f"tool-digest-regen-{section_number}",
                 codespace=codespace,
                 section_number=section_number,
-                agent_file=agent_for("dispatch.tool_registry_repair"),
+                agent_file=Services.task_router().agent_for("dispatch.tool_registry_repair"),
             )
     else:
         log(

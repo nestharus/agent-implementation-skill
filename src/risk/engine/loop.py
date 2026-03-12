@@ -30,7 +30,6 @@ from risk.prompt.builders import build_risk_assessment_prompt, build_optimizatio
 from risk.service.response_parser import parse_risk_assessment, parse_risk_plan
 from risk.service.posture_hysteresis import apply_posture_hysteresis
 from risk.service.fallback import fallback_plan, lightweight_fallback_plan
-from taskrouter import agent_for
 
 
 def run_risk_loop(
@@ -184,7 +183,7 @@ def _validate_and_dispatch_assessment(
         planspace,
         None,
         f"risk-assessor-{tag}{scope}",
-        agent_file=agent_for("risk.assess"),
+        agent_file=Services.task_router().agent_for("risk.assess"),
     )
     return parse_risk_assessment(response)
 
@@ -229,7 +228,7 @@ def _validate_and_dispatch_optimization(
         planspace,
         None,
         f"execution-optimizer-{scope}",
-        agent_file=agent_for("risk.optimize"),
+        agent_file=Services.task_router().agent_for("risk.optimize"),
     )
     return parse_risk_plan(response)
 
@@ -264,7 +263,7 @@ def _validate_and_dispatch_lightweight_optimization(
             planspace,
             None,
             f"execution-optimizer-light-{scope}",
-            agent_file=agent_for("risk.optimize"),
+            agent_file=Services.task_router().agent_for("risk.optimize"),
         )
     except Exception:
         return None

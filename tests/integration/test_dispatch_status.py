@@ -23,6 +23,7 @@ from conftest import override_dispatcher_and_guard
 import dispatch.engine.agent_executor as executor_mod
 import dispatch.engine.section_dispatch as dispatch_mod
 from dispatch.engine.section_dispatch import dispatch_agent
+from containers import TaskRouterService
 
 
 # ---------------------------------------------------------------------------
@@ -51,9 +52,8 @@ def dispatch_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     agents_dir.mkdir()
     agent_path = agents_dir / "test-agent.md"
     agent_path.write_text("# Test Agent\nDo nothing.\n")
-    resolver = lambda name: agent_path if name == "test-agent.md" else (_ for _ in ()).throw(FileNotFoundError(name))
-    monkeypatch.setattr(dispatch_mod, "resolve_agent_path", resolver)
-    monkeypatch.setattr(executor_mod, "resolve_agent_path", resolver)
+    resolver = lambda self, name: agent_path if name == "test-agent.md" else (_ for _ in ()).throw(FileNotFoundError(name))
+    monkeypatch.setattr(TaskRouterService, "resolve_agent_path", resolver)
     return tmp_path
 
 

@@ -6,7 +6,6 @@ from pathlib import Path
 from containers import Services
 from dispatch.prompt.template import render_template
 from orchestrator.path_registry import PathRegistry
-from taskrouter import agent_for
 
 
 def adjudicate_agent_output(
@@ -49,8 +48,7 @@ LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
 """
     violations = Services.prompt_guard().validate_dynamic(dynamic_body)
     if violations:
-        from signals.service.communication import log
-        log(f"  ERROR: adjudicate prompt blocked — dynamic violations: {violations}")
+        Services.logger().log(f"  ERROR: adjudicate prompt blocked — dynamic violations: {violations}")
         return None, ""
     adj_prompt.write_text(
         render_template(
@@ -63,7 +61,7 @@ LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
     result = Services.dispatcher().dispatch(
         model, adj_prompt, adj_output,
         planspace, parent, codespace=codespace,
-        agent_file=agent_for("staleness.state_adjudicate"),
+        agent_file=Services.task_router().agent_for("staleness.state_adjudicate"),
     )
     if result == "ALIGNMENT_CHANGED_PENDING":
         return None, "ALIGNMENT_CHANGED_PENDING"

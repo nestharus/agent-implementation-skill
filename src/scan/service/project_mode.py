@@ -7,7 +7,6 @@ from pathlib import Path
 
 from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
-from signals.service.communication import log
 from containers import Services
 
 
@@ -35,7 +34,7 @@ def _read_project_mode_signal(
                 reason="JSON signal (post-resume)" if post_resume else "JSON signal",
             )
 
-        log(
+        Services.logger().log(
             "project-mode.json malformed"
             + (" after resume" if post_resume else "")
             + " — preserved as .malformed.json, trying text fallback",
@@ -77,7 +76,7 @@ def resolve_project_mode(planspace: Path, parent: str) -> tuple[str, list[str]]:
 
     if pm.reason == "default":
         if mode_json_path.exists():
-            log("No text fallback — pausing for parent (fail-closed)")
+            Services.logger().log("No text fallback — pausing for parent (fail-closed)")
             Services.pipeline_control().pause_for_parent(
                 planspace,
                 parent,
@@ -85,7 +84,7 @@ def resolve_project_mode(planspace: Path, parent: str) -> tuple[str, list[str]]:
                 "JSON parse failed and no text fallback exists",
             )
         else:
-            log("No project-mode signal found — pausing for parent "
+            Services.logger().log("No project-mode signal found — pausing for parent "
                 "(fail-closed)")
             Services.pipeline_control().pause_for_parent(
                 planspace,
@@ -100,7 +99,7 @@ def resolve_project_mode(planspace: Path, parent: str) -> tuple[str, list[str]]:
             post_resume=True,
         )
 
-    log(f"Project mode: {pm.mode} (from {pm.reason})")
+    Services.logger().log(f"Project mode: {pm.mode} (from {pm.reason})")
     return pm.mode, pm.evidence_files
 
 

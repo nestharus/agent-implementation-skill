@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
-from containers import AgentDispatcher, ModelPolicyService, Services
+from containers import AgentDispatcher, CrossSectionService, FlowIngestionService, ModelPolicyService, Services
 from src.proposal.engine.loop import run_proposal_loop
 from src.intent.service.expansion import run_expansion_cycle
 from src.orchestrator.types import Section
@@ -65,7 +65,8 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.write_model_choice_signal",
+        Services.dispatch_helpers(),
+        "write_model_choice_signal",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -90,17 +91,24 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         def dispatch(self, *args, **kwargs):
             return _dispatch(*args, **kwargs)
 
+    class _NoopFlow(FlowIngestionService):
+        def ingest_and_submit(self, *_args, **_kwargs):
+            return None
+
+    class _NoopCrossSection(CrossSectionService):
+        def persist_decision(self, *_args, **_kwargs):
+            return None
+
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    Services.flow_ingestion.override(providers.Object(_NoopFlow()))
+    Services.cross_section.override(providers.Object(_NoopCrossSection()))
     monkeypatch.setattr(
-        "src.proposal.engine.loop.check_agent_signals",
+        Services.dispatch_helpers(),
+        "check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
         "src.proposal.engine.loop._extract_problems",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -126,10 +134,6 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "proposal.service.intent_expansion.persist_decision",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "proposal.service.intent_expansion.handle_user_gate",
         lambda *_args, **_kwargs: None,
     )
@@ -153,6 +157,8 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         assert expansion_calls == ["01"]
     finally:
         Services.dispatcher.reset_override()
+        Services.flow_ingestion.reset_override()
+        Services.cross_section.reset_override()
 
 def test_run_expansion_cycle_merges_research_surfaces_into_pending_payload(
     planspace: Path,

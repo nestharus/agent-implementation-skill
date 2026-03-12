@@ -11,7 +11,6 @@ from pathlib import Path
 
 from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
-from signals.service.communication import log
 from intent.service.loop_bootstrap import (
     ensure_global_philosophy,
     generate_intent_pack,
@@ -75,7 +74,7 @@ def _step_extract_todos(ctx: PipelineContext) -> str:
 
     if todo_entries:
         todos_path.write_text(todo_entries, encoding="utf-8")
-        log(f"Section {ctx.section.number}: extracted TODOs from related files")
+        Services.logger().log(f"Section {ctx.section.number}: extracted TODOs from related files")
         Services.communicator().record_traceability(
             ctx.planspace, ctx.section.number, artifact_name,
             "related files TODO extraction",
@@ -83,7 +82,7 @@ def _step_extract_todos(ctx: PipelineContext) -> str:
         )
     elif todos_path.exists():
         todos_path.unlink()
-        log(
+        Services.logger().log(
             f"Section {ctx.section.number}: removed stale TODO extraction "
             "(no TODOs remaining)",
         )
@@ -93,7 +92,7 @@ def _step_extract_todos(ctx: PipelineContext) -> str:
             "in-code microstrategies for alignment",
         )
     else:
-        log(f"Section {ctx.section.number}: no TODOs found in related files")
+        Services.logger().log(f"Section {ctx.section.number}: no TODOs found in related files")
 
     return todo_entries or ""
 
@@ -113,7 +112,7 @@ def _step_philosophy(ctx: PipelineContext) -> dict:
         blocking_state = result.get("blocking_state")
         sec = ctx.section.number
         if blocking_state == "NEED_DECISION":
-            log(
+            Services.logger().log(
                 f"Section {sec}: philosophy bootstrap needs "
                 f"user input — {result['detail']}",
             )
@@ -123,12 +122,12 @@ def _step_philosophy(ctx: PipelineContext) -> dict:
                 "pause:need_decision:global:philosophy bootstrap requires user input",
             )
         elif blocking_state == "NEEDS_PARENT":
-            log(
+            Services.logger().log(
                 f"Section {sec}: philosophy bootstrap needs "
                 f"parent intervention — {result['detail']}",
             )
         else:
-            log(
+            Services.logger().log(
                 f"Section {sec}: philosophy unavailable — "
                 f"{result['detail']}",
             )
@@ -158,7 +157,7 @@ def _step_intent_pack(ctx: PipelineContext) -> str:
         ctx.parent,
         incoming_notes=ctx.state.get("incoming_notes", ""),
     )
-    log(f"Section {ctx.section.number}: intent bootstrap complete (full mode)")
+    Services.logger().log(f"Section {ctx.section.number}: intent bootstrap complete (full mode)")
     return "ok"
 
 

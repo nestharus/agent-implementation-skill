@@ -4,7 +4,6 @@ from containers import Services
 from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
 
-from taskrouter import agent_for
 
 
 def _gather_complexity_signals(
@@ -171,7 +170,7 @@ Write a JSON signal to: `{signal_path}`
         model, decider_prompt, decider_output,
         planspace, parent, codespace=codespace,
         section_number=section_number,
-        agent_file=agent_for("implementation.microstrategy_decision"),
+        agent_file=Services.task_router().agent_for("implementation.microstrategy_decision"),
     )
     if signal_path.exists():
         data = read_json(signal_path)
@@ -193,7 +192,7 @@ Write a JSON signal to: `{signal_path}`
         escalation_model, decider_prompt, escalation_output,
         planspace, parent, codespace=codespace,
         section_number=section_number,
-        agent_file=agent_for("implementation.microstrategy_decision"),
+        agent_file=Services.task_router().agent_for("implementation.microstrategy_decision"),
     )
     if signal_path.exists():
         data = read_json(signal_path)

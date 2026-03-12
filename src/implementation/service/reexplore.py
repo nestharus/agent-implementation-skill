@@ -4,11 +4,7 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 from dispatch.prompt.template import TASK_SUBMISSION_SEMANTICS
-from signals.service.communication import log
-from coordination.service.cross_section import extract_section_summary
-from flow.service.section_ingestion import ingest_and_submit
 from orchestrator.types import Section
-from taskrouter import agent_for
 
 
 def _reexplore_section(
@@ -33,7 +29,7 @@ def _reexplore_section(
     codemap_path = paths.codemap()
     prompt_path = artifacts / f"reexplore-{section.number}-prompt.md"
     output_path = artifacts / f"reexplore-{section.number}-output.md"
-    summary = extract_section_summary(section.path)
+    summary = Services.cross_section().extract_section_summary(section.path)
 
     codemap_ref = ""
     if codemap_path.exists():
@@ -112,7 +108,7 @@ the JSON, not unstructured text.
     # V3: Validate dynamic content — violations block dispatch
     violations = Services.prompt_guard().validate_dynamic(rendered)
     if violations:
-        log(f"  ERROR: prompt {prompt_path.name} blocked — template "
+        Services.logger().log(f"  ERROR: prompt {prompt_path.name} blocked — template "
             f"violations: {violations}")
         return None
     prompt_path.write_text(rendered, encoding="utf-8")
@@ -122,12 +118,12 @@ the JSON, not unstructured text.
         model, prompt_path, output_path,
         planspace, parent, f"reexplore-{section.number}",
         codespace=codespace, section_number=section.number,
-        agent_file=agent_for("implementation.reexplore"),
+        agent_file=Services.task_router().agent_for("implementation.reexplore"),
     )
 
     # V6: Submit agent-emitted follow-up work into the queue
     if result != "ALIGNMENT_CHANGED_PENDING":
-        ingest_and_submit(
+        Services.flow_ingestion().ingest_and_submit(
             planspace,
             db_path=paths.run_db(),
             submitted_by=f"reexplore-{section.number}",

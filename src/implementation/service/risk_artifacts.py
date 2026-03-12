@@ -13,7 +13,6 @@ from risk.types import (
     RiskPlan,
     StepDecision,
 )
-from signals.service.communication import log
 
 
 def _unique_strings(values: list[str]) -> list[str]:

@@ -108,8 +108,9 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
         "_dispatch_fix_group",
         lambda group, group_index, *args, **kwargs: (group_index, ["src/a.py"]),
     )
+    from src.containers import Services
     monkeypatch.setattr(
-        executor,
+        Services.hasher(),
         "content_hash",
         lambda payload: "abcdef1234567890",
     )

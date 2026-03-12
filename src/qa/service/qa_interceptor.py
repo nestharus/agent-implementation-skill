@@ -26,8 +26,6 @@ from signals.repository.artifact_io import read_json, rename_malformed, write_js
 from orchestrator.path_registry import PathRegistry
 from qa.helpers.qa_verdict import QaVerdict, parse_qa_verdict
 
-from taskrouter.agents import resolve_agent_path
-from taskrouter import agent_for
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +107,7 @@ def _resolve_submitter_contract(submitter: str) -> str:
     """
     # Try direct agent file lookup.
     try:
-        agent_path = resolve_agent_path(f"{submitter}.md")
+        agent_path = Services.task_router().resolve_agent_path(f"{submitter}.md")
         return agent_path.read_text(encoding="utf-8")
     except FileNotFoundError:
         pass
@@ -273,7 +271,7 @@ def intercept_task(
     try:
         # 1. Read target agent contract.
         try:
-            target_path = resolve_agent_path(agent_file)
+            target_path = Services.task_router().resolve_agent_path(agent_file)
         except FileNotFoundError:
             target_path = None
         if target_path is None:
@@ -334,7 +332,7 @@ def intercept_task(
             output_path,
             planspace,
             None,  # parent — not inside section-loop context
-            agent_file=agent_for("qa.qa_intercept"),
+            agent_file=Services.task_router().agent_for("qa.qa_intercept"),
         )
 
         # 7. Parse verdict.

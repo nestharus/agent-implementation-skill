@@ -12,9 +12,7 @@ from signals.repository.artifact_io import read_json
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.template import SRC_TEMPLATE_DIR, TASK_SUBMISSION_SEMANTICS, load_template, render
 from containers import Services
-from signals.service.communication import log
 from orchestrator.service.context_assembly import materialize_context_sidecar
-from taskrouter.agents import resolve_agent_path
 
 
 def write_fix_prompt(
@@ -57,12 +55,12 @@ def write_fix_prompt(
     })
     violations = Services.prompt_guard().validate_dynamic(rendered)
     if violations:
-        log(f"  ERROR: prompt {prompt_path.name} blocked — template "
+        Services.logger().log(f"  ERROR: prompt {prompt_path.name} blocked — template "
             f"violations: {violations}")
         return None
 
     sidecar_path = materialize_context_sidecar(
-        str(resolve_agent_path("coordination-fixer.md")),
+        str(Services.task_router().resolve_agent_path("coordination-fixer.md")),
         planspace,
     )
 

@@ -6,16 +6,12 @@ from signals.repository.artifact_io import read_json_or_default, write_json
 from staleness.service.change_tracker import check_pending as alignment_changed_pending
 from proposal.repository.excerpts import exists as excerpt_exists
 from orchestrator.path_registry import PathRegistry
-from signals.service.communication import log
-from coordination.service.cross_section import persist_decision
 from containers import Services
-from dispatch.helpers.utils import check_agent_signals, summarize_output
 from dispatch.prompt.writers import write_section_setup_prompt
 from signals.service.blockers import (
     _append_open_problem,
     _update_blocker_rollup,
 )
-from taskrouter import agent_for
 
 
 def extract_excerpts(
@@ -34,7 +30,7 @@ def extract_excerpts(
         not excerpt_exists(planspace, section.number, "proposal")
         or not excerpt_exists(planspace, section.number, "alignment")
     ):
-        log(f"Section {section.number}: setup — extracting excerpts")
+        Services.logger().log(f"Section {section.number}: setup — extracting excerpts")
         setup_prompt = write_section_setup_prompt(
             section,
             planspace,
@@ -53,17 +49,17 @@ def extract_excerpts(
             setup_agent,
             codespace=codespace,
             section_number=section.number,
-            agent_file=agent_for("proposal.section_setup"),
+            agent_file=Services.task_router().agent_for("proposal.section_setup"),
         )
         if output == "ALIGNMENT_CHANGED_PENDING":
             return None
         Services.communicator().mailbox_send(
             planspace,
             parent,
-            f"summary:setup:{section.number}:{summarize_output(output)}",
+            f"summary:setup:{section.number}:{Services.dispatch_helpers().summarize_output(output)}",
         )
 
-        signal, detail = check_agent_signals(
+        signal, detail = Services.dispatch_helpers().check_agent_signals(
             output,
             signal_path=signal_dir / f"setup-{section.number}-signal.json",
             output_path=setup_output,
@@ -107,7 +103,7 @@ def extract_excerpts(
                 return None
             payload = response.partition(":")[2].strip()
             if payload:
-                persist_decision(planspace, section.number, payload)
+                Services.cross_section().persist_decision(planspace, section.number, payload)
             if alignment_changed_pending(planspace):
                 return None
             continue
@@ -116,7 +112,7 @@ def extract_excerpts(
             not excerpt_exists(planspace, section.number, "proposal")
             or not excerpt_exists(planspace, section.number, "alignment")
         ):
-            log(
+            Services.logger().log(
                 f"Section {section.number}: ERROR — setup failed to create "
                 f"excerpt files"
             )

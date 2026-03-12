@@ -22,7 +22,7 @@ from staleness.service.change_tracker import (
     make_alignment_checker,
 )
 from scan.service.section_loader import parse_related_files
-from signals.service.communication import AGENT_NAME, DB_SH, log
+from signals.service.communication import AGENT_NAME, DB_SH
 from containers import Services
 from orchestrator.service.pipeline_control import requeue_changed_sections
 from implementation.service.reexplore import _reexplore_section
@@ -260,7 +260,7 @@ def run_proposal_pass(
 
     while queue:
         if Services.pipeline_control().handle_pending_messages(planspace, queue, completed):
-            log("Aborted by parent")
+            Services.logger().log("Aborted by parent")
             Services.communicator().mailbox_send(planspace, parent, "fail:aborted")
             raise ProposalPassExit
 
@@ -281,7 +281,7 @@ def run_proposal_pass(
 
         section = sections_by_num[sec_num]
         section.solve_count += 1
-        log(
+        Services.logger().log(
             f"=== Section {sec_num} proposal pass "
             f"({len(queue)} remaining) "
             f"[round {section.solve_count}] ===",
@@ -303,7 +303,7 @@ def run_proposal_pass(
         )
 
         if not section.related_files:
-            log(
+            Services.logger().log(
                 f"Section {sec_num}: no related files — dispatching "
                 f"re-explorer agent",
             )
@@ -328,12 +328,12 @@ def run_proposal_pass(
 
             section.related_files = parse_related_files(section.path)
             if section.related_files:
-                log(
+                Services.logger().log(
                     f"Section {sec_num}: re-explorer found "
                     f"{len(section.related_files)} files — continuing",
                 )
             else:
-                log(
+                Services.logger().log(
                     f"Section {sec_num}: re-explorer found no files "
                     f"— continuing with unresolved related_files",
                 )
@@ -359,7 +359,7 @@ def run_proposal_pass(
             continue
 
         if proposal_result is None:
-            log(f"Section {sec_num}: paused during proposal, exiting")
+            Services.logger().log(f"Section {sec_num}: paused during proposal, exiting")
             subprocess.run(  # noqa: S603
                 [
                     "bash",
@@ -386,7 +386,7 @@ def run_proposal_pass(
                     Services.dispatcher().dispatch,
                 )
                 if risk_summary is not None:
-                    log(
+                    Services.logger().log(
                         f"Section {sec_num}: proposal ROAL pre-check "
                         f"(mode={risk_summary['risk_mode']}, "
                         f"dominant={risk_summary['dominant_risks']}, "
@@ -399,9 +399,9 @@ def run_proposal_pass(
                 else f"blocked ({len(proposal_result.blockers)} blockers)"
             )
             Services.communicator().mailbox_send(planspace, parent, f"proposal-done:{sec_num}:{status}")
-            log(f"Section {sec_num}: proposal pass complete — {status}")
+            Services.logger().log(f"Section {sec_num}: proposal pass complete — {status}")
         else:
-            log(
+            Services.logger().log(
                 f"Section {sec_num}: unexpected proposal result type "
                 f"— treating as failed",
             )
@@ -422,7 +422,7 @@ def run_proposal_pass(
             text=True,
         )
 
-    log(f"=== Phase 1a complete: {len(completed)} sections proposed ===")
+    Services.logger().log(f"=== Phase 1a complete: {len(completed)} sections proposed ===")
     ready_sections = sorted(
         num for num, result in proposal_results.items() if result.execution_ready
     )
@@ -431,7 +431,7 @@ def run_proposal_pass(
         for num, result in proposal_results.items()
         if not result.execution_ready
     )
-    log(f"Proposal summary: {len(ready_sections)} ready, {len(blocked_sections)} blocked")
+    Services.logger().log(f"Proposal summary: {len(ready_sections)} ready, {len(blocked_sections)} blocked")
     if blocked_sections:
-        log(f"Blocked sections: {blocked_sections}")
+        Services.logger().log(f"Blocked sections: {blocked_sections}")
     return proposal_results

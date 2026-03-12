@@ -29,14 +29,11 @@ from staleness.service.section_alignment import (
 )
 from signals.service.communication import (
     _log_artifact,
-    log,
     mailbox_send,
 )
 from coordination.service.cross_section import read_incoming_notes
-from dispatch.helpers.utils import check_agent_signals
 from orchestrator.service.pipeline_control import coordination_recheck_hash
 from orchestrator.types import Section, SectionResult
-from taskrouter import agent_for
 
 
 def _normalize_section_id(value: str, scope_deltas_dir: Path) -> str:
@@ -81,10 +78,10 @@ def run_global_coordination(
     )
 
     if not problems:
-        log("  coordinator: no outstanding problems — all ALIGNED")
+        Services.logger().log("  coordinator: no outstanding problems — all ALIGNED")
         return True
 
-    log(f"  coordinator: {len(problems)} outstanding problems across "
+    Services.logger().log(f"  coordinator: {len(problems)} outstanding problems across "
         f"{len({p['section'] for p in problems})} sections")
 
     # Detect recurrence patterns for escalated handling
@@ -95,7 +92,7 @@ def run_global_coordination(
         escalation_file = coord_dir / "model-escalation.txt"
         escalation_file.write_text(
             Services.policies().resolve(policy, "escalation_model"), encoding="utf-8")
-        log(f"  coordinator: recurrence escalation — setting model to "
+        Services.logger().log(f"  coordinator: recurrence escalation — setting model to "
             f"{Services.policies().resolve(policy, 'escalation_model')} for "
             f"{recurrence['recurring_problem_count']} recurring problems "
             f"across sections {recurrence['recurring_sections']}")
@@ -122,10 +119,10 @@ def run_global_coordination(
 
     plan_prompt = write_coordination_plan_prompt(problems, planspace)
     plan_output = coord_dir / "coordination-plan-output.md"
-    log("  coordinator: dispatching coordination-planner agent")
+    Services.logger().log("  coordinator: dispatching coordination-planner agent")
     plan_result = Services.dispatcher().dispatch(
         Services.policies().resolve(policy, "coordination_plan"), plan_prompt, plan_output,
-        planspace, parent, agent_file=agent_for("coordination.plan"),
+        planspace, parent, agent_file=Services.task_router().agent_for("coordination.plan"),
     )
     if plan_result == "ALIGNMENT_CHANGED_PENDING":
         return False
@@ -135,12 +132,12 @@ def run_global_coordination(
     if coord_plan is None:
         # Retry once with escalation model — scripts must not decide
         # problem grouping (that is a strategic agent decision).
-        log("  coordinator: plan parse failed — retrying with "
+        Services.logger().log("  coordinator: plan parse failed — retrying with "
             "escalation model")
         plan_output_retry = coord_dir / "coordination-plan-output-retry.md"
         retry_result = Services.dispatcher().dispatch(
             Services.policies().resolve(policy, "escalation_model"), plan_prompt, plan_output_retry,
-            planspace, parent, agent_file=agent_for("coordination.plan"),
+            planspace, parent, agent_file=Services.task_router().agent_for("coordination.plan"),
         )
         if retry_result == "ALIGNMENT_CHANGED_PENDING":
             return False
@@ -149,7 +146,7 @@ def run_global_coordination(
     if coord_plan is None:
         # Fail closed: write failure artifact + mailbox, return False.
         # Scripts must not invent grouping — only the agent decides.
-        log("  coordinator: plan parse failed after retry — fail closed")
+        Services.logger().log("  coordinator: plan parse failed after retry — fail closed")
         failure_path = coord_dir / "coordination-plan-failure.md"
         write_json(failure_path, {
             "reason": "unparseable_plan_json",
@@ -168,12 +165,12 @@ def run_global_coordination(
         group_problems = [problems[i] for i in g["problems"]]
         confirmed_groups.append(group_problems)
         group_strategies.append(g.get("strategy", "sequential"))
-        log(f"  coordinator: group {len(confirmed_groups) - 1} — "
+        Services.logger().log(f"  coordinator: group {len(confirmed_groups) - 1} — "
             f"{len(group_problems)} problems, "
             f"strategy={group_strategies[-1]}, "
             f"reason={g.get('reason', '(none)')}")
 
-    log(f"  coordinator: {len(confirmed_groups)} problem groups from "
+    Services.logger().log(f"  coordinator: {len(confirmed_groups)} problem groups from "
         f"coordination plan")
 
     # Save plan and groups for debugging
@@ -219,7 +216,7 @@ def run_global_coordination(
     # -----------------------------------------------------------------
     # Step 4: Re-run per-section alignment on affected sections
     # -----------------------------------------------------------------
-    log(f"  coordinator: re-checking alignment for sections "
+    Services.logger().log(f"  coordinator: re-checking alignment for sections "
         f"{affected_sections}")
 
     # Incremental alignment: track per-section input hashes to skip
@@ -242,7 +239,7 @@ def run_global_coordination(
         if prev_hash_file.exists():
             prev_hash = prev_hash_file.read_text(encoding="utf-8").strip()
             if prev_hash == current_hash:
-                log(f"  coordinator: section {sec_num} inputs unchanged "
+                Services.logger().log(f"  coordinator: section {sec_num} inputs unchanged "
                     f"— skipping alignment recheck")
                 continue
         prev_hash_file.write_text(current_hash, encoding="utf-8")
@@ -250,13 +247,13 @@ def run_global_coordination(
         # Poll for control messages before each re-check
         ctrl = Services.pipeline_control().poll_control_messages(planspace, parent, sec_num)
         if ctrl == "alignment_changed":
-            log("  coordinator: alignment changed — aborting re-checks")
+            Services.logger().log("  coordinator: alignment changed — aborting re-checks")
             return False
 
         # Read any incoming notes for this section (cross-section context)
         notes = read_incoming_notes(section, planspace, codespace)
         if notes:
-            log(f"  coordinator: section {sec_num} has incoming notes "
+            Services.logger().log(f"  coordinator: section {sec_num} has incoming notes "
                 f"from other sections")
 
         # Re-run implementation alignment check with TIMEOUT retry
@@ -271,7 +268,7 @@ def run_global_coordination(
         if align_result == "INVALID_FRAME":
             # Structural failure — alignment prompt frame is wrong.
             # Surface upward, don't continue with broken evaluation.
-            log(f"  coordinator: section {sec_num} invalid alignment "
+            Services.logger().log(f"  coordinator: section {sec_num} invalid alignment "
                 f"frame — requires parent intervention")
             mailbox_send(
                 planspace, parent,
@@ -286,7 +283,7 @@ def run_global_coordination(
             continue
         if align_result is None:
             # All retries timed out
-            log(f"  coordinator: section {sec_num} alignment check "
+            Services.logger().log(f"  coordinator: section {sec_num} alignment check "
                 f"timed out after retries")
             section_results[sec_num] = SectionResult(
                 section_number=sec_num,
@@ -305,7 +302,7 @@ def run_global_coordination(
         )
         coord_signal_dir = coord_dir / "signals"
         coord_signal_dir.mkdir(parents=True, exist_ok=True)
-        signal, detail = check_agent_signals(
+        signal, detail = Services.dispatch_helpers().check_agent_signals(
             align_result,
             signal_path=(coord_signal_dir
                          / f"coord-align-{sec_num}-signal.json"),
@@ -314,7 +311,7 @@ def run_global_coordination(
         )
 
         if align_problems is None and signal is None:
-            log(f"  coordinator: section {sec_num} now ALIGNED")
+            Services.logger().log(f"  coordinator: section {sec_num} now ALIGNED")
             section_results[sec_num] = SectionResult(
                 section_number=sec_num,
                 aligned=True,
@@ -352,10 +349,10 @@ def run_global_coordination(
                         + "\n",
                         encoding="utf-8",
                     )
-                    log(f"  coordinator: recorded resolution for "
+                    Services.logger().log(f"  coordinator: recorded resolution for "
                         f"recurring section {sec_num}")
         else:
-            log(f"  coordinator: section {sec_num} still has problems")
+            Services.logger().log(f"  coordinator: section {sec_num} still has problems")
             # Fold signal info into problems string (SectionResult has
             # no signal fields — only problems)
             combined_problems = align_problems or ""
@@ -380,12 +377,12 @@ def run_global_coordination(
         )
         if outstanding_after:
             outstanding_types = [p["type"] for p in outstanding_after]
-            log(f"  coordinator: all sections aligned but "
+            Services.logger().log(f"  coordinator: all sections aligned but "
                 f"{len(outstanding_after)} outstanding problems "
                 f"remain (types: {outstanding_types})")
             return False
-        log("  coordinator: all sections now ALIGNED")
+        Services.logger().log("  coordinator: all sections now ALIGNED")
         return True
 
-    log(f"  coordinator: {len(remaining)} sections still not aligned")
+    Services.logger().log(f"  coordinator: {len(remaining)} sections still not aligned")
     return False

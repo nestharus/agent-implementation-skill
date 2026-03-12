@@ -10,7 +10,7 @@ from staleness.service.change_tracker import (
     make_alignment_checker,
 )
 from containers import Services
-from signals.service.communication import AGENT_NAME, DB_SH, log
+from signals.service.communication import AGENT_NAME, DB_SH
 from reconciliation.engine.loop import run_reconciliation
 from implementation.engine.runner import run_section
 from orchestrator.types import ProposalPassResult, Section
@@ -54,7 +54,7 @@ def run_reconciliation_phase(
         planspace,
         list(proposal_results.values()),
     )
-    log(
+    Services.logger().log(
         f"Phase 1b reconciliation: {recon_summary['conflicts_found']} conflicts, "
         f"{recon_summary['new_sections_proposed']} new-section proposals, "
         f"substrate_needed={recon_summary['substrate_needed']}, "
@@ -76,7 +76,7 @@ def run_reconciliation_phase(
                     ),
                 })
                 reconciliation_blocked.add(sec_num)
-                log(f"Section {sec_num}: blocked by reconciliation")
+                Services.logger().log(f"Section {sec_num}: blocked by reconciliation")
 
     ready_sections = sorted(
         num for num, proposal_result in proposal_results.items()
@@ -87,11 +87,11 @@ def run_reconciliation_phase(
         if not proposal_result.execution_ready
     )
     if reconciliation_blocked:
-        log(
+        Services.logger().log(
             f"Reconciliation blocked {len(reconciliation_blocked)} additional "
             f"sections: {sorted(reconciliation_blocked)}",
         )
-        log(
+        Services.logger().log(
             f"Updated proposal summary: {len(ready_sections)} ready, "
             f"{len(blocked_sections)} blocked",
         )
@@ -99,25 +99,25 @@ def run_reconciliation_phase(
     reproposal_sections = sorted(reconciliation_blocked)
     restart_phase1 = False
     if reproposal_sections:
-        log(
+        Services.logger().log(
             f"=== Phase 1b.2: re-proposal pass for {len(reproposal_sections)} "
             "reconciliation-affected sections ===",
         )
 
         for sec_num in reproposal_sections:
             if Services.pipeline_control().handle_pending_messages(planspace, [], set()):
-                log("Aborted by parent during re-proposal pass")
+                Services.logger().log("Aborted by parent during re-proposal pass")
                 Services.communicator().mailbox_send(planspace, parent, "fail:aborted")
                 raise ReconciliationPhaseExit
 
             if alignment_changed_pending(planspace):
                 if _check_and_clear_alignment_changed(planspace):
-                    log("Alignment changed during re-proposal pass — restarting from Phase 1")
+                    Services.logger().log("Alignment changed during re-proposal pass — restarting from Phase 1")
                     restart_phase1 = True
                     break
 
             section = sections_by_num[sec_num]
-            log(f"=== Section {sec_num} re-proposal pass (reconciliation-affected) ===")
+            Services.logger().log(f"=== Section {sec_num} re-proposal pass (reconciliation-affected) ===")
 
             reproposal_result = run_section(
                 planspace,
@@ -129,12 +129,12 @@ def run_reconciliation_phase(
             )
 
             if _check_and_clear_alignment_changed(planspace):
-                log("Alignment changed during re-proposal — restarting from Phase 1")
+                Services.logger().log("Alignment changed during re-proposal — restarting from Phase 1")
                 restart_phase1 = True
                 break
 
             if reproposal_result is None:
-                log(f"Section {sec_num}: paused during re-proposal")
+                Services.logger().log(f"Section {sec_num}: paused during re-proposal")
                 continue
 
             if isinstance(reproposal_result, ProposalPassResult):
@@ -144,7 +144,7 @@ def run_reconciliation_phase(
                     if reproposal_result.execution_ready
                     else f"still blocked ({len(reproposal_result.blockers)} blockers)"
                 )
-                log(f"Section {sec_num}: re-proposal complete — {status}")
+                Services.logger().log(f"Section {sec_num}: re-proposal complete — {status}")
                 Services.communicator().mailbox_send(planspace, parent, f"reproposal-done:{sec_num}:{status}")
 
     if reproposal_sections:
@@ -156,12 +156,12 @@ def run_reconciliation_phase(
             num for num, proposal_result in proposal_results.items()
             if not proposal_result.execution_ready
         )
-        log(
+        Services.logger().log(
             f"Post-reproposal summary: {len(ready_sections)} ready, "
             f"{len(blocked_sections)} blocked",
         )
         if blocked_sections:
-            log(f"Still blocked after re-proposal: {blocked_sections}")
+            Services.logger().log(f"Still blocked after re-proposal: {blocked_sections}")
 
     return ReconciliationResult(
         new_section_numbers=ready_sections,

@@ -7,7 +7,6 @@ from pathlib import Path
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from containers import Services
-from signals.service.communication import log
 from intent.service.surfaces import (
     find_discarded_recurrences,
     load_combined_intent_surfaces,
@@ -134,7 +133,7 @@ def run_expansion_cycle(
 
     max_surfaces = budget_config.get("max_new_surfaces_per_cycle", 8)
     if len(worklist) > max_surfaces:
-        log(f"Section {section_number}: {len(worklist)} pending surfaces "
+        Services.logger().log(f"Section {section_number}: {len(worklist)} pending surfaces "
             f"exceeds budget of {max_surfaces} — processing oldest "
             f"{max_surfaces}")
         worklist = worklist[:max_surfaces]
@@ -176,7 +175,7 @@ def run_expansion_cycle(
         if problem_delta:
             proposed_axes = problem_delta.get("new_axes", [])
             if len(proposed_axes) > remaining_axis_budget:
-                log(f"Section {section_number}: expander proposed "
+                Services.logger().log(f"Section {section_number}: expander proposed "
                     f"{len(proposed_axes)} new axes (budget advisory: "
                     f"{remaining_axis_budget}) — accepting all")
             delta["applied"]["problem_definition_updated"] = (

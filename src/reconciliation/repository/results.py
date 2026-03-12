@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 
 from signals.repository.artifact_io import read_json, rename_malformed, write_json
-from staleness.helpers.hashing import content_hash
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ def write_scope_delta(planspace: Path, scope_delta: dict) -> Path:
     title_slug = scope_delta.get("title", "unknown")[:40].replace(" ", "_")
     filename = f"reconciliation-{sources}-{title_slug}.json"
     path = PathRegistry(planspace).scope_deltas_dir() / filename
-    title_hash = content_hash(scope_delta.get("title", ""))[:8]
+    title_hash = Services.hasher().content_hash(scope_delta.get("title", ""))[:8]
     delta_id = f"delta-recon-{sources}-{title_hash}"
     delta = {
         "delta_id": delta_id,

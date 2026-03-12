@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
-from staleness.helpers.hashing import content_hash
+from containers import Services
 
 _SECTION_RE = re.compile(r"(?:section[-_]?)(\d{2})\b|[-_:](\d{2})(?:[-_.:,\s]|$)")
 
@@ -50,7 +50,7 @@ def parse_timestamp(value: str | int | float, *, assume_tz: str = "UTC") -> tupl
 def prompt_signature(text: str) -> str:
     """Stable hash of prompt text for correlation matching."""
     normalized = " ".join(text.split())[:4000]
-    return content_hash(normalized)
+    return Services.hasher().content_hash(normalized)
 
 
 def infer_section(*texts: str) -> str:

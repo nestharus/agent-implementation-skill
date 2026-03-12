@@ -12,8 +12,6 @@ from implementation.service.scope_delta_parser import (
     normalize_section_id,
     parse_scope_delta_adjudication,
 )
-from signals.service.communication import log
-from taskrouter import agent_for
 
 
 class ScopeDeltaAggregationExit(Exception):
@@ -34,7 +32,7 @@ def _load_pending_deltas(scope_deltas_dir: Path) -> tuple[list[Path], list[dict]
                 continue
             pending_deltas.append(delta)
         else:
-            log(
+            Services.logger().log(
                 f"  coordinator: WARNING — malformed scope-delta "
                 f"{delta_file.name}, preserving as .malformed.json",
             )
@@ -117,7 +115,7 @@ def _dispatch_adjudication(
         adjudication_output,
         planspace,
         parent,
-        agent_file=agent_for("coordination.plan"),
+        agent_file=Services.task_router().agent_for("coordination.plan"),
     )
     if adjudication_result == "ALIGNMENT_CHANGED_PENDING":
         raise ScopeDeltaAggregationExit
@@ -126,7 +124,7 @@ def _dispatch_adjudication(
     if adj_data is not None:
         return adj_data
 
-    log("  coordinator: scope-delta adjudication parse "
+    Services.logger().log("  coordinator: scope-delta adjudication parse "
         "failed — retrying with escalation model")
     retry_prompt = adjudication_prompt.with_name("scope-delta-prompt-retry.md")
     retry_prompt.write_text(
@@ -141,7 +139,7 @@ def _dispatch_adjudication(
         retry_output,
         planspace,
         parent,
-        agent_file=agent_for("coordination.plan"),
+        agent_file=Services.task_router().agent_for("coordination.plan"),
     )
     if retry_result == "ALIGNMENT_CHANGED_PENDING":
         raise ScopeDeltaAggregationExit
@@ -178,7 +176,7 @@ def _apply_adjudication(
     if delta_path.exists():
         delta = read_json(delta_path)
         if delta is None:
-            log(
+            Services.logger().log(
                 f"  coordinator: WARNING — malformed scope-delta "
                 f"{delta_path.name} during adjudication application, "
                 "preserving as .malformed.json",
@@ -200,14 +198,14 @@ def _apply_adjudication(
                     "preserved_path": str(malformed),
                 },
             )
-            log(f"  coordinator: scope delta {delta_id or delta_path.name} → {action}")
+            Services.logger().log(f"  coordinator: scope delta {delta_id or delta_path.name} → {action}")
             return
 
         delta["adjudicated"] = True
         delta["adjudication"] = decision
         write_json(delta_path, delta)
 
-    log(f"  coordinator: scope delta {delta_id or delta_path.name} → {action}")
+    Services.logger().log(f"  coordinator: scope delta {delta_id or delta_path.name} → {action}")
 
 
 def _record_decisions(
@@ -268,7 +266,7 @@ def aggregate_scope_deltas(
     if not pending_deltas:
         return []
 
-    log(
+    Services.logger().log(
         f"  coordinator: {len(pending_deltas)} pending scope "
         f"deltas — dispatching adjudicator",
     )
@@ -284,7 +282,7 @@ def aggregate_scope_deltas(
         adjudication_output,
     )
     if adj_data is None:
-        log("  coordinator: scope-delta adjudication parse "
+        Services.logger().log("  coordinator: scope-delta adjudication parse "
             "failed after retry — fail closed")
         write_json(
             paths.coordination_dir() / "scope-delta-adjudication-failure.json",

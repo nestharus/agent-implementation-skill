@@ -52,10 +52,10 @@ def test_resolve_scan_agent_path_validates_presence(tmp_path, monkeypatch) -> No
     agent_path.parent.mkdir(parents=True, exist_ok=True)
     agent_path.write_text("prompt", encoding="utf-8")
 
-    from src.scan.service import scan_dispatch as sd_mod
+    from containers import TaskRouterService
     monkeypatch.setattr(
-        sd_mod, "_resolve_agent_path",
-        lambda name: agent_path if name == "scan-test.md" else (_ for _ in ()).throw(FileNotFoundError(name)),
+        TaskRouterService, "resolve_agent_path",
+        lambda self, name: agent_path if name == "scan-test.md" else (_ for _ in ()).throw(FileNotFoundError(name)),
     )
 
     assert resolve_scan_agent_path(tmp_path, "scan-test.md") == agent_path

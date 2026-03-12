@@ -10,8 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from staleness.service.section_alignment import collect_modified_files
-from staleness.helpers.detection import diff_files
-from signals.service.communication import log
+from containers import Services
 from orchestrator.types import Section
 
 
@@ -32,7 +31,7 @@ def verify_changed_files(
     snapshotted_candidates = sorted(
         snapshotted_set | (set(reported) & set(pre_hashes))
     )
-    verified_changed = diff_files(codespace, pre_hashes, snapshotted_candidates)
+    verified_changed = Services.staleness().diff_files(codespace, pre_hashes, snapshotted_candidates)
 
     unsnapshotted_reported = [
         relative_path
@@ -40,13 +39,13 @@ def verify_changed_files(
         if relative_path not in pre_hashes and (codespace / relative_path).exists()
     ]
     if unsnapshotted_reported:
-        log(
+        Services.logger().log(
             f"Section {section.number}: {len(unsnapshotted_reported)} "
             f"reported files were outside the pre-snapshot set (trusted)"
         )
     actually_changed = sorted(set(verified_changed) | set(unsnapshotted_reported))
     if len(reported) != len(actually_changed):
-        log(
+        Services.logger().log(
             f"Section {section.number}: {len(reported)} reported, "
             f"{len(actually_changed)} actually changed (detected via diff)"
         )

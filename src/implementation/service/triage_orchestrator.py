@@ -13,9 +13,7 @@ from staleness.service.section_alignment import (
     _run_alignment_check_with_retries,
     collect_modified_files,
 )
-from signals.service.communication import log
 from orchestrator.types import Section
-from taskrouter import agent_for
 
 
 def run_impact_triage(
@@ -100,7 +98,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         parent,
         codespace=codespace,
         section_number=section.number,
-        agent_file=agent_for("coordination.consequence_triage"),
+        agent_file=Services.task_router().agent_for("coordination.consequence_triage"),
     )
 
     triage = read_json(triage_signal_path)
@@ -131,13 +129,13 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
     )
     acked_ids = {ack.get("note_id") for ack in triage_acks} | existing_ids
     if incoming_note_ids and not incoming_note_ids.issubset(acked_ids):
-        log(
+        Services.logger().log(
             f"Section {section.number}: triage did not acknowledge all notes "
             "— full processing",
         )
         return ("continue", None)
 
-    log(
+    Services.logger().log(
         f"Section {section.number}: triage says no rework needed — "
         "skipping to alignment check",
     )
@@ -160,7 +158,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             and verdict.get("aligned") is True
             and verdict.get("frame_ok", True) is True
         ):
-            log(
+            Services.logger().log(
                 f"Section {section.number}: triage + alignment confirms no "
                 "rework needed",
             )

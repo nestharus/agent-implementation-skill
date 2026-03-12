@@ -10,10 +10,9 @@ import re
 from pathlib import Path
 
 from signals.repository.artifact_io import write_json
-from staleness.helpers.hashing import file_hash
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from proposal.repository.state import load_proposal_state
-from signals.service.communication import log
 
 
 def build_trace_map(
@@ -40,7 +39,7 @@ def build_trace_map(
         "files": list(changed_files),
         "governance": {
             "packet_path": str(paths.governance_packet(section_number)),
-            "packet_hash": file_hash(paths.governance_packet(section_number)),
+            "packet_hash": Services.hasher().file_hash(paths.governance_packet(section_number)),
             "problem_ids": [
                 str(x) for x in ps.get("problem_ids", [])
                 if isinstance(x, str) and x.strip()
@@ -53,7 +52,7 @@ def build_trace_map(
         },
     }
     write_json(trace_map_path, trace_map)
-    log(f"Section {section_number}: trace-map written to {trace_map_path}")
+    Services.logger().log(f"Section {section_number}: trace-map written to {trace_map_path}")
     return trace_map
 
 

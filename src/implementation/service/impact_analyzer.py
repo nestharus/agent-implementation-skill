@@ -13,12 +13,8 @@ from containers import Services
 from signals.service.communication import (
     AGENT_NAME,
     DB_SH,
-    log,
 )
-from orchestrator.service.context_assembly import materialize_context_sidecar
 from orchestrator.path_registry import PathRegistry
-from taskrouter.agents import resolve_agent_path
-from taskrouter import agent_for
 from orchestrator.service.section_decisions import (
     build_section_number_map,
     normalize_section_number,
@@ -105,17 +101,17 @@ def analyze_impacts(
     artifacts = PathRegistry(planspace).artifacts
     other_sections = [section for section in all_sections if section.number != section_number]
     if not other_sections:
-        log(f"Section {section_number}: no other sections to check for impact")
+        Services.logger().log(f"Section {section_number}: no other sections to check for impact")
         return []
 
     candidate_sections = collect_impact_candidates(
         planspace, section_number, modified_files, all_sections,
     )
     if not candidate_sections:
-        log(f"Section {section_number}: no candidate sections for impact analysis")
+        Services.logger().log(f"Section {section_number}: no candidate sections for impact analysis")
         return []
 
-    log(
+    Services.logger().log(
         f"Section {section_number}: {len(candidate_sections)} candidate sections "
         f"(of {len(other_sections)} total) for impact analysis",
     )
@@ -193,8 +189,8 @@ This is the primary content of the consequence note the target receives.
     if not Services.prompt_guard().write_validated(impact_prompt_text, impact_prompt_path):
         return []
 
-    sidecar_path = materialize_context_sidecar(
-        str(resolve_agent_path("impact-analyzer.md")),
+    sidecar_path = Services.context_assembly().materialize_context_sidecar(
+        str(Services.task_router().resolve_agent_path("impact-analyzer.md")),
         planspace,
         section=section_number,
     )
@@ -211,13 +207,13 @@ This is the primary content of the consequence note the target receives.
         impact_prompt_path.read_text(encoding="utf-8"),
     )
     if violations:
-        log(
+        Services.logger().log(
             f"Section {section_number}: impact prompt safety violation: "
             f"{violations} — skipping dispatch",
         )
         return []
 
-    log(f"Section {section_number}: running impact analysis")
+    Services.logger().log(f"Section {section_number}: running impact analysis")
     subprocess.run(  # noqa: S603
         [
             "bash",
@@ -242,22 +238,22 @@ This is the primary content of the consequence note the target receives.
         parent,
         codespace=codespace,
         section_number=section_number,
-        agent_file=agent_for("signals.impact_analysis"),
+        agent_file=Services.task_router().agent_for("signals.impact_analysis"),
     )
 
     sec_num_map = build_section_number_map(all_sections)
     impacted_sections = _parse_material_impacts(impact_result, sec_num_map)
     if impacted_sections is not None:
         if not impacted_sections:
-            log(f"Section {section_number}: no material impacts on other sections")
+            Services.logger().log(f"Section {section_number}: no material impacts on other sections")
         else:
-            log(
+            Services.logger().log(
                 f"Section {section_number}: material impact on sections "
                 f"{[section for section, _reason, _risk, _note in impacted_sections]}",
             )
         return impacted_sections
 
-    log(
+    Services.logger().log(
         f"Section {section_number}: impact analysis did not produce valid "
         "JSON — dispatching GLM to normalize raw output",
     )
@@ -312,20 +308,20 @@ If no material impacts can be extracted, reply:
         parent,
         codespace=codespace,
         section_number=section_number,
-        agent_file=agent_for("signals.impact_normalize"),
+        agent_file=Services.task_router().agent_for("signals.impact_normalize"),
     )
     impacted_sections = _parse_material_impacts(normalize_result, sec_num_map)
     if impacted_sections is None:
-        log(
+        Services.logger().log(
             f"Section {section_number}: GLM normalizer also failed to "
             "produce valid JSON — no material impacts recorded",
         )
         return []
     if not impacted_sections:
-        log(f"Section {section_number}: no material impacts on other sections")
+        Services.logger().log(f"Section {section_number}: no material impacts on other sections")
         return []
 
-    log(
+    Services.logger().log(
         f"Section {section_number}: material impact on sections "
         f"{[section for section, _reason, _risk, _note in impacted_sections]}",
     )

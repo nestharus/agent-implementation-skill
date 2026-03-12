@@ -40,7 +40,7 @@ from scan.substrate.prompt_builder import (
 )
 from scan.substrate.related_files import apply_related_files_updates
 from scan.substrate.schemas import read_seed_plan_failclosed, read_shard_failclosed
-from taskrouter import agent_for
+from containers import Services
 
 
 # ---- Main orchestration ----
@@ -201,7 +201,7 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
             prompt_path=prompt_path,
             output_path=output_path,
             codespace=codespace,
-            agent_file=agent_for("scan.substrate_shard"),
+            agent_file=Services.task_router().agent_for("scan.substrate_shard"),
         )
 
         # Validate the shard was produced and is well-formed
@@ -249,7 +249,7 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
         prompt_path=pruner_prompt,
         output_path=pruner_output,
         codespace=codespace,
-        agent_file=agent_for("scan.substrate_prune"),
+        agent_file=Services.task_router().agent_for("scan.substrate_prune"),
     )
 
     substrate_dir = registry.substrate_dir()
@@ -322,7 +322,7 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
         prompt_path=seeder_prompt,
         output_path=seeder_output,
         codespace=codespace,
-        agent_file=agent_for("scan.substrate_seed"),
+        agent_file=Services.task_router().agent_for("scan.substrate_seed"),
     )
 
     if not seeder_ok:

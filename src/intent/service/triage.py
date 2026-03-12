@@ -8,8 +8,6 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 from risk.repository.history import read_history
 from risk.types import PostureProfile
-from signals.service.communication import log
-from taskrouter import agent_for
 
 
 def run_intent_triage(
@@ -140,7 +138,7 @@ Write a JSON signal to: `{triage_signal_path}`
         parent,
         codespace=codespace,
         section_number=section_number,
-        agent_file=agent_for("intent.triage"),
+        agent_file=Services.task_router().agent_for("intent.triage"),
     )
 
     if result == "ALIGNMENT_CHANGED_PENDING":
@@ -159,7 +157,7 @@ Write a JSON signal to: `{triage_signal_path}`
     )
     if triage:
         if triage.get("escalate"):
-            log(
+            Services.logger().log(
                 f"Section {section_number}: triage flagged escalation — "
                 f"re-dispatching with stronger model",
             )
@@ -172,14 +170,14 @@ Write a JSON signal to: `{triage_signal_path}`
                 parent,
                 codespace=codespace,
                 section_number=section_number,
-                agent_file=agent_for("intent.triage"),
+                agent_file=Services.task_router().agent_for("intent.triage"),
             )
             escalated = Services.signals().read(
                 triage_signal_path,
                 expected_fields=["intent_mode"],
             )
             if escalated:
-                log(
+                Services.logger().log(
                     f"Section {section_number}: escalated triage → "
                     f"{escalated.get('intent_mode', 'unknown')}",
                 )
@@ -192,7 +190,7 @@ Write a JSON signal to: `{triage_signal_path}`
                     solve_count=solve_count,
                 )
 
-        log(
+        Services.logger().log(
             f"Section {section_number}: intent triage → "
             f"{triage.get('intent_mode', 'unknown')}",
         )
@@ -205,7 +203,7 @@ Write a JSON signal to: `{triage_signal_path}`
             solve_count=solve_count,
         )
 
-    log(
+    Services.logger().log(
         f"Section {section_number}: intent triage signal missing or "
         f"malformed — defaulting to full (uncertainty → more strategy)",
     )

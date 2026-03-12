@@ -5,13 +5,10 @@ from typing import Any
 
 from containers import Services
 from signals.repository.artifact_io import write_json
-from staleness.helpers.hashing import content_hash, file_hash
 from intent.service import philosophy as _philosophy_bootstrap
 from orchestrator.path_registry import PathRegistry
 
-from signals.service.communication import log
 from orchestrator.types import Section
-from taskrouter import agent_for
 
 
 
@@ -91,10 +88,10 @@ def _compute_intent_pack_hash(
         _sha256_file(corrections_path),
         _sha256_file(philosophy_path),
         _sha256_file(todos_path),
-        content_hash(incoming_notes),
+        Services.hasher().content_hash(incoming_notes),
     ]
     combined = ":".join(parts)
-    return content_hash(combined)
+    return Services.hasher().content_hash(combined)
 
 
 def ensure_global_philosophy(
@@ -160,15 +157,15 @@ def generate_intent_pack(
     if (problem_path.exists() and problem_path.stat().st_size > 0
             and rubric_path.exists() and rubric_path.stat().st_size > 0
             and input_hash == prev_hash and prev_hash):
-        log(f"Section {sec}: intent pack exists, inputs unchanged "
+        Services.logger().log(f"Section {sec}: intent pack exists, inputs unchanged "
             "— skipping generation")
         return intent_sec
 
     if (problem_path.exists() and problem_path.stat().st_size > 0
             and rubric_path.exists() and rubric_path.stat().st_size > 0):
-        log(f"Section {sec}: intent pack inputs changed — regenerating")
+        Services.logger().log(f"Section {sec}: intent pack inputs changed — regenerating")
     else:
-        log(f"Section {sec}: generating intent pack")
+        Services.logger().log(f"Section {sec}: generating intent pack")
 
     inputs_block = f"1. Section spec: `{section.path}`\n"
     if proposal_excerpt.exists():
@@ -290,7 +287,7 @@ Write an empty surface registry to: `{intent_sec / "surface-registry.json"}`
         parent,
         codespace=codespace,
         section_number=sec,
-        agent_file=agent_for("intent.pack_generator"),
+        agent_file=Services.task_router().agent_for("intent.pack_generator"),
     )
 
     if result == "ALIGNMENT_CHANGED_PENDING":
@@ -305,10 +302,10 @@ Write an empty surface registry to: `{intent_sec / "surface-registry.json"}`
         )
 
     if problem_path.exists() and rubric_path.exists():
-        log(f"Section {sec}: intent pack generated")
+        Services.logger().log(f"Section {sec}: intent pack generated")
         # V3/R59: Write input hash so future runs can detect changes
         hash_file.write_text(input_hash, encoding="utf-8")
     else:
-        log(f"Section {sec}: intent pack generation incomplete")
+        Services.logger().log(f"Section {sec}: intent pack generation incomplete")
 
     return intent_sec

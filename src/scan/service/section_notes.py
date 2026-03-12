@@ -10,18 +10,17 @@ from typing import TYPE_CHECKING
 
 from staleness.service.change_tracker import set_flag
 from signals.repository.artifact_io import read_json, rename_malformed
-from staleness.helpers.hashing import content_hash, file_hash as hash_file
-from implementation.service.impact_analyzer import analyze_impacts
 from coordination.repository.notes import (
     read_incoming_notes as load_incoming_notes,
     write_consequence_note,
 )
+from implementation.service.impact_analyzer import analyze_impacts
 from orchestrator.path_registry import PathRegistry
 from orchestrator.service.section_decisions import extract_section_summary
 from implementation.service.snapshot import compute_text_diff, snapshot_modified_files
 
 from containers import Services
-from signals.service.communication import AGENT_NAME, DB_SH, log
+from signals.service.communication import AGENT_NAME, DB_SH
 
 if TYPE_CHECKING:
     from orchestrator.types import Section
@@ -46,10 +45,10 @@ def post_section_completion(
         sec_num,
         codespace,
         modified_files,
-        warn=lambda msg: log(f"Section {sec_num}: WARNING — {msg}"),
+        warn=lambda msg: Services.logger().log(f"Section {sec_num}: WARNING — {msg}"),
     )
 
-    log(f"Section {sec_num}: snapshotted {len(modified_files)} files to {snapshot_dir}")
+    Services.logger().log(f"Section {sec_num}: snapshotted {len(modified_files)} files to {snapshot_dir}")
     Services.communicator().log_artifact(planspace, f"snapshot:section-{sec_num}")
 
     section_summary = extract_section_summary(section.path)
@@ -75,12 +74,12 @@ def post_section_completion(
     for rel_path in sorted(modified_files):
         src = codespace / rel_path
         if src.exists():
-            file_digest = hash_file(src)
+            file_digest = Services.hasher().file_hash(src)
             file_hash = file_digest if file_digest else "unreadable"
         else:
             file_hash = "missing"
         file_fingerprint_parts.append(f"{rel_path}:{file_hash}")
-    files_fingerprint = content_hash("\n".join(file_fingerprint_parts))
+    files_fingerprint = Services.hasher().content_hash("\n".join(file_fingerprint_parts))
 
     for target_num, reason, contract_risk, note_md in impacted_sections:
         note_path = (
@@ -90,7 +89,7 @@ def post_section_completion(
         file_changes = "\n".join(f"- `{rel_path}`" for rel_path in modified_files)
         heading = f"# Consequence Note: Section {sec_num} -> Section {target_num}"
         delta_content = note_md if note_md else f"Impact reason: {reason}"
-        note_id = content_hash(f"{note_path.name}:{files_fingerprint}")[:12]
+        note_id = Services.hasher().content_hash(f"{note_path.name}:{files_fingerprint}")[:12]
 
         note_path = write_consequence_note(
             planspace,
@@ -126,7 +125,7 @@ Snapshot directory: `{snapshot_dir}`
 """,
         )
         Services.communicator().log_artifact(planspace, f"note:from-{sec_num}-to-{target_num}")
-        log(f"Section {sec_num}: left note for section {target_num} at {note_path}")
+        Services.logger().log(f"Section {sec_num}: left note for section {target_num} at {note_path}")
 
     baseline_hash_dir = paths.section_inputs_hashes_dir()
     completed_targets = [
@@ -136,7 +135,7 @@ Snapshot directory: `{snapshot_dir}`
     ]
     if completed_targets:
         set_flag(planspace, db_sh=DB_SH, agent_name=AGENT_NAME)
-        log(
+        Services.logger().log(
             f"Section {sec_num}: set alignment_changed_pending — "
             f"{len(completed_targets)} target section(s) have baseline hashes: "
             f"{completed_targets}"
@@ -171,7 +170,7 @@ Snapshot directory: `{snapshot_dir}`
                     f"(To be filled by bridge agent or next alignment check)\n",
                     encoding="utf-8",
                 )
-                log(
+                Services.logger().log(
                     f"Section {sec_num}: contract artifact written for "
                     f"section {target_num}"
                 )
@@ -203,13 +202,13 @@ def read_incoming_notes(
         else:
             malformed_path = ack_path.with_suffix(".malformed.json")
             rename_malformed(ack_path)
-            log(
+            Services.logger().log(
                 f"Section {sec_num}: note-ack malformed — "
                 f"preserved as {malformed_path.name}, treating as "
                 f"no acknowledgements"
             )
 
-    log(
+    Services.logger().log(
         f"Section {sec_num}: found {len(note_entries)} incoming notes"
         + (f" ({len(resolved_ids)} resolved)" if resolved_ids else "")
     )

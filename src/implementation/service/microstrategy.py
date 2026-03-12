@@ -6,11 +6,8 @@ from containers import Services
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.template import TASK_SUBMISSION_SEMANTICS
-from signals.service.communication import log
 from dispatch.prompt.writers import agent_mail_instructions
-from flow.service.section_ingestion import ingest_and_submit
 from implementation.service.microstrategy_decision import _check_needs_microstrategy
-from taskrouter import agent_for
 
 
 def run_microstrategy(
@@ -39,7 +36,7 @@ def run_microstrategy(
         and not microstrategy_path.exists()
     )
     if not needs_microstrategy and not microstrategy_path.exists():
-        log(
+        Services.logger().log(
             f"Section {section.number}: microstrategy decider did not "
             f"request microstrategy — skipping"
         )
@@ -48,7 +45,7 @@ def run_microstrategy(
     if not needs_microstrategy:
         return microstrategy_path if microstrategy_path.exists() else None
 
-    log(f"Section {section.number}: generating microstrategy")
+    Services.logger().log(f"Section {section.number}: generating microstrategy")
     micro_prompt_path = artifacts / f"microstrategy-{section.number}-prompt.md"
     micro_output_path = artifacts / f"microstrategy-{section.number}-output.md"
     agent_name = f"microstrategy-{section.number}"
@@ -106,7 +103,7 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
 """
     violations = Services.prompt_guard().validate_dynamic(rendered)
     if violations:
-        log(
+        Services.logger().log(
             f"  ERROR: prompt {micro_prompt_path.name} blocked — "
             f"template violations: {violations}"
         )
@@ -126,12 +123,12 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
         agent_name,
         codespace=codespace,
         section_number=section.number,
-        agent_file=agent_for("implementation.microstrategy"),
+        agent_file=Services.task_router().agent_for("implementation.microstrategy"),
     )
     if micro_result == "ALIGNMENT_CHANGED_PENDING":
         return None
 
-    ingest_and_submit(
+    Services.flow_ingestion().ingest_and_submit(
         planspace,
         db_path=planspace / "run.db",
         submitted_by=f"microstrategy-{section.number}",
@@ -140,7 +137,7 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
     )
 
     if not microstrategy_path.exists() or microstrategy_path.stat().st_size == 0:
-        log(
+        Services.logger().log(
             f"Section {section.number}: microstrategy missing after "
             f"dispatch — retrying with escalation model"
         )
@@ -154,13 +151,13 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
             f"{agent_name}-escalation",
             codespace=codespace,
             section_number=section.number,
-            agent_file=agent_for("implementation.microstrategy"),
+            agent_file=Services.task_router().agent_for("implementation.microstrategy"),
         )
         if escalated_result == "ALIGNMENT_CHANGED_PENDING":
             return None
 
     if microstrategy_path.exists() and microstrategy_path.stat().st_size > 0:
-        log(f"Section {section.number}: microstrategy generated")
+        Services.logger().log(f"Section {section.number}: microstrategy generated")
         Services.communicator().record_traceability(
             planspace,
             section.number,
@@ -175,7 +172,7 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
         )
         return microstrategy_path
 
-    log(
+    Services.logger().log(
         f"Section {section.number}: microstrategy generation "
         f"failed — emitting blocker signal"
     )

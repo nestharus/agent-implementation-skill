@@ -6,12 +6,11 @@ import subprocess
 from pathlib import Path
 
 from signals.repository.artifact_io import read_json, rename_malformed, write_json
-from staleness.helpers.hashing import content_hash
+from containers import Services
 from scan.service.template_loader import load_scan_template
 from dispatch.service.prompt_guard import validate_dynamic_content
 from scan.codemap.cache import strip_scan_summaries
 from scan.cli_dispatch import dispatch_agent
-from taskrouter import agent_for
 
 
 def validate_tier_file(tier_file: Path) -> bool:
@@ -54,7 +53,7 @@ def run_tier_ranking(
     tier_inputs = strip_scan_summaries(raw_section) + "\n" + "\n".join(
         sorted(related_files),
     )
-    tier_inputs_hash = content_hash(tier_inputs)
+    tier_inputs_hash = Services.hasher().content_hash(tier_inputs)
 
     if tier_file.is_file():
         if not validate_tier_file(tier_file):
@@ -105,7 +104,7 @@ def run_tier_ranking(
         model=tier_model,
         project=codespace,
         prompt_file=tier_prompt,
-        agent_file=agent_for("scan.tier_rank"),
+        agent_file=Services.task_router().agent_for("scan.tier_rank"),
         stdout_file=tier_output,
     )
 
@@ -120,7 +119,7 @@ def run_tier_ranking(
             model=escalation_model,
             project=codespace,
             prompt_file=tier_prompt,
-            agent_file=agent_for("scan.tier_rank"),
+            agent_file=Services.task_router().agent_for("scan.tier_rank"),
             stdout_file=tier_output,
         )
         if result.returncode == 0:

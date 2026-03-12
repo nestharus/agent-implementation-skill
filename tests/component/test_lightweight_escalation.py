@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from conftest import override_dispatcher_and_guard
+from containers import Services
 from src.proposal.engine.loop import run_proposal_loop
 from src.orchestrator.types import Section
 
@@ -73,7 +74,8 @@ def _install_common_patches(
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.write_model_choice_signal",
+        Services.dispatch_helpers(),
+        "write_model_choice_signal",
         lambda *_args, **_kwargs: None,
     )
 
@@ -90,12 +92,9 @@ def _install_common_patches(
         lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.check_agent_signals",
+        Services.dispatch_helpers(),
+        "check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.loop.ingest_and_submit",
-        lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         "src.proposal.engine.loop.load_reconciliation_result",
@@ -106,20 +105,12 @@ def _install_common_patches(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.persist_decision",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "proposal.service.intent_expansion.handle_user_gate",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         "proposal.service.intent_expansion.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
-        "proposal.service.intent_expansion.persist_decision",
-        lambda *_args, **_kwargs: None,
     )
     def _dispatch(*args, **kwargs):
         output_path = args[2]

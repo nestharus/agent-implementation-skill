@@ -4,11 +4,9 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from signals.repository.artifact_io import read_json, rename_malformed, write_json
-from staleness.helpers.hashing import content_hash
 from orchestrator.path_registry import PathRegistry
 
 from containers import Services
-from signals.service.communication import log
 
 
 def load_surface_registry(
@@ -30,14 +28,14 @@ def load_surface_registry(
         return data
     if data is not None:
         # Schema mismatch: JSON valid but missing required keys (V6/R53)
-        log(f"Section {section_number}: surface registry missing 'surfaces' "
+        Services.logger().log(f"Section {section_number}: surface registry missing 'surfaces' "
             f"key — preserving and starting fresh")
         malformed_path = rename_malformed(registry_path)
         if malformed_path is None and registry_path.exists():
-            log(f"Section {section_number}: failed to rename schema-"
+            Services.logger().log(f"Section {section_number}: failed to rename schema-"
                 "mismatched registry")
     else:
-        log(f"Section {section_number}: surface registry malformed "
+        Services.logger().log(f"Section {section_number}: surface registry malformed "
             f"— preserving and starting fresh")
 
     return {"section": section_number, "next_id": 1, "surfaces": []}
@@ -155,7 +153,7 @@ def normalize_surface_ids(
                 str(surface.get(f, "")).strip()
                 for f in ("kind", "axis_id", "title", "description", "evidence")
             )
-            fp = content_hash(fp_input)[:12]
+            fp = Services.hasher().content_hash(fp_input)[:12]
             surface["_fingerprint"] = fp
 
             if fp in fp_to_id:

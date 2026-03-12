@@ -10,7 +10,6 @@ from signals.repository.artifact_io import read_json, rename_malformed, write_js
 from coordination.repository.notes import read_incoming_notes as load_incoming_notes
 from orchestrator.path_registry import PathRegistry
 from containers import Services
-from signals.service.communication import log
 from orchestrator.types import Section, SectionResult
 
 
@@ -166,13 +165,13 @@ def _collect_outstanding_problems(
 
         delta = read_json(delta_path)
         if delta is None:
-            log(
+            Services.logger().log(
                 f"  coordinator: WARNING — malformed scope-delta "
                 f"{delta_path.name}, preserving as .malformed.json",
             )
             continue
         if not isinstance(delta, dict):
-            log(
+            Services.logger().log(
                 f"  coordinator: WARNING — invalid scope-delta "
                 f"{delta_path.name} (expected object), preserving as .malformed.json",
             )
@@ -192,7 +191,7 @@ def _collect_outstanding_problems(
                 linked_sections.append(section)
         linked_sections = sorted(set(linked_sections))
         if not linked_sections:
-            log(
+            Services.logger().log(
                 f"  coordinator: WARNING — root-reframing scope-delta "
                 f"{delta_path.name} has no linked sections; leaving it pending",
             )
@@ -240,7 +239,7 @@ def _detect_recurrence_patterns(
             if data.get("recurring"):
                 recurring_sections.append(data)
         else:
-            log(
+            Services.logger().log(
                 f"Recurrence signal malformed at {sig_path} "
                 "— preserving as .malformed.json",
             )
@@ -277,7 +276,7 @@ def _detect_recurrence_patterns(
     write_json(recurrence_path, report)
     Services.communicator().log_artifact(planspace, "coordination:recurrence")
 
-    log(
+    Services.logger().log(
         f"  coordinator: recurrence detected — "
         f"{len(recurring_sections)} sections with "
         f"{len(recurring_problems)} recurring problems",

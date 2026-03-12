@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
-from containers import AgentDispatcher, Services
+from containers import AgentDispatcher, CrossSectionService, Services
 from src.proposal.service.excerpt_extractor import extract_excerpts
 from src.orchestrator.types import Section
 
@@ -66,7 +66,8 @@ def test_extract_excerpts_returns_ok_when_setup_creates_files(
 
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
     monkeypatch.setattr(
-        "src.proposal.service.excerpt_extractor.check_agent_signals",
+        Services.dispatch_helpers(),
+        "check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
     )
 
@@ -116,13 +117,14 @@ def test_extract_excerpts_routes_out_of_scope_then_retries(
         def dispatch(self, *args, **kwargs):
             return _dispatch_fn(*args, **kwargs)
 
+    class _CapturingCrossSection(CrossSectionService):
+        def persist_decision(self, _planspace, _section_number, payload):
+            persisted.append(payload)
+
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
-    monkeypatch.setattr("src.proposal.service.excerpt_extractor.check_agent_signals", _check)
+    Services.cross_section.override(providers.Object(_CapturingCrossSection()))
+    monkeypatch.setattr(Services.dispatch_helpers(), "check_agent_signals", _check)
     capturing_pipeline_control._pause_return = "resume:accept root decision"
-    monkeypatch.setattr(
-        "src.proposal.service.excerpt_extractor.persist_decision",
-        lambda _planspace, _section_number, payload: persisted.append(payload),
-    )
     monkeypatch.setattr(
         "src.proposal.service.excerpt_extractor._append_open_problem",
         lambda *_args, **_kwargs: None,
@@ -153,6 +155,7 @@ def test_extract_excerpts_routes_out_of_scope_then_retries(
         assert scope_delta_path.exists()
     finally:
         Services.dispatcher.reset_override()
+        Services.cross_section.reset_override()
 
 def test_extract_excerpts_returns_none_when_parent_does_not_resume(
     base_dirs: tuple[Path, Path],
@@ -172,7 +175,8 @@ def test_extract_excerpts_returns_none_when_parent_does_not_resume(
 
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
     monkeypatch.setattr(
-        "src.proposal.service.excerpt_extractor.check_agent_signals",
+        Services.dispatch_helpers(),
+        "check_agent_signals",
         lambda *_args, **_kwargs: ("needs_parent", "blocked"),
     )
     capturing_pipeline_control._pause_return = "stop"

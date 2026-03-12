@@ -7,7 +7,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from taskrouter.agents import resolve_agent_path
+from containers import Services
 
 
 @dataclass
@@ -35,7 +35,7 @@ def run_agent(
             "behavioral constraints"
         )
 
-    agent_path = resolve_agent_path(agent_file)
+    agent_path = Services.task_router().resolve_agent_path(agent_file)
 
     cmd = [
         "agents",

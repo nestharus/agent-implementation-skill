@@ -139,6 +139,144 @@ class Communicator:
         return _record_traceability(planspace, section_number, file_path, source, category)
 
 
+class LogService:
+    """Structured logging to coordination database."""
+
+    def log(self, msg: str) -> None:
+        from signals.service.communication import log
+        log(msg)
+
+
+class TaskRouterService:
+    """Agent file routing and resolution."""
+
+    def agent_for(self, task_type: str) -> str:
+        from taskrouter import agent_for
+        return agent_for(task_type)
+
+    def resolve_agent_path(self, agent_file: str):
+        from taskrouter.agents import resolve_agent_path
+        return resolve_agent_path(agent_file)
+
+
+class HasherService:
+    """Content and file hashing."""
+
+    def file_hash(self, path) -> str:
+        from staleness.helpers.hashing import file_hash
+        return file_hash(path)
+
+    def content_hash(self, data) -> str:
+        from staleness.helpers.hashing import content_hash
+        return content_hash(data)
+
+    def fingerprint(self, items: list[str]) -> str:
+        from staleness.helpers.hashing import fingerprint
+        return fingerprint(items)
+
+
+class ArtifactIOService:
+    """JSON file read/write with corruption preservation."""
+
+    def read_json(self, path):
+        from signals.repository.artifact_io import read_json
+        return read_json(path)
+
+    def write_json(self, path, data, *, indent: int = 2) -> None:
+        from signals.repository.artifact_io import write_json
+        write_json(path, data, indent=indent)
+
+    def read_if_exists(self, path) -> str:
+        from signals.repository.artifact_io import read_if_exists
+        return read_if_exists(path)
+
+    def read_json_or_default(self, path, default):
+        from signals.repository.artifact_io import read_json_or_default
+        return read_json_or_default(path, default)
+
+    def rename_malformed(self, path):
+        from signals.repository.artifact_io import rename_malformed
+        return rename_malformed(path)
+
+
+class DispatchHelperService:
+    """Cross-cutting dispatch helpers: signals, summaries, model-choice audit."""
+
+    def check_agent_signals(
+        self, output, signal_path=None, output_path=None,
+        planspace=None, parent=None, codespace=None,
+    ):
+        from dispatch.helpers.utils import check_agent_signals
+        return check_agent_signals(
+            output, signal_path, output_path, planspace, parent, codespace,
+        )
+
+    def summarize_output(self, output: str, max_len: int = 200) -> str:
+        from dispatch.helpers.utils import summarize_output
+        return summarize_output(output, max_len)
+
+    def write_model_choice_signal(
+        self, planspace, section, step, model, reason,
+        escalated_from=None,
+    ) -> None:
+        from dispatch.helpers.utils import write_model_choice_signal
+        write_model_choice_signal(
+            planspace, section, step, model, reason, escalated_from,
+        )
+
+
+class ContextAssemblyService:
+    """Context sidecar materialization for agent dispatch."""
+
+    def materialize_context_sidecar(self, agent_file_path, planspace, section=None):
+        from dispatch.service.context_sidecar import materialize_context_sidecar
+        return materialize_context_sidecar(agent_file_path, planspace, section)
+
+
+class CrossSectionService:
+    """Cross-section decision persistence, summaries, and note exchange."""
+
+    def persist_decision(self, planspace, section_number: str, payload: str) -> None:
+        from coordination.service.cross_section import persist_decision
+        persist_decision(planspace, section_number, payload)
+
+    def extract_section_summary(self, path) -> str:
+        from orchestrator.service.section_decisions import extract_section_summary
+        return extract_section_summary(path)
+
+    def read_incoming_notes(self, planspace, section_number: str) -> list[dict]:
+        from coordination.service.cross_section import read_incoming_notes
+        return read_incoming_notes(planspace, section_number)
+
+    def write_consequence_note(self, planspace, from_section, to_section, content):
+        from coordination.repository.notes import write_consequence_note
+        return write_consequence_note(planspace, from_section, to_section, content)
+
+
+class FlowIngestionService:
+    """Flow task submission and ingestion."""
+
+    def ingest_and_submit(self, planspace, db_path, submitted_by, signal_path, **kwargs):
+        from flow.service.section_ingestion import ingest_and_submit
+        return ingest_and_submit(planspace, db_path, submitted_by, signal_path, **kwargs)
+
+    def submit_chain(self, db_path, submitted_by, steps, **kwargs):
+        from flow.engine.submitter import submit_chain
+        return submit_chain(db_path, submitted_by, steps, **kwargs)
+
+
+class StalenessDetectionService:
+    """File snapshot and diff detection for implementation tracking."""
+
+    def snapshot_files(self, codespace, rel_paths: list[str]) -> dict[str, str]:
+        from staleness.helpers.detection import snapshot_files
+        return snapshot_files(codespace, rel_paths)
+
+    def diff_files(self, codespace, before: dict[str, str], reported: list[str]) -> list[str]:
+        from staleness.helpers.detection import diff_files
+        return diff_files(codespace, before, reported)
+
+
 # ---------------------------------------------------------------------------
 # Container
 # ---------------------------------------------------------------------------
@@ -152,3 +290,12 @@ class Services(containers.DeclarativeContainer):
     signals = providers.Singleton(SignalReader)
     pipeline_control = providers.Singleton(PipelineControlService)
     communicator = providers.Singleton(Communicator)
+    logger = providers.Singleton(LogService)
+    task_router = providers.Singleton(TaskRouterService)
+    hasher = providers.Singleton(HasherService)
+    artifact_io = providers.Singleton(ArtifactIOService)
+    dispatch_helpers = providers.Singleton(DispatchHelperService)
+    context_assembly = providers.Singleton(ContextAssemblyService)
+    cross_section = providers.Singleton(CrossSectionService)
+    flow_ingestion = providers.Singleton(FlowIngestionService)
+    staleness = providers.Singleton(StalenessDetectionService)

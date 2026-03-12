@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from signals.repository.artifact_io import read_json, rename_malformed, write_json
-from staleness.helpers.hashing import content_hash
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 _TERMINAL_RESEARCH_STATES = frozenset({"synthesized", "verified", "failed"})
@@ -14,7 +14,7 @@ _TERMINAL_RESEARCH_STATES = frozenset({"synthesized", "verified", "failed"})
 def compute_trigger_hash(questions: list[str]) -> str:
     """Hash the current set of blocking research questions."""
     combined = "|".join(sorted(str(question) for question in questions))
-    return content_hash(combined)
+    return Services.hasher().content_hash(combined)
 
 
 def load_research_status(section_number: str, planspace: Path) -> dict | None:

@@ -13,18 +13,17 @@ from signals.service.communication import (
     AGENT_NAME,
     DB_SH,
     _log_artifact,
-    log,
 )
 from orchestrator.service.context_assembly import materialize_context_sidecar
 from orchestrator.service.pipeline_control import wait_if_paused
-from taskrouter.agents import resolve_agent_path
+from containers import Services
 
 
 def _monitor_service(planspace: Path) -> MonitorService:
     return MonitorService(
         DatabaseClient.for_planspace(planspace, DB_SH),
         AGENT_NAME,
-        logger=log,
+        logger=Services.logger().log,
     )
 
 
@@ -57,13 +56,13 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
             "agent_file is required — every dispatch must have "
             "behavioral constraints"
         )
-    agent_path = resolve_agent_path(agent_file)
+    agent_path = Services.task_router().resolve_agent_path(agent_file)
     if planspace and parent:
         wait_if_paused(planspace, parent)
         # If alignment_changed was received during the pause (or was
         # already pending), do NOT launch the agent — excerpts are stale.
         if alignment_changed_pending(planspace):
-            log("  dispatch_agent: alignment_changed pending — skipping")
+            Services.logger().log("  dispatch_agent: alignment_changed pending — skipping")
             return "ALIGNMENT_CHANGED_PENDING"
 
     # --- Resolve agent-scoped context (S1) ---
@@ -99,7 +98,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
             qa_params = {}
 
         if qa_params.get("qa_mode"):
-            log(f"  QA intercept: evaluating dispatch ({agent_file})")
+            Services.logger().log(f"  QA intercept: evaluating dispatch ({agent_file})")
             try:
                 intercept = intercept_dispatch(
                     agent_file=agent_file,
@@ -108,19 +107,19 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
                     submitted_by=agent_name or "section-loop",
                 )
             except Exception as exc:
-                log(f"  QA ERROR: {exc} — failing open (degraded)")
+                Services.logger().log(f"  QA ERROR: {exc} — failing open (degraded)")
                 from qa.service.qa_interceptor import InterceptResult
                 intercept = InterceptResult(intercepted=True, verdict=None, output_path="dispatch_error")
 
             if not intercept.intercepted:
-                log(f"  QA REJECT: {agent_file} — see {intercept.verdict}")
+                Services.logger().log(f"  QA REJECT: {agent_file} — see {intercept.verdict}")
                 return f"QA_REJECTED:{intercept.verdict}"
             if intercept.output_path:
-                log(f"  QA DEGRADED ({intercept.output_path}) — failing open")
+                Services.logger().log(f"  QA DEGRADED ({intercept.output_path}) — failing open")
             else:
-                log(f"  QA PASS: {agent_file}")
+                Services.logger().log(f"  QA PASS: {agent_file}")
 
-    log(f"  dispatch {model} → {prompt_path.name}")
+    Services.logger().log(f"  dispatch {model} → {prompt_path.name}")
     # Emit per-section dispatch summary event for QA monitor rule C1
     if planspace and section_number:
         name_label = agent_name or model
@@ -141,9 +140,9 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
     )
     output = run_result.output
     if run_result.timed_out:
-        log("  WARNING: agent timed out after 1800s")
+        Services.logger().log("  WARNING: agent timed out after 1800s")
     elif run_result.returncode != 0:
-        log(f"  WARNING: agent returned {run_result.returncode}")
+        Services.logger().log(f"  WARNING: agent returned {run_result.returncode}")
 
     # Shut down agent-monitor after agent finishes
     if monitor_handle is not None:
@@ -183,8 +182,7 @@ def _write_agent_monitor_prompt(
     })
     violations = validate_dynamic_content(dynamic_body)
     if violations:
-        from signals.service.communication import log
-        log(f"  ERROR: monitor prompt blocked — dynamic violations: {violations}")
+        Services.logger().log(f"  ERROR: monitor prompt blocked — dynamic violations: {violations}")
         return prompt_path
     prompt_path.write_text(
         render_template("monitor", dynamic_body),

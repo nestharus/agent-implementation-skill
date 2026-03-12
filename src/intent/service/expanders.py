@@ -8,8 +8,6 @@ from containers import Services
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from intent.service.philosophy import validate_philosophy_grounding
-from signals.service.communication import log
-from taskrouter import agent_for
 
 
 def run_problem_expander(
@@ -97,7 +95,7 @@ materially changed (new constraints, new success criteria).
         parent,
         codespace=codespace,
         section_number=section_number,
-        agent_file=agent_for("intent.problem_expander"),
+        agent_file=Services.task_router().agent_for("intent.problem_expander"),
     )
 
     if result == "ALIGNMENT_CHANGED_PENDING":
@@ -186,7 +184,7 @@ Validate each philosophy surface and classify it:
         parent,
         codespace=codespace,
         section_number=section_number,
-        agent_file=agent_for("intent.philosophy_expander"),
+        agent_file=Services.task_router().agent_for("intent.philosophy_expander"),
     )
 
     if result == "ALIGNMENT_CHANGED_PENDING":
@@ -200,7 +198,7 @@ Validate each philosophy surface and classify it:
             artifacts,
         )
         if not grounding_ok:
-            log(f"Section {section_number}: philosophy expansion broke "
+            Services.logger().log(f"Section {section_number}: philosophy expansion broke "
                 f"grounding — expansion accepted but grounding warning "
                 f"emitted (fail-closed)")
 
@@ -283,17 +281,17 @@ Write a JSON signal to: `{adjudication_path}`
         parent,
         codespace=codespace,
         section_number=section_number,
-        agent_file=agent_for("intent.recurrence_adjudicator"),
+        agent_file=Services.task_router().agent_for("intent.recurrence_adjudicator"),
     )
 
     result = Services.signals().read(adjudication_path)
     if result:
         reopen = result.get("reopen_ids", [])
         if reopen:
-            log(f"Section {section_number}: adjudicator reopened "
+            Services.logger().log(f"Section {section_number}: adjudicator reopened "
                 f"{len(reopen)} surface(s): {reopen}")
         return reopen
 
-    log(f"Section {section_number}: recurrence adjudication signal "
+    Services.logger().log(f"Section {section_number}: recurrence adjudication signal "
         f"missing — keeping surfaces discarded (fail-closed)")
     return []

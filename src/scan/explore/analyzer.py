@@ -13,7 +13,7 @@ from scan.related.match_updater import update_match
 from dispatch.service.prompt_guard import validate_dynamic_content
 from scan.codemap.cache import FileCardCache, is_valid_cached_feedback
 from scan.cli_dispatch import dispatch_agent
-from taskrouter import agent_for
+from containers import Services
 
 
 def safe_name(source_file: str) -> str:
@@ -125,7 +125,7 @@ def analyze_file(
         model=model_policy["deep_analysis"],
         project=codespace,
         prompt_file=prompt_file,
-        agent_file=agent_for("scan.deep_analyze"),
+        agent_file=Services.task_router().agent_for("scan.deep_analyze"),
         stdout_file=response_file,
         stderr_file=stderr_file,
     )

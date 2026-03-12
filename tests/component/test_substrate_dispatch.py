@@ -9,6 +9,7 @@ import pytest
 
 from src.scan.substrate import dispatch
 from src.taskrouter.agents import resolve_agent_path
+from containers import TaskRouterService
 
 
 def test_dispatch_substrate_agent_requires_agent_file(tmp_path: Path) -> None:
@@ -26,8 +27,8 @@ def test_dispatch_substrate_agent_validates_agent_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        dispatch, "resolve_agent_path",
-        lambda name: (_ for _ in ()).throw(FileNotFoundError(name)),
+        TaskRouterService, "resolve_agent_path",
+        lambda self, name: (_ for _ in ()).throw(FileNotFoundError(name)),
     )
 
     with pytest.raises(FileNotFoundError):
@@ -45,8 +46,8 @@ def test_dispatch_substrate_agent_writes_combined_output(
 ) -> None:
     resolved_path = resolve_agent_path("substrate-shard-explorer.md")
     monkeypatch.setattr(
-        dispatch, "resolve_agent_path",
-        lambda name: resolved_path,
+        TaskRouterService, "resolve_agent_path",
+        lambda self, name: resolved_path,
     )
     prompt_path = tmp_path / "prompt.md"
     prompt_path.write_text("prompt", encoding="utf-8")
@@ -95,8 +96,8 @@ def test_dispatch_substrate_agent_handles_timeout(
 ) -> None:
     resolved_path = resolve_agent_path("substrate-shard-explorer.md")
     monkeypatch.setattr(
-        dispatch, "resolve_agent_path",
-        lambda name: resolved_path,
+        TaskRouterService, "resolve_agent_path",
+        lambda self, name: resolved_path,
     )
     prompt_path = tmp_path / "prompt.md"
     prompt_path.write_text("prompt", encoding="utf-8")

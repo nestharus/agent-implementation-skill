@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from signals.repository.artifact_io import read_json, write_json
-from staleness.helpers.hashing import content_hash, file_hash
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from scan.service.scan_dispatch import DEFAULT_SCAN_MODELS
 from scan.service.section_notes import log_phase_failure
@@ -15,7 +15,6 @@ from scan.service.template_loader import load_scan_template
 from dispatch.service.prompt_guard import validate_dynamic_content
 from scan.codemap.cache import strip_scan_summaries
 from scan.cli_dispatch import dispatch_agent
-from taskrouter import agent_for
 
 
 def list_section_files(sections_dir: Path) -> list[Path]:
@@ -84,7 +83,7 @@ def apply_related_files_update(section_file: Path, signal_file: Path) -> bool:
 
 def _sha256_file(path: Path) -> str:
     """Return hex sha256 of file contents, or empty string on error."""
-    return file_hash(path)
+    return Services.hasher().file_hash(path)
 
 
 def _path_exists_in_codespace(codespace: Path, rel_path: str) -> bool:
@@ -209,9 +208,9 @@ def validate_existing_related_files(
         _sha256_file(corrections_file) if corrections_file.is_file() else ""
     )
     section_text_raw = section_file.read_text() if section_file.is_file() else ""
-    section_hash = content_hash(strip_scan_summaries(section_text_raw))
+    section_hash = Services.hasher().content_hash(strip_scan_summaries(section_text_raw))
     combined = f"{codemap_hash}:{corrections_hash}:{section_hash}"
-    combined_hash = content_hash(combined)
+    combined_hash = Services.hasher().content_hash(combined)
 
     signal_file = PathRegistry(
         artifacts_dir.parent
@@ -296,7 +295,7 @@ def validate_existing_related_files(
         model=model_policy["validation"],
         project=codespace,
         prompt_file=validate_prompt,
-        agent_file=agent_for("scan.adjudicate"),
+        agent_file=Services.task_router().agent_for("scan.adjudicate"),
         stdout_file=validate_output,
     )
 
@@ -321,7 +320,7 @@ def validate_existing_related_files(
             model=escalation_model,
             project=codespace,
             prompt_file=validate_prompt,
-            agent_file=agent_for("scan.adjudicate"),
+            agent_file=Services.task_router().agent_for("scan.adjudicate"),
             stdout_file=validate_output,
         )
         normalized = _normalize_validation_signal(
@@ -359,9 +358,9 @@ def validate_existing_related_files(
         write_json(signal_file, normalized)
 
         section_text_updated = section_file.read_text() if section_file.is_file() else ""
-        section_hash = content_hash(strip_scan_summaries(section_text_updated))
+        section_hash = Services.hasher().content_hash(strip_scan_summaries(section_text_updated))
         combined = f"{codemap_hash}:{corrections_hash}:{section_hash}"
-        combined_hash = content_hash(combined)
+        combined_hash = Services.hasher().content_hash(combined)
 
     print(f"[EXPLORE] {section_name}: validation complete")
     codemap_hash_file.write_text(combined_hash)

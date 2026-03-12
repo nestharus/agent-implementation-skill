@@ -23,8 +23,6 @@ from dispatch.prompt.helpers import (
 
 from containers import Services
 from staleness.service.section_alignment import collect_modified_files
-from signals.service.communication import log
-from taskrouter.agents import resolve_agent_path
 from orchestrator.service.context_assembly import materialize_context_sidecar
 from orchestrator.types import Section
 from dispatch.prompt.context import build_prompt_context
@@ -77,7 +75,7 @@ def _write_prompt(
     sidecar_path = None
     if sidecar_agent is not None:
         sidecar_path = materialize_context_sidecar(
-            str(resolve_agent_path(sidecar_agent)),
+            str(Services.task_router().resolve_agent_path(sidecar_agent)),
             planspace, section=section.number,
         )
 
@@ -88,7 +86,7 @@ def _write_prompt(
     if sidecar_agent is not None:
         violations = Services.prompt_guard().validate_dynamic(rendered)
         if violations:
-            log(f"  ERROR: prompt {prompt_path.name} blocked — template "
+            Services.logger().log(f"  ERROR: prompt {prompt_path.name} blocked — template "
                 f"violations: {violations}")
             return None
 
@@ -99,7 +97,7 @@ def _write_prompt(
                 f.write(scoped_context_block(sidecar_path))
     else:
         if not Services.prompt_guard().write_validated(rendered, prompt_path):
-            log(f"  ERROR: prompt {prompt_path.name} blocked — template violations")
+            Services.logger().log(f"  ERROR: prompt {prompt_path.name} blocked — template violations")
             return None
 
     Services.communicator().log_artifact(planspace, log_label)
@@ -496,7 +494,7 @@ def write_impl_alignment_prompt(
         else:
             todos_dir = paths.todos_dir()
             if todos_dir.is_dir() and any(todos_dir.iterdir()):
-                log(
+                Services.logger().log(
                     f"Section {sec}: TODO file not found at "
                     f"{todo_path} but todos/ directory is non-empty"
                 )

@@ -15,7 +15,15 @@ import pytest
 from dependency_injector import providers
 
 from _paths import DB_SH
-from containers import AgentDispatcher, Communicator, PipelineControlService, PromptGuard, Services
+from containers import (
+    AgentDispatcher,
+    Communicator,
+    CrossSectionService,
+    FlowIngestionService,
+    PipelineControlService,
+    PromptGuard,
+    Services,
+)
 
 
 class MockDispatcher(AgentDispatcher):
@@ -55,10 +63,32 @@ def override_dispatcher_and_guard(fake_dispatch_fn):
             path.write_text(content, encoding="utf-8")
             return True
 
+    class _NoopFlow(FlowIngestionService):
+        def ingest_and_submit(self, *_args, **_kwargs):
+            return None
+
+        def submit_chain(self, *_args, **_kwargs):
+            return [1]
+
+    class _NoopCrossSection(CrossSectionService):
+        def persist_decision(self, *_args, **_kwargs):
+            return None
+
+        def extract_section_summary(self, path):
+            return ""
+
+        def read_incoming_notes(self, *_args, **_kwargs):
+            return []
+
+        def write_consequence_note(self, *_args, **_kwargs):
+            return None
+
     Services.dispatcher.override(providers.Object(_Dispatcher()))
     Services.prompt_guard.override(providers.Object(_Guard()))
     Services.pipeline_control.override(providers.Object(NoOpPipelineControl()))
     Services.communicator.override(providers.Object(NoOpCommunicator()))
+    Services.flow_ingestion.override(providers.Object(_NoopFlow()))
+    Services.cross_section.override(providers.Object(_NoopCrossSection()))
     try:
         yield fake_dispatch_fn
     finally:
@@ -66,6 +96,8 @@ def override_dispatcher_and_guard(fake_dispatch_fn):
         Services.prompt_guard.reset_override()
         Services.pipeline_control.reset_override()
         Services.communicator.reset_override()
+        Services.flow_ingestion.reset_override()
+        Services.cross_section.reset_override()
 
 
 @pytest.fixture()

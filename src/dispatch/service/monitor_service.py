@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from signals.service.database_client import DatabaseClient
-from taskrouter.agents import resolve_agent_path
+from containers import Services
 
 
 @dataclass
@@ -54,7 +54,7 @@ class MonitorService:
             [
                 "agents",
                 "--agent-file",
-                str(resolve_agent_path("agent-monitor.md")),
+                str(Services.task_router().resolve_agent_path("agent-monitor.md")),
                 "--file",
                 str(prompt_path),
             ],

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dependency_injector import providers
 
-from containers import AgentDispatcher, PromptGuard, Services
+from containers import AgentDispatcher, ContextAssemblyService, PromptGuard, Services
 from src.implementation.service import impact_analyzer
 from src.orchestrator.types import Section
 
@@ -59,9 +59,12 @@ def test_analyze_impacts_parses_material_impacts_from_primary_output(
         Section(number="02", path=target_path, related_files=["pkg/api.py"]),
     ]
 
-    monkeypatch.setattr(impact_analyzer, "materialize_context_sidecar", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(impact_analyzer, "log", lambda _msg: None)
+    monkeypatch.setattr(Services.logger(), "log", lambda _msg: None)
     monkeypatch.setattr(impact_analyzer.subprocess, "run", lambda *args, **kwargs: None)
+
+    class _NoopContext(ContextAssemblyService):
+        def materialize_context_sidecar(self, *_args, **_kwargs):
+            return None
 
     class _MockGuard(PromptGuard):
         def validate_dynamic(self, content):
@@ -81,6 +84,7 @@ def test_analyze_impacts_parses_material_impacts_from_primary_output(
 
     Services.prompt_guard.override(providers.Object(_MockGuard()))
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    Services.context_assembly.override(providers.Object(_NoopContext()))
     try:
         impacts = impact_analyzer.analyze_impacts(
             planspace,
@@ -99,6 +103,7 @@ def test_analyze_impacts_parses_material_impacts_from_primary_output(
     finally:
         Services.dispatcher.reset_override()
         Services.prompt_guard.reset_override()
+        Services.context_assembly.reset_override()
 
 def test_analyze_impacts_falls_back_to_normalizer_when_primary_is_invalid(
     tmp_path, monkeypatch,
@@ -117,9 +122,12 @@ def test_analyze_impacts_falls_back_to_normalizer_when_primary_is_invalid(
         Section(number="03", path=target_path, related_files=["pkg/service.py"]),
     ]
 
-    monkeypatch.setattr(impact_analyzer, "materialize_context_sidecar", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(impact_analyzer, "log", lambda _msg: None)
+    monkeypatch.setattr(Services.logger(), "log", lambda _msg: None)
     monkeypatch.setattr(impact_analyzer.subprocess, "run", lambda *args, **kwargs: None)
+
+    class _NoopContext(ContextAssemblyService):
+        def materialize_context_sidecar(self, *_args, **_kwargs):
+            return None
 
     class _MockGuard(PromptGuard):
         def validate_dynamic(self, content):
@@ -140,6 +148,7 @@ def test_analyze_impacts_falls_back_to_normalizer_when_primary_is_invalid(
 
     Services.prompt_guard.override(providers.Object(_MockGuard()))
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    Services.context_assembly.override(providers.Object(_NoopContext()))
     try:
         impacts = impact_analyzer.analyze_impacts(
             planspace,
@@ -158,3 +167,4 @@ def test_analyze_impacts_falls_back_to_normalizer_when_primary_is_invalid(
     finally:
         Services.dispatcher.reset_override()
         Services.prompt_guard.reset_override()
+        Services.context_assembly.reset_override()

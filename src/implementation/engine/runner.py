@@ -6,7 +6,6 @@ from staleness.service.change_tracker import check_pending as alignment_changed_
 from implementation.service.triage_orchestrator import run_impact_triage
 from intent.engine.bootstrap import run_intent_bootstrap
 from proposal.service.problem_frame_gate import validate_problem_frame
-from coordination.repository.notes import write_consequence_note
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from implementation.service.microstrategy import run_microstrategy
@@ -21,8 +20,7 @@ from dispatch.service.tool_registry_manager import (
     validate_tool_registry_after_implementation,
 )
 
-from signals.service.communication import log
-from coordination.service.cross_section import (
+from scan.service.section_notes import (
     post_section_completion,
     read_incoming_notes,
 )
@@ -51,7 +49,7 @@ def _read_notes(
     """Read incoming notes from other sections and log if any arrived."""
     incoming_notes = read_incoming_notes(section, planspace, codespace)
     if incoming_notes:
-        log(f"Section {section.number}: received incoming notes from "
+        Services.logger().log(f"Section {section.number}: received incoming notes from "
             f"other sections")
     return incoming_notes
 
@@ -111,7 +109,7 @@ def _surface_tools(
         codespace=codespace,
         policy=policy,
         dispatch_agent=Services.dispatcher().dispatch,
-        log=log,
+        log=Services.logger().log,
         update_blocker_rollup=_update_blocker_rollup,
     )
 
@@ -193,13 +191,13 @@ def _check_upstream_freshness(
     """
     readiness = resolve_readiness(planspace, section.number)
     if not readiness.get("ready"):
-        log(f"Section {section.number}: implementation steps blocked — "
+        Services.logger().log(f"Section {section.number}: implementation steps blocked — "
             f"upstream freshness check failed (execution_ready is false)")
         return False
 
     recon_result = load_reconciliation_result(artifacts, section.number)
     if recon_result and recon_result.get("affected"):
-        log(f"Section {section.number}: implementation steps blocked — "
+        Services.logger().log(f"Section {section.number}: implementation steps blocked — "
             f"reconciliation result marks section as affected")
         return False
 
@@ -275,7 +273,7 @@ def _validate_tools_post_impl(
         codespace=codespace,
         policy=policy,
         dispatch_agent=Services.dispatcher().dispatch,
-        log=log,
+        log=Services.logger().log,
         update_blocker_rollup=_update_blocker_rollup,
     )
 
@@ -291,8 +289,8 @@ def _validate_tools_post_impl(
         codespace=codespace,
         policy=policy,
         dispatch_agent=Services.dispatcher().dispatch,
-        log=log,
-        write_consequence_note=write_consequence_note,
+        log=Services.logger().log,
+        write_consequence_note=Services.cross_section().write_consequence_note,
         update_blocker_rollup=_update_blocker_rollup,
     )
 
@@ -348,13 +346,13 @@ def _run_implementation_pass(
     # through re-proposal to incorporate reconciliation findings.
     recon_result = load_reconciliation_result(artifacts, section.number)
     if recon_result and recon_result.get("affected"):
-        log(f"Section {section.number}: implementation pass blocked — "
+        Services.logger().log(f"Section {section.number}: implementation pass blocked — "
             f"reconciliation result marks section as affected")
         return None
 
     readiness = resolve_readiness(planspace, section.number)
     if not readiness.get("ready"):
-        log(f"Section {section.number}: implementation pass skipped — "
+        Services.logger().log(f"Section {section.number}: implementation pass skipped — "
             f"execution_ready is false")
         return None
 

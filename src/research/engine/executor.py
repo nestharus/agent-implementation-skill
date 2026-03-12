@@ -12,7 +12,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
-from flow.engine.submitter import new_flow_id, submit_chain, submit_fanout
+from flow.engine.submitter import new_flow_id, submit_fanout
 from staleness.service.freshness import compute_section_freshness
 from research.engine.orchestrator import load_research_status, validate_research_plan, write_research_status
 from research.prompt.writer import (
@@ -474,7 +474,7 @@ def submit_research_verify(
         )
         return False
 
-    submit_chain(
+    Services.flow_ingestion().submit_chain(
         db_path,
         f"research-{section_number}",
         [

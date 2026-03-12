@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from signals.repository.artifact_io import read_json, rename_malformed
-from staleness.helpers.hashing import content_hash
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 
@@ -51,7 +51,7 @@ def _dedupe_rollup_blockers(blockers: list[dict]) -> list[dict]:
             if detail.lower().startswith(_SHARED_SEAM_PREFIX):
                 detail = detail[len(_SHARED_SEAM_PREFIX):].strip()
             normalized = " ".join(detail.lower().split())
-            seam_key = content_hash(
+            seam_key = Services.hasher().content_hash(
                 f"{blocker.get('section', 'unknown')}::{normalized}"
             )[:12]
             dedupe_key = f"shared-seam::{seam_key}"

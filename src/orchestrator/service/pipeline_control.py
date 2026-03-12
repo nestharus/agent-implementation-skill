@@ -23,10 +23,10 @@ from staleness.service.input_hasher import (
     section_inputs_hash,
 )
 
+from containers import Services
 from signals.service.communication import (
     AGENT_NAME,
     DB_SH,
-    log,
 )
 
 _section_inputs_hash = section_inputs_hash
@@ -88,10 +88,10 @@ def requeue_changed_sections(
     if current_section and current_section not in queue:
         queue.insert(0, current_section)
     if requeued:
-        log("Alignment changed — requeuing sections "
+        Services.logger().log("Alignment changed — requeuing sections "
             f"with changed inputs: {requeued}")
     else:
-        log("Alignment changed but no section inputs "
+        Services.logger().log("Alignment changed but no section inputs "
             "differ — skipping requeue")
     return requeued
 
@@ -107,7 +107,7 @@ def wait_if_paused(planspace: Path, parent: str) -> None:
         parent,
         db_sh=DB_SH,
         agent_name=AGENT_NAME,
-        logger=log,
+        logger=Services.logger().log,
     )
 
 
@@ -119,7 +119,7 @@ def pause_for_parent(planspace: Path, parent: str, signal: str) -> str:
         signal,
         db_sh=DB_SH,
         agent_name=AGENT_NAME,
-        logger=log,
+        logger=Services.logger().log,
     )
 
 
@@ -143,7 +143,7 @@ def poll_control_messages(
         current_section,
         db_sh=DB_SH,
         agent_name=AGENT_NAME,
-        logger=log,
+        logger=Services.logger().log,
     )
 
 
@@ -153,7 +153,7 @@ def check_for_messages(planspace: Path) -> list[str]:
         planspace,
         db_sh=DB_SH,
         agent_name=AGENT_NAME,
-        logger=log,
+        logger=Services.logger().log,
     )
 
 
@@ -166,5 +166,5 @@ def handle_pending_messages(planspace: Path, queue: list[str],
         completed,
         db_sh=DB_SH,
         agent_name=AGENT_NAME,
-        logger=log,
+        logger=Services.logger().log,
     )
