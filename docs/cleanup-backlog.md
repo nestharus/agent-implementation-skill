@@ -131,6 +131,12 @@ Missing/problematic patterns:
 
 ## DONE
 
+### 92. Dead imports: `update_match` in deep_scanner.py, `WORKFLOW_HOME` in section_communicator.py
+- **Status**: DONE — removed dead `update_match` import from deep_scanner.py (tests updated to import from source module `match_updater`). Removed dead `WORKFLOW_HOME` import from section_communicator.py (kept `DB_PATH` as documented re-export for tests).
+
+### 91. DI bypass: `section_dispatcher.py` direct `_log_artifact` + `pipeline_orchestrator.py` direct mailbox calls
+- **Status**: DONE — replaced 2 direct `_log_artifact` calls in section_dispatcher.py with `Services.communicator().log_artifact()`. Added `mailbox_register`/`mailbox_cleanup` to `Communicator` container service and migrated pipeline_orchestrator.py to use container calls.
+
 ### 90. Stale docstrings referencing old module names (13 __init__.py + 5 source files)
 - **Status**: DONE — updated all __init__.py public API docstrings to reference current module names after the 58-file rename campaign. Fixed 7 stale inline comments across task_dispatcher.py, task_request_ingestor.py, scan_dispatcher.py, qa_interceptor.py, assessment_evaluator.py.
 
