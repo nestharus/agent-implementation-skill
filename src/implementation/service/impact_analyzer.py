@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from dispatch.service.prompt_guard import validate_dynamic_content, write_validated_prompt
+from containers import Services
 from signals.service.communication import (
     AGENT_NAME,
     DB_SH,
@@ -17,7 +17,6 @@ from signals.service.communication import (
     log,
 )
 from orchestrator.service.context_assembly import materialize_context_sidecar
-from dispatch.engine.section_dispatch import dispatch_agent
 from orchestrator.path_registry import PathRegistry
 from taskrouter.agents import resolve_agent_path
 from taskrouter import agent_for
@@ -192,7 +191,7 @@ For each MATERIAL impact, `note_markdown` is REQUIRED — a brief markdown
 description of what changed and what the target section must accommodate.
 This is the primary content of the consequence note the target receives.
 """
-    if not write_validated_prompt(impact_prompt_text, impact_prompt_path):
+    if not Services.prompt_guard().write_validated(impact_prompt_text, impact_prompt_path):
         return []
 
     sidecar_path = materialize_context_sidecar(
@@ -209,7 +208,7 @@ This is the primary content of the consequence note the target receives.
             )
     _log_artifact(planspace, f"prompt:impact-{section_number}")
 
-    violations = validate_dynamic_content(
+    violations = Services.prompt_guard().validate_dynamic(
         impact_prompt_path.read_text(encoding="utf-8"),
     )
     if violations:
@@ -236,7 +235,7 @@ This is the primary content of the consequence note the target receives.
         text=True,
     )
 
-    impact_result = dispatch_agent(
+    impact_result = Services.dispatcher().dispatch(
         impact_model,
         impact_prompt_path,
         impact_output_path,
@@ -303,10 +302,10 @@ If no material impacts can be extracted, reply:
 {{"impacts": []}}
 ```
 """
-    if not write_validated_prompt(normalize_prompt_text, normalize_prompt_path):
+    if not Services.prompt_guard().write_validated(normalize_prompt_text, normalize_prompt_path):
         return []
 
-    normalize_result = dispatch_agent(
+    normalize_result = Services.dispatcher().dispatch(
         normalizer_model,
         normalize_prompt_path,
         normalize_output_path,

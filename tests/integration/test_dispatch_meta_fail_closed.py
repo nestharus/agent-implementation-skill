@@ -18,6 +18,7 @@ from unittest.mock import patch
 import pytest
 
 from _paths import DB_SH
+from conftest import override_dispatcher_and_guard
 
 
 # ---------------------------------------------------------------------------
@@ -158,10 +159,9 @@ class TestDispatcherMetaCorruptionFailsClosed:
             return "agent produced output"
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)
@@ -201,10 +201,9 @@ class TestDispatcherMetaCorruptionFailsClosed:
             return "ok"
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)
@@ -239,10 +238,9 @@ class TestDispatcherMetaCorruptionFailsClosed:
             return "ok"
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion") as mock_reconcile,
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)
@@ -284,10 +282,9 @@ class TestAbsentMetaAllowsFallback:
             return "TIMEOUT: Agent exceeded 600s"
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)
@@ -323,10 +320,9 @@ class TestAbsentMetaAllowsFallback:
             return "normal agent output"
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)

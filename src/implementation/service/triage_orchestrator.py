@@ -5,17 +5,15 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from containers import Services
 from signals.repository.artifact_io import read_json, read_json_or_default, write_json
-from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
-from dispatch.service.prompt_guard import write_validated_prompt
 from staleness.service.section_alignment import (
     _parse_alignment_verdict,
     _run_alignment_check_with_retries,
     collect_modified_files,
 )
 from signals.service.communication import _log_artifact, log
-from dispatch.engine.section_dispatch import dispatch_agent
 from orchestrator.types import Section
 from taskrouter import agent_for
 
@@ -90,12 +88,12 @@ Write a JSON signal to: `{triage_signal_path}`
 Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
 "deferred" (will address later).
 """
-    if not write_validated_prompt(triage_prompt_text, triage_prompt_path):
+    if not Services.prompt_guard().write_validated(triage_prompt_text, triage_prompt_path):
         return ("continue", None)
     _log_artifact(planspace, f"prompt:triage-{section.number}")
 
-    dispatch_agent(
-        resolve(policy, "triage"),
+    Services.dispatcher().dispatch(
+        Services.policies().resolve(policy,"triage"),
         triage_prompt_path,
         triage_output_path,
         planspace,
@@ -150,8 +148,8 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         parent,
         section.number,
         output_prefix="triage-align",
-        model=resolve(policy, "alignment"),
-        adjudicator_model=resolve(policy, "adjudicator"),
+        model=Services.policies().resolve(policy,"alignment"),
+        adjudicator_model=Services.policies().resolve(policy,"adjudicator"),
     )
     if verify_result == "ALIGNMENT_CHANGED_PENDING":
         return ("abort", None)

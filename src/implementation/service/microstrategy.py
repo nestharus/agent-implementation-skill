@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from containers import Services
 from signals.repository.artifact_io import write_json
-from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.template import TASK_SUBMISSION_SEMANTICS
-from dispatch.service.prompt_guard import validate_dynamic_content
 from signals.service.communication import _log_artifact, _record_traceability, log, mailbox_send
-from dispatch.engine.section_dispatch import dispatch_agent
 from orchestrator.service.pipeline_control import poll_control_messages
 from dispatch.prompt.writers import agent_mail_instructions
 from flow.service.section_ingestion import ingest_and_submit
@@ -36,8 +34,8 @@ def run_microstrategy(
             section.number,
             parent,
             codespace=codespace,
-            model=resolve(policy, "microstrategy_decider"),
-            escalation_model=resolve(policy, "escalation_model"),
+            model=Services.policies().resolve(policy,"microstrategy_decider"),
+            escalation_model=Services.policies().resolve(policy,"escalation_model"),
         )
         and not microstrategy_path.exists()
     )
@@ -107,7 +105,7 @@ format with chain or fanout actions — see your agent file for the full
 v2 format reference. {TASK_SUBMISSION_SEMANTICS}
 {agent_mail_instructions(planspace, agent_name, monitor_name)}
 """
-    violations = validate_dynamic_content(rendered)
+    violations = Services.prompt_guard().validate_dynamic(rendered)
     if violations:
         log(
             f"  ERROR: prompt {micro_prompt_path.name} blocked — "
@@ -120,8 +118,8 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
     ctrl = poll_control_messages(planspace, parent, current_section=section.number)
     if ctrl == "alignment_changed":
         return None
-    micro_result = dispatch_agent(
-        resolve(policy, "implementation"),
+    micro_result = Services.dispatcher().dispatch(
+        Services.policies().resolve(policy,"implementation"),
         micro_prompt_path,
         micro_output_path,
         planspace,
@@ -148,8 +146,8 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
             f"dispatch — retrying with escalation model"
         )
         escalation_output = artifacts / f"microstrategy-{section.number}-escalation-output.md"
-        escalated_result = dispatch_agent(
-            resolve(policy, "escalation_model"),
+        escalated_result = Services.dispatcher().dispatch(
+            Services.policies().resolve(policy,"escalation_model"),
             micro_prompt_path,
             escalation_output,
             planspace,

@@ -6,12 +6,11 @@ from pathlib import Path
 
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
-from dispatch.service.prompt_guard import write_validated_prompt
+from containers import Services
 from signals.service.communication import log
-from dispatch.service.model_policy import load_model_policy as read_model_policy
 from intent.service.surfaces import (
     find_discarded_recurrences,
-    load_intent_surfaces,
+    load_combined_intent_surfaces,
     load_surface_registry,
     mark_surfaces_applied,
     mark_surfaces_discarded,
@@ -83,7 +82,7 @@ def run_expansion_cycle(
     budgets: dict | None = None,
 ) -> dict:
     """Run one expansion cycle: validate surfaces and expand definitions."""
-    policy = read_model_policy(planspace)
+    policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
     budget_config = budgets or {}
     no_work = {
@@ -93,7 +92,7 @@ def run_expansion_cycle(
         "surfaces_found": 0,
     }
 
-    surfaces = load_intent_surfaces(section_number, planspace)
+    surfaces = load_combined_intent_surfaces(section_number, planspace)
     if not surfaces:
         return no_work
 

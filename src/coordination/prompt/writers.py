@@ -11,7 +11,7 @@ from typing import Any
 from signals.repository.artifact_io import read_json
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.template import SRC_TEMPLATE_DIR, TASK_SUBMISSION_SEMANTICS, load_template, render
-from dispatch.service.prompt_guard import validate_dynamic_content, write_validated_prompt
+from containers import Services
 from signals.service.communication import _log_artifact, log
 from orchestrator.service.context_assembly import materialize_context_sidecar
 from taskrouter.agents import resolve_agent_path
@@ -55,7 +55,7 @@ def write_fix_prompt(
         "modified_report": str(modified_report),
         "codespace": str(codespace),
     })
-    violations = validate_dynamic_content(rendered)
+    violations = Services.prompt_guard().validate_dynamic(rendered)
     if violations:
         log(f"  ERROR: prompt {prompt_path.name} blocked — template "
             f"violations: {violations}")
@@ -145,7 +145,7 @@ def write_bridge_prompt(
         "contract_delta_path": str(contract_delta_path),
         "note_output_refs": note_output_refs,
     })
-    if not write_validated_prompt(rendered, bridge_prompt):
+    if not Services.prompt_guard().write_validated(rendered, bridge_prompt):
         return None
     _log_artifact(planspace, f"prompt:bridge-resolve-{group_index}")
     return bridge_prompt

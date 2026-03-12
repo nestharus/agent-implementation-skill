@@ -4,14 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from containers import Services
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from intent.service.philosophy import validate_philosophy_grounding
-from dispatch.service.prompt_guard import write_validated_prompt
 from signals.service.communication import _log_artifact, log
-from dispatch.service.model_policy import resolve
-from dispatch.engine.section_dispatch import dispatch_agent
-from signals.repository.signal_reader import read_agent_signal
 from taskrouter import agent_for
 
 
@@ -88,12 +85,12 @@ For each surface:
 Set restart_required=true if new axes were added or existing axes
 materially changed (new constraints, new success criteria).
 """
-    if not write_validated_prompt(expand_prompt_text, prompt_path):
+    if not Services.prompt_guard().write_validated(expand_prompt_text, prompt_path):
         return None
     _log_artifact(planspace, f"prompt:problem-expand-{section_number}")
 
-    result = dispatch_agent(
-        resolve(policy, "intent_problem_expander"),
+    result = Services.dispatcher().dispatch(
+        Services.policies().resolve(policy,"intent_problem_expander"),
         prompt_path,
         output_path,
         planspace,
@@ -106,7 +103,7 @@ materially changed (new constraints, new success criteria).
     if result == "ALIGNMENT_CHANGED_PENDING":
         return None
 
-    return read_agent_signal(delta_path)
+    return Services.signals().read(delta_path)
 
 
 def run_philosophy_expander(
@@ -177,12 +174,12 @@ Validate each philosophy surface and classify it:
 }}
 ```
 """
-    if not write_validated_prompt(phil_expand_text, prompt_path):
+    if not Services.prompt_guard().write_validated(phil_expand_text, prompt_path):
         return None
     _log_artifact(planspace, f"prompt:philosophy-expand-{section_number}")
 
-    result = dispatch_agent(
-        resolve(policy, "intent_philosophy_expander"),
+    result = Services.dispatcher().dispatch(
+        Services.policies().resolve(policy,"intent_philosophy_expander"),
         prompt_path,
         output_path,
         planspace,
@@ -195,7 +192,7 @@ Validate each philosophy surface and classify it:
     if result == "ALIGNMENT_CHANGED_PENDING":
         return None
 
-    delta = read_agent_signal(delta_path)
+    delta = Services.signals().read(delta_path)
     if delta and delta.get("applied", {}).get("philosophy_updated"):
         grounding_ok = validate_philosophy_grounding(
             philosophy_path,
@@ -274,12 +271,12 @@ Write a JSON signal to: `{adjudication_path}`
 }}
 ```
 """
-    if not write_validated_prompt(recurrence_prompt_text, prompt_path):
+    if not Services.prompt_guard().write_validated(recurrence_prompt_text, prompt_path):
         return []
     _log_artifact(planspace, f"prompt:recurrence-adjudicate-{section_number}")
 
-    dispatch_agent(
-        resolve(policy, "intent_recurrence_adjudicator"),
+    Services.dispatcher().dispatch(
+        Services.policies().resolve(policy,"intent_recurrence_adjudicator"),
         prompt_path,
         output_path,
         planspace,
@@ -289,7 +286,7 @@ Write a JSON signal to: `{adjudication_path}`
         agent_file=agent_for("intent.recurrence_adjudicator"),
     )
 
-    result = read_agent_signal(adjudication_path)
+    result = Services.signals().read(adjudication_path)
     if result:
         reopen = result.get("reopen_ids", [])
         if reopen:

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from signals.repository.artifact_io import read_json
-from dispatch.service.model_policy import load_model_policy, resolve
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from risk.repository.history import compute_history_adjustment, pattern_signature, read_history
 from risk.repository.serialization import (
@@ -30,7 +30,6 @@ from risk.prompt.builders import build_risk_assessment_prompt, build_optimizatio
 from risk.service.response_parser import parse_risk_assessment, parse_risk_plan
 from risk.service.posture_hysteresis import apply_posture_hysteresis
 from risk.service.fallback import fallback_plan, lightweight_fallback_plan
-from dispatch.service.prompt_guard import write_validated_prompt
 from taskrouter import agent_for
 
 
@@ -56,7 +55,7 @@ def run_risk_loop(
         assessment_prompt_path = (
             paths.risk_dir() / f"{scope}-risk-assessment-prompt.md"
         )
-        if not write_validated_prompt(assessment_prompt, assessment_prompt_path):
+        if not Services.prompt_guard().write_validated(assessment_prompt, assessment_prompt_path):
             fallback = fallback_plan(
                 package,
                 layer,
@@ -106,7 +105,7 @@ def run_risk_loop(
                 "Produce a strictly more conservative plan.\n"
             )
         optimization_prompt_path = paths.risk_dir() / f"{scope}-risk-plan-prompt.md"
-        if not write_validated_prompt(optimization_prompt, optimization_prompt_path):
+        if not Services.prompt_guard().write_validated(optimization_prompt, optimization_prompt_path):
             fallback = fallback_plan(
                 package,
                 layer,
@@ -188,7 +187,7 @@ def run_lightweight_risk_check(
     write_package(paths, package)
     prompt = build_risk_assessment_prompt(package, planspace, scope)
     prompt_path = paths.risk_dir() / f"{scope}-light-risk-assessment-prompt.md"
-    if not write_validated_prompt(prompt, prompt_path):
+    if not Services.prompt_guard().write_validated(prompt, prompt_path):
         fallback = fallback_plan(
             package,
             layer,
@@ -231,7 +230,7 @@ def run_lightweight_risk_check(
         lightweight=True,
     )
     optimization_prompt_path = paths.risk_dir() / f"{scope}-light-risk-plan-prompt.md"
-    if not write_validated_prompt(optimization_prompt, optimization_prompt_path):
+    if not Services.prompt_guard().write_validated(optimization_prompt, optimization_prompt_path):
         fallback = lightweight_fallback_plan(
             package,
             layer,
@@ -418,13 +417,13 @@ def _history_signature(entry: RiskHistoryEntry) -> str:
 
 
 def _risk_assessor_model(planspace: Path) -> str:
-    policy = load_model_policy(planspace)
-    return resolve(policy, "risk_assessor")
+    policy = Services.policies().load(planspace)
+    return Services.policies().resolve(policy, "risk_assessor")
 
 
 def _execution_optimizer_model(planspace: Path) -> str:
-    policy = load_model_policy(planspace)
-    return resolve(policy, "execution_optimizer")
+    policy = Services.policies().load(planspace)
+    return Services.policies().resolve(policy, "execution_optimizer")
 
 
 def _coerce_float(value: object, default: float) -> float:

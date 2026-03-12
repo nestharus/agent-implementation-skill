@@ -20,15 +20,11 @@ import logging
 import time
 from pathlib import Path
 
+from containers import Services
 from signals.repository.artifact_io import read_json, rename_malformed, write_json
-from dispatch.service.model_policy import load_model_policy, resolve
 from orchestrator.path_registry import PathRegistry
 from proposal.helpers.qa_verdict import parse_qa_verdict
 
-# dispatch_agent is imported at module level so it can be patched in
-# tests.  This module is itself lazy-imported by the dispatcher inside
-# a try/except, so import failures here do not break non-QA dispatch.
-from dispatch.engine.section_dispatch import dispatch_agent  # noqa: E402
 from taskrouter.agents import resolve_agent_path
 from taskrouter import agent_for
 
@@ -302,13 +298,12 @@ def intercept_task(
         # even though the payload path arrived through an internal task.
         # Agent contracts are trusted but payload is not — validate the
         # full rendered prompt before dispatch.
-        from dispatch.service.prompt_guard import validate_dynamic_content as _validate
         intercepts_dir = PathRegistry(planspace).qa_intercepts_dir()
         intercepts_dir.mkdir(parents=True, exist_ok=True)
         prompt_path = intercepts_dir / f"qa-{task_id}-prompt.md"
         prompt_path.write_text(qa_prompt_text, encoding="utf-8")
 
-        safety_violations = _validate(payload_content)
+        safety_violations = Services.prompt_guard().validate_dynamic(payload_content)
         if safety_violations:
             print(
                 f"[qa-interceptor] Prompt safety violation in payload "
@@ -321,9 +316,9 @@ def intercept_task(
         output_path = intercepts_dir / f"qa-{task_id}-output.md"
 
         # 6. Dispatch QA agent.
-        policy = load_model_policy(planspace)
-        model = resolve(policy, "qa_interceptor")
-        output = dispatch_agent(
+        policy = Services.policies().load(planspace)
+        model = Services.policies().resolve(policy, "qa_interceptor")
+        output = Services.dispatcher().dispatch(
             model,
             prompt_path,
             output_path,

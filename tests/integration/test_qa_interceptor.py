@@ -13,12 +13,12 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from _paths import DB_SH, WORKFLOW_HOME
-
+from conftest import override_dispatcher_and_guard
 
 # ---------------------------------------------------------------------------
 # Helpers — same pattern as test_dispatch_meta_fail_closed.py
@@ -238,7 +238,7 @@ class TestInterceptTask:
             "rationale": "Contract compliant",
         })
 
-        with patch("qa.service.qa_interceptor.dispatch_agent", return_value=mock_output):
+        with override_dispatcher_and_guard(lambda *a, **kw: mock_output):
             passed, rationale_path, reason_code = intercept_task(
                 task, "alignment-judge.md", ps,
             )
@@ -273,14 +273,20 @@ class TestInterceptTask:
             "rationale": "Contract compliant",
         })
 
-        with patch("qa.service.qa_interceptor.dispatch_agent", return_value=mock_output) as mock_dispatch:
+        captured_model: list[str] = []
+
+        def capture_dispatch(*args, **kwargs):
+            captured_model.append(args[0])
+            return mock_output
+
+        with override_dispatcher_and_guard(capture_dispatch):
             passed, rationale_path, reason_code = intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
         assert passed is True
         assert rationale_path is None
-        assert mock_dispatch.call_args.args[0] == "policy-qa-model"
+        assert captured_model[0] == "policy-qa-model"
 
     def test_reject_returns_false_with_rationale(
         self, tmp_path: Path,
@@ -306,7 +312,7 @@ class TestInterceptTask:
             "violations": ["v1"],
         })
 
-        with patch("qa.service.qa_interceptor.dispatch_agent", return_value=mock_output):
+        with override_dispatcher_and_guard(lambda *a, **kw: mock_output):
             passed, rationale_path, reason_code = intercept_task(
                 task, "alignment-judge.md", ps,
             )
@@ -338,10 +344,10 @@ class TestInterceptTask:
             "# Test\n", encoding="utf-8",
         )
 
-        with patch(
-            "qa.service.qa_interceptor.dispatch_agent",
-            side_effect=RuntimeError("agent crashed"),
-        ):
+        def raise_error(*args, **kwargs):
+            raise RuntimeError("agent crashed")
+
+        with override_dispatcher_and_guard(raise_error):
             passed, rationale_path, reason_code = intercept_task(
                 task, "alignment-judge.md", ps,
             )
@@ -366,10 +372,7 @@ class TestInterceptTask:
             "# Test\n", encoding="utf-8",
         )
 
-        with patch(
-            "qa.service.qa_interceptor.dispatch_agent",
-            return_value="This is not JSON at all",
-        ):
+        with override_dispatcher_and_guard(lambda *a, **kw: "This is not JSON at all"):
             passed, rationale_path, reason_code = intercept_task(
                 task, "alignment-judge.md", ps,
             )
@@ -394,7 +397,14 @@ class TestInterceptTask:
             "# Test\n", encoding="utf-8",
         )
 
-        with patch("qa.service.qa_interceptor.dispatch_agent") as mock_da:
+        dispatch_called = False
+
+        def tracking_dispatch(*args, **kwargs):
+            nonlocal dispatch_called
+            dispatch_called = True
+            return ""
+
+        with override_dispatcher_and_guard(tracking_dispatch):
             passed, rationale_path, reason_code = intercept_task(
                 task, "nonexistent-agent-xyz.md", ps,
             )
@@ -402,8 +412,8 @@ class TestInterceptTask:
         assert passed is True
         assert rationale_path is None
         assert reason_code == "target_unavailable"
-        # dispatch_agent should NOT have been called.
-        mock_da.assert_not_called()
+        # dispatch should NOT have been called.
+        assert not dispatch_called
 
     def test_prompt_written_to_qa_intercepts(self, tmp_path: Path) -> None:
         """QA prompt file is written to artifacts/qa-intercepts/."""
@@ -422,7 +432,7 @@ class TestInterceptTask:
         )
 
         mock_output = '{"verdict": "PASS", "rationale": "OK"}'
-        with patch("qa.service.qa_interceptor.dispatch_agent", return_value=mock_output):
+        with override_dispatcher_and_guard(lambda *a, **kw: mock_output):
             intercept_task(task, "alignment-judge.md", ps)
 
         prompt_path = ps / "artifacts" / "qa-intercepts" / "qa-104-prompt.md"
@@ -456,10 +466,9 @@ class TestDispatcherQaIntegration:
             return "normal output"
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {
                 "id": task_id, "type": "test-task",
@@ -492,7 +501,6 @@ class TestDispatcherQaIntegration:
             json.dumps({"qa_mode": True}), encoding="utf-8",
         )
 
-        from qa.service import qa_interceptor
         import flow.engine.dispatcher as task_dispatcher
 
         call_count = {"n": 0}
@@ -506,11 +514,9 @@ class TestDispatcherQaIntegration:
             return "normal agent output"
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(qa_interceptor, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("alignment-judge.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {
                 "id": task_id, "type": "test-task",
@@ -543,7 +549,6 @@ class TestDispatcherQaIntegration:
             json.dumps({"qa_mode": True}), encoding="utf-8",
         )
 
-        from qa.service import qa_interceptor
         import flow.engine.dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
@@ -557,11 +562,9 @@ class TestDispatcherQaIntegration:
             return "should not reach here"
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(qa_interceptor, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("alignment-judge.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {
                 "id": task_id, "type": "test-task",
@@ -594,7 +597,6 @@ class TestDispatcherQaIntegration:
             json.dumps({"qa_mode": True}), encoding="utf-8",
         )
 
-        from qa.service import qa_interceptor
         import flow.engine.dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
@@ -608,11 +610,9 @@ class TestDispatcherQaIntegration:
             return ""
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(qa_interceptor, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("alignment-judge.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {
                 "id": task_id, "type": "test-task",
@@ -643,7 +643,6 @@ class TestDispatcherQaIntegration:
             json.dumps({"qa_mode": True}), encoding="utf-8",
         )
 
-        from qa.service import qa_interceptor
         import flow.engine.dispatcher as task_dispatcher
 
         call_count = {"n": 0}
@@ -656,11 +655,9 @@ class TestDispatcherQaIntegration:
             return "normal output"
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(qa_interceptor, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("alignment-judge.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {
                 "id": task_id, "type": "test-task",
@@ -692,7 +689,6 @@ class TestDispatcherQaIntegration:
             json.dumps({"qa_mode": True}), encoding="utf-8",
         )
 
-        from qa.service import qa_interceptor
         import flow.engine.dispatcher as task_dispatcher
 
         def fake_dispatch(*args, **kwargs):
@@ -702,11 +698,9 @@ class TestDispatcherQaIntegration:
             return "output"
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
-            patch.object(qa_interceptor, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("alignment-judge.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {
                 "id": task_id, "type": "test-task",
@@ -741,7 +735,7 @@ class TestInterceptDispatch:
         prompt.write_text("# Test prompt\n", encoding="utf-8")
 
         mock_output = '{"verdict": "PASS", "rationale": "OK"}'
-        with patch("qa.service.qa_interceptor.dispatch_agent", return_value=mock_output):
+        with override_dispatcher_and_guard(lambda *a, **kw: mock_output):
             passed, rationale_path, reason_code = intercept_dispatch(
                 agent_file="alignment-judge.md",
                 prompt_path=prompt,
@@ -767,7 +761,7 @@ class TestInterceptDispatch:
             "rationale": "Contract violation",
             "violations": ["scope"],
         })
-        with patch("qa.service.qa_interceptor.dispatch_agent", return_value=mock_output):
+        with override_dispatcher_and_guard(lambda *a, **kw: mock_output):
             passed, rationale_path, reason_code = intercept_dispatch(
                 agent_file="alignment-judge.md",
                 prompt_path=prompt,
@@ -788,7 +782,14 @@ class TestInterceptDispatch:
         prompt = ps / "artifacts" / "test-prompt.md"
         prompt.write_text("# Test\n", encoding="utf-8")
 
-        with patch("qa.service.qa_interceptor.dispatch_agent") as mock_da:
+        dispatch_called = False
+
+        def tracking_dispatch(*args, **kwargs):
+            nonlocal dispatch_called
+            dispatch_called = True
+            return ""
+
+        with override_dispatcher_and_guard(tracking_dispatch):
             passed, rationale_path, reason_code = intercept_dispatch(
                 agent_file="nonexistent-agent-xyz.md",
                 prompt_path=prompt,
@@ -797,7 +798,7 @@ class TestInterceptDispatch:
 
         assert passed is True
         assert reason_code == "target_unavailable"
-        mock_da.assert_not_called()
+        assert not dispatch_called
 
 
 # ---------------------------------------------------------------------------

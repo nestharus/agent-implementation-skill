@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from dependency_injector import providers
+
+from containers import PromptGuard, Services
 from risk.engine import loop as risk_loop
 from risk.prompt import builders as risk_prompt_builders
 from risk.repository.history import append_history_entry
@@ -439,61 +442,77 @@ def test_run_risk_loop_applies_posture_hysteresis_after_plan(tmp_path: Path) -> 
 
 def test_run_risk_loop_calls_prompt_guard_validation(
     tmp_path: Path,
-    monkeypatch,
 ) -> None:
     package = _package()
     _write_artifacts(tmp_path)
     prompt_calls: list[Path] = []
 
-    def _validate(content: str, path: Path) -> bool:
-        prompt_calls.append(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
-        return True
+    class _CaptureGuard(PromptGuard):
+        def write_validated(self, content, path):
+            prompt_calls.append(path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            return True
 
-    monkeypatch.setattr("risk.engine.loop.write_validated_prompt", _validate)
+        def validate_dynamic(self, content):
+            return []
+
+    Services.prompt_guard.override(providers.Object(_CaptureGuard()))
 
     def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
         if kwargs["agent_file"] == "risk-assessor.md":
             return json.dumps(serialize_assessment(_assessment()))
         return json.dumps(serialize_plan(_valid_plan()))
 
-    run_risk_loop(
-        tmp_path,
-        "section-03",
-        "implementation",
-        package,
-        _dispatch,
-    )
+    try:
+        run_risk_loop(
+            tmp_path,
+            "section-03",
+            "implementation",
+            package,
+            _dispatch,
+        )
 
-    assert prompt_calls == [
-        tmp_path / "artifacts" / "risk" / "section-03-risk-assessment-prompt.md",
-        tmp_path / "artifacts" / "risk" / "section-03-risk-plan-prompt.md",
-    ]
+        assert prompt_calls == [
+            tmp_path / "artifacts" / "risk" / "section-03-risk-assessment-prompt.md",
+            tmp_path / "artifacts" / "risk" / "section-03-risk-plan-prompt.md",
+        ]
+    finally:
+        Services.prompt_guard.reset_override()
 
 
 def test_run_risk_loop_falls_back_when_prompt_guard_fails(
     tmp_path: Path,
-    monkeypatch,
 ) -> None:
     package = _package()
     _write_artifacts(tmp_path)
-    monkeypatch.setattr("risk.engine.loop.write_validated_prompt", lambda *_args, **_kwargs: False)
+
+    class _FailGuard(PromptGuard):
+        def write_validated(self, content, path):
+            return False
+
+        def validate_dynamic(self, content):
+            return []
+
+    Services.prompt_guard.override(providers.Object(_FailGuard()))
 
     def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
         raise AssertionError("dispatch should not be called when prompt validation fails")
 
-    plan = run_risk_loop(
-        tmp_path,
-        "section-03",
-        "implementation",
-        package,
-        _dispatch,
-    )
+    try:
+        plan = run_risk_loop(
+            tmp_path,
+            "section-03",
+            "implementation",
+            package,
+            _dispatch,
+        )
 
-    assert plan.step_decisions[0].posture == PostureProfile.P4_REOPEN
-    assert plan.step_decisions[0].decision == StepDecision.REJECT_REOPEN
-    assert plan.reopen_steps == ["explore-01"]
+        assert plan.step_decisions[0].posture == PostureProfile.P4_REOPEN
+        assert plan.step_decisions[0].decision == StepDecision.REJECT_REOPEN
+        assert plan.reopen_steps == ["explore-01"]
+    finally:
+        Services.prompt_guard.reset_override()
 
 
 def _package() -> RiskPackage:

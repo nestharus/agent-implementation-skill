@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from dispatch.engine.section_dispatch import dispatch_agent
+from containers import Services
 from signals.service.communication import log
 
 
@@ -51,7 +51,7 @@ def _dispatch_with_signal_check(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Dispatch an agent and verify the expected signal artifact exists."""
-    dispatch_agent(model, prompt, output, planspace, parent, **kwargs)
+    Services.dispatcher().dispatch(model, prompt, output, planspace, parent, **kwargs)
     return classifier(expected_signal)
 
 

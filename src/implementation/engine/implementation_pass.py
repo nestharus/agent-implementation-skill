@@ -24,8 +24,8 @@ from risk.types import (
     StepDecision,
 )
 from proposal.service.readiness_resolver import resolve_readiness
+from containers import Services
 from signals.service.communication import AGENT_NAME, DB_SH, log, mailbox_send
-from dispatch.engine.section_dispatch import dispatch_agent
 from orchestrator.service.pipeline_control import (
     _section_inputs_hash,
     handle_pending_messages,
@@ -384,7 +384,7 @@ def run_implementation_pass(
             planspace,
             sec_num,
             section,
-            dispatch_agent,
+            Services.dispatcher().dispatch,
         )
         if risk_plan is None:
             refresh_roal_input_index(
@@ -470,7 +470,7 @@ def run_implementation_pass(
                 reassessed_plan = _maybe_reassess_deferred_steps(
                     planspace,
                     sec_num,
-                    dispatch_agent,
+                    Services.dispatcher().dispatch,
                     current_risk_plan,
                 )
                 if reassessed_plan is None:

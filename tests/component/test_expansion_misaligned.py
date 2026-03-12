@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import override_dispatcher_and_guard
 from src.proposal.engine.loop import run_proposal_loop
 from src.orchestrator.types import Section
 
@@ -117,10 +118,7 @@ def _install_common_patches(
             return "proposal output"
         return "alignment output"
 
-    monkeypatch.setattr(
-        "src.proposal.engine.loop.dispatch_agent",
-        _dispatch,
-    )
+    return _dispatch
 
 
 def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
@@ -132,7 +130,7 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
     proposal_path = (
         planspace / "artifacts" / "proposals" / "section-01-integration-proposal.md"
     )
-    _install_common_patches(monkeypatch, planspace, proposal_path)
+    _dispatch = _install_common_patches(monkeypatch, planspace, proposal_path)
 
     problems = iter(["missing constraint", None])
     combined_surfaces = iter([
@@ -168,20 +166,21 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
         },
     )
 
-    result = run_proposal_loop(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        {
-            "proposal": "gpt",
-            "alignment": "claude",
-            "intent_judge": "claude",
-            "escalation_model": "stronger",
-        },
-        {"proposal_max": 3, "implementation_max": 3},
-        incoming_notes="",
-    )
+    with override_dispatcher_and_guard(_dispatch):
+        result = run_proposal_loop(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            {
+                "proposal": "gpt",
+                "alignment": "claude",
+                "intent_judge": "claude",
+                "escalation_model": "stronger",
+            },
+            {"proposal_max": 3, "implementation_max": 3},
+            incoming_notes="",
+        )
 
     assert result == "missing constraint"
     assert expansion_calls == ["01"]
@@ -196,7 +195,7 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
     proposal_path = (
         planspace / "artifacts" / "proposals" / "section-01-integration-proposal.md"
     )
-    _install_common_patches(monkeypatch, planspace, proposal_path)
+    _dispatch = _install_common_patches(monkeypatch, planspace, proposal_path)
 
     problems = iter(["proposal drift", None])
     combined_surfaces = iter([
@@ -232,20 +231,21 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
         },
     )
 
-    result = run_proposal_loop(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        {
-            "proposal": "gpt",
-            "alignment": "claude",
-            "intent_judge": "claude",
-            "escalation_model": "stronger",
-        },
-        {"proposal_max": 3, "implementation_max": 3},
-        incoming_notes="",
-    )
+    with override_dispatcher_and_guard(_dispatch):
+        result = run_proposal_loop(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            {
+                "proposal": "gpt",
+                "alignment": "claude",
+                "intent_judge": "claude",
+                "escalation_model": "stronger",
+            },
+            {"proposal_max": 3, "implementation_max": 3},
+            incoming_notes="",
+        )
 
     assert result == "proposal drift"
     assert expansion_calls == []
@@ -260,7 +260,7 @@ def test_misaligned_definition_gap_expansion_respects_budget(
     proposal_path = (
         planspace / "artifacts" / "proposals" / "section-01-integration-proposal.md"
     )
-    _install_common_patches(monkeypatch, planspace, proposal_path)
+    _dispatch = _install_common_patches(monkeypatch, planspace, proposal_path)
 
     problems = iter(["missing axis", None])
     combined_surfaces = iter([
@@ -303,20 +303,21 @@ def test_misaligned_definition_gap_expansion_respects_budget(
         },
     )
 
-    result = run_proposal_loop(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        {
-            "proposal": "gpt",
-            "alignment": "claude",
-            "intent_judge": "claude",
-            "escalation_model": "stronger",
-        },
-        {"proposal_max": 3, "implementation_max": 3},
-        incoming_notes="",
-    )
+    with override_dispatcher_and_guard(_dispatch):
+        result = run_proposal_loop(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            {
+                "proposal": "gpt",
+                "alignment": "claude",
+                "intent_judge": "claude",
+                "escalation_model": "stronger",
+            },
+            {"proposal_max": 3, "implementation_max": 3},
+            incoming_notes="",
+        )
 
     assert result == "missing axis"
     assert expansion_calls == []

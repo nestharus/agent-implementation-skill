@@ -6,13 +6,62 @@ Everything else — file I/O, db.sh SQLite, hashing — runs for real.
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from dependency_injector import providers
 
 from _paths import DB_SH
+from containers import AgentDispatcher, PromptGuard, Services
+
+
+class MockDispatcher(AgentDispatcher):
+    """Test double for AgentDispatcher that records calls."""
+
+    def __init__(self) -> None:
+        self.mock = MagicMock(return_value="")
+
+    def dispatch(self, *args, **kwargs) -> str:
+        return self.mock(*args, **kwargs)
+
+
+@contextlib.contextmanager
+def override_dispatcher_and_guard(fake_dispatch_fn):
+    """Context manager that overrides Services.dispatcher and prompt_guard.
+
+    Use this in place of ``patch.object(module, "dispatch_agent", ...)`` and
+    ``patch.object(module, "validate_dynamic_content", ...)`` for modules
+    that were migrated to the container.
+
+    ``fake_dispatch_fn`` receives the same args as ``AgentDispatcher.dispatch``.
+
+    Yields the ``fake_dispatch_fn`` (unchanged) so callers can inspect
+    call state if needed.
+    """
+
+    class _Dispatcher(AgentDispatcher):
+        def dispatch(self, *args, **kwargs):
+            return fake_dispatch_fn(*args, **kwargs)
+
+    class _Guard(PromptGuard):
+        def validate_dynamic(self, content):
+            return []
+
+        def write_validated(self, content, path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            return True
+
+    Services.dispatcher.override(providers.Object(_Dispatcher()))
+    Services.prompt_guard.override(providers.Object(_Guard()))
+    try:
+        yield fake_dispatch_fn
+    finally:
+        Services.dispatcher.reset_override()
+        Services.prompt_guard.reset_override()
 
 
 @pytest.fixture()
@@ -70,36 +119,14 @@ def section_01(planspace: Path) -> None:
 
 
 @pytest.fixture()
-def mock_dispatch(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    """Mock dispatch_agent at the canonical location AND all import sites.
+def mock_dispatch() -> MagicMock:
+    """Override the Services.dispatcher container provider.
 
-    Python caches ``from X import Y`` at import time, so patching only
-    the definition module doesn't affect modules that already imported
-    the name.  We patch everywhere dispatch_agent is used.
-
-    Returns the mock so tests can configure return values per-call::
+    Returns the inner MagicMock so tests can configure return values::
 
         mock_dispatch.return_value = '{"aligned": true}'
     """
-    mock = MagicMock(return_value="")
-    monkeypatch.setattr("dispatch.engine.section_dispatch.dispatch_agent", mock)
-    monkeypatch.setattr("implementation.engine.runner.dispatch_agent", mock)
-    monkeypatch.setattr("implementation.service.reexplore.dispatch_agent", mock)
-    monkeypatch.setattr("implementation.service.microstrategy_decision.dispatch_agent", mock)
-    monkeypatch.setattr("coordination.engine.global_coordinator.dispatch_agent", mock)
-    monkeypatch.setattr("coordination.engine.plan_executor.dispatch_agent", mock)
-    monkeypatch.setattr("implementation.service.scope_delta_aggregator.dispatch_agent", mock)
-    monkeypatch.setattr("staleness.service.section_alignment.dispatch_agent", mock)
-    monkeypatch.setattr("orchestrator.engine.main.dispatch_agent", mock)
-    monkeypatch.setattr("intent.service.loop_bootstrap.dispatch_agent", mock)
-    monkeypatch.setattr("intent.service.triage.dispatch_agent", mock)
-    monkeypatch.setattr("implementation.service.triage_orchestrator.dispatch_agent", mock)
-    monkeypatch.setattr("proposal.service.problem_frame_gate.dispatch_agent", mock)
-    monkeypatch.setattr("proposal.engine.proposal_pass.dispatch_agent", mock)
-    monkeypatch.setattr("implementation.engine.implementation_pass.dispatch_agent", mock)
-    monkeypatch.setattr("intent.service.expansion.dispatch_agent", mock)
-    monkeypatch.setattr("proposal.service.excerpt_extractor.dispatch_agent", mock)
-    monkeypatch.setattr("proposal.engine.loop.dispatch_agent", mock)
-    monkeypatch.setattr("implementation.service.microstrategy.dispatch_agent", mock)
-    monkeypatch.setattr("implementation.engine.loop.dispatch_agent", mock)
-    return mock
+    mock_disp = MockDispatcher()
+    Services.dispatcher.override(providers.Object(mock_disp))
+    yield mock_disp.mock
+    Services.dispatcher.reset_override()

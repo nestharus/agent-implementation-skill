@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
-from dispatch.service.prompt_guard import write_validated_prompt
+from containers import Services
 
 
 def write_shard_prompt(
@@ -54,7 +54,7 @@ def write_shard_prompt(
     refs_block = "\n".join(refs)
 
     prompt_path = prompts_dir / f"shard-{section_num}.md"
-    write_validated_prompt(f"""# Shard Explorer: Section {section_num}
+    Services.prompt_guard().write_validated(f"""# Shard Explorer: Section {section_num}
 
 ## Your Task
 
@@ -121,7 +121,7 @@ def write_pruner_prompt(
     refs_block = "\n".join(refs)
 
     prompt_path = prompts_dir / "pruner.md"
-    write_validated_prompt(f"""# Pruner: Strategic Merge
+    Services.prompt_guard().write_validated(f"""# Pruner: Strategic Merge
 
 ## Your Task
 
@@ -182,7 +182,7 @@ def write_seeder_prompt(
     refs_block = "\n".join(refs)
 
     prompt_path = prompts_dir / "seeder.md"
-    write_validated_prompt(f"""# Seeder: Create Anchors and Wire References
+    Services.prompt_guard().write_validated(f"""# Seeder: Create Anchors and Wire References
 
 ## Your Task
 

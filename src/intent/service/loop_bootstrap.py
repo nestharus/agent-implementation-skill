@@ -3,40 +3,16 @@
 from pathlib import Path
 from typing import Any
 
+from containers import Services
 from signals.repository.artifact_io import write_json
 from staleness.helpers.hashing import content_hash, file_hash
 from intent.service import philosophy as _philosophy_bootstrap
-from intent.service import philosophy_bootstrap as _philosophy_bootstrap_impl
-from intent.service import philosophy_dispatch as _philosophy_dispatch_impl
-from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
 
 from signals.service.communication import _log_artifact, log
-from dispatch.engine.section_dispatch import dispatch_agent
-from dispatch.service.model_policy import load_model_policy as read_model_policy
-from signals.repository.signal_reader import read_agent_signal
 from orchestrator.types import Section
-from dispatch.service.prompt_guard import write_validated_prompt
 from taskrouter import agent_for
 
-
-def _sync_philosophy_bootstrap_overrides() -> None:
-    """Propagate monkeypatched wrapper dependencies into the split modules.
-
-    The philosophy module was split into philosophy_bootstrap (orchestration)
-    and philosophy_dispatch (agent dispatch).  Monkey-patching must reach
-    the actual implementation modules as well as the facade.
-    """
-    # Facade module (backward compat)
-    _philosophy_bootstrap.dispatch_agent = dispatch_agent
-    _philosophy_bootstrap.read_agent_signal = read_agent_signal
-    _philosophy_bootstrap.read_model_policy = read_model_policy
-    _philosophy_bootstrap.write_validated_prompt = write_validated_prompt
-    # Implementation modules where the names are actually resolved at runtime
-    _philosophy_bootstrap_impl.dispatch_agent = dispatch_agent
-    _philosophy_bootstrap_impl.read_model_policy = read_model_policy
-    _philosophy_bootstrap_impl.write_validated_prompt = write_validated_prompt
-    _philosophy_dispatch_impl.dispatch_agent = dispatch_agent
 
 
 def _walk_md_bounded(
@@ -126,7 +102,6 @@ def ensure_global_philosophy(
     codespace: Path,
     parent: str,
 ) -> dict[str, Any]:
-    _sync_philosophy_bootstrap_overrides()
     return _philosophy_bootstrap.ensure_global_philosophy(
         planspace,
         codespace,
@@ -146,7 +121,7 @@ def generate_intent_pack(
 
     Returns the path to the section's intent directory.
     """
-    policy = read_model_policy(planspace)
+    policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
     sec = section.number
     intent_sec = paths.intent_section_dir(sec)
@@ -303,12 +278,12 @@ Write an empty surface registry to: `{intent_sec / "surface-registry.json"}`
 {{"section": "{sec}", "next_id": 1, "surfaces": []}}
 ```
 """
-    if not write_validated_prompt(pack_prompt_text, prompt_path):
+    if not Services.prompt_guard().write_validated(pack_prompt_text, prompt_path):
         return None
     _log_artifact(planspace, f"prompt:intent-pack-{sec}")
 
-    result = dispatch_agent(
-        resolve(policy, "intent_pack"),
+    result = Services.dispatcher().dispatch(
+        Services.policies().resolve(policy,"intent_pack"),
         prompt_path,
         output_path,
         planspace,

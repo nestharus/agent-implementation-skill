@@ -14,6 +14,7 @@ from unittest.mock import patch
 import pytest
 
 from _paths import DB_SH
+from conftest import override_dispatcher_and_guard
 
 
 # ---------------------------------------------------------------------------
@@ -109,10 +110,9 @@ def _dispatch_with_captured_kwargs(
     from flow.engine import dispatcher as task_dispatcher
 
     with (
-        patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
+        override_dispatcher_and_guard(fake_dispatch),
         patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
         patch.object(task_dispatcher, "reconcile_task_completion"),
-        patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
     ):
         task_dispatcher.dispatch_task(db_path, ps, task)
 

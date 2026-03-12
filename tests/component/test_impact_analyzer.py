@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dependency_injector import providers
+
+from containers import AgentDispatcher, PromptGuard, Services
 from src.implementation.service import impact_analyzer
 from src.orchestrator.types import Section
 
@@ -61,33 +64,45 @@ def test_analyze_impacts_parses_material_impacts_from_primary_output(
 
     monkeypatch.setattr(impact_analyzer, "materialize_context_sidecar", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(impact_analyzer, "_log_artifact", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(impact_analyzer, "validate_dynamic_content", lambda _text: [])
     monkeypatch.setattr(impact_analyzer, "log", lambda _msg: None)
     monkeypatch.setattr(impact_analyzer.subprocess, "run", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        impact_analyzer,
-        "dispatch_agent",
-        lambda *_args, **_kwargs: (
-            '{"impacts": [{"to": "2", "impact": "MATERIAL", '
-            '"reason": "Changed API", "contract_risk": true, '
-            '"note_markdown": "Update consumer"}]}'
-        ),
-    )
 
-    impacts = impact_analyzer.analyze_impacts(
-        planspace,
-        "01",
-        "Source summary",
-        ["pkg/api.py"],
-        sections,
-        codespace,
-        "parent-task",
-        summary_reader=lambda path: path.read_text(encoding="utf-8"),
-        impact_model="glm",
-        normalizer_model="glm",
-    )
+    class _MockGuard(PromptGuard):
+        def validate_dynamic(self, content):
+            return []
+        def write_validated(self, content, path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            return True
 
-    assert impacts == [("02", "Changed API", True, "Update consumer")]
+    class _MockDispatcher(AgentDispatcher):
+        def dispatch(self, *args, **kwargs):
+            return (
+                '{"impacts": [{"to": "2", "impact": "MATERIAL", '
+                '"reason": "Changed API", "contract_risk": true, '
+                '"note_markdown": "Update consumer"}]}'
+            )
+
+    Services.prompt_guard.override(providers.Object(_MockGuard()))
+    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    try:
+        impacts = impact_analyzer.analyze_impacts(
+            planspace,
+            "01",
+            "Source summary",
+            ["pkg/api.py"],
+            sections,
+            codespace,
+            "parent-task",
+            summary_reader=lambda path: path.read_text(encoding="utf-8"),
+            impact_model="glm",
+            normalizer_model="glm",
+        )
+
+        assert impacts == [("02", "Changed API", True, "Update consumer")]
+    finally:
+        Services.dispatcher.reset_override()
+        Services.prompt_guard.reset_override()
 
 
 def test_analyze_impacts_falls_back_to_normalizer_when_primary_is_invalid(
@@ -109,31 +124,43 @@ def test_analyze_impacts_falls_back_to_normalizer_when_primary_is_invalid(
 
     monkeypatch.setattr(impact_analyzer, "materialize_context_sidecar", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(impact_analyzer, "_log_artifact", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(impact_analyzer, "validate_dynamic_content", lambda _text: [])
     monkeypatch.setattr(impact_analyzer, "log", lambda _msg: None)
     monkeypatch.setattr(impact_analyzer.subprocess, "run", lambda *args, **kwargs: None)
 
-    def fake_dispatch(*_args, **kwargs):
-        if kwargs["agent_file"] == "impact-analyzer.md":
-            return "not valid json"
-        return (
-            '{"impacts": [{"to": "03", "impact": "MATERIAL", '
-            '"reason": "Normalized reason", "note_markdown": "Normalized note"}]}'
+    class _MockGuard(PromptGuard):
+        def validate_dynamic(self, content):
+            return []
+        def write_validated(self, content, path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            return True
+
+    class _MockDispatcher(AgentDispatcher):
+        def dispatch(self, *args, **kwargs):
+            if kwargs.get("agent_file") == "impact-analyzer.md":
+                return "not valid json"
+            return (
+                '{"impacts": [{"to": "03", "impact": "MATERIAL", '
+                '"reason": "Normalized reason", "note_markdown": "Normalized note"}]}'
+            )
+
+    Services.prompt_guard.override(providers.Object(_MockGuard()))
+    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    try:
+        impacts = impact_analyzer.analyze_impacts(
+            planspace,
+            "01",
+            "Source summary",
+            ["pkg/service.py"],
+            sections,
+            codespace,
+            "parent-task",
+            summary_reader=lambda path: path.read_text(encoding="utf-8"),
+            impact_model="glm",
+            normalizer_model="glm",
         )
 
-    monkeypatch.setattr(impact_analyzer, "dispatch_agent", fake_dispatch)
-
-    impacts = impact_analyzer.analyze_impacts(
-        planspace,
-        "01",
-        "Source summary",
-        ["pkg/service.py"],
-        sections,
-        codespace,
-        "parent-task",
-        summary_reader=lambda path: path.read_text(encoding="utf-8"),
-        impact_model="glm",
-        normalizer_model="glm",
-    )
-
-    assert impacts == [("03", "Normalized reason", False, "Normalized note")]
+        assert impacts == [("03", "Normalized reason", False, "Normalized note")]
+    finally:
+        Services.dispatcher.reset_override()
+        Services.prompt_guard.reset_override()

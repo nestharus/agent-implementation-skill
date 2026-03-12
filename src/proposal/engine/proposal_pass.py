@@ -23,7 +23,7 @@ from staleness.service.change_tracker import (
 )
 from scan.service.section_loader import parse_related_files
 from signals.service.communication import AGENT_NAME, DB_SH, log, mailbox_send
-from dispatch.engine.section_dispatch import dispatch_agent
+from containers import Services
 from orchestrator.service.pipeline_control import (
     handle_pending_messages,
     requeue_changed_sections,
@@ -386,7 +386,7 @@ def run_proposal_pass(
                 risk_summary = _risk_check_proposal(
                     planspace,
                     sec_num,
-                    dispatch_agent,
+                    Services.dispatcher().dispatch,
                 )
                 if risk_summary is not None:
                     log(

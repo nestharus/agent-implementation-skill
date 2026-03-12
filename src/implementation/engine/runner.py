@@ -11,7 +11,7 @@ from implementation.service.triage_orchestrator import run_impact_triage
 from intent.engine.bootstrap import run_intent_bootstrap
 from proposal.service.problem_frame_gate import validate_problem_frame
 from coordination.repository.notes import write_consequence_note
-from dispatch.service.model_policy import resolve
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from implementation.service.microstrategy import run_microstrategy
 from proposal.engine.loop import run_proposal_loop
@@ -42,12 +42,8 @@ from coordination.service.cross_section import (
     post_section_completion,
     read_incoming_notes,
 )
-from dispatch.engine.section_dispatch import dispatch_agent
 from dispatch.helpers.utils import check_agent_signals, summarize_output, write_model_choice_signal
-from dispatch.service.model_policy import load_model_policy as read_model_policy
-from signals.repository.signal_reader import read_agent_signal
 from dispatch.prompt.template import TASK_SUBMISSION_SEMANTICS
-from dispatch.service.prompt_guard import validate_dynamic_content
 from flow.service.section_ingestion import ingest_and_submit
 from orchestrator.service.pipeline_control import (
     handle_pending_messages,
@@ -161,7 +157,7 @@ def run_section(
     """
     paths = PathRegistry(planspace)
     artifacts = paths.artifacts
-    policy = read_model_policy(planspace)
+    policy = Services.policies().load(planspace)
 
     # -----------------------------------------------------------------
     # Implementation-only mode: skip proposal steps, jump to execution
@@ -219,7 +215,7 @@ def run_section(
         parent=parent,
         codespace=codespace,
         policy=policy,
-        dispatch_agent=dispatch_agent,
+        dispatch_agent=Services.dispatcher().dispatch,
         log=log,
         update_blocker_rollup=_update_blocker_rollup,
     )
@@ -386,7 +382,7 @@ def _run_section_implementation_steps(
         parent=parent,
         codespace=codespace,
         policy=policy,
-        dispatch_agent=dispatch_agent,
+        dispatch_agent=Services.dispatcher().dispatch,
         log=log,
         update_blocker_rollup=_update_blocker_rollup,
     )
@@ -405,7 +401,7 @@ def _run_section_implementation_steps(
         parent=parent,
         codespace=codespace,
         policy=policy,
-        dispatch_agent=dispatch_agent,
+        dispatch_agent=Services.dispatcher().dispatch,
         log=log,
         write_consequence_note=write_consequence_note,
         update_blocker_rollup=_update_blocker_rollup,
@@ -418,8 +414,8 @@ def _run_section_implementation_steps(
         post_section_completion(
             section, actually_changed, all_sections,
             planspace, codespace, parent,
-            impact_model=resolve(policy, "impact_analysis"),
-            normalizer_model=resolve(policy, "impact_normalizer"),
+            impact_model=Services.policies().resolve(policy,"impact_analysis"),
+            normalizer_model=Services.policies().resolve(policy,"impact_normalizer"),
         )
 
     return actually_changed

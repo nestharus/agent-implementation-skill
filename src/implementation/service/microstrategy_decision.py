@@ -1,10 +1,9 @@
 from pathlib import Path
 
+from containers import Services
 from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
 
-from dispatch.engine.section_dispatch import dispatch_agent
-from dispatch.service.prompt_guard import write_validated_prompt
 from taskrouter import agent_for
 
 
@@ -163,12 +162,12 @@ Write a JSON signal to: `{signal_path}`
 {{"needs_microstrategy": true, "reason": "..."}}
 ```
 """
-    if not write_validated_prompt(decider_prompt_text, decider_prompt):
+    if not Services.prompt_guard().write_validated(decider_prompt_text, decider_prompt):
         return False
     signal_path.parent.mkdir(parents=True, exist_ok=True)
 
     # First attempt with default model
-    dispatch_agent(
+    Services.dispatcher().dispatch(
         model, decider_prompt, decider_output,
         planspace, parent, codespace=codespace,
         section_number=section_number,
@@ -190,7 +189,7 @@ Write a JSON signal to: `{signal_path}`
         artifacts
         / f"microstrategy-decider-{section_number}-escalation-output.md"
     )
-    dispatch_agent(
+    Services.dispatcher().dispatch(
         escalation_model, decider_prompt, escalation_output,
         planspace, parent, codespace=codespace,
         section_number=section_number,

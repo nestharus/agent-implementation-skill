@@ -8,7 +8,7 @@ from typing import Any
 
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
-from dispatch.service.prompt_guard import write_validated_prompt
+from containers import Services
 from signals.service.communication import _log_artifact, log
 
 
@@ -217,7 +217,7 @@ Batches execute sequentially — batch 0 completes before batch 1 starts.
 Example: `[[0, 2], [1]]` means run groups 0 and 2 in parallel first,
 then run group 1.
 """
-    if not write_validated_prompt(plan_prompt_text, prompt_path):
+    if not Services.prompt_guard().write_validated(plan_prompt_text, prompt_path):
         return None
     _log_artifact(planspace, "prompt:coordination-plan")
     return prompt_path

@@ -8,9 +8,8 @@ from typing import Any
 
 from signals.repository.artifact_io import read_json, write_json
 from staleness.helpers.hashing import file_hash
-from dispatch.service.model_policy import resolve
+from containers import Services
 from orchestrator.path_registry import PathRegistry
-from dispatch.service.prompt_guard import write_validated_prompt
 from taskrouter import agent_for
 
 
@@ -102,7 +101,7 @@ def surface_tool_registry(
         )
         repair_prompt = artifacts / f"tool-registry-repair-{section_number}-prompt.md"
         repair_output = artifacts / f"tool-registry-repair-{section_number}-output.md"
-        if not write_validated_prompt(
+        if not Services.prompt_guard().write_validated(
             f"# Task: Repair Tool Registry\n\n"
             f"The tool registry at `{tool_registry_path}` contains "
             f"malformed JSON.\n\nError: {exc}\n\n"
@@ -112,7 +111,7 @@ def surface_tool_registry(
         ):
             return pre_tool_total
         dispatch_agent(
-            resolve(policy, "tool_registrar"),
+            Services.policies().resolve(policy, "tool_registrar"),
             repair_prompt,
             repair_output,
             planspace,
@@ -197,7 +196,7 @@ def validate_tool_registry_after_implementation(
                 f"dispatching tool-registrar for validation"
             )
             registrar_prompt = artifacts / f"tool-registrar-{section_number}-prompt.md"
-            write_validated_prompt(
+            Services.prompt_guard().write_validated(
                 f"# Validate Tool Registry\n\n"
                 f"Section {section_number} just completed implementation.\n"
                 f"Validate the tool registry at: `{tool_registry_path}`\n\n"
@@ -231,7 +230,7 @@ def validate_tool_registry_after_implementation(
             )
             registrar_output = artifacts / f"tool-registrar-{section_number}-output.md"
             dispatch_agent(
-                resolve(policy, "tool_registrar"),
+                Services.policies().resolve(policy, "tool_registrar"),
                 registrar_prompt,
                 registrar_output,
                 planspace,
@@ -254,7 +253,7 @@ def validate_tool_registry_after_implementation(
         repair_output = (
             artifacts / f"tool-registry-post-repair-{section_number}-output.md"
         )
-        write_validated_prompt(
+        Services.prompt_guard().write_validated(
             f"# Task: Repair Tool Registry (Post-Implementation)\n\n"
             f"The tool registry at `{tool_registry_path}` became "
             f"malformed after section {section_number} implementation.\n\n"
@@ -264,7 +263,7 @@ def validate_tool_registry_after_implementation(
             repair_prompt,
         )
         dispatch_agent(
-            resolve(policy, "tool_registrar"),
+            Services.policies().resolve(policy, "tool_registrar"),
             repair_prompt,
             repair_output,
             planspace,
@@ -340,7 +339,7 @@ def handle_tool_friction(
     bridge_tools_output = artifacts / f"bridge-tools-{section_number}-output.md"
     bridge_signal_path = paths.tool_bridge_signal(section_number)
     default_proposal_path = paths.tool_bridge_proposal(section_number)
-    if not write_validated_prompt(
+    if not Services.prompt_guard().write_validated(
         f"""# Task: Bridge Tool Islands for Section {section_number}
 
 ## Context
@@ -387,7 +386,7 @@ with JSON:
         pre_bridge_registry_hash = file_hash(tool_registry_path)
 
     dispatch_agent(
-        resolve(policy, "bridge_tools"),
+        Services.policies().resolve(policy, "bridge_tools"),
         bridge_tools_prompt,
         bridge_tools_output,
         planspace,
@@ -417,7 +416,7 @@ with JSON:
             artifacts / f"bridge-tools-{section_number}-escalation-output.md"
         )
         dispatch_agent(
-            resolve(policy, "escalation_model"),
+            Services.policies().resolve(policy, "escalation_model"),
             bridge_tools_prompt,
             escalation_output,
             planspace,
@@ -475,7 +474,7 @@ with JSON:
             )
             digest_prompt = artifacts / f"tool-digest-regen-{section_number}-prompt.md"
             digest_output = artifacts / f"tool-digest-regen-{section_number}-output.md"
-            write_validated_prompt(
+            Services.prompt_guard().write_validated(
                 f"# Task: Regenerate Tool Digest\n\n"
                 f"The tool registry at `{tool_registry_path}` was "
                 f"modified by bridge-tools for section "
@@ -487,7 +486,7 @@ with JSON:
                 digest_prompt,
             )
             dispatch_agent(
-                resolve(policy, "tool_registrar"),
+                Services.policies().resolve(policy, "tool_registrar"),
                 digest_prompt,
                 digest_output,
                 planspace,

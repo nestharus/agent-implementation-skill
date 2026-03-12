@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from dependency_injector import providers
 
+from containers import PromptGuard, Services
 from src.research.prompt.writer import (
     write_research_plan_prompt,
     write_research_synthesis_prompt,
@@ -137,21 +139,24 @@ def test_write_research_synthesis_and_verify_prompts_reference_outputs(
 
 def test_write_research_plan_prompt_returns_none_when_prompt_guard_blocks(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     planspace = tmp_path / "planspace"
     trigger_path = _write_common_inputs(planspace)
 
-    def _block_prompt(_content: str, path: Path) -> bool:
-        path.write_text("blocked\n", encoding="utf-8")
-        return False
+    class _BlockingGuard(PromptGuard):
+        def write_validated(self, content: str, path) -> bool:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("blocked\n", encoding="utf-8")
+            return False
 
-    monkeypatch.setattr(
-        "src.research.prompt.writer.write_validated_prompt",
-        _block_prompt,
-    )
+        def validate_dynamic(self, content: str) -> list[str]:
+            return []
 
-    prompt_path = write_research_plan_prompt("03", planspace, None, trigger_path)
+    Services.prompt_guard.override(providers.Object(_BlockingGuard()))
+    try:
+        prompt_path = write_research_plan_prompt("03", planspace, None, trigger_path)
+    finally:
+        Services.prompt_guard.reset_override()
 
     assert prompt_path is None
     assert (

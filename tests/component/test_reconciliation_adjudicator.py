@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from dependency_injector import providers
 
+from containers import AgentDispatcher, ModelPolicyService, PromptGuard, Services
 from src.reconciliation.service import adjudicator
 
 
@@ -23,20 +25,12 @@ def test_adjudicate_ungrouped_candidates_returns_empty_for_singleton(
 
 def test_adjudicate_ungrouped_candidates_writes_artifact_and_parses_json(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     planspace = tmp_path / "planspace"
     candidates = [
         {"title": "shared auth", "source_section": "01"},
         {"title": "auth seam", "source_section": "02"},
     ]
-
-    monkeypatch.setattr(adjudicator, "validate_dynamic_content", lambda _: [])
-    monkeypatch.setattr(
-        adjudicator,
-        "read_model_policy",
-        lambda _planspace: {"reconciliation_adjudicate": "policy-model"},
-    )
 
     captured: dict[str, object] = {}
 
@@ -48,32 +42,53 @@ def test_adjudicate_ungrouped_candidates_writes_artifact_and_parses_json(
             '"members": ["shared auth", "auth seam"], "rationale": "same"}]}'
         )
 
-    monkeypatch.setattr(adjudicator, "dispatch_agent", fake_dispatch)
+    class _MockGuard(PromptGuard):
+        def validate_dynamic(self, content):
+            return []
+        def write_validated(self, content, path):
+            return True
 
-    result = adjudicator.adjudicate_ungrouped_candidates(
-        candidates,
-        planspace,
-        "shared_seam",
-    )
+    class _MockPolicies(ModelPolicyService):
+        def load(self, planspace):
+            return {"reconciliation_adjudicate": "policy-model"}
+        def resolve(self, policy, key):
+            return policy.get(key, "test-model")
 
-    artifact = (
-        planspace
-        / "artifacts"
-        / "reconciliation"
-        / "ungrouped-shared_seam.json"
-    )
-    assert artifact.exists()
-    assert result == [{
-        "canonical_title": "auth seam",
-        "members": ["shared auth", "auth seam"],
-        "rationale": "same",
-    }]
-    assert captured["args"][0] == "policy-model"
+    class _MockDispatcher(AgentDispatcher):
+        def dispatch(self, *args, **kwargs):
+            return fake_dispatch(*args, **kwargs)
+
+    Services.prompt_guard.override(providers.Object(_MockGuard()))
+    Services.policies.override(providers.Object(_MockPolicies()))
+    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    try:
+        result = adjudicator.adjudicate_ungrouped_candidates(
+            candidates,
+            planspace,
+            "shared_seam",
+        )
+
+        artifact = (
+            planspace
+            / "artifacts"
+            / "reconciliation"
+            / "ungrouped-shared_seam.json"
+        )
+        assert artifact.exists()
+        assert result == [{
+            "canonical_title": "auth seam",
+            "members": ["shared auth", "auth seam"],
+            "rationale": "same",
+        }]
+        assert captured["args"][0] == "policy-model"
+    finally:
+        Services.dispatcher.reset_override()
+        Services.policies.reset_override()
+        Services.prompt_guard.reset_override()
 
 
 def test_adjudicate_ungrouped_candidates_returns_empty_on_bad_json(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     planspace = tmp_path / "planspace"
     candidates = [
@@ -81,14 +96,34 @@ def test_adjudicate_ungrouped_candidates_returns_empty_on_bad_json(
         {"title": "auth seam", "source_section": "02"},
     ]
 
-    monkeypatch.setattr(adjudicator, "validate_dynamic_content", lambda _: [])
-    monkeypatch.setattr(adjudicator, "read_model_policy", lambda _planspace: {})
-    monkeypatch.setattr(adjudicator, "dispatch_agent", lambda *args, **kwargs: "not json")
+    class _MockGuard(PromptGuard):
+        def validate_dynamic(self, content):
+            return []
+        def write_validated(self, content, path):
+            return True
 
-    result = adjudicator.adjudicate_ungrouped_candidates(
-        candidates,
-        planspace,
-        "shared_seam",
-    )
+    class _MockPolicies(ModelPolicyService):
+        def load(self, planspace):
+            return {}
+        def resolve(self, policy, key):
+            return "test-model"
 
-    assert result == []
+    class _MockDispatcher(AgentDispatcher):
+        def dispatch(self, *args, **kwargs):
+            return "not json"
+
+    Services.prompt_guard.override(providers.Object(_MockGuard()))
+    Services.policies.override(providers.Object(_MockPolicies()))
+    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    try:
+        result = adjudicator.adjudicate_ungrouped_candidates(
+            candidates,
+            planspace,
+            "shared_seam",
+        )
+
+        assert result == []
+    finally:
+        Services.dispatcher.reset_override()
+        Services.policies.reset_override()
+        Services.prompt_guard.reset_override()

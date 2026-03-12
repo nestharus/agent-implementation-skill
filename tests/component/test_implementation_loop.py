@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 
 import pytest
+from dependency_injector import providers
 
+from containers import AgentDispatcher, Services
 from src.implementation.engine.loop import run_implementation_loop
 from src.orchestrator.types import Section
 
@@ -77,7 +79,11 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
             return "implementation output"
         return "alignment output"
 
-    monkeypatch.setattr("src.implementation.engine.loop.dispatch_agent", _dispatch)
+    class _MockDispatcher(AgentDispatcher):
+        def dispatch(self, *args, **kwargs):
+            return _dispatch(*args, **kwargs)
+
+    Services.dispatcher.override(providers.Object(_MockDispatcher()))
     monkeypatch.setattr(
         "src.implementation.engine.loop.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
@@ -111,23 +117,26 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
         lambda *_args, **_kwargs: [1],
     )
 
-    result = run_implementation_loop(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        {"implementation": "gpt", "alignment": "judge"},
-        {"proposal_max": 3, "implementation_max": 3},
-    )
-
-    trace_map = json.loads(
-        (planspace / "artifacts" / "trace-map" / "section-09.json").read_text(
-            encoding="utf-8"
+    try:
+        result = run_implementation_loop(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            {"implementation": "gpt", "alignment": "judge"},
+            {"proposal_max": 3, "implementation_max": 3},
         )
-    )
-    assert result == ["src/main.py"]
-    assert trace_map["files"] == ["src/main.py"]
-    assert trace_map["todo_ids"] == [{"id": "A1", "file": "src/main.py"}]
+
+        trace_map = json.loads(
+            (planspace / "artifacts" / "trace-map" / "section-09.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert result == ["src/main.py"]
+        assert trace_map["files"] == ["src/main.py"]
+        assert trace_map["todo_ids"] == [{"id": "A1", "file": "src/main.py"}]
+    finally:
+        Services.dispatcher.reset_override()
 
 
 def test_run_implementation_loop_retries_after_alignment_problems(
@@ -168,7 +177,11 @@ def test_run_implementation_loop_retries_after_alignment_problems(
             return "implementation output"
         return "alignment output"
 
-    monkeypatch.setattr("src.implementation.engine.loop.dispatch_agent", _dispatch)
+    class _MockDispatcher(AgentDispatcher):
+        def dispatch(self, *args, **kwargs):
+            return _dispatch(*args, **kwargs)
+
+    Services.dispatcher.override(providers.Object(_MockDispatcher()))
     monkeypatch.setattr(
         "src.implementation.engine.loop.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
@@ -202,14 +215,17 @@ def test_run_implementation_loop_retries_after_alignment_problems(
         lambda *_args, **_kwargs: [1],
     )
 
-    result = run_implementation_loop(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        {"implementation": "gpt", "alignment": "judge"},
-        {"proposal_max": 3, "implementation_max": 3},
-    )
+    try:
+        result = run_implementation_loop(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            {"implementation": "gpt", "alignment": "judge"},
+            {"proposal_max": 3, "implementation_max": 3},
+        )
 
-    assert result == ["src/main.py"]
-    assert impl_calls["count"] == 2
+        assert result == ["src/main.py"]
+        assert impl_calls["count"] == 2
+    finally:
+        Services.dispatcher.reset_override()

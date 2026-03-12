@@ -4,16 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dispatch.service.prompt_guard import write_validated_prompt
-
-from dispatch.service.model_policy import resolve
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from risk.repository.history import read_history
 from risk.types import PostureProfile
 from signals.service.communication import _log_artifact, log
-from dispatch.engine.section_dispatch import dispatch_agent
-from dispatch.service.model_policy import load_model_policy as read_model_policy
-from signals.repository.signal_reader import read_agent_signal
 from taskrouter import agent_for
 
 
@@ -33,7 +28,7 @@ def run_intent_triage(
     Returns a dict with at least ``intent_mode`` and ``budgets``.
     Falls back to full on failure.
     """
-    policy = read_model_policy(planspace)
+    policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
     artifacts = paths.artifacts
     signals_dir = paths.signals_dir()
@@ -126,7 +121,7 @@ Write a JSON signal to: `{triage_signal_path}`
 }}
 ```
 """
-    if not write_validated_prompt(triage_prompt_text, triage_prompt_path):
+    if not Services.prompt_guard().write_validated(triage_prompt_text, triage_prompt_path):
         return _augment_risk_hints(
             _full_default(section_number),
             section_number,
@@ -137,8 +132,8 @@ Write a JSON signal to: `{triage_signal_path}`
         )
     _log_artifact(planspace, f"prompt:intent-triage-{section_number}")
 
-    result = dispatch_agent(
-        resolve(policy, "intent_triage"),
+    result = Services.dispatcher().dispatch(
+        Services.policies().resolve(policy, "intent_triage"),
         triage_prompt_path,
         triage_output_path,
         planspace,
@@ -158,7 +153,7 @@ Write a JSON signal to: `{triage_signal_path}`
             solve_count=solve_count,
         )
 
-    triage = read_agent_signal(
+    triage = Services.signals().read(
         triage_signal_path,
         expected_fields=["intent_mode"],
     )
@@ -168,8 +163,8 @@ Write a JSON signal to: `{triage_signal_path}`
                 f"Section {section_number}: triage flagged escalation — "
                 f"re-dispatching with stronger model",
             )
-            escalation_model = resolve(policy, "intent_triage_escalation")
-            dispatch_agent(
+            escalation_model = Services.policies().resolve(policy, "intent_triage_escalation")
+            Services.dispatcher().dispatch(
                 escalation_model,
                 triage_prompt_path,
                 triage_output_path,
@@ -179,7 +174,7 @@ Write a JSON signal to: `{triage_signal_path}`
                 section_number=section_number,
                 agent_file=agent_for("intent.triage"),
             )
-            escalated = read_agent_signal(
+            escalated = Services.signals().read(
                 triage_signal_path,
                 expected_fields=["intent_mode"],
             )
@@ -231,7 +226,7 @@ def load_triage_result(
     """Load a previously-written triage result from signal file."""
     signals_dir = PathRegistry(planspace).signals_dir()
     triage_signal_path = signals_dir / f"intent-triage-{section_number}.json"
-    triage = read_agent_signal(
+    triage = Services.signals().read(
         triage_signal_path,
         expected_fields=["intent_mode"],
     )

@@ -5,6 +5,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from dependency_injector import providers
+
+from containers import (
+    AgentDispatcher,
+    ModelPolicyService,
+    PromptGuard,
+    Services,
+    SignalReader,
+)
 from src.intent.service import triage
 from src.intent.service.triage import (
     _augment_risk_hints,
@@ -95,12 +104,41 @@ def test_run_intent_triage_returns_signal_from_agent(
     codespace = tmp_path / "codespace"
     codespace.mkdir()
 
-    monkeypatch.setattr(
-        triage,
-        "read_model_policy",
-        lambda _: {"intent_triage": "glm"},
-    )
-    monkeypatch.setattr(triage, "write_validated_prompt", lambda *_: True)
+    class _MockPolicies(ModelPolicyService):
+        def load(self, planspace):
+            return {"intent_triage": "glm"}
+        def resolve(self, policy, key):
+            return policy.get(key, "test-model")
+
+    class _MockGuard(PromptGuard):
+        def write_validated(self, content, path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            return True
+        def validate_dynamic(self, content):
+            return []
+
+    class _MockDispatcher(AgentDispatcher):
+        def dispatch(self, *args, **kwargs):
+            signal_path = artifacts / "signals" / "intent-triage-01.json"
+            signal_path.parent.mkdir(parents=True, exist_ok=True)
+            signal_path.write_text(
+                json.dumps({
+                    "section": "01",
+                    "intent_mode": "lightweight",
+                    "confidence": "medium",
+                    "risk_mode": "light",
+                    "risk_budget_hint": 2,
+                    "budgets": {"proposal_max": 3},
+                    "reason": "narrow surface",
+                }),
+                encoding="utf-8",
+            )
+            return ""
+
+    Services.policies.override(providers.Object(_MockPolicies()))
+    Services.prompt_guard.override(providers.Object(_MockGuard()))
+    Services.dispatcher.override(providers.Object(_MockDispatcher()))
     artifact_events: list[str] = []
     monkeypatch.setattr(
         triage,
@@ -108,32 +146,18 @@ def test_run_intent_triage_returns_signal_from_agent(
         lambda _planspace, name: artifact_events.append(name),
     )
 
-    def fake_dispatch(*args, **kwargs):
-        signal_path = artifacts / "signals" / "intent-triage-01.json"
-        signal_path.parent.mkdir(parents=True, exist_ok=True)
-        signal_path.write_text(
-            json.dumps({
-                "section": "01",
-                "intent_mode": "lightweight",
-                "confidence": "medium",
-                "risk_mode": "light",
-                "risk_budget_hint": 2,
-                "budgets": {"proposal_max": 3},
-                "reason": "narrow surface",
-            }),
-            encoding="utf-8",
-        )
-        return ""
+    try:
+        result = run_intent_triage("01", planspace, codespace, "parent")
 
-    monkeypatch.setattr(triage, "dispatch_agent", fake_dispatch)
-
-    result = run_intent_triage("01", planspace, codespace, "parent")
-
-    assert result["intent_mode"] == "lightweight"
-    assert result["risk_mode"] == "light"
-    assert result["risk_confidence"] == "medium"
-    assert result["risk_budget_hint"] == 2
-    assert artifact_events == ["prompt:intent-triage-01"]
+        assert result["intent_mode"] == "lightweight"
+        assert result["risk_mode"] == "light"
+        assert result["risk_confidence"] == "medium"
+        assert result["risk_budget_hint"] == 2
+        assert artifact_events == ["prompt:intent-triage-01"]
+    finally:
+        Services.dispatcher.reset_override()
+        Services.prompt_guard.reset_override()
+        Services.policies.reset_override()
 
 
 def test_triage_prompt_does_not_advertise_skip(
@@ -147,39 +171,51 @@ def test_triage_prompt_does_not_advertise_skip(
     codespace = tmp_path / "codespace"
     codespace.mkdir()
 
-    monkeypatch.setattr(
-        triage,
-        "read_model_policy",
-        lambda _: {"intent_triage": "glm"},
-    )
-    monkeypatch.setattr(triage, "_log_artifact", lambda *_: None)
-
     written_prompts: list[str] = []
 
-    def capture_prompt(text, path):
-        written_prompts.append(text)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-        return True
+    class _MockPolicies(ModelPolicyService):
+        def load(self, planspace):
+            return {"intent_triage": "glm"}
+        def resolve(self, policy, key):
+            return policy.get(key, "test-model")
 
-    monkeypatch.setattr(triage, "write_validated_prompt", capture_prompt)
-    monkeypatch.setattr(
-        triage,
-        "dispatch_agent",
-        lambda *a, **kw: "",
-    )
-    monkeypatch.setattr(
-        triage,
-        "read_agent_signal",
-        lambda *a, **kw: None,
-    )
+    class _CaptureGuard(PromptGuard):
+        def write_validated(self, content, path):
+            written_prompts.append(content)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            return True
+        def validate_dynamic(self, content):
+            return []
 
-    run_intent_triage("01", planspace, codespace, "parent")
+    class _MockDispatcher(AgentDispatcher):
+        def dispatch(self, *args, **kwargs):
+            return ""
 
-    assert len(written_prompts) == 1
-    prompt = written_prompts[0]
-    assert '"light"|"full"' in prompt or "'light'|'full'" in prompt
-    assert '"skip"' not in prompt
+    class _MockSignals(SignalReader):
+        def read(self, *args, **kwargs):
+            return None
+        def read_tuple(self, signal_path):
+            return None
+
+    Services.policies.override(providers.Object(_MockPolicies()))
+    Services.prompt_guard.override(providers.Object(_CaptureGuard()))
+    Services.dispatcher.override(providers.Object(_MockDispatcher()))
+    Services.signals.override(providers.Object(_MockSignals()))
+    monkeypatch.setattr(triage, "_log_artifact", lambda *_: None)
+
+    try:
+        run_intent_triage("01", planspace, codespace, "parent")
+
+        assert len(written_prompts) == 1
+        prompt = written_prompts[0]
+        assert '"light"|"full"' in prompt or "'light'|'full'" in prompt
+        assert '"skip"' not in prompt
+    finally:
+        Services.dispatcher.reset_override()
+        Services.prompt_guard.reset_override()
+        Services.policies.reset_override()
+        Services.signals.reset_override()
 
 
 def test_legacy_persisted_skip_artifact_normalizes_safely(

@@ -9,8 +9,8 @@ from typing import Any
 from signals.repository.artifact_io import read_json, rename_malformed, write_json
 from coordination.repository.notes import read_incoming_notes as load_incoming_notes
 from orchestrator.path_registry import PathRegistry
+from containers import Services
 from signals.service.communication import _log_artifact, log
-from signals.repository.signal_reader import read_agent_signal
 from orchestrator.types import Section, SectionResult
 
 
@@ -93,7 +93,7 @@ def _collect_outstanding_problems(
         note_id = note_id_match.group(1)
 
         ack_path = paths.signals_dir() / f"note-ack-{target_num}.json"
-        ack_signal = read_agent_signal(ack_path)
+        ack_signal = Services.signals().read(ack_path)
         if ack_signal:
             acks = ack_signal.get("acknowledged", [])
             matching_ack = next(

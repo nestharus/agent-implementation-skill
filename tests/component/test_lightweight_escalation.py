@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import override_dispatcher_and_guard
 from src.proposal.engine.loop import run_proposal_loop
 from src.orchestrator.types import Section
 
@@ -153,10 +154,7 @@ def _install_common_patches(
         output_path.write_text("alignment output", encoding="utf-8")
         return "alignment output"
 
-    monkeypatch.setattr(
-        "src.proposal.engine.loop.dispatch_agent",
-        _dispatch,
-    )
+    return _dispatch
 
 
 def test_lightweight_aligned_surfaces_force_reproposal_under_full_intent(
@@ -182,7 +180,7 @@ def test_lightweight_aligned_surfaces_force_reproposal_under_full_intent(
         None,
     ])
 
-    _install_common_patches(
+    _dispatch = _install_common_patches(
         monkeypatch,
         planspace,
         intent_mode="lightweight",
@@ -204,15 +202,16 @@ def test_lightweight_aligned_surfaces_force_reproposal_under_full_intent(
         },
     )
 
-    result = run_proposal_loop(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        _common_policy(),
-        {"proposal_max": 3, "implementation_max": 3},
-        incoming_notes="",
-    )
+    with override_dispatcher_and_guard(_dispatch):
+        result = run_proposal_loop(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            _common_policy(),
+            {"proposal_max": 3, "implementation_max": 3},
+            incoming_notes="",
+        )
 
     escalation_payload = json.loads(_escalation_path(planspace).read_text(encoding="utf-8"))
     expected_reproposal = (
@@ -253,7 +252,7 @@ def test_lightweight_aligned_surfaces_persist_registry_entries(
     }
     combined_surfaces = iter([payload, None])
 
-    _install_common_patches(
+    _dispatch = _install_common_patches(
         monkeypatch,
         planspace,
         intent_mode="lightweight",
@@ -275,15 +274,16 @@ def test_lightweight_aligned_surfaces_persist_registry_entries(
         },
     )
 
-    run_proposal_loop(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        _common_policy(),
-        {"proposal_max": 3, "implementation_max": 3},
-        incoming_notes="",
-    )
+    with override_dispatcher_and_guard(_dispatch):
+        run_proposal_loop(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            _common_policy(),
+            {"proposal_max": 3, "implementation_max": 3},
+            incoming_notes="",
+        )
 
     registry = json.loads(_registry_path(planspace).read_text(encoding="utf-8"))
 
@@ -302,7 +302,7 @@ def test_lightweight_empty_surface_payload_does_not_escalate(
     section = _section(planspace)
     proposal_args: list[str | None] = []
 
-    _install_common_patches(
+    _dispatch = _install_common_patches(
         monkeypatch,
         planspace,
         intent_mode="lightweight",
@@ -327,15 +327,16 @@ def test_lightweight_empty_surface_payload_does_not_escalate(
         },
     )
 
-    result = run_proposal_loop(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        _common_policy(),
-        {"proposal_max": 3, "implementation_max": 3},
-        incoming_notes="",
-    )
+    with override_dispatcher_and_guard(_dispatch):
+        result = run_proposal_loop(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            _common_policy(),
+            {"proposal_max": 3, "implementation_max": 3},
+            incoming_notes="",
+        )
 
     assert result == ""
     assert proposal_args == [None]
@@ -368,7 +369,7 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
     ])
     expansion_calls: list[str] = []
 
-    _install_common_patches(
+    _dispatch = _install_common_patches(
         monkeypatch,
         planspace,
         intent_mode="lightweight",
@@ -391,15 +392,16 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
         },
     )
 
-    result = run_proposal_loop(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        _common_policy(),
-        {"proposal_max": 3, "implementation_max": 3},
-        incoming_notes="",
-    )
+    with override_dispatcher_and_guard(_dispatch):
+        result = run_proposal_loop(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            _common_policy(),
+            {"proposal_max": 3, "implementation_max": 3},
+            incoming_notes="",
+        )
 
     escalation_payload = json.loads(_escalation_path(planspace).read_text(encoding="utf-8"))
     registry = json.loads(_registry_path(planspace).read_text(encoding="utf-8"))
@@ -439,7 +441,7 @@ def test_full_mode_surfaces_do_not_emit_lightweight_escalation_signal(
     ])
     expansion_calls: list[str] = []
 
-    _install_common_patches(
+    _dispatch = _install_common_patches(
         monkeypatch,
         planspace,
         intent_mode="full",
@@ -462,15 +464,16 @@ def test_full_mode_surfaces_do_not_emit_lightweight_escalation_signal(
         },
     )
 
-    result = run_proposal_loop(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        _common_policy(),
-        {"proposal_max": 3, "implementation_max": 3},
-        incoming_notes="",
-    )
+    with override_dispatcher_and_guard(_dispatch):
+        result = run_proposal_loop(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            _common_policy(),
+            {"proposal_max": 3, "implementation_max": 3},
+            incoming_notes="",
+        )
 
     assert result == ""
     assert proposal_args == [None]

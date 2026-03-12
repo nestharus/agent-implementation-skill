@@ -9,11 +9,10 @@ from typing import Any
 
 from signals.repository.artifact_io import read_json, write_json
 from staleness.helpers.hashing import content_hash
-from dispatch.service.model_policy import load_model_policy, resolve
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from signals.service.communication import log, mailbox_send
 from coordination.prompt.writers import write_bridge_prompt, write_fix_prompt
-from dispatch.engine.section_dispatch import dispatch_agent
 from dispatch.helpers.utils import write_model_choice_signal
 from flow.service.section_ingestion import ingest_and_submit
 from orchestrator.service.pipeline_control import poll_control_messages
@@ -183,8 +182,8 @@ def _run_bridge_for_group(
         f"{group_index} ({group_sections}) — reason: {bridge_reason}",
     )
 
-    bridge_model = resolve(policy, "coordination_bridge")
-    dispatch_agent(
+    bridge_model = Services.policies().resolve(policy, "coordination_bridge")
+    Services.dispatcher().dispatch(
         bridge_model,
         bridge_prompt,
         bridge_output,
@@ -200,7 +199,7 @@ def _run_bridge_for_group(
             f"  coordinator: bridge didn't write contract "
             f"delta — retrying (group {group_index})",
         )
-        dispatch_agent(
+        Services.dispatcher().dispatch(
             bridge_model,
             bridge_prompt,
             bridge_output,
@@ -260,7 +259,7 @@ def _dispatch_fix_group(
     """
     paths = PathRegistry(planspace)
     coord_dir = paths.coordination_dir()
-    policy = load_model_policy(planspace)
+    policy = Services.policies().load(planspace)
     fix_prompt = write_fix_prompt(group, planspace, codespace, group_id)
     if fix_prompt is None:
         log(f"  coordinator: fix group {group_id} prompt blocked "
@@ -270,7 +269,7 @@ def _dispatch_fix_group(
     modified_report = coord_dir / f"fix-{group_id}-modified.txt"
 
     if not default_fix_model:
-        default_fix_model = resolve(policy, "coordination_fix")
+        default_fix_model = Services.policies().resolve(policy, "coordination_fix")
     fix_model = default_fix_model
     coord_escalated_from = None
     escalation_file = coord_dir / "model-escalation.txt"
@@ -289,7 +288,7 @@ def _dispatch_fix_group(
 
     log(f"  coordinator: dispatching fix for group {group_id} "
         f"({len(group)} problems)")
-    result = dispatch_agent(
+    result = Services.dispatcher().dispatch(
         fix_model, fix_prompt, fix_output,
         planspace, parent, codespace=codespace,
         agent_file=agent_for("coordination.fix"),
@@ -407,7 +406,7 @@ def execute_coordination_plan(
             else:
                 _write_overlap_stats(coord_dir, group_index, group)
 
-        fix_model_default = resolve(policy, "coordination_fix")
+        fix_model_default = Services.policies().resolve(policy, "coordination_fix")
         if len(batch) == 1:
             group_index = batch[0]
             _, modified = _dispatch_fix_group(

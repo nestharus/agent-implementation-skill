@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 
 import pytest
+from dependency_injector import providers
 
+from containers import AgentDispatcher, Services
 from src.proposal.service.excerpt_extractor import extract_excerpts
 from src.orchestrator.types import Section
 
@@ -61,11 +63,12 @@ def test_extract_excerpts_returns_ok_when_setup_creates_files(
         lambda *_args, **_kwargs: prompt_path,
     )
 
-    def _dispatch(*_args, **_kwargs) -> str:
-        _write_excerpts(planspace, section.number)
-        return "ok"
+    class _MockDispatcher(AgentDispatcher):
+        def dispatch(self, *_args, **_kwargs):
+            _write_excerpts(planspace, section.number)
+            return "ok"
 
-    monkeypatch.setattr("src.proposal.service.excerpt_extractor.dispatch_agent", _dispatch)
+    Services.dispatcher.override(providers.Object(_MockDispatcher()))
     monkeypatch.setattr(
         "src.proposal.service.excerpt_extractor.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
@@ -75,15 +78,18 @@ def test_extract_excerpts_returns_ok_when_setup_creates_files(
         lambda *_args, **_kwargs: None,
     )
 
-    result = extract_excerpts(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        {"setup": "glm"},
-    )
+    try:
+        result = extract_excerpts(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            {"setup": "glm"},
+        )
 
-    assert result == "ok"
+        assert result == "ok"
+    finally:
+        Services.dispatcher.reset_override()
 
 
 def test_extract_excerpts_routes_out_of_scope_then_retries(
@@ -103,7 +109,7 @@ def test_extract_excerpts_routes_out_of_scope_then_retries(
 
     calls = {"count": 0}
 
-    def _dispatch(*_args, **_kwargs) -> str:
+    def _dispatch_fn(*_args, **_kwargs) -> str:
         calls["count"] += 1
         if calls["count"] == 2:
             _write_excerpts(planspace, section.number)
@@ -114,7 +120,11 @@ def test_extract_excerpts_routes_out_of_scope_then_retries(
             return ("out_of_scope", "needs root")
         return (None, "")
 
-    monkeypatch.setattr("src.proposal.service.excerpt_extractor.dispatch_agent", _dispatch)
+    class _MockDispatcher(AgentDispatcher):
+        def dispatch(self, *args, **kwargs):
+            return _dispatch_fn(*args, **kwargs)
+
+    Services.dispatcher.override(providers.Object(_MockDispatcher()))
     monkeypatch.setattr("src.proposal.service.excerpt_extractor.check_agent_signals", _check)
     monkeypatch.setattr(
         "src.proposal.service.excerpt_extractor.mailbox_send",
@@ -141,20 +151,23 @@ def test_extract_excerpts_routes_out_of_scope_then_retries(
         lambda *_args, **_kwargs: False,
     )
 
-    result = extract_excerpts(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        {"setup": "glm"},
-    )
+    try:
+        result = extract_excerpts(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            {"setup": "glm"},
+        )
 
-    scope_delta_path = (
-        planspace / "artifacts" / "scope-deltas" / "section-01-scope-delta.json"
-    )
-    assert result == "ok"
-    assert persisted == ["accept root decision"]
-    assert scope_delta_path.exists()
+        scope_delta_path = (
+            planspace / "artifacts" / "scope-deltas" / "section-01-scope-delta.json"
+        )
+        assert result == "ok"
+        assert persisted == ["accept root decision"]
+        assert scope_delta_path.exists()
+    finally:
+        Services.dispatcher.reset_override()
 
 
 def test_extract_excerpts_returns_none_when_parent_does_not_resume(
@@ -168,10 +181,11 @@ def test_extract_excerpts_returns_none_when_parent_does_not_resume(
         "src.proposal.service.excerpt_extractor.write_section_setup_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "setup-prompt.md",
     )
-    monkeypatch.setattr(
-        "src.proposal.service.excerpt_extractor.dispatch_agent",
-        lambda *_args, **_kwargs: "out",
-    )
+    class _MockDispatcher(AgentDispatcher):
+        def dispatch(self, *_args, **_kwargs):
+            return "out"
+
+    Services.dispatcher.override(providers.Object(_MockDispatcher()))
     monkeypatch.setattr(
         "src.proposal.service.excerpt_extractor.check_agent_signals",
         lambda *_args, **_kwargs: ("needs_parent", "blocked"),
@@ -193,12 +207,15 @@ def test_extract_excerpts_returns_none_when_parent_does_not_resume(
         lambda *_args, **_kwargs: None,
     )
 
-    result = extract_excerpts(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        {"setup": "glm"},
-    )
+    try:
+        result = extract_excerpts(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            {"setup": "glm"},
+        )
 
-    assert result is None
+        assert result is None
+    finally:
+        Services.dispatcher.reset_override()

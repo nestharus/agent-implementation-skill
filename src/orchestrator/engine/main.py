@@ -32,8 +32,7 @@ from signals.service.communication import (
     mailbox_cleanup,
     mailbox_register,
 )
-from dispatch.engine.section_dispatch import dispatch_agent
-from dispatch.service.model_policy import load_model_policy as read_model_policy
+from containers import Services
 from orchestrator.engine.strategic_state import build_strategic_state
 from orchestrator.types import SectionResult
 
@@ -117,7 +116,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
     while True:
 
         # PAT-0005: refresh policy per iteration (not startup-only)
-        policy = read_model_policy(planspace)
+        policy = Services.policies().load(planspace)
 
         # -----------------------------------------------------------------
         # Phase 1a: Proposal pass — all sections

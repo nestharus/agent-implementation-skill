@@ -4,7 +4,7 @@ from pathlib import Path
 
 from staleness.service.change_tracker import check_pending as alignment_changed_pending
 from signals.repository.artifact_io import read_json, write_json
-from dispatch.service.model_policy import resolve
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from flow.engine.submitter import submit_chain
 from intake.service.assessment import write_post_impl_assessment_prompt
@@ -12,7 +12,6 @@ from staleness.service.section_alignment import _extract_problems
 from staleness.helpers.detection import snapshot_files
 from signals.service.communication import _record_traceability, log, mailbox_send
 from coordination.service.cross_section import persist_decision
-from dispatch.engine.section_dispatch import dispatch_agent
 from dispatch.helpers.utils import check_agent_signals, summarize_output
 from orchestrator.service.pipeline_control import handle_pending_messages, pause_for_parent
 from dispatch.prompt.writers import write_impl_alignment_prompt, write_strategic_impl_prompt
@@ -109,8 +108,8 @@ def run_implementation_loop(
             return None
         impl_output = artifacts / f"impl-{section.number}-output.md"
         impl_agent = f"impl-{section.number}"
-        impl_result = dispatch_agent(
-            resolve(policy, "implementation"),
+        impl_result = Services.dispatcher().dispatch(
+            Services.policies().resolve(policy,"implementation"),
             impl_prompt,
             impl_output,
             planspace,
@@ -176,8 +175,8 @@ def run_implementation_loop(
             codespace,
         )
         impl_align_output = artifacts / f"impl-align-{section.number}-output.md"
-        impl_align_result = dispatch_agent(
-            resolve(policy, "alignment"),
+        impl_align_result = Services.dispatcher().dispatch(
+            Services.policies().resolve(policy,"alignment"),
             impl_align_prompt,
             impl_align_output,
             planspace,
@@ -203,7 +202,7 @@ def run_implementation_loop(
             planspace=planspace,
             parent=parent,
             codespace=codespace,
-            adjudicator_model=resolve(policy, "adjudicator"),
+            adjudicator_model=Services.policies().resolve(policy,"adjudicator"),
         )
 
         signal, detail = check_agent_signals(

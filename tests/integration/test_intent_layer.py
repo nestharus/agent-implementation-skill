@@ -2185,7 +2185,7 @@ class TestR57GateTypeSpecificMessaging:
         }
 
         with patch(
-            "intent.service.expansion.pause_for_parent",
+            "intent.engine.surface.pause_for_parent",
             return_value="resume:accept",
         ) as mock_pause:
             handle_user_gate("01", planspace, "test-parent", delta_result)
@@ -2227,7 +2227,7 @@ class TestR57GateTypeSpecificMessaging:
         }
 
         with patch(
-            "intent.service.expansion.pause_for_parent",
+            "intent.engine.surface.pause_for_parent",
             return_value="resume:accept",
         ) as mock_pause:
             handle_user_gate("01", planspace, "test-parent", delta_result)

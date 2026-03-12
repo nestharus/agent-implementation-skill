@@ -6,13 +6,10 @@ import json
 import logging
 from pathlib import Path
 
+from containers import Services
 from signals.repository.artifact_io import write_json
-from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.template import render_template
-from dispatch.service.prompt_guard import validate_dynamic_content
-from dispatch.engine.section_dispatch import dispatch_agent
-from dispatch.service.model_policy import load_model_policy as read_model_policy
 from taskrouter import agent_for
 
 logger = logging.getLogger(__name__)
@@ -63,7 +60,7 @@ group's `members` array or in the `separate` array.
     prompt_path = recon_dir / f"adjudicate-{candidate_type}-prompt.md"
     output_path = recon_dir / f"adjudicate-{candidate_type}-output.md"
 
-    violations = validate_dynamic_content(dynamic_body)
+    violations = Services.prompt_guard().validate_dynamic(dynamic_body)
     if violations:
         logger.warning(
             "Reconciliation adjudicate prompt safety violation: %s "
@@ -77,11 +74,11 @@ group's `members` array or in the `separate` array.
         encoding="utf-8",
     )
 
-    policy = read_model_policy(planspace)
-    model = resolve(policy, "reconciliation_adjudicate")
+    policy = Services.policies().load(planspace)
+    model = Services.policies().resolve(policy,"reconciliation_adjudicate")
 
     try:
-        result = dispatch_agent(
+        result = Services.dispatcher().dispatch(
             model,
             prompt_path,
             output_path,

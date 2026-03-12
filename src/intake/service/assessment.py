@@ -6,7 +6,7 @@ from pathlib import Path
 
 from signals.repository.artifact_io import read_json, rename_malformed, write_json
 from orchestrator.path_registry import PathRegistry
-from dispatch.service.prompt_guard import write_validated_prompt
+from containers import Services
 # Lazy import to avoid circular dependency:
 # assessment -> section_engine -> implementation_loop -> assessment
 # update_trace_governance is imported inside promote_debt_signals()
@@ -94,7 +94,7 @@ Required JSON shape:
 Be conservative. When uncertain, prefer `accept_with_debt` over silent acceptance.
 """
 
-    if not write_validated_prompt(content, prompt_path):
+    if not Services.prompt_guard().write_validated(content, prompt_path):
         return None
     return prompt_path
 

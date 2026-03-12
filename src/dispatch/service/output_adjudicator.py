@@ -3,8 +3,8 @@
 import json
 from pathlib import Path
 
+from containers import Services
 from dispatch.prompt.template import render_template
-from dispatch.service.prompt_guard import validate_dynamic_content
 from orchestrator.path_registry import PathRegistry
 from taskrouter import agent_for
 
@@ -20,9 +20,6 @@ def adjudicate_agent_output(
     Used when structured signal file is absent but output may contain
     signals. Returns (signal_type, detail) or (None, "").
     """
-    # Lazy import to avoid circular dependency (dispatch_agent lives in
-    # the same package and imports from many modules at module level).
-    from dispatch.engine.section_dispatch import dispatch_agent
 
     paths = PathRegistry(planspace)
     paths.artifacts.mkdir(parents=True, exist_ok=True)
@@ -50,7 +47,7 @@ Classify the output into exactly one state. Reply with a JSON block:
 States: ALIGNED, PROBLEMS, UNDERSPECIFIED, NEED_DECISION, DEPENDENCY,
 LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
 """
-    violations = validate_dynamic_content(dynamic_body)
+    violations = Services.prompt_guard().validate_dynamic(dynamic_body)
     if violations:
         from signals.service.communication import log
         log(f"  ERROR: adjudicate prompt blocked — dynamic violations: {violations}")
@@ -63,7 +60,7 @@ LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
         encoding="utf-8",
     )
 
-    result = dispatch_agent(
+    result = Services.dispatcher().dispatch(
         model, adj_prompt, adj_output,
         planspace, parent, codespace=codespace,
         agent_file=agent_for("staleness.state_adjudicate"),

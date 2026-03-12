@@ -21,8 +21,7 @@ from dispatch.prompt.helpers import (
     signal_instructions,
 )
 
-from dispatch.service.prompt_guard import validate_dynamic_content
-from dispatch.service.prompt_guard import write_validated_prompt
+from containers import Services
 from staleness.service.section_alignment import collect_modified_files
 from signals.service.communication import _log_artifact, log
 from taskrouter.agents import resolve_agent_path
@@ -87,7 +86,7 @@ def _write_prompt(
     rendered = render(tpl, ctx)
 
     if sidecar_agent is not None:
-        violations = validate_dynamic_content(rendered)
+        violations = Services.prompt_guard().validate_dynamic(rendered)
         if violations:
             log(f"  ERROR: prompt {prompt_path.name} blocked — template "
                 f"violations: {violations}")
@@ -99,7 +98,7 @@ def _write_prompt(
             with prompt_path.open("a", encoding="utf-8") as f:
                 f.write(scoped_context_block(sidecar_path))
     else:
-        if not write_validated_prompt(rendered, prompt_path):
+        if not Services.prompt_guard().write_validated(rendered, prompt_path):
             log(f"  ERROR: prompt {prompt_path.name} blocked — template violations")
             return None
 

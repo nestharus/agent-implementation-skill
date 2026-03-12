@@ -1,12 +1,11 @@
 from pathlib import Path
 
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 from dispatch.prompt.template import TASK_SUBMISSION_SEMANTICS
-from dispatch.service.prompt_guard import validate_dynamic_content
 from signals.service.communication import _log_artifact, log
 from coordination.service.cross_section import extract_section_summary
-from dispatch.engine.section_dispatch import dispatch_agent
 from flow.service.section_ingestion import ingest_and_submit
 from orchestrator.types import Section
 from taskrouter import agent_for
@@ -111,7 +110,7 @@ This is how the pipeline reads your classification — the script reads
 the JSON, not unstructured text.
 """
     # V3: Validate dynamic content — violations block dispatch
-    violations = validate_dynamic_content(rendered)
+    violations = Services.prompt_guard().validate_dynamic(rendered)
     if violations:
         log(f"  ERROR: prompt {prompt_path.name} blocked — template "
             f"violations: {violations}")
@@ -119,7 +118,7 @@ the JSON, not unstructured text.
     prompt_path.write_text(rendered, encoding="utf-8")
     _log_artifact(planspace, f"prompt:reexplore-{section.number}")
 
-    result = dispatch_agent(
+    result = Services.dispatcher().dispatch(
         model, prompt_path, output_path,
         planspace, parent, f"reexplore-{section.number}",
         codespace=codespace, section_number=section.number,

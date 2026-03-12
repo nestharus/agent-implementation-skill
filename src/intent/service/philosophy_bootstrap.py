@@ -13,14 +13,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from containers import Services
 from signals.repository.artifact_io import read_json, write_json
 from staleness.helpers.hashing import content_hash
-from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
-from dispatch.service.prompt_guard import write_validated_prompt
 from signals.service.communication import _log_artifact, log
-from dispatch.engine.section_dispatch import dispatch_agent
-from dispatch.service.model_policy import load_model_policy as read_model_policy
 from taskrouter import agent_for
 
 from intent.service.philosophy_classifier import (
@@ -311,15 +308,15 @@ Write JSON to: `{guidance_path}`
 - Avoid implementation tactics, framework choices, and feature requirements
 - If the artifacts do not support meaningful project-shaped prompts, write an empty `prompts` list and explain the context in `project_frame`
 """
-    if not write_validated_prompt(prompt_text, prompt_path):
+    if not Services.prompt_guard().write_validated(prompt_text, prompt_path):
         log("Intent bootstrap: bootstrap guidance prompt validation failed "
             "— continuing without optional guidance")
         return None
     _log_artifact(planspace, "prompt:philosophy-bootstrap-guidance")
 
     guidance_path.unlink(missing_ok=True)
-    result = dispatch_agent(
-        resolve(policy, "intent_philosophy_bootstrap_prompter"),
+    result = Services.dispatcher().dispatch(
+        Services.policies().resolve(policy,"intent_philosophy_bootstrap_prompter"),
         prompt_path,
         output_path,
         planspace,
@@ -623,7 +620,7 @@ def ensure_global_philosophy(
     parent: str,
 ) -> dict[str, Any]:
     """Ensure the operational philosophy exists; distill if missing."""
-    policy = read_model_policy(planspace)
+    policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
     intent_global = paths.intent_global_dir()
     intent_global.mkdir(parents=True, exist_ok=True)
@@ -849,7 +846,7 @@ If NO files contain cross-cutting reasoning philosophy, write:
 {{"status": "empty", "sources": []}}
 ```
 """
-        if not write_validated_prompt(selector_prompt_text, selector_prompt):
+        if not Services.prompt_guard().write_validated(selector_prompt_text, selector_prompt):
             return _block_bootstrap(
                 paths,
                 status="failed",
@@ -869,9 +866,9 @@ If NO files contain cross-cutting reasoning philosophy, write:
         _log_artifact(planspace, "prompt:philosophy-select")
 
         selector_models = [
-            resolve(policy, "intent_philosophy_selector"),
-            resolve(policy, "intent_philosophy_selector"),
-            resolve(policy, "intent_philosophy_selector_escalation"),
+            Services.policies().resolve(policy,"intent_philosophy_selector"),
+            Services.policies().resolve(policy,"intent_philosophy_selector"),
+            Services.policies().resolve(policy,"intent_philosophy_selector_escalation"),
         ]
         selector_run = _dispatch_classified_signal_stage(
             stage_name="selector",
@@ -1095,7 +1092,7 @@ Write a JSON signal to: `{verify_signal}`
 }}}}
 ```
 """
-        if not write_validated_prompt(verify_prompt_text, verify_prompt):
+        if not Services.prompt_guard().write_validated(verify_prompt_text, verify_prompt):
             return _block_bootstrap(
                 paths,
                 status="failed",
@@ -1114,7 +1111,7 @@ Write a JSON signal to: `{verify_signal}`
             )
         _log_artifact(planspace, "prompt:philosophy-verify")
 
-        verifier_model = resolve(policy, "intent_philosophy_verifier")
+        verifier_model = Services.policies().resolve(policy,"intent_philosophy_verifier")
         verify_run = _dispatch_classified_signal_stage(
             stage_name="verifier",
             prompt_path=verify_prompt,
@@ -1123,7 +1120,7 @@ Write a JSON signal to: `{verify_signal}`
             models=[
                 verifier_model,
                 verifier_model,
-                resolve(policy, "intent_philosophy_selector_escalation"),
+                Services.policies().resolve(policy,"intent_philosophy_selector_escalation"),
             ],
             classifier=_classify_verifier_result,
             planspace=planspace,
@@ -1328,7 +1325,7 @@ genuinely ambiguous, do NOT invent filler. Instead:
 - If the sources contain no extractable philosophy, leave
   `{philosophy_path}` empty and write `{{}}` to `{source_map_path}`
 """
-    if not write_validated_prompt(distill_prompt_text, prompt_path):
+    if not Services.prompt_guard().write_validated(distill_prompt_text, prompt_path):
         return _block_bootstrap(
             paths,
             status="failed",
@@ -1347,10 +1344,10 @@ genuinely ambiguous, do NOT invent filler. Instead:
         )
     _log_artifact(planspace, "prompt:philosophy-distill")
 
-    distiller_model = resolve(policy, "intent_philosophy")
+    distiller_model = Services.policies().resolve(policy,"intent_philosophy")
     distill_classification: dict[str, Any] = {"state": "missing_signal", "data": None}
     for attempt in (1, 2):
-        result = dispatch_agent(
+        result = Services.dispatcher().dispatch(
             distiller_model,
             prompt_path,
             _attempt_output_path(output_path, attempt),

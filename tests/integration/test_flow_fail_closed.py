@@ -20,6 +20,7 @@ from unittest.mock import patch
 import pytest
 
 from _paths import DB_SH
+from conftest import override_dispatcher_and_guard
 
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from flow.exceptions import FlowCorruptionError
@@ -495,17 +496,23 @@ class TestDispatcherFlowCorruption:
 
         from flow.engine import dispatcher as task_dispatcher
 
-        with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
+        dispatch_called = False
+
+        def fake_dispatch(*args, **kwargs):
+            nonlocal dispatch_called
+            dispatch_called = True
+            return "done"
+
+        with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
              patch("flow.engine.dispatcher.db_cmd") as mock_db, \
              patch("flow.engine.dispatcher.notify_task_result") as mock_notify:
             mock_resolve.return_value = ("alignment-judge.md", "glm")
-            mock_dispatch.return_value = "done"
 
             task_dispatcher.dispatch_task(str(db_path), planspace, task)
 
             # dispatch_agent should NOT have been called
-            mock_dispatch.assert_not_called()
+            assert not dispatch_called
 
             # fail-task should have been called
             fail_calls = [
@@ -536,7 +543,14 @@ class TestDispatcherFlowCorruption:
 
         from flow.engine import dispatcher as task_dispatcher
 
-        with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
+        dispatch_called = False
+
+        def fake_dispatch(*args, **kwargs):
+            nonlocal dispatch_called
+            dispatch_called = True
+            return ""
+
+        with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
              patch("flow.engine.dispatcher.db_cmd") as mock_db, \
              patch("flow.engine.dispatcher.notify_task_result"):
@@ -544,7 +558,7 @@ class TestDispatcherFlowCorruption:
 
             task_dispatcher.dispatch_task(str(db_path), planspace, task)
 
-            mock_dispatch.assert_not_called()
+            assert not dispatch_called
 
             fail_calls = [
                 c for c in mock_db.call_args_list
@@ -579,14 +593,20 @@ class TestDispatcherFlowCorruption:
 
         from flow.engine import dispatcher as task_dispatcher
 
-        with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
+        dispatch_called = False
+
+        def fake_dispatch(*args, **kwargs):
+            nonlocal dispatch_called
+            dispatch_called = True
+            return "done"
+
+        with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
              patch("flow.engine.dispatcher.db_cmd"), \
              patch("flow.engine.dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
-            mock_dispatch.return_value = "done"
 
             task_dispatcher.dispatch_task(str(db_path), planspace, task)
 
             # dispatch_agent SHOULD have been called
-            assert mock_dispatch.called
+            assert dispatch_called

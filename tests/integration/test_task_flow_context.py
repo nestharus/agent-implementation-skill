@@ -14,11 +14,12 @@ import json
 import sqlite3
 import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from _paths import DB_SH
+from conftest import override_dispatcher_and_guard
 
 from flow.types.schema import TaskSpec
 from flow.exceptions import FlowCorruptionError
@@ -358,19 +359,24 @@ class TestDispatcherFlowIntegration:
 
         from flow.engine import dispatcher as task_dispatcher
 
-        with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
+        captured: dict = {}
+
+        def fake_dispatch(*args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return "done"
+
+        with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
              patch("flow.engine.dispatcher.db_cmd") as mock_db, \
              patch("flow.engine.dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
-            mock_dispatch.return_value = "done"
 
             task_dispatcher.dispatch_task(str(db_path), planspace, task)
 
-            # dispatch_agent should be called with the original prompt path
-            assert mock_dispatch.called
-            call_args = mock_dispatch.call_args
-            dispatched_prompt = call_args[0][1]  # second positional arg
+            # dispatch should be called with the original prompt path
+            assert "args" in captured
+            dispatched_prompt = captured["args"][1]  # second positional arg
             assert dispatched_prompt == prompt
 
     def test_flow_task_dispatches_with_wrapper(
@@ -403,19 +409,24 @@ class TestDispatcherFlowIntegration:
 
         from flow.engine import dispatcher as task_dispatcher
 
-        with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
+        captured: dict = {}
+
+        def fake_dispatch(*args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return "done"
+
+        with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
              patch("flow.engine.dispatcher.db_cmd") as mock_db, \
              patch("flow.engine.dispatcher.notify_task_result"):
             mock_resolve.return_value = ("impact-analyzer.md", "glm")
-            mock_dispatch.return_value = "done"
 
             task_dispatcher.dispatch_task(str(db_path), planspace, task)
 
-            # dispatch_agent should be called with a wrapper prompt
-            assert mock_dispatch.called
-            call_args = mock_dispatch.call_args
-            dispatched_prompt = call_args[0][1]
+            # dispatch should be called with a wrapper prompt
+            assert "args" in captured
+            dispatched_prompt = captured["args"][1]
             # The wrapper prompt should be a different file
             assert dispatched_prompt != prompt
             assert "dispatch.md" in dispatched_prompt.name
@@ -455,12 +466,11 @@ class TestDispatcherFlowIntegration:
 
         from flow.engine import dispatcher as task_dispatcher
 
-        with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
+        with override_dispatcher_and_guard(lambda *a, **kw: "done"), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
              patch("flow.engine.dispatcher.db_cmd"), \
              patch("flow.engine.dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
-            mock_dispatch.return_value = "done"
 
             task_dispatcher.dispatch_task(str(db_path), planspace, task)
 

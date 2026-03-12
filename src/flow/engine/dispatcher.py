@@ -44,9 +44,7 @@ from flow.service.task_flow import (
 )
 from taskrouter import ensure_discovered, registry as _task_registry
 
-from dispatch.service.prompt_guard import validate_dynamic_content
-from dispatch.engine.section_dispatch import dispatch_agent
-from dispatch.service.model_policy import load_model_policy as read_model_policy
+from containers import Services
 
 DISPATCHER_NAME = "task-dispatcher"
 logger = logging.getLogger(__name__)
@@ -148,7 +146,7 @@ def dispatch_task(
             notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
             return
         # V4/R77: validate agent-provided payload prompt
-        violations = validate_dynamic_content(
+        violations = Services.prompt_guard().validate_dynamic(
             prompt_path.read_text(encoding="utf-8"),
         )
         if violations:
@@ -272,7 +270,7 @@ def dispatch_task(
 
     # V6: Dispatch through dispatch.section_dispatch for pause/alignment
     # handling, context sidecars, and per-dispatch monitoring.
-    output = dispatch_agent(
+    output = Services.dispatcher().dispatch(
         model, prompt_path, output_path,
         planspace, None,  # parent=None outside section-loop context
         section_number=section_number,
@@ -385,7 +383,7 @@ def main() -> None:
     while True:
         try:
             # PAT-0005: refresh policy per dispatch cycle (not startup-only)
-            model_policy = read_model_policy(planspace)
+            model_policy = Services.policies().load(planspace)
 
             output = db_cmd(db_path, "next-task")
             task = parse_next_task(output)

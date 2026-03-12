@@ -4,17 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from containers import Services
 from signals.repository.artifact_io import read_json, rename_malformed, write_json
-from dispatch.service.model_policy import resolve
 from orchestrator.repository.decisions import Decision, load_decisions, record_decision
 from orchestrator.path_registry import PathRegistry
 from implementation.service.scope_delta_parser import (
     normalize_section_id,
     parse_scope_delta_adjudication,
 )
-from dispatch.service.prompt_guard import write_validated_prompt
 from signals.service.communication import _log_artifact, log, mailbox_send
-from dispatch.engine.section_dispatch import dispatch_agent
 from taskrouter import agent_for
 
 
@@ -98,7 +96,7 @@ Reply with a JSON block:
 - accept: `new_sections` (array of `{{title, scope}}`)
 - absorb: `absorb_into_section`, `scope_addition`
 """
-    if not write_validated_prompt(prompt_text, adjudication_prompt):
+    if not Services.prompt_guard().write_validated(prompt_text, adjudication_prompt):
         raise ScopeDeltaAggregationExit
 
     return adjudication_prompt, adjudication_output
@@ -113,8 +111,8 @@ def _dispatch_adjudication(
 ) -> dict | None:
     _log_artifact(planspace, "prompt:scope-delta-adjudication")
 
-    adjudication_result = dispatch_agent(
-        resolve(policy, "coordination_plan"),
+    adjudication_result = Services.dispatcher().dispatch(
+        Services.policies().resolve(policy,"coordination_plan"),
         adjudication_prompt,
         adjudication_output,
         planspace,
@@ -137,8 +135,8 @@ def _dispatch_adjudication(
         encoding="utf-8",
     )
     retry_output = adjudication_output.with_name("scope-delta-output-retry.md")
-    retry_result = dispatch_agent(
-        resolve(policy, "escalation_model"),
+    retry_result = Services.dispatcher().dispatch(
+        Services.policies().resolve(policy,"escalation_model"),
         retry_prompt,
         retry_output,
         planspace,

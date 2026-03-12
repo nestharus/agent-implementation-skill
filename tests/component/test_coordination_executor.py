@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import override_dispatcher_and_guard
 from src.coordination.engine import plan_executor as executor
 from src.coordination.engine.plan_executor import (
     CoordinationExecutionExit,
@@ -111,11 +112,6 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
     )
     monkeypatch.setattr(
         executor,
-        "dispatch_agent",
-        _dispatch_agent,
-    )
-    monkeypatch.setattr(
-        executor,
         "_dispatch_fix_group",
         lambda group, group_index, *args, **kwargs: (group_index, ["src/a.py"]),
     )
@@ -125,33 +121,34 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
         lambda payload: "abcdef1234567890",
     )
 
-    affected_sections = execute_coordination_plan(
-        {
-            "coord_plan": {
-                "groups": [
-                    {
-                        "problems": [0],
-                        "strategy": "sequential",
-                        "bridge": {"needed": True, "reason": "shared seam"},
-                    },
+    with override_dispatcher_and_guard(_dispatch_agent):
+        affected_sections = execute_coordination_plan(
+            {
+                "coord_plan": {
+                    "groups": [
+                        {
+                            "problems": [0],
+                            "strategy": "sequential",
+                            "bridge": {"needed": True, "reason": "shared seam"},
+                        },
+                    ],
+                },
+                "confirmed_groups": [
+                    [
+                        {"section": "01", "files": ["src/a.py"]},
+                        {"section": "02", "files": ["src/a.py"]},
+                    ],
                 ],
             },
-            "confirmed_groups": [
-                [
-                    {"section": "01", "files": ["src/a.py"]},
-                    {"section": "02", "files": ["src/a.py"]},
-                ],
-            ],
-        },
-        sections_by_num,
-        planspace,
-        tmp_path / "codespace",
-        "parent",
-        {
-            "coordination_fix": "fix-model",
-            "coordination_bridge": "bridge-model",
-        },
-    )
+            sections_by_num,
+            planspace,
+            tmp_path / "codespace",
+            "parent",
+            {
+                "coordination_fix": "fix-model",
+                "coordination_bridge": "bridge-model",
+            },
+        )
 
     assert affected_sections == ["01", "02"]
     assert calls["dispatch"] == 1

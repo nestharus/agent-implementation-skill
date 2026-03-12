@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dispatch.service.model_policy import resolve
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from signals.service.communication import log, mailbox_send
 
@@ -76,7 +76,7 @@ class StallDetector:
         )
         escalation_file.parent.mkdir(parents=True, exist_ok=True)
         escalation_file.write_text(
-            resolve(self._policy, "escalation_model"),
+            Services.policies().resolve(self._policy, "escalation_model"),
             encoding="utf-8",
         )
         mailbox_send(

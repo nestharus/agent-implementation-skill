@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 
 import pytest
+from dependency_injector import providers
 
+from containers import AgentDispatcher, ModelPolicyService, Services
 from src.proposal.engine.loop import run_proposal_loop
 from src.intent.service.expansion import run_expansion_cycle
 from src.orchestrator.types import Section
@@ -90,7 +92,11 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         output_path.write_text("aligned", encoding="utf-8")
         return '{"aligned": true}'
 
-    monkeypatch.setattr("src.proposal.engine.loop.dispatch_agent", _dispatch)
+    class _MockDispatcher(AgentDispatcher):
+        def dispatch(self, *args, **kwargs):
+            return _dispatch(*args, **kwargs)
+
+    Services.dispatcher.override(providers.Object(_MockDispatcher()))
     monkeypatch.setattr(
         "src.proposal.engine.loop.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
@@ -146,22 +152,25 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         lambda *_args, **_kwargs: "resume",
     )
 
-    result = run_proposal_loop(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        {
-            "proposal": "gpt",
-            "alignment": "judge",
-            "escalation_model": "stronger",
-        },
-        {"proposal_max": 3, "implementation_max": 3},
-        incoming_notes="",
-    )
+    try:
+        result = run_proposal_loop(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            {
+                "proposal": "gpt",
+                "alignment": "judge",
+                "escalation_model": "stronger",
+            },
+            {"proposal_max": 3, "implementation_max": 3},
+            incoming_notes="",
+        )
 
-    assert result == ""
-    assert expansion_calls == ["01"]
+        assert result == ""
+        assert expansion_calls == ["01"]
+    finally:
+        Services.dispatcher.reset_override()
 
 
 def test_run_expansion_cycle_merges_research_surfaces_into_pending_payload(
@@ -186,15 +195,13 @@ def test_run_expansion_cycle_merges_research_surfaces_into_pending_payload(
         },
     )
 
-    monkeypatch.setattr(
-        "src.intent.service.expansion.read_model_policy",
-        lambda *_args, **_kwargs: {},
-    )
-    monkeypatch.setattr(
-        "intent.service.expansion.read_model_policy",
-        lambda *_args, **_kwargs: {},
-        raising=False,
-    )
+    class _MockPolicies(ModelPolicyService):
+        def load(self, planspace):
+            return {}
+        def resolve(self, policy, key):
+            return "test-model"
+
+    Services.policies.override(providers.Object(_MockPolicies()))
     monkeypatch.setattr(
         "intent.engine.surface.run_problem_expander",
         lambda *_args, **_kwargs: {
@@ -223,12 +230,15 @@ def test_run_expansion_cycle_merges_research_surfaces_into_pending_payload(
         raising=False,
     )
 
-    result = run_expansion_cycle("01", planspace, codespace, "parent")
+    try:
+        result = run_expansion_cycle("01", planspace, codespace, "parent")
 
-    pending_payload = json.loads(
-        (
-            planspace / "artifacts" / "signals" / "intent-surfaces-pending-01.json"
-        ).read_text(encoding="utf-8")
-    )
-    assert result["surfaces_found"] == 1
-    assert pending_payload["problem_surfaces"][0]["title"] == "Research-only surface"
+        pending_payload = json.loads(
+            (
+                planspace / "artifacts" / "signals" / "intent-surfaces-pending-01.json"
+            ).read_text(encoding="utf-8")
+        )
+        assert result["surfaces_found"] == 1
+        assert pending_payload["problem_surfaces"][0]["title"] == "Research-only surface"
+    finally:
+        Services.policies.reset_override()

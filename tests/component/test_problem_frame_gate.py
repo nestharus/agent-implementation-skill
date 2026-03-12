@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import override_dispatcher_and_guard
 from src.proposal.service import problem_frame_gate
 from src.proposal.service.problem_frame_gate import validate_problem_frame
 from orchestrator.types import Section
@@ -36,11 +37,6 @@ def test_validate_problem_frame_blocks_when_retry_still_does_not_create_frame(
 
     monkeypatch.setattr(
         problem_frame_gate,
-        "dispatch_agent",
-        lambda *args, **kwargs: "",
-    )
-    monkeypatch.setattr(
-        problem_frame_gate,
         "_update_blocker_rollup",
         lambda planspace_arg: blocker_updates.append(planspace_arg),
     )
@@ -50,13 +46,14 @@ def test_validate_problem_frame_blocks_when_retry_still_does_not_create_frame(
         lambda _planspace, _parent, message: messages.append(message),
     )
 
-    result = validate_problem_frame(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        {"setup": "setup-model"},
-    )
+    with override_dispatcher_and_guard(lambda *args, **kwargs: ""):
+        result = validate_problem_frame(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            {"setup": "setup-model"},
+        )
 
     assert result is None
     assert blocker_updates == [planspace]

@@ -77,21 +77,3 @@ from intent.service.philosophy_bootstrap import (  # noqa: F401
     validate_philosophy_grounding as validate_philosophy_grounding,
 )
 
-# ── module-level attributes used by loop_bootstrap monkey-patching ────
-# loop_bootstrap.py assigns these attributes at module level:
-#   _philosophy_bootstrap.dispatch_agent = ...
-#   _philosophy_bootstrap.read_agent_signal = ...
-#   _philosophy_bootstrap.read_model_policy = ...
-#   _philosophy_bootstrap.write_validated_prompt = ...
-#
-# The actual dispatch_agent / write_validated_prompt used at runtime live
-# in philosophy_bootstrap.py and philosophy_dispatch.py respectively.
-# We keep the imports here so the monkey-patch assignments land on this
-# module object (which is what loop_bootstrap imports).
-from dispatch.engine.section_dispatch import dispatch_agent as dispatch_agent  # noqa: F401
-from dispatch.service.model_policy import (  # noqa: F401
-    load_model_policy as read_model_policy,
-)
-from dispatch.service.prompt_guard import (  # noqa: F401
-    write_validated_prompt as write_validated_prompt,
-)

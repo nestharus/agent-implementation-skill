@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from dependency_injector import providers
+
+from containers import ModelPolicyService, Services
 from src.intent.engine import surface
 
 
@@ -58,22 +61,31 @@ def test_run_expansion_cycle_returns_no_work_when_no_surfaces(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(surface, "read_model_policy", lambda _: {})
-    monkeypatch.setattr(surface, "load_intent_surfaces", lambda *_: None)
+    class _MockPolicies(ModelPolicyService):
+        def load(self, planspace):
+            return {}
+        def resolve(self, policy, key):
+            return "test-model"
 
-    result = surface.run_expansion_cycle(
-        "01",
-        tmp_path,
-        tmp_path / "codespace",
-        "parent",
-    )
+    Services.policies.override(providers.Object(_MockPolicies()))
+    monkeypatch.setattr(surface, "load_combined_intent_surfaces", lambda *_: None)
 
-    assert result == {
-        "restart_required": False,
-        "needs_user_input": False,
-        "expansion_applied": False,
-        "surfaces_found": 0,
-    }
+    try:
+        result = surface.run_expansion_cycle(
+            "01",
+            tmp_path,
+            tmp_path / "codespace",
+            "parent",
+        )
+
+        assert result == {
+            "restart_required": False,
+            "needs_user_input": False,
+            "expansion_applied": False,
+            "surfaces_found": 0,
+        }
+    finally:
+        Services.policies.reset_override()
 
 
 def test_handle_user_gate_writes_philosophy_specific_blocker(

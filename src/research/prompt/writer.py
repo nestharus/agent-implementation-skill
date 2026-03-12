@@ -6,7 +6,7 @@ from pathlib import Path
 
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
-from dispatch.service.prompt_guard import write_validated_prompt
+from containers import Services
 
 
 def _optional_input_lines(
@@ -97,7 +97,7 @@ def write_research_plan_prompt(
     )
 
     prompt_path = paths.research_plan_prompt(section_number)
-    if not write_validated_prompt("\n".join(prompt_lines), prompt_path):
+    if not Services.prompt_guard().write_validated("\n".join(prompt_lines), prompt_path):
         return None
     return prompt_path
 
@@ -204,7 +204,7 @@ def write_research_ticket_prompt(
             ]
         )
 
-    if not write_validated_prompt("\n".join(lines), prompt_path):
+    if not Services.prompt_guard().write_validated("\n".join(lines), prompt_path):
         return None
     return prompt_path
 
@@ -237,7 +237,7 @@ def write_research_synthesis_prompt(
     ]
 
     prompt_path = paths.research_synthesis_prompt(section_number)
-    if not write_validated_prompt("\n".join(prompt_lines), prompt_path):
+    if not Services.prompt_guard().write_validated("\n".join(prompt_lines), prompt_path):
         return None
     return prompt_path
 
@@ -268,6 +268,6 @@ def write_research_verify_prompt(
     ]
 
     prompt_path = paths.research_verify_prompt(section_number)
-    if not write_validated_prompt("\n".join(prompt_lines), prompt_path):
+    if not Services.prompt_guard().write_validated("\n".join(prompt_lines), prompt_path):
         return None
     return prompt_path

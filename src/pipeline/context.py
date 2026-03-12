@@ -40,11 +40,11 @@ class PipelineContext:
 
         If *policy* is ``None``, loads it from *planspace*.
         """
-        from dispatch.service.model_policy import load_model_policy
+        from containers import Services
 
         paths = PathRegistry(planspace)
         if policy is None:
-            policy = load_model_policy(planspace)
+            policy = Services.policies().load(planspace)
         return cls(
             section=section,
             planspace=planspace,

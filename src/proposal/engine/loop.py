@@ -4,13 +4,12 @@ from pathlib import Path
 
 from staleness.service.change_tracker import check_pending as alignment_changed_pending
 from signals.repository.artifact_io import read_json, read_json_or_default, write_json
-from dispatch.service.model_policy import resolve
+from containers import Services
 from intent.service.triage import load_triage_result
 from orchestrator.path_registry import PathRegistry
 from staleness.service.section_alignment import _extract_problems
 from signals.service.communication import mailbox_send, log
 from coordination.service.cross_section import persist_decision
-from dispatch.engine.section_dispatch import dispatch_agent
 from dispatch.helpers.utils import check_agent_signals, summarize_output, write_model_choice_signal
 from intent.service.surfaces import (
     load_combined_intent_surfaces,
@@ -175,7 +174,7 @@ def run_proposal_loop(
             f"(attempt {proposal_attempt})"
         )
 
-        proposal_model = resolve(policy, "proposal")
+        proposal_model = Services.policies().resolve(policy, "proposal")
         notes_count = 0
         notes_dir = paths.notes_dir()
         if notes_dir.exists():
@@ -186,7 +185,7 @@ def run_proposal_loop(
         stall_threshold = triggers.get("stall_count", 2)
         if proposal_attempt >= max_attempts or notes_count >= stall_threshold:
             escalated_from = proposal_model
-            proposal_model = resolve(policy, "escalation_model")
+            proposal_model = Services.policies().resolve(policy, "escalation_model")
             log(
                 f"Section {section.number}: escalating to "
                 f"{proposal_model} (attempt={proposal_attempt}, notes={notes_count})"
@@ -246,7 +245,7 @@ def run_proposal_loop(
 
         intg_output = artifacts / f"intg-proposal-{section.number}-output.md"
         intg_agent = f"intg-proposal-{section.number}"
-        intg_result = dispatch_agent(
+        intg_result = Services.dispatcher().dispatch(
             proposal_model,
             intg_prompt,
             intg_output,
@@ -362,11 +361,11 @@ def run_proposal_loop(
             "intent-judge.md" if has_intent_artifacts else "alignment-judge.md"
         )
         alignment_model = (
-            resolve(policy, "intent_judge")
+            Services.policies().resolve(policy, "intent_judge")
             if has_intent_artifacts
-            else resolve(policy, "alignment")
+            else Services.policies().resolve(policy, "alignment")
         )
-        align_result = dispatch_agent(
+        align_result = Services.dispatcher().dispatch(
             alignment_model,
             align_prompt,
             align_output,
@@ -393,7 +392,7 @@ def run_proposal_loop(
             planspace=planspace,
             parent=parent,
             codespace=codespace,
-            adjudicator_model=resolve(policy, "adjudicator"),
+            adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
         )
 
         signal, detail = check_agent_signals(

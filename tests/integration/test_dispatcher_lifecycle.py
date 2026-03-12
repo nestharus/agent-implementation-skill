@@ -15,6 +15,7 @@ from unittest.mock import patch
 import pytest
 
 from _paths import DB_SH
+from conftest import override_dispatcher_and_guard
 
 from flow.types.schema import TaskSpec
 from flow.service.task_flow import (
@@ -187,12 +188,11 @@ class TestDispatchTaskClaimsDispatchesCompletes:
         }
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(
                 task_dispatcher._task_registry, "resolve",
                 return_value=("alignment-judge.md", "test-model"),
             ),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task_dispatcher.dispatch_task(db_path, ps, task)
 
@@ -244,12 +244,11 @@ class TestDispatchTaskAgentTimeoutFails:
         }
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(
                 task_dispatcher._task_registry, "resolve",
                 return_value=("alignment-judge.md", "test-model"),
             ),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task_dispatcher.dispatch_task(db_path, ps, task)
 
@@ -292,12 +291,11 @@ class TestDispatchTaskAgentNonzeroExitFails:
         }
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(
                 task_dispatcher._task_registry, "resolve",
                 return_value=("alignment-judge.md", "test-model"),
             ),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task_dispatcher.dispatch_task(db_path, ps, task)
 
@@ -359,12 +357,11 @@ class TestDispatchChainContinuation:
 
         task1_dict = _build_task_dict_from_db(db_path, tid1)
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch_1),
+            override_dispatcher_and_guard(fake_dispatch_1),
             patch.object(
                 task_dispatcher._task_registry, "resolve",
                 return_value=("alignment-judge.md", "test-model"),
             ),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task_dispatcher.dispatch_task(db_path, ps, task1_dict)
 
@@ -386,12 +383,11 @@ class TestDispatchChainContinuation:
 
         task2_dict = _build_task_dict_from_db(db_path, tid2)
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch_2),
+            override_dispatcher_and_guard(fake_dispatch_2),
             patch.object(
                 task_dispatcher._task_registry, "resolve",
                 return_value=("impact-analyzer.md", "test-model"),
             ),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task_dispatcher.dispatch_task(db_path, ps, task2_dict)
 
@@ -446,12 +442,11 @@ class TestDispatchChainFailureCancelsDescendants:
 
         task1_dict = _build_task_dict_from_db(db_path, tid1)
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch_fail),
+            override_dispatcher_and_guard(fake_dispatch_fail),
             patch.object(
                 task_dispatcher._task_registry, "resolve",
                 return_value=("alignment-judge.md", "test-model"),
             ),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task_dispatcher.dispatch_task(db_path, ps, task1_dict)
 
@@ -491,11 +486,11 @@ class TestDispatchMissingPayload:
         }
 
         with (
+            override_dispatcher_and_guard(lambda *a, **kw: ""),
             patch.object(
                 task_dispatcher._task_registry, "resolve",
                 return_value=("alignment-judge.md", "test-model"),
             ),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task_dispatcher.dispatch_task(db_path, ps, task)
 
@@ -581,11 +576,11 @@ class TestDispatchStaleFreshnessToken:
         }
 
         with (
+            override_dispatcher_and_guard(lambda *a, **kw: ""),
             patch.object(
                 task_dispatcher._task_registry, "resolve",
                 return_value=("alignment-judge.md", "test-model"),
             ),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
             patch.object(
                 task_dispatcher, "compute_section_freshness",
                 return_value=current_token,

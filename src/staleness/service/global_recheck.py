@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dispatch.service.model_policy import resolve
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from staleness.service.section_alignment import (
     _extract_problems,
@@ -71,8 +71,8 @@ def run_global_alignment_recheck(
             parent,
             sec_num,
             output_prefix="global-align",
-            model=resolve(policy, "alignment"),
-            adjudicator_model=resolve(policy, "adjudicator"),
+            model=Services.policies().resolve(policy, "alignment"),
+            adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
         )
         if align_result == "ALIGNMENT_CHANGED_PENDING":
             return "restart_phase1"
@@ -112,7 +112,7 @@ def run_global_alignment_recheck(
             planspace=planspace,
             parent=parent,
             codespace=codespace,
-            adjudicator_model=resolve(policy, "adjudicator"),
+            adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
         )
         main_signal_dir = paths.signals_dir()
         main_signal_dir.mkdir(parents=True, exist_ok=True)

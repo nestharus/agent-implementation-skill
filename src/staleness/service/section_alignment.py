@@ -7,9 +7,8 @@ from staleness.service.alignment import (
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.template import render_template
 from signals.service.communication import log
-from dispatch.engine.section_dispatch import dispatch_agent
+from containers import Services
 from proposal.helpers.verdict_parsers import parse_alignment_verdict as _parse_alignment_verdict
-from dispatch.service.prompt_guard import validate_dynamic_content
 from orchestrator.service.pipeline_control import poll_control_messages
 from orchestrator.types import Section
 from taskrouter import agent_for
@@ -87,7 +86,7 @@ Reply with a JSON block:
   problem: "Unable to determine alignment state from judge output"
 """
         # Validate dynamic body before wrapping in template
-        violations = validate_dynamic_content(dynamic_body)
+        violations = Services.prompt_guard().validate_dynamic(dynamic_body)
         if violations:
             log(f"Alignment adjudicate prompt safety violation: "
                 f"{violations} — skipping dispatch")
@@ -101,7 +100,7 @@ Reply with a JSON block:
             encoding="utf-8",
         )
 
-        adj_result = dispatch_agent(
+        adj_result = Services.dispatcher().dispatch(
             adjudicator_model, adj_prompt, adj_output,
             planspace, parent, codespace=codespace,
             agent_file=agent_for("staleness.alignment_adjudicate"),
@@ -157,7 +156,7 @@ def _run_alignment_check_with_retries(
             section, planspace, codespace,
         )
         align_output = paths.artifacts / f"{output_prefix}-{sec_num}-output.md"
-        result = dispatch_agent(
+        result = Services.dispatcher().dispatch(
             model, align_prompt, align_output,
             planspace, parent, codespace=codespace,
             section_number=sec_num,

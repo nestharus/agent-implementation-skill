@@ -9,7 +9,7 @@ from proposal.repository.excerpts import exists as excerpt_exists
 from staleness.helpers.hashing import file_hash
 from orchestrator.path_registry import PathRegistry
 from signals.service.communication import _record_traceability, log, mailbox_send
-from dispatch.engine.section_dispatch import dispatch_agent
+from containers import Services
 from dispatch.prompt.writers import write_section_setup_prompt
 from signals.service.blockers import _update_blocker_rollup
 from implementation.service.reexplore import _write_alignment_surface
@@ -37,7 +37,7 @@ def validate_problem_frame(
             section.global_alignment_path,
         )
         retry_output = paths.artifacts / f"setup-{section.number}-retry-output.md"
-        retry_result = dispatch_agent(
+        retry_result = Services.dispatcher().dispatch(
             policy["setup"],
             retry_prompt,
             retry_output,

@@ -20,7 +20,7 @@ from research.prompt.writer import (
     write_research_ticket_prompt,
     write_research_verify_prompt,
 )
-from dispatch.service.prompt_guard import write_validated_prompt
+from containers import Services
 from signals.service.blockers import _update_blocker_rollup
 
 
@@ -100,7 +100,7 @@ def _write_research_scan_prompt(
             "If flow context includes a previous result manifest from a web stage, use it as context for what must be verified against code."
         )
 
-    if not write_validated_prompt("\n".join(lines), prompt_path):
+    if not Services.prompt_guard().write_validated("\n".join(lines), prompt_path):
         return None
     return prompt_path
 

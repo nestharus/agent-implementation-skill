@@ -18,6 +18,7 @@ from unittest.mock import patch
 import pytest
 
 from _paths import DB_SH
+from conftest import override_dispatcher_and_guard
 
 import dispatch.engine.agent_executor as executor_mod
 import dispatch.engine.section_dispatch as dispatch_mod
@@ -194,10 +195,9 @@ class TestDispatcherReadsMetaSidecar:
             return "error output from agent"
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)
@@ -241,10 +241,9 @@ class TestDispatcherReadsMetaSidecar:
             return "success output"
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)
@@ -286,10 +285,9 @@ class TestDispatcherReadsMetaSidecar:
             return "error output preserved"
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch),
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)

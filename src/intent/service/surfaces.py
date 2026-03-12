@@ -6,8 +6,8 @@ from signals.repository.artifact_io import read_json, rename_malformed, write_js
 from staleness.helpers.hashing import content_hash
 from orchestrator.path_registry import PathRegistry
 
+from containers import Services
 from signals.service.communication import log
-from signals.repository.signal_reader import read_agent_signal
 
 
 def load_surface_registry(
@@ -59,7 +59,7 @@ def load_intent_surfaces(
     """Load intent-surfaces-NN.json signal written by intent-judge."""
     signals_dir = PathRegistry(planspace).signals_dir()
     surfaces_path = signals_dir / f"intent-surfaces-{section_number}.json"
-    return read_agent_signal(surfaces_path)
+    return Services.signals().read(surfaces_path)
 
 
 def load_implementation_feedback_surfaces(
@@ -67,7 +67,7 @@ def load_implementation_feedback_surfaces(
 ) -> dict | None:
     """Load implementation feedback surfaces for a section."""
     feedback_path = PathRegistry(planspace).impl_feedback_surfaces(section_number)
-    return read_agent_signal(feedback_path)
+    return Services.signals().read(feedback_path)
 
 
 def load_research_derived_surfaces(

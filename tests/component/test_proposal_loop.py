@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 
 import pytest
+from dependency_injector import providers
 
+from containers import AgentDispatcher, Services
 from src.proposal.engine.loop import run_proposal_loop
 from src.orchestrator.types import Section
 
@@ -83,7 +85,11 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
         output_path.write_text("aligned", encoding="utf-8")
         return '{"aligned": true}'
 
-    monkeypatch.setattr("src.proposal.engine.loop.dispatch_agent", _dispatch)
+    class _MockDispatcher(AgentDispatcher):
+        def dispatch(self, *args, **kwargs):
+            return _dispatch(*args, **kwargs)
+
+    Services.dispatcher.override(providers.Object(_MockDispatcher()))
     monkeypatch.setattr(
         "src.proposal.engine.loop.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
@@ -109,22 +115,25 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
         lambda _planspace, _section: alignment_written.append("done"),
     )
 
-    result = run_proposal_loop(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        {
-            "proposal": "gpt",
-            "alignment": "claude",
-            "escalation_model": "stronger",
-        },
-        {"proposal_max": 3, "implementation_max": 3},
-        incoming_notes="",
-    )
+    try:
+        result = run_proposal_loop(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            {
+                "proposal": "gpt",
+                "alignment": "claude",
+                "escalation_model": "stronger",
+            },
+            {"proposal_max": 3, "implementation_max": 3},
+            incoming_notes="",
+        )
 
-    assert result == ""
-    assert alignment_written == ["done"]
+        assert result == ""
+        assert alignment_written == ["done"]
+    finally:
+        Services.dispatcher.reset_override()
 
 
 def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
@@ -169,7 +178,11 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
             return "proposal output"
         return "alignment output"
 
-    monkeypatch.setattr("src.proposal.engine.loop.dispatch_agent", _dispatch)
+    class _MockDispatcher(AgentDispatcher):
+        def dispatch(self, *args, **kwargs):
+            return _dispatch(*args, **kwargs)
+
+    Services.dispatcher.override(providers.Object(_MockDispatcher()))
     monkeypatch.setattr(
         "src.proposal.engine.loop.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
@@ -195,21 +208,24 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
         lambda *_args, **_kwargs: None,
     )
 
-    result = run_proposal_loop(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        {
-            "proposal": "gpt",
-            "alignment": "claude",
-            "escalation_model": "stronger",
-        },
-        {"proposal_max": 3, "implementation_max": 3},
-        incoming_notes="",
-    )
+    try:
+        result = run_proposal_loop(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            {
+                "proposal": "gpt",
+                "alignment": "claude",
+                "escalation_model": "stronger",
+            },
+            {"proposal_max": 3, "implementation_max": 3},
+            incoming_notes="",
+        )
 
-    assert result == "missing anchor"
+        assert result == "missing anchor"
+    finally:
+        Services.dispatcher.reset_override()
 
 
 def test_run_proposal_loop_routes_out_of_scope_and_retries(
@@ -262,7 +278,11 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
             return ("out_of_scope", "new work")
         return (None, "")
 
-    monkeypatch.setattr("src.proposal.engine.loop.dispatch_agent", _dispatch)
+    class _MockDispatcher(AgentDispatcher):
+        def dispatch(self, *args, **kwargs):
+            return _dispatch(*args, **kwargs)
+
+    Services.dispatcher.override(providers.Object(_MockDispatcher()))
     monkeypatch.setattr("src.proposal.engine.loop.check_agent_signals", _signals)
     monkeypatch.setattr(
         "src.proposal.engine.loop._extract_problems",
@@ -301,22 +321,25 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
         lambda *_args, **_kwargs: None,
     )
 
-    result = run_proposal_loop(
-        section,
-        planspace,
-        codespace,
-        "parent",
-        {
-            "proposal": "gpt",
-            "alignment": "claude",
-            "escalation_model": "stronger",
-        },
-        {"proposal_max": 3, "implementation_max": 3},
-        incoming_notes="",
-    )
+    try:
+        result = run_proposal_loop(
+            section,
+            planspace,
+            codespace,
+            "parent",
+            {
+                "proposal": "gpt",
+                "alignment": "claude",
+                "escalation_model": "stronger",
+            },
+            {"proposal_max": 3, "implementation_max": 3},
+            incoming_notes="",
+        )
 
-    assert result == ""
-    assert persisted == ["use new direction"]
-    assert (
-        planspace / "artifacts" / "scope-deltas" / "section-01-scope-delta.json"
-    ).exists()
+        assert result == ""
+        assert persisted == ["use new direction"]
+        assert (
+            planspace / "artifacts" / "scope-deltas" / "section-01-scope-delta.json"
+        ).exists()
+    finally:
+        Services.dispatcher.reset_override()

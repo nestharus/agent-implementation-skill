@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from _paths import DB_SH
+from conftest import override_dispatcher_and_guard
 
 from flow.types.schema import (
     BranchSpec,
@@ -77,19 +78,22 @@ class TestDispatcherPayloadRequired:
 
         from flow.engine import dispatcher as task_dispatcher
 
+        dispatch_called = False
+
         def fake_dispatch(*args, **kwargs):
+            nonlocal dispatch_called
+            dispatch_called = True
             return "should not be called"
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch) as mock_dispatch,
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {"id": task_id, "type": "test-task", "by": "test-submitter"}
             task_dispatcher.dispatch_task(db_path, ps, task)
 
             # dispatch_agent should NOT have been called
-            mock_dispatch.assert_not_called()
+            assert not dispatch_called
 
         # Verify the task is failed in the DB with the expected error
         import sqlite3
@@ -125,14 +129,17 @@ class TestDispatcherPayloadRequired:
 
         from flow.engine import dispatcher as task_dispatcher
 
+        dispatch_called = False
+
         def fake_dispatch(*args, **kwargs):
+            nonlocal dispatch_called
+            dispatch_called = True
             return "ok"
 
         with (
-            patch.object(task_dispatcher, "dispatch_agent", side_effect=fake_dispatch) as mock_dispatch,
+            override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
             patch.object(task_dispatcher, "reconcile_task_completion"),
-            patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
         ):
             task = {
                 "id": task_id,
@@ -143,7 +150,7 @@ class TestDispatcherPayloadRequired:
             task_dispatcher.dispatch_task(db_path, ps, task)
 
             # dispatch_agent SHOULD have been called
-            assert mock_dispatch.called
+            assert dispatch_called
 
         # Verify the task completed
         import sqlite3

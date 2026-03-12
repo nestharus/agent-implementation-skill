@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+from conftest import override_dispatcher_and_guard
 from staleness.service.section_alignment import (
     _extract_problems,
     _parse_alignment_verdict,
@@ -182,9 +183,8 @@ class TestExtractProblems:
             "reason": "output indicates misalignment",
         })
 
-        with patch(
-            "staleness.service.section_alignment.dispatch_agent",
-            return_value=adjudicator_response,
+        with override_dispatcher_and_guard(
+            lambda *args, **kwargs: adjudicator_response,
         ):
             problems = _extract_problems(
                 "Some non-JSON alignment output",
@@ -209,9 +209,8 @@ class TestExtractProblems:
             "reason": "output indicates alignment",
         })
 
-        with patch(
-            "staleness.service.section_alignment.dispatch_agent",
-            return_value=adjudicator_response,
+        with override_dispatcher_and_guard(
+            lambda *args, **kwargs: adjudicator_response,
         ):
             problems = _extract_problems(
                 "Looks good",
