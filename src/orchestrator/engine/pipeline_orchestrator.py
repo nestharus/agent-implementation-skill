@@ -24,10 +24,7 @@ from reconciliation.engine.reconciliation_phase import ReconciliationPhaseExit, 
 from scan.service.section_loader import load_sections
 
 from _config import AGENT_NAME, DB_SH
-from signals.service.section_communicator import (
-    mailbox_cleanup,
-    mailbox_register,
-)
+
 from containers import Services
 from orchestrator.engine.strategic_state_builder import build_strategic_state
 from orchestrator.types import SectionResult
@@ -74,14 +71,14 @@ def main() -> None:
         ["bash", str(DB_SH), "init", str(paths.run_db())],  # noqa: S607
         check=True, capture_output=True, text=True,
     )
-    mailbox_register(args.planspace)
+    Services.communicator().mailbox_register(args.planspace)
     Services.logger().log(f"Registered: {AGENT_NAME} (parent: {args.parent})")
 
     try:
         _run_loop(args.planspace, args.codespace, args.parent, sections_dir,
                   args.global_proposal, args.global_alignment)
     finally:
-        mailbox_cleanup(args.planspace)
+        Services.communicator().mailbox_cleanup(args.planspace)
         Services.logger().log("Mailbox cleaned up")
 
 

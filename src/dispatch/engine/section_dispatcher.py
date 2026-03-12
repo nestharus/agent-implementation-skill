@@ -9,9 +9,7 @@ from orchestrator.path_registry import PathRegistry
 from pipeline.template import SRC_TEMPLATE_DIR, load_template, render, render_template
 from dispatch.service.prompt_guard import validate_dynamic_content
 from _config import AGENT_NAME, DB_SH
-from signals.service.section_communicator import (
-    _log_artifact,
-)
+
 from dispatch.service.context_sidecar import materialize_context_sidecar
 from containers import Services
 
@@ -149,7 +147,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
     # the LOOP_DETECTED line for forensic debugging)
     output_path.write_text(output, encoding="utf-8")
     if planspace is not None:
-        _log_artifact(planspace, f"output:{output_path.stem}")
+        Services.communicator().log_artifact(planspace, f"output:{output_path.stem}")
 
     # Write dispatch metadata sidecar for callers that need return-code visibility
     write_dispatch_metadata(
@@ -185,5 +183,5 @@ def _write_agent_monitor_prompt(
         render_template("monitor", dynamic_body),
         encoding="utf-8",
     )
-    _log_artifact(planspace, f"prompt:agent-monitor-{agent_name}")
+    Services.communicator().log_artifact(planspace, f"prompt:agent-monitor-{agent_name}")
     return prompt_path

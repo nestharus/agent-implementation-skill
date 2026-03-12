@@ -436,7 +436,7 @@ class TestScanSummaryIdempotency:
 
     def test_update_match_idempotent(self, tmp_path: Path) -> None:
         """Repeated update_match calls don't accumulate duplicate blocks."""
-        from scan.explore.deep_scanner import update_match
+        from scan.related.match_updater import update_match
 
         section = tmp_path / "section.md"
         section.write_text(

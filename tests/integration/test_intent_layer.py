@@ -2065,7 +2065,7 @@ class TestR57DeepScanFeedbackPreservation:
 
     def test_malformed_feedback_renamed(self, tmp_path):
         """Malformed feedback JSON is renamed to .malformed.json."""
-        from scan.explore.deep_scanner import update_match
+        from scan.related.match_updater import update_match
 
         section_file = tmp_path / "section-01.md"
         section_file.write_text(

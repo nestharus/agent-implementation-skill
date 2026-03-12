@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
-from scan.related.match_updater import deep_scan_related_files, update_match
+from scan.related.match_updater import deep_scan_related_files
 from scan.related.related_file_resolver import list_section_files
 from scan.related.section_iterator import scan_sections as _scan_sections
 

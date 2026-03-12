@@ -170,6 +170,14 @@ class Communicator:
         from signals.service.section_communicator import _record_traceability
         return _record_traceability(planspace, section_number, file_path, source, category)
 
+    def mailbox_register(self, planspace):
+        from signals.service.section_communicator import mailbox_register
+        return mailbox_register(planspace)
+
+    def mailbox_cleanup(self, planspace):
+        from signals.service.section_communicator import mailbox_cleanup
+        return mailbox_cleanup(planspace)
+
 
 class LogService:
     """Structured logging to coordination database."""

@@ -131,6 +131,12 @@ Missing/problematic patterns:
 
 ## DONE
 
+### 90. Stale docstrings referencing old module names (13 __init__.py + 5 source files)
+- **Status**: DONE — updated all __init__.py public API docstrings to reference current module names after the 58-file rename campaign. Fixed 7 stale inline comments across task_dispatcher.py, task_request_ingestor.py, scan_dispatcher.py, qa_interceptor.py, assessment_evaluator.py.
+
+### 89. DI container bypass in `global_coordinator.py`
+- **Status**: DONE — replaced 5 direct `_log_artifact`/`mailbox_send` imports from `section_communicator` with `Services.communicator()` container calls. Now consistent with every other cross-cutting call in the file.
+
 ### 88. Remaining vague/bare-noun file renames (6 files)
 - **Status**: DONE — renamed 6 files with vague or unqualified names: `main.py` → `pipeline_orchestrator.py`, `executor.py` → `research_plan_executor.py`, `dispatcher.py` → `task_dispatcher.py`, `submitter.py` → `flow_submitter.py`, `loader.py` → `governance_loader.py`, `core.py` → `route_registry.py`. Updated 23 source/test files with import paths. 1561 tests passing.
 
