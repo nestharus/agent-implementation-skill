@@ -172,13 +172,13 @@ Governance packets mirror the full problem/pattern/profile archives into every s
 
 ## PRB-0015: Evaluation Surface Drift / Silent Coverage Loss
 
-**Status**: resolved (R106)
-**Provenance**: audit-inferred (R106)
-**Regions**: evals harness, eval scenarios, import validation
+**Status**: reopened (R111) — recurred after package-layout migration
+**Provenance**: audit-inferred (R106), reopened R111
+**Regions**: evals harness, eval scenarios, import validation, trigger adapters
 
-Declared eval scenario modules can drift to stale import paths without detection. The eval harness caught ImportError and continued with a warning, silently narrowing scenario coverage. Two scenario modules (readiness_gate, reconciliation) imported from a dead path (`lib.proposal_state_repository`). R106 fixed the stale imports, and made the harness fail-closed: `_load_all_scenarios()` now accumulates import failures and `main()` exits nonzero when any declared scenario fails to load.
+Declared eval scenario modules can drift to stale import paths without detection. R106 fixed specific stale imports and made the harness fail-closed. R111: eval-surface drift recurred after the Phase B package reorganization — `evals/agentic/trigger_adapters.py` now targets pre-migration imports (`proposal.readiness_gate`, `intent.philosophy_bootstrap`, `dispatch.section_dispatch`, `intake.governance_loader`) and a nonexistent `src/scripts/task_dispatcher.py`.
 
-**Solution surfaces**: Eval harness fail-closed on import errors (PAT-0008 R106), corrected scenario imports, harness exit code enforcement.
+**Solution surfaces**: Eval harness fail-closed on import errors (PAT-0008 R106), corrected scenario imports, harness exit code enforcement. R111: remaining adapter fixes noted but not yet applied (requires subprocess mechanism analysis).
 
 ---
 
@@ -203,3 +203,27 @@ Advisory surfaces (QA interception, reconciliation adjudication) are deliberatel
 Tests written as source-text archaeology (grepping codebase files for absent strings to confirm deleted code stays deleted) create fragile regressions that break when source text changes and say nothing about whether the behavior is correct. The test asserts "this string is not in the file" rather than "the system behaves correctly." When the code evolves, these tests either false-pass (the string changes form but the behavior returns) or false-fail (the string reappears in a different context). This testing philosophy drifts from behavioral contracts toward repository archaeology. R110 extended PAT-0015 to require representative round-trip contract tests for high-risk archive→runtime projection and writer→reader handoff contracts, and added governance-loader and related-files signal path contract tests as instances. CP-2 replaced the last two source-archaeology tests (`test_layout_agnostic_conftest` → `DB_SH.exists()` behavioral contract; `test_malformed_updater_signal_preserved` → `read_json` + `rename_malformed` round-trip). The suite has now converged on positive contract testing.
 
 **Solution surfaces**: PAT-0015 (Positive Contract Testing), positive behavioral assertions over source-grep absence tests, output-shape contracts, representative round-trip contract tests for high-risk handoffs (R110).
+
+---
+
+## PRB-0018: Legacy Surface Residue / Incomplete Surface Retirement
+
+**Status**: active — partially addressed (R111)
+**Provenance**: audit-inferred (R111)
+**Regions**: live agent inventory, legacy scripts, migration docs
+
+Legacy execution surfaces remain under live discovery trees after migration, reintroducing split-brain ambiguity and polluting runtime inventory. `taskrouter.agents.all_agent_files()` scans all `src/*/agents/*.md`, so dead agent files are not inert history — they alter the authoritative runtime inventory. R111 deleted 3 dead files (`orchestrator.md`, `exception-handler.md`, `state-detector.md`). Remaining: `qa-monitor.md` and `monitor.md` are referenced by `section-loop.py` which is itself a legacy orchestration surface.
+
+**Solution surfaces**: PAT-0016 (Runtime Inventory Truth & Surface Retirement), dead file deletion, discovery tree hygiene.
+
+---
+
+## PRB-0019: Runtime Inventory Drift / Authoritative Interface Mismatch
+
+**Status**: active — partially addressed (R111)
+**Provenance**: audit-inferred (R111)
+**Regions**: system-synthesis.md, governance/audit/prompt.md, operator docs, eval adapters
+
+Authoritative path/count/entrypoint claims are hand-maintained and diverge from live runtime registries after structural migrations. R111 corrected system-synthesis.md (52→50 agents, 28→48 routes, 9→11 namespaces) and governance/audit/prompt.md (path and count references). Remaining: SKILL.md, implement.md, models.md still reference legacy layout patterns.
+
+**Solution surfaces**: PAT-0016 (Runtime Inventory Truth & Surface Retirement), registry-derived inventory, atomic doc updates with code changes.

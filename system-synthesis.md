@@ -157,9 +157,9 @@ Cross-cutting infrastructure: `artifact_io.py` (read_json/write_json/rename_malf
 
 - **Problems solved**: PRB-0008 (Implementation Risk), PRB-0009 (Problem Traceability), PRB-0010 (Pattern Governance)
 - **Philosophy**: PHI-global
-- **Patterns**: PAT-0001, PAT-0002, PAT-0003, PAT-0005, PAT-0008, PAT-0011 (Applicable Governance Packet Threading), PAT-0012 (Post-Implementation Governance Feedback), PAT-0013 (Governed Proposal Identity), PAT-0014 (Advisory Gate Transparency)
+- **Patterns**: PAT-0001, PAT-0002, PAT-0003, PAT-0005, PAT-0008, PAT-0011 (Applicable Governance Packet Threading), PAT-0012 (Post-Implementation Governance Feedback), PAT-0013 (Governed Proposal Identity), PAT-0014 (Advisory Gate Transparency), PAT-0015 (Positive Contract Testing), PAT-0016 (Runtime Inventory Truth & Surface Retirement)
 
-The governance layer makes per-run artifacts cumulative. Codespace holds authoritative documents (problem archive with 17 problems, pattern catalog with 15 patterns, philosophy profiles, risk register). The runtime parses these into planspace JSON indexes (including synthesis cues extracted from this document's Regions block), builds per-section governance packets with section-scoped candidate filtering (including applicability-aware pattern scoping, bounded no-match behavior, and synthesis cue boosting), and threads them into prompt context, sidecars, freshness hashing, section-input hashing, and traceability.
+The governance layer makes per-run artifacts cumulative. Codespace holds authoritative documents (problem archive with 19 problems, pattern catalog with 16 patterns, philosophy profiles, risk register). The runtime parses these into planspace JSON indexes (including synthesis cues extracted from this document's Regions block), builds per-section governance packets with section-scoped candidate filtering (including applicability-aware pattern scoping, bounded no-match behavior, and synthesis cue boosting), and threads them into prompt context, sidecars, freshness hashing, section-input hashing, and traceability.
 
 Post-implementation assessment queues after successful implementation, validates results with PAT-0001, merges governance IDs into trace artifacts, and routes verdicts mechanically: `accept` → record governance IDs, `accept_with_debt` → emit debt signal for risk-register staging, `refactor_required` → emit structured blocker signal.
 
@@ -169,7 +169,7 @@ The governance hierarchy: problems (why) → philosophy (values) → patterns (h
 
 ## Agent system
 
-52 agents organized by epistemic operations, not engineering domains.
+50 agents organized by epistemic operations, not engineering domains.
 
 | Category | Agents | Function |
 |----------|--------|----------|
@@ -180,8 +180,8 @@ The governance hierarchy: problems (why) → philosophy (values) → patterns (h
 | Alignment & adjudication | alignment-judge, alignment-output-adjudicator, state-adjudicator, consequence-note-triager, reconciliation-adjudicator | Prevent directional drift at layer boundaries |
 | Coordination | coordination-planner, coordination-fixer, bridge-agent, impact-analyzer, impact-output-normalizer | Handle non-locality and cross-section repair |
 | Substrate shaping | substrate-shard-explorer, substrate-pruner, substrate-seeder | Seed shared structure for vacuum regions |
-| Runtime hygiene | agent-monitor, tool-registrar, bridge-tools, qa-interceptor | Detect loops, validate tools, bridge capability gaps |
-| Risk assessment | risk-assessor, execution-optimizer | Scale guardrails to actual local risk |
+| Runtime hygiene | agent-monitor, tool-registrar, bridge-tools, qa-interceptor, qa-monitor, monitor | Detect loops, validate tools, bridge capability gaps |
+| Risk assessment | risk-assessor, execution-optimizer, stack-evaluator | Scale guardrails to actual local risk |
 | Governance | post-implementation-assessor | Assess landed-code risks against governance |
 
 This organization is the system's deepest differentiator. Agents are operators over the reasoning substrate itself: distill, expand, propose, judge, adjudicate, research, synthesize, verify, prune, seed, bridge, monitor, assess.
@@ -204,17 +204,19 @@ The system spends more wall-clock time internally — exploring, aligning, propa
 
 ## Task vocabulary
 
-28 routed tasks across 9 system namespaces, using qualified names (`namespace.task`):
+48 routed tasks across 11 system namespaces, using qualified names (`namespace.task`):
 
-- **scan** (10): `scan.codemap_build`, `scan.codemap_freshness`, `scan.codemap_verify`, `scan.explore`, `scan.adjudicate`, `scan.tier_rank`, `scan.deep_analyze`, `scan.substrate_shard`, `scan.substrate_prune`, `scan.substrate_seed`
-- **staleness** (3): `staleness.alignment_check`, `staleness.alignment_adjudicate`, `staleness.state_adjudicate`
-- **research** (4): `research.plan`, `research.domain_ticket`, `research.synthesis`, `research.verify`
+- **coordination** (5): `coordination.bridge`, `coordination.consequence_triage`, `coordination.fix`, `coordination.plan`, `coordination.recurrence_adjudication`
+- **dispatch** (3): `dispatch.bridge_tools`, `dispatch.qa_intercept`, `dispatch.tool_registry_repair`
+- **implementation** (5): `implementation.microstrategy`, `implementation.microstrategy_decision`, `implementation.post_assessment`, `implementation.reexplore`, `implementation.strategic`
+- **intent** (10): `intent.pack_generator`, `intent.philosophy_bootstrap`, `intent.philosophy_distiller`, `intent.philosophy_expander`, `intent.philosophy_selector`, `intent.philosophy_verifier`, `intent.problem_expander`, `intent.recurrence_adjudicator`, `intent.triage`, `intent.triage_escalation`
 - **proposal** (2): `proposal.integration`, `proposal.section_setup`
-- **implementation** (3): `implementation.strategic`, `implementation.post_assessment`, `implementation.microstrategy_decision`
-- **coordination** (3): `coordination.fix`, `coordination.consequence_triage`, `coordination.recurrence_adjudication`
 - **reconciliation** (1): `reconciliation.adjudicate`
-- **dispatch** (1): `dispatch.tool_registry_repair`
-- **signals** (1): `signals.impact_analysis`
+- **research** (4): `research.domain_ticket`, `research.plan`, `research.synthesis`, `research.verify`
+- **risk** (3): `risk.assess`, `risk.optimize`, `risk.stack_eval`
+- **scan** (10): `scan.adjudicate`, `scan.codemap_build`, `scan.codemap_freshness`, `scan.codemap_verify`, `scan.deep_analyze`, `scan.explore`, `scan.substrate_prune`, `scan.substrate_seed`, `scan.substrate_shard`, `scan.tier_rank`
+- **signals** (2): `signals.impact_analysis`, `signals.impact_normalize`
+- **staleness** (3): `staleness.alignment_adjudicate`, `staleness.alignment_check`, `staleness.state_adjudicate`
 
 Routes are declared per-system in `<system>/routes.py` and collected by `taskrouter.discovery.discover()`. Each route specifies agent file, default model, and optional policy key for model overrides.
 
@@ -225,7 +227,7 @@ Agents expand work inside this vocabulary without inventing new execution primit
 ## Open tensions
 
 - **PRB-0009 (Problem Traceability)**: Governance enrichment covers all three trace surfaces (trace index, trace map, traceability.json) with problem_ids, pattern_ids, and profile_id. R103 added proposal-time governance identity (PAT-0013) so lineage originates at proposal time rather than post-implementation inference. Full round-trip traceability from problem → proposal → code → assessment is now wired; post-implementation assessment validates and enriches proposal-time lineage.
-- **PRB-0010 (Pattern Governance)**: Pattern archive (15 patterns) is loaded into governance packets and threaded into prompts, freshness hashing, microstrategy, alignment, and ROAL. R103 added proposal-time pattern_ids and pattern_deviations to proposal-state. R104 deepened the loader to parse template and conformance fields. R105 updated PAT-0005 (long-lived policy refresh), PAT-0011 (explicit ambiguity states), PAT-0012 (material-payload dedup), and PAT-0013 (profile compatibility, non-empty identity requirement). R109 added PAT-0014 (advisory gate transparency — structured reason_codes) and PAT-0015 (positive contract testing). Runtime pattern governance is increasingly structural — proposals must declare governance identity when packets provide candidates, and conformance criteria are now available at runtime.
+- **PRB-0010 (Pattern Governance)**: Pattern archive (16 patterns) is loaded into governance packets and threaded into prompts, freshness hashing, microstrategy, alignment, and ROAL. R103 added proposal-time pattern_ids and pattern_deviations to proposal-state. R104 deepened the loader to parse template and conformance fields. R105 updated PAT-0005 (long-lived policy refresh), PAT-0011 (explicit ambiguity states), PAT-0012 (material-payload dedup), and PAT-0013 (profile compatibility, non-empty identity requirement). R109 added PAT-0014 (advisory gate transparency — structured reason_codes) and PAT-0015 (positive contract testing). Runtime pattern governance is increasingly structural — proposals must declare governance identity when packets provide candidates, and conformance criteria are now available at runtime.
 - **PRB-0014 (Governance Context Dilution)**: R103 added region-based candidate filtering. R104 expanded to multi-signal applicability. R105 added explicit applicability states (matched/ambiguous_applicability/no_applicable_governance), narrowed profile scope to governing profile, and populated governance_questions on ambiguity rather than silently broadening. Packets now carry section-scoped candidate sets with explicit applicability state.
 - **Stabilization loop**: Post-impl assessment emits `accept_with_debt` → risk-register staging signal and `refactor_required` → structured blocker signal. R103 wired bounded stabilization consumer. R104 made promotion idempotent. R105 made dedup material-payload-aware: severity, mitigation, rationale, and governance lineage now affect the dedup key so changed risk re-promotes while unchanged debt stays idempotent.
 - **Per-region philosophy**: Region-profile-map exists but all regions currently use PHI-global. The infrastructure supports overrides when materially different values emerge.

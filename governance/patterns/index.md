@@ -856,10 +856,58 @@ round-trip test with realistic fixture shapes.
 
 ---
 
+## PAT-0016: Runtime Inventory Truth & Surface Retirement
+
+**Problem class**: Authoritative runtime inventories, operator docs, and eval
+adapters drift from live code after structural migrations. Hand-maintained
+counts, path references, and import targets silently diverge from registry
+truth.
+
+**Regions**: system-synthesis.md, governance/audit/prompt.md, src/SKILL.md,
+src/implement.md, eval trigger adapters, taskrouter agent inventory
+
+**Solution surfaces**: Registry-derived inventory, live surface retirement,
+migration completion verification.
+
+**Philosophy**: Accuracy over shortcuts. Context optimization. Migration
+atomicity — split-brain is worse than either model alone. The first routing
+map must be truthful.
+
+**Template**:
+1. Agent inventory claims MUST match `taskrouter.agents.all_agent_files()`.
+2. Task vocabulary claims MUST match `taskrouter.discovery.discover()`.
+3. Path references in docs MUST point to files that exist in the current tree.
+4. Legacy agent files MUST be removed from `src/*/agents/` when they have no
+   live consumers; they pollute runtime inventory via auto-discovery.
+5. Eval adapters MUST import from current package paths; stale imports break
+   positive contract coverage silently.
+6. Migration completion = new path active + old path out of discovery + docs
+   updated. Any step missing means migration is incomplete.
+
+**Canonical instance**: R111 deletion of 3 dead agent files
+(`orchestrator.md`, `exception-handler.md`, `state-detector.md`) from
+`src/dispatch/agents/` and correction of system-synthesis.md counts.
+
+**Known instances**:
+- `system-synthesis.md` — agent count and task vocabulary (R111: 52→50
+  agents, 28→48 routes, 9→11 namespaces)
+- `governance/audit/prompt.md` — agent path and count references (R111:
+  `src/agents/*.md` → `src/*/agents/*.md`, 47→50)
+- `src/dispatch/agents/` — legacy surface retirement (R111: 3 files deleted)
+
+**Conformance**: After any structural migration that adds, removes, or
+relocates agents or routes, all authoritative doc surfaces must be updated
+atomically with the code change. Hand-maintained counts are a violation
+waiting to happen; prefer registry-derived truth where feasible.
+
+---
+
 ## Health Notes
 
-- **PAT-0001 (Corruption Preservation)**: Healthy. Instance list expanded to
-  reflect current authoritative readers.
+- **PAT-0001 (Corruption Preservation)**: Healthy. R111 migrated last two
+  local malformed-artifact conventions (`scan/substrate/related_files.py` and
+  `scan/substrate/schemas.py`) to shared `read_json()`/`rename_malformed()`
+  primitives. All authoritative readers now delegate to `artifact_io`.
 - **PAT-0002 (Prompt Safety)**: Healthy. R109 clarified that payload-file
   contents are untrusted dynamic content even when delivered through internal
   tasks. QA interceptor now validates payload content before dispatch.
@@ -915,3 +963,8 @@ round-trip test with realistic fixture shapes.
   5-6 (published-contract presence assertions, round-trip fixture tests).
   Added `test_artifact_io.py` corruption-preservation round-trip to known
   instances.
+- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: **New.** R111
+  established the pattern. Deleted 3 dead legacy agent files, corrected
+  system-synthesis.md (50 agents, 48 routes, 11 namespaces), and fixed
+  governance/audit/prompt.md paths. Remaining work: eval adapter import
+  repair (V3), operator doc path updates (SKILL.md, implement.md).

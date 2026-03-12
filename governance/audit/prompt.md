@@ -139,9 +139,9 @@ Key areas to examine in the codebase:
   - `lib/repositories/` — proposal_state, readiness, reconciliation
 - `src/scripts/scan/` — Stage 3 coordinator (codemap, exploration, deep scan)
 - `src/scripts/substrate/` — Stage 3.5 SIS (shard, prune, seed)
-- `src/scripts/task_router.py` — Task routing and model policy
-- `src/scripts/task_dispatcher.py` — Queue dispatch with freshness/payload/QA checks
-- `src/agents/*.md` — Agent definitions (47 agents)
+- `src/taskrouter/` — Task routing, model policy, agent resolution
+- `src/flow/engine/dispatcher.py` — Queue dispatch with freshness/payload/QA checks
+- `src/*/agents/*.md` — Agent definitions (50 agents across 11 systems)
 - `src/SKILL.md` — Skill entry point
 - `src/implement.md` — Pipeline documentation
 - `evals/` — Evaluation scenarios

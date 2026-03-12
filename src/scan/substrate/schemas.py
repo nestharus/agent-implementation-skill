@@ -7,8 +7,9 @@ accepted.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
+
+from signals.repository.artifact_io import read_json, rename_malformed
 
 # ---- Enumerations ----
 
@@ -122,19 +123,8 @@ def validate_seed_plan(data: dict) -> list[str]:
 
 def _read_failclosed(path: Path, validator, label: str) -> dict | None:
     """Internal helper: read JSON, validate, rename on failure."""
-    if not path.is_file():
-        return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        print(
-            f"[SUBSTRATE][WARN] {label} at {path} is malformed "
-            f"({exc}) -- renaming to .malformed.json"
-        )
-        try:
-            path.rename(path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
+    data = read_json(path)
+    if data is None:
         return None
 
     if not isinstance(data, dict):
@@ -142,10 +132,7 @@ def _read_failclosed(path: Path, validator, label: str) -> dict | None:
             f"[SUBSTRATE][WARN] {label} at {path} is not a JSON "
             f"object -- renaming to .malformed.json"
         )
-        try:
-            path.rename(path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
+        rename_malformed(path)
         return None
 
     errors = validator(data)
@@ -154,10 +141,7 @@ def _read_failclosed(path: Path, validator, label: str) -> dict | None:
             f"[SUBSTRATE][WARN] {label} at {path} has validation "
             f"errors: {'; '.join(errors)} -- renaming to .malformed.json"
         )
-        try:
-            path.rename(path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
+        rename_malformed(path)
         return None
 
     return data

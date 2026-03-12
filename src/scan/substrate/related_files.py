@@ -10,11 +10,11 @@ Uses fail-closed behavior: malformed signals are renamed to
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
+from signals.repository.artifact_io import read_json, rename_malformed
 
 # Reuse the shared related_files parser from the scan package.
 # Both scan and substrate need identical parsing logic.
@@ -31,19 +31,8 @@ def _read_signal_failclosed(path: Path) -> dict | None:
     Returns ``None`` and renames the file to ``.malformed.json`` if
     the signal is missing, malformed, or structurally invalid.
     """
-    if not path.is_file():
-        return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        print(
-            f"[SUBSTRATE][WARN] Malformed related-files signal at "
-            f"{path} ({exc}) -- renaming to .malformed.json"
-        )
-        try:
-            path.rename(path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
+    data = read_json(path)
+    if data is None:
         return None
 
     if not isinstance(data, dict):
@@ -51,10 +40,7 @@ def _read_signal_failclosed(path: Path) -> dict | None:
             f"[SUBSTRATE][WARN] Related-files signal at {path} is not "
             f"a JSON object -- renaming to .malformed.json"
         )
-        try:
-            path.rename(path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
+        rename_malformed(path)
         return None
 
     if "additions" not in data or not isinstance(data["additions"], list):
@@ -62,10 +48,7 @@ def _read_signal_failclosed(path: Path) -> dict | None:
             f"[SUBSTRATE][WARN] Related-files signal at {path} missing "
             f"or invalid 'additions' -- renaming to .malformed.json"
         )
-        try:
-            path.rename(path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
+        rename_malformed(path)
         return None
 
     return data
