@@ -6,8 +6,7 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
-from containers import AgentDispatcher, PromptGuard, Services
-from src.implementation.service import triage_orchestrator
+from containers import AgentDispatcher, PromptGuard, SectionAlignmentService, Services
 from src.implementation.service.triage_orchestrator import run_impact_triage
 from orchestrator.types import Section
 
@@ -55,23 +54,19 @@ def test_run_impact_triage_skips_when_notes_are_acknowledged_and_aligned(
         encoding="utf-8",
     )
 
+    class _StubAlignment(SectionAlignmentService):
+        def run_alignment_check(self, *_args, **_kwargs):
+            return "aligned"
+
+        def parse_alignment_verdict(self, *_args, **_kwargs):
+            return {"aligned": True, "frame_ok": True}
+
+        def collect_modified_files(self, *_args, **_kwargs):
+            return ["src/main.py"]
+
     Services.dispatcher.override(providers.Object(_NoOpDispatcher()))
     Services.prompt_guard.override(providers.Object(_NoOpGuard()))
-    monkeypatch.setattr(
-        triage_orchestrator,
-        "_run_alignment_check_with_retries",
-        lambda *args, **kwargs: "aligned",
-    )
-    monkeypatch.setattr(
-        triage_orchestrator,
-        "_parse_alignment_verdict",
-        lambda *_args, **_kwargs: {"aligned": True, "frame_ok": True},
-    )
-    monkeypatch.setattr(
-        triage_orchestrator,
-        "collect_modified_files",
-        lambda *_args, **_kwargs: ["src/main.py"],
-    )
+    Services.section_alignment.override(providers.Object(_StubAlignment()))
 
     try:
         status, modified_files = run_impact_triage(
@@ -98,6 +93,7 @@ def test_run_impact_triage_skips_when_notes_are_acknowledged_and_aligned(
     finally:
         Services.dispatcher.reset_override()
         Services.prompt_guard.reset_override()
+        Services.section_alignment.reset_override()
 
 
 def test_run_impact_triage_continues_when_not_all_notes_are_acknowledged(
@@ -116,13 +112,13 @@ def test_run_impact_triage_continues_when_not_all_notes_are_acknowledged(
         encoding="utf-8",
     )
 
+    class _FailAlignment(SectionAlignmentService):
+        def run_alignment_check(self, *_args, **_kwargs):
+            pytest.fail("alignment check should not run")
+
     Services.dispatcher.override(providers.Object(_NoOpDispatcher()))
     Services.prompt_guard.override(providers.Object(_NoOpGuard()))
-    monkeypatch.setattr(
-        triage_orchestrator,
-        "_run_alignment_check_with_retries",
-        lambda *args, **kwargs: pytest.fail("alignment check should not run"),
-    )
+    Services.section_alignment.override(providers.Object(_FailAlignment()))
 
     try:
         status, modified_files = run_impact_triage(
@@ -139,6 +135,7 @@ def test_run_impact_triage_continues_when_not_all_notes_are_acknowledged(
     finally:
         Services.dispatcher.reset_override()
         Services.prompt_guard.reset_override()
+        Services.section_alignment.reset_override()
 
 
 def test_run_impact_triage_aborts_when_alignment_changes_mid_check(
@@ -163,13 +160,13 @@ def test_run_impact_triage_aborts_when_alignment_changes_mid_check(
         encoding="utf-8",
     )
 
+    class _AbortAlignment(SectionAlignmentService):
+        def run_alignment_check(self, *_args, **_kwargs):
+            return "ALIGNMENT_CHANGED_PENDING"
+
     Services.dispatcher.override(providers.Object(_NoOpDispatcher()))
     Services.prompt_guard.override(providers.Object(_NoOpGuard()))
-    monkeypatch.setattr(
-        triage_orchestrator,
-        "_run_alignment_check_with_retries",
-        lambda *args, **kwargs: "ALIGNMENT_CHANGED_PENDING",
-    )
+    Services.section_alignment.override(providers.Object(_AbortAlignment()))
 
     try:
         status, modified_files = run_impact_triage(
@@ -186,3 +183,4 @@ def test_run_impact_triage_aborts_when_alignment_changes_mid_check(
     finally:
         Services.dispatcher.reset_override()
         Services.prompt_guard.reset_override()
+        Services.section_alignment.reset_override()

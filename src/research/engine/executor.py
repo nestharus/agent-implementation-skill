@@ -12,7 +12,6 @@ if str(_SCRIPTS_DIR) not in sys.path:
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from orchestrator.path_registry import PathRegistry
 from flow.engine.submitter import new_flow_id, submit_fanout
-from staleness.service.freshness import compute_section_freshness
 from research.engine.orchestrator import load_research_status, validate_research_plan, write_research_status
 from research.prompt.writer import (
     write_research_synthesis_prompt,
@@ -424,7 +423,7 @@ def _submit_fanout(
 
     # Compute freshness AFTER all writes (prompts, specs, status) so
     # the token matches what the dispatcher will see.
-    post_write_freshness = compute_section_freshness(planspace, section_number)
+    post_write_freshness = Services.freshness().compute(planspace, section_number)
 
     flow_id = new_flow_id()
     gate = GateSpec(

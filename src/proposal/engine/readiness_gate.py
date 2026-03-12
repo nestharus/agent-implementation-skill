@@ -11,7 +11,6 @@ from research.engine.orchestrator import (
 )
 from research.prompt.writer import write_research_plan_prompt
 from proposal.repository.state import load_proposal_state
-from staleness.service.freshness import compute_section_freshness
 from proposal.service.readiness_resolver import resolve_readiness
 from reconciliation.repository.queue import queue_reconciliation_request
 from containers import Services
@@ -202,7 +201,7 @@ def route_blockers(
                     trigger_hash=trigger_hash,
                     cycle_id=cycle_id,
                 )
-                freshness = compute_section_freshness(planspace, section_number)
+                freshness = Services.freshness().compute(planspace, section_number)
                 task_id = submit_task(
                     registry.run_db(),
                     f"readiness-{section_number}",

@@ -6,9 +6,6 @@ import subprocess
 from pathlib import Path
 from typing import Callable
 
-from staleness.service.change_tracker import (
-    make_alignment_checker,
-)
 from orchestrator.path_registry import PathRegistry
 from coordination.repository.notes import read_incoming_notes
 from proposal.repository.state import load_proposal_state
@@ -57,7 +54,7 @@ class ImplementationPassRestart(Exception):
     """Raised when Phase 1 should restart after an alignment change."""
 
 
-_check_and_clear_alignment_changed = make_alignment_checker(DB_SH, AGENT_NAME)
+_check_and_clear_alignment_changed = Services.change_tracker().make_alignment_checker()
 
 
 def _persist_roal_artifacts(

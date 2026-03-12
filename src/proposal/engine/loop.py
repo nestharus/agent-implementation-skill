@@ -6,7 +6,6 @@ from pathlib import Path
 from containers import Services
 from intent.service.triage import load_triage_result
 from orchestrator.path_registry import PathRegistry
-from staleness.service.section_alignment import _extract_problems
 from intent.service.surfaces import (
     load_combined_intent_surfaces,
     load_surface_registry,
@@ -714,7 +713,7 @@ def run_proposal_loop(
             proposal_problems = "Previous alignment check timed out."
             continue
 
-        problems = _extract_problems(
+        problems = Services.section_alignment().extract_problems(
             align_result,
             output_path=align_output,
             planspace=planspace,

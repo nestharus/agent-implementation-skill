@@ -6,7 +6,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from staleness.service.change_tracker import invalidate_excerpts, set_flag
+from containers import Services
 from signals.service.database_client import DatabaseClient
 from signals.service.mailbox_service import MailboxService
 
@@ -57,8 +57,8 @@ def wait_if_paused(
             sys.exit(0)
         if msg.startswith("alignment_changed"):
             logger("Alignment changed while paused — invalidating excerpts")
-            invalidate_excerpts(planspace)
-            set_flag(planspace, db_sh=db_sh, agent_name=agent_name)
+            Services.change_tracker().invalidate_excerpts(planspace)
+            Services.change_tracker().set_flag(planspace)
             continue
         buffered.append(msg)
     for msg in buffered:
@@ -93,7 +93,7 @@ def pause_for_parent(
             sys.exit(0)
         if msg.startswith("alignment_changed"):
             logger("Alignment changed during pause — invalidating excerpts")
-            invalidate_excerpts(planspace)
-            set_flag(planspace, db_sh=db_sh, agent_name=agent_name)
+            Services.change_tracker().invalidate_excerpts(planspace)
+            Services.change_tracker().set_flag(planspace)
             continue
         return msg

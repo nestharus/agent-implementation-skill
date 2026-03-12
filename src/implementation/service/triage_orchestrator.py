@@ -7,11 +7,6 @@ from pathlib import Path
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from staleness.service.section_alignment import (
-    _parse_alignment_verdict,
-    _run_alignment_check_with_retries,
-    collect_modified_files,
-)
 from orchestrator.types import Section
 
 
@@ -138,7 +133,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         f"Section {section.number}: triage says no rework needed — "
         "skipping to alignment check",
     )
-    verify_result = _run_alignment_check_with_retries(
+    verify_result = Services.section_alignment().run_alignment_check(
         section,
         planspace,
         codespace,
@@ -151,7 +146,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
     if verify_result == "ALIGNMENT_CHANGED_PENDING":
         return ("abort", None)
     if verify_result:
-        verdict = _parse_alignment_verdict(verify_result)
+        verdict = Services.section_alignment().parse_alignment_verdict(verify_result)
         if (
             verdict is not None
             and verdict.get("aligned") is True
@@ -161,7 +156,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                 f"Section {section.number}: triage + alignment confirms no "
                 "rework needed",
             )
-            reported = collect_modified_files(planspace, section, codespace)
+            reported = Services.section_alignment().collect_modified_files(planspace, section, codespace)
             return ("skip", reported if reported else [])
 
     return ("continue", None)

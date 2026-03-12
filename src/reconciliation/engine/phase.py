@@ -5,11 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from staleness.service.change_tracker import (
-    make_alignment_checker,
-)
 from containers import Services
-from _config import AGENT_NAME, DB_SH
 from reconciliation.engine.loop import run_reconciliation
 from implementation.engine.runner import run_section
 from orchestrator.types import ProposalPassResult, Section
@@ -169,4 +165,4 @@ def run_reconciliation_phase(
     )
 
 
-_check_and_clear_alignment_changed = make_alignment_checker(DB_SH, AGENT_NAME)
+_check_and_clear_alignment_changed = Services.change_tracker().make_alignment_checker()

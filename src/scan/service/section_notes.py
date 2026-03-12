@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from staleness.service.change_tracker import set_flag
 from containers import Services
 from coordination.repository.notes import (
     read_incoming_notes as load_incoming_notes,
@@ -18,8 +17,6 @@ from implementation.service.impact_analyzer import analyze_impacts
 from orchestrator.path_registry import PathRegistry
 from orchestrator.service.section_decisions import extract_section_summary
 from implementation.service.snapshot import compute_text_diff, snapshot_modified_files
-
-from _config import AGENT_NAME, DB_SH
 
 if TYPE_CHECKING:
     from orchestrator.types import Section
@@ -133,7 +130,7 @@ Snapshot directory: `{snapshot_dir}`
         if (baseline_hash_dir / f"{target}.hash").exists()
     ]
     if completed_targets:
-        set_flag(planspace, db_sh=DB_SH, agent_name=AGENT_NAME)
+        Services.change_tracker().set_flag(planspace)
         Services.logger().log(
             f"Section {sec_num}: set alignment_changed_pending — "
             f"{len(completed_targets)} target section(s) have baseline hashes: "

@@ -9,11 +9,9 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 
-from staleness.service.change_tracker import make_alignment_checker
 from intake.service.assessment import promote_debt_signals
 from intake.repository.loader import bootstrap_governance_if_missing, build_governance_indexes
 from coordination.engine.loop import run_coordination_loop
-from staleness.service.global_recheck import run_global_alignment_recheck
 from implementation.engine.implementation_pass import (
     ImplementationPassExit,
     ImplementationPassRestart,
@@ -35,7 +33,7 @@ from orchestrator.engine.strategic_state import build_strategic_state
 from orchestrator.types import SectionResult
 
 
-_check_and_clear_alignment_changed = make_alignment_checker(DB_SH, AGENT_NAME)
+_check_and_clear_alignment_changed = Services.change_tracker().make_alignment_checker()
 
 
 def main() -> None:
@@ -203,7 +201,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
         if promoted:
             Services.logger().log(f"Stabilization: promoted {len(promoted)} debt entries to staging")
 
-        phase2_status = run_global_alignment_recheck(
+        phase2_status = Services.section_alignment().run_global_recheck(
             sections_by_num,
             section_results,
             planspace,

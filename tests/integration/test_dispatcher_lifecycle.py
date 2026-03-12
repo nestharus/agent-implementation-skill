@@ -13,16 +13,18 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from dependency_injector import providers
 
 from _paths import DB_SH
 from conftest import override_dispatcher_and_guard
+from containers import FreshnessService, Services
 
 from flow.types.schema import TaskSpec
 from flow.service.task_flow import (
-    compute_section_freshness,
     reconcile_task_completion,
     submit_chain,
 )
+from staleness.service.freshness import compute_section_freshness
 
 
 # ---------------------------------------------------------------------------
@@ -575,18 +577,22 @@ class TestDispatchStaleFreshnessToken:
             "freshness": stale_token,
         }
 
-        with (
-            override_dispatcher_and_guard(lambda *a, **kw: ""),
-            patch.object(
-                task_dispatcher._task_registry, "resolve",
-                return_value=("alignment-judge.md", "test-model"),
-            ),
-            patch.object(
-                task_dispatcher, "compute_section_freshness",
-                return_value=current_token,
-            ),
-        ):
-            task_dispatcher.dispatch_task(db_path, ps, task)
+        class _StubFreshness(FreshnessService):
+            def compute(self, planspace, section_number):
+                return current_token
+
+        Services.freshness.override(providers.Object(_StubFreshness()))
+        try:
+            with (
+                override_dispatcher_and_guard(lambda *a, **kw: ""),
+                patch.object(
+                    task_dispatcher._task_registry, "resolve",
+                    return_value=("alignment-judge.md", "test-model"),
+                ),
+            ):
+                task_dispatcher.dispatch_task(db_path, ps, task)
+        finally:
+            Services.freshness.reset_override()
 
         # Verify: task is failed with stale alignment error.
         row = _query_task(db_path, int(task_id))

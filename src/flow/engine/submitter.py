@@ -16,7 +16,7 @@ from flow.repository.context import (
 from flow.service.task_db_client import task_db
 from flow.types.routing import submit_task
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
-from staleness.service.freshness import compute_section_freshness
+from containers import Services
 
 
 def new_instance_id() -> str:
@@ -152,7 +152,7 @@ def submit_fanout(
                 if step.concern_scope:
                     match = re.match(r"^section-(\d+)$", step.concern_scope)
                     if match:
-                        branch_freshness = compute_section_freshness(
+                        branch_freshness = Services.freshness().compute(
                             planspace,
                             match.group(1),
                         )

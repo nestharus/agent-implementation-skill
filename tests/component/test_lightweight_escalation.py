@@ -145,10 +145,6 @@ def test_lightweight_aligned_surfaces_force_reproposal_under_full_intent(
         proposal_args=proposal_args,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop._extract_problems",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "src.proposal.engine.loop.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
@@ -216,10 +212,6 @@ def test_lightweight_aligned_surfaces_persist_registry_entries(
         proposal_args=proposal_args,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop._extract_problems",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "src.proposal.engine.loop.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
@@ -263,10 +255,6 @@ def test_lightweight_empty_surface_payload_does_not_escalate(
         planspace,
         intent_mode="lightweight",
         proposal_args=proposal_args,
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.loop._extract_problems",
-        lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         "src.proposal.engine.loop.load_combined_intent_surfaces",
@@ -331,10 +319,6 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
         proposal_args=proposal_args,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop._extract_problems",
-        lambda *_args, **_kwargs: next(problems),
-    )
-    monkeypatch.setattr(
         "src.proposal.engine.loop.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
@@ -348,6 +332,10 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
     )
 
     with override_dispatcher_and_guard(_dispatch):
+        monkeypatch.setattr(
+            Services.section_alignment(), "extract_problems",
+            lambda *_args, **_kwargs: next(problems),
+        )
         result = run_proposal_loop(
             section,
             planspace,
@@ -400,10 +388,6 @@ def test_full_mode_surfaces_do_not_emit_lightweight_escalation_signal(
         planspace,
         intent_mode="full",
         proposal_args=proposal_args,
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.loop._extract_problems",
-        lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         "src.proposal.engine.loop.load_combined_intent_surfaces",

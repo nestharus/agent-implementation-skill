@@ -1,7 +1,7 @@
 """Flow submission engine — submits chains and fanouts to the task queue.
 
-Also provides ``compute_section_freshness`` — a lightweight, model-free
-hash of a section's alignment artifacts used as a freshness token for
+Freshness tokens are computed via ``Services.freshness().compute()`` — a
+lightweight, model-free hash of a section's alignment artifacts used for
 the dispatcher's staleness gate (P4).
 
 Uses the data structures from flow_schema.py and the DB functions from
@@ -38,7 +38,7 @@ from flow.repository.gate_operations import (
     update_gate_member as _update_gate_member,
     update_gate_member_leaf as _update_gate_member_leaf,
 )
-from staleness.service.freshness import compute_section_freshness
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from flow.engine.submitter import (
     new_chain_id as _new_chain_id,

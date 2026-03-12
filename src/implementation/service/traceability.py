@@ -4,7 +4,6 @@ from pathlib import Path
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 
-from staleness.service.section_alignment import _parse_alignment_verdict
 from orchestrator.types import Section
 
 
@@ -69,7 +68,7 @@ def _write_traceability_index(
         if not output_path.exists():
             continue
         text = output_path.read_text(encoding="utf-8")
-        verdict = _parse_alignment_verdict(text)
+        verdict = Services.section_alignment().parse_alignment_verdict(text)
         if verdict is not None:
             problems = verdict.get("problems", [])
             problems_count = (len(problems) if isinstance(problems, list)

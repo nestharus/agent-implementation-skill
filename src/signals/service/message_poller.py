@@ -6,7 +6,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from staleness.service.change_tracker import invalidate_excerpts, set_flag
+from containers import Services
 from signals.service.mailbox_service import MailboxService
 
 
@@ -39,8 +39,8 @@ def poll_control_messages(
             sys.exit(0)
         if msg.startswith("alignment_changed"):
             logger("Alignment changed — invalidating excerpts and setting flag")
-            invalidate_excerpts(planspace)
-            set_flag(planspace, db_sh=db_sh, agent_name=agent_name)
+            Services.change_tracker().invalidate_excerpts(planspace)
+            Services.change_tracker().set_flag(planspace)
             alignment_changed = True
             continue
         mailbox.send(agent_name, msg)
@@ -86,6 +86,6 @@ def handle_pending_messages(
             return True
         if msg.startswith("alignment_changed"):
             logger("Alignment changed — invalidating excerpts and setting flag")
-            invalidate_excerpts(planspace)
-            set_flag(planspace, db_sh=db_sh, agent_name=agent_name)
+            Services.change_tracker().invalidate_excerpts(planspace)
+            Services.change_tracker().set_flag(planspace)
     return False

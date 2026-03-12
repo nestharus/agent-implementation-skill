@@ -22,7 +22,6 @@ from dispatch.prompt.helpers import (
 )
 
 from containers import Services
-from staleness.service.section_alignment import collect_modified_files
 from orchestrator.service.context_assembly import materialize_context_sidecar
 from orchestrator.types import Section
 from dispatch.prompt.context import build_prompt_context
@@ -446,7 +445,7 @@ def write_impl_alignment_prompt(
 
         # Collect modified files and union with related files
         all_paths = set(section.related_files) | set(
-            collect_modified_files(planspace, section, codespace)
+            Services.section_alignment().collect_modified_files(planspace, section, codespace)
         )
         impl_files_block = format_existing_file_listing(codespace, all_paths)
 

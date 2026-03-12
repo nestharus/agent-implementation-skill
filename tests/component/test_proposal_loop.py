@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
+from conftest import NoOpSectionAlignment
 from containers import AgentDispatcher, CrossSectionService, FlowIngestionService, Services
 from src.proposal.engine.loop import run_proposal_loop
 from src.orchestrator.types import Section
@@ -86,14 +87,11 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
 
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
     Services.flow_ingestion.override(providers.Object(_NoopFlow()))
+    Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
     monkeypatch.setattr(
         Services.dispatch_helpers(),
         "check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.loop._extract_problems",
-        lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         "src.proposal.engine.loop.load_reconciliation_result",
@@ -124,6 +122,7 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
     finally:
         Services.dispatcher.reset_override()
         Services.flow_ingestion.reset_override()
+        Services.section_alignment.reset_override()
 
 def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
     env: tuple[Path, Path],
@@ -169,15 +168,17 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
         def ingest_and_submit(self, *_args, **_kwargs):
             return None
 
+    sa = NoOpSectionAlignment()
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
     Services.flow_ingestion.override(providers.Object(_NoopFlow()))
+    Services.section_alignment.override(providers.Object(sa))
     monkeypatch.setattr(
         Services.dispatch_helpers(),
         "check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop._extract_problems",
+        sa, "extract_problems",
         lambda *_args, **_kwargs: next(problems),
     )
     monkeypatch.setattr(
@@ -208,6 +209,7 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
     finally:
         Services.dispatcher.reset_override()
         Services.flow_ingestion.reset_override()
+        Services.section_alignment.reset_override()
 
 def test_run_proposal_loop_routes_out_of_scope_and_retries(
     env: tuple[Path, Path],
@@ -270,11 +272,8 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
     Services.flow_ingestion.override(providers.Object(_NoopFlow()))
     Services.cross_section.override(providers.Object(_CapturingCrossSection()))
+    Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
     monkeypatch.setattr(Services.dispatch_helpers(), "check_agent_signals", _signals)
-    monkeypatch.setattr(
-        "src.proposal.engine.loop._extract_problems",
-        lambda *_args, **_kwargs: None,
-    )
     monkeypatch.setattr(
         "src.proposal.engine.loop.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
@@ -316,3 +315,4 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
         Services.dispatcher.reset_override()
         Services.flow_ingestion.reset_override()
         Services.cross_section.reset_override()
+        Services.section_alignment.reset_override()

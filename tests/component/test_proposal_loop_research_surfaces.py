@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
+from conftest import NoOpSectionAlignment
 from containers import AgentDispatcher, CrossSectionService, FlowIngestionService, ModelPolicyService, Services
 from src.proposal.engine.loop import run_proposal_loop
 from src.intent.service.expansion import run_expansion_cycle
@@ -98,14 +99,11 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
     Services.flow_ingestion.override(providers.Object(_NoopFlow()))
     Services.cross_section.override(providers.Object(_NoopCrossSection()))
+    Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
     monkeypatch.setattr(
         Services.dispatch_helpers(),
         "check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.loop._extract_problems",
-        lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         "src.proposal.engine.loop.load_reconciliation_result",
@@ -151,6 +149,7 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         Services.dispatcher.reset_override()
         Services.flow_ingestion.reset_override()
         Services.cross_section.reset_override()
+        Services.section_alignment.reset_override()
 
 def test_run_expansion_cycle_merges_research_surfaces_into_pending_payload(
     planspace: Path,

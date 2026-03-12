@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from dependency_injector import providers
 
+from conftest import NoOpChangeTracker
+from containers import ChangeTrackerService, Services
 from orchestrator.types import Section
 
 from src.scan.service import section_notes
@@ -97,7 +100,11 @@ def test_post_section_completion_writes_note_and_contract_artifact(
     baseline_hash = planspace / "artifacts" / "section-inputs-hashes" / "02.hash"
     baseline_hash.parent.mkdir(parents=True, exist_ok=True)
     baseline_hash.write_text("hash\n", encoding="utf-8")
-    signals: list[tuple[Path, str, str]] = []
+    flag_calls: list[Path] = []
+
+    class _CapturingChangeTracker(ChangeTrackerService):
+        def set_flag(self, planspace_arg):
+            flag_calls.append(planspace_arg)
 
     monkeypatch.setattr(
         section_notes,
@@ -111,29 +118,26 @@ def test_post_section_completion_writes_note_and_contract_artifact(
             ("02", "Shared contract changed", True, "## Contract Delta\nChanged")
         ],
     )
-    monkeypatch.setattr(
-        section_notes,
-        "set_flag",
-        lambda planspace_arg, db_sh, agent_name: signals.append(
-            (planspace_arg, db_sh, agent_name),
-        ),
-    )
+    Services.change_tracker.override(providers.Object(_CapturingChangeTracker()))
 
-    section_notes.post_section_completion(
-        section,
-        ["src/app.py"],
-        [section, target],
-        planspace,
-        codespace,
-        "parent",
-        impact_model="glm",
-        normalizer_model="glm",
-    )
+    try:
+        section_notes.post_section_completion(
+            section,
+            ["src/app.py"],
+            [section, target],
+            planspace,
+            codespace,
+            "parent",
+            impact_model="glm",
+            normalizer_model="glm",
+        )
 
-    note_path = planspace / "artifacts" / "notes" / "from-01-to-02.md"
-    contract_path = planspace / "artifacts" / "contracts" / "contract-01-02.md"
-    assert note_path.exists()
-    assert "Shared contract changed" in note_path.read_text(encoding="utf-8")
-    assert contract_path.exists()
-    assert "src/app.py" in contract_path.read_text(encoding="utf-8")
-    assert signals == [(planspace, section_notes.DB_SH, section_notes.AGENT_NAME)]
+        note_path = planspace / "artifacts" / "notes" / "from-01-to-02.md"
+        contract_path = planspace / "artifacts" / "contracts" / "contract-01-02.md"
+        assert note_path.exists()
+        assert "Shared contract changed" in note_path.read_text(encoding="utf-8")
+        assert contract_path.exists()
+        assert "src/app.py" in contract_path.read_text(encoding="utf-8")
+        assert flag_calls == [planspace]
+    finally:
+        Services.change_tracker.reset_override()

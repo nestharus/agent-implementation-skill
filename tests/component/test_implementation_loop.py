@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
+from conftest import NoOpSectionAlignment
 from containers import AgentDispatcher, DispatchHelperService, FlowIngestionService, Services
 from src.implementation.engine.loop import run_implementation_loop
 from src.orchestrator.types import Section
@@ -91,10 +92,7 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
     Services.dispatch_helpers.override(providers.Object(_NoopHelpers()))
     Services.flow_ingestion.override(providers.Object(_NoopFlow()))
-    monkeypatch.setattr(
-        "src.implementation.engine.loop._extract_problems",
-        lambda *_args, **_kwargs: None,
-    )
+    Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
     monkeypatch.setattr(
         "src.implementation.engine.loop._write_traceability_index",
         lambda *_args, **_kwargs: None,
@@ -126,6 +124,7 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
         Services.dispatcher.reset_override()
         Services.dispatch_helpers.reset_override()
         Services.flow_ingestion.reset_override()
+        Services.section_alignment.reset_override()
 
 
 def test_run_implementation_loop_retries_after_alignment_problems(
@@ -175,11 +174,13 @@ def test_run_implementation_loop_retries_after_alignment_problems(
         def submit_chain(self, *_args, **_kwargs):
             return [1]
 
+    sa = NoOpSectionAlignment()
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
     Services.dispatch_helpers.override(providers.Object(_NoopHelpers()))
     Services.flow_ingestion.override(providers.Object(_NoopFlow()))
+    Services.section_alignment.override(providers.Object(sa))
     monkeypatch.setattr(
-        "src.implementation.engine.loop._extract_problems",
+        sa, "extract_problems",
         lambda *_args, **_kwargs: next(problems),
     )
     monkeypatch.setattr(
@@ -207,3 +208,4 @@ def test_run_implementation_loop_retries_after_alignment_problems(
         Services.dispatcher.reset_override()
         Services.dispatch_helpers.reset_override()
         Services.flow_ingestion.reset_override()
+        Services.section_alignment.reset_override()

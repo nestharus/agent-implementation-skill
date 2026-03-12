@@ -17,11 +17,14 @@ from dependency_injector import providers
 from _paths import DB_SH
 from containers import (
     AgentDispatcher,
+    ChangeTrackerService,
     Communicator,
     CrossSectionService,
     FlowIngestionService,
+    FreshnessService,
     PipelineControlService,
     PromptGuard,
+    SectionAlignmentService,
     Services,
 )
 
@@ -89,6 +92,9 @@ def override_dispatcher_and_guard(fake_dispatch_fn):
     Services.communicator.override(providers.Object(NoOpCommunicator()))
     Services.flow_ingestion.override(providers.Object(_NoopFlow()))
     Services.cross_section.override(providers.Object(_NoopCrossSection()))
+    Services.change_tracker.override(providers.Object(NoOpChangeTracker()))
+    Services.freshness.override(providers.Object(NoOpFreshness()))
+    Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
     try:
         yield fake_dispatch_fn
     finally:
@@ -98,6 +104,9 @@ def override_dispatcher_and_guard(fake_dispatch_fn):
         Services.communicator.reset_override()
         Services.flow_ingestion.reset_override()
         Services.cross_section.reset_override()
+        Services.change_tracker.reset_override()
+        Services.freshness.reset_override()
+        Services.section_alignment.reset_override()
 
 
 @pytest.fixture()
@@ -317,6 +326,76 @@ def capturing_pipeline_control():
     Services.pipeline_control.override(providers.Object(ctrl))
     yield ctrl
     Services.pipeline_control.reset_override()
+
+
+class NoOpChangeTracker(ChangeTrackerService):
+    """Test double that silently handles all change tracker calls."""
+
+    def set_flag(self, planspace) -> None:
+        pass
+
+    def make_alignment_checker(self):
+        return lambda _planspace: False
+
+    def invalidate_excerpts(self, planspace) -> None:
+        pass
+
+
+class NoOpFreshness(FreshnessService):
+    """Test double that returns a constant freshness token."""
+
+    def compute(self, planspace, section_number: str) -> str:
+        return "noop-freshness"
+
+
+class NoOpSectionAlignment(SectionAlignmentService):
+    """Test double for section alignment operations."""
+
+    def extract_problems(self, result, output_path=None, planspace=None,
+                         parent=None, codespace=None, *, adjudicator_model: str) -> str | None:
+        return None
+
+    def collect_modified_files(self, planspace, section, codespace) -> list[str]:
+        return []
+
+    def run_alignment_check(self, section, planspace, codespace, parent, sec_num,
+                            output_prefix="align", max_retries=2, *, model: str,
+                            adjudicator_model: str):
+        return None
+
+    def parse_alignment_verdict(self, result):
+        return None
+
+    def run_global_recheck(self, sections_by_num, section_results,
+                           planspace, codespace, parent, policy) -> str:
+        return "aligned"
+
+
+@pytest.fixture()
+def noop_change_tracker():
+    """Override Services.change_tracker with a no-op test double."""
+    ct = NoOpChangeTracker()
+    Services.change_tracker.override(providers.Object(ct))
+    yield ct
+    Services.change_tracker.reset_override()
+
+
+@pytest.fixture()
+def noop_freshness():
+    """Override Services.freshness with a no-op test double."""
+    fs = NoOpFreshness()
+    Services.freshness.override(providers.Object(fs))
+    yield fs
+    Services.freshness.reset_override()
+
+
+@pytest.fixture()
+def noop_section_alignment():
+    """Override Services.section_alignment with a no-op test double."""
+    sa = NoOpSectionAlignment()
+    Services.section_alignment.override(providers.Object(sa))
+    yield sa
+    Services.section_alignment.reset_override()
 
 
 @pytest.fixture()

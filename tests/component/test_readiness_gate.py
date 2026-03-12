@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 
 import pytest
+from dependency_injector import providers
 
+from containers import FreshnessService, Services
 from src.proposal.engine.readiness_gate import (
     publish_discoveries,
     resolve_and_route,
@@ -133,10 +135,10 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
             or prompt_path
         ),
     )
-    monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.compute_section_freshness",
-        lambda ps, sec: "fresh-03",
-    )
+    class _StubFreshness(FreshnessService):
+        def compute(self, planspace, section_number):
+            return "fresh-03"
+    Services.freshness.override(providers.Object(_StubFreshness()))
     monkeypatch.setattr(
         "src.proposal.engine.readiness_gate.write_research_status",
         lambda section_number, ps, status, **kwargs: status_writes.append(
@@ -158,67 +160,70 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
         ),
     )
 
-    route_blockers(
-        "03",
-        {
-            "blocking_research_questions": [
-                "Should the retry ledger be persisted centrally?"
-            ],
-        },
-        planspace,
-        "parent",
-    )
-
-    trigger_path = (
-        planspace
-        / "artifacts"
-        / "research"
-        / "sections"
-        / "section-03"
-        / "research-trigger.json"
-    )
-    assert trigger_path.exists()
-    trigger = json.loads(trigger_path.read_text(encoding="utf-8"))
-    assert trigger == {
-        "section": "03",
-        "trigger_source": "proposal-state:blocking_research_questions",
-        "questions": ["Should the retry ledger be persisted centrally?"],
-        "trigger_hash": "hash-03",
-        "cycle_id": "research-03-hash-03",
-    }
-    assert prompt_calls == [
-        {
-            "section_number": "03",
-            "planspace": planspace,
-            "codespace": None,
-            "trigger_path": trigger_path,
-        }
-    ]
-    assert submitted == [
-        {
-            "db_path": planspace / "run.db",
-            "submitted_by": "readiness-03",
-            "task_type": "research.plan",
-            "concern_scope": "section-03",
-            "payload_path": str(prompt_path),
-            "problem_id": "research-03",
-            "freshness_token": "fresh-03",
-        }
-    ]
-    assert status_writes == [
-        (
+    try:
+        route_blockers(
             "03",
+            {
+                "blocking_research_questions": [
+                    "Should the retry ledger be persisted centrally?"
+                ],
+            },
             planspace,
-            "planned",
-            {"trigger_hash": "hash-03", "cycle_id": "research-03-hash-03"},
+            "parent",
         )
-    ]
-    assert not (
-        planspace
-        / "artifacts"
-        / "signals"
-        / "section-03-blocking-research-0-signal.json"
-    ).exists()
+
+        trigger_path = (
+            planspace
+            / "artifacts"
+            / "research"
+            / "sections"
+            / "section-03"
+            / "research-trigger.json"
+        )
+        assert trigger_path.exists()
+        trigger = json.loads(trigger_path.read_text(encoding="utf-8"))
+        assert trigger == {
+            "section": "03",
+            "trigger_source": "proposal-state:blocking_research_questions",
+            "questions": ["Should the retry ledger be persisted centrally?"],
+            "trigger_hash": "hash-03",
+            "cycle_id": "research-03-hash-03",
+        }
+        assert prompt_calls == [
+            {
+                "section_number": "03",
+                "planspace": planspace,
+                "codespace": None,
+                "trigger_path": trigger_path,
+            }
+        ]
+        assert submitted == [
+            {
+                "db_path": planspace / "run.db",
+                "submitted_by": "readiness-03",
+                "task_type": "research.plan",
+                "concern_scope": "section-03",
+                "payload_path": str(prompt_path),
+                "problem_id": "research-03",
+                "freshness_token": "fresh-03",
+            }
+        ]
+        assert status_writes == [
+            (
+                "03",
+                planspace,
+                "planned",
+                {"trigger_hash": "hash-03", "cycle_id": "research-03-hash-03"},
+            )
+        ]
+        assert not (
+            planspace
+            / "artifacts"
+            / "signals"
+            / "section-03-blocking-research-0-signal.json"
+        ).exists()
+    finally:
+        Services.freshness.reset_override()
 
 def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
     tmp_path: Path,

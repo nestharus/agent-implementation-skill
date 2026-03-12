@@ -113,10 +113,6 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
     expansion_calls: list[str] = []
 
     monkeypatch.setattr(
-        "src.proposal.engine.loop._extract_problems",
-        lambda *_args, **_kwargs: next(problems),
-    )
-    monkeypatch.setattr(
         "src.proposal.engine.loop.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
@@ -129,6 +125,10 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
     )
 
     with override_dispatcher_and_guard(_dispatch):
+        monkeypatch.setattr(
+            Services.section_alignment(), "extract_problems",
+            lambda *_args, **_kwargs: next(problems),
+        )
         result = run_proposal_loop(
             section,
             planspace,
@@ -177,10 +177,6 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
     expansion_calls: list[str] = []
 
     monkeypatch.setattr(
-        "src.proposal.engine.loop._extract_problems",
-        lambda *_args, **_kwargs: next(problems),
-    )
-    monkeypatch.setattr(
         "src.proposal.engine.loop.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
@@ -193,6 +189,10 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
     )
 
     with override_dispatcher_and_guard(_dispatch):
+        monkeypatch.setattr(
+            Services.section_alignment(), "extract_problems",
+            lambda *_args, **_kwargs: next(problems),
+        )
         result = run_proposal_loop(
             section,
             planspace,
@@ -248,10 +248,6 @@ def test_misaligned_definition_gap_expansion_respects_budget(
         },
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop._extract_problems",
-        lambda *_args, **_kwargs: next(problems),
-    )
-    monkeypatch.setattr(
         "src.proposal.engine.loop.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
@@ -264,6 +260,10 @@ def test_misaligned_definition_gap_expansion_respects_budget(
     )
 
     with override_dispatcher_and_guard(_dispatch):
+        monkeypatch.setattr(
+            Services.section_alignment(), "extract_problems",
+            lambda *_args, **_kwargs: next(problems),
+        )
         result = run_proposal_loop(
             section,
             planspace,

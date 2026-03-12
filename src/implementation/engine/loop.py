@@ -5,7 +5,6 @@ from pathlib import Path
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from intake.service.assessment import write_post_impl_assessment_prompt
-from staleness.service.section_alignment import _extract_problems
 from dispatch.prompt.writers import write_impl_alignment_prompt, write_strategic_impl_prompt
 from implementation.service.traceability import _write_traceability_index
 from implementation.service.change_verifier import verify_changed_files
@@ -425,7 +424,7 @@ def _extract_alignment_problems(
 ) -> str | None:
     """Extract alignment problems from the alignment check result."""
     impl_align_output = artifacts / f"impl-align-{section_number}-output.md"
-    return _extract_problems(
+    return Services.section_alignment().extract_problems(
         impl_align_result,
         output_path=impl_align_output,
         planspace=planspace,

@@ -21,11 +21,6 @@ from implementation.service.scope_delta_aggregator import (
     aggregate_scope_deltas,
 )
 
-from staleness.service.section_alignment import (
-    _extract_problems,
-    _parse_alignment_verdict,
-    _run_alignment_check_with_retries,
-)
 from signals.service.communication import (
     _log_artifact,
     mailbox_send,
@@ -255,7 +250,7 @@ def run_global_coordination(
                 f"from other sections")
 
         # Re-run implementation alignment check with TIMEOUT retry
-        align_result = _run_alignment_check_with_retries(
+        align_result = Services.section_alignment().run_alignment_check(
             section, planspace, codespace, parent, sec_num,
             output_prefix="coord-align",
             model=Services.policies().resolve(policy, "alignment"),
@@ -293,7 +288,7 @@ def run_global_coordination(
         coord_align_output = (
             paths.artifacts / f"coord-align-{sec_num}-output.md"
         )
-        align_problems = _extract_problems(
+        align_problems = Services.section_alignment().extract_problems(
             align_result, output_path=coord_align_output,
             planspace=planspace, parent=parent, codespace=codespace,
             adjudicator_model=Services.policies().resolve(policy, "adjudicator"),

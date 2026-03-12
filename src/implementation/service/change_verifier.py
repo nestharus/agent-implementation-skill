@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from staleness.service.section_alignment import collect_modified_files
 from containers import Services
 from orchestrator.types import Section
 
@@ -26,7 +25,7 @@ def verify_changed_files(
     snapshots.  Files outside the snapshot set that exist on disk are
     trusted (they were created by the agent).
     """
-    reported = collect_modified_files(planspace, section, codespace)
+    reported = Services.section_alignment().collect_modified_files(planspace, section, codespace)
     snapshotted_set = set(section.related_files)
     snapshotted_candidates = sorted(
         snapshotted_set | (set(reported) & set(pre_hashes))

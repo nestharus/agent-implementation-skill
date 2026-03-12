@@ -144,12 +144,16 @@ def _dispatch_and_capture(
                     fail_errors.append(a[i + 1])
         return original_db_cmd(dp, command, *a)
 
+    from containers import Services
+
     with (
         override_dispatcher_and_guard(fake_dispatch),
         patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
         patch.object(task_dispatcher, "reconcile_task_completion"),
         patch.object(task_dispatcher, "db_cmd", side_effect=tracking_db_cmd),
     ):
+        # Use real freshness service — this file tests the freshness gate
+        Services.freshness.reset_override()
         task_dispatcher.dispatch_task(db_path, ps, task)
 
     if fail_errors:
@@ -170,7 +174,7 @@ class TestComputeSectionFreshness:
         ps = _setup_planspace(tmp_path)
         _create_section_artifacts(ps, "01")
 
-        from flow.service.task_flow import compute_section_freshness
+        from staleness.service.freshness import compute_section_freshness
 
         t1 = compute_section_freshness(ps, "01")
         t2 = compute_section_freshness(ps, "01")
@@ -182,7 +186,7 @@ class TestComputeSectionFreshness:
         ps = _setup_planspace(tmp_path)
         _create_section_artifacts(ps, "02")
 
-        from flow.service.task_flow import compute_section_freshness
+        from staleness.service.freshness import compute_section_freshness
 
         t_before = compute_section_freshness(ps, "02")
 
@@ -198,7 +202,7 @@ class TestComputeSectionFreshness:
         """No artifacts exist — still returns a valid 16-char hex hash."""
         ps = _setup_planspace(tmp_path)
 
-        from flow.service.task_flow import compute_section_freshness
+        from staleness.service.freshness import compute_section_freshness
 
         token = compute_section_freshness(ps, "99")
         assert len(token) == 16
@@ -211,7 +215,7 @@ class TestComputeSectionFreshness:
         _create_section_artifacts(ps, "01")
         _create_section_artifacts(ps, "02")
 
-        from flow.service.task_flow import compute_section_freshness
+        from staleness.service.freshness import compute_section_freshness
 
         t1 = compute_section_freshness(ps, "01")
         t2 = compute_section_freshness(ps, "02")
@@ -230,7 +234,7 @@ class TestDispatcherFreshnessGate:
         ps = _setup_planspace(tmp_path)
         _create_section_artifacts(ps, "03")
 
-        from flow.service.task_flow import compute_section_freshness
+        from staleness.service.freshness import compute_section_freshness
 
         token = compute_section_freshness(ps, "03")
 
@@ -250,7 +254,7 @@ class TestDispatcherFreshnessGate:
         ps = _setup_planspace(tmp_path)
         _create_section_artifacts(ps, "04")
 
-        from flow.service.task_flow import compute_section_freshness
+        from staleness.service.freshness import compute_section_freshness
 
         old_token = compute_section_freshness(ps, "04")
 

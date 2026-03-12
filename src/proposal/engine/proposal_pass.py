@@ -16,9 +16,6 @@ from risk.engine.loop import run_lightweight_risk_check
 from risk.service.package_builder import build_package_from_proposal
 from risk.repository.serialization import load_risk_assessment
 from risk.types import RiskMode, RiskPackage, RiskType
-from staleness.service.change_tracker import (
-    make_alignment_checker,
-)
 from scan.service.section_loader import parse_related_files
 from _config import AGENT_NAME, DB_SH
 from containers import Services
@@ -33,7 +30,7 @@ class ProposalPassExit(Exception):
     """Raised when the proposal pass should stop the outer run."""
 
 
-_check_and_clear_alignment_changed = make_alignment_checker(DB_SH, AGENT_NAME)
+_check_and_clear_alignment_changed = Services.change_tracker().make_alignment_checker()
 
 
 def _proposal_risk_severities(assessment: object) -> dict[str, int]:

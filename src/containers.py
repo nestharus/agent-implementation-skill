@@ -309,6 +309,75 @@ class StalenessDetectionService:
         return diff_files(codespace, before, reported)
 
 
+class ChangeTrackerService:
+    """Alignment change flag and excerpt invalidation."""
+
+    def set_flag(self, planspace) -> None:
+        from _config import AGENT_NAME, DB_SH
+        from staleness.service.change_tracker import set_flag
+        set_flag(planspace, db_sh=DB_SH, agent_name=AGENT_NAME)
+
+    def make_alignment_checker(self):
+        from _config import AGENT_NAME, DB_SH
+        from staleness.service.change_tracker import make_alignment_checker
+        return make_alignment_checker(DB_SH, AGENT_NAME)
+
+    def invalidate_excerpts(self, planspace) -> None:
+        from staleness.service.change_tracker import invalidate_excerpts
+        invalidate_excerpts(planspace)
+
+
+class FreshnessService:
+    """Section freshness token computation."""
+
+    def compute(self, planspace, section_number: str) -> str:
+        from staleness.service.freshness import compute_section_freshness
+        return compute_section_freshness(planspace, section_number)
+
+
+class SectionAlignmentService:
+    """Section alignment checking and problem extraction."""
+
+    def extract_problems(
+        self, result, output_path=None, planspace=None,
+        parent=None, codespace=None, *, adjudicator_model: str,
+    ) -> str | None:
+        from staleness.service.section_alignment import _extract_problems
+        return _extract_problems(
+            result, output_path, planspace, parent, codespace,
+            adjudicator_model=adjudicator_model,
+        )
+
+    def collect_modified_files(self, planspace, section, codespace) -> list[str]:
+        from staleness.service.section_alignment import collect_modified_files
+        return collect_modified_files(planspace, section, codespace)
+
+    def run_alignment_check(
+        self, section, planspace, codespace, parent, sec_num,
+        output_prefix="align", max_retries=2, *, model: str, adjudicator_model: str,
+    ):
+        from staleness.service.section_alignment import _run_alignment_check_with_retries
+        return _run_alignment_check_with_retries(
+            section, planspace, codespace, parent, sec_num,
+            output_prefix, max_retries,
+            model=model, adjudicator_model=adjudicator_model,
+        )
+
+    def parse_alignment_verdict(self, result):
+        from proposal.helpers.verdict_parsers import parse_alignment_verdict
+        return parse_alignment_verdict(result)
+
+    def run_global_recheck(
+        self, sections_by_num, section_results,
+        planspace, codespace, parent, policy,
+    ) -> str:
+        from staleness.service.global_recheck import run_global_alignment_recheck
+        return run_global_alignment_recheck(
+            sections_by_num, section_results,
+            planspace, codespace, parent, policy,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Container
 # ---------------------------------------------------------------------------
@@ -331,3 +400,6 @@ class Services(containers.DeclarativeContainer):
     cross_section = providers.Singleton(CrossSectionService)
     flow_ingestion = providers.Singleton(FlowIngestionService)
     staleness = providers.Singleton(StalenessDetectionService)
+    change_tracker = providers.Singleton(ChangeTrackerService)
+    freshness = providers.Singleton(FreshnessService)
+    section_alignment = providers.Singleton(SectionAlignmentService)

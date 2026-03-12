@@ -7,7 +7,6 @@ from pathlib import Path
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from orchestrator.repository.section_artifacts import write_section_input_artifact
-from staleness.service.freshness import compute_section_freshness
 from risk.types import (
     PostureProfile,
     RiskPlan,
@@ -189,7 +188,7 @@ def has_stale_freshness_token(
     if not isinstance(token, str) or not token.strip():
         return False
 
-    current = compute_section_freshness(planspace, sec_num)
+    current = Services.freshness().compute(planspace, sec_num)
     return token.strip() != current
 
 

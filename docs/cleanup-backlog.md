@@ -101,30 +101,33 @@ Missing/problematic patterns:
 
 ## OPEN
 
-### 61. DI container incomplete — bare functions still scattered everywhere
+### 61. DI container incomplete — bare functions still scattered everywhere — DONE
 - **Category**: Dependency injection (systemic)
-- **Problem**: The DI migration (#60's container) only covered 4 services: `AgentDispatcher`, `PromptGuard`, `ModelPolicyService`, `SignalReader`. 32 cross-cutting functions still imported directly across 400+ sites spanning 2+ systems each.
-- **Scan results** (sorted by import count):
-  - `PathRegistry` (orchestrator.path_registry) — 91 imports, 16 systems
-  - `write_json` (signals.repository.artifact_io) — 57 imports, 13 systems
-  - `read_json` (signals.repository.artifact_io) — 53 imports, 13 systems
-  - `log` (signals.service.communication) — 38 imports, 9 systems
-  - `agent_for` (taskrouter) — 29 imports, 10 systems
-  - `rename_malformed` (signals.repository.artifact_io) — 21 imports, 13 systems
-  - `mailbox_send` (signals.service.communication) — 15 imports, 5 systems
-  - `content_hash` (staleness.helpers.hashing) — 14 imports, 9 systems
-  - `_log_artifact` (signals.service.communication) — 14 imports, 5 systems
-  - `resolve_agent_path` (taskrouter.agents) — 9 imports, 5 systems
-  - `pause_for_parent`, `poll_control_messages`, `handle_pending_messages` (pipeline control)
-  - `check_agent_signals`, `summarize_output` (dispatch helpers)
-  - `ingest_and_submit` (flow), `persist_decision` (coordination)
-- **Containerization plan** (priority order):
-  1. **ArtifactIO** service: `read_json`, `write_json`, `rename_malformed` (131 imports)
-  2. **Communicator** service: `log`, `mailbox_send`, `_log_artifact`, `_record_traceability` (80+ imports)
-  3. **PathRegistry**: wrap in container singleton (91 imports)
-  4. **TaskRoutingService**: `agent_for`, `resolve_agent_path` (38 imports)
-  5. **ChangeTracker**: `check_pending`, `snapshot_files`, `content_hash` (28+ imports)
-  6. **PipelineControl**: `pause_for_parent`, `poll_control_messages`, `handle_pending_messages`
+- **Status**: DONE — 19 services containerized, ~75 functions migrated, ~225 production files + ~40 test files updated. 1561 tests passing.
+- **Completed services** (in `containers.py`):
+  - `AgentDispatcher` — `dispatch_agent` (original 4)
+  - `PromptGuard` — `write_validated_prompt`, `validate_dynamic_content` (original 4)
+  - `ModelPolicyService` — `load_model_policy`, `resolve` (original 4)
+  - `SignalReader` — `read_agent_signal`, `read_signal_tuple` (original 4)
+  - `PipelineControlService` — `pause_for_parent`, `poll_control_messages`, `handle_pending_messages`, `alignment_changed_pending`, `wait_if_paused`, `requeue_changed_sections`, `section_inputs_hash`, `coordination_recheck_hash` (8 methods)
+  - `Communicator` — `mailbox_send`, `log_artifact`, `record_traceability` (3 methods)
+  - `LogService` — `log` (1 method)
+  - `TaskRouterService` — `agent_for`, `resolve_agent_path` (2 methods)
+  - `HasherService` — `file_hash`, `content_hash`, `fingerprint` (3 methods)
+  - `ArtifactIOService` — `read_json`, `write_json`, `read_if_exists`, `read_json_or_default`, `rename_malformed` (5 methods)
+  - `DispatchHelperService` — `check_agent_signals`, `summarize_output`, `write_model_choice_signal` (3 methods)
+  - `ContextAssemblyService` — `materialize_context_sidecar` (1 method)
+  - `CrossSectionService` — `persist_decision`, `extract_section_summary`, `read_incoming_notes`, `write_consequence_note` (4 methods)
+  - `FlowIngestionService` — `ingest_and_submit`, `submit_chain` (2 methods)
+  - `StalenessDetectionService` — `snapshot_files`, `diff_files` (2 methods)
+- **Test doubles** added to `tests/conftest.py`:
+  - `NoOpPipelineControl` / `CapturingPipelineControl` (with configurable returns + side effects)
+  - `NoOpCommunicator` / `CapturingCommunicator`
+  - `override_dispatcher_and_guard` extended to override 6 services
+  - `noop_pipeline_control` / `capturing_pipeline_control` / `noop_communicator` / `capturing_communicator` fixtures
+- **NOT containerized** (categorically different — domain-level orchestration wiring, not infrastructure):
+  - `PathRegistry` (91 imports) — value object / path builder, not a cross-cutting service. Every consumer constructs it with `PathRegistry(planspace)`.
+  - ~150 domain-level cross-system imports: `run_reconciliation_phase`, `run_intent_bootstrap`, `run_section`, `write_strategic_impl_prompt`, risk engine functions, research orchestration, dispatch prompt writers, scan section loaders, etc. These are the architectural wiring between subsystems — the calling system IS the consumer. Containerizing these would wrap orchestration calls in unnecessary indirection.
 
 ### 62. ~~`engine/loop.py` files are still god functions, not components~~ → DONE
 - **Status**: DONE — All 7 god functions decomposed into single-concern helpers:

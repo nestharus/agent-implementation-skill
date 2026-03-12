@@ -38,7 +38,6 @@ from flow.helpers.task_parser import parse_task_output
 from flow.exceptions import FlowCorruptionError
 from flow.service.task_flow import (
     build_flow_context,
-    compute_section_freshness,
     reconcile_task_completion,
     write_dispatch_prompt,
 )
@@ -251,7 +250,7 @@ def dispatch_task(
     # P4: Freshness gate for section-scoped queued tasks
     freshness_token = task.get("freshness")
     if freshness_token and section_number:
-        current_token = compute_section_freshness(planspace, section_number)
+        current_token = Services.freshness().compute(planspace, section_number)
         if current_token != freshness_token:
             err = (
                 f"stale alignment — section-{section_number} inputs changed "

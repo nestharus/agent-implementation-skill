@@ -90,7 +90,6 @@ def ingest_and_submit(
     # task_dispatcher → task_flow → flow_reconciler → plan_executor
     # → section_engine → reexplore → task_ingestion → task_flow
     from flow.service.task_flow import (
-        compute_section_freshness,
         submit_chain,
         submit_fanout,
     )
@@ -106,7 +105,7 @@ def ingest_and_submit(
             token: str | None = None
             section_scope = find_first_section_scope(action.steps)
             if section_scope:
-                token = compute_section_freshness(
+                token = Services.freshness().compute(
                     planspace, section_scope,
                 )
             task_ids = submit_chain(

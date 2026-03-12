@@ -8,9 +8,7 @@ from pathlib import Path
 from coordination.service.problem_resolver import _collect_outstanding_problems
 from orchestrator.path_registry import PathRegistry
 from orchestrator.engine.strategic_state import build_strategic_state
-from staleness.service.change_tracker import make_alignment_checker
 from containers import Services
-from _config import AGENT_NAME, DB_SH
 from coordination.engine.global_coordinator import (
     MAX_COORDINATION_ROUNDS,
     MIN_COORDINATION_ROUNDS,
@@ -227,4 +225,4 @@ def run_coordination_loop(
     )
 
 
-_check_and_clear_alignment_changed = make_alignment_checker(DB_SH, AGENT_NAME)
+_check_and_clear_alignment_changed = Services.change_tracker().make_alignment_checker()
