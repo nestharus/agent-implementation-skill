@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
 from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
-from implementation.engine.implementation_pass import _refresh_roal_input_index
+from orchestrator.repository.section_artifacts import write_section_input_artifact
+from implementation.repository.roal_index import refresh_roal_input_index
 from proposal.repository.state import load_proposal_state
 from risk.service.engagement import determine_engagement
 from risk.engine.loop import run_lightweight_risk_check
@@ -16,8 +18,8 @@ from risk.service.package_builder import build_package_from_proposal
 from risk.repository.serialization import load_risk_assessment
 from risk.types import RiskMode, RiskPackage, RiskType
 from staleness.service.change_tracker import (
-    check_and_clear,
     check_pending as alignment_changed_pending,
+    make_alignment_checker,
 )
 from scan.service.section_loader import parse_related_files
 from signals.service.communication import AGENT_NAME, DB_SH, log, mailbox_send
@@ -30,27 +32,14 @@ from implementation.service.reexplore import _reexplore_section
 from implementation.engine.runner import run_section
 from orchestrator.types import ProposalPassResult, Section
 
+logger = logging.getLogger(__name__)
+
 
 class ProposalPassExit(Exception):
     """Raised when the proposal pass should stop the outer run."""
 
 
-def _check_and_clear_alignment_changed(planspace: Path) -> bool:
-    return check_and_clear(planspace, db_sh=DB_SH, agent_name=AGENT_NAME)
-
-
-def _write_section_input_artifact(
-    paths: PathRegistry,
-    sec_num: str,
-    artifact_name: str,
-    payload: dict,
-) -> Path:
-    input_dir = paths.input_refs_dir(sec_num)
-    artifact_path = input_dir / artifact_name
-    write_json(artifact_path, payload)
-    ref_path = input_dir / f"{artifact_path.stem}.ref"
-    ref_path.write_text(str(artifact_path.resolve()), encoding="utf-8")
-    return artifact_path
+_check_and_clear_alignment_changed = make_alignment_checker(DB_SH, AGENT_NAME)
 
 
 def _proposal_risk_severities(assessment: object) -> dict[str, int]:
@@ -68,7 +57,7 @@ def _write_proposal_risk_advisory(
     advisory_scope: str,
     summary: dict[str, Any],
 ) -> Path:
-    return _write_section_input_artifact(
+    return write_section_input_artifact(
         PathRegistry(planspace),
         sec_num,
         f"{advisory_scope}-risk-advisory.json",
@@ -171,7 +160,7 @@ def _risk_check_proposal(
         )
         assessment = load_risk_assessment(paths.risk_assessment(advisory_scope))
         if assessment is None:
-            _refresh_roal_input_index(
+            refresh_roal_input_index(
                 planspace,
                 sec_num,
                 replace_kinds=frozenset({"proposal_advisory"}),
@@ -223,7 +212,7 @@ def _risk_check_proposal(
                     severities,
                     advisory_path,
                 )
-        _refresh_roal_input_index(
+        refresh_roal_input_index(
             planspace,
             sec_num,
             replace_kinds=frozenset({"proposal_advisory"}),
@@ -231,15 +220,17 @@ def _risk_check_proposal(
         )
         return summary
     except Exception as exc:  # noqa: BLE001
-        _refresh_roal_input_index(
+        refresh_roal_input_index(
             planspace,
             sec_num,
             replace_kinds=frozenset({"proposal_advisory"}),
             new_entries=[],
         )
-        log(
-            f"Section {sec_num}: proposal ROAL pre-check failed ({exc}) "
-            "— continuing without advisory risk summary",
+        logger.warning(
+            "Section %s: proposal ROAL pre-check failed — continuing "
+            "without advisory risk summary",
+            sec_num,
+            exc_info=True,
         )
         return None
 

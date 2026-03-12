@@ -6,7 +6,7 @@ from pathlib import Path
 
 from signals.repository.artifact_io import read_json, rename_malformed, write_json
 from orchestrator.path_registry import PathRegistry
-from dispatch.service.prompt_safety import write_validated_prompt
+from dispatch.service.prompt_guard import write_validated_prompt
 # Lazy import to avoid circular dependency:
 # assessment -> section_engine -> implementation_loop -> assessment
 # update_trace_governance is imported inside promote_debt_signals()

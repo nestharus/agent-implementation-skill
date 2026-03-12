@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from flow.helpers.file_utils import read_if_exists
 from orchestrator.path_registry import PathRegistry
 
 
@@ -62,16 +63,10 @@ VALID_CATEGORIES = frozenset({
 })
 
 
-def _read_if_exists(path: Path) -> str:
-    if path.exists():
-        return path.read_text(encoding="utf-8")
-    return ""
-
-
 def _resolve_section_spec(planspace: Path, section: str | None) -> str:
     if not section:
         return ""
-    return _read_if_exists(PathRegistry(planspace).section_spec(section))
+    return read_if_exists(PathRegistry(planspace).section_spec(section))
 
 
 def _resolve_decision_history(planspace: Path, section: str | None) -> str:
@@ -81,11 +76,11 @@ def _resolve_decision_history(planspace: Path, section: str | None) -> str:
         json_path = decisions_dir / f"section-{section}.json"
     else:
         json_path = decisions_dir / "global.json"
-    return _read_if_exists(json_path)
+    return read_if_exists(json_path)
 
 
 def _resolve_strategic_state(planspace: Path, _section: str | None) -> str:
-    return _read_if_exists(PathRegistry(planspace).strategic_state())
+    return read_if_exists(PathRegistry(planspace).strategic_state())
 
 
 def _resolve_codemap(planspace: Path, _section: str | None) -> str:
@@ -129,7 +124,7 @@ def _resolve_related_files(planspace: Path, section: str | None) -> str:
 
 
 def _resolve_coordination_state(planspace: Path, _section: str | None) -> str:
-    return _read_if_exists(
+    return read_if_exists(
         PathRegistry(planspace).coordination_dir() / "problems.json"
     )
 
@@ -156,7 +151,7 @@ def _resolve_section_output(planspace: Path, section: str | None) -> str:
 
 
 def _resolve_model_policy(planspace: Path, _section: str | None) -> str:
-    return _read_if_exists(PathRegistry(planspace).model_policy())
+    return read_if_exists(PathRegistry(planspace).model_policy())
 
 
 def _resolve_flow_context(planspace: Path, _section: str | None) -> str:
@@ -172,7 +167,7 @@ def _resolve_flow_context(planspace: Path, _section: str | None) -> str:
 def _resolve_governance(planspace: Path, section: str | None) -> str:
     if not section:
         return ""
-    return _read_if_exists(PathRegistry(planspace).governance_packet(section))
+    return read_if_exists(PathRegistry(planspace).governance_packet(section))
 
 
 _RESOLVERS = {

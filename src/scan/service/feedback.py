@@ -18,7 +18,7 @@ from scan.service.feedback_router import (
 from scan.related.discovery import apply_related_files_update
 from scan.service.template_loader import load_scan_template
 
-from dispatch.service.prompt_safety import validate_dynamic_content
+from dispatch.service.prompt_guard import validate_dynamic_content
 
 from scan.cli_dispatch import dispatch_agent, read_scan_model_policy
 from taskrouter import agent_for

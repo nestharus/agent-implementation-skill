@@ -16,9 +16,3 @@ router.route(
     model="gpt-high",
     policy_key="bridge_tools",
 )
-router.route(
-    "qa_intercept",
-    agent="qa-interceptor.md",
-    model="claude-opus",
-    policy_key="qa_interceptor",
-)

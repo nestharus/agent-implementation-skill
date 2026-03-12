@@ -28,8 +28,7 @@ def extract_excerpts(
 ) -> str | None:
     """Run the setup loop until both proposal and alignment excerpts exist."""
     paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
-    signal_dir = artifacts / "signals"
+    signal_dir = paths.signals_dir()
     signal_dir.mkdir(parents=True, exist_ok=True)
 
     while (
@@ -44,7 +43,7 @@ def extract_excerpts(
             section.global_proposal_path,
             section.global_alignment_path,
         )
-        setup_output = artifacts / f"setup-{section.number}-output.md"
+        setup_output = paths.artifacts / f"setup-{section.number}-output.md"
         setup_agent = f"setup-{section.number}"
         output = dispatch_agent(
             policy["setup"],

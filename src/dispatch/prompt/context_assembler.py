@@ -18,11 +18,10 @@ def build_proposal_context_extras(
     base_context: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """Build prompt-specific context keys for integration proposal prompts."""
-    artifacts = PathRegistry(planspace).artifacts
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     sec = section.number
-    integration_proposal = (
-        artifacts / "proposals" / f"section-{sec}-integration-proposal.md"
-    )
+    integration_proposal = paths.proposal(sec)
 
     problems_block = ""
     if alignment_problems:
@@ -74,7 +73,8 @@ def build_impl_context_extras(
     base_context: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """Build prompt-specific context keys for implementation prompts."""
-    artifacts = PathRegistry(planspace).artifacts
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     sec = section.number
 
     problems_block = ""
@@ -87,7 +87,7 @@ def build_impl_context_extras(
             f"Read them and address ALL of them: `{problems_file}`\n"
         )
 
-    decisions_file = artifacts / "decisions" / f"section-{sec}.md"
+    decisions_file = paths.decisions_dir() / f"section-{sec}.md"
     decisions_block = ""
     if decisions_file.exists():
         decisions_block = (
@@ -95,7 +95,7 @@ def build_impl_context_extras(
             f"Read decisions: `{decisions_file}`\n"
         )
 
-    codemap_corrections_path = PathRegistry(artifacts.parent).corrections()
+    codemap_corrections_path = paths.corrections()
     corrections_ref = ""
     if codemap_corrections_path.exists():
         corrections_ref = (
@@ -103,27 +103,25 @@ def build_impl_context_extras(
             f"`{codemap_corrections_path}`"
         )
 
-    codemap_path = artifacts / "codemap.md"
+    codemap_path = paths.codemap()
     codemap_ref = ""
     if codemap_path.exists():
         codemap_ref = f"\n7. Codemap (project understanding): `{codemap_path}`"
 
-    todos_path = artifacts / "todos" / f"section-{sec}-todos.md"
+    todos_path = paths.todos(sec)
     todos_ref = ""
     if todos_path.exists():
         todos_ref = (
             f"\n8. TODO extraction (in-code microstrategies): `{todos_path}`"
         )
 
-    tools_path = artifacts / "sections" / f"section-{sec}-tools-available.md"
+    tools_path = paths.tools_available(sec)
     tools_ref = ""
     if tools_path.exists():
         tools_ref = f"\n9. Available tools from earlier sections: `{tools_path}`"
 
-    tool_registry_path = artifacts / "tool-registry.json"
-    friction_signal_path = (
-        artifacts / "signals" / f"section-{sec}-tool-friction.json"
-    )
+    tool_registry_path = paths.tool_registry()
+    friction_signal_path = paths.tool_friction_signal(sec)
     tooling_block = (
         f"\n## Tooling\n\n"
         f"If you create any new tool/script intended for reuse, you MUST append an\n"

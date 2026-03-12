@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from signals.repository.artifact_io import read_json
-from orchestrator.path_registry import PathRegistry
+from scan.substrate.helpers import _registry_for_artifacts
 
 DEFAULT_SUBSTRATE_MODELS: dict[str, str] = {
     "substrate_shard": "gpt-high",
@@ -14,10 +14,6 @@ DEFAULT_SUBSTRATE_MODELS: dict[str, str] = {
 }
 
 DEFAULT_TRIGGER_THRESHOLD = 2
-
-
-def _registry_for_artifacts(artifacts_dir: Path) -> PathRegistry:
-    return PathRegistry(artifacts_dir.parent)
 
 
 def read_substrate_model_policy(artifacts_dir: Path) -> dict[str, str]:

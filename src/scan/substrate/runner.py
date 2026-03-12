@@ -42,9 +42,6 @@ from scan.substrate.related_files import apply_related_files_updates
 from scan.substrate.schemas import read_seed_plan_failclosed, read_shard_failclosed
 from taskrouter import agent_for
 
-def _registry_for_artifacts(artifacts_dir: Path) -> PathRegistry:
-    return PathRegistry(artifacts_dir.parent)
-
 
 # ---- Main orchestration ----
 

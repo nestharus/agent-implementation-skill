@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from dispatch.prompt.template import render_template
-from dispatch.service.prompt_safety import validate_dynamic_content
+from dispatch.service.prompt_guard import validate_dynamic_content
 from orchestrator.path_registry import PathRegistry
 from taskrouter import agent_for
 
@@ -25,10 +25,9 @@ def adjudicate_agent_output(
     from dispatch.engine.section_dispatch import dispatch_agent
 
     paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
-    artifacts.mkdir(parents=True, exist_ok=True)
-    adj_prompt = artifacts / "adjudicate-prompt.md"
-    adj_output = artifacts / "adjudicate-output.md"
+    paths.artifacts.mkdir(parents=True, exist_ok=True)
+    adj_prompt = paths.adjudicate_prompt()
+    adj_output = paths.adjudicate_output()
 
     dynamic_body = f"""# Classify Agent Output
 

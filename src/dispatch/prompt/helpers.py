@@ -11,7 +11,7 @@ from dispatch.prompt.template import load_template, render
 
 def signal_instructions(signal_path: Path) -> str:
     """Return signal instructions for an agent prompt."""
-    template = load_template("signal-instructions.md")
+    template = load_template("dispatch/signal-instructions.md")
     return render(template, {"signal_path": signal_path})
 
 
@@ -26,7 +26,7 @@ def agent_mail_instructions(
         f'bash "{DB_SH}" send "{run_db}" '
         f"{agent_name} --from {agent_name}"
     )
-    template = load_template("mail-instructions.md")
+    template = load_template("dispatch/mail-instructions.md")
     return render(template, {
         "agent_name": agent_name,
         "monitor_name": monitor_name,

@@ -91,11 +91,11 @@ def build_judge_input(
     )
 
 
-def _load_prompt_safety(project_root: Path):
+def _load_prompt_guard(project_root: Path):
     scripts_dir = project_root / "src" / "scripts"
     if str(scripts_dir) not in sys.path:
         sys.path.insert(0, str(scripts_dir))
-    from dispatch.prompt_safety import write_validated_prompt
+    from dispatch.service.prompt_guard import write_validated_prompt
 
     return write_validated_prompt
 
@@ -103,7 +103,7 @@ def _load_prompt_safety(project_root: Path):
 def build_judge_prompt(judge_input: JudgeInput, run_dir: Path) -> Path:
     """Build the judge prompt file and write it to ``run_dir``."""
     project_root = Path(__file__).resolve().parents[2]
-    write_validated_prompt = _load_prompt_safety(project_root)
+    write_validated_prompt = _load_prompt_guard(project_root)
 
     scenario_description = json.dumps(
         {

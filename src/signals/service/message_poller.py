@@ -7,27 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from staleness.service.change_tracker import invalidate_excerpts, set_flag
-from signals.service.database_client import DatabaseClient
 from signals.service.mailbox_service import MailboxService
-from orchestrator.path_registry import PathRegistry
-
-
-def _database_client(planspace: Path, db_sh: Path) -> DatabaseClient:
-    return DatabaseClient(db_sh, PathRegistry(planspace).run_db())
-
-
-def _mailbox(
-    planspace: Path,
-    *,
-    db_sh: Path,
-    agent_name: str,
-    logger: Callable[[str], None] | None,
-) -> MailboxService:
-    return MailboxService(
-        _database_client(planspace, db_sh),
-        agent_name,
-        logger=logger,
-    )
 
 
 def poll_control_messages(
@@ -40,7 +20,7 @@ def poll_control_messages(
     logger: Callable[[str], None],
 ) -> str | None:
     """Drain and process abort/alignment_changed control messages."""
-    mailbox = _mailbox(
+    mailbox = MailboxService.for_planspace(
         planspace,
         db_sh=db_sh,
         agent_name=agent_name,
@@ -77,7 +57,7 @@ def check_for_messages(
     logger: Callable[[str], None] | None = None,
 ) -> list[str]:
     """Drain all currently pending mailbox messages."""
-    return _mailbox(
+    return MailboxService.for_planspace(
         planspace,
         db_sh=db_sh,
         agent_name=agent_name,

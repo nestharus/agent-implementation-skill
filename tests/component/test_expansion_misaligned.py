@@ -91,8 +91,24 @@ def _install_common_patches(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.handle_user_gate",
+        "proposal.service.intent_expansion.handle_user_gate",
         lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "proposal.service.intent_expansion.mailbox_send",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "proposal.service.intent_expansion.alignment_changed_pending",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        "proposal.service.intent_expansion.persist_decision",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "proposal.service.intent_expansion.pause_for_parent",
+        lambda *_args, **_kwargs: "resume",
     )
 
     def _dispatch(*args, **kwargs):
@@ -145,15 +161,12 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.run_expansion_cycle",
+        "proposal.service.intent_expansion.run_expansion_cycle",
         lambda *args, **kwargs: expansion_calls.append(args[0]) or {
             "needs_user_input": False,
             "restart_required": False,
         },
     )
-
-    if hasattr(run_proposal_loop, "_expansion_counts"):
-        delattr(run_proposal_loop, "_expansion_counts")
 
     result = run_proposal_loop(
         section,
@@ -212,15 +225,12 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.run_expansion_cycle",
+        "proposal.service.intent_expansion.run_expansion_cycle",
         lambda *args, **kwargs: expansion_calls.append(args[0]) or {
             "needs_user_input": False,
             "restart_required": False,
         },
     )
-
-    if hasattr(run_proposal_loop, "_expansion_counts"):
-        delattr(run_proposal_loop, "_expansion_counts")
 
     result = run_proposal_loop(
         section,
@@ -274,7 +284,7 @@ def test_misaligned_definition_gap_expansion_respects_budget(
         "src.proposal.engine.loop.load_triage_result",
         lambda *_args, **_kwargs: {
             "intent_mode": "full",
-            "budgets": {"intent_expansion_max": 1},
+            "budgets": {"intent_expansion_max": 0},
         },
     )
     monkeypatch.setattr(
@@ -286,14 +296,12 @@ def test_misaligned_definition_gap_expansion_respects_budget(
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.run_expansion_cycle",
+        "proposal.service.intent_expansion.run_expansion_cycle",
         lambda *args, **kwargs: expansion_calls.append(args[0]) or {
             "needs_user_input": False,
             "restart_required": False,
         },
     )
-
-    run_proposal_loop._expansion_counts = {"01": 1}
 
     result = run_proposal_loop(
         section,

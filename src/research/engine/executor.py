@@ -20,7 +20,7 @@ from research.prompt.writer import (
     write_research_ticket_prompt,
     write_research_verify_prompt,
 )
-from dispatch.service.prompt_safety import write_validated_prompt
+from dispatch.service.prompt_guard import write_validated_prompt
 from signals.service.blockers import _update_blocker_rollup
 
 

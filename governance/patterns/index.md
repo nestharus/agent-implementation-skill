@@ -60,7 +60,7 @@ debugging evidence instead of hiding it.
 - `src/proposal/repository/state.py`,
   `decision_repository.py`, `reconciliation_queue.py`,
   `reconciliation_result_repository.py`, and `strategic_state.py`
-- `src/dispatch/service/tool_surface.py` — tool registry and friction signal
+- `src/dispatch/service/tool_registry_manager.py` — tool registry and friction signal
   readers
 - `src/signals/service/blockers.py` and
   `src/coordination/service/problem_resolver.py`
@@ -122,14 +122,14 @@ mechanically before dispatch.
   `src/staleness/service/section_alignment.py`
 - `src/reconciliation/service/adjudicator.py`,
   `microstrategy_orchestrator.py`, `scope_delta_aggregator.py`,
-  `coordination_planner.py`, `coordination_executor.py`, and `impact_triage.py`
+  `coordination_planner.py`, `coordination_executor.py`, and `triage_orchestrator.py`
 - `src/implementation/service/impact_analyzer.py`
 - `src/risk/engine/loop.py`
-- `src/dispatch/service/tool_surface.py`
+- `src/dispatch/service/tool_registry_manager.py`
 - `src/scan/substrate/prompt_builder.py`
 - `src/scan/codemap/lifecycle.py`, `exploration.py`, `feedback.py`
   — validated scan prompts
-- `src/flow/engine/dispatcher.py` and `src/dispatch/service/qa_interceptor.py`
+- `src/flow/engine/dispatcher.py` and `src/qa/service/qa_interceptor.py`
 
 **Conformance**: Every dispatch must be payload-backed and pass prompt-safety
 validation through one of the sanctioned forms.
@@ -214,7 +214,7 @@ consumer migration, runtime-shape tests.
   `src/coordination/engine/execution.py`,
   `src/proposal/service/problem_frame_gate.py`, and
   `src/implementation/engine/loop.py`
-- Tool-surface blocker writers in `src/dispatch/service/tool_surface.py`
+- Tool-surface blocker writers in `src/dispatch/service/tool_registry_manager.py`
 - Freshness/hash consumers in `src/staleness/service/freshness.py`
   and `src/staleness/service/input_hasher.py`
 - `src/scan/substrate/related_files.py` and
@@ -591,11 +591,11 @@ and `src/intake/service/packet.py`
 - `src/intent/engine/bootstrap.py`
 - `src/dispatch/prompt/context.py` and
   `src/dispatch/prompt/context_assembler.py`
-- `src/dispatch/templates/integration-proposal.md`
+- `src/templates/dispatch/integration-proposal.md`
 - `src/implementation/service/microstrategy.py`
-- `src/dispatch/templates/strategic-implementation.md`
-- `src/dispatch/templates/integration-alignment.md`
-- `src/dispatch/templates/implementation-alignment.md`
+- `src/templates/dispatch/strategic-implementation.md`
+- `src/templates/dispatch/integration-alignment.md`
+- `src/templates/dispatch/implementation-alignment.md`
 - `src/risk/engine/loop.py`
 - `src/intake/service/assessment.py`
 - `src/staleness/service/freshness.py`
@@ -731,7 +731,7 @@ contract in `src/proposal/agents/integration-proposer.md`
 **Known instances**:
 - `src/proposal/repository/state.py`
 - `src/proposal/agents/integration-proposer.md`
-- `src/dispatch/templates/integration-proposal.md`
+- `src/templates/dispatch/integration-proposal.md`
 - `src/staleness/agents/alignment-judge.md`
 - `src/proposal/engine/readiness_gate.py`
 - `src/proposal/service/readiness_resolver.py`
@@ -788,11 +788,11 @@ erasure is not.
    authoritative signal, it must be promoted to PAT-0008 governance or the
    consuming surface must handle the degraded case explicitly.
 
-**Canonical instance**: `src/dispatch/service/qa_interceptor.py` — QA dispatch
+**Canonical instance**: `src/qa/service/qa_interceptor.py` — QA dispatch
 interception with deliberate fail-open behavior.
 
 **Known instances**:
-- `src/dispatch/service/qa_interceptor.py` — QA interception
+- `src/qa/service/qa_interceptor.py` — QA interception
 - `src/proposal/helpers/qa_verdict.py` — QA verdict parsing
 - `src/flow/engine/dispatcher.py` — QA lifecycle event logging
 - `src/flow/service/notifier.py` — QA result notification
@@ -941,7 +941,7 @@ until inventories, docs, and discovery boundaries agree.
 - **PAT-0001 (Corruption Preservation)**: Healthy. R111 migrated the last two
   local malformed-artifact conventions (`scan/substrate/related_files.py` and
   `scan/substrate/schemas.py`) to shared `read_json()`/`rename_malformed()`
-  primitives. `tool_surface.py` was confirmed clean (already delegates to
+  primitives. `tool_registry_manager.py` was confirmed clean (already delegates to
   `read_json()`). All authoritative readers now use the shared contract.
 - **PAT-0002 (Prompt Safety)**: Healthy. R109 clarified that payload-file
   contents are untrusted dynamic content even when delivered through internal

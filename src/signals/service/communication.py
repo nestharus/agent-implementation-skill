@@ -25,12 +25,10 @@ def log(msg: str) -> None:
     print(f"[section-loop] {msg}", flush=True)
 
 
-def _db_client(planspace: Path) -> DatabaseClient:
-    return DatabaseClient(DB_SH, PathRegistry(planspace).run_db())
-
-
 def _mailbox(planspace: Path) -> MailboxService:
-    return MailboxService(_db_client(planspace), AGENT_NAME, log)
+    return MailboxService.for_planspace(
+        planspace, db_sh=DB_SH, agent_name=AGENT_NAME, logger=log,
+    )
 
 
 def _summary_tag(message: str) -> str:
@@ -65,7 +63,7 @@ def mailbox_cleanup(planspace: Path) -> None:
 
 def _log_artifact(planspace: Path, name: str) -> None:
     """Log an artifact lifecycle event to the database."""
-    _db_client(planspace).log_event(
+    DatabaseClient.for_planspace(planspace, DB_SH).log_event(
         "lifecycle",
         f"artifact:{name}",
         "created",

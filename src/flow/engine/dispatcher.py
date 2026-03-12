@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 import re
 import sys
 import time
@@ -35,80 +36,26 @@ from flow.service.notifier import (
 )
 from flow.helpers.task_parser import parse_task_output
 from flow.exceptions import FlowCorruptionError
-from flow.service.task_flow import (  # noqa: E402
+from flow.service.task_flow import (
     build_flow_context,
     compute_section_freshness,
     reconcile_task_completion,
     write_dispatch_prompt,
 )
-from taskrouter import ensure_discovered, registry as _task_registry  # noqa: E402
+from taskrouter import ensure_discovered, registry as _task_registry
 
-from dispatch.service.prompt_safety import validate_dynamic_content  # noqa: E402
-from dispatch.engine.section_dispatch import dispatch_agent  # noqa: E402
-from dispatch.service.model_policy import load_model_policy as read_model_policy  # noqa: E402
+from dispatch.service.prompt_guard import validate_dynamic_content
+from dispatch.engine.section_dispatch import dispatch_agent
+from dispatch.service.model_policy import load_model_policy as read_model_policy
 
 DISPATCHER_NAME = "task-dispatcher"
+logger = logging.getLogger(__name__)
 
 # Sentinel returned by _read_dispatch_meta when the sidecar file exists
 # but contains malformed JSON.  Distinct from None (file absent) and
 # dict (valid parse).
 _DISPATCH_META_CORRUPT = DISPATCH_META_CORRUPT
 
-
-def _db_cmd(db_path: str, command: str, *args: str) -> str:
-    """Compatibility shim for tests that patch dispatcher-local DB calls."""
-    return db_cmd(db_path, command, *args)
-
-
-def _notify(
-    db_path: str,
-    target: str,
-    task_id: str,
-    task_type: str,
-    status: str,
-    detail: str,
-) -> None:
-    """Compatibility shim for tests that patch dispatcher-local notifications."""
-    notify_task_result(db_path, target, task_id, task_type, status, detail)
-
-
-def _record_task_routing(
-    db_path: str,
-    planspace: Path,
-    task_id: str,
-    task_type: str,
-    agent_file: str,
-    model: str,
-) -> None:
-    """Compatibility shim for dispatcher-local routing persistence."""
-    record_task_routing(
-        planspace,
-        task_id,
-        task_type,
-        agent_file,
-        model,
-        db_path=db_path,
-    )
-
-
-def _record_qa_intercept(
-    db_path: str,
-    planspace: Path,
-    task_id: str,
-    task_type: str,
-    rejection_reason: str | None,
-    *,
-    reason_code: str | None = None,
-) -> None:
-    """Compatibility shim for dispatcher-local QA logging."""
-    record_qa_intercept(
-        planspace,
-        task_id,
-        task_type,
-        rejection_reason,
-        db_path=db_path,
-        reason_code=reason_code,
-    )
 
 
 def parse_next_task(output: str) -> dict[str, str] | None:
@@ -161,26 +108,26 @@ def dispatch_task(
         agent_file, model = _task_registry.resolve(task_type, model_policy)
     except ValueError as e:
         log(f"ERROR: Cannot resolve task {task_id}: {e}")
-        _db_cmd(db_path, "claim-task", DISPATCHER_NAME, task_id)
-        _db_cmd(db_path, "fail-task", task_id, "--error", str(e))
-        _notify(db_path, submitted_by, task_id, task_type, "failed", str(e))
+        db_cmd(db_path, "claim-task", DISPATCHER_NAME, task_id)
+        db_cmd(db_path, "fail-task", task_id, "--error", str(e))
+        notify_task_result(db_path, submitted_by, task_id, task_type, "failed", str(e))
         return
 
     # Claim the task.
     try:
-        _db_cmd(db_path, "claim-task", DISPATCHER_NAME, task_id)
+        db_cmd(db_path, "claim-task", DISPATCHER_NAME, task_id)
     except RuntimeError as e:
         log(f"WARNING: Could not claim task {task_id}: {e}")
         return
 
     # Record agent_file and model on the task row for observability.
-    _record_task_routing(
-        db_path,
+    record_task_routing(
         planspace,
         task_id,
         task_type,
         agent_file,
         model,
+        db_path=db_path,
     )
 
     log(f"Dispatching task {task_id}: {task_type} -> {agent_file} ({model})")
@@ -197,8 +144,8 @@ def dispatch_task(
         if not prompt_path.exists():
             err = f"payload declared but not found: {prompt_path}"
             log(f"ERROR: {err} — failing task {task_id}")
-            _db_cmd(db_path, "fail-task", task_id, "--error", err)
-            _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+            db_cmd(db_path, "fail-task", task_id, "--error", err)
+            notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
             return
         # V4/R77: validate agent-provided payload prompt
         violations = validate_dynamic_content(
@@ -207,24 +154,27 @@ def dispatch_task(
         if violations:
             err = f"payload prompt blocked — template violations: {violations}"
             log(f"ERROR: task {task_id}: {err}")
-            _db_cmd(db_path, "fail-task", task_id, "--error", err)
-            _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+            db_cmd(db_path, "fail-task", task_id, "--error", err)
+            notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
             return
     else:
         # R80/P1: payload-backed context is mandatory for all queued tasks.
         # Metadata-only dispatch produces under-specified agents.
         err = "no payload_path — queued tasks require payload-backed runtime context"
         log(f"ERROR: task {task_id}: {err}")
-        _db_cmd(db_path, "fail-task", task_id, "--error", err)
-        _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+        db_cmd(db_path, "fail-task", task_id, "--error", err)
+        notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
         return
 
     # --- QA dispatch interceptor (optional) ---
     # Lazy-import inside conditional to avoid hard dependency.
     try:
-        from dispatch.service.qa_interceptor import intercept_task, read_qa_parameters
+        from qa.service.qa_interceptor import intercept_task, read_qa_parameters
         qa_params = read_qa_parameters(planspace)
     except Exception:
+        logger.warning(
+            "QA interceptor import failed, skipping QA gate", exc_info=True,
+        )
         qa_params = {}
 
     if qa_params.get("qa_mode"):
@@ -238,20 +188,20 @@ def dispatch_task(
             rationale_path = None
             reason_code = "dispatch_error"
 
-        _record_qa_intercept(
-            db_path,
+        record_qa_intercept(
             planspace,
             task_id,
             task_type,
             None if passed else rationale_path,
+            db_path=db_path,
             reason_code=reason_code,
         )
 
         if not passed:
             err = f"QA interceptor rejected: see {rationale_path}"
             log(f"QA REJECT: task {task_id}: {err}")
-            _db_cmd(db_path, "fail-task", task_id, "--error", err)
-            _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+            db_cmd(db_path, "fail-task", task_id, "--error", err)
+            notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
             return
         # PAT-0014: distinguish genuine approval from degraded fallback
         if reason_code:
@@ -276,8 +226,8 @@ def dispatch_task(
         except FlowCorruptionError as exc:
             err = f"flow context corrupt: {exc}"
             log(f"ERROR: task {task_id}: {err}")
-            _db_cmd(db_path, "fail-task", task_id, "--error", err)
-            _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+            db_cmd(db_path, "fail-task", task_id, "--error", err)
+            notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
             return
 
         if flow_ctx is not None:
@@ -312,8 +262,8 @@ def dispatch_task(
                 f"current={current_token[:8]})"
             )
             log(f"Task {task_id} stale: {err}")
-            _db_cmd(db_path, "fail-task", task_id, "--error", err)
-            _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+            db_cmd(db_path, "fail-task", task_id, "--error", err)
+            notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
             reconcile_task_completion(
                 Path(db_path), planspace, int(task_id),
                 "failed", None, error=err, codespace=codespace,
@@ -340,8 +290,8 @@ def dispatch_task(
             f"renamed to {meta_path.with_suffix('.malformed.json').name}"
         )
         log(f"ERROR: task {task_id}: {err}")
-        _db_cmd(db_path, "fail-task", task_id, "--error", err)
-        _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+        db_cmd(db_path, "fail-task", task_id, "--error", err)
+        notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
         reconcile_task_completion(
             Path(db_path), planspace, int(task_id),
             "failed", str(output_path), error=err, codespace=codespace,
@@ -363,11 +313,11 @@ def dispatch_task(
 
     if timed_out:
         log(f"Task {task_id} timed out")
-        _db_cmd(
+        db_cmd(
             db_path, "fail-task", task_id,
             "--error", "Agent timeout (600s)",
         )
-        _notify(
+        notify_task_result(
             db_path, submitted_by, task_id, task_type, "failed",
             "Agent timeout (600s)",
         )
@@ -378,18 +328,18 @@ def dispatch_task(
     elif agent_failed:
         err = f"Agent exited with return code {rc}"
         log(f"Task {task_id} failed: {err}")
-        _db_cmd(db_path, "fail-task", task_id, "--error", err)
-        _notify(db_path, submitted_by, task_id, task_type, "failed", err)
+        db_cmd(db_path, "fail-task", task_id, "--error", err)
+        notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
         reconcile_task_completion(
             Path(db_path), planspace, int(task_id),
             "failed", str(output_path), error=err, codespace=codespace,
         )
     else:
-        _db_cmd(
+        db_cmd(
             db_path, "complete-task", task_id,
             "--output", str(output_path),
         )
-        _notify(
+        notify_task_result(
             db_path, submitted_by, task_id, task_type, "complete",
             str(output_path),
         )
@@ -437,7 +387,7 @@ def main() -> None:
             # PAT-0005: refresh policy per dispatch cycle (not startup-only)
             model_policy = read_model_policy(planspace)
 
-            output = _db_cmd(db_path, "next-task")
+            output = db_cmd(db_path, "next-task")
             task = parse_next_task(output)
 
             if task:

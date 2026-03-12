@@ -33,7 +33,7 @@ def select_posture(
     current_level = POSTURE_LEVELS[current_posture]
     nominal_level = POSTURE_LEVELS[nominal]
     recent_failure = bool(recent_outcomes) and _is_failure(recent_outcomes[-1])
-    consecutive_successes = _count_trailing_successes(recent_outcomes)
+    consecutive_successes = count_trailing_successes(recent_outcomes)
     target = current_posture
 
     if recent_failure:
@@ -103,7 +103,7 @@ def _posture_for_level(level: int) -> PostureProfile:
     return POSTURE_SEQUENCE[level]
 
 
-def _count_trailing_successes(recent_outcomes: list[str]) -> int:
+def count_trailing_successes(recent_outcomes: list[str]) -> int:
     count = 0
     for outcome in reversed(recent_outcomes):
         if _is_success(outcome):

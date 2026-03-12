@@ -360,8 +360,8 @@ class TestDispatcherFlowIntegration:
 
         with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.dispatcher._db_cmd") as mock_db, \
-             patch("flow.engine.dispatcher._notify"):
+             patch("flow.engine.dispatcher.db_cmd") as mock_db, \
+             patch("flow.engine.dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
             mock_dispatch.return_value = "done"
 
@@ -405,8 +405,8 @@ class TestDispatcherFlowIntegration:
 
         with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.dispatcher._db_cmd") as mock_db, \
-             patch("flow.engine.dispatcher._notify"):
+             patch("flow.engine.dispatcher.db_cmd") as mock_db, \
+             patch("flow.engine.dispatcher.notify_task_result"):
             mock_resolve.return_value = ("impact-analyzer.md", "glm")
             mock_dispatch.return_value = "done"
 
@@ -457,8 +457,8 @@ class TestDispatcherFlowIntegration:
 
         with patch("flow.engine.dispatcher.dispatch_agent") as mock_dispatch, \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.dispatcher._db_cmd"), \
-             patch("flow.engine.dispatcher._notify"):
+             patch("flow.engine.dispatcher.db_cmd"), \
+             patch("flow.engine.dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
             mock_dispatch.return_value = "done"
 

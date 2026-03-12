@@ -12,7 +12,7 @@ from orchestrator.path_registry import PathRegistry
 from scan.service.section_notes import log_phase_failure
 from scan.service.template_loader import load_scan_template
 
-from dispatch.service.prompt_safety import validate_dynamic_content
+from dispatch.service.prompt_guard import validate_dynamic_content
 
 from scan.cli_dispatch import dispatch_agent, read_scan_model_policy
 from .fingerprint import NON_GIT_SENTINEL, compute_codespace_fingerprint

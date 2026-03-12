@@ -13,7 +13,7 @@ from scan.related.discovery import (
     validate_existing_related_files,
 )
 
-from dispatch.service.prompt_safety import validate_dynamic_content
+from dispatch.service.prompt_guard import validate_dynamic_content
 
 from scan.cli_dispatch import dispatch_agent, read_scan_model_policy
 from taskrouter import agent_for

@@ -66,10 +66,22 @@ def _validate_governance_identity(
     pattern_ids = state.get("pattern_ids", [])
     profile_id = state.get("profile_id", "")
     if not isinstance(problem_ids, list):
+        logger.warning(
+            "Section %s: problem_ids has unexpected type %s, defaulting to []",
+            section_number, type(problem_ids).__name__,
+        )
         problem_ids = []
     if not isinstance(pattern_ids, list):
+        logger.warning(
+            "Section %s: pattern_ids has unexpected type %s, defaulting to []",
+            section_number, type(pattern_ids).__name__,
+        )
         pattern_ids = []
     if not isinstance(profile_id, str):
+        logger.warning(
+            "Section %s: profile_id has unexpected type %s, defaulting to ''",
+            section_number, type(profile_id).__name__,
+        )
         profile_id = ""
 
     has_declared_ids = bool(problem_ids or pattern_ids or profile_id)

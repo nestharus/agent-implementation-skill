@@ -6,8 +6,9 @@ from pathlib import Path
 
 from staleness.service.change_tracker import (
     check_pending as alignment_changed_pending,
+    make_alignment_checker,
 )
-from signals.service.communication import log, mailbox_send
+from signals.service.communication import AGENT_NAME, DB_SH, log, mailbox_send
 from orchestrator.service.pipeline_control import handle_pending_messages
 from reconciliation.engine.loop import run_reconciliation
 from implementation.engine.runner import run_section
@@ -155,7 +156,4 @@ def run_reconciliation_phase(
     return ready_sections, blocked_sections, restart_phase1
 
 
-def _check_and_clear_alignment_changed(planspace: Path) -> bool:
-    from orchestrator.engine.main import _check_and_clear_alignment_changed as check_and_clear
-
-    return check_and_clear(planspace)
+_check_and_clear_alignment_changed = make_alignment_checker(DB_SH, AGENT_NAME)

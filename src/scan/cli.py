@@ -111,8 +111,8 @@ def main(argv: list[str] | None = None) -> int:
     artifacts_dir = registry.artifacts
     sections_dir = registry.sections_dir()
     codemap_path = registry.codemap()
-    scan_log_dir = registry.artifacts / "scan-logs"
-    fingerprint_path = registry.artifacts / "codemap.codespace.fingerprint"
+    scan_log_dir = registry.scan_logs_dir()
+    fingerprint_path = registry.codemap_fingerprint()
 
     scan_log_dir.mkdir(parents=True, exist_ok=True)
 

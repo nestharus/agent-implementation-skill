@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
-from dispatch.service.prompt_safety import write_validated_prompt
+from dispatch.service.prompt_guard import write_validated_prompt
 
 
 def write_shard_prompt(
@@ -16,7 +16,6 @@ def write_shard_prompt(
 ) -> Path:
     """Write the dispatch prompt for the shard explorer agent."""
     registry = PathRegistry(planspace)
-    artifacts = registry.artifacts
     prompts_dir = registry.substrate_prompts_dir()
     prompts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -99,8 +98,8 @@ def write_pruner_prompt(
     substrate_dir = registry.substrate_dir()
     codemap_path = registry.codemap()
     codemap_corrections_path = registry.corrections()
-    proposal_path = registry.artifacts / "proposal.md"
-    alignment_path = registry.artifacts / "alignment.md"
+    proposal_path = registry.global_proposal()
+    alignment_path = registry.global_alignment()
     philosophy_path = registry.intent_global_dir() / "philosophy.md"
 
     sections_list = ", ".join(target_sections)

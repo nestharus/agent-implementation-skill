@@ -8,7 +8,7 @@ from pathlib import Path
 from signals.repository.artifact_io import read_json, read_json_or_default, write_json
 from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
-from dispatch.service.prompt_safety import write_validated_prompt
+from dispatch.service.prompt_guard import write_validated_prompt
 from staleness.service.section_alignment import (
     _parse_alignment_verdict,
     _run_alignment_check_with_retries,
@@ -32,21 +32,19 @@ def run_impact_triage(
     if not incoming_notes or section.solve_count < 1:
         return ("continue", None)
 
-    artifacts = PathRegistry(planspace).artifacts
-    triage_dir = artifacts / "triage"
+    paths = PathRegistry(planspace)
+    triage_dir = paths.triage_dir()
     triage_dir.mkdir(parents=True, exist_ok=True)
     triage_prompt_path = triage_dir / f"triage-{section.number}-prompt.md"
     triage_output_path = triage_dir / f"triage-{section.number}-output.md"
-    triage_signal_path = artifacts / "signals" / f"triage-{section.number}.json"
+    triage_signal_path = paths.triage_signal(section.number)
 
-    existing_proposal = (
-        artifacts / "proposals" / f"section-{section.number}-integration-proposal.md"
-    )
+    existing_proposal = paths.proposal(section.number)
     proposal_ref = ""
     if existing_proposal.exists():
         proposal_ref = f"3. Existing proposal: `{existing_proposal}`"
 
-    last_align = artifacts / f"intg-align-{section.number}-output.md"
+    last_align = paths.artifacts / f"intg-align-{section.number}-output.md"
     align_ref = ""
     if last_align.exists():
         align_ref = f"4. Last alignment verdict: `{last_align}`"
@@ -117,7 +115,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         return ("continue", None)
 
     triage_acks = triage.get("acknowledge", [])
-    ack_path = artifacts / "signals" / f"note-ack-{section.number}.json"
+    ack_path = paths.note_ack_signal(section.number)
     existing_acks: dict = read_json_or_default(ack_path, {"acknowledged": []})
     existing_ids = {
         entry.get("note_id")

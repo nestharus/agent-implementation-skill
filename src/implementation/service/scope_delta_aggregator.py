@@ -12,7 +12,7 @@ from implementation.service.scope_delta_parser import (
     normalize_section_id,
     parse_scope_delta_adjudication,
 )
-from dispatch.service.prompt_safety import write_validated_prompt
+from dispatch.service.prompt_guard import write_validated_prompt
 from signals.service.communication import _log_artifact, log, mailbox_send
 from dispatch.engine.section_dispatch import dispatch_agent
 from taskrouter import agent_for

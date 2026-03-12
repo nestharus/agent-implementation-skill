@@ -11,7 +11,7 @@ from src.scan.service.template_loader import load_scan_template
 def test_load_scan_template_reads_from_scan_templates_directory() -> None:
     expected_path = (
         Path(__file__).resolve().parents[2]
-        / "src" / "scripts" / "scan" / "templates" / "codemap_build.md"
+        / "src" / "templates" / "scan" / "codemap_build.md"
     )
 
     assert load_scan_template("codemap_build.md") == expected_path.read_text()

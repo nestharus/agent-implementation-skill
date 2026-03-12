@@ -135,7 +135,7 @@ def test_write_research_synthesis_and_verify_prompts_reference_outputs(
     assert f"`{planspace / 'artifacts' / 'research' / 'sections' / 'section-03' / 'research-verify.json'}`" in verify_content
 
 
-def test_write_research_plan_prompt_returns_none_when_prompt_safety_blocks(
+def test_write_research_plan_prompt_returns_none_when_prompt_guard_blocks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

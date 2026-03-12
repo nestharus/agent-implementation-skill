@@ -3,7 +3,7 @@ from pathlib import Path
 from orchestrator.path_registry import PathRegistry
 
 from dispatch.prompt.template import TASK_SUBMISSION_SEMANTICS
-from dispatch.service.prompt_safety import validate_dynamic_content
+from dispatch.service.prompt_guard import validate_dynamic_content
 from signals.service.communication import _log_artifact, log
 from coordination.service.cross_section import extract_section_summary
 from dispatch.engine.section_dispatch import dispatch_agent

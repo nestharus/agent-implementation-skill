@@ -6,7 +6,7 @@ from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
 
 from dispatch.prompt.template import SRC_TEMPLATE_DIR, TASK_SUBMISSION_SEMANTICS, load_template, render
-from dispatch.service.prompt_safety import validate_dynamic_content
+from dispatch.service.prompt_guard import validate_dynamic_content
 from signals.service.communication import _log_artifact, log
 from orchestrator.service.context_assembly import materialize_context_sidecar
 from taskrouter.agents import resolve_agent_path
@@ -27,10 +27,10 @@ def write_coordinator_fix_prompt(
     in a coordinated way. Model selection is policy-driven.
     """
     paths = PathRegistry(planspace)
-    artifacts = paths.coordination_dir()
-    artifacts.mkdir(parents=True, exist_ok=True)
-    prompt_path = artifacts / f"fix-{group_id}-prompt.md"
-    modified_report = artifacts / f"fix-{group_id}-modified.txt"
+    coord_dir = paths.coordination_dir()
+    coord_dir.mkdir(parents=True, exist_ok=True)
+    prompt_path = coord_dir / f"fix-{group_id}-prompt.md"
+    modified_report = coord_dir / f"fix-{group_id}-modified.txt"
 
     problem_descriptions = []
     for i, p in enumerate(group):
@@ -132,7 +132,7 @@ def write_coordinator_fix_prompt(
                 f"relying on tool context.\n"
             )
 
-    task_submission_path = artifacts / f"signals/task-requests-coord-{group_id}.json"
+    task_submission_path = coord_dir / f"signals/task-requests-coord-{group_id}.json"
 
     template = load_template("coordination/coordinator-fix.md", SRC_TEMPLATE_DIR)
     rendered = render(template, {
@@ -190,7 +190,7 @@ def _dispatch_fix_group(
     from dispatch.service.model_policy import load_model_policy as read_model_policy
 
     paths = PathRegistry(planspace)
-    artifacts = paths.coordination_dir()
+    coord_dir = paths.coordination_dir()
     policy = read_model_policy(planspace)
     fix_prompt = write_coordinator_fix_prompt(
         group, planspace, codespace, group_id,
@@ -199,15 +199,15 @@ def _dispatch_fix_group(
         log(f"  coordinator: fix group {group_id} prompt blocked "
             f"by template safety — skipping dispatch")
         return group_id, None
-    fix_output = artifacts / f"fix-{group_id}-output.md"
-    modified_report = artifacts / f"fix-{group_id}-modified.txt"
+    fix_output = coord_dir / f"fix-{group_id}-output.md"
+    modified_report = coord_dir / f"fix-{group_id}-modified.txt"
 
     # Check for model escalation (triggered by coordination churn)
     if not default_fix_model:
         default_fix_model = resolve(policy, "coordination_fix")
     fix_model = default_fix_model
     coord_escalated_from = None
-    escalation_file = artifacts / "model-escalation.txt"
+    escalation_file = coord_dir / "model-escalation.txt"
     if escalation_file.exists():
         coord_escalated_from = fix_model
         fix_model = escalation_file.read_text(encoding="utf-8").strip()
@@ -236,7 +236,7 @@ def _dispatch_fix_group(
         planspace,
         db_path=paths.run_db(),
         submitted_by=f"coordination-fix-{group_id}",
-        signal_path=artifacts / f"signals/task-requests-coord-{group_id}.json",
+        signal_path=coord_dir / f"signals/task-requests-coord-{group_id}.json",
         origin_refs=[str(fix_prompt)],
     )
 

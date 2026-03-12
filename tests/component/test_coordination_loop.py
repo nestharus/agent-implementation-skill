@@ -5,8 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from src.coordination.engine import loop
-from src.coordination.engine.loop import run_coordination_loop
+from coordination.engine import loop
+from coordination.engine.loop import run_coordination_loop
+from coordination.service import stall_detector as _stall_mod
 from orchestrator.types import Section, SectionResult
 
 
@@ -124,11 +125,9 @@ def test_run_coordination_loop_stalls_and_reports_remaining_sections(
             len(section_results),
         ),
     )
-    monkeypatch.setattr(
-        loop,
-        "mailbox_send",
-        lambda _planspace, _parent, message: messages.append(message),
-    )
+    _capture_mail = lambda _planspace, _parent, message: messages.append(message)
+    monkeypatch.setattr(loop, "mailbox_send", _capture_mail)
+    monkeypatch.setattr(_stall_mod, "mailbox_send", _capture_mail)
 
     status = run_coordination_loop(
         [section],

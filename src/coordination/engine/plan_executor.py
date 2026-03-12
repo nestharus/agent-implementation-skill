@@ -12,7 +12,7 @@ from staleness.helpers.hashing import content_hash
 from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.template import SRC_TEMPLATE_DIR, load_template, render
-from dispatch.service.prompt_safety import write_validated_prompt
+from dispatch.service.prompt_guard import write_validated_prompt
 from signals.service.communication import log, mailbox_send
 from coordination.engine.fix_dispatch import _dispatch_fix_group
 from dispatch.engine.section_dispatch import dispatch_agent

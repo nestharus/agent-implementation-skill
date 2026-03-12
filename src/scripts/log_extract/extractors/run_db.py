@@ -10,8 +10,9 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
+from log_extract.extractors.common import safe_ts
 from log_extract.models import DispatchCandidate, TimelineEvent
-from log_extract.utils import infer_section, parse_timestamp, summarize_text
+from log_extract.utils import infer_section, summarize_text
 
 _SOURCE = "run.db"
 
@@ -63,13 +64,7 @@ def _connect(db_path: Path) -> sqlite3.Connection:
 
 def _safe_ts(value: str | None) -> tuple[str, int] | None:
     """Parse a timestamp, returning *None* on failure or empty input."""
-    if not value:
-        return None
-    try:
-        return parse_timestamp(value)
-    except (ValueError, TypeError) as exc:
-        print(f"run_db: skipping malformed timestamp {value!r}: {exc}", file=sys.stderr)
-        return None
+    return safe_ts(value, source_label="run_db")
 
 
 # ------------------------------------------------------------------

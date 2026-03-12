@@ -9,7 +9,7 @@ from dispatch.prompt.template import render_template
 from signals.service.communication import log
 from dispatch.engine.section_dispatch import dispatch_agent
 from proposal.helpers.verdict_parsers import parse_alignment_verdict as _parse_alignment_verdict
-from dispatch.service.prompt_safety import validate_dynamic_content
+from dispatch.service.prompt_guard import validate_dynamic_content
 from orchestrator.service.pipeline_control import poll_control_messages
 from orchestrator.types import Section
 from taskrouter import agent_for
@@ -55,10 +55,9 @@ def _extract_problems(
     # Scripts must not interpret meaning from text — the adjudicator decides.
     if output_path is not None and planspace is not None and parent is not None:
         paths = PathRegistry(planspace)
-        artifacts = paths.artifacts
-        artifacts.mkdir(parents=True, exist_ok=True)
-        adj_prompt = artifacts / "alignment-adjudicate-prompt.md"
-        adj_output = artifacts / "alignment-adjudicate-output.md"
+        paths.artifacts.mkdir(parents=True, exist_ok=True)
+        adj_prompt = paths.alignment_adjudicate_prompt()
+        adj_output = paths.alignment_adjudicate_output()
         dynamic_body = f"""# Classify Alignment Check Output
 
 Read the alignment check output and determine whether the section is aligned.

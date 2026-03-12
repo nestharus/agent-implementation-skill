@@ -360,10 +360,90 @@ class PathRegistry:
     def intent_surfaces_signal(self, num: str) -> Path:
         return self.signals_dir() / f"intent-surfaces-{num}.json"
 
+    def impl_budget_exhausted_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"section-{num}-impl-budget-exhausted.json"
+
+    def setup_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"setup-{num}-signal.json"
+
+    def impl_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"impl-{num}-signal.json"
+
+    def proposal_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"proposal-{num}-signal.json"
+
+    def problem_frame_hash(self, num: str) -> Path:
+        return self.signals_dir() / f"section-{num}-problem-frame-hash.txt"
+
+    def tool_friction_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"section-{num}-tool-friction.json"
+
+    def bridge_tools_failure_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"section-{num}-bridge-tools-failure.json"
+
+    def tool_bridge_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"section-{num}-tool-bridge.json"
+
+    def intent_escalation_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"intent-escalation-{num}.json"
+
+    def intent_stalled_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"intent-stalled-{num}.json"
+
+    def intent_delta_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"intent-delta-{num}.json"
+
+    def triage_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"triage-{num}.json"
+
+    def note_ack_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"note-ack-{num}.json"
+
+    def microstrategy_blocker_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"microstrategy-blocker-{num}.json"
+
+    def task_request_signal(self, type_: str, num: str) -> Path:
+        return self.signals_dir() / f"task-requests-{type_}-{num}.json"
+
+    def tools_available(self, num: str) -> Path:
+        return self.sections_dir() / f"section-{num}-tools-available.md"
+
+    def alignment_surface(self, num: str) -> Path:
+        return self.sections_dir() / f"section-{num}-alignment-surface.md"
+
+    def tool_bridge_proposal(self, num: str) -> Path:
+        return self.proposals_dir() / f"section-{num}-tool-bridge.md"
+
+    def philosophy(self) -> Path:
+        return self.intent_global_dir() / "philosophy.md"
+
+    def philosophy_decisions(self) -> Path:
+        return self.intent_global_dir() / "philosophy-decisions.md"
+
+    # --- Directory accessors (additional) ---
+
+    def snapshots_dir(self) -> Path:
+        return self._artifacts / "snapshots"
+
+    def snapshot_section(self, num: str) -> Path:
+        return self.snapshots_dir() / f"section-{num}"
+
+    def scan_logs_dir(self) -> Path:
+        return self._artifacts / "scan-logs"
+
+    def open_problems_dir(self) -> Path:
+        return self._artifacts / "open-problems"
+
+    def triage_dir(self) -> Path:
+        return self._artifacts / "triage"
+
     # --- Global file accessors ---
 
     def codemap(self) -> Path:
         return self._artifacts / "codemap.md"
+
+    def codemap_fingerprint(self) -> Path:
+        return self._artifacts / "codemap.codespace.fingerprint"
 
     def corrections(self) -> Path:
         return self.signals_dir() / "codemap-corrections.json"
@@ -397,6 +477,56 @@ class PathRegistry:
 
     def context_sidecar(self, agent_stem: str) -> Path:
         return self._artifacts / f"context-{agent_stem}.json"
+
+    def global_proposal(self) -> Path:
+        return self._artifacts / "proposal.md"
+
+    def global_alignment(self) -> Path:
+        return self._artifacts / "alignment.md"
+
+    def adjudicate_prompt(self) -> Path:
+        return self._artifacts / "adjudicate-prompt.md"
+
+    def adjudicate_output(self) -> Path:
+        return self._artifacts / "adjudicate-output.md"
+
+    def alignment_adjudicate_prompt(self) -> Path:
+        return self._artifacts / "alignment-adjudicate-prompt.md"
+
+    def alignment_adjudicate_output(self) -> Path:
+        return self._artifacts / "alignment-adjudicate-output.md"
+
+    # --- Philosophy artifact accessors ---
+
+    def philosophy_bootstrap_guidance_prompt(self) -> Path:
+        return self._artifacts / "philosophy-bootstrap-guidance-prompt.md"
+
+    def philosophy_bootstrap_guidance_output(self) -> Path:
+        return self._artifacts / "philosophy-bootstrap-guidance-output.md"
+
+    def philosophy_candidate_catalog(self) -> Path:
+        return self._artifacts / "philosophy-candidate-catalog.json"
+
+    def philosophy_select_prompt(self) -> Path:
+        return self._artifacts / "philosophy-select-prompt.md"
+
+    def philosophy_select_output(self) -> Path:
+        return self._artifacts / "philosophy-select-output.md"
+
+    def philosophy_select_output_extensions(self) -> Path:
+        return self._artifacts / "philosophy-select-output-extensions.md"
+
+    def philosophy_verify_prompt(self) -> Path:
+        return self._artifacts / "philosophy-verify-prompt.md"
+
+    def philosophy_verify_output(self) -> Path:
+        return self._artifacts / "philosophy-verify-output.md"
+
+    def philosophy_distill_prompt(self) -> Path:
+        return self._artifacts / "philosophy-distill-prompt.md"
+
+    def philosophy_distill_output(self) -> Path:
+        return self._artifacts / "philosophy-distill-output.md"
 
     def alignment_changed_flag(self) -> Path:
         return self._artifacts / "alignment-changed-pending"

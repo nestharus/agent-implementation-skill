@@ -132,7 +132,7 @@ def _dispatch_and_capture(
     # Track fail-task calls
     from flow.engine import dispatcher as task_dispatcher
 
-    original_db_cmd = task_dispatcher._db_cmd
+    original_db_cmd = task_dispatcher.db_cmd
     fail_errors: list[str] = []
 
     def tracking_db_cmd(dp, command, *a):
@@ -148,7 +148,7 @@ def _dispatch_and_capture(
         patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
         patch.object(task_dispatcher, "reconcile_task_completion"),
         patch.object(task_dispatcher, "validate_dynamic_content", return_value=[]),
-        patch.object(task_dispatcher, "_db_cmd", side_effect=tracking_db_cmd),
+        patch.object(task_dispatcher, "db_cmd", side_effect=tracking_db_cmd),
     ):
         task_dispatcher.dispatch_task(db_path, ps, task)
 

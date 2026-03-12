@@ -8,7 +8,7 @@ from typing import Any
 
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
-from dispatch.service.prompt_safety import write_validated_prompt
+from dispatch.service.prompt_guard import write_validated_prompt
 from signals.service.communication import _log_artifact, log
 
 
@@ -131,11 +131,11 @@ def write_coordination_plan_prompt(
 ) -> Path:
     """Write an Opus prompt to plan coordination strategy for problems."""
     paths = PathRegistry(planspace)
-    artifacts = paths.coordination_dir()
-    artifacts.mkdir(parents=True, exist_ok=True)
-    prompt_path = artifacts / "coordination-plan-prompt.md"
+    coord_dir = paths.coordination_dir()
+    coord_dir.mkdir(parents=True, exist_ok=True)
+    prompt_path = coord_dir / "coordination-plan-prompt.md"
 
-    problems_path = artifacts / "problems.json"
+    problems_path = coord_dir / "problems.json"
     write_json(problems_path, problems)
 
     codemap_path = paths.codemap()

@@ -135,7 +135,7 @@ Key areas to examine in the codebase:
   - `lib/pipelines/` — implementation_loop, coordination pipelines
   - `lib/services/` — freshness, section_input_hasher
   - `lib/dispatch/` — context_sidecar, agent_templates
-  - `lib/prompts/` — prompt_context_assembler, prompt_safety
+  - `lib/prompts/` — prompt_context_assembler, prompt_guard
   - `lib/repositories/` — proposal_state, readiness, reconciliation
 - `src/scripts/scan/` — Stage 3 coordinator (codemap, exploration, deep scan)
 - `src/scripts/substrate/` — Stage 3.5 SIS (shard, prune, seed)

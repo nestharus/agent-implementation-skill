@@ -27,12 +27,14 @@ from flow.repository.context import (
 from flow.engine.reconciler import (
     build_gate_aggregate_manifest,
     build_result_manifest,
-    cancel_chain_descendants as _cancel_chain_descendants,
     check_and_fire_gate as _check_and_fire_gate,
+    reconcile_task_completion,
+)
+from flow.repository.gate_operations import (
+    cancel_chain_descendants as _cancel_chain_descendants,
     find_gate_for_chain as _find_gate_for_chain,
     get_gate_member_leaf as _get_gate_member_leaf,
     read_origin_refs as _read_origin_refs,
-    reconcile_task_completion,
     update_gate_member as _update_gate_member,
     update_gate_member_leaf as _update_gate_member_leaf,
 )

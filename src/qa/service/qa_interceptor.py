@@ -16,6 +16,7 @@ explicit REJECT blocks dispatch.
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 
@@ -30,6 +31,8 @@ from proposal.helpers.qa_verdict import parse_qa_verdict
 from dispatch.engine.section_dispatch import dispatch_agent  # noqa: E402
 from taskrouter.agents import resolve_agent_path
 from taskrouter import agent_for
+
+logger = logging.getLogger(__name__)
 
 # Infrastructure submitters that are not agent files.
 _INFRA_SUBMITTERS: dict[str, str] = {
@@ -299,7 +302,7 @@ def intercept_task(
         # even though the payload path arrived through an internal task.
         # Agent contracts are trusted but payload is not — validate the
         # full rendered prompt before dispatch.
-        from dispatch.service.prompt_safety import validate_dynamic_content as _validate
+        from dispatch.service.prompt_guard import validate_dynamic_content as _validate
         intercepts_dir = PathRegistry(planspace).qa_intercepts_dir()
         intercepts_dir.mkdir(parents=True, exist_ok=True)
         prompt_path = intercepts_dir / f"qa-{task_id}-prompt.md"
@@ -326,7 +329,7 @@ def intercept_task(
             output_path,
             planspace,
             None,  # parent — not inside section-loop context
-            agent_file=agent_for("dispatch.qa_intercept"),
+            agent_file=agent_for("qa.qa_intercept"),
         )
 
         # 7. Parse verdict.
@@ -350,12 +353,12 @@ def intercept_task(
         # Genuine PASS
         return True, None, None
 
-    except Exception as exc:
+    except Exception:
         # Fail-OPEN: any error during QA means the task passes.
         # PAT-0014: preserve degraded status distinctly from genuine PASS.
-        print(
-            f"[qa-interceptor] ERROR during QA evaluation for task "
-            f"{task_id}: {exc} — failing open (degraded)",
-            flush=True,
+        logger.error(
+            "QA evaluation failed for task %s — failing open (degraded)",
+            task_id,
+            exc_info=True,
         )
         return True, None, "dispatch_error"

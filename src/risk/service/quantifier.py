@@ -15,6 +15,8 @@ from risk.types import (
     RiskType,
     RiskVector,
     StepClass,
+    clamp_float,
+    clamp_int,
 )
 
 RISK_TYPES: tuple[RiskType, ...] = (
@@ -256,23 +258,23 @@ def compute_raw_risk(
     score = (weighted_sum / max_weighted_sum) * RISK_MAX if max_weighted_sum else 0.0
 
     score += _modifier_adjustment(modifiers)
-    score = _clamp_float(score, RISK_MIN, RISK_MAX)
+    score = clamp_float(score, RISK_MIN, RISK_MAX)
 
-    confidence = _clamp_float(modifiers.confidence, 0.0, 1.0)
+    confidence = clamp_float(modifiers.confidence, 0.0, 1.0)
     uncertainty = 1.0 - confidence
     score += (RISK_MIDPOINT - score) * uncertainty * CONFIDENCE_PULL_FACTOR
 
-    score += _clamp_float(
+    score += clamp_float(
         history_adjustment,
         -HISTORY_ADJUSTMENT_BOUND,
         HISTORY_ADJUSTMENT_BOUND,
     )
-    return int(round(_clamp_float(score, RISK_MIN, RISK_MAX)))
+    return int(round(clamp_float(score, RISK_MIN, RISK_MAX)))
 
 
 def risk_to_posture(raw_risk: int) -> PostureProfile:
     """Map a raw risk score onto the default posture bands."""
-    bounded_risk = _clamp_int(raw_risk, RISK_MIN, RISK_MAX)
+    bounded_risk = clamp_int(raw_risk, RISK_MIN, RISK_MAX)
     for lower, upper, posture in DEFAULT_POSTURE_BANDS:
         if lower <= bounded_risk <= upper:
             return posture
@@ -282,7 +284,7 @@ def risk_to_posture(raw_risk: int) -> PostureProfile:
 def is_acceptable(raw_risk: int, assessment_class: AssessmentClass) -> bool:
     """Return whether the step can execute under default ROAL thresholds."""
     threshold = DEFAULT_CLASS_THRESHOLDS[assessment_class]
-    return _clamp_int(raw_risk, RISK_MIN, RISK_MAX) <= threshold
+    return clamp_int(raw_risk, RISK_MIN, RISK_MAX) <= threshold
 
 
 def load_risk_parameters(path: Path) -> dict[str, Any]:
@@ -311,9 +313,9 @@ def load_risk_parameters(path: Path) -> dict[str, Any]:
 
 
 def _modifier_adjustment(modifiers: RiskModifiers) -> float:
-    blast_radius = _clamp_int(modifiers.blast_radius, 0, MAX_SEVERITY)
-    reversibility = _clamp_int(modifiers.reversibility, 0, MAX_SEVERITY)
-    observability = _clamp_int(modifiers.observability, 0, MAX_SEVERITY)
+    blast_radius = clamp_int(modifiers.blast_radius, 0, MAX_SEVERITY)
+    reversibility = clamp_int(modifiers.reversibility, 0, MAX_SEVERITY)
+    observability = clamp_int(modifiers.observability, 0, MAX_SEVERITY)
     return (
         blast_radius * BLAST_RADIUS_FACTOR
         + (2 - reversibility) * REVERSIBILITY_FACTOR
@@ -323,12 +325,6 @@ def _modifier_adjustment(modifiers: RiskModifiers) -> float:
 
 def _severity_for(risk_vector: RiskVector, risk_type: RiskType) -> int:
     raw_value = getattr(risk_vector, risk_type.value)
-    return _clamp_int(int(raw_value), 0, MAX_SEVERITY)
+    return clamp_int(int(raw_value), 0, MAX_SEVERITY)
 
 
-def _clamp_int(value: int, lower: int, upper: int) -> int:
-    return max(lower, min(upper, value))
-
-
-def _clamp_float(value: float, lower: float, upper: float) -> float:
-    return max(lower, min(upper, value))

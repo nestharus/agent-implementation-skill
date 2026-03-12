@@ -13,6 +13,13 @@ class DatabaseClient:
         self._db_sh = db_sh
         self._db_path = db_path
 
+    @classmethod
+    def for_planspace(cls, planspace: Path, db_sh: Path) -> DatabaseClient:
+        """Create a client wired to the run database for *planspace*."""
+        from orchestrator.path_registry import PathRegistry
+
+        return cls(db_sh, PathRegistry(planspace).run_db())
+
     def run(
         self,
         command: str,

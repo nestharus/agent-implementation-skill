@@ -2,9 +2,9 @@ from pathlib import Path
 from typing import Any
 
 from staleness.service.change_tracker import (
-    check_and_clear as check_and_clear_alignment_changed,
     check_pending as alignment_changed_pending_flag,
     invalidate_excerpts as invalidate_all_excerpts,
+    make_alignment_checker,
     set_flag as set_alignment_changed_flag,
 )
 from signals.service.message_poller import (
@@ -54,13 +54,7 @@ def alignment_changed_pending(planspace: Path) -> bool:
     return alignment_changed_pending_flag(planspace)
 
 
-def _check_and_clear_alignment_changed(planspace: Path) -> bool:
-    """Check if alignment_changed flag is set. Clears it if so."""
-    return check_and_clear_alignment_changed(
-        planspace,
-        db_sh=DB_SH,
-        agent_name=AGENT_NAME,
-    )
+_check_and_clear_alignment_changed = make_alignment_checker(DB_SH, AGENT_NAME)
 
 
 def requeue_changed_sections(

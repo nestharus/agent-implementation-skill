@@ -6,11 +6,11 @@ from unittest.mock import MagicMock
 
 from signals.repository.artifact_io import read_json, write_json
 from implementation.engine.implementation_pass import (
-    _append_risk_history,
-    _read_roal_input_index,
     _run_risk_review,
     run_implementation_pass,
 )
+from implementation.repository.roal_index import read_roal_input_index
+from implementation.service.risk_history import append_risk_history
 from risk.repository.history import append_history_entry, read_history
 from risk.engine.loop import run_lightweight_risk_check, run_risk_loop
 from risk.service.package_builder import build_package_from_proposal
@@ -429,8 +429,8 @@ def test_risk_history_accumulates(
     assert first_result is not None
     assert second_result is not None
 
-    _append_risk_history(planspace, "01", first_result, ["src/main.py"])
-    _append_risk_history(planspace, "02", second_result, ["src/utils.py"])
+    append_risk_history(planspace, "01", first_result, ["src/main.py"])
+    append_risk_history(planspace, "02", second_result, ["src/utils.py"])
     history = read_history(planspace / "artifacts" / "risk" / "risk-history.jsonl")
 
     assert len(history) == 2
@@ -630,7 +630,7 @@ def test_full_adaptive_cycle_relaxes_only_one_posture_level(
         package,
         _dispatch,
     )
-    _append_risk_history(planspace, "01", first_plan, ["src/main.py"])
+    append_risk_history(planspace, "01", first_plan, ["src/main.py"])
     second_plan = run_risk_loop(
         planspace,
         "section-01",
@@ -705,7 +705,7 @@ def test_reassessment_executes_newly_accepted_frontier_end_to_end(
     monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
     monkeypatch.setattr("implementation.engine.implementation_pass._run_risk_review", lambda *_args, **_kwargs: initial_plan)
-    monkeypatch.setattr("implementation.engine.implementation_pass._append_risk_history", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass.append_risk_history", lambda *args, **kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_pass.read_package", lambda *_args, **_kwargs: package)
     monkeypatch.setattr("implementation.engine.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
     monkeypatch.setattr("implementation.engine.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
@@ -768,7 +768,7 @@ def test_reassessment_executes_newly_accepted_frontier_end_to_end(
     assert not deferred_ref.exists()
     assert results["01"].aligned is True
     assert results["01"].modified_files == ["src/main.py", "tests/test_main.py"]
-    assert _read_roal_input_index(planspace, "01") == [
+    assert read_roal_input_index(planspace, "01") == [
         {
             "kind": "accepted_frontier",
             "path": str(

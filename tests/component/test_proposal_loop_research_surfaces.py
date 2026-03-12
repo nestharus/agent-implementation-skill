@@ -116,7 +116,7 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.run_expansion_cycle",
+        "proposal.service.intent_expansion.run_expansion_cycle",
         lambda section_number, *_args, **_kwargs: (
             expansion_calls.append(section_number)
             or {
@@ -124,6 +124,26 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
                 "needs_user_input": False,
             }
         ),
+    )
+    monkeypatch.setattr(
+        "proposal.service.intent_expansion.mailbox_send",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "proposal.service.intent_expansion.alignment_changed_pending",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        "proposal.service.intent_expansion.persist_decision",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "proposal.service.intent_expansion.handle_user_gate",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "proposal.service.intent_expansion.pause_for_parent",
+        lambda *_args, **_kwargs: "resume",
     )
 
     result = run_proposal_loop(

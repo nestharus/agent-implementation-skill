@@ -6,13 +6,13 @@ from signals.repository.artifact_io import write_json
 from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.template import TASK_SUBMISSION_SEMANTICS
-from dispatch.service.prompt_safety import validate_dynamic_content
+from dispatch.service.prompt_guard import validate_dynamic_content
 from signals.service.communication import _log_artifact, _record_traceability, log, mailbox_send
 from dispatch.engine.section_dispatch import dispatch_agent
 from orchestrator.service.pipeline_control import poll_control_messages
 from dispatch.prompt.writers import agent_mail_instructions
 from flow.service.section_ingestion import ingest_and_submit
-from implementation.service.todos import _check_needs_microstrategy
+from implementation.service.microstrategy_decision import _check_needs_microstrategy
 from taskrouter import agent_for
 
 
@@ -60,7 +60,7 @@ def run_microstrategy(
     paths = PathRegistry(planspace)
     file_list = "\n".join(f"- `{codespace / relative_path}`" for relative_path in section.related_files)
     todos_ref = ""
-    section_todos = artifacts / "todos" / f"section-{section.number}-todos.md"
+    section_todos = paths.todos(section.number)
     if section_todos.exists():
         todos_ref = f"\nRead the TODO extraction: `{section_todos}`"
 
@@ -73,7 +73,7 @@ def run_microstrategy(
 
 ## Context
 Read the integration proposal: `{integration_proposal}`
-Read the alignment excerpt: `{artifacts / "sections" / f"section-{section.number}-alignment-excerpt.md"}`{todos_ref}{governance_ref}
+Read the alignment excerpt: `{paths.alignment_excerpt(section.number)}`{todos_ref}{governance_ref}
 
 ## Related Files
 {file_list}
@@ -98,7 +98,7 @@ WHY — you're capturing WHAT and WHERE at the file level.
 ## Task Submission
 
 If you need deeper analysis, submit a task request to:
-`{artifacts}/signals/task-requests-micro-{section.number}.json`
+`{paths.task_request_signal("micro", section.number)}`
 
 Available task types: scan_deep_analyze, scan_explore
 
@@ -138,7 +138,7 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
         planspace,
         db_path=planspace / "run.db",
         submitted_by=f"microstrategy-{section.number}",
-        signal_path=artifacts / "signals" / f"task-requests-micro-{section.number}.json",
+        signal_path=paths.task_request_signal("micro", section.number),
         origin_refs=[str(microstrategy_path)],
     )
 
@@ -189,7 +189,7 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
         "needs": "Tactical breakdown from upstream or decision to proceed without microstrategy",
     }
     write_json(
-        artifacts / "signals" / f"microstrategy-blocker-{section.number}.json",
+        paths.microstrategy_blocker_signal(section.number),
         blocker,
     )
     _record_traceability(

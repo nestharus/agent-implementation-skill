@@ -48,7 +48,7 @@ def build_package_from_proposal(
 ) -> RiskPackage:
     """Build a package from proposal-state and microstrategy artifacts."""
     paths = PathRegistry(planspace)
-    section_number = _scope_number(scope)
+    section_number = scope_number(scope)
     proposal_excerpt_path = paths.proposal_excerpt(section_number)
     microstrategy_path = paths.microstrategy(section_number)
     problem_frame_path = paths.problem_frame(section_number)
@@ -59,9 +59,9 @@ def build_package_from_proposal(
         paths.readiness_dir() / f"{scope}-execution-ready.json"
     )
 
-    proposal_excerpt = _read_text(proposal_excerpt_path)
-    problem_frame = _read_text(problem_frame_path)
-    microstrategy = _read_text(microstrategy_path)
+    proposal_excerpt = read_text(proposal_excerpt_path)
+    problem_frame = read_text(problem_frame_path)
+    microstrategy = read_text(microstrategy_path)
     proposal_state = load_proposal_state(proposal_state_path)
     readiness = read_json(readiness_path)
 
@@ -158,14 +158,14 @@ def _package_id(scope: str, layer: str) -> str:
     return f"pkg-{layer}-{scope}"
 
 
-def _scope_number(scope: str) -> str:
+def scope_number(scope: str) -> str:
     match = re.search(r"section-(\d+)", scope)
     if match is not None:
         return match.group(1)
     return scope
 
 
-def _read_text(path: Path) -> str:
+def read_text(path: Path) -> str:
     if not path.exists():
         return ""
     try:

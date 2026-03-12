@@ -6,6 +6,7 @@ import logging
 import re
 from pathlib import Path
 
+from flow.helpers.file_utils import read_if_exists
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 
@@ -23,12 +24,6 @@ _FIELD_RE = re.compile(
     r"^\*\*(?P<label>[^*]+)\*\*:\s*(?P<value>.*)$",
     re.MULTILINE,
 )
-
-
-def _read_if_exists(path: Path) -> str:
-    if not path.exists():
-        return ""
-    return path.read_text(encoding="utf-8")
 
 
 def _split_records(text: str, prefix: str) -> list[tuple[str, str, str]]:
@@ -165,7 +160,7 @@ def _extract_section_text(text: str, heading: str) -> str:
 
 def parse_problem_index(codespace: Path) -> list[dict]:
     """Parse governance/problems/index.md into structured records."""
-    text = _read_if_exists(codespace / "governance" / "problems" / "index.md")
+    text = read_if_exists(codespace / "governance" / "problems" / "index.md")
     if not text:
         return []
 
@@ -186,7 +181,7 @@ def parse_problem_index(codespace: Path) -> list[dict]:
 
 def parse_pattern_index(codespace: Path) -> list[dict]:
     """Parse governance/patterns/index.md into structured records."""
-    text = _read_if_exists(codespace / "governance" / "patterns" / "index.md")
+    text = read_if_exists(codespace / "governance" / "patterns" / "index.md")
     if not text:
         return []
 
@@ -217,7 +212,7 @@ def parse_pattern_index(codespace: Path) -> list[dict]:
 
 def parse_constraint_index(codespace: Path) -> list[dict]:
     """Parse governance/constraints/index.md into structured records."""
-    text = _read_if_exists(codespace / "governance" / "constraints" / "index.md")
+    text = read_if_exists(codespace / "governance" / "constraints" / "index.md")
     if not text:
         return []
 
@@ -270,7 +265,7 @@ def parse_philosophy_profiles(codespace: Path) -> list[dict]:
 def parse_region_profile_map(codespace: Path) -> dict:
     """Parse philosophy/region-profile-map.md."""
     path = codespace / "philosophy" / "region-profile-map.md"
-    text = _read_if_exists(path)
+    text = read_if_exists(path)
     if not text:
         return {"default": "", "overrides": {}}
 
@@ -310,7 +305,7 @@ def parse_synthesis_cues(codespace: Path) -> dict[str, list[str]]:
     PAT-0011 (R109): synthesis cues must be consumed when available.
     """
     path = codespace / "system-synthesis.md"
-    text = _read_if_exists(path)
+    text = read_if_exists(path)
     if not text:
         return {}
 

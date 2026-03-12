@@ -32,6 +32,19 @@ class PostureProfile(str, Enum):
     P3_GUARDED = "P3"
     P4_REOPEN = "P4"
 
+    @property
+    def rank(self) -> int:
+        return _POSTURE_RANKS[self]
+
+
+_POSTURE_RANKS = {
+    PostureProfile.P0_DIRECT: 0,
+    PostureProfile.P1_LIGHT: 1,
+    PostureProfile.P2_STANDARD: 2,
+    PostureProfile.P3_GUARDED: 3,
+    PostureProfile.P4_REOPEN: 4,
+}
+
 
 class RiskType(str, Enum):
     CONTEXT_ROT = "context_rot"
@@ -199,3 +212,11 @@ class IntentRiskHint:
     risk_confidence: RiskConfidence
     risk_budget_hint: int = 0
     posture_floor: PostureProfile | None = None
+
+
+def clamp_int(value: int, lower: int, upper: int) -> int:
+    return max(lower, min(upper, value))
+
+
+def clamp_float(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))

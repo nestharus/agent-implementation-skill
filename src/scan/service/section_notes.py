@@ -37,7 +37,7 @@ def post_section_completion(
     normalizer_model: str,
 ) -> None:
     """Post-completion steps after a section is aligned."""
-    artifacts = PathRegistry(planspace).artifacts
+    paths = PathRegistry(planspace)
     sec_num = section.number
 
     snapshot_dir = snapshot_modified_files(
@@ -68,9 +68,7 @@ def post_section_completion(
         return
     modified_set = set(modified_files)
 
-    integration_proposal = (
-        artifacts / "proposals" / f"section-{sec_num}-integration-proposal.md"
-    )
+    integration_proposal = paths.proposal(sec_num)
 
     file_fingerprint_parts = []
     for rel_path in sorted(modified_files):
@@ -85,7 +83,7 @@ def post_section_completion(
 
     for target_num, reason, contract_risk, note_md in impacted_sections:
         note_path = (
-            PathRegistry(planspace).notes_dir()
+            paths.notes_dir()
             / f"from-{sec_num}-to-{target_num}.md"
         )
         file_changes = "\n".join(f"- `{rel_path}`" for rel_path in modified_files)
@@ -110,7 +108,7 @@ def post_section_completion(
 ## Acknowledgment Required
 
 When you process this note, write an acknowledgment to
-`{planspace}/artifacts/signals/note-ack-{target_num}.json`:
+`{paths.note_ack_signal(target_num)}`:
 ```json
 {{"acknowledged": [{{"note_id": "{note_id}", "action": "accepted|rejected|deferred", "reason": "..."}}]}}
 ```
@@ -129,7 +127,7 @@ Snapshot directory: `{snapshot_dir}`
         _log_artifact(planspace, f"note:from-{sec_num}-to-{target_num}")
         log(f"Section {sec_num}: left note for section {target_num} at {note_path}")
 
-    baseline_hash_dir = PathRegistry(planspace).section_inputs_hashes_dir()
+    baseline_hash_dir = paths.section_inputs_hashes_dir()
     completed_targets = [
         target
         for target, _reason, _contract_risk, _note_markdown in impacted_sections
@@ -149,7 +147,7 @@ Snapshot directory: `{snapshot_dir}`
         if contract_risk
     ]
     if contract_risk_targets:
-        contracts_dir = artifacts / "contracts"
+        contracts_dir = paths.contracts_dir()
         contracts_dir.mkdir(parents=True, exist_ok=True)
         target_files_map = {
             other_section.number: set(other_section.related_files)
@@ -184,14 +182,14 @@ def read_incoming_notes(
     codespace: Path,
 ) -> str:
     """Read incoming consequence notes from other sections."""
-    artifacts = PathRegistry(planspace).artifacts
+    paths = PathRegistry(planspace)
     sec_num = section.number
 
     note_entries = load_incoming_notes(planspace, sec_num)
     if not note_entries:
         return ""
 
-    ack_path = artifacts / "signals" / f"note-ack-{sec_num}.json"
+    ack_path = paths.note_ack_signal(sec_num)
     resolved_ids: set[str] = set()
     if ack_path.exists():
         ack_data = read_json(ack_path)
@@ -227,7 +225,7 @@ def read_incoming_notes(
         if not re.fullmatch(r"\d+", source_num):
             continue
 
-        source_snapshot_dir = artifacts / "snapshots" / f"section-{source_num}"
+        source_snapshot_dir = paths.snapshot_section(source_num)
         if not source_snapshot_dir.exists():
             continue
 

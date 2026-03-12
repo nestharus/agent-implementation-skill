@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,11 +22,7 @@ from signals.service.blockers import (
     _update_blocker_rollup,
 )
 from orchestrator.types import ProposalPassResult
-
-_SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent / "scripts"
-if str(_SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS_DIR))
-from flow.types.routing import submit_task  # noqa: E402
+from flow.types.routing import submit_task
 
 
 @dataclass
@@ -73,8 +68,8 @@ def publish_discoveries(
     planspace: Path,
 ) -> None:
     """Publish durable discovery artifacts from proposal state."""
-    scope_delta_dir = PathRegistry(planspace).scope_deltas_dir()
-    artifacts = PathRegistry(planspace).artifacts
+    registry = PathRegistry(planspace)
+    scope_delta_dir = registry.scope_deltas_dir()
 
     for candidate in proposal_state.get("new_section_candidates", []):
         scope_delta_dir.mkdir(parents=True, exist_ok=True)
@@ -108,7 +103,7 @@ def publish_discoveries(
         )
     rq_list = proposal_state.get("research_questions", [])
     if rq_list:
-        open_problems_dir = artifacts / "open-problems"
+        open_problems_dir = registry.open_problems_dir()
         open_problems_dir.mkdir(parents=True, exist_ok=True)
         rq_artifact = {
             "section": section_number,
@@ -133,8 +128,7 @@ def route_blockers(
     """Route proposal blockers to their downstream consumers."""
     del parent
     registry = PathRegistry(planspace)
-    artifacts = registry.artifacts
-    signal_dir = artifacts / "signals"
+    signal_dir = registry.signals_dir()
     signal_dir.mkdir(parents=True, exist_ok=True)
 
     for i, question in enumerate(proposal_state.get("user_root_questions", [])):
@@ -290,7 +284,7 @@ def route_blockers(
     ]
     if unresolved_contracts or unresolved_anchors:
         queue_reconciliation_request(
-            artifacts,
+            registry.artifacts,
             section_number,
             unresolved_contracts,
             unresolved_anchors,
@@ -312,10 +306,8 @@ def resolve_and_route(
     codespace: Path | None = None,
 ) -> ReadinessResult:
     """Resolve readiness, publish discoveries, and route blockers."""
-    artifacts = PathRegistry(planspace).artifacts
-    proposal_state_path = (
-        artifacts / "proposals" / f"section-{section.number}-proposal-state.json"
-    )
+    registry = PathRegistry(planspace)
+    proposal_state_path = registry.proposal_state(section.number)
     proposal_state = load_proposal_state(proposal_state_path)
 
     publish_discoveries(section.number, proposal_state, planspace)

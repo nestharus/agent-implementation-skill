@@ -10,7 +10,7 @@ from dispatch.prompt.template import (
     SYSTEM_CONSTRAINTS,
     render_template,
 )
-from dispatch.service.prompt_safety import validate_dynamic_content
+from dispatch.service.prompt_guard import validate_dynamic_content
 
 
 class TestSystemConstraints:

@@ -6,6 +6,8 @@ from typing import Any
 from signals.repository.artifact_io import write_json
 from staleness.helpers.hashing import content_hash, file_hash
 from intent.service import philosophy as _philosophy_bootstrap
+from intent.service import philosophy_bootstrap as _philosophy_bootstrap_impl
+from intent.service import philosophy_dispatch as _philosophy_dispatch_impl
 from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
 
@@ -14,16 +16,27 @@ from dispatch.engine.section_dispatch import dispatch_agent
 from dispatch.service.model_policy import load_model_policy as read_model_policy
 from signals.repository.signal_reader import read_agent_signal
 from orchestrator.types import Section
-from dispatch.service.prompt_safety import write_validated_prompt
+from dispatch.service.prompt_guard import write_validated_prompt
 from taskrouter import agent_for
 
 
 def _sync_philosophy_bootstrap_overrides() -> None:
-    """Propagate monkeypatched wrapper dependencies into the lib module."""
+    """Propagate monkeypatched wrapper dependencies into the split modules.
+
+    The philosophy module was split into philosophy_bootstrap (orchestration)
+    and philosophy_dispatch (agent dispatch).  Monkey-patching must reach
+    the actual implementation modules as well as the facade.
+    """
+    # Facade module (backward compat)
     _philosophy_bootstrap.dispatch_agent = dispatch_agent
     _philosophy_bootstrap.read_agent_signal = read_agent_signal
     _philosophy_bootstrap.read_model_policy = read_model_policy
     _philosophy_bootstrap.write_validated_prompt = write_validated_prompt
+    # Implementation modules where the names are actually resolved at runtime
+    _philosophy_bootstrap_impl.dispatch_agent = dispatch_agent
+    _philosophy_bootstrap_impl.read_model_policy = read_model_policy
+    _philosophy_bootstrap_impl.write_validated_prompt = write_validated_prompt
+    _philosophy_dispatch_impl.dispatch_agent = dispatch_agent
 
 
 def _walk_md_bounded(
@@ -135,7 +148,6 @@ def generate_intent_pack(
     """
     policy = read_model_policy(planspace)
     paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
     sec = section.number
     intent_sec = paths.intent_section_dir(sec)
     intent_sec.mkdir(parents=True, exist_ok=True)
@@ -149,8 +161,8 @@ def generate_intent_pack(
     problem_frame = paths.problem_frame(sec)
     codemap_path = paths.codemap()
     corrections_path = paths.corrections()
-    philosophy_path = artifacts / "intent" / "global" / "philosophy.md"
-    todos_path = artifacts / "todos" / f"section-{sec}-todos.md"
+    philosophy_path = paths.philosophy()
+    todos_path = paths.todos(sec)
 
     # V3/R59: Hash-based invalidation — regenerate if inputs changed
     # even when problem.md/rubric exist.
@@ -208,12 +220,12 @@ def generate_intent_pack(
 
     notes_block = ""
     if incoming_notes:
-        notes_file = artifacts / f"intent-pack-{sec}-notes.md"
+        notes_file = paths.artifacts / f"intent-pack-{sec}-notes.md"
         notes_file.write_text(incoming_notes, encoding="utf-8")
         notes_block = f"\n8. Incoming notes: `{notes_file}`\n"
 
-    prompt_path = artifacts / f"intent-pack-{sec}-prompt.md"
-    output_path = artifacts / f"intent-pack-{sec}-output.md"
+    prompt_path = paths.artifacts / f"intent-pack-{sec}-prompt.md"
+    output_path = paths.artifacts / f"intent-pack-{sec}-output.md"
 
     pack_prompt_text = f"""# Task: Generate Intent Pack for Section {sec}
 

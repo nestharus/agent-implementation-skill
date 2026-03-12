@@ -9,30 +9,11 @@ from pathlib import Path
 from staleness.service.change_tracker import invalidate_excerpts, set_flag
 from signals.service.database_client import DatabaseClient
 from signals.service.mailbox_service import MailboxService
-from orchestrator.path_registry import PathRegistry
-
-
-def _database_client(planspace: Path, db_sh: Path) -> DatabaseClient:
-    return DatabaseClient(db_sh, PathRegistry(planspace).run_db())
-
-
-def _mailbox(
-    planspace: Path,
-    *,
-    db_sh: Path,
-    agent_name: str,
-    logger: Callable[[str], None] | None,
-) -> MailboxService:
-    return MailboxService(
-        _database_client(planspace, db_sh),
-        agent_name,
-        logger=logger,
-    )
 
 
 def check_pipeline_state(planspace: Path, *, db_sh: Path) -> str:
     """Return the latest pipeline-state lifecycle value."""
-    line = _database_client(planspace, db_sh).query(
+    line = DatabaseClient.for_planspace(planspace, db_sh).query(
         "lifecycle",
         tag="pipeline-state",
         limit=1,
@@ -56,7 +37,7 @@ def wait_if_paused(
     """Block while the pipeline is paused, buffering non-control messages."""
     if check_pipeline_state(planspace, db_sh=db_sh) != "paused":
         return
-    mailbox = _mailbox(
+    mailbox = MailboxService.for_planspace(
         planspace,
         db_sh=db_sh,
         agent_name=agent_name,
@@ -96,7 +77,7 @@ def pause_for_parent(
     logger: Callable[[str], None],
 ) -> str:
     """Send a pause signal to the parent and wait for the next response."""
-    mailbox = _mailbox(
+    mailbox = MailboxService.for_planspace(
         planspace,
         db_sh=db_sh,
         agent_name=agent_name,

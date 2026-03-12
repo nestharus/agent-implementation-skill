@@ -10,7 +10,7 @@ from signals.repository.artifact_io import read_json, write_json
 from staleness.helpers.hashing import file_hash
 from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
-from dispatch.service.prompt_safety import write_validated_prompt
+from dispatch.service.prompt_guard import write_validated_prompt
 from taskrouter import agent_for
 
 
@@ -180,9 +180,8 @@ def validate_tool_registry_after_implementation(
     update_blocker_rollup: Callable[[Path], None],
 ) -> Path:
     """Validate the tool registry after implementation and return the friction path."""
-    friction_signal_path = (
-        artifacts / "signals" / f"section-{section_number}-tool-friction.json"
-    )
+    paths = PathRegistry(planspace)
+    friction_signal_path = paths.tool_friction_signal(section_number)
     if not tool_registry_path.exists():
         return friction_signal_path
 
@@ -216,7 +215,7 @@ def validate_tool_registry_after_implementation(
                 f"8. If any cross-section tools were added, verify they are "
                 f"genuinely reusable\n\n"
                 f"After validation, write a tool digest to: "
-                f"`{artifacts / 'tool-digest.md'}`\n"
+                f"`{paths.tool_digest()}`\n"
                 f"Format: one line per tool grouped by scope "
                 f"(cross-section, section-local, test-only).\n\n"
                 f"Write the validated registry back to the same path.\n\n"
@@ -295,7 +294,7 @@ def validate_tool_registry_after_implementation(
                 ),
             }
             write_json(
-                PathRegistry(planspace).post_impl_blocker_signal(section_number),
+                paths.post_impl_blocker_signal(section_number),
                 blocker,
             )
             update_blocker_rollup(planspace)
@@ -321,6 +320,7 @@ def handle_tool_friction(
     update_blocker_rollup: Callable[[Path], None],
 ) -> None:
     """Handle tool-friction signals and dispatch bridge-tools when needed."""
+    paths = PathRegistry(planspace)
     tool_friction_detected = False
     if friction_signal_path.exists():
         friction = read_json(friction_signal_path)
@@ -338,12 +338,8 @@ def handle_tool_friction(
     )
     bridge_tools_prompt = artifacts / f"bridge-tools-{section_number}-prompt.md"
     bridge_tools_output = artifacts / f"bridge-tools-{section_number}-output.md"
-    bridge_signal_path = (
-        artifacts / "signals" / f"section-{section_number}-tool-bridge.json"
-    )
-    default_proposal_path = (
-        artifacts / "proposals" / f"section-{section_number}-tool-bridge.md"
-    )
+    bridge_signal_path = paths.tool_bridge_signal(section_number)
+    default_proposal_path = paths.tool_bridge_proposal(section_number)
     if not write_validated_prompt(
         f"""# Task: Bridge Tool Islands for Section {section_number}
 
@@ -354,7 +350,7 @@ cleanly or a needed tool doesn't exist.
 ## Files to Read
 1. Tool registry: `{tool_registry_path}`
 2. Section specification: `{section_path}`
-3. Integration proposal: `{artifacts / "proposals" / f"section-{section_number}-integration-proposal.md"}`
+3. Integration proposal: `{paths.proposal(section_number)}`
 
 ## Instructions
 Analyze the tool registry and section needs. Either:
@@ -442,7 +438,7 @@ with JSON:
 
     if bridge_valid:
         bridge_proposal = bridge_data.get("proposal_path", str(default_proposal_path))
-        inputs_dir = artifacts / "inputs" / f"section-{section_number}"
+        inputs_dir = paths.input_refs_dir(section_number)
         inputs_dir.mkdir(parents=True, exist_ok=True)
         ref_file = inputs_dir / "tool-bridge.ref"
         ref_file.write_text(str(bridge_proposal), encoding="utf-8")
@@ -485,7 +481,7 @@ with JSON:
                 f"modified by bridge-tools for section "
                 f"{section_number}.\n\n"
                 f"Read the registry and write an updated tool digest "
-                f"to: `{artifacts / 'tool-digest.md'}`\n\n"
+                f"to: `{paths.tool_digest()}`\n\n"
                 f"Format: one line per tool grouped by scope "
                 f"(cross-section, section-local, test-only).\n",
                 digest_prompt,
@@ -506,9 +502,7 @@ with JSON:
             f"Section {section_number}: bridge-tools dispatch "
             f"failed after escalation — writing failure artifact"
         )
-        failure_artifact = (
-            artifacts / "signals" / f"section-{section_number}-bridge-tools-failure.json"
-        )
+        failure_artifact = paths.bridge_tools_failure_signal(section_number)
         write_json(
             failure_artifact,
             {
@@ -519,7 +513,7 @@ with JSON:
             },
         )
         write_json(
-            PathRegistry(planspace).post_impl_blocker_signal(section_number),
+            paths.post_impl_blocker_signal(section_number),
             {
                 "state": "needs_parent",
                 "detail": (

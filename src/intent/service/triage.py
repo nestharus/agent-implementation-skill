@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dispatch.service.prompt_safety import write_validated_prompt
+from dispatch.service.prompt_guard import write_validated_prompt
 
 from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry

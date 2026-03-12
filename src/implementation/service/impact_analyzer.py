@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from dispatch.service.prompt_safety import validate_dynamic_content, write_validated_prompt
+from dispatch.service.prompt_guard import validate_dynamic_content, write_validated_prompt
 from signals.service.communication import (
     AGENT_NAME,
     DB_SH,
@@ -21,27 +21,15 @@ from dispatch.engine.section_dispatch import dispatch_agent
 from orchestrator.path_registry import PathRegistry
 from taskrouter.agents import resolve_agent_path
 from taskrouter import agent_for
+from orchestrator.service.section_decisions import (
+    build_section_number_map,
+    normalize_section_number,
+)
 
 if TYPE_CHECKING:
     from orchestrator.types import Section
 
 MaterialImpact = tuple[str, str, bool, str]
-
-
-def build_section_number_map(sections: list[Section]) -> dict[int, str]:
-    """Build a mapping from int section number to canonical string form."""
-    return {int(section.number): section.number for section in sections}
-
-
-def normalize_section_number(
-    raw_num: str,
-    sec_num_map: dict[int, str],
-) -> str:
-    """Normalize a parsed section number to its canonical form."""
-    try:
-        return sec_num_map.get(int(raw_num), raw_num)
-    except ValueError:
-        return raw_num
 
 
 def collect_impact_candidates(
@@ -51,13 +39,13 @@ def collect_impact_candidates(
     all_sections: list[Section],
 ) -> list[Section]:
     """Return mechanically-derived candidate sections for impact analysis."""
-    artifacts = PathRegistry(planspace).artifacts
+    paths = PathRegistry(planspace)
     other_sections = [section for section in all_sections if section.number != section_number]
-    notes_dir = artifacts / "notes"
-    contracts_dir = artifacts / "contracts"
+    notes_dir = paths.notes_dir()
+    contracts_dir = paths.contracts_dir()
     modified_set = set(modified_files)
 
-    source_inputs = artifacts / "inputs" / f"section-{section_number}"
+    source_inputs = paths.input_refs_dir(section_number)
     source_refs = set()
     if source_inputs.is_dir():
         source_refs = {entry.name for entry in source_inputs.iterdir() if entry.suffix == ".ref"}
@@ -74,7 +62,7 @@ def collect_impact_candidates(
             candidates.append(other)
             continue
 
-        other_snapshot = artifacts / "snapshots" / f"section-{other.number}"
+        other_snapshot = paths.snapshot_section(other.number)
         if other_snapshot.exists():
             snapshot_match = False
             for mod_file in modified_files:
@@ -86,7 +74,7 @@ def collect_impact_candidates(
                 continue
 
         if source_refs:
-            other_inputs = artifacts / "inputs" / f"section-{other.number}"
+            other_inputs = paths.input_refs_dir(other.number)
             if other_inputs.is_dir():
                 other_refs = {entry.name for entry in other_inputs.iterdir() if entry.suffix == ".ref"}
                 if source_refs & other_refs:

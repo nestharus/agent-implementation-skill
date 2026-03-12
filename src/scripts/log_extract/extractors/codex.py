@@ -13,8 +13,13 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
+from log_extract.extractors.common import (
+    events_from_home,
+    safe_ts,
+    session_candidates_from_home,
+)
 from log_extract.models import SessionCandidate, TimelineEvent
-from log_extract.utils import parse_timestamp, prompt_signature, summarize_text
+from log_extract.utils import prompt_signature, summarize_text
 
 _SOURCE = "codex"
 _BACKEND = "codex2"
@@ -57,15 +62,15 @@ def _iter_rollout_files(home: Path) -> Iterator[Path]:
 
 
 def _events_from_home(home: Path) -> Iterator[TimelineEvent]:
-    for rollout in _iter_rollout_files(home):
-        yield from _events_from_file(rollout)
+    yield from events_from_home(
+        home, _iter_rollout_files, _events_from_file, source_label="codex",
+    )
 
 
 def _session_candidates_from_home(home: Path) -> Iterator[SessionCandidate]:
-    for rollout in _iter_rollout_files(home):
-        candidate = _session_candidate_from_file(rollout)
-        if candidate is not None:
-            yield candidate
+    yield from session_candidates_from_home(
+        home, _iter_rollout_files, _session_candidate_from_file, source_label="codex",
+    )
 
 
 # ------------------------------------------------------------------
@@ -94,14 +99,7 @@ def _iter_records(path: Path) -> Iterator[dict]:
 
 def _safe_ts(record: dict) -> tuple[str, int] | None:
     """Extract and parse the ``timestamp`` field from a record."""
-    raw = record.get("timestamp")
-    if not raw:
-        return None
-    try:
-        return parse_timestamp(raw)
-    except (ValueError, TypeError) as exc:
-        print(f"codex: skipping malformed timestamp {raw!r}: {exc}", file=sys.stderr)
-        return None
+    return safe_ts(record.get("timestamp"), source_label="codex")
 
 
 # ------------------------------------------------------------------

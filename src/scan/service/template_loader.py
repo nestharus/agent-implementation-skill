@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-_SCAN_TEMPLATES = Path(__file__).resolve().parent.parent.parent / "scripts" / "scan" / "templates"
+_SCAN_TEMPLATES = Path(__file__).resolve().parent.parent.parent / "templates" / "scan"
 
 
 def load_scan_template(name: str) -> str:

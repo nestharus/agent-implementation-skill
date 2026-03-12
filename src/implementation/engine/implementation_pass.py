@@ -6,28 +6,23 @@ import subprocess
 from pathlib import Path
 from typing import Callable
 
-from signals.repository.artifact_io import read_json, write_json
+from signals.repository.artifact_io import read_json
 from staleness.service.change_tracker import (
-    check_and_clear,
     check_pending as alignment_changed_pending,
+    make_alignment_checker,
 )
 from orchestrator.path_registry import PathRegistry
 from coordination.repository.notes import read_incoming_notes
 from proposal.repository.state import load_proposal_state
 from risk.service.engagement import determine_engagement
-from risk.repository.history import append_history_entry, pattern_signature, read_history
 from risk.engine.loop import run_lightweight_risk_check, run_risk_loop
 from risk.service.package_builder import build_package_from_proposal, read_package, refresh_package
-from risk.repository.serialization import load_risk_assessment
 from risk.types import (
-    PostureProfile,
-    RiskHistoryEntry,
     RiskMode,
     RiskPackage,
     RiskPlan,
     StepDecision,
 )
-from staleness.service.freshness import compute_section_freshness
 from proposal.service.readiness_resolver import resolve_readiness
 from signals.service.communication import AGENT_NAME, DB_SH, log, mailbox_send
 from dispatch.engine.section_dispatch import dispatch_agent
@@ -36,20 +31,28 @@ from orchestrator.service.pipeline_control import (
     handle_pending_messages,
 )
 from implementation.engine.runner import run_section
+from implementation.repository.roal_index import (
+    IMPLEMENTATION_ROAL_KINDS,
+    refresh_roal_input_index,
+)
+from implementation.service.risk_artifacts import (
+    blocking_risk_plan,
+    has_recent_loop_detected_signal,
+    has_stale_freshness_token,
+    load_risk_hints,
+    write_accepted_steps,
+    write_deferred_steps,
+    write_modified_file_manifest,
+    write_reopen_blocker,
+    write_risk_review_failure_blocker,
+)
+from implementation.service.risk_history import (
+    append_risk_history,
+    append_risk_review_failure_history,
+)
 from orchestrator.types import ProposalPassResult, Section, SectionResult
 
-_IMPLEMENTATION_ROAL_KINDS = frozenset({
-    "accepted_frontier",
-    "deferred",
-    "reopen",
-})
 _MAX_FRONTIER_ITERATIONS = 3
-_ROAL_INDEX_KINDS = frozenset({
-    "accepted_frontier",
-    "deferred",
-    "reopen",
-    "proposal_advisory",
-})
 
 
 class ImplementationPassExit(Exception):
@@ -60,391 +63,7 @@ class ImplementationPassRestart(Exception):
     """Raised when Phase 1 should restart after an alignment change."""
 
 
-def _posture_rank(posture: PostureProfile) -> int:
-    ranks = {
-        PostureProfile.P0_DIRECT: 0,
-        PostureProfile.P1_LIGHT: 1,
-        PostureProfile.P2_STANDARD: 2,
-        PostureProfile.P3_GUARDED: 3,
-        PostureProfile.P4_REOPEN: 4,
-    }
-    return ranks[posture]
-
-
-def _unique_strings(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for value in values:
-        item = str(value).strip()
-        if not item or item in seen:
-            continue
-        seen.add(item)
-        ordered.append(item)
-    return ordered
-
-
-def _write_section_input_artifact(
-    paths: PathRegistry,
-    sec_num: str,
-    artifact_name: str,
-    payload: dict,
-) -> Path:
-    input_dir = paths.input_refs_dir(sec_num)
-    artifact_path = input_dir / artifact_name
-    write_json(artifact_path, payload)
-    ref_path = input_dir / f"{artifact_path.stem}.ref"
-    ref_path.write_text(str(artifact_path.resolve()), encoding="utf-8")
-    return artifact_path
-
-
-def _read_roal_input_index(
-    planspace: Path,
-    sec_num: str,
-) -> list[dict]:
-    paths = PathRegistry(planspace)
-    index_path = paths.input_refs_dir(sec_num) / f"section-{sec_num}-roal-input-index.json"
-    payload = read_json(index_path)
-    if not isinstance(payload, list):
-        return []
-    return [entry for entry in payload if isinstance(entry, dict)]
-
-
-def _normalize_roal_entries(entries: list[dict]) -> list[dict]:
-    normalized: list[dict] = []
-    seen: set[tuple[str, str, str]] = set()
-    for entry in entries:
-        kind = str(entry.get("kind", "")).strip()
-        path = str(entry.get("path", "")).strip()
-        produced_by = str(entry.get("produced_by", "")).strip()
-        if kind not in _ROAL_INDEX_KINDS or not path:
-            continue
-        key = (kind, path, produced_by)
-        if key in seen:
-            continue
-        seen.add(key)
-        item = {
-            "kind": kind,
-            "path": path,
-        }
-        if produced_by:
-            item["produced_by"] = produced_by
-        normalized.append(item)
-    return normalized
-
-
-def _write_roal_input_index(
-    planspace: Path,
-    sec_num: str,
-    entries: list[dict],
-) -> Path:
-    """Write a typed ROAL input index for a section."""
-    paths = PathRegistry(planspace)
-    input_dir = paths.input_refs_dir(sec_num)
-    index_path = input_dir / f"section-{sec_num}-roal-input-index.json"
-    normalized_entries = _normalize_roal_entries(entries)
-    indexed_paths = {
-        str(Path(entry["path"]).resolve())
-        for entry in normalized_entries
-    }
-
-    if input_dir.exists():
-        for ref_path in sorted(input_dir.glob("*.ref")):
-            try:
-                referenced = ref_path.read_text(encoding="utf-8").strip()
-            except OSError:
-                continue
-            if not referenced:
-                continue
-            target_path = Path(referenced)
-            resolved = str(target_path.resolve())
-            if (
-                target_path.parent == input_dir
-                and "-risk-" in target_path.name
-                and resolved not in indexed_paths
-            ):
-                ref_path.unlink(missing_ok=True)
-        for artifact_path in sorted(input_dir.iterdir()):
-            if (
-                not artifact_path.is_file()
-                or artifact_path == index_path
-                or artifact_path.suffix == ".ref"
-            ):
-                continue
-            if (
-                artifact_path.parent == input_dir
-                and "-risk-" in artifact_path.name
-                and str(artifact_path.resolve()) not in indexed_paths
-            ):
-                artifact_path.unlink(missing_ok=True)
-
-    write_json(index_path, normalized_entries)
-    return index_path
-
-
-def _refresh_roal_input_index(
-    planspace: Path,
-    sec_num: str,
-    *,
-    replace_kinds: frozenset[str],
-    new_entries: list[dict],
-) -> Path:
-    preserved = [
-        entry
-        for entry in _read_roal_input_index(planspace, sec_num)
-        if str(entry.get("kind", "")).strip() not in replace_kinds
-    ]
-    return _write_roal_input_index(
-        planspace,
-        sec_num,
-        preserved + new_entries,
-    )
-
-
-def _write_accepted_steps(
-    planspace: Path,
-    sec_num: str,
-    risk_plan: RiskPlan,
-) -> Path:
-    paths = PathRegistry(planspace)
-    accepted = [
-        decision
-        for decision in risk_plan.step_decisions
-        if decision.decision == StepDecision.ACCEPT
-        and decision.step_id in risk_plan.accepted_frontier
-    ]
-    accepted.sort(
-        key=lambda decision: risk_plan.accepted_frontier.index(decision.step_id),
-    )
-    postures = [decision.posture for decision in accepted if decision.posture is not None]
-    posture = max(postures, key=_posture_rank) if postures else PostureProfile.P2_STANDARD
-    dispatch_shapes = {
-        decision.step_id: decision.dispatch_shape
-        for decision in accepted
-        if isinstance(decision.dispatch_shape, dict)
-    }
-    payload = {
-        "accepted_steps": list(risk_plan.accepted_frontier),
-        "posture": posture.value,
-        "mitigations": _unique_strings(
-            [
-                mitigation
-                for decision in accepted
-                for mitigation in decision.mitigations
-            ]
-        ),
-        "dispatch_shape": dispatch_shapes,
-        "dispatch_shapes": dispatch_shapes,
-    }
-    return _write_section_input_artifact(
-        paths,
-        sec_num,
-        f"section-{sec_num}-risk-accepted-steps.json",
-        payload,
-    )
-
-
-def _write_deferred_steps(
-    planspace: Path,
-    sec_num: str,
-    risk_plan: RiskPlan,
-) -> Path:
-    paths = PathRegistry(planspace)
-    deferred = [
-        decision
-        for decision in risk_plan.step_decisions
-        if decision.decision == StepDecision.REJECT_DEFER
-        and decision.step_id in risk_plan.deferred_steps
-    ]
-    payload = {
-        "deferred_steps": list(risk_plan.deferred_steps),
-        "wait_for": _unique_strings(
-            [
-                item
-                for decision in deferred
-                for item in decision.wait_for
-            ]
-        ),
-        "reassessment_inputs": _unique_strings(
-            list(risk_plan.expected_reassessment_inputs),
-        ),
-    }
-    return _write_section_input_artifact(
-        paths,
-        sec_num,
-        f"section-{sec_num}-risk-deferred.json",
-        payload,
-    )
-
-
-def _write_reopen_blocker(
-    planspace: Path,
-    sec_num: str,
-    risk_plan: RiskPlan,
-) -> Path:
-    paths = PathRegistry(planspace)
-    scope = f"section-{sec_num}"
-    reopened = [
-        decision
-        for decision in risk_plan.step_decisions
-        if decision.decision == StepDecision.REJECT_REOPEN
-        and decision.step_id in risk_plan.reopen_steps
-    ]
-    reason = next(
-        (decision.reason for decision in reopened if decision.reason),
-        "cross-section incoherence requires reconciliation before local execution",
-    )
-    route_to = next(
-        (decision.route_to for decision in reopened if decision.route_to),
-        "coordination",
-    )
-    payload = {
-        "state": "needs_parent",
-        "blocker_type": "risk_reopen",
-        "source": "roal",
-        "section": sec_num,
-        "scope": scope,
-        "steps": list(risk_plan.reopen_steps),
-        "route_to": route_to,
-        "reason": reason,
-        "detail": reason,
-        "why_blocked": reason,
-        "needs": "Resolve reopened ROAL steps before continuing local execution",
-    }
-    write_json(paths.blocker_signal(sec_num), payload)
-    return paths.blocker_signal(sec_num)
-
-
-def _write_risk_review_failure_blocker(
-    planspace: Path,
-    sec_num: str,
-    reason: str,
-) -> Path:
-    paths = PathRegistry(planspace)
-    payload = {
-        "state": "needs_parent",
-        "blocker_type": "risk_review_failure",
-        "source": "roal",
-        "section": sec_num,
-        "scope": f"section-{sec_num}",
-        "reason": reason,
-        "detail": reason,
-        "why_blocked": "ROAL review failed; fail-closed implementation skip engaged",
-        "needs": "Repair risk review inputs or rerun ROAL successfully",
-    }
-    write_json(paths.blocker_signal(sec_num), payload)
-    return paths.blocker_signal(sec_num)
-
-
-def _blocking_risk_plan(sec_num: str) -> RiskPlan:
-    scope = f"section-{sec_num}"
-    return RiskPlan(
-        plan_id=f"risk-plan-failure-{scope}",
-        assessment_id=f"{scope}-risk-review-failure",
-        package_id=f"pkg-implementation-{scope}",
-        layer="implementation",
-        step_decisions=[],
-        accepted_frontier=[],
-        deferred_steps=[],
-        reopen_steps=[],
-        expected_reassessment_inputs=[],
-    )
-
-
-def _check_and_clear_alignment_changed(planspace: Path) -> bool:
-    return check_and_clear(planspace, db_sh=DB_SH, agent_name=AGENT_NAME)
-
-
-def _has_stale_freshness_token(
-    planspace: Path,
-    sec_num: str,
-    triage_signal: object,
-) -> bool:
-    if not isinstance(triage_signal, dict):
-        return False
-
-    token = triage_signal.get("freshness_token", triage_signal.get("freshness"))
-    if not isinstance(token, str) or not token.strip():
-        return False
-
-    current = compute_section_freshness(planspace, sec_num)
-    return token.strip() != current
-
-
-def _has_recent_loop_detected_signal(
-    planspace: Path,
-    sec_num: str,
-    scope: str,
-) -> bool:
-    signals_dir = PathRegistry(planspace).signals_dir()
-    if not signals_dir.exists():
-        return False
-
-    for path in sorted(signals_dir.glob("*.json")):
-        payload = read_json(path)
-        if not isinstance(payload, dict):
-            continue
-        if str(payload.get("state", "")).strip().lower() != "loop_detected":
-            continue
-
-        if str(payload.get("section_number", "")).strip() == sec_num:
-            return True
-        if str(payload.get("section", "")).strip() in {sec_num, scope}:
-            return True
-        if str(payload.get("scope", "")).strip() == scope:
-            return True
-        if str(payload.get("target", "")).strip() in {sec_num, scope}:
-            return True
-
-    return False
-
-
-def _load_risk_hints(planspace: Path, sec_num: str) -> dict:
-    triage_signal = read_json(
-        PathRegistry(planspace).signals_dir() / f"intent-triage-{sec_num}.json",
-    )
-    if not isinstance(triage_signal, dict):
-        return {
-            "signal": None,
-            "triage_confidence": "low",
-            "risk_mode_hint": "",
-            "posture_floor": None,
-            "max_iterations": 5,
-        }
-
-    triage_confidence = str(
-        triage_signal.get("risk_confidence", triage_signal.get("confidence", "low")),
-    )
-    risk_mode_hint = str(triage_signal.get("risk_mode", ""))
-    posture_floor = triage_signal.get("posture_floor")
-    budget_hint = triage_signal.get("risk_budget_hint", 0)
-    max_iterations = 5
-    if isinstance(budget_hint, int):
-        max_iterations = min(5 + max(budget_hint, 0), 9)
-
-    return {
-        "signal": triage_signal,
-        "triage_confidence": triage_confidence,
-        "risk_mode_hint": risk_mode_hint,
-        "posture_floor": posture_floor,
-        "max_iterations": max_iterations,
-    }
-
-
-def _write_modified_file_manifest(
-    planspace: Path,
-    sec_num: str,
-    modified_files: list[str],
-) -> Path:
-    paths = PathRegistry(planspace)
-    return _write_section_input_artifact(
-        paths,
-        sec_num,
-        f"section-{sec_num}-modified-file-manifest.json",
-        {
-            "modified_files": list(modified_files),
-            "count": len(modified_files),
-        },
-    )
+_check_and_clear_alignment_changed = make_alignment_checker(DB_SH, AGENT_NAME)
 
 
 def _persist_roal_artifacts(
@@ -454,7 +73,7 @@ def _persist_roal_artifacts(
 ) -> None:
     entries: list[dict] = []
     if risk_plan.accepted_frontier:
-        accepted_artifact = _write_accepted_steps(planspace, sec_num, risk_plan)
+        accepted_artifact = write_accepted_steps(planspace, sec_num, risk_plan)
         entries.append({
             "kind": "accepted_frontier",
             "path": str(accepted_artifact),
@@ -465,7 +84,7 @@ def _persist_roal_artifacts(
             f"to {accepted_artifact}",
         )
     if risk_plan.deferred_steps:
-        deferred_artifact = _write_deferred_steps(planspace, sec_num, risk_plan)
+        deferred_artifact = write_deferred_steps(planspace, sec_num, risk_plan)
         entries.append({
             "kind": "deferred",
             "path": str(deferred_artifact),
@@ -476,7 +95,7 @@ def _persist_roal_artifacts(
             f"in {deferred_artifact}",
         )
     if risk_plan.reopen_steps:
-        blocker_path = _write_reopen_blocker(planspace, sec_num, risk_plan)
+        blocker_path = write_reopen_blocker(planspace, sec_num, risk_plan)
         entries.append({
             "kind": "reopen",
             "path": str(blocker_path),
@@ -486,10 +105,10 @@ def _persist_roal_artifacts(
             f"Section {sec_num}: persisted ROAL reopen blocker "
             f"via {blocker_path}",
         )
-    _refresh_roal_input_index(
+    refresh_roal_input_index(
         planspace,
         sec_num,
-        replace_kinds=_IMPLEMENTATION_ROAL_KINDS,
+        replace_kinds=IMPLEMENTATION_ROAL_KINDS,
         new_entries=entries,
     )
 
@@ -524,34 +143,6 @@ def _describe_remaining_risk_work(
         )
         return f"{prefix}: {', '.join(risk_plan.deferred_steps)}"
     return None
-
-
-def _append_risk_review_failure_history(
-    planspace: Path,
-    package: RiskPackage | None,
-    reason: str,
-) -> None:
-    if package is None:
-        return
-
-    paths = PathRegistry(planspace)
-    for step in package.steps:
-        append_history_entry(
-            paths.risk_history(),
-            RiskHistoryEntry(
-                package_id=package.package_id,
-                step_id=step.step_id,
-                layer=package.layer,
-                assessment_class=step.assessment_class,
-                posture=PostureProfile.P4_REOPEN,
-                predicted_risk=100,
-                actual_outcome="risk_review_failure",
-                surfaced_surprises=[reason],
-                verification_outcome="failed",
-                dominant_risks=[],
-                blast_radius_band=0,
-            ),
-        )
 
 
 def _deferred_reassessment_inputs_ready(
@@ -645,7 +236,7 @@ def _maybe_reassess_deferred_steps(
     if reassessment_package is None:
         return None
 
-    hints = _load_risk_hints(planspace, sec_num)
+    hints = load_risk_hints(planspace, sec_num)
     return run_risk_loop(
         planspace,
         scope,
@@ -676,11 +267,11 @@ def _run_risk_review(
         proposal_state = load_proposal_state(
             paths.proposals_dir() / f"{scope}-proposal-state.json"
         )
-        hints = _load_risk_hints(planspace, sec_num)
+        hints = load_risk_hints(planspace, sec_num)
         triage_signal = hints["signal"]
         triage_confidence = hints["triage_confidence"]
-        stale_inputs = _has_stale_freshness_token(planspace, sec_num, triage_signal)
-        recent_loop_signal = _has_recent_loop_detected_signal(
+        stale_inputs = has_stale_freshness_token(planspace, sec_num, triage_signal)
+        recent_loop_signal = has_recent_loop_detected_signal(
             planspace,
             sec_num,
             scope,
@@ -725,146 +316,13 @@ def _run_risk_review(
         return plan
     except Exception as exc:  # noqa: BLE001
         reason = str(exc) or exc.__class__.__name__
-        _append_risk_review_failure_history(planspace, package, reason)
-        _write_risk_review_failure_blocker(planspace, sec_num, reason)
+        append_risk_review_failure_history(planspace, package, reason)
+        write_risk_review_failure_blocker(planspace, sec_num, reason)
         log(
             f"Section {sec_num}: ROAL review failed ({reason}) "
             "— wrote risk_review_failure blocker and skipped implementation",
         )
-        return _blocking_risk_plan(sec_num)
-
-
-def _append_risk_history(
-    planspace: Path,
-    sec_num: str,
-    risk_plan: RiskPlan,
-    modified_files: list[str] | None,
-    *,
-    implementation_failed: bool = False,
-) -> None:
-    scope = f"section-{sec_num}"
-    paths = PathRegistry(planspace)
-    package = read_package(paths, scope)
-    assessment = load_risk_assessment(paths.risk_assessment(scope))
-    prior_history = read_history(paths.risk_history())
-
-    package_steps = {
-        step.step_id: step
-        for step in (package.steps if package is not None else [])
-    }
-    assessment_steps = {
-        step.step_id: step
-        for step in (assessment.step_assessments if assessment is not None else [])
-    }
-
-    modified = list(modified_files or [])
-    if implementation_failed:
-        accepted_outcome = "failure"
-        accepted_surprises = ["implementation failed after ROAL acceptance"]
-        accepted_verification = "failed"
-    elif modified:
-        accepted_outcome = "success"
-        accepted_surprises = []
-        accepted_verification = "passed"
-    else:
-        accepted_outcome = "warning"
-        accepted_surprises = ["implementation completed without file modifications"]
-        accepted_verification = None
-
-    for decision in risk_plan.step_decisions:
-        package_step = package_steps.get(decision.step_id)
-        assessment_step = assessment_steps.get(decision.step_id)
-        if package_step is None:
-            continue
-        if decision.decision == StepDecision.ACCEPT:
-            actual_outcome = accepted_outcome
-            surfaced_surprises = list(accepted_surprises)
-            verification_outcome = accepted_verification
-        elif decision.decision == StepDecision.REJECT_DEFER:
-            actual_outcome = "deferred"
-            surfaced_surprises = _unique_strings(
-                decision.wait_for + list(risk_plan.expected_reassessment_inputs),
-            )
-            verification_outcome = None
-        else:
-            actual_outcome = "reopened"
-            surfaced_surprises = (
-                [decision.reason]
-                if decision.reason
-                else ["ROAL reopened this step for higher-level routing"]
-            )
-            verification_outcome = None
-        append_history_entry(
-            paths.risk_history(),
-            RiskHistoryEntry(
-                package_id=risk_plan.package_id,
-                step_id=decision.step_id,
-                layer=risk_plan.layer,
-                assessment_class=package_step.assessment_class,
-                posture=decision.posture or PostureProfile.P4_REOPEN,
-                predicted_risk=(
-                    decision.residual_risk
-                    if decision.residual_risk is not None
-                    else 100
-                ),
-                actual_outcome=actual_outcome,
-                surfaced_surprises=list(surfaced_surprises),
-                verification_outcome=verification_outcome,
-                dominant_risks=(
-                    list(assessment_step.dominant_risks)
-                    if assessment_step is not None
-                    else []
-                ),
-                blast_radius_band=(
-                    assessment_step.modifiers.blast_radius
-                    if assessment_step is not None
-                    else 0
-                ),
-            ),
-        )
-        if (
-            decision.decision == StepDecision.ACCEPT
-            and actual_outcome in {"success", "warning"}
-            and assessment_step is not None
-        ):
-            current_signature = pattern_signature(
-                package_step.assessment_class,
-                assessment_step.dominant_risks,
-                assessment_step.modifiers.blast_radius,
-            )
-            prior_rejections = [
-                entry
-                for entry in prior_history
-                if pattern_signature(
-                    entry.assessment_class,
-                    entry.dominant_risks,
-                    entry.blast_radius_band,
-                ) == current_signature
-                and entry.actual_outcome.strip().lower() in {"deferred", "reopened"}
-            ]
-            if prior_rejections:
-                append_history_entry(
-                    paths.risk_history(),
-                    RiskHistoryEntry(
-                        package_id=risk_plan.package_id,
-                        step_id=decision.step_id,
-                        layer=risk_plan.layer,
-                        assessment_class=package_step.assessment_class,
-                        posture=decision.posture or PostureProfile.P2_STANDARD,
-                        predicted_risk=(
-                            decision.residual_risk
-                            if decision.residual_risk is not None
-                            else assessment_step.raw_risk
-                        ),
-                        actual_outcome="over_guarded",
-                        surfaced_surprises=[
-                            "similar deferred or reopened work later completed safely",
-                        ],
-                        verification_outcome=accepted_verification,
-                        dominant_risks=list(assessment_step.dominant_risks),
-                        blast_radius_band=assessment_step.modifiers.blast_radius,
-                    ),
-                )
+        return blocking_risk_plan(sec_num)
 
 
 def run_implementation_pass(
@@ -929,10 +387,10 @@ def run_implementation_pass(
             dispatch_agent,
         )
         if risk_plan is None:
-            _refresh_roal_input_index(
+            refresh_roal_input_index(
                 planspace,
                 sec_num,
-                replace_kinds=_IMPLEMENTATION_ROAL_KINDS,
+                replace_kinds=IMPLEMENTATION_ROAL_KINDS,
                 new_entries=[],
             )
         else:
@@ -982,7 +440,7 @@ def run_implementation_pass(
                 text=True,
             )
             if risk_plan is not None:
-                _append_risk_history(
+                append_risk_history(
                     planspace,
                     sec_num,
                     risk_plan,
@@ -998,9 +456,9 @@ def run_implementation_pass(
         frontier_failed = False
         final_problem: str | None = None
         if risk_plan is not None:
-            _append_risk_history(planspace, sec_num, risk_plan, all_modified_files)
+            append_risk_history(planspace, sec_num, risk_plan, all_modified_files)
             while frontier_iterations < _MAX_FRONTIER_ITERATIONS:
-                manifest_path = _write_modified_file_manifest(
+                manifest_path = write_modified_file_manifest(
                     planspace,
                     sec_num,
                     all_modified_files,
@@ -1052,7 +510,7 @@ def run_implementation_pass(
 
                 if deferred_modified is None:
                     log(f"Section {sec_num}: deferred frontier slice returned None")
-                    _append_risk_history(
+                    append_risk_history(
                         planspace,
                         sec_num,
                         reassessed_plan,
@@ -1066,7 +524,7 @@ def run_implementation_pass(
                 if deferred_modified:
                     all_modified_files.extend(deferred_modified)
 
-                _append_risk_history(
+                append_risk_history(
                     planspace,
                     sec_num,
                     reassessed_plan,

@@ -10,7 +10,7 @@ from pathlib import Path
 from scan.service.section_notes import log_phase_failure
 from scan.service.template_loader import load_scan_template
 from scan.related.match_updater import update_match
-from dispatch.service.prompt_safety import validate_dynamic_content
+from dispatch.service.prompt_guard import validate_dynamic_content
 from scan.codemap.cache import FileCardCache, is_valid_cached_feedback
 from scan.cli_dispatch import dispatch_agent
 from taskrouter import agent_for

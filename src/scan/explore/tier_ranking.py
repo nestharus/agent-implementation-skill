@@ -8,7 +8,7 @@ from pathlib import Path
 from signals.repository.artifact_io import read_json, rename_malformed, write_json
 from staleness.helpers.hashing import content_hash
 from scan.service.template_loader import load_scan_template
-from dispatch.service.prompt_safety import validate_dynamic_content
+from dispatch.service.prompt_guard import validate_dynamic_content
 from scan.codemap.cache import strip_scan_summaries
 from scan.cli_dispatch import dispatch_agent
 from taskrouter import agent_for

@@ -31,14 +31,6 @@ def env(tmp_path: Path) -> tuple[Path, Path]:
     return planspace, codespace
 
 
-@pytest.fixture(autouse=True)
-def clear_expansion_counts() -> None:
-    if hasattr(run_proposal_loop, "_expansion_counts"):
-        delattr(run_proposal_loop, "_expansion_counts")
-    yield
-    if hasattr(run_proposal_loop, "_expansion_counts"):
-        delattr(run_proposal_loop, "_expansion_counts")
-
 
 def _common_policy() -> dict:
     return {
@@ -132,8 +124,24 @@ def _install_common_patches(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.handle_user_gate",
+        "proposal.service.intent_expansion.handle_user_gate",
         lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "proposal.service.intent_expansion.mailbox_send",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "proposal.service.intent_expansion.alignment_changed_pending",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        "proposal.service.intent_expansion.persist_decision",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "proposal.service.intent_expansion.pause_for_parent",
+        lambda *_args, **_kwargs: "resume",
     )
 
     def _dispatch(*args, **kwargs):
@@ -189,7 +197,7 @@ def test_lightweight_aligned_surfaces_force_reproposal_under_full_intent(
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.run_expansion_cycle",
+        "proposal.service.intent_expansion.run_expansion_cycle",
         lambda *_args, **_kwargs: {
             "restart_required": False,
             "needs_user_input": False,
@@ -260,7 +268,7 @@ def test_lightweight_aligned_surfaces_persist_registry_entries(
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.run_expansion_cycle",
+        "proposal.service.intent_expansion.run_expansion_cycle",
         lambda *_args, **_kwargs: {
             "restart_required": False,
             "needs_user_input": False,
@@ -312,7 +320,7 @@ def test_lightweight_empty_surface_payload_does_not_escalate(
         },
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.run_expansion_cycle",
+        "proposal.service.intent_expansion.run_expansion_cycle",
         lambda *_args, **_kwargs: {
             "restart_required": False,
             "needs_user_input": False,
@@ -375,7 +383,7 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.run_expansion_cycle",
+        "proposal.service.intent_expansion.run_expansion_cycle",
         lambda section_number, *_args, **_kwargs: expansion_calls.append(section_number)
         or {
             "restart_required": False,
@@ -446,7 +454,7 @@ def test_full_mode_surfaces_do_not_emit_lightweight_escalation_signal(
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.run_expansion_cycle",
+        "proposal.service.intent_expansion.run_expansion_cycle",
         lambda section_number, *_args, **_kwargs: expansion_calls.append(section_number)
         or {
             "restart_required": False,

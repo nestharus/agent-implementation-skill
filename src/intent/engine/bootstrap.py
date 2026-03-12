@@ -1,12 +1,15 @@
-"""Intent bootstrap helpers for section-loop runner."""
+"""Intent bootstrap pipeline for section-loop runner.
+
+Decomposes the former ``run_intent_bootstrap`` god function into
+single-concern steps composed via the pipeline engine.  Alignment
+guards and logging are handled by middleware — not inlined.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from staleness.service.change_tracker import check_pending as alignment_changed_pending
 from signals.repository.artifact_io import read_json, write_json
-from intake.service.packet import build_section_governance_packet
 from orchestrator.path_registry import PathRegistry
 from signals.service.communication import _record_traceability, log
 from intent.service.loop_bootstrap import (
@@ -16,134 +19,157 @@ from intent.service.loop_bootstrap import (
 from intent.service.triage import run_intent_triage
 from orchestrator.service.pipeline_control import pause_for_parent
 from signals.service.blockers import _update_blocker_rollup
+from intake.service.packet import build_section_governance_packet
 from orchestrator.types import Section
+from staleness.service.change_tracker import check_pending as alignment_changed_pending
+
+from pipeline import AlignmentGuard, Pipeline, PipelineContext, Step
 
 
-def run_intent_bootstrap(
-    section: Section,
-    planspace: Path,
-    codespace: Path,
-    parent: str,
-    policy: dict,
-    incoming_notes: str | None,
-) -> dict | None:
-    """Run intent triage, TODO surfacing, philosophy, and budget assembly."""
-    del policy
+# -- Step functions (each has exactly ONE concern) -------------------------
 
-    artifacts = PathRegistry(planspace).artifacts
-    problem_frame_path = (
-        artifacts / "sections" / f"section-{section.number}-problem-frame.md"
-    )
+
+def _step_triage(ctx: PipelineContext) -> dict:
+    """Run intent triage to determine mode and budgets."""
+    paths = ctx.paths
+    pf_path = paths.problem_frame(ctx.section.number)
     pf_content = (
-        problem_frame_path.read_text(encoding="utf-8").strip()
-        if problem_frame_path.exists()
+        pf_path.read_text(encoding="utf-8").strip()
+        if pf_path.exists()
         else ""
     )
+    ctx.state["pf_content"] = pf_content
 
     notes_count = 0
-    notes_dir_check = artifacts / "notes"
-    if notes_dir_check.exists():
-        notes_count = len(list(notes_dir_check.glob(f"from-*-to-{section.number}.md")))
+    notes_dir = paths.notes_dir()
+    if notes_dir.exists():
+        notes_count = len(
+            list(notes_dir.glob(f"from-*-to-{ctx.section.number}.md")),
+        )
 
-    triage_result = run_intent_triage(
-        section.number,
-        planspace,
-        codespace,
-        parent,
-        related_files_count=len(section.related_files),
+    result = run_intent_triage(
+        ctx.section.number,
+        ctx.planspace,
+        ctx.codespace,
+        ctx.parent,
+        related_files_count=len(ctx.section.related_files),
         incoming_notes_count=notes_count,
-        solve_count=section.solve_count,
+        solve_count=ctx.section.solve_count,
         section_summary=pf_content[:500] if pf_content else "",
     )
-    intent_mode = triage_result.get("intent_mode", "lightweight")
-    intent_budgets = triage_result.get("budgets", {})
+    ctx.state["intent_mode"] = result.get("intent_mode", "lightweight")
+    ctx.state["intent_budgets"] = result.get("budgets", {})
+    return result
 
-    todos_path = artifacts / "todos" / f"section-{section.number}-todos.md"
-    if section.related_files:
-        todos_path.parent.mkdir(parents=True, exist_ok=True)
-        todo_entries = _extract_todos_from_files(codespace, section.related_files)
-        if todo_entries:
-            todos_path.write_text(todo_entries, encoding="utf-8")
-            log(f"Section {section.number}: extracted TODOs from related files")
-            _record_traceability(
-                planspace,
-                section.number,
-                f"section-{section.number}-todos.md",
-                "related files TODO extraction",
-                "in-code microstrategies for alignment",
-            )
-        elif todos_path.exists():
-            todos_path.unlink()
-            log(
-                f"Section {section.number}: removed stale TODO extraction "
-                "(no TODOs remaining)",
-            )
-            _record_traceability(
-                planspace,
-                section.number,
-                f"section-{section.number}-todos.md",
-                "related files TODO extraction",
-                "in-code microstrategies for alignment",
-            )
-        else:
-            log(f"Section {section.number}: no TODOs found in related files")
 
-    philosophy_result = ensure_global_philosophy(planspace, codespace, parent)
-    if alignment_changed_pending(planspace):
-        return None
+def _step_extract_todos(ctx: PipelineContext) -> str:
+    """Extract TODO comments from related files and record traceability."""
+    paths = ctx.paths
+    todos_path = paths.todos(ctx.section.number)
+    paths.todos_dir().mkdir(parents=True, exist_ok=True)
 
-    if philosophy_result["status"] != "ready":
-        blocking_state = philosophy_result.get("blocking_state")
+    todo_entries = _extract_todos_from_files(
+        ctx.codespace, ctx.section.related_files,
+    )
+    artifact_name = f"section-{ctx.section.number}-todos.md"
+
+    if todo_entries:
+        todos_path.write_text(todo_entries, encoding="utf-8")
+        log(f"Section {ctx.section.number}: extracted TODOs from related files")
+        _record_traceability(
+            ctx.planspace, ctx.section.number, artifact_name,
+            "related files TODO extraction",
+            "in-code microstrategies for alignment",
+        )
+    elif todos_path.exists():
+        todos_path.unlink()
+        log(
+            f"Section {ctx.section.number}: removed stale TODO extraction "
+            "(no TODOs remaining)",
+        )
+        _record_traceability(
+            ctx.planspace, ctx.section.number, artifact_name,
+            "related files TODO extraction",
+            "in-code microstrategies for alignment",
+        )
+    else:
+        log(f"Section {ctx.section.number}: no TODOs found in related files")
+
+    return todo_entries or ""
+
+
+def _step_philosophy(ctx: PipelineContext) -> dict:
+    """Ensure global philosophy is bootstrapped.
+
+    Returns the philosophy result on success.  Returns ``None`` to
+    halt the pipeline when philosophy is blocked (need_decision,
+    needs_parent, or unavailable).
+    """
+    result = ensure_global_philosophy(
+        ctx.planspace, ctx.codespace, ctx.parent,
+    )
+
+    if result["status"] != "ready":
+        blocking_state = result.get("blocking_state")
+        sec = ctx.section.number
         if blocking_state == "NEED_DECISION":
             log(
-                f"Section {section.number}: philosophy bootstrap needs "
-                f"user input — {philosophy_result['detail']}",
+                f"Section {sec}: philosophy bootstrap needs "
+                f"user input — {result['detail']}",
             )
-            _update_blocker_rollup(planspace)
+            _update_blocker_rollup(ctx.planspace)
             pause_for_parent(
-                planspace,
-                parent,
+                ctx.planspace, ctx.parent,
                 "pause:need_decision:global:philosophy bootstrap requires user input",
             )
         elif blocking_state == "NEEDS_PARENT":
             log(
-                f"Section {section.number}: philosophy bootstrap needs "
-                f"parent intervention — {philosophy_result['detail']}",
+                f"Section {sec}: philosophy bootstrap needs "
+                f"parent intervention — {result['detail']}",
             )
         else:
             log(
-                f"Section {section.number}: philosophy unavailable — "
-                f"{philosophy_result['detail']}",
+                f"Section {sec}: philosophy unavailable — "
+                f"{result['detail']}",
             )
-        return None
+        return None  # halt pipeline
 
+    return result
+
+
+def _step_governance(ctx: PipelineContext) -> str:
+    """Build the section governance packet."""
+    pf_content = ctx.state.get("pf_content", "")
     build_section_governance_packet(
-        section.number,
-        planspace,
-        codespace,
+        ctx.section.number,
+        ctx.planspace,
+        ctx.codespace,
         pf_content[:500] if pf_content else "",
     )
+    return "ok"
 
-    if intent_mode == "full":
-        generate_intent_pack(
-            section,
-            planspace,
-            codespace,
-            parent,
-            incoming_notes=incoming_notes or "",
-        )
-        if alignment_changed_pending(planspace):
-            return None
-        log(f"Section {section.number}: intent bootstrap complete (full mode)")
 
-    if intent_mode == "lightweight":
-        log(f"Section {section.number}: lightweight intent mode")
+def _step_intent_pack(ctx: PipelineContext) -> str:
+    """Generate full intent pack (only in full mode)."""
+    generate_intent_pack(
+        ctx.section,
+        ctx.planspace,
+        ctx.codespace,
+        ctx.parent,
+        incoming_notes=ctx.state.get("incoming_notes", ""),
+    )
+    log(f"Section {ctx.section.number}: intent bootstrap complete (full mode)")
+    return "ok"
+
+
+def _step_budget(ctx: PipelineContext) -> dict:
+    """Merge triage budgets with existing cycle budget and return."""
+    paths = ctx.paths
+    intent_budgets = ctx.state.get("intent_budgets", {})
 
     if intent_budgets:
         triage_budget_keys = frozenset(("proposal_max", "implementation_max"))
-        cycle_budget_path = (
-            artifacts / "signals" / f"section-{section.number}-cycle-budget.json"
-        )
+        cycle_budget_path = paths.cycle_budget(ctx.section.number)
         existing_budget = read_json(cycle_budget_path)
         if existing_budget is not None:
             existing_budget.update({
@@ -157,18 +183,78 @@ def run_intent_bootstrap(
             })
             write_json(cycle_budget_path, existing_budget)
 
-    cycle_budget_path = (
-        artifacts / "signals" / f"section-{section.number}-cycle-budget.json"
-    )
+    cycle_budget_path = paths.cycle_budget(ctx.section.number)
     cycle_budget = {"proposal_max": 5, "implementation_max": 5}
     loaded_budget = read_json(cycle_budget_path)
     if loaded_budget is not None:
         cycle_budget.update(loaded_budget)
+
+    ctx.state["result"] = cycle_budget
     return cycle_budget
 
 
+# -- Guards ----------------------------------------------------------------
+
+
+def _has_related_files(ctx: PipelineContext) -> bool:
+    return bool(ctx.section.related_files)
+
+
+def _is_full_mode(ctx: PipelineContext) -> bool:
+    return ctx.state.get("intent_mode") == "full"
+
+
+# -- Pipeline definition --------------------------------------------------
+
+_STEPS = [
+    Step("triage", _step_triage),
+    Step("extract-todos", _step_extract_todos, guard=_has_related_files),
+    Step("philosophy", _step_philosophy),
+    Step("governance", _step_governance),
+    Step("intent-pack", _step_intent_pack, guard=_is_full_mode),
+    Step("budget", _step_budget),
+]
+
+
+# -- Public entry point (same signature as before) -------------------------
+
+
+def run_intent_bootstrap(
+    section: Section,
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+    policy: dict,
+    incoming_notes: str | None,
+) -> dict | None:
+    """Run intent triage, TODO surfacing, philosophy, and budget assembly."""
+    ctx = PipelineContext(
+        section=section,
+        planspace=planspace,
+        codespace=codespace,
+        parent=parent,
+        policy=policy,
+        paths=PathRegistry(planspace),
+        state={"incoming_notes": incoming_notes or ""},
+    )
+    pipe = Pipeline(
+        "intent-bootstrap",
+        steps=_STEPS,
+        middleware=[
+            AlignmentGuard(
+                alignment_changed_pending,
+                after_steps={"philosophy", "intent-pack"},
+            ),
+        ],
+    )
+    return pipe.run(ctx)
+
+
+# -- Helpers ---------------------------------------------------------------
+
+
 def _extract_todos_from_files(codespace: Path, related_files: list[str]) -> str:
-    from implementation.service.todos import (
+    from implementation.service.microstrategy_decision import (
         _extract_todos_from_files as extract_todos,
     )
 

@@ -18,8 +18,13 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
+from log_extract.extractors.common import (
+    events_from_home,
+    safe_ts_from_record,
+    session_candidates_from_home,
+)
 from log_extract.models import SessionCandidate, TimelineEvent
-from log_extract.utils import parse_timestamp, prompt_signature, summarize_text
+from log_extract.utils import prompt_signature, summarize_text
 
 _SOURCE = "gemini"
 _BACKEND = "gemini"
@@ -79,21 +84,15 @@ def _iter_history_files(home: Path) -> Iterator[Path]:
 
 
 def _events_from_home(home: Path) -> Iterator[TimelineEvent]:
-    for path in _iter_history_files(home):
-        try:
-            yield from _events_from_file(path)
-        except Exception as exc:
-            print(f"gemini: error reading {path}: {exc}", file=sys.stderr)
+    yield from events_from_home(
+        home, _iter_history_files, _events_from_file, source_label="gemini",
+    )
 
 
 def _session_candidates_from_home(home: Path) -> Iterator[SessionCandidate]:
-    for path in _iter_history_files(home):
-        try:
-            candidate = _session_candidate_from_file(path)
-            if candidate is not None:
-                yield candidate
-        except Exception as exc:
-            print(f"gemini: error reading {path}: {exc}", file=sys.stderr)
+    yield from session_candidates_from_home(
+        home, _iter_history_files, _session_candidate_from_file, source_label="gemini",
+    )
 
 
 # ------------------------------------------------------------------
@@ -160,14 +159,7 @@ def _parse_json(path: Path, text: str) -> Iterator[dict]:
 
 def _safe_ts(record: dict) -> tuple[str, int] | None:
     """Try to extract a parsed timestamp from common field names."""
-    for key in ("timestamp", "ts", "created_at", "create_time", "startTime"):
-        raw = record.get(key)
-        if raw is not None:
-            try:
-                return parse_timestamp(raw)
-            except (ValueError, TypeError):
-                continue
-    return None
+    return safe_ts_from_record(record)
 
 
 def _extract_role(record: dict) -> str:

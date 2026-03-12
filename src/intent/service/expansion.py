@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from intent.engine import surface as _intent_surface
-from dispatch.service.prompt_safety import write_validated_prompt
+from intent.service import expanders as _expanders
+from dispatch.service.prompt_guard import write_validated_prompt
 
 from dispatch.engine.section_dispatch import dispatch_agent
 from dispatch.service.model_policy import load_model_policy as read_model_policy
@@ -24,9 +25,7 @@ from intent.service.surfaces import (
 
 
 def _sync_overrides() -> None:
-    """Propagate monkeypatched wrapper dependencies into the lib module."""
-    _intent_surface.dispatch_agent = dispatch_agent
-    _intent_surface.read_agent_signal = read_agent_signal
+    """Propagate monkeypatched wrapper dependencies into the lib modules."""
     _intent_surface.read_model_policy = read_model_policy
     _intent_surface.write_validated_prompt = write_validated_prompt
     _intent_surface.pause_for_parent = pause_for_parent
@@ -38,6 +37,9 @@ def _sync_overrides() -> None:
     _intent_surface.merge_surfaces_into_registry = merge_surfaces_into_registry
     _intent_surface.normalize_surface_ids = normalize_surface_ids
     _intent_surface.save_surface_registry = save_surface_registry
+    _expanders.dispatch_agent = dispatch_agent
+    _expanders.read_agent_signal = read_agent_signal
+    _expanders.write_validated_prompt = write_validated_prompt
 
 
 def run_expansion_cycle(

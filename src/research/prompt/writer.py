@@ -6,7 +6,7 @@ from pathlib import Path
 
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
-from dispatch.service.prompt_safety import write_validated_prompt
+from dispatch.service.prompt_guard import write_validated_prompt
 
 
 def _optional_input_lines(

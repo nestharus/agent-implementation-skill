@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from src.implementation.service import impact_triage
-from src.implementation.service.impact_triage import run_impact_triage
+from src.implementation.service import triage_orchestrator
+from src.implementation.service.triage_orchestrator import run_impact_triage
 from orchestrator.types import Section
 
 
@@ -38,19 +38,19 @@ def test_run_impact_triage_skips_when_notes_are_acknowledged_and_aligned(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(impact_triage, "dispatch_agent", lambda *args, **kwargs: "")
+    monkeypatch.setattr(triage_orchestrator, "dispatch_agent", lambda *args, **kwargs: "")
     monkeypatch.setattr(
-        impact_triage,
+        triage_orchestrator,
         "_run_alignment_check_with_retries",
         lambda *args, **kwargs: "aligned",
     )
     monkeypatch.setattr(
-        impact_triage,
+        triage_orchestrator,
         "_parse_alignment_verdict",
         lambda *_args, **_kwargs: {"aligned": True, "frame_ok": True},
     )
     monkeypatch.setattr(
-        impact_triage,
+        triage_orchestrator,
         "collect_modified_files",
         lambda *_args, **_kwargs: ["src/main.py"],
     )
@@ -94,9 +94,9 @@ def test_run_impact_triage_continues_when_not_all_notes_are_acknowledged(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(impact_triage, "dispatch_agent", lambda *args, **kwargs: "")
+    monkeypatch.setattr(triage_orchestrator, "dispatch_agent", lambda *args, **kwargs: "")
     monkeypatch.setattr(
-        impact_triage,
+        triage_orchestrator,
         "_run_alignment_check_with_retries",
         lambda *args, **kwargs: pytest.fail("alignment check should not run"),
     )
@@ -136,9 +136,9 @@ def test_run_impact_triage_aborts_when_alignment_changes_mid_check(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(impact_triage, "dispatch_agent", lambda *args, **kwargs: "")
+    monkeypatch.setattr(triage_orchestrator, "dispatch_agent", lambda *args, **kwargs: "")
     monkeypatch.setattr(
-        impact_triage,
+        triage_orchestrator,
         "_run_alignment_check_with_retries",
         lambda *args, **kwargs: "ALIGNMENT_CHANGED_PENDING",
     )

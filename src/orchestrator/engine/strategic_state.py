@@ -166,7 +166,7 @@ def _read_risk_summary(
             if decision.posture is not None
         ]
         if postures:
-            posture = max(postures, key=_posture_rank).value
+            posture = max(postures, key=lambda p: p.rank).value
         blocked_by_risk = bool(plan.step_decisions) and not any(
             decision.decision == StepDecision.ACCEPT
             for decision in plan.step_decisions
@@ -181,7 +181,7 @@ def _read_risk_summary(
 
 
 def _load_research_questions(planspace: Path) -> list[dict[str, Any]]:
-    open_problems_dir = PathRegistry(planspace).artifacts / "open-problems"
+    open_problems_dir = PathRegistry(planspace).open_problems_dir()
     if not open_problems_dir.exists():
         return []
 
@@ -211,12 +211,3 @@ def _load_research_questions(planspace: Path) -> list[dict[str, Any]]:
     return aggregated
 
 
-def _posture_rank(posture: PostureProfile) -> int:
-    ranks = {
-        PostureProfile.P0_DIRECT: 0,
-        PostureProfile.P1_LIGHT: 1,
-        PostureProfile.P2_STANDARD: 2,
-        PostureProfile.P3_GUARDED: 3,
-        PostureProfile.P4_REOPEN: 4,
-    }
-    return ranks[posture]

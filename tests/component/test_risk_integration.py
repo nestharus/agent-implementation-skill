@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 
 from signals.repository.artifact_io import read_json, write_json
-from implementation.engine.implementation_pass import _append_risk_history, _run_risk_review
+from implementation.engine.implementation_pass import _run_risk_review
+from implementation.service.risk_history import append_risk_history
 from proposal.engine.proposal_pass import _risk_check_proposal
 from orchestrator.engine.strategic_state import build_strategic_state
 from risk.repository.history import read_history
@@ -249,7 +250,7 @@ def test_build_strategic_state_uses_empty_risk_fields_without_artifacts(
     assert snapshot["blocked_by_risk"] == []
 
 
-def test_append_risk_history_records_deferred_reopened_and_failure(
+def testappend_risk_history_records_deferred_reopened_and_failure(
     planspace: Path,
 ) -> None:
     _write_risk_inputs(planspace, "01", triage_confidence="medium")
@@ -306,7 +307,7 @@ def test_append_risk_history_records_deferred_reopened_and_failure(
     plan = _run_risk_review(planspace, "01", section, _dispatch)
     assert plan is not None
 
-    _append_risk_history(
+    append_risk_history(
         planspace,
         "01",
         plan,

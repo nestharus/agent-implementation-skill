@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.dispatch.service.tool_surface import (
+from src.dispatch.service.tool_registry_manager import (
     handle_tool_friction,
     surface_tool_registry,
     validate_tool_registry_after_implementation,
@@ -31,7 +31,8 @@ def test_write_tool_surface_filters_cross_section_and_local_tools(tmp_path) -> N
 
 
 def test_surface_tool_registry_repairs_malformed_registry(tmp_path) -> None:
-    artifacts = tmp_path / "artifacts"
+    planspace = tmp_path / "planspace"
+    artifacts = planspace / "artifacts"
     (artifacts / "signals").mkdir(parents=True)
     tool_registry_path = artifacts / "tool-registry.json"
     tool_registry_path.write_text("{bad json", encoding="utf-8")
@@ -64,7 +65,7 @@ def test_surface_tool_registry_repairs_malformed_registry(tmp_path) -> None:
         tool_registry_path=tool_registry_path,
         tools_available_path=tools_available_path,
         artifacts=artifacts,
-        planspace=tmp_path / "planspace",
+        planspace=planspace,
         parent="parent",
         codespace=tmp_path / "codespace",
         policy={},
@@ -81,8 +82,9 @@ def test_surface_tool_registry_repairs_malformed_registry(tmp_path) -> None:
 
 
 def test_validate_tool_registry_after_implementation_dispatches_validator(tmp_path) -> None:
-    artifacts = tmp_path / "artifacts"
-    artifacts.mkdir()
+    planspace = tmp_path / "planspace"
+    artifacts = planspace / "artifacts"
+    artifacts.mkdir(parents=True)
     tool_registry_path = artifacts / "tool-registry.json"
     tool_registry_path.write_text(
         json.dumps(
@@ -102,7 +104,7 @@ def test_validate_tool_registry_after_implementation_dispatches_validator(tmp_pa
         pre_tool_total=1,
         tool_registry_path=tool_registry_path,
         artifacts=artifacts,
-        planspace=tmp_path / "planspace",
+        planspace=planspace,
         parent="parent",
         codespace=tmp_path / "codespace",
         policy={},
@@ -116,7 +118,8 @@ def test_validate_tool_registry_after_implementation_dispatches_validator(tmp_pa
 
 
 def test_handle_tool_friction_bridges_and_acknowledges_signal(tmp_path) -> None:
-    artifacts = tmp_path / "artifacts"
+    planspace = tmp_path / "planspace"
+    artifacts = planspace / "artifacts"
     (artifacts / "signals").mkdir(parents=True)
     (artifacts / "proposals").mkdir(parents=True)
     tool_registry_path = artifacts / "tool-registry.json"
@@ -151,7 +154,7 @@ def test_handle_tool_friction_bridges_and_acknowledges_signal(tmp_path) -> None:
         artifacts=artifacts,
         tool_registry_path=tool_registry_path,
         friction_signal_path=friction_signal_path,
-        planspace=tmp_path / "planspace",
+        planspace=planspace,
         parent="parent",
         codespace=tmp_path / "codespace",
         policy={"escalation_model": "escalation"},

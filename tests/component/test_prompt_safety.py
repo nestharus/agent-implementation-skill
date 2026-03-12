@@ -1,4 +1,4 @@
-"""Component tests for prompt_safety module.
+"""Component tests for prompt_guard module.
 
 Validates that ``validate_dynamic_content`` correctly identifies prohibited
 patterns in dynamic prompt content, and that ``write_validated_prompt``
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from src.dispatch.service.prompt_safety import validate_dynamic_content, write_validated_prompt
+from src.dispatch.service.prompt_guard import validate_dynamic_content, write_validated_prompt
 
 
 # ---------------------------------------------------------------------------

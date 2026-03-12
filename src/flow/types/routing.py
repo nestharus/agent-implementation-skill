@@ -7,8 +7,9 @@ is handled by ``taskrouter.registry``.
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
+
+from flow.service.task_db_client import task_db
 
 
 def submit_task(
@@ -40,37 +41,34 @@ def submit_task(
     at submission time.  The dispatcher compares this against the
     current hash before dispatch and rejects stale tasks.
     """
-    conn = sqlite3.connect(str(db_path), timeout=5.0)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    cur = conn.cursor()
-    cur.execute(
-        """INSERT INTO tasks(submitted_by, task_type, problem_id, concern_scope,
-           payload_path, priority, depends_on,
-           instance_id, flow_id, chain_id, declared_by_task_id,
-           trigger_gate_id, flow_context_path, continuation_path,
-           result_manifest_path, freshness_token)
-           VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            submitted_by,
-            task_type,
-            problem_id,
-            concern_scope,
-            payload_path,
-            priority,
-            str(depends_on) if depends_on is not None else None,
-            instance_id,
-            flow_id,
-            chain_id,
-            declared_by_task_id,
-            trigger_gate_id,
-            flow_context_path,
-            continuation_path,
-            result_manifest_path,
-            freshness_token,
-        ),
-    )
-    conn.commit()
-    task_id = cur.lastrowid
-    conn.close()
+    with task_db(db_path) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO tasks(submitted_by, task_type, problem_id, concern_scope,
+               payload_path, priority, depends_on,
+               instance_id, flow_id, chain_id, declared_by_task_id,
+               trigger_gate_id, flow_context_path, continuation_path,
+               result_manifest_path, freshness_token)
+               VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                submitted_by,
+                task_type,
+                problem_id,
+                concern_scope,
+                payload_path,
+                priority,
+                str(depends_on) if depends_on is not None else None,
+                instance_id,
+                flow_id,
+                chain_id,
+                declared_by_task_id,
+                trigger_gate_id,
+                flow_context_path,
+                continuation_path,
+                result_manifest_path,
+                freshness_token,
+            ),
+        )
+        conn.commit()
+        task_id = cur.lastrowid
     return task_id

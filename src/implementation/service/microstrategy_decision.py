@@ -4,7 +4,7 @@ from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
 
 from dispatch.engine.section_dispatch import dispatch_agent
-from dispatch.service.prompt_safety import write_validated_prompt
+from dispatch.service.prompt_guard import write_validated_prompt
 from taskrouter import agent_for
 
 

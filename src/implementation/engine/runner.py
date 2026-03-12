@@ -7,7 +7,7 @@ from intent.engine import bootstrap as intent_bootstrap_module
 from signals.repository.artifact_io import read_json, write_json
 from staleness.service.change_tracker import check_pending as alignment_changed_pending
 from staleness.helpers.hashing import content_hash
-from implementation.service.impact_triage import run_impact_triage
+from implementation.service.triage_orchestrator import run_impact_triage
 from intent.engine.bootstrap import run_intent_bootstrap
 from proposal.service.problem_frame_gate import validate_problem_frame
 from coordination.repository.notes import write_consequence_note
@@ -19,7 +19,7 @@ from proposal.service.readiness_resolver import resolve_readiness
 from proposal.service.excerpt_extractor import extract_excerpts
 from implementation.engine.loop import run_implementation_loop
 from intent.service.recurrence import emit_recurrence_signal
-from dispatch.service.tool_surface import (
+from dispatch.service.tool_registry_manager import (
     handle_tool_friction,
     surface_tool_registry,
     validate_tool_registry_after_implementation,
@@ -47,7 +47,7 @@ from dispatch.helpers.utils import check_agent_signals, summarize_output, write_
 from dispatch.service.model_policy import load_model_policy as read_model_policy
 from signals.repository.signal_reader import read_agent_signal
 from dispatch.prompt.template import TASK_SUBMISSION_SEMANTICS
-from dispatch.service.prompt_safety import validate_dynamic_content
+from dispatch.service.prompt_guard import validate_dynamic_content
 from flow.service.section_ingestion import ingest_and_submit
 from orchestrator.service.pipeline_control import (
     handle_pending_messages,
@@ -77,7 +77,7 @@ from reconciliation.engine.loop import load_reconciliation_result
 from proposal.repository.state import load_proposal_state
 from reconciliation.repository.queue import queue_reconciliation_request
 from signals.service.blockers import _update_blocker_rollup
-from implementation.service.todos import _extract_todos_from_files
+from implementation.service.microstrategy_decision import _extract_todos_from_files
 from implementation.service.traceability import _file_sha256, _write_traceability_index
 
 
@@ -206,9 +206,8 @@ def run_section(
     # -----------------------------------------------------------------
     # Step 0b: Surface section-relevant tools from tool registry
     # -----------------------------------------------------------------
-    tools_available_path = (artifacts / "sections"
-                            / f"section-{section.number}-tools-available.md")
-    tool_registry_path = artifacts / "tool-registry.json"
+    tools_available_path = paths.tools_available(section.number)
+    tool_registry_path = paths.tool_registry()
     # Compatibility note: stale surface cleanup still occurs in the extracted
     # helper via tools_available_path.exists() / tools_available_path.unlink().
     pre_tool_total = surface_tool_registry(
@@ -303,6 +302,8 @@ def _run_section_implementation_steps(
     it can be called independently by ``_run_implementation_pass`` (two-pass
     mode) or inline from ``run_section`` (full mode).
     """
+    paths = PathRegistry(planspace)
+
     # -----------------------------------------------------------------
     # Upstream freshness gate — prevent stale implementation dispatch
     # -----------------------------------------------------------------
@@ -330,21 +331,18 @@ def _run_section_implementation_steps(
     # The microstrategy decider decides whether a microstrategy is needed
     # by writing a structured JSON signal. The script checks mechanically
     # — no hardcoded file-count thresholds.
-    integration_proposal = (artifacts / "proposals"
-                            / f"section-{section.number}-integration-proposal.md")
-    microstrategy_path = (artifacts / "proposals"
-                          / f"section-{section.number}-microstrategy.md")
+    integration_proposal = paths.proposal(section.number)
+    microstrategy_path = paths.microstrategy(section.number)
 
     # Cycle budget: read per-section budget or use defaults
-    cycle_budget_path = (artifacts / "signals"
-                         / f"section-{section.number}-cycle-budget.json")
+    cycle_budget_path = paths.cycle_budget(section.number)
     cycle_budget = {"proposal_max": 5, "implementation_max": 5}
     _loaded_budget = read_json(cycle_budget_path)
     if _loaded_budget is not None:
         cycle_budget.update(_loaded_budget)
 
     # Tool registry state for post-impl validation
-    tool_registry_path = artifacts / "tool-registry.json"
+    tool_registry_path = paths.tool_registry()
     pre_tool_total = 0
     registry = read_json(tool_registry_path)
     if registry is not None:
@@ -358,9 +356,7 @@ def _run_section_implementation_steps(
         parent,
         policy,
     )
-    microstrategy_blocker = (
-        artifacts / "signals" / f"microstrategy-blocker-{section.number}.json"
-    )
+    microstrategy_blocker = paths.microstrategy_blocker_signal(section.number)
     if microstrategy_result is None and microstrategy_blocker.exists():
         return None
 

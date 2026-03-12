@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from risk.repository.serialization import deserialize_history_entry, serialize_history_entry
-from risk.types import AssessmentClass, RiskHistoryEntry, RiskType
+from risk.types import AssessmentClass, RiskHistoryEntry, RiskType, clamp_float, clamp_int
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ def compute_history_adjustment(
         return 0.0
 
     average_delta = sum(deltas) / len(deltas)
-    return _clamp_float(
+    return clamp_float(
         average_delta * SIMILARITY_ADJUSTMENT_SCALE,
         -HISTORY_ADJUSTMENT_BOUND,
         HISTORY_ADJUSTMENT_BOUND,
@@ -125,7 +125,7 @@ def _actual_outcome_score(entry: RiskHistoryEntry) -> int:
         score -= 5
 
     score += min(len(entry.surfaced_surprises) * 5, 10)
-    return _clamp_int(score, 0, 100)
+    return clamp_int(score, 0, 100)
 
 
 def _rename_malformed_history(history_path: Path) -> Path | None:
@@ -150,9 +150,3 @@ def _rename_malformed_history(history_path: Path) -> Path | None:
         return None
 
 
-def _clamp_int(value: int, lower: int, upper: int) -> int:
-    return max(lower, min(upper, value))
-
-
-def _clamp_float(value: float, lower: float, upper: float) -> float:
-    return max(lower, min(upper, value))

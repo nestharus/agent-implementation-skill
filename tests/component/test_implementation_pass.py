@@ -7,10 +7,10 @@ from signals.repository.artifact_io import read_json, write_json
 from implementation.engine.implementation_pass import (
     ImplementationPassExit,
     ImplementationPassRestart,
-    _append_risk_history,
-    _read_roal_input_index,
     run_implementation_pass,
 )
+from implementation.repository.roal_index import read_roal_input_index
+from implementation.service.risk_history import append_risk_history
 from risk.repository.history import read_history
 from risk.repository.serialization import serialize_assessment, serialize_package
 from risk.types import (
@@ -215,7 +215,7 @@ def _patch_implementation_pass_basics(
         )
     if append_history_fn is not None:
         monkeypatch.setattr(
-            "implementation.engine.implementation_pass._append_risk_history",
+            "implementation.engine.implementation_pass.append_risk_history",
             append_history_fn,
         )
 
@@ -315,7 +315,7 @@ def test_run_implementation_pass_writes_accepted_steps_artifact(
     monkeypatch.setattr("implementation.engine.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
     monkeypatch.setattr("implementation.engine.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
-    monkeypatch.setattr("implementation.engine.implementation_pass._append_risk_history", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass.append_risk_history", lambda *args, **kwargs: None)
 
     run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
@@ -349,7 +349,7 @@ def test_run_implementation_pass_writes_accepted_steps_artifact(
     assert accepted["dispatch_shapes"] == accepted["dispatch_shape"]
     ref_path = accepted_path.with_suffix(".ref")
     assert ref_path.read_text(encoding="utf-8").strip() == str(accepted_path.resolve())
-    assert _read_roal_input_index(planspace, "01") == [
+    assert read_roal_input_index(planspace, "01") == [
         {
             "kind": "accepted_frontier",
             "path": str(accepted_path),
@@ -391,7 +391,7 @@ def test_run_implementation_pass_writes_deferred_steps_artifact(
     monkeypatch.setattr("implementation.engine.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
     monkeypatch.setattr("implementation.engine.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
-    monkeypatch.setattr("implementation.engine.implementation_pass._append_risk_history", lambda *args, **kwargs: None)
+    monkeypatch.setattr("implementation.engine.implementation_pass.append_risk_history", lambda *args, **kwargs: None)
 
     run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
@@ -416,7 +416,7 @@ def test_run_implementation_pass_writes_deferred_steps_artifact(
             "alignment-check-result",
         ],
     }
-    assert _read_roal_input_index(planspace, "01") == [
+    assert read_roal_input_index(planspace, "01") == [
         {
             "kind": "accepted_frontier",
             "path": str(
@@ -482,7 +482,7 @@ def test_run_implementation_pass_writes_reopen_blocker_and_skips(
     )
 
     blocker = read_json(planspace / "artifacts" / "signals" / "section-01-blocker.json")
-    assert _read_roal_input_index(planspace, "01") == [
+    assert read_roal_input_index(planspace, "01") == [
         {
             "kind": "reopen",
             "path": str(
@@ -568,7 +568,7 @@ def test_run_implementation_pass_skip_mode_proceeds_without_risk_artifacts(
     )
 
     assert results["01"].modified_files == ["src/app.py"]
-    assert _read_roal_input_index(planspace, "01") == []
+    assert read_roal_input_index(planspace, "01") == []
     assert not (planspace / "artifacts" / "signals" / "section-01-blocker.json").exists()
 
 
@@ -600,7 +600,7 @@ def test_run_implementation_pass_restarts_on_alignment_change(
         )
 
 
-def test_append_risk_history_records_enriched_outcomes(planspace: Path) -> None:
+def testappend_risk_history_records_enriched_outcomes(planspace: Path) -> None:
     _write_risk_context(planspace, "01")
     plan = RiskPlan(
         plan_id="plan-01",
@@ -638,7 +638,7 @@ def test_append_risk_history_records_enriched_outcomes(planspace: Path) -> None:
         expected_reassessment_inputs=["alignment-check-result"],
     )
 
-    _append_risk_history(
+    append_risk_history(
         planspace,
         "01",
         plan,
@@ -735,7 +735,7 @@ def test_run_implementation_pass_dispatches_reassessed_frontier_slice(
     ]
     assert results["01"].aligned is True
     assert results["01"].modified_files == ["src/app.py", "tests/app_test.py"]
-    assert _read_roal_input_index(planspace, "01") == [
+    assert read_roal_input_index(planspace, "01") == [
         {
             "kind": "accepted_frontier",
             "path": str(

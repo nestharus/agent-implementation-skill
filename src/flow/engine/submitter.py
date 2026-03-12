@@ -3,25 +3,20 @@
 from __future__ import annotations
 
 import re
-import sqlite3
-import sys
 import uuid
 from pathlib import Path
 
+from flow.repository.catalog import resolve_chain_ref
 from flow.repository.context import (
     continuation_relpath,
     flow_context_relpath,
     result_manifest_relpath,
     write_flow_context,
 )
+from flow.service.task_db_client import task_db
+from flow.types.routing import submit_task
+from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from staleness.service.freshness import compute_section_freshness
-
-_SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent / "scripts"
-if str(_SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS_DIR))
-from flow.repository.catalog import resolve_chain_ref  # noqa: E402
-from flow.types.schema import BranchSpec, GateSpec, TaskSpec  # noqa: E402
-from flow.types.routing import submit_task  # noqa: E402
 
 
 def new_instance_id() -> str:
@@ -89,18 +84,15 @@ def submit_chain(
         cont_path = continuation_relpath(tid)
         res_path = result_manifest_relpath(tid)
 
-        conn = sqlite3.connect(str(db_path), timeout=5.0)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
-        conn.execute(
-            """UPDATE tasks
-               SET flow_context_path=?, continuation_path=?,
-                   result_manifest_path=?
-               WHERE id=?""",
-            (ctx_path, cont_path, res_path, tid),
-        )
-        conn.commit()
-        conn.close()
+        with task_db(db_path) as conn:
+            conn.execute(
+                """UPDATE tasks
+                   SET flow_context_path=?, continuation_path=?,
+                       result_manifest_path=?
+                   WHERE id=?""",
+                (ctx_path, cont_path, res_path, tid),
+            )
+            conn.commit()
 
         if planspace is not None:
             write_flow_context(
@@ -182,43 +174,39 @@ def submit_fanout(
             branch_info.append((child_chain_id, task_ids[-1], branch.label))
 
     if gate_id is not None and branch_info:
-        conn = sqlite3.connect(str(db_path), timeout=5.0)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
-
         synthesis = gate.synthesis if gate else None
-        conn.execute(
-            """INSERT INTO gates(
-                   gate_id, flow_id, created_by_task_id, mode,
-                   failure_policy, expected_count,
-                   synthesis_task_type, synthesis_problem_id,
-                   synthesis_concern_scope, synthesis_payload_path,
-                   synthesis_priority)
-               VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                gate_id,
-                flow_id,
-                declared_by_task_id,
-                gate.mode,
-                gate.failure_policy,
-                len(branch_info),
-                synthesis.task_type if synthesis else None,
-                synthesis.problem_id if synthesis else None,
-                synthesis.concern_scope if synthesis else None,
-                synthesis.payload_path if synthesis else None,
-                synthesis.priority if synthesis else None,
-            ),
-        )
-
-        for child_chain_id, leaf_tid, label in branch_info:
+        with task_db(db_path) as conn:
             conn.execute(
-                """INSERT INTO gate_members(
-                       gate_id, chain_id, slot_label, leaf_task_id)
-                   VALUES(?, ?, ?, ?)""",
-                (gate_id, child_chain_id, label or None, leaf_tid),
+                """INSERT INTO gates(
+                       gate_id, flow_id, created_by_task_id, mode,
+                       failure_policy, expected_count,
+                       synthesis_task_type, synthesis_problem_id,
+                       synthesis_concern_scope, synthesis_payload_path,
+                       synthesis_priority)
+                   VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    gate_id,
+                    flow_id,
+                    declared_by_task_id,
+                    gate.mode,
+                    gate.failure_policy,
+                    len(branch_info),
+                    synthesis.task_type if synthesis else None,
+                    synthesis.problem_id if synthesis else None,
+                    synthesis.concern_scope if synthesis else None,
+                    synthesis.payload_path if synthesis else None,
+                    synthesis.priority if synthesis else None,
+                ),
             )
 
-        conn.commit()
-        conn.close()
+            for child_chain_id, leaf_tid, label in branch_info:
+                conn.execute(
+                    """INSERT INTO gate_members(
+                           gate_id, chain_id, slot_label, leaf_task_id)
+                       VALUES(?, ?, ?, ?)""",
+                    (gate_id, child_chain_id, label or None, leaf_tid),
+                )
+
+            conn.commit()
 
     return gate_id

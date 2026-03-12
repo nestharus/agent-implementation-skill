@@ -10,7 +10,7 @@ from signals.repository.artifact_io import write_json
 from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.template import render_template
-from dispatch.service.prompt_safety import validate_dynamic_content
+from dispatch.service.prompt_guard import validate_dynamic_content
 from dispatch.engine.section_dispatch import dispatch_agent
 from dispatch.service.model_policy import load_model_policy as read_model_policy
 from taskrouter import agent_for

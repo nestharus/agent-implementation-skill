@@ -8,7 +8,7 @@ from dispatch.service.monitor_service import MonitorService
 from orchestrator.path_registry import PathRegistry
 
 from dispatch.prompt.template import SRC_TEMPLATE_DIR, load_template, render, render_template
-from dispatch.service.prompt_safety import validate_dynamic_content
+from dispatch.service.prompt_guard import validate_dynamic_content
 from signals.service.communication import (
     AGENT_NAME,
     DB_SH,
@@ -20,13 +20,9 @@ from orchestrator.service.pipeline_control import wait_if_paused
 from taskrouter.agents import resolve_agent_path
 
 
-def _database_client(planspace: Path) -> DatabaseClient:
-    return DatabaseClient(DB_SH, PathRegistry(planspace).run_db())
-
-
 def _monitor_service(planspace: Path) -> MonitorService:
     return MonitorService(
-        _database_client(planspace),
+        DatabaseClient.for_planspace(planspace, DB_SH),
         AGENT_NAME,
         logger=log,
     )
@@ -97,7 +93,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
     # Skip for qa-interceptor.md to prevent infinite recursion.
     if planspace and agent_file != "qa-interceptor.md":
         try:
-            from dispatch.service.qa_interceptor import intercept_dispatch, read_qa_parameters
+            from qa.service.qa_interceptor import intercept_dispatch, read_qa_parameters
             qa_params = read_qa_parameters(planspace)
         except Exception:
             qa_params = {}
@@ -129,7 +125,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
     # Emit per-section dispatch summary event for QA monitor rule C1
     if planspace and section_number:
         name_label = agent_name or model
-        _database_client(planspace).log_event(
+        DatabaseClient.for_planspace(planspace, DB_SH).log_event(
             "summary",
             f"dispatch:{section_number}",
             f"{name_label} dispatched",

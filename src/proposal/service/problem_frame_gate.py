@@ -25,10 +25,8 @@ def validate_problem_frame(
     policy: dict,
 ) -> str | None:
     """Ensure the problem frame exists, has content, and is tracked."""
-    artifacts = PathRegistry(planspace).artifacts
-    problem_frame_path = (
-        artifacts / "sections" / f"section-{section.number}-problem-frame.md"
-    )
+    paths = PathRegistry(planspace)
+    problem_frame_path = paths.problem_frame(section.number)
     if not problem_frame_path.exists():
         log(f"Section {section.number}: problem frame missing — retrying setup once")
         retry_prompt = write_section_setup_prompt(
@@ -38,7 +36,7 @@ def validate_problem_frame(
             section.global_proposal_path,
             section.global_alignment_path,
         )
-        retry_output = artifacts / f"setup-{section.number}-retry-output.md"
+        retry_output = paths.artifacts / f"setup-{section.number}-retry-output.md"
         retry_result = dispatch_agent(
             policy["setup"],
             retry_prompt,
@@ -59,7 +57,7 @@ def validate_problem_frame(
             "— emitting needs_parent signal",
         )
         _write_problem_frame_signal(
-            artifacts / "signals" / f"setup-{section.number}-signal.json",
+            paths.setup_signal(section.number),
             {
                 "state": "needs_parent",
                 "detail": (
@@ -90,7 +88,7 @@ def validate_problem_frame(
     if not pf_content:
         log(f"Section {section.number}: problem frame is empty")
         _write_problem_frame_signal(
-            artifacts / "signals" / f"setup-{section.number}-signal.json",
+            paths.setup_signal(section.number),
             {
                 "state": "needs_parent",
                 "detail": (
@@ -112,9 +110,7 @@ def validate_problem_frame(
         return None
 
     log(f"Section {section.number}: problem frame present and validated")
-    pf_hash_path = (
-        artifacts / "signals" / f"section-{section.number}-problem-frame-hash.txt"
-    )
+    pf_hash_path = paths.problem_frame_hash(section.number)
     pf_hash_path.parent.mkdir(parents=True, exist_ok=True)
     current_pf_hash = file_hash(problem_frame_path)
     if pf_hash_path.exists():
@@ -124,11 +120,7 @@ def validate_problem_frame(
                 f"Section {section.number}: problem frame changed — forcing "
                 "integration proposal re-run",
             )
-            existing_proposal = (
-                artifacts
-                / "proposals"
-                / f"section-{section.number}-integration-proposal.md"
-            )
+            existing_proposal = paths.proposal(section.number)
             if existing_proposal.exists():
                 existing_proposal.unlink()
                 log(

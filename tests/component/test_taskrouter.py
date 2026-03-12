@@ -299,6 +299,7 @@ class TestDiscovery:
         import coordination.routes
         import reconciliation.routes
         import dispatch.routes
+        import qa.routes
         import signals.routes
 
         for mod in [
@@ -310,6 +311,7 @@ class TestDiscovery:
             coordination.routes,
             reconciliation.routes,
             dispatch.routes,
+            qa.routes,
             signals.routes,
         ]:
             if mod.router.namespace not in test_registry.namespaces:
@@ -325,6 +327,7 @@ class TestDiscovery:
             "coordination",
             "reconciliation",
             "dispatch",
+            "qa",
             "signals",
         })
 

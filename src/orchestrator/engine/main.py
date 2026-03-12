@@ -9,7 +9,7 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 
-from staleness.service.change_tracker import check_and_clear
+from staleness.service.change_tracker import make_alignment_checker
 from intake.service.assessment import promote_debt_signals
 from intake.repository.loader import bootstrap_governance_if_missing, build_governance_indexes
 from coordination.engine.loop import run_coordination_loop
@@ -38,8 +38,7 @@ from orchestrator.engine.strategic_state import build_strategic_state
 from orchestrator.types import SectionResult
 
 
-def _check_and_clear_alignment_changed(planspace: Path) -> bool:
-    return check_and_clear(planspace, db_sh=DB_SH, agent_name=AGENT_NAME)
+_check_and_clear_alignment_changed = make_alignment_checker(DB_SH, AGENT_NAME)
 
 
 def main() -> None:

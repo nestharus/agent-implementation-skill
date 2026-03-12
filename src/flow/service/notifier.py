@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import sqlite3
 import subprocess
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
-from flow.service.task_db_client import DB_SH, db_cmd
+from flow.service.task_db_client import DB_SH, db_cmd, task_db
 
 DISPATCHER_NAME = "task-dispatcher"
 
@@ -43,15 +42,12 @@ def record_task_routing(
     resolved_db_path = (
         Path(db_path) if db_path is not None else PathRegistry(planspace).run_db()
     )
-    conn = sqlite3.connect(resolved_db_path, timeout=5.0)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute(
-        "UPDATE tasks SET agent_file=?, model=? WHERE id=?",
-        (agent_file, model, int(task_id)),
-    )
-    conn.commit()
-    conn.close()
+    with task_db(resolved_db_path) as conn:
+        conn.execute(
+            "UPDATE tasks SET agent_file=?, model=? WHERE id=?",
+            (agent_file, model, int(task_id)),
+        )
+        conn.commit()
 
 
 def record_qa_intercept(

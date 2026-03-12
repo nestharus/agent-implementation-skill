@@ -6,15 +6,20 @@ import json
 from pathlib import Path
 
 from risk.engine import loop as risk_loop
+from risk.prompt import builders as risk_prompt_builders
 from risk.repository.history import append_history_entry
 from risk.engine.loop import (
+    run_lightweight_risk_check,
+    run_risk_loop,
+)
+from risk.prompt.builders import (
     _collect_roal_evidence,
     build_optimization_prompt,
     build_risk_assessment_prompt,
+)
+from risk.service.response_parser import (
     parse_risk_assessment,
     parse_risk_plan,
-    run_lightweight_risk_check,
-    run_risk_loop,
 )
 from risk.repository.serialization import read_risk_artifact, serialize_assessment, serialize_plan
 from risk.types import (
@@ -127,7 +132,7 @@ def test_prompt_builders_do_not_use_inline_json_blocks(
 ) -> None:
     _write_artifacts(tmp_path)
     monkeypatch.setattr(
-        risk_loop,
+        risk_prompt_builders,
         "_inline_json_block",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             AssertionError("_inline_json_block should not be used by prompt builders")
@@ -432,7 +437,7 @@ def test_run_risk_loop_applies_posture_hysteresis_after_plan(tmp_path: Path) -> 
     assert result.step_decisions[0].posture == PostureProfile.P1_LIGHT
 
 
-def test_run_risk_loop_calls_prompt_safety_validation(
+def test_run_risk_loop_calls_prompt_guard_validation(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -467,7 +472,7 @@ def test_run_risk_loop_calls_prompt_safety_validation(
     ]
 
 
-def test_run_risk_loop_falls_back_when_prompt_safety_fails(
+def test_run_risk_loop_falls_back_when_prompt_guard_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:

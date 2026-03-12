@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from staleness.service.change_tracker import check_pending as alignment_changed_pending
@@ -9,8 +8,8 @@ from dispatch.service.model_policy import resolve
 from orchestrator.path_registry import PathRegistry
 from flow.engine.submitter import submit_chain
 from intake.service.assessment import write_post_impl_assessment_prompt
-from staleness.service.section_alignment import _extract_problems, collect_modified_files
-from staleness.helpers.detection import diff_files, snapshot_files
+from staleness.service.section_alignment import _extract_problems
+from staleness.helpers.detection import snapshot_files
 from signals.service.communication import _record_traceability, log, mailbox_send
 from coordination.service.cross_section import persist_decision
 from dispatch.engine.section_dispatch import dispatch_agent
@@ -19,6 +18,8 @@ from orchestrator.service.pipeline_control import handle_pending_messages, pause
 from dispatch.prompt.writers import write_impl_alignment_prompt, write_strategic_impl_prompt
 from flow.service.section_ingestion import ingest_and_submit
 from implementation.service.traceability import _write_traceability_index
+from implementation.service.change_verifier import verify_changed_files
+from implementation.service.trace_map import build_trace_map
 from flow.types.schema import TaskSpec
 from taskrouter import agent_for
 
@@ -68,9 +69,7 @@ def run_implementation_loop(
                 "budget": cycle_budget["implementation_max"],
                 "escalate": True,
             }
-            budget_signal_path = (
-                artifacts / "signals" / f"section-{section.number}-impl-budget-exhausted.json"
-            )
+            budget_signal_path = paths.impl_budget_exhausted_signal(section.number)
             write_json(budget_signal_path, budget_signal)
             mailbox_send(
                 planspace,
@@ -140,17 +139,16 @@ def run_implementation_loop(
 
         ingest_and_submit(
             planspace,
-            db_path=planspace / "run.db",
+            db_path=paths.run_db(),
             submitted_by=f"implementation-{section.number}",
-            signal_path=artifacts / "signals" / f"task-requests-impl-{section.number}.json",
+            signal_path=paths.task_request_signal("impl", section.number),
             origin_refs=[str(artifacts / f"impl-{section.number}-output.md")],
         )
 
-        signal_dir = artifacts / "signals"
-        signal_dir.mkdir(parents=True, exist_ok=True)
+        paths.signals_dir().mkdir(parents=True, exist_ok=True)
         signal, detail = check_agent_signals(
             impl_result,
-            signal_path=signal_dir / f"impl-{section.number}-signal.json",
+            signal_path=paths.impl_signal(section.number),
             output_path=artifacts / f"impl-{section.number}-output.md",
             planspace=planspace,
             parent=parent,
@@ -210,7 +208,7 @@ def run_implementation_loop(
 
         signal, detail = check_agent_signals(
             impl_align_result,
-            signal_path=signal_dir / f"impl-align-{section.number}-signal.json",
+            signal_path=paths.signals_dir() / f"impl-align-{section.number}-signal.json",
             output_path=impl_align_output,
             planspace=planspace,
             parent=parent,
@@ -252,28 +250,9 @@ def run_implementation_loop(
             f"summary:impl-align:{section.number}:PROBLEMS-attempt-{impl_attempt}:{short}",
         )
 
-    reported = collect_modified_files(planspace, section, codespace)
-    snapshotted_set = set(section.related_files)
-    snapshotted_candidates = sorted(
-        snapshotted_set | (set(reported) & set(pre_hashes))
+    actually_changed = verify_changed_files(
+        planspace, codespace, section, pre_hashes,
     )
-    verified_changed = diff_files(codespace, pre_hashes, snapshotted_candidates)
-    unsnapshotted_reported = [
-        relative_path
-        for relative_path in reported
-        if relative_path not in pre_hashes and (codespace / relative_path).exists()
-    ]
-    if unsnapshotted_reported:
-        log(
-            f"Section {section.number}: {len(unsnapshotted_reported)} "
-            f"reported files were outside the pre-snapshot set (trusted)"
-        )
-    actually_changed = sorted(set(verified_changed) | set(unsnapshotted_reported))
-    if len(reported) != len(actually_changed):
-        log(
-            f"Section {section.number}: {len(reported)} reported, "
-            f"{len(actually_changed)} actually changed (detected via diff)"
-        )
 
     for changed_file in actually_changed:
         _record_traceability(
@@ -286,57 +265,10 @@ def run_implementation_loop(
 
     _write_traceability_index(planspace, section, codespace, actually_changed)
 
-    paths = PathRegistry(planspace)
-    trace_map_path = paths.trace_map(section.number)
-    trace_map_path.parent.mkdir(parents=True, exist_ok=True)
-    from staleness.helpers.hashing import file_hash
-    from proposal.repository.state import load_proposal_state
-    proposal_state_path = (
-        paths.proposals_dir()
-        / f"section-{section.number}-proposal-state.json"
+    build_trace_map(
+        planspace, codespace, section.number,
+        actually_changed, list(section.related_files),
     )
-    ps = load_proposal_state(proposal_state_path)
-    trace_map = {
-        "section": section.number,
-        "problems": [],
-        "strategies": [],
-        "todo_ids": [],
-        "files": list(actually_changed),
-        "governance": {
-            "packet_path": str(paths.governance_packet(section.number)),
-            "packet_hash": file_hash(paths.governance_packet(section.number)),
-            "problem_ids": [
-                str(x) for x in ps.get("problem_ids", [])
-                if isinstance(x, str) and x.strip()
-            ],
-            "pattern_ids": [
-                str(x) for x in ps.get("pattern_ids", [])
-                if isinstance(x, str) and x.strip()
-            ],
-            "profile_id": ps.get("profile_id", "") or "",
-        },
-    }
-    problem_frame_path = artifacts / "sections" / f"section-{section.number}-problem-frame.md"
-    if problem_frame_path.exists():
-        problem_frame_text = problem_frame_path.read_text(encoding="utf-8")
-        for line in problem_frame_text.split("\n"):
-            stripped = line.strip()
-            if stripped.startswith("- ") or stripped.startswith("* "):
-                trace_map["problems"].append(stripped[2:])
-    for relative_path in section.related_files:
-        full_path = codespace / relative_path
-        if not full_path.exists():
-            continue
-        try:
-            content = full_path.read_text(encoding="utf-8")
-            for match in re.finditer(r"TODO\[([^\]]+)\]", content):
-                trace_map["todo_ids"].append(
-                    {"id": match.group(1), "file": relative_path}
-                )
-        except (OSError, UnicodeDecodeError):
-            continue
-    write_json(trace_map_path, trace_map)
-    log(f"Section {section.number}: trace-map written to {trace_map_path}")
     _dispatch_post_impl_assessment(section.number, planspace, codespace)
 
     return actually_changed
@@ -362,7 +294,7 @@ def _dispatch_post_impl_assessment(
         return
 
     submit_chain(
-        planspace / "run.db",
+        paths.run_db(),
         f"post-impl-{section_number}",
         [
             TaskSpec(
