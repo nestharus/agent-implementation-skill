@@ -16,7 +16,8 @@ from proposal.repository.state import load_proposal_state
 from staleness.service.freshness import compute_section_freshness
 from proposal.service.readiness_resolver import resolve_readiness
 from reconciliation.repository.queue import queue_reconciliation_request
-from signals.service.communication import mailbox_send, log
+from containers import Services
+from signals.service.communication import log
 from signals.service.blockers import (
     _append_open_problem,
     _update_blocker_rollup,
@@ -326,7 +327,7 @@ def resolve_and_route(
             btype = blocker.get("type") or blocker.get("state", "unknown")
             bdesc = blocker.get("description") or blocker.get("detail", "")
             log(f"  blocker: {btype}: {bdesc}")
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace,
             parent,
             f"fail:{section.number}:readiness gate blocked ({rationale})",

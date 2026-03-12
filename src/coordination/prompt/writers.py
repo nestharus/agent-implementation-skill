@@ -12,7 +12,7 @@ from signals.repository.artifact_io import read_json
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.template import SRC_TEMPLATE_DIR, TASK_SUBMISSION_SEMANTICS, load_template, render
 from containers import Services
-from signals.service.communication import _log_artifact, log
+from signals.service.communication import log
 from orchestrator.service.context_assembly import materialize_context_sidecar
 from taskrouter.agents import resolve_agent_path
 
@@ -74,7 +74,7 @@ def write_fix_prompt(
                 f"Agent context sidecar with resolved inputs: "
                 f"`{sidecar_path}`\n"
             )
-    _log_artifact(planspace, f"prompt:coordinator-fix-{group_id}")
+    Services.communicator().log_artifact(planspace, f"prompt:coordinator-fix-{group_id}")
     return prompt_path
 
 
@@ -147,7 +147,7 @@ def write_bridge_prompt(
     })
     if not Services.prompt_guard().write_validated(rendered, bridge_prompt):
         return None
-    _log_artifact(planspace, f"prompt:bridge-resolve-{group_index}")
+    Services.communicator().log_artifact(planspace, f"prompt:bridge-resolve-{group_index}")
     return bridge_prompt
 
 

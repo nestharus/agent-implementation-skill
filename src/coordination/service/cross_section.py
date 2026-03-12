@@ -12,10 +12,10 @@ from orchestrator.service.section_decisions import (
 from scan.service.section_notes import post_section_completion, read_incoming_notes
 from implementation.service.snapshot import compute_text_diff
 
-from signals.service.communication import _log_artifact
+from containers import Services
 
 
 def persist_decision(planspace, section_number: str, payload: str) -> None:
     """Persist a decision and log the resulting artifact for observability."""
     _persist_decision(planspace, section_number, payload)
-    _log_artifact(planspace, f"decision:section-{section_number}")
+    Services.communicator().log_artifact(planspace, f"decision:section-{section_number}")

@@ -8,7 +8,7 @@ from containers import Services
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from intent.service.philosophy import validate_philosophy_grounding
-from signals.service.communication import _log_artifact, log
+from signals.service.communication import log
 from taskrouter import agent_for
 
 
@@ -87,7 +87,7 @@ materially changed (new constraints, new success criteria).
 """
     if not Services.prompt_guard().write_validated(expand_prompt_text, prompt_path):
         return None
-    _log_artifact(planspace, f"prompt:problem-expand-{section_number}")
+    Services.communicator().log_artifact(planspace, f"prompt:problem-expand-{section_number}")
 
     result = Services.dispatcher().dispatch(
         Services.policies().resolve(policy,"intent_problem_expander"),
@@ -176,7 +176,7 @@ Validate each philosophy surface and classify it:
 """
     if not Services.prompt_guard().write_validated(phil_expand_text, prompt_path):
         return None
-    _log_artifact(planspace, f"prompt:philosophy-expand-{section_number}")
+    Services.communicator().log_artifact(planspace, f"prompt:philosophy-expand-{section_number}")
 
     result = Services.dispatcher().dispatch(
         Services.policies().resolve(policy,"intent_philosophy_expander"),
@@ -273,7 +273,7 @@ Write a JSON signal to: `{adjudication_path}`
 """
     if not Services.prompt_guard().write_validated(recurrence_prompt_text, prompt_path):
         return []
-    _log_artifact(planspace, f"prompt:recurrence-adjudicate-{section_number}")
+    Services.communicator().log_artifact(planspace, f"prompt:recurrence-adjudicate-{section_number}")
 
     Services.dispatcher().dispatch(
         Services.policies().resolve(policy,"intent_recurrence_adjudicator"),

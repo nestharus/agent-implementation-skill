@@ -4,7 +4,7 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 from dispatch.prompt.template import TASK_SUBMISSION_SEMANTICS
-from signals.service.communication import _log_artifact, log
+from signals.service.communication import log
 from coordination.service.cross_section import extract_section_summary
 from flow.service.section_ingestion import ingest_and_submit
 from orchestrator.types import Section
@@ -116,7 +116,7 @@ the JSON, not unstructured text.
             f"violations: {violations}")
         return None
     prompt_path.write_text(rendered, encoding="utf-8")
-    _log_artifact(planspace, f"prompt:reexplore-{section.number}")
+    Services.communicator().log_artifact(planspace, f"prompt:reexplore-{section.number}")
 
     result = Services.dispatcher().dispatch(
         model, prompt_path, output_path,

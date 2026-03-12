@@ -32,24 +32,22 @@ def test_resolve_project_mode_uses_text_fallback_for_malformed_json(
 
 
 def test_resolve_project_mode_pauses_and_rereads_after_resume(
-    planspace, monkeypatch,
+    planspace, capturing_pipeline_control,
 ) -> None:
-    calls = []
-
-    def fake_pause(target, parent, message) -> None:
-        calls.append((target, parent, message))
-        (target / "artifacts" / "signals" / "project-mode.json").write_text(
+    def _pause_side_effect(planspace_arg, parent, message):
+        (planspace_arg / "artifacts" / "signals" / "project-mode.json").write_text(
             json.dumps({"mode": "brownfield", "constraints": ["keep api"]}),
             encoding="utf-8",
         )
+        return "resume"
 
-    monkeypatch.setattr("scan.service.project_mode.pause_for_parent", fake_pause)
+    capturing_pipeline_control._pause_side_effect = _pause_side_effect
 
     mode, constraints = resolve_project_mode(planspace, "parent")
 
     assert mode == "brownfield"
     assert constraints == ["keep api"]
-    assert calls == [
+    assert capturing_pipeline_control.pause_calls == [
         (
             planspace,
             "parent",

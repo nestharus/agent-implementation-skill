@@ -23,7 +23,7 @@ from dispatch.prompt.helpers import (
 
 from containers import Services
 from staleness.service.section_alignment import collect_modified_files
-from signals.service.communication import _log_artifact, log
+from signals.service.communication import log
 from taskrouter.agents import resolve_agent_path
 from orchestrator.service.context_assembly import materialize_context_sidecar
 from orchestrator.types import Section
@@ -102,7 +102,7 @@ def _write_prompt(
             log(f"  ERROR: prompt {prompt_path.name} blocked — template violations")
             return None
 
-    _log_artifact(planspace, log_label)
+    Services.communicator().log_artifact(planspace, log_label)
     return prompt_path
 
 

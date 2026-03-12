@@ -7,7 +7,6 @@ import pytest
 
 from coordination.engine import loop
 from coordination.engine.loop import run_coordination_loop
-from coordination.service import stall_detector as _stall_mod
 from orchestrator.types import Section, SectionResult
 
 
@@ -20,9 +19,10 @@ def _make_section(planspace: Path, number: str) -> Section:
 def test_run_coordination_loop_completes_when_everything_is_aligned(
     planspace: Path,
     monkeypatch: pytest.MonkeyPatch,
+    noop_pipeline_control,
+    capturing_communicator,
 ) -> None:
     section = _make_section(planspace, "01")
-    messages: list[str] = []
     snapshots: list[int] = []
 
     monkeypatch.setattr(
@@ -32,20 +32,10 @@ def test_run_coordination_loop_completes_when_everything_is_aligned(
     )
     monkeypatch.setattr(
         loop,
-        "poll_control_messages",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        loop,
         "build_strategic_state",
         lambda _decisions_dir, section_results, _planspace: snapshots.append(
             len(section_results),
         ),
-    )
-    monkeypatch.setattr(
-        loop,
-        "mailbox_send",
-        lambda _planspace, _parent, message: messages.append(message),
     )
     monkeypatch.setattr(
         loop,
@@ -65,20 +55,16 @@ def test_run_coordination_loop_completes_when_everything_is_aligned(
 
     assert status == "complete"
     assert snapshots == [1]
-    assert messages == ["complete"]
+    assert capturing_communicator.messages == ["complete"]
 
 
 def test_run_coordination_loop_restarts_when_control_message_arrives(
     planspace: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    capturing_pipeline_control,
 ) -> None:
     section = _make_section(planspace, "01")
 
-    monkeypatch.setattr(
-        loop,
-        "poll_control_messages",
-        lambda *_args, **_kwargs: "alignment_changed",
-    )
+    capturing_pipeline_control._poll_return = "alignment_changed"
 
     status = run_coordination_loop(
         [section],
@@ -96,18 +82,14 @@ def test_run_coordination_loop_restarts_when_control_message_arrives(
 def test_run_coordination_loop_stalls_and_reports_remaining_sections(
     planspace: Path,
     monkeypatch: pytest.MonkeyPatch,
+    noop_pipeline_control,
+    capturing_communicator,
 ) -> None:
     section = _make_section(planspace, "01")
-    messages: list[str] = []
     snapshots: list[int] = []
 
     monkeypatch.setattr(loop, "MAX_COORDINATION_ROUNDS", 5)
     monkeypatch.setattr(loop, "MIN_COORDINATION_ROUNDS", 1)
-    monkeypatch.setattr(
-        loop,
-        "poll_control_messages",
-        lambda *_args, **_kwargs: None,
-    )
     monkeypatch.setattr(
         loop,
         "run_global_coordination",
@@ -125,9 +107,6 @@ def test_run_coordination_loop_stalls_and_reports_remaining_sections(
             len(section_results),
         ),
     )
-    _capture_mail = lambda _planspace, _parent, message: messages.append(message)
-    monkeypatch.setattr(loop, "mailbox_send", _capture_mail)
-    monkeypatch.setattr(_stall_mod, "mailbox_send", _capture_mail)
 
     status = run_coordination_loop(
         [section],
@@ -147,6 +126,7 @@ def test_run_coordination_loop_stalls_and_reports_remaining_sections(
     assert (planspace / "artifacts" / "coordination" / "model-escalation.txt").read_text(
         encoding="utf-8",
     ) == "stronger-model"
+    messages = capturing_communicator.messages
     assert any(message.startswith("status:coordination:round-") for message in messages)
     assert "escalation:coordination:round-2:stall_count=2" in messages
     assert "fail:01:coordination_exhausted:still broken" in messages
@@ -155,9 +135,10 @@ def test_run_coordination_loop_stalls_and_reports_remaining_sections(
 def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
     planspace: Path,
     monkeypatch: pytest.MonkeyPatch,
+    noop_pipeline_control,
+    capturing_communicator,
 ) -> None:
     section = _make_section(planspace, "01")
-    messages: list[str] = []
     snapshots: list[int] = []
     outstanding = [
         {"type": "unaddressed_note", "section": "01", "description": "note pending"},
@@ -170,11 +151,6 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
         loop,
         "_collect_outstanding_problems",
         lambda *_args, **_kwargs: next(calls),
-    )
-    monkeypatch.setattr(
-        loop,
-        "poll_control_messages",
-        lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         loop,
@@ -192,11 +168,6 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
         lambda _decisions_dir, section_results, _planspace: snapshots.append(
             len(section_results),
         ),
-    )
-    monkeypatch.setattr(
-        loop,
-        "mailbox_send",
-        lambda _planspace, _parent, message: messages.append(message),
     )
 
     status = run_coordination_loop(
@@ -223,12 +194,14 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
             "description": "note pending",
         },
     ]
-    assert messages[-1] == "fail:coordination_exhausted:outstanding:1"
+    assert capturing_communicator.messages[-1] == "fail:coordination_exhausted:outstanding:1"
 
 
 def test_run_coordination_loop_enters_coordination_for_root_reframing_delta(
     planspace: Path,
     monkeypatch: pytest.MonkeyPatch,
+    noop_pipeline_control,
+    capturing_communicator,
 ) -> None:
     section = _make_section(planspace, "01")
     section.related_files = ["src/main.py"]
@@ -246,15 +219,9 @@ def test_run_coordination_loop_enters_coordination_for_root_reframing_delta(
         ),
         encoding="utf-8",
     )
-    messages: list[str] = []
     snapshots: list[int] = []
     coordination_calls: list[bool] = []
 
-    monkeypatch.setattr(
-        loop,
-        "poll_control_messages",
-        lambda *_args, **_kwargs: None,
-    )
     monkeypatch.setattr(
         loop,
         "run_global_coordination",
@@ -272,11 +239,6 @@ def test_run_coordination_loop_enters_coordination_for_root_reframing_delta(
             len(section_results),
         ),
     )
-    monkeypatch.setattr(
-        loop,
-        "mailbox_send",
-        lambda _planspace, _parent, message: messages.append(message),
-    )
 
     status = run_coordination_loop(
         [section],
@@ -291,4 +253,4 @@ def test_run_coordination_loop_enters_coordination_for_root_reframing_delta(
     assert status == "complete"
     assert coordination_calls == [True]
     assert snapshots == [1]
-    assert messages == ["status:coordination:round-1", "complete"]
+    assert capturing_communicator.messages == ["status:coordination:round-1", "complete"]

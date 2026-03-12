@@ -12,7 +12,7 @@ from implementation.service.scope_delta_parser import (
     normalize_section_id,
     parse_scope_delta_adjudication,
 )
-from signals.service.communication import _log_artifact, log, mailbox_send
+from signals.service.communication import log
 from taskrouter import agent_for
 
 
@@ -109,7 +109,7 @@ def _dispatch_adjudication(
     adjudication_prompt: Path,
     adjudication_output: Path,
 ) -> dict | None:
-    _log_artifact(planspace, "prompt:scope-delta-adjudication")
+    Services.communicator().log_artifact(planspace, "prompt:scope-delta-adjudication")
 
     adjudication_result = Services.dispatcher().dispatch(
         Services.policies().resolve(policy,"coordination_plan"),
@@ -220,7 +220,7 @@ def _record_decisions(
     paths = PathRegistry(planspace)
     decisions_rollup_path = paths.coordination_dir() / "scope-delta-decisions.json"
     write_json(decisions_rollup_path, {"decisions": decisions})
-    _log_artifact(planspace, "coordination:scope-delta-decisions")
+    Services.communicator().log_artifact(planspace, "coordination:scope-delta-decisions")
 
     decisions_dir = paths.decisions_dir()
     for decision in decisions:
@@ -229,7 +229,7 @@ def _record_decisions(
         action = decision.get("action", "")
         reason = decision.get("reason", "")
         label = delta_id or section
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace,
             parent,
             f"summary:scope-delta:{label}:{action}:{reason[:150]}",
@@ -295,7 +295,7 @@ def aggregate_scope_deltas(
                 "attempts": 2,
             },
         )
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace,
             parent,
             "fail:coordination:unparseable_scope_delta_adjudication",

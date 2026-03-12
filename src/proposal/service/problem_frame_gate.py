@@ -8,7 +8,7 @@ from signals.repository.artifact_io import write_json
 from proposal.repository.excerpts import exists as excerpt_exists
 from staleness.helpers.hashing import file_hash
 from orchestrator.path_registry import PathRegistry
-from signals.service.communication import _record_traceability, log, mailbox_send
+from signals.service.communication import log
 from containers import Services
 from dispatch.prompt.writers import write_section_setup_prompt
 from signals.service.blockers import _update_blocker_rollup
@@ -77,7 +77,7 @@ def validate_problem_frame(
             },
         )
         _update_blocker_rollup(planspace)
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace,
             parent,
             f"pause:needs_parent:{section.number}:problem frame missing after retry",
@@ -102,7 +102,7 @@ def validate_problem_frame(
             },
         )
         _update_blocker_rollup(planspace)
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace,
             parent,
             f"pause:needs_parent:{section.number}:problem frame empty",
@@ -134,14 +134,14 @@ def validate_problem_frame(
         and excerpt_exists(planspace, section.number, "alignment")
     ):
         log(f"Section {section.number}: setup — excerpts ready")
-        _record_traceability(
+        Services.communicator().record_traceability(
             planspace,
             section.number,
             f"section-{section.number}-proposal-excerpt.md",
             str(section.global_proposal_path),
             "excerpt extraction from global proposal",
         )
-        _record_traceability(
+        Services.communicator().record_traceability(
             planspace,
             section.number,
             f"section-{section.number}-alignment-excerpt.md",

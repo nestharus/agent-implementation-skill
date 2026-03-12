@@ -11,12 +11,10 @@ from src.proposal.engine.loop import run_proposal_loop
 from src.intent.service.expansion import run_expansion_cycle
 from src.orchestrator.types import Section
 
-
 def _section(planspace: Path, number: str = "01") -> Section:
     section_path = planspace / "artifacts" / "sections" / f"section-{number}.md"
     section_path.write_text(f"# Section {number}\n", encoding="utf-8")
     return Section(number=number, path=section_path, related_files=["src/main.py"])
-
 
 def _write_research_surfaces(
     planspace: Path,
@@ -31,12 +29,12 @@ def _write_research_surfaces(
     research_path.write_text(json.dumps(payload), encoding="utf-8")
     return research_path
 
-
 def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator,
+    noop_pipeline_control) -> None:
     section = _section(planspace)
     proposal_path = (
         planspace / "artifacts" / "proposals" / "section-01-integration-proposal.md"
@@ -61,10 +59,6 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
     monkeypatch.setattr(
         "src.proposal.engine.loop.load_triage_result",
         lambda *_args, **_kwargs: {"intent_mode": "full", "budgets": {}},
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.loop.handle_pending_messages",
-        lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
         "src.proposal.engine.loop.alignment_changed_pending",
@@ -106,10 +100,6 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.mailbox_send",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "src.proposal.engine.loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
@@ -132,10 +122,6 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         ),
     )
     monkeypatch.setattr(
-        "proposal.service.intent_expansion.mailbox_send",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "proposal.service.intent_expansion.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
@@ -146,10 +132,6 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
     monkeypatch.setattr(
         "proposal.service.intent_expansion.handle_user_gate",
         lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        "proposal.service.intent_expansion.pause_for_parent",
-        lambda *_args, **_kwargs: "resume",
     )
 
     try:
@@ -172,12 +154,11 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
     finally:
         Services.dispatcher.reset_override()
 
-
 def test_run_expansion_cycle_merges_research_surfaces_into_pending_payload(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator) -> None:
     _section(planspace)
     _write_research_surfaces(
         planspace,

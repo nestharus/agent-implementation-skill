@@ -8,7 +8,7 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 from risk.repository.history import read_history
 from risk.types import PostureProfile
-from signals.service.communication import _log_artifact, log
+from signals.service.communication import log
 from taskrouter import agent_for
 
 
@@ -130,7 +130,7 @@ Write a JSON signal to: `{triage_signal_path}`
             incoming_notes_count=incoming_notes_count,
             solve_count=solve_count,
         )
-    _log_artifact(planspace, f"prompt:intent-triage-{section_number}")
+    Services.communicator().log_artifact(planspace, f"prompt:intent-triage-{section_number}")
 
     result = Services.dispatcher().dispatch(
         Services.policies().resolve(policy, "intent_triage"),

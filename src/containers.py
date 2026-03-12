@@ -107,6 +107,38 @@ class SignalReader:
         return read_signal_tuple(signal_path)
 
 
+class PipelineControlService:
+    """Pipeline control: parent pausing, message polling, pending handling."""
+
+    def pause_for_parent(self, planspace, parent, message) -> str:
+        from orchestrator.service.pipeline_control import pause_for_parent
+        return pause_for_parent(planspace, parent, message)
+
+    def poll_control_messages(self, planspace, parent, current_section=None) -> str | None:
+        from orchestrator.service.pipeline_control import poll_control_messages
+        return poll_control_messages(planspace, parent, current_section)
+
+    def handle_pending_messages(self, planspace, sections, affected) -> bool:
+        from orchestrator.service.pipeline_control import handle_pending_messages
+        return handle_pending_messages(planspace, sections, affected)
+
+
+class Communicator:
+    """Inter-agent communication: mailbox, artifact logging, traceability."""
+
+    def mailbox_send(self, planspace, target, message):
+        from signals.service.communication import mailbox_send
+        return mailbox_send(planspace, target, message)
+
+    def log_artifact(self, planspace, artifact_name):
+        from signals.service.communication import _log_artifact
+        return _log_artifact(planspace, artifact_name)
+
+    def record_traceability(self, planspace, section_number, file_path, source, category=""):
+        from signals.service.communication import _record_traceability
+        return _record_traceability(planspace, section_number, file_path, source, category)
+
+
 # ---------------------------------------------------------------------------
 # Container
 # ---------------------------------------------------------------------------
@@ -118,3 +150,5 @@ class Services(containers.DeclarativeContainer):
     prompt_guard = providers.Singleton(PromptGuard)
     policies = providers.Singleton(ModelPolicyService)
     signals = providers.Singleton(SignalReader)
+    pipeline_control = providers.Singleton(PipelineControlService)
+    communicator = providers.Singleton(Communicator)

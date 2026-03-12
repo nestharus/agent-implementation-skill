@@ -53,6 +53,8 @@ def test_run_global_alignment_recheck_marks_invalid_frame_and_preserves_files(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
+    noop_pipeline_control,
+    capturing_communicator,
 ) -> None:
     section = _make_section(planspace, "01")
     section_results = {
@@ -62,17 +64,11 @@ def test_run_global_alignment_recheck_marks_invalid_frame_and_preserves_files(
             modified_files=["src/main.py"],
         ),
     }
-    messages: list[str] = []
 
     monkeypatch.setattr(
         global_recheck,
         "_section_inputs_hash",
         lambda *_args, **_kwargs: "hash-1",
-    )
-    monkeypatch.setattr(
-        global_recheck,
-        "poll_control_messages",
-        lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         global_recheck,
@@ -83,11 +79,6 @@ def test_run_global_alignment_recheck_marks_invalid_frame_and_preserves_files(
         global_recheck,
         "_run_alignment_check_with_retries",
         lambda *_args, **_kwargs: "INVALID_FRAME",
-    )
-    monkeypatch.setattr(
-        global_recheck,
-        "mailbox_send",
-        lambda _planspace, _parent, message: messages.append(message),
     )
 
     status = run_global_alignment_recheck(
@@ -100,7 +91,7 @@ def test_run_global_alignment_recheck_marks_invalid_frame_and_preserves_files(
     )
 
     assert status == "has_problems"
-    assert messages == ["fail:invalid_alignment_frame:01"]
+    assert capturing_communicator.messages == ["fail:invalid_alignment_frame:01"]
     assert section_results["01"].aligned is False
     assert section_results["01"].modified_files == ["src/main.py"]
 
@@ -109,6 +100,7 @@ def test_run_global_alignment_recheck_restarts_when_control_message_arrives(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capturing_pipeline_control,
 ) -> None:
     section = _make_section(planspace, "01")
 
@@ -117,11 +109,8 @@ def test_run_global_alignment_recheck_restarts_when_control_message_arrives(
         "_section_inputs_hash",
         lambda *_args, **_kwargs: "hash-1",
     )
-    monkeypatch.setattr(
-        global_recheck,
-        "poll_control_messages",
-        lambda *_args, **_kwargs: "alignment_changed",
-    )
+
+    capturing_pipeline_control._poll_return = "alignment_changed"
 
     status = run_global_alignment_recheck(
         {"01": section},

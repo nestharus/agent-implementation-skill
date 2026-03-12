@@ -9,13 +9,11 @@ from conftest import override_dispatcher_and_guard
 from src.proposal.engine.loop import run_proposal_loop
 from src.orchestrator.types import Section
 
-
 def _section(planspace: Path, number: str = "01") -> Section:
     section_path = planspace / "artifacts" / "sections" / f"section-{number}.md"
     section_path.parent.mkdir(parents=True, exist_ok=True)
     section_path.write_text(f"# Section {number}\n", encoding="utf-8")
     return Section(number=number, path=section_path, related_files=["src/main.py"])
-
 
 @pytest.fixture()
 def env(tmp_path: Path) -> tuple[Path, Path]:
@@ -31,8 +29,6 @@ def env(tmp_path: Path) -> tuple[Path, Path]:
     codespace.mkdir()
     return planspace, codespace
 
-
-
 def _common_policy() -> dict:
     return {
         "proposal": "gpt",
@@ -40,7 +36,6 @@ def _common_policy() -> dict:
         "intent_judge": "claude",
         "escalation_model": "stronger",
     }
-
 
 def _registry_path(planspace: Path, number: str = "01") -> Path:
     return (
@@ -52,10 +47,8 @@ def _registry_path(planspace: Path, number: str = "01") -> Path:
         / "surface-registry.json"
     )
 
-
 def _escalation_path(planspace: Path, number: str = "01") -> Path:
     return planspace / "artifacts" / "signals" / f"intent-escalation-{number}.json"
-
 
 def _install_common_patches(
     monkeypatch: pytest.MonkeyPatch,
@@ -74,10 +67,6 @@ def _install_common_patches(
             "intent_mode": intent_mode,
             "budgets": {"intent_expansion_max": 2},
         },
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.loop.handle_pending_messages",
-        lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
         "src.proposal.engine.loop.alignment_changed_pending",
@@ -105,10 +94,6 @@ def _install_common_patches(
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.mailbox_send",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "src.proposal.engine.loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
@@ -129,10 +114,6 @@ def _install_common_patches(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "proposal.service.intent_expansion.mailbox_send",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "proposal.service.intent_expansion.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
@@ -140,11 +121,6 @@ def _install_common_patches(
         "proposal.service.intent_expansion.persist_decision",
         lambda *_args, **_kwargs: None,
     )
-    monkeypatch.setattr(
-        "proposal.service.intent_expansion.pause_for_parent",
-        lambda *_args, **_kwargs: "resume",
-    )
-
     def _dispatch(*args, **kwargs):
         output_path = args[2]
         if kwargs.get("agent_file") == "integration-proposer.md":
@@ -156,11 +132,10 @@ def _install_common_patches(
 
     return _dispatch
 
-
 def test_lightweight_aligned_surfaces_force_reproposal_under_full_intent(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator) -> None:
     planspace, codespace = env
     section = _section(planspace)
     proposal_args: list[str | None] = []
@@ -230,11 +205,10 @@ def test_lightweight_aligned_surfaces_force_reproposal_under_full_intent(
         "surface_count": 1,
     }
 
-
 def test_lightweight_aligned_surfaces_persist_registry_entries(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator) -> None:
     planspace, codespace = env
     section = _section(planspace)
     proposal_args: list[str | None] = []
@@ -293,11 +267,10 @@ def test_lightweight_aligned_surfaces_persist_registry_entries(
     assert registry["surfaces"][0]["id"] == "P-01-0001"
     assert registry["surfaces"][0]["notes"] == "Keep a registry trail"
 
-
 def test_lightweight_empty_surface_payload_does_not_escalate(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator) -> None:
     planspace, codespace = env
     section = _section(planspace)
     proposal_args: list[str | None] = []
@@ -343,11 +316,10 @@ def test_lightweight_empty_surface_payload_does_not_escalate(
     assert not _escalation_path(planspace).exists()
     assert not _registry_path(planspace).exists()
 
-
 def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator) -> None:
     planspace, codespace = env
     section = _section(planspace)
     proposal_args: list[str | None] = []
@@ -417,11 +389,10 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
     assert len(registry["surfaces"]) == 1
     assert registry["surfaces"][0]["id"] == "P-01-0001"
 
-
 def test_full_mode_surfaces_do_not_emit_lightweight_escalation_signal(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator) -> None:
     planspace, codespace = env
     section = _section(planspace)
     proposal_args: list[str | None] = []

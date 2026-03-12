@@ -13,7 +13,6 @@ from containers import Services
 from signals.service.communication import (
     AGENT_NAME,
     DB_SH,
-    _log_artifact,
     log,
 )
 from orchestrator.service.context_assembly import materialize_context_sidecar
@@ -206,7 +205,7 @@ This is the primary content of the consequence note the target receives.
                 "Agent context sidecar with resolved inputs: "
                 f"`{sidecar_path}`\n",
             )
-    _log_artifact(planspace, f"prompt:impact-{section_number}")
+    Services.communicator().log_artifact(planspace, f"prompt:impact-{section_number}")
 
     violations = Services.prompt_guard().validate_dynamic(
         impact_prompt_path.read_text(encoding="utf-8"),

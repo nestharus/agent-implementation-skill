@@ -25,11 +25,8 @@ from risk.types import (
 )
 from proposal.service.readiness_resolver import resolve_readiness
 from containers import Services
-from signals.service.communication import AGENT_NAME, DB_SH, log, mailbox_send
-from orchestrator.service.pipeline_control import (
-    _section_inputs_hash,
-    handle_pending_messages,
-)
+from signals.service.communication import AGENT_NAME, DB_SH, log
+from orchestrator.service.pipeline_control import _section_inputs_hash
 from implementation.engine.runner import run_section
 from implementation.repository.roal_index import (
     IMPLEMENTATION_ROAL_KINDS,
@@ -343,9 +340,9 @@ def run_implementation_pass(
     section_results: dict[str, SectionResult] = {}
 
     for sec_num in ready_sections:
-        if handle_pending_messages(planspace, [], impl_completed):
+        if Services.pipeline_control().handle_pending_messages(planspace, [], impl_completed):
             log("Aborted by parent during implementation pass")
-            mailbox_send(planspace, parent, "fail:aborted")
+            Services.communicator().mailbox_send(planspace, parent, "fail:aborted")
             raise ImplementationPassExit
 
         if alignment_changed_pending(planspace):
@@ -544,7 +541,7 @@ def run_implementation_pass(
                         and bool(current_risk_plan.deferred_steps)
                     ),
                 )
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace,
             parent,
             f"done:{sec_num}:{len(all_modified_files)} files modified",

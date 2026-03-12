@@ -22,12 +22,9 @@ from staleness.service.change_tracker import (
     make_alignment_checker,
 )
 from scan.service.section_loader import parse_related_files
-from signals.service.communication import AGENT_NAME, DB_SH, log, mailbox_send
+from signals.service.communication import AGENT_NAME, DB_SH, log
 from containers import Services
-from orchestrator.service.pipeline_control import (
-    handle_pending_messages,
-    requeue_changed_sections,
-)
+from orchestrator.service.pipeline_control import requeue_changed_sections
 from implementation.service.reexplore import _reexplore_section
 from implementation.engine.runner import run_section
 from orchestrator.types import ProposalPassResult, Section
@@ -262,9 +259,9 @@ def run_proposal_pass(
     completed: set[str] = set()
 
     while queue:
-        if handle_pending_messages(planspace, queue, completed):
+        if Services.pipeline_control().handle_pending_messages(planspace, queue, completed):
             log("Aborted by parent")
-            mailbox_send(planspace, parent, "fail:aborted")
+            Services.communicator().mailbox_send(planspace, parent, "fail:aborted")
             raise ProposalPassExit
 
         if alignment_changed_pending(planspace):  # noqa: SIM102
@@ -401,7 +398,7 @@ def run_proposal_pass(
                 if proposal_result.execution_ready
                 else f"blocked ({len(proposal_result.blockers)} blockers)"
             )
-            mailbox_send(planspace, parent, f"proposal-done:{sec_num}:{status}")
+            Services.communicator().mailbox_send(planspace, parent, f"proposal-done:{sec_num}:{status}")
             log(f"Section {sec_num}: proposal pass complete — {status}")
         else:
             log(

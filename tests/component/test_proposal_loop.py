@@ -10,7 +10,6 @@ from containers import AgentDispatcher, Services
 from src.proposal.engine.loop import run_proposal_loop
 from src.orchestrator.types import Section
 
-
 def _section(planspace: Path) -> Section:
     artifacts = planspace / "artifacts"
     section = Section(
@@ -21,7 +20,6 @@ def _section(planspace: Path) -> Section:
     section.path.parent.mkdir(parents=True, exist_ok=True)
     section.path.write_text("# Section 01\n", encoding="utf-8")
     return section
-
 
 @pytest.fixture()
 def env(tmp_path: Path) -> tuple[Path, Path]:
@@ -37,11 +35,11 @@ def env(tmp_path: Path) -> tuple[Path, Path]:
     codespace.mkdir()
     return planspace, codespace
 
-
 def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator,
+    noop_pipeline_control) -> None:
     planspace, codespace = env
     section = _section(planspace)
     proposal_path = (
@@ -54,10 +52,6 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
     monkeypatch.setattr(
         "src.proposal.engine.loop.load_triage_result",
         lambda *_args, **_kwargs: {"intent_mode": "lightweight", "budgets": {}},
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.loop.handle_pending_messages",
-        lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
         "src.proposal.engine.loop.alignment_changed_pending",
@@ -99,10 +93,6 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.mailbox_send",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "src.proposal.engine.loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
@@ -135,11 +125,11 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
     finally:
         Services.dispatcher.reset_override()
 
-
 def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator,
+    noop_pipeline_control) -> None:
     planspace, codespace = env
     section = _section(planspace)
     proposal_path = (
@@ -150,10 +140,6 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
     monkeypatch.setattr(
         "src.proposal.engine.loop.load_triage_result",
         lambda *_args, **_kwargs: {"intent_mode": "lightweight", "budgets": {}},
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.loop.handle_pending_messages",
-        lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
         "src.proposal.engine.loop.alignment_changed_pending",
@@ -192,10 +178,6 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
         lambda *_args, **_kwargs: next(problems),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.mailbox_send",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "src.proposal.engine.loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
@@ -227,11 +209,11 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
     finally:
         Services.dispatcher.reset_override()
 
-
 def test_run_proposal_loop_routes_out_of_scope_and_retries(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator,
+    capturing_pipeline_control) -> None:
     planspace, codespace = env
     section = _section(planspace)
     signal_path = planspace / "artifacts" / "signals" / "proposal-01-signal.json"
@@ -242,13 +224,11 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
     persisted: list[str] = []
     call_count = {"value": 0}
 
+    capturing_pipeline_control._pause_return = "resume:use new direction"
+
     monkeypatch.setattr(
         "src.proposal.engine.loop.load_triage_result",
         lambda *_args, **_kwargs: {"intent_mode": "lightweight", "budgets": {}},
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.loop.handle_pending_messages",
-        lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
         "src.proposal.engine.loop.alignment_changed_pending",
@@ -289,20 +269,12 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.mailbox_send",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "src.proposal.engine.loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         "src.proposal.engine.loop.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.loop.pause_for_parent",
-        lambda *_args, **_kwargs: "resume:use new direction",
     )
     monkeypatch.setattr(
         "src.proposal.engine.loop.persist_decision",

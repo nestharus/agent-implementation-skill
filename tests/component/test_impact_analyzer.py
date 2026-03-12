@@ -8,11 +8,9 @@ from containers import AgentDispatcher, PromptGuard, Services
 from src.implementation.service import impact_analyzer
 from src.orchestrator.types import Section
 
-
 def _write_section(path, summary: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"---\nsummary: {summary}\n---\n", encoding="utf-8")
-
 
 def test_collect_impact_candidates_uses_shared_refs_and_contracts(tmp_path) -> None:
     planspace = tmp_path / "planspace"
@@ -44,10 +42,9 @@ def test_collect_impact_candidates_uses_shared_refs_and_contracts(tmp_path) -> N
 
     assert [section.number for section in candidates] == ["02", "04"]
 
-
 def test_analyze_impacts_parses_material_impacts_from_primary_output(
     tmp_path, monkeypatch,
-) -> None:
+    noop_communicator) -> None:
     planspace = tmp_path / "planspace"
     codespace = tmp_path / "codespace"
     (planspace / "artifacts").mkdir(parents=True, exist_ok=True)
@@ -63,7 +60,6 @@ def test_analyze_impacts_parses_material_impacts_from_primary_output(
     ]
 
     monkeypatch.setattr(impact_analyzer, "materialize_context_sidecar", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(impact_analyzer, "_log_artifact", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(impact_analyzer, "log", lambda _msg: None)
     monkeypatch.setattr(impact_analyzer.subprocess, "run", lambda *args, **kwargs: None)
 
@@ -104,10 +100,9 @@ def test_analyze_impacts_parses_material_impacts_from_primary_output(
         Services.dispatcher.reset_override()
         Services.prompt_guard.reset_override()
 
-
 def test_analyze_impacts_falls_back_to_normalizer_when_primary_is_invalid(
     tmp_path, monkeypatch,
-) -> None:
+    noop_communicator) -> None:
     planspace = tmp_path / "planspace"
     codespace = tmp_path / "codespace"
     (planspace / "artifacts").mkdir(parents=True, exist_ok=True)
@@ -123,7 +118,6 @@ def test_analyze_impacts_falls_back_to_normalizer_when_primary_is_invalid(
     ]
 
     monkeypatch.setattr(impact_analyzer, "materialize_context_sidecar", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(impact_analyzer, "_log_artifact", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(impact_analyzer, "log", lambda _msg: None)
     monkeypatch.setattr(impact_analyzer.subprocess, "run", lambda *args, **kwargs: None)
 

@@ -12,7 +12,6 @@ from src.proposal.engine.readiness_gate import (
 )
 from src.orchestrator.types import Section
 
-
 def _section(planspace: Path) -> Section:
     section = Section(
         number="03",
@@ -21,7 +20,6 @@ def _section(planspace: Path) -> Section:
     section.path.parent.mkdir(parents=True, exist_ok=True)
     section.path.write_text("# Section 03\n", encoding="utf-8")
     return section
-
 
 def test_publish_discoveries_writes_scope_delta_and_research_artifact(
     tmp_path: Path,
@@ -52,7 +50,6 @@ def test_publish_discoveries_writes_scope_delta_and_research_artifact(
     assert json.loads(rq_path.read_text(encoding="utf-8"))["research_questions"] == [
         "Need API quota behavior"
     ]
-
 
 def test_route_blockers_writes_signals_and_queues_reconciliation(
     tmp_path: Path,
@@ -95,7 +92,6 @@ def test_route_blockers_writes_signals_and_queues_reconciliation(
         planspace / "artifacts" / "signals" / "section-03-seam-0-signal.json"
     ).exists()
     assert queued == [(["CacheProtocol"], ["client.cache"])]
-
 
 def test_route_blockers_dispatches_research_plan_on_first_encounter(
     tmp_path: Path,
@@ -224,7 +220,6 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
         / "section-03-blocking-research-0-signal.json"
     ).exists()
 
-
 def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -296,7 +291,6 @@ def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
         / "section-03"
         / "research-trigger.json"
     ).exists()
-
 
 def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
     tmp_path: Path,
@@ -386,7 +380,6 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
         )
     ]
 
-
 def test_route_blockers_ignores_empty_blocking_research_questions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -438,11 +431,10 @@ def test_route_blockers_ignores_empty_blocking_research_questions(
         / "section-03-blocking-research-0-signal.json"
     ).exists()
 
-
 def test_resolve_and_route_returns_blocked_proposal_pass_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator) -> None:
     planspace = tmp_path / "planspace"
     artifacts = planspace / "artifacts"
     (artifacts / "proposals").mkdir(parents=True, exist_ok=True)
@@ -483,10 +475,6 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
             "blockers": [{"type": "user_root_questions", "description": "Choose retry policy"}],
             "rationale": "blocked",
         },
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.mailbox_send",
-        lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         "src.proposal.engine.readiness_gate._append_open_problem",

@@ -10,7 +10,6 @@ from containers import AgentDispatcher, Services
 from src.proposal.service.excerpt_extractor import extract_excerpts
 from src.orchestrator.types import Section
 
-
 def _section(planspace: Path) -> Section:
     artifacts = planspace / "artifacts"
     section = Section(
@@ -25,7 +24,6 @@ def _section(planspace: Path) -> Section:
     section.global_alignment_path.write_text("# Global Alignment\n", encoding="utf-8")
     return section
 
-
 def _write_excerpts(planspace: Path, section_number: str) -> None:
     sections_dir = planspace / "artifacts" / "sections"
     sections_dir.mkdir(parents=True, exist_ok=True)
@@ -38,7 +36,6 @@ def _write_excerpts(planspace: Path, section_number: str) -> None:
         encoding="utf-8",
     )
 
-
 @pytest.fixture()
 def base_dirs(tmp_path: Path) -> tuple[Path, Path]:
     planspace = tmp_path / "planspace"
@@ -49,11 +46,10 @@ def base_dirs(tmp_path: Path) -> tuple[Path, Path]:
     codespace.mkdir()
     return planspace, codespace
 
-
 def test_extract_excerpts_returns_ok_when_setup_creates_files(
     base_dirs: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator) -> None:
     planspace, codespace = base_dirs
     section = _section(planspace)
     prompt_path = planspace / "artifacts" / "setup-prompt.md"
@@ -73,10 +69,6 @@ def test_extract_excerpts_returns_ok_when_setup_creates_files(
         "src.proposal.service.excerpt_extractor.check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
     )
-    monkeypatch.setattr(
-        "src.proposal.service.excerpt_extractor.mailbox_send",
-        lambda *_args, **_kwargs: None,
-    )
 
     try:
         result = extract_excerpts(
@@ -91,11 +83,11 @@ def test_extract_excerpts_returns_ok_when_setup_creates_files(
     finally:
         Services.dispatcher.reset_override()
 
-
 def test_extract_excerpts_routes_out_of_scope_then_retries(
     base_dirs: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator,
+    capturing_pipeline_control) -> None:
     planspace, codespace = base_dirs
     section = _section(planspace)
     signal_path = planspace / "artifacts" / "signals" / "setup-01-signal.json"
@@ -126,14 +118,7 @@ def test_extract_excerpts_routes_out_of_scope_then_retries(
 
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
     monkeypatch.setattr("src.proposal.service.excerpt_extractor.check_agent_signals", _check)
-    monkeypatch.setattr(
-        "src.proposal.service.excerpt_extractor.mailbox_send",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        "src.proposal.service.excerpt_extractor.pause_for_parent",
-        lambda *_args, **_kwargs: "resume:accept root decision",
-    )
+    capturing_pipeline_control._pause_return = "resume:accept root decision"
     monkeypatch.setattr(
         "src.proposal.service.excerpt_extractor.persist_decision",
         lambda _planspace, _section_number, payload: persisted.append(payload),
@@ -169,11 +154,11 @@ def test_extract_excerpts_routes_out_of_scope_then_retries(
     finally:
         Services.dispatcher.reset_override()
 
-
 def test_extract_excerpts_returns_none_when_parent_does_not_resume(
     base_dirs: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator,
+    capturing_pipeline_control) -> None:
     planspace, codespace = base_dirs
     section = _section(planspace)
 
@@ -190,14 +175,7 @@ def test_extract_excerpts_returns_none_when_parent_does_not_resume(
         "src.proposal.service.excerpt_extractor.check_agent_signals",
         lambda *_args, **_kwargs: ("needs_parent", "blocked"),
     )
-    monkeypatch.setattr(
-        "src.proposal.service.excerpt_extractor.mailbox_send",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        "src.proposal.service.excerpt_extractor.pause_for_parent",
-        lambda *_args, **_kwargs: "stop",
-    )
+    capturing_pipeline_control._pause_return = "stop"
     monkeypatch.setattr(
         "src.proposal.service.excerpt_extractor._append_open_problem",
         lambda *_args, **_kwargs: None,

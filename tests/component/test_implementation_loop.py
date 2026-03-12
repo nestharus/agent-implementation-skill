@@ -47,15 +47,13 @@ def env(tmp_path: Path) -> tuple[Path, Path]:
 def test_run_implementation_loop_returns_changed_files_and_trace_map(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
+    noop_communicator,
+    noop_pipeline_control,
 ) -> None:
     planspace, codespace = env
     section = _section(planspace)
     impl_modified = planspace / "artifacts" / "impl-09-modified.txt"
 
-    monkeypatch.setattr(
-        "src.implementation.engine.loop.handle_pending_messages",
-        lambda *_args, **_kwargs: False,
-    )
     monkeypatch.setattr(
         "src.implementation.engine.loop.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
@@ -93,15 +91,7 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.implementation.engine.loop.mailbox_send",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "src.implementation.engine.loop.ingest_and_submit",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        "src.implementation.engine.loop._record_traceability",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -142,6 +132,8 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
 def test_run_implementation_loop_retries_after_alignment_problems(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
+    noop_communicator,
+    noop_pipeline_control,
 ) -> None:
     planspace, codespace = env
     section = _section(planspace)
@@ -149,10 +141,6 @@ def test_run_implementation_loop_retries_after_alignment_problems(
     problems = iter(["fix edge case", None])
     impl_calls = {"count": 0}
 
-    monkeypatch.setattr(
-        "src.implementation.engine.loop.handle_pending_messages",
-        lambda *_args, **_kwargs: False,
-    )
     monkeypatch.setattr(
         "src.implementation.engine.loop.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
@@ -191,15 +179,7 @@ def test_run_implementation_loop_retries_after_alignment_problems(
         lambda *_args, **_kwargs: next(problems),
     )
     monkeypatch.setattr(
-        "src.implementation.engine.loop.mailbox_send",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "src.implementation.engine.loop.ingest_and_submit",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        "src.implementation.engine.loop._record_traceability",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(

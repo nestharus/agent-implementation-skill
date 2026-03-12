@@ -10,10 +10,9 @@ from flow.engine.submitter import submit_chain
 from intake.service.assessment import write_post_impl_assessment_prompt
 from staleness.service.section_alignment import _extract_problems
 from staleness.helpers.detection import snapshot_files
-from signals.service.communication import _record_traceability, log, mailbox_send
+from signals.service.communication import log
 from coordination.service.cross_section import persist_decision
 from dispatch.helpers.utils import check_agent_signals, summarize_output
-from orchestrator.service.pipeline_control import handle_pending_messages, pause_for_parent
 from dispatch.prompt.writers import write_impl_alignment_prompt, write_strategic_impl_prompt
 from flow.service.section_ingestion import ingest_and_submit
 from implementation.service.traceability import _write_traceability_index
@@ -111,7 +110,7 @@ def run_implementation_loop(
 
         if problems is None:
             log(f"Section {section.number}: implementation ALIGNED")
-            mailbox_send(
+            Services.communicator().mailbox_send(
                 planspace,
                 parent,
                 f"summary:impl-align:{section.number}:ALIGNED",
@@ -137,8 +136,8 @@ def _should_abort(
     planspace: Path, parent: str, section_number: str,
 ) -> bool:
     """Return True if a pending message or alignment change requires abort."""
-    if handle_pending_messages(planspace, [], set()):
-        mailbox_send(planspace, parent, f"fail:{section_number}:aborted")
+    if Services.pipeline_control().handle_pending_messages(planspace, [], set()):
+        Services.communicator().mailbox_send(planspace, parent, f"fail:{section_number}:aborted")
         return True
 
     if alignment_changed_pending(planspace):
@@ -186,12 +185,12 @@ def _check_budget(
     }
     budget_signal_path = paths.impl_budget_exhausted_signal(section_number)
     write_json(budget_signal_path, budget_signal)
-    mailbox_send(
+    Services.communicator().mailbox_send(
         planspace,
         parent,
         f"budget-exhausted:{section_number}:implementation:{impl_attempt - 1}",
     )
-    response = pause_for_parent(
+    response = Services.pipeline_control().pause_for_parent(
         planspace,
         parent,
         f"pause:budget_exhausted:{section_number}:implementation loop exceeded "
@@ -234,7 +233,7 @@ def _log_alignment_problems(
         f"Section {section_number}: implementation problems "
         f"(attempt {impl_attempt}): {short}"
     )
-    mailbox_send(
+    Services.communicator().mailbox_send(
         planspace,
         parent,
         f"summary:impl-align:{section_number}:PROBLEMS-attempt-{impl_attempt}:{short}",
@@ -291,7 +290,7 @@ def _dispatch_implementation(
     if impl_result == "ALIGNMENT_CHANGED_PENDING":
         return None
 
-    mailbox_send(
+    Services.communicator().mailbox_send(
         planspace,
         parent,
         f"summary:impl:{section.number}:{summarize_output(impl_result)}",
@@ -299,7 +298,7 @@ def _dispatch_implementation(
 
     if impl_result.startswith("TIMEOUT:"):
         log(f"Section {section.number}: implementation agent timed out")
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace,
             parent,
             f"fail:{section.number}:implementation agent timed out",
@@ -359,7 +358,7 @@ def _handle_signal_pause(
     parent: str,
 ) -> str:
     """Pause for parent after an agent signal; return loop action."""
-    response = pause_for_parent(
+    response = Services.pipeline_control().pause_for_parent(
         planspace,
         parent,
         f"pause:{signal}:{section_number}:{detail}",
@@ -488,7 +487,7 @@ def _finalize(
     )
 
     for changed_file in actually_changed:
-        _record_traceability(
+        Services.communicator().record_traceability(
             planspace,
             section.number,
             changed_file,

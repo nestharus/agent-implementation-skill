@@ -13,7 +13,7 @@ from staleness.service.section_alignment import (
     _run_alignment_check_with_retries,
     collect_modified_files,
 )
-from signals.service.communication import _log_artifact, log
+from signals.service.communication import log
 from orchestrator.types import Section
 from taskrouter import agent_for
 
@@ -90,7 +90,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
 """
     if not Services.prompt_guard().write_validated(triage_prompt_text, triage_prompt_path):
         return ("continue", None)
-    _log_artifact(planspace, f"prompt:triage-{section.number}")
+    Services.communicator().log_artifact(planspace, f"prompt:triage-{section.number}")
 
     Services.dispatcher().dispatch(
         Services.policies().resolve(policy,"triage"),

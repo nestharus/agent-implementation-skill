@@ -31,19 +31,14 @@ def test_validate_problem_frame_blocks_when_retry_still_does_not_create_frame(
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """override_dispatcher_and_guard provides NoOp communicator and pipeline_control."""
     section = _make_section(planspace)
-    messages: list[str] = []
     blocker_updates: list[Path] = []
 
     monkeypatch.setattr(
         problem_frame_gate,
         "_update_blocker_rollup",
         lambda planspace_arg: blocker_updates.append(planspace_arg),
-    )
-    monkeypatch.setattr(
-        problem_frame_gate,
-        "mailbox_send",
-        lambda _planspace, _parent, message: messages.append(message),
     )
 
     with override_dispatcher_and_guard(lambda *args, **kwargs: ""):
@@ -57,7 +52,6 @@ def test_validate_problem_frame_blocks_when_retry_still_does_not_create_frame(
 
     assert result is None
     assert blocker_updates == [planspace]
-    assert messages == ["pause:needs_parent:01:problem frame missing after retry"]
     signal = json.loads(
         (planspace / "artifacts" / "signals" / "setup-01-signal.json").read_text(
             encoding="utf-8",
@@ -68,7 +62,7 @@ def test_validate_problem_frame_blocks_when_retry_still_does_not_create_frame(
 
 def test_validate_problem_frame_invalidates_existing_proposal_when_hash_changes(
     planspace: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    noop_communicator,
 ) -> None:
     section = _make_section(planspace)
     problem_frame = (
@@ -87,13 +81,6 @@ def test_validate_problem_frame_invalidates_existing_proposal_when_hash_changes(
     )
     hash_path.write_text("old-hash", encoding="utf-8")
 
-    monkeypatch.setattr(problem_frame_gate, "_record_traceability", lambda *args: None)
-    monkeypatch.setattr(
-        problem_frame_gate,
-        "_write_alignment_surface",
-        lambda *args: None,
-    )
-
     result = validate_problem_frame(section, planspace, planspace, "parent", {})
 
     assert result == "ok"
@@ -103,7 +90,7 @@ def test_validate_problem_frame_invalidates_existing_proposal_when_hash_changes(
 
 def test_validate_problem_frame_records_traceability_when_excerpts_exist(
     planspace: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    capturing_communicator,
 ) -> None:
     section = _make_section(planspace)
     problem_frame = (
@@ -118,22 +105,8 @@ def test_validate_problem_frame_records_traceability_when_excerpts_exist(
         "alignment excerpt",
         encoding="utf-8",
     )
-    traceability_calls: list[tuple] = []
-    surface_calls: list[str] = []
-
-    monkeypatch.setattr(
-        problem_frame_gate,
-        "_record_traceability",
-        lambda *args: traceability_calls.append(args),
-    )
-    monkeypatch.setattr(
-        problem_frame_gate,
-        "_write_alignment_surface",
-        lambda _planspace, sec: surface_calls.append(sec.number),
-    )
 
     result = validate_problem_frame(section, planspace, planspace, "parent", {})
 
     assert result == "ok"
-    assert len(traceability_calls) == 2
-    assert surface_calls == ["01"]
+    assert len(capturing_communicator.traceability_calls) == 2

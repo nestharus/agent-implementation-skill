@@ -24,6 +24,8 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capturing_communicator,
+    noop_pipeline_control,
 ) -> None:
     section = _make_section(planspace)
     cycle_budget_path = (
@@ -33,7 +35,6 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
         json.dumps({"proposal_max": 1, "implementation_max": 1}),
         encoding="utf-8",
     )
-    traceability_calls: list[tuple] = []
     intent_pack_calls: list[str] = []
     governance_calls: list[tuple[str, Path, Path, str]] = []
 
@@ -55,11 +56,6 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
         bootstrap,
         "_extract_todos_from_files",
         lambda *_args, **_kwargs: "- TODO: preserve invariant\n",
-    )
-    monkeypatch.setattr(
-        bootstrap,
-        "_record_traceability",
-        lambda *args: traceability_calls.append(args),
     )
     monkeypatch.setattr(
         bootstrap,
@@ -106,7 +102,7 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
         "intent_expansion_max": 2,
         "max_new_surfaces_per_cycle": 3,
     }
-    assert traceability_calls
+    assert capturing_communicator.traceability_calls
     assert governance_calls == [("01", planspace, codespace, "Problem frame summary")]
     assert intent_pack_calls == ["incoming note"]
     assert (
@@ -118,6 +114,8 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capturing_pipeline_control,
+    noop_communicator,
 ) -> None:
     section = _make_section(planspace)
 
@@ -147,18 +145,10 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
         lambda *_args, **_kwargs: False,
     )
     blocker_rollups: list[Path] = []
-    pauses: list[tuple[Path, str, str]] = []
     monkeypatch.setattr(
         bootstrap,
         "_update_blocker_rollup",
         lambda current_planspace: blocker_rollups.append(current_planspace),
-    )
-    monkeypatch.setattr(
-        bootstrap,
-        "pause_for_parent",
-        lambda current_planspace, parent, signal: pauses.append(
-            (current_planspace, parent, signal),
-        ) or "resume",
     )
 
     result = run_intent_bootstrap(
@@ -172,7 +162,7 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
 
     assert result is None
     assert blocker_rollups == [planspace]
-    assert pauses == [(
+    assert capturing_pipeline_control.pause_calls == [(
         planspace,
         "parent",
         "pause:need_decision:global:philosophy bootstrap requires user input",
@@ -186,6 +176,8 @@ def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
+    noop_pipeline_control,
+    noop_communicator,
 ) -> None:
     section = _make_section(planspace)
 

@@ -21,7 +21,7 @@ class _NoOpGuard(PromptGuard):
 
 
 def test_aggregate_scope_deltas_adjudicates_and_records_decisions(
-    planspace, monkeypatch: pytest.MonkeyPatch,
+    planspace, noop_communicator,
 ) -> None:
     scope_dir = planspace / "artifacts" / "scope-deltas"
     scope_dir.mkdir(parents=True, exist_ok=True)
@@ -83,7 +83,7 @@ def test_aggregate_scope_deltas_adjudicates_and_records_decisions(
 
 
 def test_aggregate_scope_deltas_retries_then_fails_closed_on_bad_output(
-    planspace, monkeypatch: pytest.MonkeyPatch,
+    planspace, capturing_communicator,
 ) -> None:
     scope_dir = planspace / "artifacts" / "scope-deltas"
     scope_dir.mkdir(parents=True, exist_ok=True)
@@ -92,7 +92,6 @@ def test_aggregate_scope_deltas_retries_then_fails_closed_on_bad_output(
         encoding="utf-8",
     )
     calls: list[str] = []
-    messages: list[str] = []
 
     class _MockDispatcher(AgentDispatcher):
         def dispatch(self, model, *args, **kwargs):
@@ -101,10 +100,6 @@ def test_aggregate_scope_deltas_retries_then_fails_closed_on_bad_output(
 
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
     Services.prompt_guard.override(providers.Object(_NoOpGuard()))
-    monkeypatch.setattr(
-        "implementation.service.scope_delta_aggregator.mailbox_send",
-        lambda _planspace, _parent, message: messages.append(message),
-    )
 
     try:
         with pytest.raises(ScopeDeltaAggregationExit):
@@ -115,7 +110,7 @@ def test_aggregate_scope_deltas_retries_then_fails_closed_on_bad_output(
             )
 
         assert calls == ["model-a", "model-b"]
-        assert messages == ["fail:coordination:unparseable_scope_delta_adjudication"]
+        assert capturing_communicator.messages == ["fail:coordination:unparseable_scope_delta_adjudication"]
         assert (
             planspace
             / "artifacts"
@@ -128,7 +123,7 @@ def test_aggregate_scope_deltas_retries_then_fails_closed_on_bad_output(
 
 
 def test_aggregate_scope_deltas_includes_root_reframing_in_prompt_payload(
-    planspace, monkeypatch: pytest.MonkeyPatch,
+    planspace, noop_communicator,
 ) -> None:
     scope_dir = planspace / "artifacts" / "scope-deltas"
     scope_dir.mkdir(parents=True, exist_ok=True)

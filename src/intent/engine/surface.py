@@ -23,7 +23,6 @@ from intent.service.expanders import (
     run_philosophy_expander,
     run_problem_expander,
 )
-from orchestrator.service.pipeline_control import pause_for_parent
 
 
 def build_pending_surface_payload(worklist: list[dict], surfaces: dict) -> dict:
@@ -310,7 +309,7 @@ def handle_user_gate(
             "why_blocked": message["why_blocked"],
         })
 
-    return pause_for_parent(
+    return Services.pipeline_control().pause_for_parent(
         planspace,
         parent,
         f"pause:need_decision:{section_number}:{message['pause_summary']}",

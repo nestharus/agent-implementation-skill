@@ -6,8 +6,7 @@ from containers import Services
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.template import TASK_SUBMISSION_SEMANTICS
-from signals.service.communication import _log_artifact, _record_traceability, log, mailbox_send
-from orchestrator.service.pipeline_control import poll_control_messages
+from signals.service.communication import log
 from dispatch.prompt.writers import agent_mail_instructions
 from flow.service.section_ingestion import ingest_and_submit
 from implementation.service.microstrategy_decision import _check_needs_microstrategy
@@ -113,9 +112,9 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
         )
         return None
     micro_prompt_path.write_text(rendered, encoding="utf-8")
-    _log_artifact(planspace, f"prompt:microstrategy-{section.number}")
+    Services.communicator().log_artifact(planspace, f"prompt:microstrategy-{section.number}")
 
-    ctrl = poll_control_messages(planspace, parent, current_section=section.number)
+    ctrl = Services.pipeline_control().poll_control_messages(planspace, parent, current_section=section.number)
     if ctrl == "alignment_changed":
         return None
     micro_result = Services.dispatcher().dispatch(
@@ -162,14 +161,14 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
 
     if microstrategy_path.exists() and microstrategy_path.stat().st_size > 0:
         log(f"Section {section.number}: microstrategy generated")
-        _record_traceability(
+        Services.communicator().record_traceability(
             planspace,
             section.number,
             f"section-{section.number}-microstrategy.md",
             f"section-{section.number}-integration-proposal.md",
             "tactical breakdown from integration proposal",
         )
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace,
             parent,
             f"summary:microstrategy:{section.number}:generated",
@@ -190,12 +189,12 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
         paths.microstrategy_blocker_signal(section.number),
         blocker,
     )
-    _record_traceability(
+    Services.communicator().record_traceability(
         planspace,
         section.number,
         f"microstrategy-blocker-{section.number}.json",
         f"section-{section.number}-integration-proposal.md",
         "microstrategy generation failed — blocker emitted",
     )
-    mailbox_send(planspace, parent, f"summary:microstrategy:{section.number}:blocked")
+    Services.communicator().mailbox_send(planspace, parent, f"summary:microstrategy:{section.number}:blocked")
     return None

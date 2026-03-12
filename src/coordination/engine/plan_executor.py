@@ -11,11 +11,10 @@ from signals.repository.artifact_io import read_json, write_json
 from staleness.helpers.hashing import content_hash
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from signals.service.communication import log, mailbox_send
+from signals.service.communication import log
 from coordination.prompt.writers import write_bridge_prompt, write_fix_prompt
 from dispatch.helpers.utils import write_model_choice_signal
 from flow.service.section_ingestion import ingest_and_submit
-from orchestrator.service.pipeline_control import poll_control_messages
 from orchestrator.types import Section
 from taskrouter import agent_for
 
@@ -226,7 +225,7 @@ def _run_bridge_for_group(
         blocker_path = paths.signals_dir() / f"blocker-bridge-{group_index}.json"
         blocker_path.parent.mkdir(parents=True, exist_ok=True)
         blocker_path.write_text(json.dumps(blocker_signal, indent=2), encoding="utf-8")
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace,
             f"pause:needs_parent:bridge-{group_index}:contract delta missing after retry",
             "coordinator",
@@ -379,7 +378,7 @@ def execute_coordination_plan(
     coord_dir.mkdir(parents=True, exist_ok=True)
 
     for batch_num, batch in enumerate(batches):
-        ctrl = poll_control_messages(planspace, parent)
+        ctrl = Services.pipeline_control().poll_control_messages(planspace, parent)
         if ctrl == "alignment_changed":
             raise CoordinationExecutionExit
 

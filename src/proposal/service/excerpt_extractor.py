@@ -6,11 +6,10 @@ from signals.repository.artifact_io import read_json_or_default, write_json
 from staleness.service.change_tracker import check_pending as alignment_changed_pending
 from proposal.repository.excerpts import exists as excerpt_exists
 from orchestrator.path_registry import PathRegistry
-from signals.service.communication import mailbox_send, log
+from signals.service.communication import log
 from coordination.service.cross_section import persist_decision
 from containers import Services
 from dispatch.helpers.utils import check_agent_signals, summarize_output
-from orchestrator.service.pipeline_control import pause_for_parent
 from dispatch.prompt.writers import write_section_setup_prompt
 from signals.service.blockers import (
     _append_open_problem,
@@ -58,7 +57,7 @@ def extract_excerpts(
         )
         if output == "ALIGNMENT_CHANGED_PENDING":
             return None
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace,
             parent,
             f"summary:setup:{section.number}:{summarize_output(output)}",
@@ -75,7 +74,7 @@ def extract_excerpts(
         if signal:
             if signal in ("needs_parent", "out_of_scope"):
                 _append_open_problem(planspace, section.number, detail, signal)
-                mailbox_send(
+                Services.communicator().mailbox_send(
                     planspace,
                     parent,
                     f"open-problem:{section.number}:{signal}:{detail[:200]}",
@@ -99,7 +98,7 @@ def extract_excerpts(
                     scope_delta,
                 )
             _update_blocker_rollup(planspace)
-            response = pause_for_parent(
+            response = Services.pipeline_control().pause_for_parent(
                 planspace,
                 parent,
                 f"pause:{signal}:{section.number}:{detail}",
@@ -121,7 +120,7 @@ def extract_excerpts(
                 f"Section {section.number}: ERROR — setup failed to create "
                 f"excerpt files"
             )
-            mailbox_send(
+            Services.communicator().mailbox_send(
                 planspace,
                 parent,
                 f"fail:{section.number}:setup failed to create excerpt files",

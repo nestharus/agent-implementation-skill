@@ -10,7 +10,6 @@ from dispatch.prompt.writers import (
 )
 from orchestrator.types import Section
 
-
 def _section(planspace: Path, number: str = "01") -> Section:
     section_path = planspace / "artifacts" / "sections" / f"section-{number}.md"
     section_path.write_text(
@@ -18,7 +17,6 @@ def _section(planspace: Path, number: str = "01") -> Section:
         encoding="utf-8",
     )
     return Section(number=number, path=section_path, related_files=["src/main.py"])
-
 
 def _write_common_section_artifacts(planspace: Path, number: str = "01") -> None:
     sections_dir = planspace / "artifacts" / "sections"
@@ -36,7 +34,6 @@ def _write_common_section_artifacts(planspace: Path, number: str = "01") -> None
         encoding="utf-8",
     )
 
-
 def _write_research_artifacts(planspace: Path, number: str = "01") -> tuple[Path, Path]:
     research_dir = (
         planspace / "artifacts" / "research" / "sections" / f"section-{number}"
@@ -48,18 +45,13 @@ def _write_research_artifacts(planspace: Path, number: str = "01") -> tuple[Path
     dossier.write_text("background findings\n", encoding="utf-8")
     return addendum, dossier
 
-
 @pytest.fixture(autouse=True)
-def _prompt_writer_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
+def _prompt_writer_isolation(monkeypatch: pytest.MonkeyPatch,
+    noop_communicator) -> None:
     monkeypatch.setattr(
         "dispatch.prompt.writers.materialize_context_sidecar",
         lambda *_args, **_kwargs: None,
     )
-    monkeypatch.setattr(
-        "dispatch.prompt.writers._log_artifact",
-        lambda *_args, **_kwargs: None,
-    )
-
 
 def test_write_integration_proposal_prompt_includes_research_refs_when_present(
     planspace: Path,
@@ -81,7 +73,6 @@ def test_write_integration_proposal_prompt_includes_research_refs_when_present(
         "proposal.integration, research.plan"
     ) in prompt
 
-
 def test_write_integration_proposal_prompt_omits_research_refs_when_absent(
     planspace: Path,
     codespace: Path,
@@ -94,7 +85,6 @@ def test_write_integration_proposal_prompt_omits_research_refs_when_absent(
 
     assert "Research addendum (domain knowledge)" not in prompt
     assert "Research dossier (full findings)" not in prompt
-
 
 def test_write_strategic_impl_prompt_includes_research_refs_when_present(
     planspace: Path,

@@ -17,7 +17,7 @@ from containers import Services
 from signals.repository.artifact_io import read_json, write_json
 from staleness.helpers.hashing import content_hash
 from orchestrator.path_registry import PathRegistry
-from signals.service.communication import _log_artifact, log
+from signals.service.communication import log
 from taskrouter import agent_for
 
 from intent.service.philosophy_classifier import (
@@ -312,7 +312,7 @@ Write JSON to: `{guidance_path}`
         log("Intent bootstrap: bootstrap guidance prompt validation failed "
             "— continuing without optional guidance")
         return None
-    _log_artifact(planspace, "prompt:philosophy-bootstrap-guidance")
+    Services.communicator().log_artifact(planspace, "prompt:philosophy-bootstrap-guidance")
 
     guidance_path.unlink(missing_ok=True)
     result = Services.dispatcher().dispatch(
@@ -863,7 +863,7 @@ If NO files contain cross-cutting reasoning philosophy, write:
                     "files until the prompt is valid."
                 ),
             )
-        _log_artifact(planspace, "prompt:philosophy-select")
+        Services.communicator().log_artifact(planspace, "prompt:philosophy-select")
 
         selector_models = [
             Services.policies().resolve(policy,"intent_philosophy_selector"),
@@ -1109,7 +1109,7 @@ Write a JSON signal to: `{verify_signal}`
                     "until the verifier prompt is valid."
                 ),
             )
-        _log_artifact(planspace, "prompt:philosophy-verify")
+        Services.communicator().log_artifact(planspace, "prompt:philosophy-verify")
 
         verifier_model = Services.policies().resolve(policy,"intent_philosophy_verifier")
         verify_run = _dispatch_classified_signal_stage(
@@ -1342,7 +1342,7 @@ genuinely ambiguous, do NOT invent filler. Instead:
                 "distiller prompt is valid."
             ),
         )
-    _log_artifact(planspace, "prompt:philosophy-distill")
+    Services.communicator().log_artifact(planspace, "prompt:philosophy-distill")
 
     distiller_model = Services.policies().resolve(policy,"intent_philosophy")
     distill_classification: dict[str, Any] = {"state": "missing_signal", "data": None}

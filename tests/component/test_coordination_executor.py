@@ -23,6 +23,7 @@ def _planspace(tmp_path: Path) -> Path:
 def test_execute_coordination_plan_runs_fix_groups_and_persists_modified_files(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    noop_pipeline_control,
 ) -> None:
     planspace = _planspace(tmp_path)
     sections_by_num = {
@@ -38,11 +39,6 @@ def test_execute_coordination_plan_runs_fix_groups_and_persists_modified_files(
         ),
     }
 
-    monkeypatch.setattr(
-        executor,
-        "poll_control_messages",
-        lambda *args, **kwargs: None,
-    )
     monkeypatch.setattr(
         executor,
         "_dispatch_fix_group",
@@ -76,6 +72,8 @@ def test_execute_coordination_plan_runs_fix_groups_and_persists_modified_files(
 def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    noop_pipeline_control,
+    noop_communicator,
 ) -> None:
     planspace = _planspace(tmp_path)
     notes_dir = planspace / "artifacts" / "notes"
@@ -105,11 +103,6 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
         contract_delta.write_text("delta", encoding="utf-8")
         return "ok"
 
-    monkeypatch.setattr(
-        executor,
-        "poll_control_messages",
-        lambda *args, **kwargs: None,
-    )
     monkeypatch.setattr(
         executor,
         "_dispatch_fix_group",
@@ -163,17 +156,13 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
 def test_execute_coordination_plan_raises_on_fix_group_sentinel(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    noop_pipeline_control,
 ) -> None:
     planspace = _planspace(tmp_path)
     sections_by_num = {
         "01": Section(number="01", path=planspace / "artifacts" / "section-01.md"),
     }
 
-    monkeypatch.setattr(
-        executor,
-        "poll_control_messages",
-        lambda *args, **kwargs: None,
-    )
     monkeypatch.setattr(
         executor,
         "_dispatch_fix_group",

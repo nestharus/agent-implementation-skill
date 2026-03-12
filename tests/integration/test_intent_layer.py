@@ -2167,10 +2167,9 @@ class TestR57GateTypeSpecificMessaging:
 
     def test_axis_budget_gate_says_axis_budget(
         self, planspace, codespace, section_01, mock_dispatch,
+        capturing_pipeline_control,
     ):
         """Axis budget gate must NOT say 'Philosophy tension'."""
-        from unittest.mock import patch
-
         from intent.service.expansion import handle_user_gate
 
         artifacts = planspace / "artifacts"
@@ -2184,14 +2183,13 @@ class TestR57GateTypeSpecificMessaging:
                 signals / "intent-axis-budget-01-signal.json"),
         }
 
-        with patch(
-            "intent.engine.surface.pause_for_parent",
-            return_value="resume:accept",
-        ) as mock_pause:
-            handle_user_gate("01", planspace, "test-parent", delta_result)
+        capturing_pipeline_control._pause_return = "resume:accept"
+
+        handle_user_gate("01", planspace, "test-parent", delta_result)
 
         # Check the pause message does NOT say philosophy
-        pause_msg = mock_pause.call_args[0][2]
+        assert len(capturing_pipeline_control.pause_calls) >= 1
+        pause_msg = capturing_pipeline_control.pause_calls[0][2]
         assert "Philosophy" not in pause_msg, (
             "Axis budget gate must not mention 'Philosophy'")
         assert "budget" in pause_msg.lower(), (
@@ -2208,10 +2206,9 @@ class TestR57GateTypeSpecificMessaging:
 
     def test_philosophy_gate_says_philosophy(
         self, planspace, codespace, section_01, mock_dispatch,
+        capturing_pipeline_control,
     ):
         """Philosophy gate correctly says 'Philosophy tension'."""
-        from unittest.mock import patch
-
         from intent.service.expansion import handle_user_gate
 
         artifacts = planspace / "artifacts"
@@ -2226,13 +2223,12 @@ class TestR57GateTypeSpecificMessaging:
                 / "philosophy-decisions.md"),
         }
 
-        with patch(
-            "intent.engine.surface.pause_for_parent",
-            return_value="resume:accept",
-        ) as mock_pause:
-            handle_user_gate("01", planspace, "test-parent", delta_result)
+        capturing_pipeline_control._pause_return = "resume:accept"
 
-        pause_msg = mock_pause.call_args[0][2]
+        handle_user_gate("01", planspace, "test-parent", delta_result)
+
+        assert len(capturing_pipeline_control.pause_calls) >= 1
+        pause_msg = capturing_pipeline_control.pause_calls[0][2]
         assert "Philosophy" in pause_msg
 
 

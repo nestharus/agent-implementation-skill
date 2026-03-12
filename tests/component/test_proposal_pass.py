@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from dependency_injector import providers
 
+from containers import Services
 from src.proposal.engine import proposal_pass
 from src.proposal.engine.proposal_pass import ProposalPassExit, run_proposal_pass
 from orchestrator.types import ProposalPassResult, Section
@@ -18,14 +20,14 @@ def _planspace(tmp_path: Path) -> Path:
 def test_run_proposal_pass_reexplores_then_records_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    noop_pipeline_control,
+    capturing_communicator,
 ) -> None:
     planspace = _planspace(tmp_path)
     section_path = planspace / "artifacts" / "section-01.md"
     section_path.write_text("# Section 01\n", encoding="utf-8")
     section = Section(number="01", path=section_path, related_files=[])
-    messages: list[tuple[Path, str, str]] = []
 
-    monkeypatch.setattr(proposal_pass, "handle_pending_messages", lambda *args: False)
     monkeypatch.setattr(proposal_pass, "alignment_changed_pending", lambda *args: False)
     monkeypatch.setattr(
         proposal_pass,
@@ -55,13 +57,6 @@ def test_run_proposal_pass_reexplores_then_records_result(
             execution_ready=True,
         ),
     )
-    monkeypatch.setattr(
-        proposal_pass,
-        "mailbox_send",
-        lambda planspace_arg, parent, message: messages.append(
-            (planspace_arg, parent, message),
-        ),
-    )
     monkeypatch.setattr(proposal_pass.subprocess, "run", lambda *args, **kwargs: None)
 
     results = run_proposal_pass(
@@ -75,23 +70,21 @@ def test_run_proposal_pass_reexplores_then_records_result(
 
     assert results["01"].execution_ready is True
     assert section.related_files == ["src/app.py"]
-    assert messages == [(planspace, "parent", "proposal-done:01:ready")]
+    assert capturing_communicator.mailbox_calls == [
+        (planspace, "parent", "proposal-done:01:ready")
+    ]
 
 
 def test_run_proposal_pass_raises_on_abort(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capturing_pipeline_control,
+    capturing_communicator,
 ) -> None:
     planspace = _planspace(tmp_path)
     section = Section(number="01", path=planspace / "artifacts" / "section-01.md")
-    sent: list[str] = []
 
-    monkeypatch.setattr(proposal_pass, "handle_pending_messages", lambda *args: True)
-    monkeypatch.setattr(
-        proposal_pass,
-        "mailbox_send",
-        lambda _planspace, _parent, message: sent.append(message),
-    )
+    capturing_pipeline_control._pending_return = True
 
     with pytest.raises(ProposalPassExit):
         run_proposal_pass(
@@ -103,4 +96,4 @@ def test_run_proposal_pass_raises_on_abort(
             {"setup": "test-model"},
         )
 
-    assert sent == ["fail:aborted"]
+    assert capturing_communicator.messages == ["fail:aborted"]

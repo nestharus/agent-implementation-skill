@@ -20,7 +20,8 @@ from orchestrator.path_registry import PathRegistry
 from orchestrator.service.section_decisions import extract_section_summary
 from implementation.service.snapshot import compute_text_diff, snapshot_modified_files
 
-from signals.service.communication import AGENT_NAME, DB_SH, _log_artifact, log
+from containers import Services
+from signals.service.communication import AGENT_NAME, DB_SH, log
 
 if TYPE_CHECKING:
     from orchestrator.types import Section
@@ -49,7 +50,7 @@ def post_section_completion(
     )
 
     log(f"Section {sec_num}: snapshotted {len(modified_files)} files to {snapshot_dir}")
-    _log_artifact(planspace, f"snapshot:section-{sec_num}")
+    Services.communicator().log_artifact(planspace, f"snapshot:section-{sec_num}")
 
     section_summary = extract_section_summary(section.path)
     impacted_sections = analyze_impacts(
@@ -124,7 +125,7 @@ Full integration proposal: `{integration_proposal}`
 Snapshot directory: `{snapshot_dir}`
 """,
         )
-        _log_artifact(planspace, f"note:from-{sec_num}-to-{target_num}")
+        Services.communicator().log_artifact(planspace, f"note:from-{sec_num}-to-{target_num}")
         log(f"Section {sec_num}: left note for section {target_num} at {note_path}")
 
     baseline_hash_dir = paths.section_inputs_hashes_dir()

@@ -15,7 +15,7 @@ import pytest
 from dependency_injector import providers
 
 from _paths import DB_SH
-from containers import AgentDispatcher, PromptGuard, Services
+from containers import AgentDispatcher, Communicator, PipelineControlService, PromptGuard, Services
 
 
 class MockDispatcher(AgentDispatcher):
@@ -57,11 +57,15 @@ def override_dispatcher_and_guard(fake_dispatch_fn):
 
     Services.dispatcher.override(providers.Object(_Dispatcher()))
     Services.prompt_guard.override(providers.Object(_Guard()))
+    Services.pipeline_control.override(providers.Object(NoOpPipelineControl()))
+    Services.communicator.override(providers.Object(NoOpCommunicator()))
     try:
         yield fake_dispatch_fn
     finally:
         Services.dispatcher.reset_override()
         Services.prompt_guard.reset_override()
+        Services.pipeline_control.reset_override()
+        Services.communicator.reset_override()
 
 
 @pytest.fixture()
@@ -116,6 +120,129 @@ def section_01(planspace: Path) -> None:
         "# Section 01: Authentication\n\n"
         "Handle user login and session management.\n"
     )
+
+
+class NoOpCommunicator(Communicator):
+    """Test double that silently discards all communication calls."""
+
+    def mailbox_send(self, planspace, target, message):
+        pass
+
+    def log_artifact(self, planspace, artifact_name):
+        pass
+
+    def record_traceability(self, planspace, section_number, file_path, source, category=""):
+        pass
+
+
+class CapturingCommunicator(Communicator):
+    """Test double that captures all communication calls for assertions."""
+
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+        self.mailbox_calls: list[tuple] = []
+        self.artifact_events: list[str] = []
+        self.traceability_calls: list[tuple] = []
+
+    def mailbox_send(self, planspace, target, message):
+        self.messages.append(message)
+        self.mailbox_calls.append((planspace, target, message))
+
+    def log_artifact(self, planspace, artifact_name):
+        self.artifact_events.append(artifact_name)
+
+    def record_traceability(self, planspace, section_number, file_path, source, category=""):
+        self.traceability_calls.append((planspace, section_number, file_path, source, category))
+
+
+@pytest.fixture()
+def noop_communicator():
+    """Override Services.communicator with a no-op test double."""
+    comm = NoOpCommunicator()
+    Services.communicator.override(providers.Object(comm))
+    yield comm
+    Services.communicator.reset_override()
+
+
+@pytest.fixture()
+def capturing_communicator():
+    """Override Services.communicator with a capturing test double.
+
+    Provides ``messages``, ``mailbox_calls``, ``artifact_events``,
+    and ``traceability_calls`` lists for assertions.
+    """
+    comm = CapturingCommunicator()
+    Services.communicator.override(providers.Object(comm))
+    yield comm
+    Services.communicator.reset_override()
+
+
+class NoOpPipelineControl(PipelineControlService):
+    """Test double that provides safe defaults for pipeline control."""
+
+    def pause_for_parent(self, planspace, parent, message) -> str:
+        return "resume"
+
+    def poll_control_messages(self, planspace, parent, current_section=None) -> str | None:
+        return None
+
+    def handle_pending_messages(self, planspace, sections, affected) -> bool:
+        return False
+
+
+class CapturingPipelineControl(PipelineControlService):
+    """Test double that captures pipeline control calls for assertions."""
+
+    def __init__(self) -> None:
+        self.pause_calls: list[tuple] = []
+        self.poll_calls: list[tuple] = []
+        self.pending_calls: list[tuple] = []
+        self._pause_return: str = "resume"
+        self._poll_return: str | None = None
+        self._pending_return: bool = False
+        self._pause_side_effect = None
+        self._poll_side_effect = None
+        self._pending_side_effect = None
+
+    def pause_for_parent(self, planspace, parent, message) -> str:
+        self.pause_calls.append((planspace, parent, message))
+        if self._pause_side_effect:
+            return self._pause_side_effect(planspace, parent, message)
+        return self._pause_return
+
+    def poll_control_messages(self, planspace, parent, current_section=None) -> str | None:
+        self.poll_calls.append((planspace, parent, current_section))
+        if self._poll_side_effect:
+            return self._poll_side_effect(planspace, parent, current_section)
+        return self._poll_return
+
+    def handle_pending_messages(self, planspace, sections, affected) -> bool:
+        self.pending_calls.append((planspace, sections, affected))
+        if self._pending_side_effect:
+            return self._pending_side_effect(planspace, sections, affected)
+        return self._pending_return
+
+
+@pytest.fixture()
+def noop_pipeline_control():
+    """Override Services.pipeline_control with safe-default test double."""
+    ctrl = NoOpPipelineControl()
+    Services.pipeline_control.override(providers.Object(ctrl))
+    yield ctrl
+    Services.pipeline_control.reset_override()
+
+
+@pytest.fixture()
+def capturing_pipeline_control():
+    """Override Services.pipeline_control with a capturing test double.
+
+    Configure return values via ``_pause_return``, ``_poll_return``,
+    ``_pending_return``, or set ``_pause_side_effect`` etc. for custom behavior.
+    """
+    ctrl = CapturingPipelineControl()
+    Services.pipeline_control.override(providers.Object(ctrl))
+    yield ctrl
+    Services.pipeline_control.reset_override()
 
 
 @pytest.fixture()

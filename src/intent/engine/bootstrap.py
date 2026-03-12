@@ -11,13 +11,13 @@ from pathlib import Path
 
 from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
-from signals.service.communication import _record_traceability, log
+from signals.service.communication import log
 from intent.service.loop_bootstrap import (
     ensure_global_philosophy,
     generate_intent_pack,
 )
 from intent.service.triage import run_intent_triage
-from orchestrator.service.pipeline_control import pause_for_parent
+from containers import Services
 from signals.service.blockers import _update_blocker_rollup
 from intake.service.packet import build_section_governance_packet
 from orchestrator.types import Section
@@ -76,7 +76,7 @@ def _step_extract_todos(ctx: PipelineContext) -> str:
     if todo_entries:
         todos_path.write_text(todo_entries, encoding="utf-8")
         log(f"Section {ctx.section.number}: extracted TODOs from related files")
-        _record_traceability(
+        Services.communicator().record_traceability(
             ctx.planspace, ctx.section.number, artifact_name,
             "related files TODO extraction",
             "in-code microstrategies for alignment",
@@ -87,7 +87,7 @@ def _step_extract_todos(ctx: PipelineContext) -> str:
             f"Section {ctx.section.number}: removed stale TODO extraction "
             "(no TODOs remaining)",
         )
-        _record_traceability(
+        Services.communicator().record_traceability(
             ctx.planspace, ctx.section.number, artifact_name,
             "related files TODO extraction",
             "in-code microstrategies for alignment",
@@ -118,7 +118,7 @@ def _step_philosophy(ctx: PipelineContext) -> dict:
                 f"user input — {result['detail']}",
             )
             _update_blocker_rollup(ctx.planspace)
-            pause_for_parent(
+            Services.pipeline_control().pause_for_parent(
                 ctx.planspace, ctx.parent,
                 "pause:need_decision:global:philosophy bootstrap requires user input",
             )

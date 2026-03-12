@@ -8,7 +8,6 @@ from conftest import override_dispatcher_and_guard
 from src.proposal.engine.loop import run_proposal_loop
 from src.orchestrator.types import Section
 
-
 def _section(planspace: Path) -> Section:
     section = Section(
         number="01",
@@ -18,7 +17,6 @@ def _section(planspace: Path) -> Section:
     section.path.parent.mkdir(parents=True, exist_ok=True)
     section.path.write_text("# Section 01\n", encoding="utf-8")
     return section
-
 
 @pytest.fixture()
 def env(tmp_path: Path) -> tuple[Path, Path]:
@@ -34,7 +32,6 @@ def env(tmp_path: Path) -> tuple[Path, Path]:
     codespace.mkdir()
     return planspace, codespace
 
-
 def _install_common_patches(
     monkeypatch: pytest.MonkeyPatch,
     planspace: Path,
@@ -46,10 +43,6 @@ def _install_common_patches(
             "intent_mode": "full",
             "budgets": {"intent_expansion_max": 2},
         },
-    )
-    monkeypatch.setattr(
-        "src.proposal.engine.loop.handle_pending_messages",
-        lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
         "src.proposal.engine.loop.alignment_changed_pending",
@@ -72,10 +65,6 @@ def _install_common_patches(
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.loop.mailbox_send",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "src.proposal.engine.loop.ingest_and_submit",
         lambda *_args, **_kwargs: None,
     )
@@ -96,10 +85,6 @@ def _install_common_patches(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "proposal.service.intent_expansion.mailbox_send",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "proposal.service.intent_expansion.alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
@@ -107,11 +92,6 @@ def _install_common_patches(
         "proposal.service.intent_expansion.persist_decision",
         lambda *_args, **_kwargs: None,
     )
-    monkeypatch.setattr(
-        "proposal.service.intent_expansion.pause_for_parent",
-        lambda *_args, **_kwargs: "resume",
-    )
-
     def _dispatch(*args, **kwargs):
         if kwargs.get("agent_file") == "integration-proposer.md":
             proposal_path.write_text("proposal", encoding="utf-8")
@@ -120,11 +100,10 @@ def _install_common_patches(
 
     return _dispatch
 
-
 def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator) -> None:
     planspace, codespace = env
     section = _section(planspace)
     proposal_path = (
@@ -185,11 +164,10 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
     assert result == "missing constraint"
     assert expansion_calls == ["01"]
 
-
 def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator) -> None:
     planspace, codespace = env
     section = _section(planspace)
     proposal_path = (
@@ -250,11 +228,10 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
     assert result == "proposal drift"
     assert expansion_calls == []
 
-
 def test_misaligned_definition_gap_expansion_respects_budget(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator) -> None:
     planspace, codespace = env
     section = _section(planspace)
     proposal_path = (

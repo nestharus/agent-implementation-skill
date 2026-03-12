@@ -10,7 +10,7 @@ from signals.repository.artifact_io import read_json, rename_malformed, write_js
 from coordination.repository.notes import read_incoming_notes as load_incoming_notes
 from orchestrator.path_registry import PathRegistry
 from containers import Services
-from signals.service.communication import _log_artifact, log
+from signals.service.communication import log
 from orchestrator.types import Section, SectionResult
 
 
@@ -275,7 +275,7 @@ def _detect_recurrence_patterns(
     coord_dir.mkdir(parents=True, exist_ok=True)
     recurrence_path = coord_dir / "recurrence.json"
     write_json(recurrence_path, report)
-    _log_artifact(planspace, "coordination:recurrence")
+    Services.communicator().log_artifact(planspace, "coordination:recurrence")
 
     log(
         f"  coordinator: recurrence detected — "

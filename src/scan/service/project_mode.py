@@ -8,7 +8,7 @@ from pathlib import Path
 from signals.repository.artifact_io import read_json, write_json
 from orchestrator.path_registry import PathRegistry
 from signals.service.communication import log
-from orchestrator.service.pipeline_control import pause_for_parent
+from containers import Services
 
 
 @dataclass(frozen=True)
@@ -78,7 +78,7 @@ def resolve_project_mode(planspace: Path, parent: str) -> tuple[str, list[str]]:
     if pm.reason == "default":
         if mode_json_path.exists():
             log("No text fallback — pausing for parent (fail-closed)")
-            pause_for_parent(
+            Services.pipeline_control().pause_for_parent(
                 planspace,
                 parent,
                 "pause:needs_parent:project-mode-malformed — "
@@ -87,7 +87,7 @@ def resolve_project_mode(planspace: Path, parent: str) -> tuple[str, list[str]]:
         else:
             log("No project-mode signal found — pausing for parent "
                 "(fail-closed)")
-            pause_for_parent(
+            Services.pipeline_control().pause_for_parent(
                 planspace,
                 parent,
                 "pause:needs_parent:project-mode-missing — "

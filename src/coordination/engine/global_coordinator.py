@@ -34,7 +34,7 @@ from signals.service.communication import (
 )
 from coordination.service.cross_section import read_incoming_notes
 from dispatch.helpers.utils import check_agent_signals
-from orchestrator.service.pipeline_control import coordination_recheck_hash, poll_control_messages
+from orchestrator.service.pipeline_control import coordination_recheck_hash
 from orchestrator.types import Section, SectionResult
 from taskrouter import agent_for
 
@@ -116,7 +116,7 @@ def run_global_coordination(
     # -----------------------------------------------------------------
     # Step 2: Dispatch coordination-planner agent to group problems
     # -----------------------------------------------------------------
-    ctrl = poll_control_messages(planspace, parent)
+    ctrl = Services.pipeline_control().poll_control_messages(planspace, parent)
     if ctrl == "alignment_changed":
         return False
 
@@ -248,7 +248,7 @@ def run_global_coordination(
         prev_hash_file.write_text(current_hash, encoding="utf-8")
 
         # Poll for control messages before each re-check
-        ctrl = poll_control_messages(planspace, parent, sec_num)
+        ctrl = Services.pipeline_control().poll_control_messages(planspace, parent, sec_num)
         if ctrl == "alignment_changed":
             log("  coordinator: alignment changed — aborting re-checks")
             return False

@@ -9,7 +9,7 @@ from containers import Services
 from intent.service.triage import load_triage_result
 from orchestrator.path_registry import PathRegistry
 from staleness.service.section_alignment import _extract_problems
-from signals.service.communication import mailbox_send, log
+from signals.service.communication import log
 from coordination.service.cross_section import persist_decision
 from dispatch.helpers.utils import check_agent_signals, summarize_output, write_model_choice_signal
 from intent.service.surfaces import (
@@ -18,10 +18,6 @@ from intent.service.surfaces import (
     merge_surfaces_into_registry,
     normalize_surface_ids,
     save_surface_registry,
-)
-from orchestrator.service.pipeline_control import (
-    handle_pending_messages,
-    pause_for_parent,
 )
 from dispatch.prompt.writers import (
     write_integration_alignment_prompt,
@@ -117,8 +113,8 @@ def _check_early_abort(
 
     Returns True if the loop should abort (caller returns None).
     """
-    if handle_pending_messages(planspace, [], set()):
-        mailbox_send(planspace, parent, f"fail:{section_number}:aborted")
+    if Services.pipeline_control().handle_pending_messages(planspace, [], set()):
+        Services.communicator().mailbox_send(planspace, parent, f"fail:{section_number}:aborted")
         return True
 
     if alignment_changed_pending(planspace):
@@ -166,12 +162,12 @@ def _check_budget_exceeded(
         / f"section-{section_number}-proposal-budget-exhausted.json"
     )
     write_json(budget_signal_path, budget_signal)
-    mailbox_send(
+    Services.communicator().mailbox_send(
         planspace,
         parent,
         f"budget-exhausted:{section_number}:proposal:{proposal_attempt - 1}",
     )
-    response = pause_for_parent(
+    response = Services.pipeline_control().pause_for_parent(
         planspace,
         parent,
         f"pause:budget_exhausted:{section_number}:proposal loop exceeded "
@@ -311,7 +307,7 @@ def _dispatch_proposal(
     )
     if intg_result == "ALIGNMENT_CHANGED_PENDING":
         return None
-    mailbox_send(
+    Services.communicator().mailbox_send(
         planspace,
         parent,
         f"summary:proposal:{section_number}:{summarize_output(intg_result)}",
@@ -322,7 +318,7 @@ def _dispatch_proposal(
             f"Section {section_number}: integration proposal agent "
             f"timed out"
         )
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace,
             parent,
             f"fail:{section_number}:integration proposal agent timed out",
@@ -370,7 +366,7 @@ def _handle_proposal_signals(
 
     if signal in ("needs_parent", "out_of_scope"):
         _append_open_problem(planspace, section_number, detail, signal)
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace,
             parent,
             f"open-problem:{section_number}:{signal}:{detail[:200]}",
@@ -394,7 +390,7 @@ def _handle_proposal_signals(
             scope_delta,
         )
     _update_blocker_rollup(planspace)
-    response = pause_for_parent(
+    response = Services.pipeline_control().pause_for_parent(
         planspace,
         parent,
         f"pause:{signal}:{section_number}:{detail}",
@@ -485,7 +481,7 @@ def _handle_alignment_signals(
     if signal != "underspec":
         return None
 
-    response = pause_for_parent(
+    response = Services.pipeline_control().pause_for_parent(
         planspace,
         parent,
         f"pause:underspec:{section_number}:{detail}",
@@ -557,7 +553,7 @@ def _handle_aligned_surfaces(
                 )
 
     log(f"Section {section_number}: integration proposal ALIGNED")
-    mailbox_send(
+    Services.communicator().mailbox_send(
         planspace,
         parent,
         f"summary:proposal-align:{section_number}:ALIGNED",
@@ -702,7 +698,7 @@ def run_proposal_loop(
                 f"Section {section.number}: ERROR — integration proposal "
                 f"not written"
             )
-            mailbox_send(
+            Services.communicator().mailbox_send(
                 planspace,
                 parent,
                 f"fail:{section.number}:integration proposal not written",
@@ -771,7 +767,7 @@ def run_proposal_loop(
             f"Section {section.number}: integration proposal problems "
             f"(attempt {proposal_attempt}): {short}"
         )
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace,
             parent,
             f"summary:proposal-align:{section.number}:"

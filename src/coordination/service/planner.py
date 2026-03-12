@@ -9,7 +9,7 @@ from typing import Any
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from containers import Services
-from signals.service.communication import _log_artifact, log
+from signals.service.communication import log
 
 
 def _parse_coordination_plan(
@@ -219,7 +219,7 @@ then run group 1.
 """
     if not Services.prompt_guard().write_validated(plan_prompt_text, prompt_path):
         return None
-    _log_artifact(planspace, "prompt:coordination-plan")
+    Services.communicator().log_artifact(planspace, "prompt:coordination-plan")
     return prompt_path
 
 

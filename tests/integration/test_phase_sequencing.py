@@ -221,25 +221,25 @@ class TestProposalPassExitSignal:
         planspace: Path,
         codespace: Path,
         mock_dispatch: MagicMock,
+        capturing_pipeline_control,
+        noop_communicator,
     ) -> None:
         """When handle_pending_messages returns True (abort), raise ProposalPassExit."""
         section = _make_section(planspace, codespace, "01")
         sections_by_num = {"01": section}
         all_sections = [section]
 
-        with patch(
-            "proposal.engine.proposal_pass.handle_pending_messages",
-            return_value=True,
-        ):
-            with pytest.raises(ProposalPassExit):
-                run_proposal_pass(
-                    all_sections,
-                    sections_by_num,
-                    planspace,
-                    codespace,
-                    "parent",
-                    _default_policy(),
-                )
+        capturing_pipeline_control._pending_return = True
+
+        with pytest.raises(ProposalPassExit):
+            run_proposal_pass(
+                all_sections,
+                sections_by_num,
+                planspace,
+                codespace,
+                "parent",
+                _default_policy(),
+            )
 
 
 # ---------------------------------------------------------------------------

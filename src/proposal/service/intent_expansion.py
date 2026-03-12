@@ -11,10 +11,10 @@ from pathlib import Path
 from staleness.service.change_tracker import check_pending as alignment_changed_pending
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
-from signals.service.communication import log, mailbox_send
+from signals.service.communication import log
 from coordination.service.cross_section import persist_decision
+from containers import Services
 from intent.service.expansion import handle_user_gate, run_expansion_cycle
-from orchestrator.service.pipeline_control import pause_for_parent
 
 
 def run_aligned_expansion(
@@ -53,7 +53,7 @@ def run_aligned_expansion(
             paths.intent_stalled_signal(section_number),
             stalled_signal,
         )
-        response = pause_for_parent(
+        response = Services.pipeline_control().pause_for_parent(
             planspace,
             parent,
             f"pause:intent-stalled:{section_number}:"
@@ -67,7 +67,7 @@ def run_aligned_expansion(
         f"Section {section_number}: surfaces found — "
         f"running expansion cycle"
     )
-    mailbox_send(
+    Services.communicator().mailbox_send(
         planspace,
         parent,
         f"summary:intent-expand:{section_number}:cycle-{expansion_count + 1}",

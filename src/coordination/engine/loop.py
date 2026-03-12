@@ -10,14 +10,14 @@ from coordination.service.problem_resolver import _collect_outstanding_problems
 from orchestrator.path_registry import PathRegistry
 from orchestrator.engine.strategic_state import build_strategic_state
 from staleness.service.change_tracker import make_alignment_checker
-from signals.service.communication import AGENT_NAME, DB_SH, log, mailbox_send
+from containers import Services
+from signals.service.communication import AGENT_NAME, DB_SH, log
 from coordination.engine.global_coordinator import (
     MAX_COORDINATION_ROUNDS,
     MIN_COORDINATION_ROUNDS,
     run_global_coordination,
 )
 from coordination.service.stall_detector import StallDetector
-from orchestrator.service.pipeline_control import poll_control_messages
 from orchestrator.types import Section, SectionResult
 
 
@@ -32,7 +32,7 @@ class AssessmentResult:
 
 def _check_alignment(planspace: Path, parent: str) -> bool:
     """Poll for alignment changes.  Returns True if changed."""
-    ctrl = poll_control_messages(planspace, parent)
+    ctrl = Services.pipeline_control().poll_control_messages(planspace, parent)
     if ctrl == "alignment_changed":
         log("Alignment changed — restarting from Phase 1")
         return True
@@ -69,7 +69,7 @@ def _assess_initial_state(
                 return AssessmentResult(misaligned=misaligned, outstanding=outstanding, early_exit_reason="restart_phase1")
             log("=== All sections ALIGNED after initial pass ===")
             build_strategic_state(decisions_dir, section_results, planspace)
-            mailbox_send(planspace, parent, "complete")
+            Services.communicator().mailbox_send(planspace, parent, "complete")
             return AssessmentResult(misaligned=misaligned, outstanding=outstanding, early_exit_reason="complete")
 
     return AssessmentResult(misaligned=misaligned, outstanding=outstanding)
@@ -97,7 +97,7 @@ def _report_result(
         for result in remaining:
             summary = (result.problems or "unknown")[:120]
             log(f"  - Section {result.section_number}: {summary}")
-            mailbox_send(
+            Services.communicator().mailbox_send(
                 planspace, parent,
                 f"fail:{result.section_number}:coordination_exhausted:{summary}",
             )
@@ -126,7 +126,7 @@ def _report_result(
                 for p in outstanding
             ],
         )
-        mailbox_send(
+        Services.communicator().mailbox_send(
             planspace, parent,
             f"fail:coordination_exhausted:outstanding:{len(outstanding)}",
         )
@@ -177,7 +177,7 @@ def run_coordination_loop(
             return "restart_phase1"
 
         log(f"=== Coordination round {round_num} ===")
-        mailbox_send(planspace, parent, f"status:coordination:round-{round_num}")
+        Services.communicator().mailbox_send(planspace, parent, f"status:coordination:round-{round_num}")
 
         all_done = run_global_coordination(
             all_sections, section_results, sections_by_num,
@@ -193,7 +193,7 @@ def run_coordination_loop(
                 return "restart_phase1"
             log(f"=== All sections ALIGNED after coordination round {round_num} ===")
             build_strategic_state(decisions_dir, section_results, planspace)
-            mailbox_send(planspace, parent, "complete")
+            Services.communicator().mailbox_send(planspace, parent, "complete")
             return "complete"
 
         # Measure progress

@@ -9,7 +9,7 @@ from staleness.helpers.hashing import content_hash, file_hash
 from intent.service import philosophy as _philosophy_bootstrap
 from orchestrator.path_registry import PathRegistry
 
-from signals.service.communication import _log_artifact, log
+from signals.service.communication import log
 from orchestrator.types import Section
 from taskrouter import agent_for
 
@@ -280,7 +280,7 @@ Write an empty surface registry to: `{intent_sec / "surface-registry.json"}`
 """
     if not Services.prompt_guard().write_validated(pack_prompt_text, prompt_path):
         return None
-    _log_artifact(planspace, f"prompt:intent-pack-{sec}")
+    Services.communicator().log_artifact(planspace, f"prompt:intent-pack-{sec}")
 
     result = Services.dispatcher().dispatch(
         Services.policies().resolve(policy,"intent_pack"),

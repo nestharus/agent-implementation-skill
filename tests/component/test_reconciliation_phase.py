@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from dependency_injector import providers
 
+from conftest import CapturingCommunicator, CapturingPipelineControl
+from containers import Services
 from src.reconciliation.engine import phase
 from src.reconciliation.engine.phase import (
     ReconciliationPhaseExit,
@@ -22,6 +25,8 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
+    noop_pipeline_control,
+    capturing_communicator,
 ) -> None:
     section = _make_section(planspace, "01")
     other = _make_section(planspace, "02")
@@ -29,7 +34,6 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
         "01": ProposalPassResult(section_number="01", execution_ready=True),
         "02": ProposalPassResult(section_number="02", execution_ready=False),
     }
-    messages: list[str] = []
 
     monkeypatch.setattr(
         phase,
@@ -40,11 +44,6 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
             "substrate_needed": False,
             "sections_affected": ["01"],
         },
-    )
-    monkeypatch.setattr(
-        phase,
-        "handle_pending_messages",
-        lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
         phase,
@@ -64,11 +63,6 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
             execution_ready=True,
         ),
     )
-    monkeypatch.setattr(
-        phase,
-        "mailbox_send",
-        lambda _planspace, _parent, message: messages.append(message),
-    )
 
     result = run_reconciliation_phase(
         proposal_results,
@@ -83,13 +77,15 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
     assert result.new_section_numbers == ["01"]
     assert result.removed_section_numbers == ["02"]
     assert result.alignment_changed is False
-    assert messages == ["reproposal-done:01:ready"]
+    assert capturing_communicator.messages == ["reproposal-done:01:ready"]
 
 
 def test_run_reconciliation_phase_restarts_on_alignment_change(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
+    noop_pipeline_control,
+    noop_communicator,
 ) -> None:
     section = _make_section(planspace, "01")
     proposal_results = {
@@ -105,11 +101,6 @@ def test_run_reconciliation_phase_restarts_on_alignment_change(
             "substrate_needed": False,
             "sections_affected": ["01"],
         },
-    )
-    monkeypatch.setattr(
-        phase,
-        "handle_pending_messages",
-        lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
         phase,
@@ -141,12 +132,15 @@ def test_run_reconciliation_phase_exits_when_parent_aborts(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capturing_pipeline_control,
+    capturing_communicator,
 ) -> None:
     section = _make_section(planspace, "01")
     proposal_results = {
         "01": ProposalPassResult(section_number="01", execution_ready=True),
     }
-    messages: list[str] = []
+
+    capturing_pipeline_control._pending_return = True
 
     monkeypatch.setattr(
         phase,
@@ -157,16 +151,6 @@ def test_run_reconciliation_phase_exits_when_parent_aborts(
             "substrate_needed": False,
             "sections_affected": ["01"],
         },
-    )
-    monkeypatch.setattr(
-        phase,
-        "handle_pending_messages",
-        lambda *_args, **_kwargs: True,
-    )
-    monkeypatch.setattr(
-        phase,
-        "mailbox_send",
-        lambda _planspace, _parent, message: messages.append(message),
     )
 
     with pytest.raises(ReconciliationPhaseExit):
@@ -180,4 +164,4 @@ def test_run_reconciliation_phase_exits_when_parent_aborts(
             {},
         )
 
-    assert messages == ["fail:aborted"]
+    assert capturing_communicator.messages == ["fail:aborted"]

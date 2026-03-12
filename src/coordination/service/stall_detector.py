@@ -10,7 +10,7 @@ from pathlib import Path
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from signals.service.communication import log, mailbox_send
+from signals.service.communication import log
 
 
 class StallDetector:
@@ -79,7 +79,7 @@ class StallDetector:
             Services.policies().resolve(self._policy, "escalation_model"),
             encoding="utf-8",
         )
-        mailbox_send(
+        Services.communicator().mailbox_send(
             self._planspace,
             self._parent,
             f"escalation:coordination:round-{round_num}:"

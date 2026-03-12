@@ -89,16 +89,10 @@ def test_run_expansion_cycle_returns_no_work_when_no_surfaces(
 
 
 def test_handle_user_gate_writes_philosophy_specific_blocker(
-    monkeypatch,
     tmp_path: Path,
+    capturing_pipeline_control,
 ) -> None:
-    pause_calls: list[str] = []
-
-    def _pause(planspace: Path, parent: str, message: str) -> str:
-        pause_calls.append(message)
-        return "ack"
-
-    monkeypatch.setattr(surface, "pause_for_parent", _pause)
+    capturing_pipeline_control._pause_return = "ack"
 
     response = surface.handle_user_gate(
         "01",
@@ -122,6 +116,9 @@ def test_handle_user_gate_writes_philosophy_specific_blocker(
     assert response == "ack"
     assert blocker["state"] == "NEED_DECISION"
     assert "Philosophy tension" in blocker["detail"]
-    assert pause_calls == [
+    assert len(capturing_pipeline_control.pause_calls) == 1
+    assert capturing_pipeline_control.pause_calls[0] == (
+        tmp_path,
+        "parent",
         "pause:need_decision:01:Philosophy tension requires user direction",
-    ]
+    )

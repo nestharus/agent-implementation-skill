@@ -9,7 +9,6 @@ from dispatch.prompt.template import render_template
 from signals.service.communication import log
 from containers import Services
 from proposal.helpers.verdict_parsers import parse_alignment_verdict as _parse_alignment_verdict
-from orchestrator.service.pipeline_control import poll_control_messages
 from orchestrator.types import Section
 from taskrouter import agent_for
 
@@ -148,8 +147,8 @@ def _run_alignment_check_with_retries(
 
     paths = PathRegistry(planspace)
     for attempt in range(1, max_retries + 2):  # 1 initial + max_retries
-        ctrl = poll_control_messages(planspace, parent,
-                                     current_section=sec_num)
+        ctrl = Services.pipeline_control().poll_control_messages(
+            planspace, parent, current_section=sec_num)
         if ctrl == "alignment_changed":
             return "ALIGNMENT_CHANGED_PENDING"
         align_prompt = write_impl_alignment_prompt(

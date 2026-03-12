@@ -30,12 +30,10 @@ from risk.types import (
 )
 from orchestrator.types import ProposalPassResult, Section
 
-
 def _make_section(planspace: Path, number: str) -> Section:
     path = planspace / "artifacts" / "sections" / f"section-{number}.md"
     path.write_text(f"# Section {number}\n", encoding="utf-8")
     return Section(number=number, path=path, related_files=["src/app.py"])
-
 
 def _plan(
     *,
@@ -55,7 +53,6 @@ def _plan(
         reopen_steps=reopen_steps or [],
         expected_reassessment_inputs=["modified-file-manifest", "alignment-check-result"],
     )
-
 
 def _write_risk_context(planspace: Path, sec_num: str) -> None:
     risk_dir = planspace / "artifacts" / "risk"
@@ -149,7 +146,6 @@ def _write_risk_context(planspace: Path, sec_num: str) -> None:
         assessment,
     )
 
-
 def _patch_implementation_pass_basics(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -159,10 +155,6 @@ def _patch_implementation_pass_basics(
     append_history_fn: Callable[..., None] | None = None,
     alignment_checks: list[bool] | None = None,
 ) -> None:
-    monkeypatch.setattr(
-        "implementation.engine.implementation_pass.handle_pending_messages",
-        lambda *args: False,
-    )
     monkeypatch.setattr(
         "implementation.engine.implementation_pass.alignment_changed_pending",
         lambda *args: False,
@@ -201,10 +193,6 @@ def _patch_implementation_pass_basics(
         lambda *args: "hash-123",
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass.mailbox_send",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "implementation.engine.implementation_pass.subprocess.run",
         lambda *args, **kwargs: None,
     )
@@ -219,17 +207,11 @@ def _patch_implementation_pass_basics(
             append_history_fn,
         )
 
-
 def test_run_implementation_pass_records_results_and_hashes(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    capturing_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
-    messages: list[str] = []
 
-    monkeypatch.setattr(
-        "implementation.engine.implementation_pass.handle_pending_messages",
-        lambda *args: False,
-    )
     monkeypatch.setattr(
         "implementation.engine.implementation_pass.alignment_changed_pending",
         lambda *args: False,
@@ -255,10 +237,6 @@ def test_run_implementation_pass_records_results_and_hashes(
         lambda *args: "hash-123",
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_pass.mailbox_send",
-        lambda _planspace, _parent, message: messages.append(message),
-    )
-    monkeypatch.setattr(
         "implementation.engine.implementation_pass.subprocess.run",
         lambda *args, **kwargs: None,
     )
@@ -272,7 +250,7 @@ def test_run_implementation_pass_records_results_and_hashes(
     )
 
     assert results["01"].modified_files == ["src/app.py"]
-    assert messages == ["done:01:1 files modified"]
+    assert capturing_communicator.messages == ["done:01:1 files modified"]
     assert (planspace / "artifacts" / "section-inputs-hashes" / "01.hash").read_text(
         encoding="utf-8",
     ) == "hash-123"
@@ -280,10 +258,9 @@ def test_run_implementation_pass_records_results_and_hashes(
         encoding="utf-8",
     ) == "hash-123"
 
-
 def test_run_implementation_pass_writes_accepted_steps_artifact(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
     plan = _plan(
         accepted_frontier=["explore-01", "edit-02"],
@@ -305,15 +282,12 @@ def test_run_implementation_pass_writes_accepted_steps_artifact(
             ),
         ],
     )
-
-    monkeypatch.setattr("implementation.engine.implementation_pass.handle_pending_messages", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass.alignment_changed_pending", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
     monkeypatch.setattr("implementation.engine.implementation_pass._run_risk_review", lambda *_args, **_kwargs: plan)
     monkeypatch.setattr("implementation.engine.implementation_pass.run_section", lambda *args, **kwargs: ["src/app.py"])
     monkeypatch.setattr("implementation.engine.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
-    monkeypatch.setattr("implementation.engine.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_pass.append_risk_history", lambda *args, **kwargs: None)
 
@@ -357,10 +331,9 @@ def test_run_implementation_pass_writes_accepted_steps_artifact(
         },
     ]
 
-
 def test_run_implementation_pass_writes_deferred_steps_artifact(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
     plan = _plan(
         accepted_frontier=["edit-02"],
@@ -381,15 +354,12 @@ def test_run_implementation_pass_writes_deferred_steps_artifact(
             ),
         ],
     )
-
-    monkeypatch.setattr("implementation.engine.implementation_pass.handle_pending_messages", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass.alignment_changed_pending", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
     monkeypatch.setattr("implementation.engine.implementation_pass._run_risk_review", lambda *_args, **_kwargs: plan)
     monkeypatch.setattr("implementation.engine.implementation_pass.run_section", lambda *args, **kwargs: ["src/app.py"])
     monkeypatch.setattr("implementation.engine.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
-    monkeypatch.setattr("implementation.engine.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_pass.append_risk_history", lambda *args, **kwargs: None)
 
@@ -441,10 +411,9 @@ def test_run_implementation_pass_writes_deferred_steps_artifact(
         },
     ]
 
-
 def test_run_implementation_pass_writes_reopen_blocker_and_skips(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
     run_calls: list[str] = []
     plan = _plan(
@@ -460,8 +429,6 @@ def test_run_implementation_pass_writes_reopen_blocker_and_skips(
             ),
         ],
     )
-
-    monkeypatch.setattr("implementation.engine.implementation_pass.handle_pending_messages", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass.alignment_changed_pending", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
@@ -470,7 +437,6 @@ def test_run_implementation_pass_writes_reopen_blocker_and_skips(
         "implementation.engine.implementation_pass.run_section",
         lambda *args, **kwargs: run_calls.append("run") or ["src/app.py"],
     )
-    monkeypatch.setattr("implementation.engine.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
 
     results = run_implementation_pass(
@@ -510,14 +476,11 @@ def test_run_implementation_pass_writes_reopen_blocker_and_skips(
     assert results == {}
     assert run_calls == []
 
-
 def test_run_implementation_pass_fail_closed_on_roal_failure(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
     run_calls: list[str] = []
-
-    monkeypatch.setattr("implementation.engine.implementation_pass.handle_pending_messages", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass.alignment_changed_pending", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
@@ -529,7 +492,6 @@ def test_run_implementation_pass_fail_closed_on_roal_failure(
         "implementation.engine.implementation_pass.run_section",
         lambda *args, **kwargs: run_calls.append("run") or ["src/app.py"],
     )
-    monkeypatch.setattr("implementation.engine.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
 
     results = run_implementation_pass(
@@ -543,20 +505,16 @@ def test_run_implementation_pass_fail_closed_on_roal_failure(
     assert results == {}
     assert run_calls == []
 
-
 def test_run_implementation_pass_skip_mode_proceeds_without_risk_artifacts(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
-
-    monkeypatch.setattr("implementation.engine.implementation_pass.handle_pending_messages", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass.alignment_changed_pending", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass._check_and_clear_alignment_changed", lambda *args: False)
     monkeypatch.setattr("implementation.engine.implementation_pass.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
     monkeypatch.setattr("implementation.engine.implementation_pass._run_risk_review", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_pass.run_section", lambda *args, **kwargs: ["src/app.py"])
     monkeypatch.setattr("implementation.engine.implementation_pass._section_inputs_hash", lambda *args: "hash-123")
-    monkeypatch.setattr("implementation.engine.implementation_pass.mailbox_send", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_pass.subprocess.run", lambda *args, **kwargs: None)
 
     results = run_implementation_pass(
@@ -571,16 +529,10 @@ def test_run_implementation_pass_skip_mode_proceeds_without_risk_artifacts(
     assert read_roal_input_index(planspace, "01") == []
     assert not (planspace / "artifacts" / "signals" / "section-01-blocker.json").exists()
 
-
 def test_run_implementation_pass_restarts_on_alignment_change(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
-
-    monkeypatch.setattr(
-        "implementation.engine.implementation_pass.handle_pending_messages",
-        lambda *args: False,
-    )
     monkeypatch.setattr(
         "implementation.engine.implementation_pass.alignment_changed_pending",
         lambda *args: True,
@@ -598,7 +550,6 @@ def test_run_implementation_pass_restarts_on_alignment_change(
             codespace,
             "parent",
         )
-
 
 def testappend_risk_history_records_enriched_outcomes(planspace: Path) -> None:
     _write_risk_context(planspace, "01")
@@ -654,10 +605,9 @@ def testappend_risk_history_records_enriched_outcomes(planspace: Path) -> None:
         "coord-03": "reopened",
     }
 
-
 def test_run_implementation_pass_dispatches_reassessed_frontier_slice(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
     initial_plan = _plan(
         accepted_frontier=["edit-01"],
@@ -749,10 +699,9 @@ def test_run_implementation_pass_dispatches_reassessed_frontier_slice(
         },
     ]
 
-
 def test_run_implementation_pass_bounds_frontier_iterations(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
     initial_plan = _plan(
         accepted_frontier=["edit-01"],
@@ -855,10 +804,9 @@ def test_run_implementation_pass_bounds_frontier_iterations(
         "src/step-4.py",
     ]
 
-
 def test_run_implementation_pass_stops_when_reassessment_accepts_nothing(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
     initial_plan = _plan(
         accepted_frontier=["edit-01"],
@@ -902,10 +850,9 @@ def test_run_implementation_pass_stops_when_reassessment_accepts_nothing(
     assert results["01"].aligned is False
     assert results["01"].problems == "ROAL deferred steps remain: verify-02"
 
-
 def test_run_implementation_pass_stops_on_reopen_outcome(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
     initial_plan = _plan(
         accepted_frontier=["edit-01"],
@@ -968,10 +915,9 @@ def test_run_implementation_pass_stops_on_reopen_outcome(
         "needs": "Resolve reopened ROAL steps before continuing local execution",
     }
 
-
 def test_run_implementation_pass_marks_frontier_failure_in_section_result(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
     initial_plan = _plan(
         accepted_frontier=["edit-01"],
@@ -1022,10 +968,9 @@ def test_run_implementation_pass_marks_frontier_failure_in_section_result(
     assert results["01"].problems == "deferred frontier execution failed"
     assert results["01"].modified_files == ["src/app.py"]
 
-
 def test_run_implementation_pass_restarts_on_alignment_change_during_frontier_execution(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
     initial_plan = _plan(
         accepted_frontier=["edit-01"],
@@ -1069,19 +1014,11 @@ def test_run_implementation_pass_restarts_on_alignment_change_during_frontier_ex
     assert run_calls == [["src/step-1.py"], ["src/step-2.py"]]
 
 def test_run_implementation_pass_exits_when_parent_aborts(
-    planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    planspace: Path, codespace: Path,
+    capturing_communicator, capturing_pipeline_control) -> None:
     section = _make_section(planspace, "01")
-    messages: list[str] = []
 
-    monkeypatch.setattr(
-        "implementation.engine.implementation_pass.handle_pending_messages",
-        lambda *args: True,
-    )
-    monkeypatch.setattr(
-        "implementation.engine.implementation_pass.mailbox_send",
-        lambda _planspace, _parent, message: messages.append(message),
-    )
+    capturing_pipeline_control._pending_return = True
 
     with pytest.raises(ImplementationPassExit):
         run_implementation_pass(
@@ -1092,21 +1029,16 @@ def test_run_implementation_pass_exits_when_parent_aborts(
             "parent",
         )
 
-    assert messages == ["fail:aborted"]
-
+    assert capturing_communicator.messages == ["fail:aborted"]
 
 def test_run_implementation_pass_invokes_roal_when_section_is_ready(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
     risk_plans: list[tuple[str, str]] = []
 
-    monkeypatch.setattr(
-        "implementation.engine.implementation_pass.handle_pending_messages",
-        lambda *args: False,
-    )
     monkeypatch.setattr(
         "implementation.engine.implementation_pass.alignment_changed_pending",
         lambda *args: False,
@@ -1132,10 +1064,6 @@ def test_run_implementation_pass_invokes_roal_when_section_is_ready(
     monkeypatch.setattr(
         "implementation.engine.implementation_pass._section_inputs_hash",
         lambda *args: "hash-123",
-    )
-    monkeypatch.setattr(
-        "implementation.engine.implementation_pass.mailbox_send",
-        lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         "implementation.engine.implementation_pass.subprocess.run",

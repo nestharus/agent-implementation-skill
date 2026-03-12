@@ -9,8 +9,8 @@ from staleness.service.change_tracker import (
     check_pending as alignment_changed_pending,
     make_alignment_checker,
 )
-from signals.service.communication import AGENT_NAME, DB_SH, log, mailbox_send
-from orchestrator.service.pipeline_control import handle_pending_messages
+from containers import Services
+from signals.service.communication import AGENT_NAME, DB_SH, log
 from reconciliation.engine.loop import run_reconciliation
 from implementation.engine.runner import run_section
 from orchestrator.types import ProposalPassResult, Section
@@ -105,9 +105,9 @@ def run_reconciliation_phase(
         )
 
         for sec_num in reproposal_sections:
-            if handle_pending_messages(planspace, [], set()):
+            if Services.pipeline_control().handle_pending_messages(planspace, [], set()):
                 log("Aborted by parent during re-proposal pass")
-                mailbox_send(planspace, parent, "fail:aborted")
+                Services.communicator().mailbox_send(planspace, parent, "fail:aborted")
                 raise ReconciliationPhaseExit
 
             if alignment_changed_pending(planspace):
@@ -145,7 +145,7 @@ def run_reconciliation_phase(
                     else f"still blocked ({len(reproposal_result.blockers)} blockers)"
                 )
                 log(f"Section {sec_num}: re-proposal complete — {status}")
-                mailbox_send(planspace, parent, f"reproposal-done:{sec_num}:{status}")
+                Services.communicator().mailbox_send(planspace, parent, f"reproposal-done:{sec_num}:{status}")
 
     if reproposal_sections:
         ready_sections = sorted(

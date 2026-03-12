@@ -96,7 +96,7 @@ def test_augment_risk_hints_defaults_fail_closed_without_heuristics(
 
 def test_run_intent_triage_returns_signal_from_agent(
     tmp_path: Path,
-    monkeypatch,
+    capturing_communicator,
 ) -> None:
     planspace = tmp_path / "planspace"
     artifacts = planspace / "artifacts"
@@ -139,12 +139,6 @@ def test_run_intent_triage_returns_signal_from_agent(
     Services.policies.override(providers.Object(_MockPolicies()))
     Services.prompt_guard.override(providers.Object(_MockGuard()))
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
-    artifact_events: list[str] = []
-    monkeypatch.setattr(
-        triage,
-        "_log_artifact",
-        lambda _planspace, name: artifact_events.append(name),
-    )
 
     try:
         result = run_intent_triage("01", planspace, codespace, "parent")
@@ -153,7 +147,7 @@ def test_run_intent_triage_returns_signal_from_agent(
         assert result["risk_mode"] == "light"
         assert result["risk_confidence"] == "medium"
         assert result["risk_budget_hint"] == 2
-        assert artifact_events == ["prompt:intent-triage-01"]
+        assert capturing_communicator.artifact_events == ["prompt:intent-triage-01"]
     finally:
         Services.dispatcher.reset_override()
         Services.prompt_guard.reset_override()
@@ -162,7 +156,7 @@ def test_run_intent_triage_returns_signal_from_agent(
 
 def test_triage_prompt_does_not_advertise_skip(
     tmp_path: Path,
-    monkeypatch,
+    noop_communicator,
 ) -> None:
     """The generated triage prompt only advertises light|full, never skip."""
     planspace = tmp_path / "planspace"
@@ -202,7 +196,6 @@ def test_triage_prompt_does_not_advertise_skip(
     Services.prompt_guard.override(providers.Object(_CaptureGuard()))
     Services.dispatcher.override(providers.Object(_MockDispatcher()))
     Services.signals.override(providers.Object(_MockSignals()))
-    monkeypatch.setattr(triage, "_log_artifact", lambda *_: None)
 
     try:
         run_intent_triage("01", planspace, codespace, "parent")

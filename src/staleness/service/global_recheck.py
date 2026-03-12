@@ -10,10 +10,10 @@ from staleness.service.section_alignment import (
     _extract_problems,
     _run_alignment_check_with_retries,
 )
-from signals.service.communication import log, mailbox_send
+from signals.service.communication import log
 from coordination.service.cross_section import read_incoming_notes
 from dispatch.helpers.utils import check_agent_signals
-from orchestrator.service.pipeline_control import _section_inputs_hash, poll_control_messages
+from orchestrator.service.pipeline_control import _section_inputs_hash
 from orchestrator.types import Section, SectionResult
 
 
@@ -55,7 +55,7 @@ def run_global_alignment_recheck(
             continue
         prev_hash_file.write_text(cur_hash, encoding="utf-8")
 
-        ctrl = poll_control_messages(planspace, parent, sec_num)
+        ctrl = Services.pipeline_control().poll_control_messages(planspace, parent, sec_num)
         if ctrl == "alignment_changed":
             log("Alignment changed during Phase 2 — restarting from Phase 1")
             return "restart_phase1"
@@ -81,7 +81,7 @@ def run_global_alignment_recheck(
                 f"Section {sec_num}: invalid alignment frame — requires parent "
                 "intervention",
             )
-            mailbox_send(planspace, parent, f"fail:invalid_alignment_frame:{sec_num}")
+            Services.communicator().mailbox_send(planspace, parent, f"fail:invalid_alignment_frame:{sec_num}")
             section_results[sec_num] = SectionResult(
                 section_number=sec_num,
                 aligned=False,
