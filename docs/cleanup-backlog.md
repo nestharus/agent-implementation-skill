@@ -175,7 +175,7 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Prior triage**: #24 assessed as "db.sh stays." #29 migrated boilerplate to `task_db()`. Re-opened: `db.sh` is still invoked via subprocess for init and some operations despite Python having native `sqlite3`.
 - **Risk**: Shell overhead, escaping surface, opaque error handling, breaks DI boundary (can't mock/test the DB init path).
 - **Scale**: 6 `subprocess.run([...DB_SH...])` lifecycle-logging calls inlined in `implementation_phase.py` and `proposal_phase.py`. These are middleware concerns (lifecycle events) mixed with business logic (risk evaluation, proposal dispatch).
-- **Status**: PARTIALLY DONE — 6 lifecycle-logging subprocess calls replaced with `Services.logger().log_lifecycle()` container method. Remaining `db.sh` uses (init, other ops) still present in `pipeline_orchestrator.py`.
+- **Status**: PARTIALLY DONE — 6 lifecycle-logging subprocess calls replaced with `Services.logger().log_lifecycle()` container method. `db.sh init` in `pipeline_orchestrator.py` replaced with pure Python `init_db()` in `task_db_client.py`. Remaining: `db_cmd()` wrapper used by `task_dispatcher.py` (5 calls: next-task, claim-task, complete-task, fail-task) and `notifier.py` (1 call: send). These are operational commands requiring `db.sh` SQL logic migration.
 
 ### 95. Service Locator pattern — global `Services.*` calls instead of constructor injection
 - **Category**: DI architecture / testability

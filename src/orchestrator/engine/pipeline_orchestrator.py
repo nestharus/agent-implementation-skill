@@ -1,5 +1,4 @@
 import logging
-import subprocess
 import sys
 from pathlib import Path
 
@@ -23,7 +22,8 @@ from proposal.engine.proposal_phase import ProposalPassExit, run_proposal_pass
 from reconciliation.engine.reconciliation_phase import ReconciliationPhaseExit, run_reconciliation_phase
 from scan.service.section_loader import load_sections
 
-from _config import AGENT_NAME, DB_SH
+from _config import AGENT_NAME
+from flow.service.task_db_client import init_db
 
 from containers import Services
 from orchestrator.engine.strategic_state_builder import build_strategic_state
@@ -67,10 +67,7 @@ def main() -> None:
     sections_dir = paths.sections_dir()
 
     # Initialize coordination DB (idempotent) and register
-    subprocess.run(  # noqa: S603
-        ["bash", str(DB_SH), "init", str(paths.run_db())],  # noqa: S607
-        check=True, capture_output=True, text=True,
-    )
+    init_db(paths.run_db())
     Services.communicator().mailbox_register(args.planspace)
     Services.logger().log(f"Registered: {AGENT_NAME} (parent: {args.parent})")
 
