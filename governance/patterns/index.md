@@ -179,6 +179,9 @@ consumer migration, runtime-shape tests.
 9. If a durable family is consumed by more than one authoritative reader or
    writer and no accessor exists yet, the accessor must be added before the
    family spreads further.
+10. If both absolute-path accessors and relpath helpers publish the same
+    durable family, the relpath form must derive from the same canonical naming
+    contract rather than duplicating string literals.
 
 **Canonical instance**: `PathRegistry` in
 `src/orchestrator/path_registry.py`
@@ -228,11 +231,37 @@ consumer migration, runtime-shape tests.
 - `src/scan/substrate/related_files.py` and
   `src/scan/substrate/prompt_builder.py` — substrate-stage
   related-files update signals via `related_files_update_dir()`
+- Governance helper file consumers in
+  `src/intake/repository/governance_loader.py` and
+  `src/intake/service/governance_packet_builder.py`
+- Trace-index consumers in `src/intake/service/assessment_evaluator.py`
+  and `src/implementation/service/traceability_writer.py`
+- Section-decision family consumers in
+  `src/orchestrator/service/section_decision_store.py`,
+  `src/dispatch/prompt/context_builder.py`,
+  `src/staleness/service/freshness_calculator.py`, and
+  `src/staleness/service/input_hasher.py`
+- Intent-triage family consumers in
+  `src/intent/service/intent_triager.py`,
+  `src/proposal/engine/proposal_phase.py`, and
+  `src/implementation/service/risk_artifact_writer.py`
+- Coordination-family consumers in
+  `src/coordination/service/planner.py`,
+  `src/coordination/service/stall_detector.py`,
+  `src/coordination/engine/plan_executor.py`, and
+  `src/implementation/service/scope_delta_aggregator.py`
+- Flow family relpath helpers in `src/flow/repository/flow_context_store.py`
+- Proposal/alignment output-family consumers in
+  `src/proposal/engine/proposal_cycle.py`,
+  `src/dispatch/service/context_sidecar.py`, and
+  `src/implementation/service/triage_orchestrator.py`
 
 **Conformance**: No durable artifact path may be reconstructed ad hoc. Any new
 artifact path MUST be added to `PathRegistry`, and all authoritative consumers
 must use that accessor. A pattern round is not complete if it adds the accessor
-but leaves the primary readers/writers on hand-built paths.
+but leaves the primary readers/writers on hand-built paths. Durable relpath
+helpers that mirror registry-governed families must stay mechanically aligned
+with the registry naming contract.
 
 ---
 
@@ -930,6 +959,10 @@ retired. Governance cannot steer the system if its own state reports are stale.
    authoritative surfaces when they make present-tense claims about runtime or
    migration state, and must be updated atomically with the corresponding code
    or explicitly scoped as historical context.
+8. Agent definitions and active runtime-facing prompt templates that name
+   schema files, runtime directories, entrypoints, or execution substrate
+   are authoritative contract surfaces and must follow the same
+   synchronization rule as operator docs.
 
 **Canonical instance**: `src/taskrouter/agents.py` +
 `src/taskrouter/discovery.py`
@@ -942,6 +975,13 @@ retired. Governance cannot steer the system if its own state reports are stale.
 - `governance/audit/prompt.md` — audit-facing codebase map
 - `src/SKILL.md`, `src/implement.md`, and `src/models.md` — operator-facing
   runtime docs
+- `src/rca.md` — RCA workflow operator doc
+- `src/templates/dispatch/implementation-alignment.md` — active alignment
+  template with codespace references
+- `src/templates/rca-cycle.md` — RCA schedule template
+- `src/risk/agents/risk-assessor.md` and
+  `src/risk/agents/execution-optimizer.md` — agent definitions with schema
+  path references
 - `src/dispatch/agents/` legacy residues — retirement-boundary surfaces
 - `evals/harness.py` and `evals/agentic/trigger_adapters.py` — executable
   runtime-entry surfaces
