@@ -93,6 +93,24 @@ def _recheck_section(
                        problems="alignment check timed out after retries")
         return None
 
+    _apply_alignment_outcome(
+        align_result, sec_num, paths, planspace, parent, codespace,
+        policy, section_results,
+    )
+    return None
+
+
+def _apply_alignment_outcome(
+    align_result,
+    sec_num: str,
+    paths: PathRegistry,
+    planspace: Path,
+    parent: str,
+    codespace: Path,
+    policy: dict,
+    section_results: dict[str, SectionResult],
+) -> None:
+    """Extract problems and signals from alignment output, update results."""
     global_align_output = paths.artifacts / f"global-align-{sec_num}-output.md"
     problems = _extract_problems(
         align_result, output_path=global_align_output,
@@ -110,14 +128,13 @@ def _recheck_section(
 
     if problems is None and signal is None:
         _update_result(section_results, sec_num, aligned=True)
-        return None
+        return
 
     Services.logger().log(f"Section {sec_num}: global alignment found problems")
     combined = problems or ""
     if signal:
         combined += f"\n[signal:{signal}] {detail}" if combined else f"[signal:{signal}] {detail}"
     _update_result(section_results, sec_num, aligned=False, problems=combined or None)
-    return None
 
 
 def run_global_alignment_recheck(

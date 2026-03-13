@@ -235,6 +235,67 @@ def _run_shard_exploration(
     return [s for s in target_sections if s not in shard_failures]
 
 
+def _validate_pruner_outputs(
+    registry: PathRegistry,
+    artifacts_dir: Path,
+    project_mode: str,
+    total_sections: int,
+    vacuum_sections: list[str],
+    trigger_threshold: int,
+    pruner_ok: bool,
+) -> tuple[dict, Path] | None:
+    """Validate pruner outputs: seed plan, substrate.md, prune signal.
+
+    Returns ``(seed_plan, substrate_md_path)`` on success, or ``None``
+    on failure (writes status on failure).
+    """
+    substrate_dir = registry.substrate_dir()
+    substrate_md_path = substrate_dir / "substrate.md"
+    seed_plan_path = substrate_dir / "seed-plan.json"
+    prune_signal_path = substrate_dir / "prune-signal.json"
+
+    status_kwargs = dict(
+        project_mode=project_mode,
+        total_sections=total_sections,
+        vacuum_sections=vacuum_sections,
+        threshold=trigger_threshold,
+    )
+
+    seed_plan = read_seed_plan_failclosed(seed_plan_path)
+    if not pruner_ok or seed_plan is None:
+        print("[SUBSTRATE] Pruner failed -- aborting")
+        _write_status(artifacts_dir, state="RAN",
+                      notes="Pruner failed -- no seed plan produced",
+                      **status_kwargs)
+        return None
+
+    if not substrate_md_path.is_file():
+        print("[SUBSTRATE] Pruner did not write substrate.md -- aborting")
+        _write_status(artifacts_dir, state="RAN",
+                      notes="Pruner completed but substrate.md missing",
+                      **status_kwargs)
+        return None
+
+    if prune_signal_path.is_file():
+        prune_signal = Services.artifact_io().read_json(prune_signal_path)
+        if isinstance(prune_signal, dict):
+            status_val = prune_signal.get("state", "").upper()
+            if status_val == "NEEDS_PARENT":
+                reason = prune_signal.get("reason", "no reason given")
+                print(f"[SUBSTRATE] Pruner signalled NEEDS_PARENT: {reason}")
+                _write_status(artifacts_dir, state="NEEDS_PARENT",
+                              notes=f"Pruner deferred: {reason}",
+                              **status_kwargs)
+                return None
+        else:
+            print(
+                "[SUBSTRATE][WARN] prune-signal.json malformed "
+                "-- renaming to .malformed.json"
+            )
+
+    return seed_plan, substrate_md_path
+
+
 def _run_pruning(
     registry: PathRegistry,
     codespace: Path,
@@ -267,67 +328,10 @@ def _run_pruning(
         agent_file=Services.task_router().agent_for("scan.substrate_prune"),
     )
 
-    substrate_dir = registry.substrate_dir()
-    substrate_md_path = substrate_dir / "substrate.md"
-    seed_plan_path = substrate_dir / "seed-plan.json"
-    prune_signal_path = substrate_dir / "prune-signal.json"
-
-    seed_plan = read_seed_plan_failclosed(seed_plan_path)
-    if not pruner_ok or seed_plan is None:
-        print("[SUBSTRATE] Pruner failed -- aborting")
-        _write_status(
-            artifacts_dir,
-            state="RAN",
-            project_mode=project_mode,
-            total_sections=total_sections,
-            vacuum_sections=vacuum_sections,
-            notes="Pruner failed -- no seed plan produced",
-            threshold=trigger_threshold,
-        )
-        return None
-
-    # Verify substrate.md was written
-    if not substrate_md_path.is_file():
-        print("[SUBSTRATE] Pruner did not write substrate.md -- aborting")
-        _write_status(
-            artifacts_dir,
-            state="RAN",
-            project_mode=project_mode,
-            total_sections=total_sections,
-            vacuum_sections=vacuum_sections,
-            notes="Pruner completed but substrate.md missing",
-            threshold=trigger_threshold,
-        )
-        return None
-
-    # Check prune-signal.json for NEEDS_PARENT
-    if prune_signal_path.is_file():
-        prune_signal = Services.artifact_io().read_json(prune_signal_path)
-        if isinstance(prune_signal, dict):
-            status_val = prune_signal.get("state", "").upper()
-            if status_val == "NEEDS_PARENT":
-                reason = prune_signal.get("reason", "no reason given")
-                print(
-                    f"[SUBSTRATE] Pruner signalled NEEDS_PARENT: "
-                    f"{reason}"
-                )
-                _write_status(
-                    artifacts_dir,
-                    state="NEEDS_PARENT",
-                    project_mode=project_mode,
-                    total_sections=total_sections,
-                    vacuum_sections=vacuum_sections,
-                    notes=f"Pruner deferred: {reason}",
-                    threshold=trigger_threshold,
-                )
-                return None
-        else:
-            print(
-                f"[SUBSTRATE][WARN] prune-signal.json malformed "
-                "-- renaming to .malformed.json"
-            )
-
-    return seed_plan, substrate_md_path
+    return _validate_pruner_outputs(
+        registry, artifacts_dir, project_mode, total_sections,
+        vacuum_sections, trigger_threshold, pruner_ok,
+    )
 
 
 def _run_seeding_and_apply(

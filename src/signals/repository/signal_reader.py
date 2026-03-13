@@ -9,6 +9,17 @@ from pydantic import ValidationError
 from signals.repository.artifact_io import read_json, rename_malformed
 from signals.types import AgentSignal, SignalResult
 
+_SIGNAL_STATE_MAP: dict[str, str] = {
+    "underspec": "underspec",
+    "underspecified": "underspec",
+    "need_decision": "need_decision",
+    "dependency": "dependency",
+    "loop_detected": "loop_detected",
+    "out_of_scope": "out_of_scope",
+    "out-of-scope": "out_of_scope",
+    "needs_parent": "needs_parent",
+}
+
 
 def read_signal_tuple(signal_path: Path) -> SignalResult:
     """Read a structured signal file written by an agent.
@@ -45,18 +56,9 @@ def read_signal_tuple(signal_path: Path) -> SignalResult:
             )
         if extras:
             detail = f"{detail} [{'; '.join(extras)}]"
-        if state in ("underspec", "underspecified"):
-            return SignalResult(signal_type="underspec", detail=detail)
-        if state in ("need_decision",):
-            return SignalResult(signal_type="need_decision", detail=detail)
-        if state in ("dependency",):
-            return SignalResult(signal_type="dependency", detail=detail)
-        if state in ("loop_detected",):
-            return SignalResult(signal_type="loop_detected", detail=detail)
-        if state in ("out_of_scope", "out-of-scope"):
-            return SignalResult(signal_type="out_of_scope", detail=detail)
-        if state in ("needs_parent",):
-            return SignalResult(signal_type="needs_parent", detail=detail)
+        mapped = _SIGNAL_STATE_MAP.get(state)
+        if mapped is not None:
+            return SignalResult(signal_type=mapped, detail=detail)
         return SignalResult(
             signal_type="needs_parent",
             detail=(

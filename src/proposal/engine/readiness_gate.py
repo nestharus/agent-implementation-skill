@@ -296,6 +296,31 @@ def route_blockers(
     _update_blocker_rollup(planspace)
 
 
+def _build_proposal_pass_result(
+    section_number: str,
+    proposal_state_path: str,
+    proposal_state: dict,
+    *,
+    execution_ready: bool,
+    blockers: list[dict],
+) -> ProposalPassResult:
+    """Build a ProposalPassResult for either the ready or blocked path."""
+    needs_reconciliation = False
+    if not execution_ready:
+        needs_reconciliation = bool(
+            proposal_state.get("unresolved_contracts")
+            or proposal_state.get("unresolved_anchors"),
+        )
+    return ProposalPassResult(
+        section_number=section_number,
+        proposal_aligned=True,
+        execution_ready=execution_ready,
+        blockers=blockers,
+        needs_reconciliation=needs_reconciliation,
+        proposal_state_path=str(proposal_state_path),
+    )
+
+
 def resolve_and_route(
     section,
     planspace: Path,
@@ -340,17 +365,9 @@ def resolve_and_route(
 
         proposal_pass_result = None
         if pass_mode == "proposal":
-            unresolved_contracts = proposal_state.get("unresolved_contracts", [])
-            unresolved_anchors = proposal_state.get("unresolved_anchors", [])
-            proposal_pass_result = ProposalPassResult(
-                section_number=section.number,
-                proposal_aligned=True,
-                execution_ready=False,
-                blockers=blockers,
-                needs_reconciliation=bool(
-                    unresolved_contracts or unresolved_anchors
-                ),
-                proposal_state_path=str(proposal_state_path),
+            proposal_pass_result = _build_proposal_pass_result(
+                section.number, str(proposal_state_path), proposal_state,
+                execution_ready=False, blockers=blockers,
             )
         return GateResult(
             ready=False,
@@ -364,13 +381,9 @@ def resolve_and_route(
             f"Section {section.number}: proposal pass complete — "
             f"execution_ready=true, deferring implementation"
         )
-        proposal_pass_result = ProposalPassResult(
-            section_number=section.number,
-            proposal_aligned=True,
-            execution_ready=True,
-            blockers=[],
-            needs_reconciliation=False,
-            proposal_state_path=str(proposal_state_path),
+        proposal_pass_result = _build_proposal_pass_result(
+            section.number, str(proposal_state_path), proposal_state,
+            execution_ready=True, blockers=[],
         )
     return GateResult(
         ready=True,

@@ -57,6 +57,65 @@ def ingest_task_requests(signal_path: Path) -> list[dict]:
     return _ingest_task_requests(signal_path)
 
 
+def _submit_chain_action(
+    action: ChainAction,
+    planspace: Path,
+    db_path: Path,
+    submitted_by: str,
+    submit_chain,
+    *,
+    flow_id: str | None,
+    chain_id: str | None,
+    declared_by_task_id: int | None,
+    refs: list[str],
+) -> list[int]:
+    """Submit a chain action and return task IDs."""
+    if not action.steps:
+        return []
+    token: str | None = None
+    section_scope = find_first_section_scope(action.steps)
+    if section_scope:
+        token = Services.freshness().compute(planspace, section_scope)
+    return submit_chain(
+        db_path,
+        submitted_by,
+        action.steps,
+        flow_id=flow_id,
+        chain_id=chain_id,
+        declared_by_task_id=declared_by_task_id,
+        origin_refs=refs,
+        planspace=planspace,
+        freshness_token=token,
+    )
+
+
+def _submit_fanout_action(
+    action: FanoutAction,
+    db_path: Path,
+    submitted_by: str,
+    submit_fanout,
+    *,
+    flow_id: str | None,
+    declared_by_task_id: int | None,
+    refs: list[str],
+    planspace: Path,
+) -> None:
+    """Submit a fanout action (branches + optional gate)."""
+    if not action.branches:
+        return
+    fanout_flow_id = flow_id or new_flow_id()
+    submit_fanout(
+        db_path,
+        submitted_by,
+        action.branches,
+        flow_id=fanout_flow_id,
+        declared_by_task_id=declared_by_task_id,
+        origin_refs=refs,
+        gate=action.gate,
+        planspace=planspace,
+    )
+
+
 def ingest_and_submit(
     planspace: Path,
     db_path: Path,
@@ -99,47 +158,17 @@ def ingest_and_submit(
 
     for action in decl.actions:
         if isinstance(action, ChainAction):
-            if not action.steps:
-                continue
-            # P4: compute freshness token for section-scoped tasks
-            token: str | None = None
-            section_scope = find_first_section_scope(action.steps)
-            if section_scope:
-                token = Services.freshness().compute(
-                    planspace, section_scope,
-                )
-            task_ids = submit_chain(
-                db_path,
-                submitted_by,
-                action.steps,
-                flow_id=flow_id,
-                chain_id=chain_id,
-                declared_by_task_id=declared_by_task_id,
-                origin_refs=refs,
-                planspace=planspace,
-                freshness_token=token,
-            )
-            all_task_ids.extend(task_ids)
+            all_task_ids.extend(_submit_chain_action(
+                action, planspace, db_path, submitted_by, submit_chain,
+                flow_id=flow_id, chain_id=chain_id,
+                declared_by_task_id=declared_by_task_id, refs=refs,
+            ))
         elif isinstance(action, FanoutAction):
-            if not action.branches:
-                continue
-            # Fanout requires a flow_id — allocate one if not provided
-            fanout_flow_id = flow_id
-            if not fanout_flow_id:
-                fanout_flow_id = new_flow_id()
-            submit_fanout(
-                db_path,
-                submitted_by,
-                action.branches,
-                flow_id=fanout_flow_id,
-                declared_by_task_id=declared_by_task_id,
-                origin_refs=refs,
-                gate=action.gate,
-                planspace=planspace,
+            _submit_fanout_action(
+                action, db_path, submitted_by, submit_fanout,
+                flow_id=flow_id, declared_by_task_id=declared_by_task_id,
+                refs=refs, planspace=planspace,
             )
-            # Fanout returns gate_id not task_ids; the individual
-            # branch task_ids are not directly returned here but are
-            # in the DB for the dispatcher to find.
         else:
             Services.logger().log(f"  task_ingestion: WARNING — unknown action type "
                 f"{type(action).__name__}, skipping")
