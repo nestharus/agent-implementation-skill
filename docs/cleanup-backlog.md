@@ -444,7 +444,8 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Top 5**: `ensure_global_philosophy()` 923 lines, `run_substrate_discovery()` 338 lines, `dispatch_task()` 249 lines, `analyze_impacts()` 243 lines, `handle_tool_friction()` 232 lines.
 - **Scale**: Originally 57 functions >100 lines (FAIL). After Cycles 4-9: **1 function remains** (56 brought under 100). Cycle 8 decompositions: `run_substrate_discovery` (334→sub-100, extracted 5 phase helpers), `run_proposal_loop` (134→77 lines, extracted `_dispatch_and_validate_proposal` + `_run_alignment_phase`), `run_implementation_pass` (122→sub-100, extracted `_implement_section` + `_prepare_risk_plan` + `_handle_failed_impl`), `_iter_file_events` (119→sub-100, extracted per-record-type handlers), `_run_frontier_iterations` (112→54 lines, extracted `_execute_frontier_slice`), `validate_philosophy_grounding` (111→sub-100, extracted source map validation helpers). Cycle 9: reduced 4 more functions in 80-97 range: `_write_alignment_surface` (97→22, data-driven via `_collect_surface_entries`), `_run_freshness_check` (96→69, extracted `_interpret_freshness_signal`), `_run_bridge_for_group` (91→58, extracted `_ensure_contract_delta`), `_write_traceability_index` (completed extraction of `_collect_alignment_verdicts` + `_optional_artifact`, now 45 lines).
 - Cycle 10: Reduced `route_blockers` (81→22, extracted `_route_user_root_questions`, `_route_shared_seams`, `_route_unresolved_contracts`), `_recheck_section_alignment` (78→60, extracted `_classify_alignment_result`), `run_aligned_expansion` (72→52, extracted `_handle_budget_exhaustion`), `validate_risk_plan` (72→57, extracted `_validate_accept_decision`).
-- **Overlap**: Subsumes #97 (god functions). **Only `ensure_global_philosophy` (918 lines) remains** — massive state machine in philosophy_bootstrapper.py, very high risk to decompose.
+- Cycle 11: Decomposed `ensure_global_philosophy` (918 lines, 215 exec) → 12 exec-line coordinator + 10 phase helpers (max 37 exec lines each). Introduced `_BootstrapContext` dataclass for shared state. Phase loop pattern: each helper returns `dict | None` — non-None short-circuits the coordinator. Helpers: `_check_philosophy_freshness`, `_resolve_source_records`, `_run_source_selector`, `_run_extension_pass`, `_run_source_verifier`, `_build_verification_shortlist`, `_validate_selected_sources`, `_build_distiller_prompt`, `_run_distiller`, `_handle_distiller_failure`, `_finalize_philosophy`.
+- **Status**: DONE — all functions under 50 exec lines.
 
 ### 129. 60 functions have 8+ parameters (CODE-S3 FAIL inventory)
 - **Category**: Code style / parameter count
@@ -521,14 +522,14 @@ Functions that take parameters obtainable from the DI container are exposing unn
 ### 135. Cycle 11 — full rescan, deduplication, reviewer category sweep
 - **Category**: Multi-category rescan
 - **Rescan results** (CODE-S2, CODE-S8, CODE-E1, CODE-E11, CODE-B4, CODE-B6, CODE-E2, CODE-E5, CODE-E10):
-  - **CODE-S2 (function length)**: Only 2 functions >50 exec lines — `ensure_global_philosophy` (215, deferred) and `run()` CLI entry point (51, borderline). All others under 50. Clean.
+  - **CODE-S2 (function length)**: `ensure_global_philosophy` decomposed (215 exec → 12 exec coordinator + 10 helpers, max 37 each). `run()` CLI entry point (51, borderline). All under 50. Clean.
   - **CODE-S8 (magic numbers)**: All hash truncation, timeout, and content truncation constants extracted. Remaining `[:N]` are display-only in log/error messages. Clean.
   - **CODE-E1 (exception specificity)**: Zero `except Exception` without `# noqa: BLE001`. Zero bare `except:`. Clean.
   - **CODE-E11 (mutable defaults)**: Zero `def func(items=[])` patterns. Clean.
   - **CODE-E2 (exception swallowing)**: All `except ... pass` patterns are intentional fail-open with specific exception types (OSError, json.JSONDecodeError, etc.) and fallback paths. Clean.
   - **CODE-E5 (resource cleanup)**: All `open()` calls use `with` context managers. Clean.
   - **CODE-E10 (assert misuse)**: Zero `assert` statements in production code. Clean.
-  - **CODE-B4 (nesting depth)**: Only `philosophy_bootstrapper` exceeds depth 4 (deferred). Clean.
+  - **CODE-B4 (nesting depth)**: `philosophy_bootstrapper` decomposition eliminated depth >4 nesting. Clean.
   - **CODE-B6 (if/elif chains)**: Max chain is 3 branches. All pure lookups already converted. Clean.
   - **Dead functions**: 25 candidates reported by scanner, all verified as false positives (registry-dispatched, test-imported, or method calls on self).
   - **Import-time side effects**: Only legitimate patterns (route decorators, CLI entry points, type registration).
