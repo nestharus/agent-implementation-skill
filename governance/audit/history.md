@@ -1,6 +1,6 @@
 # Audit History
 
-Concern-based audit log. 111 rounds completed in the philosophy audit cycle.
+Concern-based audit log. 114 rounds completed in the philosophy audit cycle.
 Rounds 1-20 are summarized as conclusions. Rounds 21-50 aggregated as settled
 concerns. Rounds 52-91 aggregated as settled concern threads with established
 patterns. Rounds 92+ are recent with full detail.
@@ -267,5 +267,7 @@ Intent layer audited normally from R52 onward as part of codebase.
 | 112 | — | 1561 | 11 | Pattern catalog + code conformance sweep: TP-1 PAT-0001 updated (forbid shadow-copy, add coordination/prompt/writers.py instance, mark unhealthy), TP-2 PAT-0015 updated (eval/audit surface contracts required), TP-3 PAT-0016 updated (governance self-report scope, eval/governance surfaces added), TP-4 PAT-0003 health refresh (confirmed islands listed). CP-1 runtime doc truth (audit/prompt.md region paths, pyproject.toml pythonpath). CP-2 eval harness repair (harness.py + trigger_adapters.py: stale imports, bootstrap paths, script entrypoints all updated to current layout). CP-3 deleted monitor.md (last unrouted legacy agent). CP-4 PAT-0003 saturation (context_builder.py, section_reexplorer.py, strategic_state_builder.py, codemap_builder.py → PathRegistry accessors). CP-5 PAT-0001 tool_registry_manager.py (local json.loads → read_json/rename_malformed, removed _preserve_tool_registry). CP-6 PAT-0001 coordination/prompt/writers.py (removed malformed→live copy-back). CP-7 governance docs (PRB-0015/0017/0018/0019 updated, PRB-0020 added, RISK-0007 reopened+remitigated, R111 history counts corrected). Runtime inventory: 48 agents / 48 routes / 12 namespaces |
 
 | 113 | 6f262e3 | 1561 | 8 | PAT-0003 file-level accessors + full consumer saturation, PAT-0001 shared rename migration (3 files), bootstrap contract (dependency-injector in pyproject.toml), dynamic discovery test, doc truth fixes (models.md, task_dispatcher.py, system-synthesis.md), governance health note refresh, PRB-0021 added, RISK-0007 resolved |
+
+| 114 | 563778a | 1561 | 6 | Runtime-truth sweep + PAT-0001/PAT-0003 saturation: V6 scan_dispatch_config.py PAT-0001 last bypass (json.loads→read_json), V5 fixed 4 existing-accessor bypasses (proposal_state/execution_ready/philosophy in implementation_phase.py, risk/prompt/writers.py, prompt_builder.py, input_hasher.py), V4 added 5 flow family PathRegistry accessors + migrated flow absolute-path sites + fixed gate_repository inline path, V2 fixed template/agent stale refs (implementation-alignment.md worktree→codespace, rca-cycle.md cleanup, risk-assessor.md + execution-optimizer.md schema path), V1 runtime-truth sweep across SKILL.md (dir listing, description, agent paths, workspace model), implement.md (control plane, worktree→workspace, scan/substrate/section-loop→module refs), models.md, rca.md, V3 governance truth correction (health notes corrected: PAT-0001 healthy, PAT-0003 improved/not converged, PAT-0015 improved, PAT-0016 improved; PRB-0021 reopened, RISK-0007 reopened to mitigated, PRB-0004/0019/0020 updated) |
 
 **Current state**: 48 agents, 48 routes, 12 namespaces.
