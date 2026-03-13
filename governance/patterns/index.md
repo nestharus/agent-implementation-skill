@@ -1092,6 +1092,7 @@ no traced problem/pattern basis is also a violation.
 - `src/scan/agents/substrate-shard-explorer.md`
 - `src/scan/agents/substrate-pruner.md`
 - `src/scan/agents/substrate-seeder.md`
+- `src/implementation/agents/microstrategy-writer.md`
 
 **Conformance**: All listed surfaces must use the authoritative heading
 and must not contain the stale "Zero Risk Tolerance" heading, "trivially
@@ -1110,13 +1111,17 @@ contract tests enforce this (PAT-0015).
   contents are untrusted dynamic content even when delivered through internal
   tasks. QA interceptor now validates payload content before dispatch.
 - **PAT-0003 (Path Registry)**: Substantially converged. R115 added accessors
-  for 6 remaining families. R116 added reconciliation-requests and
-  reconciliation-summary accessors and migrated queue.py and
-  cross_section_reconciler.py. `load_reconciliation_result()` normalized to
-  planspace root (mixed-root contract eliminated). Remaining gaps: glob-
-  pattern consumers for decisions (section_reexplorer, microstrategy_decider),
-  `decisions.py` repository functions that take raw `decisions_dir` parameter,
-  and flow relpath helpers (kept by design for DB-storage relative paths).
+  for 6 remaining families. R116 added reconciliation family accessors. R117
+  added 4 more accessors (recurrence_signal, coordination_recurrence,
+  related_files_signal, global_decision_json) and migrated proposal_state()
+  bypasses (traceability_writer, section_communicator), note_ack_signal()
+  bypass (problem_resolver), recurrence family (recurrence_emitter,
+  problem_resolver, planner), and context_sidecar (global decisions,
+  related-files signals). Remaining gaps: glob-pattern consumers for decisions
+  (section_reexplorer, microstrategy_decider) and recurrence signals
+  (problem_resolver discovery glob), `decisions.py` repository functions that
+  take raw `decisions_dir` parameter, and flow relpath helpers (kept by design
+  for DB-storage relative paths).
 - **PAT-0004 (Flow System)**: Healthy.
 - **PAT-0005 (Policy-Driven Models)**: Healthy. R110 replaced the last two
   local `policy.get()` fallback sites (`proposal_cycle.py` intent_judge,
@@ -1171,7 +1176,7 @@ contract tests enforce this (PAT-0015).
   schema now matches the active agent file, dispatch template, and all eval
   surfaces. Still missing: positive contract tests that lock the projection.
 - **PAT-0018 (Behavioral Doctrine Projection)**: Healthy. R116 synchronized
-  all 10 live agent/template doctrine surfaces to match the authoritative
-  wording in SKILL.md and implement.md. Positive contract tests added to
-  lock the heading ("Zero Tolerance for Fabrication") and prevent re-
-  introduction of the stale "trivially small" shortcut exception.
+  10 live agent/template doctrine surfaces. R117 fixed the 11th surface
+  (microstrategy-writer.md, missed in R116) and added it to the known
+  instances and positive contract test list. All 11 live routed doctrine
+  surfaces now match the authoritative wording in SKILL.md and implement.md.
