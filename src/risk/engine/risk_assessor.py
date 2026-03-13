@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
@@ -27,7 +26,7 @@ from risk.types import (
 from risk.service.package_builder import write_package
 from risk.prompt.writers import write_risk_assessment_prompt, write_optimization_prompt
 from risk.service.response_parser import parse_risk_assessment, parse_risk_plan
-from risk.service.posture_hysteresis import apply_posture_hysteresis
+from risk.service.posture_hysteresis import apply_posture_hysteresis, _history_signature
 from risk.service.fallback import fallback_plan, lightweight_fallback_plan
 
 
@@ -36,7 +35,6 @@ def run_risk_loop(
     scope: str,
     layer: str,
     package: RiskPackage,
-    dispatch_fn: Callable,
     max_iterations: int = 5,
     posture_floor: PostureProfile | str | None = None,
 ) -> RiskPlan:
@@ -50,7 +48,7 @@ def run_risk_loop(
 
     for iteration in range(1, max_iterations + 1):
         assessment = _validate_and_dispatch_assessment(
-            paths, planspace, scope, package, dispatch_fn,
+            paths, planspace, scope, package,
         )
         if assessment is None:
             return _write_and_return_fallback(
@@ -65,7 +63,7 @@ def run_risk_loop(
 
         plan = _validate_and_dispatch_optimization(
             paths, planspace, scope, package, parameters, assessment,
-            dispatch_fn, retry_hint=(iteration > 1 and last_plan is not None),
+            retry_hint=(iteration > 1 and last_plan is not None),
         )
         if plan is None:
             return _write_and_return_fallback(
@@ -102,7 +100,6 @@ def run_lightweight_risk_check(
     scope: str,
     layer: str,
     package: RiskPackage,
-    dispatch_fn: Callable,
     posture_floor: PostureProfile | str | None = None,
 ) -> RiskPlan:
     """Run a lightweight risk check (single assessment, no full loop)."""
@@ -110,7 +107,7 @@ def run_lightweight_risk_check(
     write_package(paths, package)
 
     assessment = _validate_and_dispatch_assessment(
-        paths, planspace, scope, package, dispatch_fn, prefix="light",
+        paths, planspace, scope, package, prefix="light",
     )
     if assessment is None:
         return _write_and_return_fallback(
@@ -125,7 +122,7 @@ def run_lightweight_risk_check(
     write_risk_artifact(paths.risk_assessment(scope), serialize_assessment(assessment))
 
     plan = _validate_and_dispatch_lightweight_optimization(
-        paths, planspace, scope, package, parameters, assessment, dispatch_fn,
+        paths, planspace, scope, package, parameters, assessment,
     )
     if plan is None:
         return _write_and_return_lightweight_fallback(
@@ -160,7 +157,6 @@ def _validate_and_dispatch_assessment(
     planspace: Path,
     scope: str,
     package: RiskPackage,
-    dispatch_fn: Callable,
     *,
     prefix: str = "",
 ) -> RiskAssessment | None:
@@ -175,7 +171,7 @@ def _validate_and_dispatch_assessment(
     if not Services.prompt_guard().write_validated(prompt, prompt_path):
         return None
     output_path = paths.risk_dir() / f"{scope}-{tag}risk-assessment-output.md"
-    response = dispatch_fn(
+    response = Services.dispatcher().dispatch(
         _risk_assessor_model(planspace),
         prompt_path,
         output_path,
@@ -194,7 +190,6 @@ def _validate_and_dispatch_optimization(
     package: RiskPackage,
     parameters: dict,
     assessment: RiskAssessment,
-    dispatch_fn: Callable,
     *,
     retry_hint: bool = False,
 ) -> RiskPlan | None:
@@ -220,7 +215,7 @@ def _validate_and_dispatch_optimization(
     if not Services.prompt_guard().write_validated(prompt, prompt_path):
         return None
     output_path = paths.risk_dir() / f"{scope}-risk-plan-output.md"
-    response = dispatch_fn(
+    response = Services.dispatcher().dispatch(
         _execution_optimizer_model(planspace),
         prompt_path,
         output_path,
@@ -239,7 +234,6 @@ def _validate_and_dispatch_lightweight_optimization(
     package: RiskPackage,
     parameters: dict,
     assessment: RiskAssessment,
-    dispatch_fn: Callable,
 ) -> RiskPlan | None:
     """Lightweight variant of optimization dispatch (includes try/except)."""
     prompt = write_optimization_prompt(
@@ -255,7 +249,7 @@ def _validate_and_dispatch_lightweight_optimization(
         return None
     output_path = paths.risk_dir() / f"{scope}-light-risk-plan-output.md"
     try:
-        response = dispatch_fn(
+        response = Services.dispatcher().dispatch(
             _execution_optimizer_model(planspace),
             prompt_path,
             output_path,
@@ -264,7 +258,10 @@ def _validate_and_dispatch_lightweight_optimization(
             f"execution-optimizer-light-{scope}",
             agent_file=Services.task_router().agent_for("risk.optimize"),
         )
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 — fail-open: optimization is best-effort
+        Services.logger().log(
+            f"Lightweight optimization dispatch failed ({exc}) — failing open",
+        )
         return None
     return parse_risk_plan(response)
 
@@ -425,14 +422,6 @@ def _primary_step_assessment(assessment: RiskAssessment) -> StepAssessment | Non
     return max(
         assessment.step_assessments,
         key=lambda item: (item.raw_risk, item.modifiers.blast_radius, len(item.dominant_risks)),
-    )
-
-
-def _history_signature(entry: RiskHistoryEntry) -> str:
-    return pattern_signature(
-        entry.assessment_class,
-        entry.dominant_risks,
-        entry.blast_radius_band,
     )
 
 

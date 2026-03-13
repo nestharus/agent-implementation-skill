@@ -3,10 +3,20 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from dependency_injector import providers
 
+from conftest import StubPolicies
+from containers import Services
 from src.staleness.service import global_alignment_rechecker
 from src.staleness.service.global_alignment_rechecker import run_global_alignment_recheck
 from orchestrator.types import Section, SectionResult
+
+
+@pytest.fixture(autouse=True)
+def _stub_policies():
+    Services.policies.override(providers.Object(StubPolicies()))
+    yield
+    Services.policies.reset_override()
 
 
 def _make_section(planspace: Path, number: str) -> Section:
@@ -40,7 +50,6 @@ def test_run_global_alignment_recheck_skips_unchanged_aligned_sections(
         planspace,
         codespace,
         "parent",
-        {"alignment": "align-model"},
     )
 
     assert status == "all_aligned"
@@ -80,7 +89,6 @@ def test_run_global_alignment_recheck_marks_invalid_frame_and_preserves_files(
         planspace,
         codespace,
         "parent",
-        {"alignment": "align-model"},
     )
 
     assert status == "has_problems"
@@ -107,7 +115,6 @@ def test_run_global_alignment_recheck_restarts_when_control_message_arrives(
         planspace,
         codespace,
         "parent",
-        {"alignment": "align-model"},
     )
 
     assert status == "restart_phase1"

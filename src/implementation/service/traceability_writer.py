@@ -32,33 +32,9 @@ def _proposal_governance_ids(planspace: Path, section_number: str) -> dict:
     }
 
 
-def _write_traceability_index(
-    planspace: Path, section: Section, codespace: Path,
-    modified_files: list[str],
-) -> None:
-    """Write a traceability index for a completed section.
-
-    Creates artifacts/trace/section-<n>.json containing hashes of all
-    authoritative artifacts, the list of modified files, and alignment
-    verdicts extracted from alignment output files.
-    """
-    paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
-    trace_dir = paths.trace_dir()
-    trace_dir.mkdir(parents=True, exist_ok=True)
-    sec = section.number
-
-    # Artifact paths
-    proposal_excerpt = paths.proposal_excerpt(sec)
-    alignment_excerpt = paths.alignment_excerpt(sec)
-    integration_proposal = paths.proposal(sec)
-    microstrategy = paths.microstrategy(sec)
-    todos_extraction = paths.todos(sec)
-    alignment_surface = paths.alignment_surface(sec)
-    problem_frame = paths.problem_frame(sec)
-
-    # Collect alignment verdicts from output files using structured JSON
-    alignment_verdicts: list[dict] = []
+def _collect_alignment_verdicts(artifacts: Path, sec: str) -> list[dict]:
+    """Collect alignment verdicts from output files using structured JSON."""
+    verdicts: list[dict] = []
     for stage, prefix in (("proposal", "intg-align"),
                           ("implementation", "impl-align")):
         output_path = artifacts / f"{prefix}-{sec}-output.md"
@@ -66,23 +42,48 @@ def _write_traceability_index(
             continue
         text = output_path.read_text(encoding="utf-8")
         verdict = Services.section_alignment().parse_alignment_verdict(text)
+        ts = datetime.now(timezone.utc).isoformat()
         if verdict is not None:
             problems = verdict.get("problems", [])
             problems_count = (len(problems) if isinstance(problems, list)
                               else (1 if problems else 0))
-            alignment_verdicts.append({
+            verdicts.append({
                 "stage": stage,
                 "frame_ok": verdict.get("frame_ok", True),
                 "aligned": verdict.get("aligned", False),
                 "problems_count": problems_count,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": ts,
             })
         else:
-            alignment_verdicts.append({
+            verdicts.append({
                 "stage": stage,
                 "result": "MISSING_JSON",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": ts,
             })
+    return verdicts
+
+
+def _optional_artifact(path: Path) -> dict | None:
+    """Return path+hash dict for an artifact if it exists, else None."""
+    if not path.exists():
+        return None
+    return {"path": str(path), "hash": _file_sha256(path)}
+
+
+def _write_traceability_index(
+    planspace: Path, section: Section, codespace: Path,
+    modified_files: list[str],
+) -> None:
+    """Write a traceability index for a completed section."""
+    paths = PathRegistry(planspace)
+    trace_dir = paths.trace_dir()
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    sec = section.number
+
+    proposal_excerpt = paths.proposal_excerpt(sec)
+    alignment_excerpt = paths.alignment_excerpt(sec)
+    integration_proposal = paths.proposal(sec)
+    artifacts = paths.artifacts
 
     index = {
         "section": sec,
@@ -98,24 +99,12 @@ def _write_traceability_index(
             "path": str(integration_proposal),
             "hash": _file_sha256(integration_proposal),
         },
-        "microstrategy": {
-            "path": str(microstrategy),
-            "hash": _file_sha256(microstrategy),
-        } if microstrategy.exists() else None,
-        "todos_extraction": {
-            "path": str(todos_extraction),
-            "hash": _file_sha256(todos_extraction),
-        } if todos_extraction.exists() else None,
-        "alignment_surface": {
-            "path": str(alignment_surface),
-            "hash": _file_sha256(alignment_surface),
-        } if alignment_surface.exists() else None,
-        "problem_frame": {
-            "path": str(problem_frame),
-            "hash": _file_sha256(problem_frame),
-        } if problem_frame.exists() else None,
+        "microstrategy": _optional_artifact(paths.microstrategy(sec)),
+        "todos_extraction": _optional_artifact(paths.todos(sec)),
+        "alignment_surface": _optional_artifact(paths.alignment_surface(sec)),
+        "problem_frame": _optional_artifact(paths.problem_frame(sec)),
         "modified_files": modified_files,
-        "alignment_verdicts": alignment_verdicts,
+        "alignment_verdicts": _collect_alignment_verdicts(artifacts, sec),
         "governance": {
             "packet_path": str(paths.governance_packet(sec)),
             "packet_hash": Services.hasher().file_hash(paths.governance_packet(sec)),

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
-from conftest import NoOpFlow, NoOpSectionAlignment, make_dispatcher
+from conftest import NoOpFlow, NoOpSectionAlignment, StubPolicies, make_dispatcher
 from containers import DispatchHelperService, Services
 from src.implementation.engine.implementation_cycle import run_implementation_loop
 from src.orchestrator.types import Section
@@ -82,6 +82,7 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
     Services.dispatch_helpers.override(providers.Object(_NoopHelpers()))
     Services.flow_ingestion.override(providers.Object(NoOpFlow()))
     Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
+    Services.policies.override(providers.Object(StubPolicies()))
     monkeypatch.setattr(
         "src.implementation.engine.implementation_cycle._write_traceability_index",
         lambda *_args, **_kwargs: None,
@@ -97,7 +98,6 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
             planspace,
             codespace,
             "parent",
-            {"implementation": "gpt", "alignment": "judge"},
             {"proposal_max": 3, "implementation_max": 3},
         )
 
@@ -114,6 +114,7 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
         Services.dispatch_helpers.reset_override()
         Services.flow_ingestion.reset_override()
         Services.section_alignment.reset_override()
+        Services.policies.reset_override()
 
 
 def test_run_implementation_loop_retries_after_alignment_problems(
@@ -157,6 +158,7 @@ def test_run_implementation_loop_retries_after_alignment_problems(
     Services.dispatch_helpers.override(providers.Object(_NoopHelpers()))
     Services.flow_ingestion.override(providers.Object(NoOpFlow()))
     Services.section_alignment.override(providers.Object(sa))
+    Services.policies.override(providers.Object(StubPolicies()))
     monkeypatch.setattr(
         sa, "extract_problems",
         lambda *_args, **_kwargs: next(problems),
@@ -176,7 +178,6 @@ def test_run_implementation_loop_retries_after_alignment_problems(
             planspace,
             codespace,
             "parent",
-            {"implementation": "gpt", "alignment": "judge"},
             {"proposal_max": 3, "implementation_max": 3},
         )
 
@@ -187,3 +188,4 @@ def test_run_implementation_loop_retries_after_alignment_problems(
         Services.dispatch_helpers.reset_override()
         Services.flow_ingestion.reset_override()
         Services.section_alignment.reset_override()
+        Services.policies.reset_override()

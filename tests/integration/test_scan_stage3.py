@@ -544,8 +544,8 @@ class TestBridgeDirectiveTypeSafety:
     def test_bool_bridge_coerced_to_dict(self) -> None:
         """Bridge directive as bool is coerced to dict in parser."""
         import inspect
-        from coordination.service.planner import _parse_coordination_plan
-        src = inspect.getsource(_parse_coordination_plan)
+        from coordination.service.planner import _normalize_bridge_directives
+        src = inspect.getsource(_normalize_bridge_directives)
         assert "isinstance(bridge, bool)" in src, (
             "Parser must handle bool bridge directives"
         )

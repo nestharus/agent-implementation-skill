@@ -56,7 +56,7 @@ def test_run_proposal_pass_reexplores_then_records_result(
             execution_ready=True,
         ),
     )
-    monkeypatch.setattr(proposal_pass.subprocess, "run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("containers.LogService.log_lifecycle", lambda *args, **kwargs: None)
 
     results = run_proposal_pass(
         [section],
@@ -64,7 +64,6 @@ def test_run_proposal_pass_reexplores_then_records_result(
         planspace,
         tmp_path / "codespace",
         "parent",
-        {"setup": "test-model"},
     )
 
     assert results["01"].execution_ready is True
@@ -92,7 +91,6 @@ def test_run_proposal_pass_raises_on_abort(
             planspace,
             tmp_path / "codespace",
             "parent",
-            {"setup": "test-model"},
         )
 
     assert capturing_communicator.messages == ["fail:aborted"]

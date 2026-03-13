@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from containers import Services
@@ -120,40 +121,41 @@ def _filter_by_regions(
     return [], "no_match:no_region_or_keyword_match"
 
 
-def build_section_governance_packet(
+@dataclass
+class _GovernanceInputs:
+    """All loaded governance data needed to build a section packet."""
+
+    paths: PathRegistry
+    all_problems: list[dict]
+    all_patterns: list[dict]
+    all_profiles: list[dict]
+    region_profile_map: dict
+    combined_summary: str
+    synthesis_ids: set[str]
+    index_parse_failures: list[str] = field(default_factory=list)
+
+
+def _load_governance_inputs(
+    paths: PathRegistry,
     section_number: str,
-    planspace: Path,
-    codespace: Path,
-    section_summary: str = "",
-) -> Path | None:
-    """Build a governance packet for a section.
-
-    The packet contains candidate governance items scoped to the section.
-    Full archive references are available via archive_refs for agents that
-    need the complete picture.
-    """
-    del codespace  # codespace docs are parsed into planspace indexes
-
+    section_summary: str,
+) -> _GovernanceInputs:
+    """Load all indexes, problem frame, synthesis cues, and combined summary."""
     # Load synthesis cues for additional matching signal (PAT-0011 R109)
-    synthesis_cues_path = PathRegistry(planspace).governance_synthesis_cues()
+    synthesis_cues_path = paths.governance_synthesis_cues()
     synthesis_cues = Services.artifact_io().read_json(synthesis_cues_path)
     if not isinstance(synthesis_cues, dict):
         synthesis_cues = {}
 
     # Load problem-frame text as additional summary signal
     problem_frame_text = ""
-    problem_frame_path = (
-        PathRegistry(planspace).problem_frame(section_number)
-    )
+    problem_frame_path = paths.problem_frame(section_number)
     if problem_frame_path.exists():
         try:
             problem_frame_text = problem_frame_path.read_text(encoding="utf-8")[:2000]
         except OSError:
             pass
     combined_summary = f"{section_summary} {problem_frame_text}".strip()
-
-    paths = PathRegistry(planspace)
-    packet_path = paths.governance_packet(section_number)
 
     all_problems = _list_index(paths.governance_problem_index())
     all_patterns = _list_index(paths.governance_pattern_index())
@@ -179,45 +181,62 @@ def build_section_governance_packet(
             if summary_terms & region_terms:
                 synthesis_ids.update(ref_ids)
 
-    # Candidate filtering: section-scoped matching
-    candidate_problems, problem_basis = _filter_by_regions(
-        all_problems, section_number, "problem_id", combined_summary,
-    )
-    candidate_patterns, pattern_basis = _filter_by_regions(
-        all_patterns, section_number, "pattern_id", combined_summary,
-    )
-
-    # Boost: add any records whose IDs appear in synthesis cues but
-    # were not already matched by region/keyword (bounded: no full archive)
-    if synthesis_ids:
-        matched_problem_ids = {r.get("problem_id") for r in candidate_problems}
-        for rec in all_problems:
-            pid = rec.get("problem_id", "")
-            if pid in synthesis_ids and pid not in matched_problem_ids:
-                candidate_problems.append(rec)
-                problem_basis += f"+synthesis({pid})"
-                matched_problem_ids.add(pid)
-
-        matched_pattern_ids = {r.get("pattern_id") for r in candidate_patterns}
-        for rec in all_patterns:
-            pid = rec.get("pattern_id", "")
-            if pid in synthesis_ids and pid not in matched_pattern_ids:
-                candidate_patterns.append(rec)
-                pattern_basis += f"+synthesis({pid})"
-                matched_pattern_ids.add(pid)
-
-    governing_profile = _resolve_governing_profile(
-        section_number,
-        region_profile_map,
+    return _GovernanceInputs(
+        paths=paths,
+        all_problems=all_problems,
+        all_patterns=all_patterns,
+        all_profiles=all_profiles,
+        region_profile_map=region_profile_map,
+        combined_summary=combined_summary,
+        synthesis_ids=synthesis_ids,
+        index_parse_failures=index_parse_failures,
     )
 
-    # Narrow profile scope: include only governing profile or bounded candidates
-    bounded_profiles = [
-        p for p in all_profiles
-        if isinstance(p, dict) and p.get("profile_id") == governing_profile
-    ] if governing_profile else all_profiles
 
-    # Determine applicability state and governance questions
+def _boost_candidates_by_synthesis(
+    candidate_problems: list[dict],
+    candidate_patterns: list[dict],
+    all_problems: list[dict],
+    all_patterns: list[dict],
+    synthesis_ids: set[str],
+    problem_basis: str,
+    pattern_basis: str,
+) -> tuple[str, str]:
+    """Boost candidates whose IDs appear in synthesis cues but were not yet matched.
+
+    Mutates candidate_problems and candidate_patterns in place.
+    Returns updated (problem_basis, pattern_basis).
+    """
+    matched_problem_ids = {r.get("problem_id") for r in candidate_problems}
+    for rec in all_problems:
+        pid = rec.get("problem_id", "")
+        if pid in synthesis_ids and pid not in matched_problem_ids:
+            candidate_problems.append(rec)
+            problem_basis += f"+synthesis({pid})"
+            matched_problem_ids.add(pid)
+
+    matched_pattern_ids = {r.get("pattern_id") for r in candidate_patterns}
+    for rec in all_patterns:
+        pid = rec.get("pattern_id", "")
+        if pid in synthesis_ids and pid not in matched_pattern_ids:
+            candidate_patterns.append(rec)
+            pattern_basis += f"+synthesis({pid})"
+            matched_pattern_ids.add(pid)
+
+    return problem_basis, pattern_basis
+
+
+def _build_governance_questions(
+    section_number: str,
+    problem_basis: str,
+    pattern_basis: str,
+    candidate_problems: list[dict],
+    candidate_patterns: list[dict],
+    all_problems: list[dict],
+    all_patterns: list[dict],
+    index_parse_failures: list[str],
+) -> list[str]:
+    """Generate governance questions based on applicability ambiguity."""
     governance_questions: list[str] = []
 
     # Parse failure questions (PAT-0008 R108)
@@ -267,26 +286,90 @@ def build_section_governance_packet(
             f"{reason}. Which patterns apply?"
         )
 
-    # Determine explicit applicability state
+    return governance_questions
+
+
+def _determine_applicability_state(
+    candidate_problems: list[dict],
+    candidate_patterns: list[dict],
+    governing_profile: str,
+    all_problems: list[dict],
+    all_patterns: list[dict],
+    governance_questions: list[str],
+    index_parse_failures: list[str],
+) -> str:
+    """Determine the explicit applicability state for the packet."""
     if index_parse_failures:
-        applicability_state = "ambiguous_applicability"
-    elif not candidate_problems and not candidate_patterns and not governing_profile:
+        return "ambiguous_applicability"
+    if not candidate_problems and not candidate_patterns and not governing_profile:
         if all_problems or all_patterns:
             # Archives exist but nothing matched — ambiguous, not absent
-            applicability_state = "ambiguous_applicability"
-        else:
-            applicability_state = "no_applicable_governance"
-    elif governance_questions:
-        applicability_state = "ambiguous_applicability"
-    else:
-        applicability_state = "matched"
+            return "ambiguous_applicability"
+        return "no_applicable_governance"
+    if governance_questions:
+        return "ambiguous_applicability"
+    return "matched"
 
+
+def build_section_governance_packet(
+    section_number: str,
+    planspace: Path,
+    codespace: Path,
+    section_summary: str = "",
+) -> Path | None:
+    """Build a governance packet for a section.
+
+    The packet contains candidate governance items scoped to the section.
+    Full archive references are available via archive_refs for agents that
+    need the complete picture.
+    """
+    del codespace  # codespace docs are parsed into planspace indexes
+
+    paths = PathRegistry(planspace)
+    packet_path = paths.governance_packet(section_number)
+    inputs = _load_governance_inputs(paths, section_number, section_summary)
+
+    # Candidate filtering: section-scoped matching
+    candidate_problems, problem_basis = _filter_by_regions(
+        inputs.all_problems, section_number, "problem_id", inputs.combined_summary,
+    )
+    candidate_patterns, pattern_basis = _filter_by_regions(
+        inputs.all_patterns, section_number, "pattern_id", inputs.combined_summary,
+    )
+
+    # Boost candidates via synthesis cues (bounded: no full archive)
+    if inputs.synthesis_ids:
+        problem_basis, pattern_basis = _boost_candidates_by_synthesis(
+            candidate_problems, candidate_patterns,
+            inputs.all_problems, inputs.all_patterns,
+            inputs.synthesis_ids, problem_basis, pattern_basis,
+        )
+
+    governing_profile = _resolve_governing_profile(
+        section_number, inputs.region_profile_map,
+    )
+    # Narrow profile scope: include only governing profile or bounded candidates
+    bounded_profiles = [
+        p for p in inputs.all_profiles
+        if isinstance(p, dict) and p.get("profile_id") == governing_profile
+    ] if governing_profile else inputs.all_profiles
+
+    governance_questions = _build_governance_questions(
+        section_number, problem_basis, pattern_basis,
+        candidate_problems, candidate_patterns,
+        inputs.all_problems, inputs.all_patterns, inputs.index_parse_failures,
+    )
+    applicability_state = _determine_applicability_state(
+        candidate_problems, candidate_patterns, governing_profile,
+        inputs.all_problems, inputs.all_patterns,
+        governance_questions, inputs.index_parse_failures,
+    )
     packet = {
         "section": section_number,
         "candidate_problems": candidate_problems,
         "candidate_patterns": candidate_patterns,
         "profiles": bounded_profiles,
-        "region_profile_map": region_profile_map,
+        "region_profile_map": inputs.region_profile_map,
         "archive_refs": {
             "problem_index": str(paths.governance_problem_index()),
             "pattern_index": str(paths.governance_pattern_index()),

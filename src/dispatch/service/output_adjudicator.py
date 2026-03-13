@@ -8,24 +8,9 @@ from pipeline.template import render_template
 from orchestrator.path_registry import PathRegistry
 
 
-def adjudicate_agent_output(
-    output_path: Path, planspace: Path, parent: str,
-    codespace: Path | None = None,
-    *,
-    model: str,
-) -> tuple[str | None, str]:
-    """Dispatch state-adjudicator to classify ambiguous agent output.
-
-    Used when structured signal file is absent but output may contain
-    signals. Returns (signal_type, detail) or (None, "").
-    """
-
-    paths = PathRegistry(planspace)
-    paths.artifacts.mkdir(parents=True, exist_ok=True)
-    adj_prompt = paths.adjudicate_prompt()
-    adj_output = paths.adjudicate_output()
-
-    dynamic_body = f"""# Classify Agent Output
+def _compose_adjudication_text(output_path: Path) -> str:
+    """Build the dynamic prompt body for output adjudication."""
+    return f"""# Classify Agent Output
 
 Read the agent output file and determine its state.
 
@@ -46,6 +31,26 @@ Classify the output into exactly one state. Reply with a JSON block:
 States: ALIGNED, PROBLEMS, UNDERSPECIFIED, NEED_DECISION, DEPENDENCY,
 LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
 """
+
+
+def adjudicate_agent_output(
+    output_path: Path, planspace: Path, parent: str,
+    codespace: Path | None = None,
+    *,
+    model: str,
+) -> tuple[str | None, str]:
+    """Dispatch state-adjudicator to classify ambiguous agent output.
+
+    Used when structured signal file is absent but output may contain
+    signals. Returns (signal_type, detail) or (None, "").
+    """
+
+    paths = PathRegistry(planspace)
+    paths.artifacts.mkdir(parents=True, exist_ok=True)
+    adj_prompt = paths.adjudicate_prompt()
+    adj_output = paths.adjudicate_output()
+
+    dynamic_body = _compose_adjudication_text(output_path)
     violations = Services.prompt_guard().validate_dynamic(dynamic_body)
     if violations:
         Services.logger().log(f"  ERROR: adjudicate prompt blocked — dynamic violations: {violations}")

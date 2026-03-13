@@ -47,7 +47,6 @@ def test_validate_problem_frame_blocks_when_retry_still_does_not_create_frame(
             planspace,
             codespace,
             "parent",
-            {"setup": "setup-model"},
         )
 
     assert result is None
@@ -81,7 +80,7 @@ def test_validate_problem_frame_invalidates_existing_proposal_when_hash_changes(
     )
     hash_path.write_text("old-hash", encoding="utf-8")
 
-    result = validate_problem_frame(section, planspace, planspace, "parent", {})
+    result = validate_problem_frame(section, planspace, planspace, "parent")
 
     assert result == "ok"
     assert not proposal.exists()
@@ -106,7 +105,7 @@ def test_validate_problem_frame_records_traceability_when_excerpts_exist(
         encoding="utf-8",
     )
 
-    result = validate_problem_frame(section, planspace, planspace, "parent", {})
+    result = validate_problem_frame(section, planspace, planspace, "parent")
 
     assert result == "ok"
     assert len(capturing_communicator.traceability_calls) == 2

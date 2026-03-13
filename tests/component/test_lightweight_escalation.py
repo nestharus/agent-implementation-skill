@@ -30,14 +30,6 @@ def env(tmp_path: Path) -> tuple[Path, Path]:
     codespace.mkdir()
     return planspace, codespace
 
-def _common_policy() -> dict:
-    return {
-        "proposal": "gpt",
-        "alignment": "claude",
-        "intent_judge": "claude",
-        "escalation_model": "stronger",
-    }
-
 def _registry_path(planspace: Path, number: str = "01") -> Path:
     return (
         planspace
@@ -80,11 +72,11 @@ def _install_common_patches(
         return planspace / "artifacts" / "proposal-prompt.md"
 
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_integration_proposal_prompt",
+        "proposal.service.proposal_prep.write_integration_proposal_prompt",
         _proposal_prompt,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_integration_alignment_prompt",
+        "proposal.service.alignment_handler.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
     monkeypatch.setattr(
@@ -93,7 +85,7 @@ def _install_common_patches(
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_reconciliation_result",
+        "proposal.service.proposal_prep.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -145,7 +137,7 @@ def test_lightweight_aligned_surfaces_force_reproposal_under_full_intent(
         proposal_args=proposal_args,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
+        "proposal.service.surface_handler.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
@@ -162,7 +154,6 @@ def test_lightweight_aligned_surfaces_force_reproposal_under_full_intent(
             planspace,
             codespace,
             "parent",
-            _common_policy(),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -212,7 +203,7 @@ def test_lightweight_aligned_surfaces_persist_registry_entries(
         proposal_args=proposal_args,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
+        "proposal.service.surface_handler.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
@@ -229,7 +220,6 @@ def test_lightweight_aligned_surfaces_persist_registry_entries(
             planspace,
             codespace,
             "parent",
-            _common_policy(),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -257,7 +247,7 @@ def test_lightweight_empty_surface_payload_does_not_escalate(
         proposal_args=proposal_args,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
+        "proposal.service.surface_handler.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: {
             "problem_surfaces": [],
             "philosophy_surfaces": [],
@@ -277,7 +267,6 @@ def test_lightweight_empty_surface_payload_does_not_escalate(
             planspace,
             codespace,
             "parent",
-            _common_policy(),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -319,7 +308,7 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
         proposal_args=proposal_args,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
+        "proposal.service.surface_handler.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
@@ -341,7 +330,6 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
             planspace,
             codespace,
             "parent",
-            _common_policy(),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -390,7 +378,7 @@ def test_full_mode_surfaces_do_not_emit_lightweight_escalation_signal(
         proposal_args=proposal_args,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
+        "proposal.service.surface_handler.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
@@ -408,7 +396,6 @@ def test_full_mode_surfaces_do_not_emit_lightweight_escalation_signal(
             planspace,
             codespace,
             "parent",
-            _common_policy(),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )

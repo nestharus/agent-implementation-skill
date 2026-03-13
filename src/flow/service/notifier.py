@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from containers import Services
 from orchestrator.path_registry import PathRegistry
 from flow.service.task_db_client import DB_SH, db_cmd, task_db
 
@@ -97,6 +98,9 @@ def record_qa_intercept(
             text=True,
             timeout=10,
         )
-    except Exception:
+    except Exception as exc:
         # Non-critical — logging failure must not block dispatch.
+        Services.logger().log(
+            f"QA intercept logging failed ({exc}) — failing open",
+        )
         pass

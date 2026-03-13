@@ -54,7 +54,7 @@ def ingest_task_requests(signal_path: Path) -> list[dict]:
         Use :func:`ingest_and_submit` instead, which submits tasks into
         the queue with flow metadata rather than returning raw dicts.
     """
-    return _ingest_task_requests(signal_path, logger=Services.logger().log)
+    return _ingest_task_requests(signal_path)
 
 
 def ingest_and_submit(
@@ -82,7 +82,7 @@ def ingest_and_submit(
 
     Returns list of submitted task IDs.
     """
-    decl = _parse_signal_file(signal_path, logger=Services.logger().log)
+    decl = _parse_signal_file(signal_path)
     if decl is None:
         return []
 

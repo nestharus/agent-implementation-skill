@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
 from pathlib import Path
 
 from containers import Services
@@ -32,18 +31,17 @@ def wait_if_paused(
     *,
     db_sh: Path,
     agent_name: str,
-    logger: Callable[[str], None],
 ) -> None:
     """Block while the pipeline is paused, buffering non-control messages."""
     if check_pipeline_state(planspace, db_sh=db_sh) != "paused":
         return
+    log = Services.logger().log
     mailbox = MailboxService.for_planspace(
         planspace,
         db_sh=db_sh,
         agent_name=agent_name,
-        logger=logger,
     )
-    logger("Pipeline paused — waiting for resume")
+    log("Pipeline paused — waiting for resume")
     mailbox.send(parent, "status:paused")
     buffered: list[str] = []
     while check_pipeline_state(planspace, db_sh=db_sh) == "paused":
@@ -51,19 +49,19 @@ def wait_if_paused(
         if msg == "TIMEOUT":
             continue
         if msg.startswith("abort"):
-            logger("Received abort while paused — shutting down")
+            log("Received abort while paused — shutting down")
             mailbox.send(parent, "fail:aborted")
             mailbox.cleanup()
             sys.exit(0)
         if msg.startswith("alignment_changed"):
-            logger("Alignment changed while paused — invalidating excerpts")
+            log("Alignment changed while paused — invalidating excerpts")
             Services.change_tracker().invalidate_excerpts(planspace)
             Services.change_tracker().set_flag(planspace)
             continue
         buffered.append(msg)
     for msg in buffered:
         mailbox.send(agent_name, msg)
-    logger("Pipeline resumed")
+    log("Pipeline resumed")
     mailbox.send(parent, "status:resumed")
 
 
@@ -74,25 +72,24 @@ def pause_for_parent(
     *,
     db_sh: Path,
     agent_name: str,
-    logger: Callable[[str], None],
 ) -> str:
     """Send a pause signal to the parent and wait for the next response."""
+    log = Services.logger().log
     mailbox = MailboxService.for_planspace(
         planspace,
         db_sh=db_sh,
         agent_name=agent_name,
-        logger=logger,
     )
     mailbox.send(parent, signal)
     while True:
         msg = mailbox.recv(timeout=0)
         if msg.startswith("abort"):
-            logger("Received abort — shutting down")
+            log("Received abort — shutting down")
             mailbox.send(parent, "fail:aborted")
             mailbox.cleanup()
             sys.exit(0)
         if msg.startswith("alignment_changed"):
-            logger("Alignment changed during pause — invalidating excerpts")
+            log("Alignment changed during pause — invalidating excerpts")
             Services.change_tracker().invalidate_excerpts(planspace)
             Services.change_tracker().set_flag(planspace)
             continue

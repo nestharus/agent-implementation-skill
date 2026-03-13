@@ -8,6 +8,41 @@ from orchestrator.path_registry import PathRegistry
 from containers import Services
 
 
+def _compose_shard_text(
+    section_num: str,
+    refs_block: str,
+    codespace: Path,
+    output_path: Path,
+) -> str:
+    """Build the prompt text for the shard explorer agent."""
+    return f"""# Shard Explorer: Section {section_num}
+
+## Your Task
+
+Analyze section {section_num} and produce a structured shard JSON.
+Your agent definition file defines the output schema and reasoning
+method — follow it exactly.
+
+## Files to Read
+
+{refs_block}
+
+## Codespace
+
+The project source code is at: `{codespace}`
+
+Browse the codespace to understand existing patterns, types, and
+integration points that this section will interact with.
+
+## Output
+
+Write your shard JSON to: `{output_path}`
+
+Create parent directories as needed. Follow the schema from your
+agent definition exactly.
+"""
+
+
 def write_shard_prompt(
     section_num: str,
     section_path: Path,
@@ -54,13 +89,32 @@ def write_shard_prompt(
     refs_block = "\n".join(refs)
 
     prompt_path = prompts_dir / f"shard-{section_num}.md"
-    Services.prompt_guard().write_validated(f"""# Shard Explorer: Section {section_num}
+    Services.prompt_guard().write_validated(
+        _compose_shard_text(section_num, refs_block, codespace, output_path),
+        prompt_path,
+    )
+
+    return prompt_path
+
+
+def _compose_pruner_text(
+    sections_list: str,
+    refs_block: str,
+    codespace: Path,
+    substrate_dir: Path,
+) -> str:
+    """Build the prompt text for the pruner agent."""
+    return f"""# Pruner: Strategic Merge
 
 ## Your Task
 
-Analyze section {section_num} and produce a structured shard JSON.
-Your agent definition file defines the output schema and reasoning
-method — follow it exactly.
+Read all shard files and produce the shared integration substrate.
+Your agent definition file defines the three output artifacts and
+reasoning method — follow it exactly.
+
+## Target Sections
+
+Only these sections are in scope: {sections_list}
 
 ## Files to Read
 
@@ -70,18 +124,17 @@ method — follow it exactly.
 
 The project source code is at: `{codespace}`
 
-Browse the codespace to understand existing patterns, types, and
-integration points that this section will interact with.
-
 ## Output
 
-Write your shard JSON to: `{output_path}`
+Write three artifacts to `{substrate_dir}/`:
 
-Create parent directories as needed. Follow the schema from your
+1. `{substrate_dir / "substrate.md"}` — shared problem surface
+2. `{substrate_dir / "seed-plan.json"}` — minimal anchors to create
+3. `{substrate_dir / "prune-signal.json"}` — structured status (READY or NEEDS_PARENT)
+
+Create parent directories as needed. Follow the schemas from your
 agent definition exactly.
-""", prompt_path)
-
-    return prompt_path
+"""
 
 
 def write_pruner_prompt(
@@ -121,17 +174,29 @@ def write_pruner_prompt(
     refs_block = "\n".join(refs)
 
     prompt_path = prompts_dir / "pruner.md"
-    Services.prompt_guard().write_validated(f"""# Pruner: Strategic Merge
+    Services.prompt_guard().write_validated(
+        _compose_pruner_text(sections_list, refs_block, codespace, substrate_dir),
+        prompt_path,
+    )
+
+    return prompt_path
+
+
+def _compose_seeder_text(
+    refs_block: str,
+    codespace: Path,
+    registry: PathRegistry,
+    substrate_md_path: Path,
+    substrate_dir: Path,
+) -> str:
+    """Build the prompt text for the seeder agent."""
+    return f"""# Seeder: Create Anchors and Wire References
 
 ## Your Task
 
-Read all shard files and produce the shared integration substrate.
-Your agent definition file defines the three output artifacts and
-reasoning method — follow it exactly.
-
-## Target Sections
-
-Only these sections are in scope: {sections_list}
+Read the seed plan and substrate document, then create anchor files
+and wiring artifacts. Your agent definition file defines all four
+output types — follow it exactly.
 
 ## Files to Read
 
@@ -139,21 +204,20 @@ Only these sections are in scope: {sections_list}
 
 ## Codespace
 
-The project source code is at: `{codespace}`
+Create anchor files under: `{codespace}`
 
 ## Output
 
-Write three artifacts to `{substrate_dir}/`:
+Your agent definition specifies four outputs:
 
-1. `{substrate_dir / "substrate.md"}` — shared problem surface
-2. `{substrate_dir / "seed-plan.json"}` — minimal anchors to create
-3. `{substrate_dir / "prune-signal.json"}` — structured status (READY or NEEDS_PARENT)
+1. **Anchor files** in codespace at `{codespace}` (paths from seed plan)
+2. **Related-files-update signals** at `{registry.related_files_update_dir()}/section-<NN>.json`
+3. **Substrate input refs** at `{registry.inputs_dir()}/section-<NN>/substrate.ref` (each containing the absolute path to `{substrate_md_path}`)
+4. **Completion signal** at `{substrate_dir / "seed-signal.json"}`
 
 Create parent directories as needed. Follow the schemas from your
 agent definition exactly.
-""", prompt_path)
-
-    return prompt_path
+"""
 
 
 def write_seeder_prompt(
@@ -182,34 +246,12 @@ def write_seeder_prompt(
     refs_block = "\n".join(refs)
 
     prompt_path = prompts_dir / "seeder.md"
-    Services.prompt_guard().write_validated(f"""# Seeder: Create Anchors and Wire References
-
-## Your Task
-
-Read the seed plan and substrate document, then create anchor files
-and wiring artifacts. Your agent definition file defines all four
-output types — follow it exactly.
-
-## Files to Read
-
-{refs_block}
-
-## Codespace
-
-Create anchor files under: `{codespace}`
-
-## Output
-
-Your agent definition specifies four outputs:
-
-1. **Anchor files** in codespace at `{codespace}` (paths from seed plan)
-2. **Related-files-update signals** at `{registry.related_files_update_dir()}/section-<NN>.json`
-3. **Substrate input refs** at `{registry.inputs_dir()}/section-<NN>/substrate.ref` (each containing the absolute path to `{substrate_md_path}`)
-4. **Completion signal** at `{substrate_dir / "seed-signal.json"}`
-
-Create parent directories as needed. Follow the schemas from your
-agent definition exactly.
-""", prompt_path)
+    Services.prompt_guard().write_validated(
+        _compose_seeder_text(
+            refs_block, codespace, registry, substrate_md_path, substrate_dir,
+        ),
+        prompt_path,
+    )
 
     return prompt_path
 

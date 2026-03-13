@@ -61,7 +61,6 @@ def test_run_microstrategy_returns_none_when_decider_skips(
         planspace,
         codespace,
         "parent",
-        {"escalation_model": "stronger"},
     )
 
     assert result is None
@@ -97,15 +96,10 @@ def test_run_microstrategy_retries_with_escalation_and_returns_path(
             planspace,
             codespace,
             "parent",
-            {
-                "implementation": "primary",
-                "microstrategy_decider": "decider",
-                "escalation_model": "fallback",
-            },
         )
 
         assert result == micro_path
-        assert dispatch_calls == ["primary", "fallback"]
+        assert dispatch_calls == ["gpt-high", "gpt-xhigh"]
     finally:
         Services.dispatcher.reset_override()
         Services.prompt_guard.reset_override()

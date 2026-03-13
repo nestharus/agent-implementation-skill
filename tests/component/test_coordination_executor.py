@@ -62,7 +62,6 @@ def test_execute_coordination_plan_runs_fix_groups_and_persists_modified_files(
         planspace,
         tmp_path / "codespace",
         "parent",
-        {"coordination_fix": "fix-model"},
     )
 
     assert affected_sections == ["01", "02"]
@@ -138,10 +137,6 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
             planspace,
             tmp_path / "codespace",
             "parent",
-            {
-                "coordination_fix": "fix-model",
-                "coordination_bridge": "bridge-model",
-            },
         )
 
     assert affected_sections == ["01", "02"]
@@ -186,5 +181,4 @@ def test_execute_coordination_plan_raises_on_fix_group_sentinel(
             planspace,
             tmp_path / "codespace",
             "parent",
-            {"coordination_fix": "fix-model"},
         )

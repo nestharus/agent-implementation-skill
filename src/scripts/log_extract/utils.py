@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from dispatch.helpers.log_extract_helpers import (
@@ -39,7 +40,8 @@ def load_model_backend_map(planspace: Path) -> dict[str, tuple[str, str]]:
         model_name = toml_path.stem
         try:
             data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 — best-effort config parsing
+            print(f"Warning: skipping malformed config {toml_path}: {exc}", file=sys.stderr)
             continue
         command = data.get("command", "")
         # Extract the actual binary name (last token of the command string)

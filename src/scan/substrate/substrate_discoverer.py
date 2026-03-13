@@ -41,36 +41,19 @@ from scan.substrate.schemas import read_seed_plan_failclosed, read_shard_failclo
 from containers import Services
 
 
-# ---- Main orchestration ----
+# ---- Helpers ----
 
-def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
-    """Run the Stage 3.5 Shared Integration Substrate discovery.
 
-    Pipeline:
-      1. Read project mode and section specs.
-      2. Determine vacuum sections (related files count == 0).
-      3. Apply trigger rule to decide whether to run.
-      4. Phase A: Shard explorer per target section.
-      5. Phase B: Pruner reads all shards, writes seed plan.
-      6. Phase C: Seeder creates anchors, writes related-files signals.
-      7. Apply related-files updates to section specs.
+def _check_prerequisites(
+    registry: PathRegistry,
+    artifacts_dir: Path,
+    sections_dir: Path,
+) -> tuple[str, list[Path], int] | None:
+    """Steps 1-2: read project mode and load section specs.
 
-    Parameters
-    ----------
-    planspace:
-        Root of the planspace directory containing ``artifacts/``.
-    codespace:
-        Root of the project source code.
-
-    Returns
-    -------
-    bool
-        ``True`` on success, ``False`` on failure.
+    Returns ``(project_mode, section_files, total_sections)`` on success,
+    or ``None`` after writing a NEEDS_PARENT status on failure.
     """
-    registry = PathRegistry(planspace)
-    artifacts_dir = registry.artifacts
-    sections_dir = registry.sections_dir()
-
     # ---- Step 1: Read project mode ----
     project_mode = _read_project_mode(artifacts_dir)
     if project_mode is None:
@@ -83,7 +66,7 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
             vacuum_sections=[],
             notes="No project-mode signal from scan stage",
         )
-        return False
+        return None
 
     # ---- Step 2: Load section specs ----
     if not sections_dir.is_dir():
@@ -96,7 +79,7 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
             vacuum_sections=[],
             notes=f"Sections directory not found: {sections_dir}",
         )
-        return False
+        return None
 
     section_files = _list_section_files(sections_dir)
     total_sections = len(section_files)
@@ -110,8 +93,24 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
             vacuum_sections=[],
             notes="No section files found",
         )
-        return False
+        return None
 
+    return project_mode, section_files, total_sections
+
+
+def _find_target_sections(
+    section_files: list[Path],
+    artifacts_dir: Path,
+    codespace: Path,
+    project_mode: str,
+    total_sections: int,
+) -> tuple[list[str], dict[str, Path], str, list[str], int] | None:
+    """Steps 3-4: determine vacuum sections, read trigger signals, evaluate trigger rule.
+
+    Returns ``(target_sections, target_paths, trigger_reason,
+    vacuum_sections, trigger_threshold)`` on success, or ``None`` if
+    the trigger rule says to skip (after writing status and printing).
+    """
     # ---- Step 3: Determine vacuum sections ----
     vacuum_sections: list[str] = []
     for sf in section_files:
@@ -150,34 +149,48 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
             f"(threshold={trigger_threshold}) -- "
             f"running for {len(target_sections)} sections"
         )
-    else:
-        # Not enough vacuum sections and no signals -- skip
-        print(
-            f"[SUBSTRATE] SKIPPED: {project_mode} project with "
-            f"{len(vacuum_sections)} vacuum section(s) "
-            f"(threshold={trigger_threshold})"
+        return (
+            target_sections,
+            target_paths,
+            trigger_reason,
+            vacuum_sections,
+            trigger_threshold,
         )
-        _write_status(
-            artifacts_dir,
-            state="SKIPPED",
-            project_mode=project_mode,
-            total_sections=total_sections,
-            vacuum_sections=vacuum_sections,
-            notes=(
-                f"{project_mode} project with {len(vacuum_sections)} "
-                f"vacuum section(s) -- below threshold of "
-                f"{trigger_threshold}"
-            ),
-            threshold=trigger_threshold,
-        )
-        return True  # Skip is a success -- not an error
 
-    print(f"[SUBSTRATE] Triggered: {trigger_reason}")
+    # Not enough vacuum sections and no signals -- skip
+    print(
+        f"[SUBSTRATE] SKIPPED: {project_mode} project with "
+        f"{len(vacuum_sections)} vacuum section(s) "
+        f"(threshold={trigger_threshold})"
+    )
+    _write_status(
+        artifacts_dir,
+        state="SKIPPED",
+        project_mode=project_mode,
+        total_sections=total_sections,
+        vacuum_sections=vacuum_sections,
+        notes=(
+            f"{project_mode} project with {len(vacuum_sections)} "
+            f"vacuum section(s) -- below threshold of "
+            f"{trigger_threshold}"
+        ),
+        threshold=trigger_threshold,
+    )
+    return None
 
-    # ---- Read model policy ----
-    model_policy = _read_model_policy(artifacts_dir)
 
-    # ---- Phase A: Shard exploration ----
+def _run_shard_exploration(
+    target_sections: list[str],
+    target_paths: dict[str, Path],
+    registry: PathRegistry,
+    codespace: Path,
+    planspace: Path,
+    model_policy: dict,
+) -> list[str]:
+    """Phase A: run shard explorer for each target section.
+
+    Returns the list of section numbers whose shards were valid.
+    """
     print(f"[SUBSTRATE] Phase A: Shard exploration ({len(target_sections)} sections)")
     shards_dir = registry.substrate_dir() / "shards"
     shards_dir.mkdir(parents=True, exist_ok=True)
@@ -218,25 +231,29 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
             f"{', '.join(shard_failures)}"
         )
 
-    # Check we have at least one valid shard to proceed
-    valid_shards = [
-        s for s in target_sections if s not in shard_failures
-    ]
-    if not valid_shards:
-        print("[SUBSTRATE] All shards failed -- aborting")
-        _write_status(
-            artifacts_dir,
-            state="RAN",
-            project_mode=project_mode,
-            total_sections=total_sections,
-            vacuum_sections=vacuum_sections,
-            notes="All shard explorers failed -- no seed plan produced",
-            threshold=trigger_threshold,
-        )
-        return False
+    # Return valid shard section numbers
+    return [s for s in target_sections if s not in shard_failures]
 
-    # ---- Phase B: Pruning ----
+
+def _run_pruning(
+    registry: PathRegistry,
+    codespace: Path,
+    planspace: Path,
+    valid_shards: list[str],
+    model_policy: dict,
+    artifacts_dir: Path,
+    project_mode: str,
+    total_sections: int,
+    vacuum_sections: list[str],
+    trigger_threshold: int,
+) -> tuple[dict, Path] | None:
+    """Phase B: run pruner to strategically merge shards.
+
+    Returns ``(seed_plan, substrate_md_path)`` on success, or ``None``
+    on failure (writes status on failure).
+    """
     print("[SUBSTRATE] Phase B: Pruner (strategic merge)")
+    logs_dir = registry.substrate_dir() / "logs"
     pruner_prompt = write_pruner_prompt(
         planspace, codespace, valid_shards,
     )
@@ -267,7 +284,7 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
             notes="Pruner failed -- no seed plan produced",
             threshold=trigger_threshold,
         )
-        return False
+        return None
 
     # Verify substrate.md was written
     if not substrate_md_path.is_file():
@@ -281,7 +298,7 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
             notes="Pruner completed but substrate.md missing",
             threshold=trigger_threshold,
         )
-        return False
+        return None
 
     # Check prune-signal.json for NEEDS_PARENT
     if prune_signal_path.is_file():
@@ -303,15 +320,31 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
                     notes=f"Pruner deferred: {reason}",
                     threshold=trigger_threshold,
                 )
-                return False
+                return None
         else:
             print(
                 f"[SUBSTRATE][WARN] prune-signal.json malformed "
                 "-- renaming to .malformed.json"
             )
 
+    return seed_plan, substrate_md_path
+
+
+def _run_seeding_and_apply(
+    registry: PathRegistry,
+    planspace: Path,
+    codespace: Path,
+    target_sections: list[str],
+    model_policy: dict,
+    substrate_md_path: Path,
+) -> int:
+    """Phase C: run seeder, write substrate.ref, apply related-files updates.
+
+    Returns the number of updated section specs.
+    """
     # ---- Phase C: Seeding ----
     print("[SUBSTRATE] Phase C: Seeder (anchor creation + wiring)")
+    logs_dir = registry.substrate_dir() / "logs"
     seeder_prompt = write_seeder_prompt(planspace, codespace)
     seeder_output = logs_dir / "seeder-output.txt"
 
@@ -328,6 +361,7 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
               "attempting to apply any signals that were written")
 
     # Verify seed-signal.json completion marker
+    substrate_dir = registry.substrate_dir()
     seed_signal_path = substrate_dir / "seed-signal.json"
     if seed_signal_path.is_file():
         seed_signal = Services.artifact_io().read_json(seed_signal_path)
@@ -360,7 +394,93 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
     updated_count = apply_related_files_updates(planspace, codespace)
     print(f"[SUBSTRATE] Updated {updated_count} section spec(s)")
 
-    # ---- Write final status ----
+    return updated_count
+
+
+# ---- Main orchestration ----
+
+def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
+    """Run the Stage 3.5 Shared Integration Substrate discovery.
+
+    Pipeline:
+      1. Read project mode and section specs.
+      2. Determine vacuum sections (related files count == 0).
+      3. Apply trigger rule to decide whether to run.
+      4. Phase A: Shard explorer per target section.
+      5. Phase B: Pruner reads all shards, writes seed plan.
+      6. Phase C: Seeder creates anchors, writes related-files signals.
+      7. Apply related-files updates to section specs.
+
+    Parameters
+    ----------
+    planspace:
+        Root of the planspace directory containing ``artifacts/``.
+    codespace:
+        Root of the project source code.
+
+    Returns
+    -------
+    bool
+        ``True`` on success, ``False`` on failure.
+    """
+    registry = PathRegistry(planspace)
+    artifacts_dir = registry.artifacts
+    sections_dir = registry.sections_dir()
+
+    # Steps 1-2: Read project mode and load section specs
+    prereqs = _check_prerequisites(registry, artifacts_dir, sections_dir)
+    if prereqs is None:
+        return False
+    project_mode, section_files, total_sections = prereqs
+
+    # Steps 3-4: Determine targets and evaluate trigger rule
+    targeting = _find_target_sections(
+        section_files, artifacts_dir, codespace, project_mode, total_sections,
+    )
+    if targeting is None:
+        return True  # Skip is a success -- not an error
+
+    target_sections, target_paths, trigger_reason, vacuum_sections, trigger_threshold = targeting
+    print(f"[SUBSTRATE] Triggered: {trigger_reason}")
+
+    # Read model policy
+    model_policy = _read_model_policy(artifacts_dir)
+
+    # Phase A: Shard exploration
+    valid_shards = _run_shard_exploration(
+        target_sections, target_paths, registry, codespace, planspace,
+        model_policy,
+    )
+    if not valid_shards:
+        print("[SUBSTRATE] All shards failed -- aborting")
+        _write_status(
+            artifacts_dir,
+            state="RAN",
+            project_mode=project_mode,
+            total_sections=total_sections,
+            vacuum_sections=vacuum_sections,
+            notes="All shard explorers failed -- no seed plan produced",
+            threshold=trigger_threshold,
+        )
+        return False
+
+    # Phase B: Pruning
+    pruning_result = _run_pruning(
+        registry, codespace, planspace, valid_shards, model_policy,
+        artifacts_dir, project_mode, total_sections, vacuum_sections,
+        trigger_threshold,
+    )
+    if pruning_result is None:
+        return False
+    seed_plan, substrate_md_path = pruning_result
+
+    # Phase C: Seeding + apply related-files updates
+    updated_count = _run_seeding_and_apply(
+        registry, planspace, codespace, target_sections, model_policy,
+        substrate_md_path,
+    )
+
+    # Write final status
     _write_status(
         artifacts_dir,
         state="RAN",

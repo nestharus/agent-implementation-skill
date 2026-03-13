@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
@@ -13,27 +15,43 @@ from proposal.repository.state import (
     load_proposal_state,
 )
 
+
+@dataclass(frozen=True)
+class ReadinessResult:
+    """Structured result from :func:`resolve_readiness`.
+
+    Supports dict-style ``[]`` and ``.get()`` access for backward
+    compatibility during migration.  Prefer attribute access
+    (``.ready``, ``.blockers``, ``.rationale``, ``.artifact_path``).
+    """
+
+    ready: bool
+    blockers: list[dict] = field(default_factory=list)
+    rationale: str = ""
+    artifact_path: Path | None = None
+
+    # -- backward-compat dict-style access ---------------------------------
+
+    _FIELDS = frozenset({"ready", "blockers", "rationale", "artifact_path"})
+
+    def __getitem__(self, key: str) -> Any:
+        if key in self._FIELDS:
+            return getattr(self, key)
+        raise KeyError(key)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        if key in self._FIELDS:
+            return getattr(self, key)
+        return default
+
 logger = logging.getLogger(__name__)
 
 
-def _validate_governance_identity(
-    state: dict,
-    planspace: Path,
-    section_number: str,
-) -> list[dict]:
-    """Validate governance identity fields against the governance packet.
-
-    *planspace* is the root planspace directory.  PathRegistry is used for
-    all artifact path construction (PAT-0003).
-
-    Returns a list of governance blockers (empty if valid).
-    """
-    governance_blockers: list[dict] = []
-
-    # Check for unresolved pattern deviations
+def _check_pattern_deviations(state: dict) -> list[dict]:
+    """Return blockers for unresolved pattern deviations."""
     deviations = state.get("pattern_deviations", [])
     if isinstance(deviations, list) and deviations:
-        governance_blockers.append({
+        return [{
             "state": "governance_deviation",
             "detail": (
                 f"{len(deviations)} unresolved pattern deviation(s) — "
@@ -42,12 +60,15 @@ def _validate_governance_identity(
             "needs": "pattern delta resolution",
             "why_blocked": "PAT-0013: pattern change before code change",
             "source": "governance_identity",
-        })
+        }]
+    return []
 
-    # Check for unresolved governance questions
+
+def _check_governance_questions(state: dict) -> list[dict]:
+    """Return blockers for unresolved governance questions."""
     questions = state.get("governance_questions", [])
     if isinstance(questions, list) and questions:
-        governance_blockers.append({
+        return [{
             "state": "governance_question",
             "detail": (
                 f"{len(questions)} unresolved governance question(s)"
@@ -55,13 +76,18 @@ def _validate_governance_identity(
             "needs": "governance question resolution",
             "why_blocked": "PAT-0013: unresolved governance questions block descent",
             "source": "governance_identity",
-        })
+        }]
+    return []
 
-    # Load governance packet for validation
-    paths = PathRegistry(planspace)
-    packet_path = paths.governance_packet(section_number)
-    packet = Services.artifact_io().read_json(packet_path)
 
+def _validate_declared_ids_types(
+    state: dict, section_number: str,
+) -> tuple[list[str], list[str], str]:
+    """Extract and type-check declared governance IDs from *state*.
+
+    Returns ``(problem_ids, pattern_ids, profile_id)`` with safe defaults
+    when types are unexpected.
+    """
     problem_ids = state.get("problem_ids", [])
     pattern_ids = state.get("pattern_ids", [])
     profile_id = state.get("profile_id", "")
@@ -83,112 +109,130 @@ def _validate_governance_identity(
             section_number, type(profile_id).__name__,
         )
         profile_id = ""
+    return problem_ids, pattern_ids, profile_id
 
-    has_declared_ids = bool(problem_ids or pattern_ids or profile_id)
 
-    if isinstance(packet, dict):
-        packet_problems = packet.get("candidate_problems", [])
-        packet_patterns = packet.get("candidate_patterns", [])
-        governing_profile = packet.get("governing_profile", "")
-        packet_applicability = packet.get("applicability_state", "")
-        packet_questions = packet.get("governance_questions", [])
-        if not isinstance(packet_problems, list):
-            packet_problems = []
-        if not isinstance(packet_patterns, list):
-            packet_patterns = []
-        if not isinstance(governing_profile, str):
-            governing_profile = ""
-        if not isinstance(packet_questions, list):
-            packet_questions = []
-
-        has_governance_candidates = bool(
-            packet_problems or packet_patterns or governing_profile
-        )
-
-        # CP-3 (R107): packet ambiguity must be carried in proposal-state
-        # or explicitly resolved — it cannot silently vanish before descent.
-        if packet_applicability == "ambiguous_applicability" and packet_questions:
-            state_questions = state.get("governance_questions", [])
-            if not isinstance(state_questions, list):
-                state_questions = []
-            if not state_questions:
-                governance_blockers.append({
-                    "state": "governance_ambiguity_unresolved",
-                    "detail": (
-                        f"governance packet has {len(packet_questions)} "
-                        "ambiguity question(s) but proposal-state does not "
-                        "carry or resolve them"
-                    ),
-                    "needs": "governance question resolution or narrowed selection",
-                    "why_blocked": (
-                        "PAT-0011: packet ambiguity must be resolved or "
-                        "carried forward before descent"
-                    ),
-                    "source": "governance_identity",
-                })
-
-        # PAT-0013 step 6: empty identity is illegal when packet has candidates
-        if has_governance_candidates and not has_declared_ids:
-            governance_blockers.append({
-                "state": "governance_identity_missing",
+def _check_packet_ambiguity(packet: dict, state: dict) -> list[dict]:
+    """CP-3 (R107): packet ambiguity must be carried in proposal-state."""
+    packet_applicability = packet.get("applicability_state", "")
+    packet_questions = packet.get("governance_questions", [])
+    if not isinstance(packet_questions, list):
+        packet_questions = []
+    if packet_applicability == "ambiguous_applicability" and packet_questions:
+        state_questions = state.get("governance_questions", [])
+        if not isinstance(state_questions, list):
+            state_questions = []
+        if not state_questions:
+            return [{
+                "state": "governance_ambiguity_unresolved",
                 "detail": (
-                    "governance packet provides candidates but proposal "
-                    "declares no problem_ids, pattern_ids, or profile_id"
+                    f"governance packet has {len(packet_questions)} "
+                    "ambiguity question(s) but proposal-state does not "
+                    "carry or resolve them"
                 ),
-                "needs": "governance identity declaration",
-                "why_blocked": "PAT-0013: non-empty identity required when governance applies",
-                "source": "governance_identity",
-            })
-
-        # Validate profile_id compatibility with governing profile
-        if profile_id and governing_profile and profile_id != governing_profile:
-            governance_blockers.append({
-                "state": "governance_profile_mismatch",
-                "detail": (
-                    f"profile_id '{profile_id}' does not match "
-                    f"governing_profile '{governing_profile}'"
+                "needs": "governance question resolution or narrowed selection",
+                "why_blocked": (
+                    "PAT-0011: packet ambiguity must be resolved or "
+                    "carried forward before descent"
                 ),
-                "needs": "profile_id correction",
-                "why_blocked": "PAT-0013: profile_id must match governing profile",
                 "source": "governance_identity",
-            })
+            }]
+    return []
 
-        # Validate packet membership for declared IDs
-        if problem_ids or pattern_ids:
-            packet_problem_ids = {
-                str(p.get("problem_id", ""))
-                for p in packet_problems
-                if isinstance(p, dict)
-            }
-            packet_pattern_ids = {
-                str(p.get("pattern_id", ""))
-                for p in packet_patterns
-                if isinstance(p, dict)
-            }
-            orphan_problems = [
-                pid for pid in problem_ids
-                if isinstance(pid, str) and pid and pid not in packet_problem_ids
-            ]
-            orphan_patterns = [
-                pid for pid in pattern_ids
-                if isinstance(pid, str) and pid and pid not in packet_pattern_ids
-            ]
-            if orphan_problems or orphan_patterns:
-                details = []
-                if orphan_problems:
-                    details.append(f"problem_ids {orphan_problems} not in packet")
-                if orphan_patterns:
-                    details.append(f"pattern_ids {orphan_patterns} not in packet")
-                governance_blockers.append({
-                    "state": "governance_membership",
-                    "detail": "; ".join(details),
-                    "needs": "governance ID correction",
-                    "why_blocked": "PAT-0013: IDs must reference packet records",
-                    "source": "governance_identity",
-                })
-    elif has_declared_ids:
-        # PAT-0013 step 6: declared IDs with missing/malformed packet → block
-        governance_blockers.append({
+
+def _check_empty_identity(packet: dict, has_declared_ids: bool) -> list[dict]:
+    """PAT-0013 step 6: empty identity is illegal when packet has candidates."""
+    packet_problems = packet.get("candidate_problems", [])
+    packet_patterns = packet.get("candidate_patterns", [])
+    governing_profile = packet.get("governing_profile", "")
+    if not isinstance(packet_problems, list):
+        packet_problems = []
+    if not isinstance(packet_patterns, list):
+        packet_patterns = []
+    if not isinstance(governing_profile, str):
+        governing_profile = ""
+    has_governance_candidates = bool(
+        packet_problems or packet_patterns or governing_profile
+    )
+    if has_governance_candidates and not has_declared_ids:
+        return [{
+            "state": "governance_identity_missing",
+            "detail": (
+                "governance packet provides candidates but proposal "
+                "declares no problem_ids, pattern_ids, or profile_id"
+            ),
+            "needs": "governance identity declaration",
+            "why_blocked": "PAT-0013: non-empty identity required when governance applies",
+            "source": "governance_identity",
+        }]
+    return []
+
+
+def _check_profile_mismatch(
+    profile_id: str, governing_profile: str,
+) -> list[dict]:
+    """Return blockers when profile_id does not match the governing profile."""
+    if profile_id and governing_profile and profile_id != governing_profile:
+        return [{
+            "state": "governance_profile_mismatch",
+            "detail": (
+                f"profile_id '{profile_id}' does not match "
+                f"governing_profile '{governing_profile}'"
+            ),
+            "needs": "profile_id correction",
+            "why_blocked": "PAT-0013: profile_id must match governing profile",
+            "source": "governance_identity",
+        }]
+    return []
+
+
+def _check_packet_membership(
+    problem_ids: list[str],
+    pattern_ids: list[str],
+    packet_problems: list,
+    packet_patterns: list,
+) -> list[dict]:
+    """Validate that declared IDs reference records present in the packet."""
+    if not (problem_ids or pattern_ids):
+        return []
+    packet_problem_ids = {
+        str(p.get("problem_id", ""))
+        for p in packet_problems
+        if isinstance(p, dict)
+    }
+    packet_pattern_ids = {
+        str(p.get("pattern_id", ""))
+        for p in packet_patterns
+        if isinstance(p, dict)
+    }
+    orphan_problems = [
+        pid for pid in problem_ids
+        if isinstance(pid, str) and pid and pid not in packet_problem_ids
+    ]
+    orphan_patterns = [
+        pid for pid in pattern_ids
+        if isinstance(pid, str) and pid and pid not in packet_pattern_ids
+    ]
+    if orphan_problems or orphan_patterns:
+        details = []
+        if orphan_problems:
+            details.append(f"problem_ids {orphan_problems} not in packet")
+        if orphan_patterns:
+            details.append(f"pattern_ids {orphan_patterns} not in packet")
+        return [{
+            "state": "governance_membership",
+            "detail": "; ".join(details),
+            "needs": "governance ID correction",
+            "why_blocked": "PAT-0013: IDs must reference packet records",
+            "source": "governance_identity",
+        }]
+    return []
+
+
+def _check_missing_packet(has_declared_ids: bool, packet: Any) -> list[dict]:
+    """PAT-0013 step 6: declared IDs with missing/malformed packet -> block."""
+    if has_declared_ids and not isinstance(packet, dict):
+        return [{
             "state": "governance_packet_missing",
             "detail": (
                 "governance IDs declared but governance packet is "
@@ -197,12 +241,62 @@ def _validate_governance_identity(
             "needs": "governance packet rebuild",
             "why_blocked": "PAT-0013: packet required when IDs are declared",
             "source": "governance_identity",
-        })
+        }]
+    return []
 
-    return governance_blockers
+
+def _validate_governance_identity(
+    state: dict,
+    planspace: Path,
+    section_number: str,
+) -> list[dict]:
+    """Validate governance identity fields against the governance packet.
+
+    *planspace* is the root planspace directory.  PathRegistry is used for
+    all artifact path construction (PAT-0003).
+
+    Returns a list of governance blockers (empty if valid).
+    """
+    blockers: list[dict] = []
+
+    blockers.extend(_check_pattern_deviations(state))
+    blockers.extend(_check_governance_questions(state))
+
+    # Load governance packet for validation
+    paths = PathRegistry(planspace)
+    packet_path = paths.governance_packet(section_number)
+    packet = Services.artifact_io().read_json(packet_path)
+
+    problem_ids, pattern_ids, profile_id = _validate_declared_ids_types(
+        state, section_number,
+    )
+    has_declared_ids = bool(problem_ids or pattern_ids or profile_id)
+
+    if isinstance(packet, dict):
+        blockers.extend(_check_packet_ambiguity(packet, state))
+        blockers.extend(_check_empty_identity(packet, has_declared_ids))
+
+        governing_profile = packet.get("governing_profile", "")
+        if not isinstance(governing_profile, str):
+            governing_profile = ""
+        blockers.extend(_check_profile_mismatch(profile_id, governing_profile))
+
+        packet_problems = packet.get("candidate_problems", [])
+        packet_patterns = packet.get("candidate_patterns", [])
+        if not isinstance(packet_problems, list):
+            packet_problems = []
+        if not isinstance(packet_patterns, list):
+            packet_patterns = []
+        blockers.extend(_check_packet_membership(
+            problem_ids, pattern_ids, packet_problems, packet_patterns,
+        ))
+    else:
+        blockers.extend(_check_missing_packet(has_declared_ids, packet))
+
+    return blockers
 
 
-def resolve_readiness(planspace: Path, section_number: str) -> dict:
+def resolve_readiness(planspace: Path, section_number: str) -> ReadinessResult:
     """Resolve whether *section_number* is ready for implementation.
 
     *planspace* is the root planspace directory (NOT the artifacts subdirectory).
@@ -231,7 +325,7 @@ def resolve_readiness(planspace: Path, section_number: str) -> dict:
         elif not state.get("execution_ready"):
             rationale = rationale or "execution_ready is false"
 
-    result: dict = {
+    serializable: dict = {
         "ready": ready,
         "blockers": blockers,
         "rationale": rationale,
@@ -241,9 +335,13 @@ def resolve_readiness(planspace: Path, section_number: str) -> dict:
     readiness_dir.mkdir(parents=True, exist_ok=True)
     artifact_path = paths.execution_ready(section_number)
     try:
-        Services.artifact_io().write_json(artifact_path, result)
+        Services.artifact_io().write_json(artifact_path, serializable)
     except OSError:
         logger.warning("Could not write readiness artifact to %s", artifact_path)
 
-    result["artifact_path"] = artifact_path
-    return result
+    return ReadinessResult(
+        ready=ready,
+        blockers=blockers,
+        rationale=rationale,
+        artifact_path=artifact_path,
+    )

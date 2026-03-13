@@ -29,6 +29,113 @@ if TYPE_CHECKING:
     from orchestrator.types import Section
 
 
+def _compute_files_fingerprint(
+    modified_files: list[str],
+    codespace: Path,
+) -> str:
+    """Compute a combined hash fingerprint over all modified files."""
+    parts = []
+    for rel_path in sorted(modified_files):
+        src = codespace / rel_path
+        if src.exists():
+            file_digest = Services.hasher().file_hash(src)
+            file_hash = file_digest if file_digest else "unreadable"
+        else:
+            file_hash = "missing"
+        parts.append(f"{rel_path}:{file_hash}")
+    return Services.hasher().content_hash("\n".join(parts))
+
+
+def _build_consequence_note(
+    sec_num: str,
+    target_num: str,
+    reason: str,
+    note_md: str | None,
+    note_id: str,
+    section_summary: str,
+    modified_files: list[str],
+    integration_proposal: Path,
+    snapshot_dir: Path,
+    ack_signal_path: Path,
+) -> str:
+    """Build the markdown content for a consequence note."""
+    delta_content = note_md if note_md else f"Impact reason: {reason}"
+    file_changes = "\n".join(f"- `{rel_path}`" for rel_path in modified_files)
+    return f"""# Consequence Note: Section {sec_num} -> Section {target_num}
+
+**Note ID**: `{note_id}`
+
+## What Changed (read this first)
+{delta_content}
+
+## What Section {target_num} Must Accommodate
+{reason}
+
+## Acknowledgment Required
+
+When you process this note, write an acknowledgment to
+`{ack_signal_path}`:
+```json
+{{"acknowledged": [{{"note_id": "{note_id}", "action": "accepted|rejected|deferred", "reason": "..."}}]}}
+```
+
+## Why This Happened
+Section {sec_num} ({section_summary}) implemented changes to solve its
+designated problem.
+
+## Files Modified (for reference)
+{file_changes}
+
+Full integration proposal: `{integration_proposal}`
+Snapshot directory: `{snapshot_dir}`
+"""
+
+
+def _write_contract_artifacts(
+    sec_num: str,
+    impacted_sections: list,
+    modified_files: list[str],
+    all_sections: list[Section],
+    paths: PathRegistry,
+) -> None:
+    """Write contract artifacts for impacted sections with contract risk."""
+    contract_risk_targets = [
+        (target, reason)
+        for target, reason, contract_risk, _note_markdown in impacted_sections
+        if contract_risk
+    ]
+    if not contract_risk_targets:
+        return
+
+    contracts_dir = paths.contracts_dir()
+    contracts_dir.mkdir(parents=True, exist_ok=True)
+    modified_set = set(modified_files)
+    target_files_map = {
+        s.number: set(s.related_files) for s in all_sections
+    }
+    for target_num, reason in contract_risk_targets:
+        shared = sorted(modified_set & target_files_map.get(target_num, set()))
+        contract_path = contracts_dir / f"contract-{sec_num}-{target_num}.md"
+        if not contract_path.exists():
+            shared_text = (
+                "\n".join(f"- `{path}`" for path in shared)
+                if shared
+                else "- (indirect coupling)"
+            )
+            contract_path.write_text(
+                f"# Contract: Section {sec_num} ↔ Section {target_num}\n\n"
+                f"## Risk\n{reason}\n\n"
+                f"## Shared Surface\n{shared_text}\n\n"
+                f"## Invariants\n"
+                f"(To be filled by bridge agent or next alignment check)\n",
+                encoding="utf-8",
+            )
+            Services.logger().log(
+                f"Section {sec_num}: contract artifact written for "
+                f"section {target_num}"
+            )
+
+
 def post_section_completion(
     section: Section,
     modified_files: list[str],
@@ -44,89 +151,33 @@ def post_section_completion(
     sec_num = section.number
 
     snapshot_dir = snapshot_modified_files(
-        planspace,
-        sec_num,
-        codespace,
-        modified_files,
+        planspace, sec_num, codespace, modified_files,
         warn=lambda msg: Services.logger().log(f"Section {sec_num}: WARNING — {msg}"),
     )
-
     Services.logger().log(f"Section {sec_num}: snapshotted {len(modified_files)} files to {snapshot_dir}")
     Services.communicator().log_artifact(planspace, f"snapshot:section-{sec_num}")
 
     section_summary = extract_section_summary(section.path)
     impacted_sections = analyze_impacts(
-        planspace,
-        sec_num,
-        section_summary,
-        modified_files,
-        all_sections,
-        codespace,
-        parent,
-        summary_reader=extract_section_summary,
-        impact_model=impact_model,
-        normalizer_model=normalizer_model,
+        planspace, sec_num, section_summary, modified_files, all_sections,
+        codespace, parent,
+        impact_model=impact_model, normalizer_model=normalizer_model,
     )
     if not impacted_sections:
         return
-    modified_set = set(modified_files)
 
+    files_fingerprint = _compute_files_fingerprint(modified_files, codespace)
     integration_proposal = paths.proposal(sec_num)
 
-    file_fingerprint_parts = []
-    for rel_path in sorted(modified_files):
-        src = codespace / rel_path
-        if src.exists():
-            file_digest = Services.hasher().file_hash(src)
-            file_hash = file_digest if file_digest else "unreadable"
-        else:
-            file_hash = "missing"
-        file_fingerprint_parts.append(f"{rel_path}:{file_hash}")
-    files_fingerprint = Services.hasher().content_hash("\n".join(file_fingerprint_parts))
-
     for target_num, reason, contract_risk, note_md in impacted_sections:
-        note_path = (
-            paths.notes_dir()
-            / f"from-{sec_num}-to-{target_num}.md"
+        note_name = f"from-{sec_num}-to-{target_num}.md"
+        note_id = Services.hasher().content_hash(f"{note_name}:{files_fingerprint}")[:12]
+        note_content = _build_consequence_note(
+            sec_num, target_num, reason, note_md, note_id,
+            section_summary, modified_files, integration_proposal,
+            snapshot_dir, paths.note_ack_signal(target_num),
         )
-        file_changes = "\n".join(f"- `{rel_path}`" for rel_path in modified_files)
-        heading = f"# Consequence Note: Section {sec_num} -> Section {target_num}"
-        delta_content = note_md if note_md else f"Impact reason: {reason}"
-        note_id = Services.hasher().content_hash(f"{note_path.name}:{files_fingerprint}")[:12]
-
-        note_path = write_consequence_note(
-            planspace,
-            sec_num,
-            target_num,
-            f"""{heading}
-
-**Note ID**: `{note_id}`
-
-## What Changed (read this first)
-{delta_content}
-
-## What Section {target_num} Must Accommodate
-{reason}
-
-## Acknowledgment Required
-
-When you process this note, write an acknowledgment to
-`{paths.note_ack_signal(target_num)}`:
-```json
-{{"acknowledged": [{{"note_id": "{note_id}", "action": "accepted|rejected|deferred", "reason": "..."}}]}}
-```
-
-## Why This Happened
-Section {sec_num} ({section_summary}) implemented changes to solve its
-designated problem.
-
-## Files Modified (for reference)
-{file_changes}
-
-Full integration proposal: `{integration_proposal}`
-Snapshot directory: `{snapshot_dir}`
-""",
-        )
+        note_path = write_consequence_note(planspace, sec_num, target_num, note_content)
         Services.communicator().log_artifact(planspace, f"note:from-{sec_num}-to-{target_num}")
         Services.logger().log(f"Section {sec_num}: left note for section {target_num} at {note_path}")
 
@@ -144,39 +195,9 @@ Snapshot directory: `{snapshot_dir}`
             f"{completed_targets}"
         )
 
-    contract_risk_targets = [
-        (target, reason)
-        for target, reason, contract_risk, _note_markdown in impacted_sections
-        if contract_risk
-    ]
-    if contract_risk_targets:
-        contracts_dir = paths.contracts_dir()
-        contracts_dir.mkdir(parents=True, exist_ok=True)
-        target_files_map = {
-            other_section.number: set(other_section.related_files)
-            for other_section in all_sections
-        }
-        for target_num, reason in contract_risk_targets:
-            shared = sorted(modified_set & target_files_map.get(target_num, set()))
-            contract_path = contracts_dir / f"contract-{sec_num}-{target_num}.md"
-            if not contract_path.exists():
-                shared_text = (
-                    "\n".join(f"- `{path}`" for path in shared)
-                    if shared
-                    else "- (indirect coupling)"
-                )
-                contract_path.write_text(
-                    f"# Contract: Section {sec_num} ↔ Section {target_num}\n\n"
-                    f"## Risk\n{reason}\n\n"
-                    f"## Shared Surface\n{shared_text}\n\n"
-                    f"## Invariants\n"
-                    f"(To be filled by bridge agent or next alignment check)\n",
-                    encoding="utf-8",
-                )
-                Services.logger().log(
-                    f"Section {sec_num}: contract artifact written for "
-                    f"section {target_num}"
-                )
+    _write_contract_artifacts(
+        sec_num, impacted_sections, modified_files, all_sections, paths,
+    )
 
 
 def read_incoming_notes(

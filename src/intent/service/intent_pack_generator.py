@@ -113,28 +113,51 @@ def ensure_global_philosophy(
     )
 
 
-def generate_intent_pack(
-    section: Section,
-    planspace: Path,
-    codespace: Path,
-    parent: str,
-    *,
-    incoming_notes: str = "",
-) -> Path:
-    """Generate the per-section intent pack (problem.md + rubric).
+def _check_pack_freshness(
+    problem_path: Path,
+    rubric_path: Path,
+    input_hash: str,
+    hash_file: Path,
+    sec: str,
+) -> bool | None:
+    """Check if the intent pack needs regeneration.
 
-    Returns the path to the section's intent directory.
+    Returns ``True`` if the pack is fresh (skip), ``False`` if stale
+    (regenerate), or ``None`` if the pack doesn't exist yet.
     """
-    policy = Services.policies().load(planspace)
-    paths = PathRegistry(planspace)
-    sec = section.number
-    intent_sec = paths.intent_section_dir(sec)
-    intent_sec.mkdir(parents=True, exist_ok=True)
+    prev_hash = ""
+    if hash_file.exists():
+        prev_hash = hash_file.read_text(encoding="utf-8").strip()
 
-    problem_path = intent_sec / "problem.md"
-    rubric_path = intent_sec / "problem-alignment.md"
+    both_exist = (
+        problem_path.exists() and problem_path.stat().st_size > 0
+        and rubric_path.exists() and rubric_path.stat().st_size > 0
+    )
+    if both_exist and input_hash == prev_hash and prev_hash:
+        Services.logger().log(
+            f"Section {sec}: intent pack exists, inputs unchanged "
+            "— skipping generation"
+        )
+        return True
+    if both_exist:
+        Services.logger().log(f"Section {sec}: intent pack inputs changed — regenerating")
+        return False
+    Services.logger().log(f"Section {sec}: generating intent pack")
+    return None
 
-    # Gather input references (needed for both hash check and prompt)
+
+def _build_inputs_block(
+    section_path: Path,
+    paths: PathRegistry,
+    sec: str,
+    codespace: Path,
+    related_files: list,
+    incoming_notes: str,
+) -> tuple[str, str, str]:
+    """Build the inputs block, file list, and notes block for the prompt.
+
+    Returns (inputs_block, file_list, notes_block).
+    """
     proposal_excerpt = paths.proposal_excerpt(sec)
     alignment_excerpt = paths.alignment_excerpt(sec)
     problem_frame = paths.problem_frame(sec)
@@ -143,38 +166,7 @@ def generate_intent_pack(
     philosophy_path = paths.philosophy()
     todos_path = paths.todos(sec)
 
-    # V3/R59: Hash-based invalidation — regenerate if inputs changed
-    # even when problem.md/rubric exist.
-    input_hash = _compute_intent_pack_hash(
-        section_path=section.path,
-        proposal_excerpt=proposal_excerpt,
-        alignment_excerpt=alignment_excerpt,
-        problem_frame=problem_frame,
-        codemap_path=codemap_path,
-        corrections_path=corrections_path,
-        philosophy_path=philosophy_path,
-        todos_path=todos_path,
-        incoming_notes=incoming_notes,
-    )
-    hash_file = intent_sec / "intent-pack-input-hash.txt"
-    prev_hash = ""
-    if hash_file.exists():
-        prev_hash = hash_file.read_text(encoding="utf-8").strip()
-
-    if (problem_path.exists() and problem_path.stat().st_size > 0
-            and rubric_path.exists() and rubric_path.stat().st_size > 0
-            and input_hash == prev_hash and prev_hash):
-        Services.logger().log(f"Section {sec}: intent pack exists, inputs unchanged "
-            "— skipping generation")
-        return intent_sec
-
-    if (problem_path.exists() and problem_path.stat().st_size > 0
-            and rubric_path.exists() and rubric_path.stat().st_size > 0):
-        Services.logger().log(f"Section {sec}: intent pack inputs changed — regenerating")
-    else:
-        Services.logger().log(f"Section {sec}: generating intent pack")
-
-    inputs_block = f"1. Section spec: `{section.path}`\n"
+    inputs_block = f"1. Section spec: `{section_path}`\n"
     if proposal_excerpt.exists():
         inputs_block += f"2. Proposal excerpt: `{proposal_excerpt}`\n"
     if alignment_excerpt.exists():
@@ -194,7 +186,7 @@ def generate_intent_pack(
         inputs_block += f"7. TODOs: `{todos_path}`\n"
 
     file_list = "\n".join(
-        f"- `{codespace / rp}`" for rp in section.related_files
+        f"- `{codespace / rp}`" for rp in related_files
     )
 
     notes_block = ""
@@ -203,10 +195,21 @@ def generate_intent_pack(
         notes_file.write_text(incoming_notes, encoding="utf-8")
         notes_block = f"\n8. Incoming notes: `{notes_file}`\n"
 
-    prompt_path = paths.artifacts / f"intent-pack-{sec}-prompt.md"
-    output_path = paths.artifacts / f"intent-pack-{sec}-output.md"
+    return inputs_block, file_list, notes_block
 
-    pack_prompt_text = f"""# Task: Generate Intent Pack for Section {sec}
+
+def _compose_intent_pack_text(
+    sec: str,
+    inputs_block: str,
+    file_list: str,
+    notes_block: str,
+    problem_path: Path,
+    rubric_path: Path,
+    philosophy_excerpt_path: Path,
+    surface_registry_path: Path,
+) -> str:
+    """Return the intent pack generation prompt text."""
+    return f"""# Task: Generate Intent Pack for Section {sec}
 
 ## Files to Read
 {inputs_block}{notes_block}
@@ -257,7 +260,7 @@ Axis alignment pass → per-axis coherence check → surface discovery
 | A2 | <title> | §A2 |
 ```
 
-### 3. (Optional) Philosophy Excerpt → `{intent_sec / "philosophy-excerpt.md"}`
+### 3. (Optional) Philosophy Excerpt → `{philosophy_excerpt_path}`
 
 If the operational philosophy has 10+ principles, write a focused excerpt
 with only the 5-12 most relevant principles for this section.
@@ -277,40 +280,104 @@ Each axis describes a CORE DIFFICULTY, not a solution wishlist.
 
 ## Initialize Surface Registry
 
-Write an empty surface registry to: `{intent_sec / "surface-registry.json"}`
+Write an empty surface registry to: `{surface_registry_path}`
 ```json
 {{"section": "{sec}", "next_id": 1, "surfaces": []}}
 ```
 """
-    if not Services.prompt_guard().write_validated(pack_prompt_text, prompt_path):
+
+
+def _build_intent_pack_prompt(
+    sec: str,
+    inputs_block: str,
+    file_list: str,
+    notes_block: str,
+    problem_path: Path,
+    rubric_path: Path,
+    intent_sec: Path,
+) -> str:
+    """Build the intent pack generation prompt."""
+    return _compose_intent_pack_text(
+        sec=sec,
+        inputs_block=inputs_block,
+        file_list=file_list,
+        notes_block=notes_block,
+        problem_path=problem_path,
+        rubric_path=rubric_path,
+        philosophy_excerpt_path=intent_sec / "philosophy-excerpt.md",
+        surface_registry_path=intent_sec / "surface-registry.json",
+    )
+
+
+def generate_intent_pack(
+    section: Section,
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+    *,
+    incoming_notes: str = "",
+) -> Path:
+    """Generate the per-section intent pack (problem.md + rubric).
+
+    Returns the path to the section's intent directory.
+    """
+    policy = Services.policies().load(planspace)
+    paths = PathRegistry(planspace)
+    sec = section.number
+    intent_sec = paths.intent_section_dir(sec)
+    intent_sec.mkdir(parents=True, exist_ok=True)
+
+    problem_path = intent_sec / "problem.md"
+    rubric_path = intent_sec / "problem-alignment.md"
+
+    input_hash = _compute_intent_pack_hash(
+        section_path=section.path,
+        proposal_excerpt=paths.proposal_excerpt(sec),
+        alignment_excerpt=paths.alignment_excerpt(sec),
+        problem_frame=paths.problem_frame(sec),
+        codemap_path=paths.codemap(),
+        corrections_path=paths.corrections(),
+        philosophy_path=paths.philosophy(),
+        todos_path=paths.todos(sec),
+        incoming_notes=incoming_notes,
+    )
+    hash_file = intent_sec / "intent-pack-input-hash.txt"
+
+    freshness = _check_pack_freshness(problem_path, rubric_path, input_hash, hash_file, sec)
+    if freshness is True:
+        return intent_sec
+
+    inputs_block, file_list, notes_block = _build_inputs_block(
+        section.path, paths, sec, codespace, section.related_files, incoming_notes,
+    )
+    prompt_text = _build_intent_pack_prompt(
+        sec, inputs_block, file_list, notes_block,
+        problem_path, rubric_path, intent_sec,
+    )
+
+    prompt_path = paths.artifacts / f"intent-pack-{sec}-prompt.md"
+    output_path = paths.artifacts / f"intent-pack-{sec}-output.md"
+    if not Services.prompt_guard().write_validated(prompt_text, prompt_path):
         return None
     Services.communicator().log_artifact(planspace, f"prompt:intent-pack-{sec}")
 
     result = Services.dispatcher().dispatch(
-        Services.policies().resolve(policy,"intent_pack"),
-        prompt_path,
-        output_path,
-        planspace,
-        parent,
-        codespace=codespace,
-        section_number=sec,
+        Services.policies().resolve(policy, "intent_pack"),
+        prompt_path, output_path, planspace, parent,
+        codespace=codespace, section_number=sec,
         agent_file=Services.task_router().agent_for("intent.pack_generator"),
     )
-
     if result == "ALIGNMENT_CHANGED_PENDING":
         return intent_sec
 
-    # Ensure surface registry exists
     registry_path = intent_sec / "surface-registry.json"
     if not registry_path.exists():
         Services.artifact_io().write_json(
-            registry_path,
-            {"section": sec, "next_id": 1, "surfaces": []},
+            registry_path, {"section": sec, "next_id": 1, "surfaces": []},
         )
 
     if problem_path.exists() and rubric_path.exists():
         Services.logger().log(f"Section {sec}: intent pack generated")
-        # V3/R59: Write input hash so future runs can detect changes
         hash_file.write_text(input_hash, encoding="utf-8")
     else:
         Services.logger().log(f"Section {sec}: intent pack generation incomplete")

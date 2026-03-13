@@ -11,6 +11,25 @@ _SHARED_SEAM_PREFIX = (
     "shared seam candidate requires cross-section substrate work:"
 )
 
+# Signal state → blocker category mapping (used in _update_blocker_rollup)
+_STATE_TO_CATEGORY: dict[str, str] = {
+    "underspecified": "missing_info",
+    "underspec": "missing_info",
+    "need_decision": "decision_required",
+    "out_of_scope": "scope_expansion",
+    "out-of-scope": "scope_expansion",
+    "needs_parent": "needs_parent",
+    "dependency": "dependency",
+}
+
+# Proposal-state blocker type → category mapping
+_BTYPE_TO_CATEGORY: dict[str, str] = {
+    "user_root_questions": "decision_required",
+    "unresolved_contracts": "dependency",
+    "unresolved_anchors": "dependency",
+    "shared_seam_candidates": "needs_parent",
+}
+
 
 def _append_open_problem(
     planspace: Path, section_number: str,
@@ -63,6 +82,75 @@ def _dedupe_rollup_blockers(blockers: list[dict]) -> list[dict]:
     return deduped
 
 
+def _collect_signal_blockers(signals_dir: Path) -> list[dict]:
+    """Collect blockers from signal JSON files."""
+    blockers: list[dict] = []
+    if not signals_dir.exists():
+        return blockers
+    for sig_path in sorted(signals_dir.glob("*-signal.json")):
+        data = read_json(sig_path)
+        if data is None:
+            blockers.append({
+                "signal_file": sig_path.name,
+                "state": "malformed",
+                "category": "malformed_signal",
+                "section": "unknown",
+                "detail": (
+                    f"Signal file {sig_path.name} could not be parsed "
+                    "or read; fix or regenerate this signal."
+                ),
+                "needs": "Valid signal JSON",
+                "why_blocked": "Signal JSON unreadable",
+            })
+            rename_malformed(sig_path)
+            continue
+        state = data.get("state", "").lower()
+        category = _STATE_TO_CATEGORY.get(state)
+        if category is not None:
+            blockers.append({
+                "signal_file": sig_path.name,
+                "state": state,
+                "category": category,
+                "source": data.get("source", ""),
+                "section": data.get("section", "unknown"),
+                "detail": data.get("detail", ""),
+                "needs": data.get("needs", ""),
+                "why_blocked": data.get("why_blocked", ""),
+            })
+    return blockers
+
+
+def _collect_readiness_blockers(readiness_dir: Path | None) -> list[dict]:
+    """Collect blockers from readiness artifacts."""
+    blockers: list[dict] = []
+    if not readiness_dir or not readiness_dir.exists():
+        return blockers
+    for rdy_path in sorted(readiness_dir.glob("section-*-execution-ready.json")):
+        rdy = read_json(rdy_path)
+        if rdy is None or rdy.get("ready"):
+            continue
+        sec_match = rdy_path.stem.replace("section-", "").replace("-execution-ready", "")
+        for b in rdy.get("blockers", []):
+            btype = b.get("type") or b.get("state", "unknown")
+            category = _BTYPE_TO_CATEGORY.get(btype)
+            if category is None:
+                category = "governance" if btype.startswith("governance_") else "missing_info"
+            blockers.append({
+                "signal_file": rdy_path.name,
+                "state": b.get("state", f"proposal-state:{btype}"),
+                "category": category,
+                "source": b.get("source", f"proposal-state:{btype}"),
+                "section": sec_match,
+                "detail": b.get("description") or b.get("detail", ""),
+                "needs": b.get("needs", ""),
+                "why_blocked": b.get(
+                    "why_blocked",
+                    f"Proposal-state field '{btype}' has unresolved items",
+                ),
+            })
+    return blockers
+
+
 def _update_blocker_rollup(planspace: Path) -> None:
     """Auto-generate a decision-surface rollup from blocker signals.
 
@@ -73,105 +161,8 @@ def _update_blocker_rollup(planspace: Path) -> None:
     needs_parent.
     """
     paths = PathRegistry(planspace)
-    signals_dir = paths.signals_dir()
-
-    blockers: list[dict] = []
-    if signals_dir.exists():
-        for sig_path in sorted(signals_dir.glob("*-signal.json")):
-            data = read_json(sig_path)
-            if data is not None:
-                state = data.get("state", "").lower()
-                if state in ("underspecified", "underspec", "need_decision",
-                             "dependency", "out_of_scope", "out-of-scope",
-                             "needs_parent"):
-                    # Map state to category
-                    if state in ("underspecified", "underspec"):
-                        category = "missing_info"
-                    elif state == "need_decision":
-                        category = "decision_required"
-                    elif state in ("out_of_scope", "out-of-scope"):
-                        category = "scope_expansion"
-                    elif state == "needs_parent":
-                        category = "needs_parent"
-                    else:
-                        category = "dependency"
-                    blockers.append({
-                        "signal_file": sig_path.name,
-                        "state": state,
-                        "category": category,
-                        "source": data.get("source", ""),
-                        "section": data.get("section", "unknown"),
-                        "detail": data.get("detail", ""),
-                        "needs": data.get("needs", ""),
-                        "why_blocked": data.get("why_blocked", ""),
-                    })
-            else:
-                blockers.append({
-                    "signal_file": sig_path.name,
-                    "state": "malformed",
-                    "category": "malformed_signal",
-                    "section": "unknown",
-                    "detail": (
-                        f"Signal file {sig_path.name} could not be parsed "
-                        "or read; fix or regenerate this signal."
-                    ),
-                    "needs": "Valid signal JSON",
-                    "why_blocked": "Signal JSON unreadable",
-                })
-                # Preserve corrupted signal for diagnosis (V5/R55)
-                rename_malformed(sig_path)
-                continue
-
-    # Collect proposal-state blockers from readiness artifacts
-    readiness_dir = paths.readiness_dir()
-    if readiness_dir and readiness_dir.exists():
-        for rdy_path in sorted(readiness_dir.glob(
-                "section-*-execution-ready.json")):
-            rdy = read_json(rdy_path)
-            if rdy is None:
-                continue
-            if rdy.get("ready"):
-                continue
-            for b in rdy.get("blockers", []):
-                # PAT-0009: normalize both proposal-state (type/description)
-                # and governance (state/detail/needs/why_blocked/source)
-                # blocker shapes
-                btype = b.get("type") or b.get("state", "unknown")
-                desc = b.get("description") or b.get("detail", "")
-                # Map proposal-state blocker types to categories
-                if btype == "user_root_questions":
-                    category = "decision_required"
-                elif btype == "unresolved_contracts":
-                    category = "dependency"
-                elif btype == "unresolved_anchors":
-                    category = "dependency"
-                elif btype == "shared_seam_candidates":
-                    category = "needs_parent"
-                elif btype.startswith("governance_"):
-                    category = "governance"
-                else:
-                    category = "missing_info"
-                # Extract section number from filename
-                sec_match = rdy_path.stem.replace(
-                    "section-", "").replace(
-                    "-execution-ready", "")
-                # Preserve governance blocker fields when available
-                source = b.get("source", f"proposal-state:{btype}")
-                needs = b.get("needs", "")
-                why_blocked = b.get("why_blocked",
-                    f"Proposal-state field '{btype}' has "
-                    f"unresolved items"
-                )
-                blockers.append({
-                    "signal_file": rdy_path.name,
-                    "state": b.get("state", f"proposal-state:{btype}"),
-                    "category": category,
-                    "source": source,
-                    "section": sec_match,
-                    "detail": desc,
-                    "needs": needs,
-                    "why_blocked": why_blocked,
-                })
+    blockers = _collect_signal_blockers(paths.signals_dir())
+    blockers.extend(_collect_readiness_blockers(paths.readiness_dir()))
 
     blockers = _dedupe_rollup_blockers(blockers)
 

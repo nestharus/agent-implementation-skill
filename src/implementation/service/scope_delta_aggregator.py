@@ -38,23 +38,9 @@ def _load_pending_deltas(scope_deltas_dir: Path) -> tuple[list[Path], list[dict]
     return delta_files, pending_deltas
 
 
-def _write_adjudication_prompt(
-    coord_dir: Path,
-    pending_deltas: list[dict],
-) -> tuple[Path, Path]:
-    adjudication_prompt = coord_dir / "scope-delta-prompt.md"
-    adjudication_output = coord_dir / "scope-delta-output.md"
-    pending_deltas_path = coord_dir / "scope-deltas-pending.json"
-    prompt_deltas = []
-    for delta in pending_deltas:
-        prompt_delta = dict(delta)
-        prompt_delta["requires_root_reframing"] = bool(
-            delta.get("requires_root_reframing", False),
-        )
-        prompt_deltas.append(prompt_delta)
-    Services.artifact_io().write_json(pending_deltas_path, prompt_deltas)
-
-    prompt_text = f"""# Task: Adjudicate Scope Deltas
+def _compose_adjudication_text(pending_deltas_path: Path) -> str:
+    """Return the full prompt text for scope-delta adjudication."""
+    return f"""# Task: Adjudicate Scope Deltas
 
 ## Pending Scope Deltas
 
@@ -93,6 +79,25 @@ Reply with a JSON block:
 - accept: `new_sections` (array of `{{title, scope}}`)
 - absorb: `absorb_into_section`, `scope_addition`
 """
+
+
+def _write_adjudication_prompt(
+    coord_dir: Path,
+    pending_deltas: list[dict],
+) -> tuple[Path, Path]:
+    adjudication_prompt = coord_dir / "scope-delta-prompt.md"
+    adjudication_output = coord_dir / "scope-delta-output.md"
+    pending_deltas_path = coord_dir / "scope-deltas-pending.json"
+    prompt_deltas = []
+    for delta in pending_deltas:
+        prompt_delta = dict(delta)
+        prompt_delta["requires_root_reframing"] = bool(
+            delta.get("requires_root_reframing", False),
+        )
+        prompt_deltas.append(prompt_delta)
+    Services.artifact_io().write_json(pending_deltas_path, prompt_deltas)
+
+    prompt_text = _compose_adjudication_text(pending_deltas_path)
     if not Services.prompt_guard().write_validated(prompt_text, adjudication_prompt):
         raise ScopeDeltaAggregationExit
 
@@ -102,10 +107,10 @@ Reply with a JSON block:
 def _dispatch_adjudication(
     planspace: Path,
     parent: str,
-    policy: dict[str, str],
     adjudication_prompt: Path,
     adjudication_output: Path,
 ) -> dict | None:
+    policy = Services.policies().load(planspace)
     Services.communicator().log_artifact(planspace, "prompt:scope-delta-adjudication")
 
     adjudication_result = Services.dispatcher().dispatch(
@@ -251,7 +256,6 @@ def _record_decisions(
 def aggregate_scope_deltas(
     planspace: Path,
     parent: str,
-    policy: dict[str, str],
 ) -> list[dict]:
     """Adjudicate any pending scope deltas and return the decisions."""
     paths = PathRegistry(planspace)
@@ -274,7 +278,6 @@ def aggregate_scope_deltas(
     adj_data = _dispatch_adjudication(
         planspace,
         parent,
-        policy,
         adjudication_prompt,
         adjudication_output,
     )

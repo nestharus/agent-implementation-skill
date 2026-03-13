@@ -12,6 +12,7 @@ from src.proposal.engine.readiness_gate import (
     resolve_and_route,
     route_blockers,
 )
+from src.proposal.service.readiness_resolver import ReadinessResult
 from src.orchestrator.types import Section
 
 def _section(planspace: Path) -> Section:
@@ -472,11 +473,11 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
 
     monkeypatch.setattr(
         "src.proposal.engine.readiness_gate.resolve_readiness",
-        lambda *_args, **_kwargs: {
-            "ready": False,
-            "blockers": [{"type": "user_root_questions", "description": "Choose retry policy"}],
-            "rationale": "blocked",
-        },
+        lambda *_args, **_kwargs: ReadinessResult(
+            ready=False,
+            blockers=[{"type": "user_root_questions", "description": "Choose retry policy"}],
+            rationale="blocked",
+        ),
     )
     monkeypatch.setattr(
         "src.proposal.engine.readiness_gate._append_open_problem",

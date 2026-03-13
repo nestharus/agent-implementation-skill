@@ -21,7 +21,12 @@ Usage — tests::
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from dependency_injector import containers, providers
+
+if TYPE_CHECKING:
+    from dispatch.types import DispatchResult
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +51,7 @@ class AgentDispatcher:
         section_number: str | None = None,
         *,
         agent_file: str,
-    ) -> str:
+    ) -> DispatchResult:
         from dispatch.engine.section_dispatcher import dispatch_agent
         return dispatch_agent(
             model, prompt_path, output_path, planspace, parent,
@@ -126,6 +131,47 @@ class PipelineControlService:
         from staleness.service.change_tracker import check_pending
         return check_pending(planspace)
 
+    def check_alignment_and_raise(self, planspace, checker, exc_class, message=""):
+        """Check alignment, clear if changed, raise *exc_class*.
+
+        Consolidates the common guard pattern::
+
+            if alignment_changed_pending(planspace):
+                if _check_and_clear(planspace):
+                    log(message)
+                    raise SomeException
+
+        Also handles the single-call variant where only
+        ``_check_and_clear`` is called (the checker already returns
+        ``False`` when no flag is set, so the pending pre-check is
+        optional).
+
+        *checker* is the callable returned by
+        ``ChangeTrackerService.make_alignment_checker()``.
+        """
+        if checker(planspace):
+            if message:
+                from containers import Services
+                Services.logger().log(message)
+            raise exc_class()
+
+    def check_alignment_and_return(self, planspace, checker) -> bool:
+        """Check alignment, clear if changed, return ``True`` if changed.
+
+        Consolidates the common guard pattern::
+
+            if alignment_changed_pending(planspace):
+                log(...)
+                return True  # or return None / "abort"
+
+        Also handles the single-call variant where only
+        ``_check_and_clear`` is called.
+
+        Returns ``True`` when the caller should abort/return, ``False``
+        otherwise.  The caller decides what value to return.
+        """
+        return checker(planspace)
+
     def wait_if_paused(self, planspace, parent) -> None:
         from orchestrator.service.pipeline_control import wait_if_paused
         wait_if_paused(planspace, parent)
@@ -185,6 +231,26 @@ class LogService:
     def log(self, msg: str) -> None:
         from signals.service.section_communicator import log
         log(msg)
+
+    def log_lifecycle(self, planspace, event: str, status: str) -> None:
+        """Log a lifecycle event to the coordination database."""
+        import subprocess
+        from _config import AGENT_NAME, DB_SH
+        subprocess.run(  # noqa: S603
+            [
+                "bash",
+                str(DB_SH),  # noqa: S607
+                "log",
+                str(planspace / "run.db"),
+                "lifecycle",
+                event,
+                status,
+                "--agent",
+                AGENT_NAME,
+            ],
+            capture_output=True,
+            text=True,
+        )
 
 
 class TaskRouterService:
@@ -373,12 +439,12 @@ class SectionAlignmentService:
 
     def run_global_recheck(
         self, sections_by_num, section_results,
-        planspace, codespace, parent, policy,
+        planspace, codespace, parent,
     ) -> str:
         from staleness.service.global_alignment_rechecker import run_global_alignment_recheck
         return run_global_alignment_recheck(
             sections_by_num, section_results,
-            planspace, codespace, parent, policy,
+            planspace, codespace, parent,
         )
 
 

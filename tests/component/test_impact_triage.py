@@ -74,7 +74,6 @@ def test_run_impact_triage_skips_when_notes_are_acknowledged_and_aligned(
             planspace,
             codespace,
             "parent",
-            {"alignment": "align-model"},
             "**Note ID**: `note-1`\n",
         )
 
@@ -126,7 +125,6 @@ def test_run_impact_triage_continues_when_not_all_notes_are_acknowledged(
             planspace,
             codespace,
             "parent",
-            {"alignment": "align-model"},
             "**Note ID**: `note-1`\n",
         )
 
@@ -174,7 +172,6 @@ def test_run_impact_triage_aborts_when_alignment_changes_mid_check(
             planspace,
             codespace,
             "parent",
-            {"alignment": "align-model"},
             "**Note ID**: `note-1`\n",
         )
 

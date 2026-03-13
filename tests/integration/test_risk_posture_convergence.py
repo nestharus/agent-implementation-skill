@@ -191,7 +191,6 @@ def test_convergence_when_risk_below_threshold(
         "section-01",
         "implementation",
         package,
-        mock_dispatch,
     )
 
     assert result.accepted_frontier == [package.steps[0].step_id]

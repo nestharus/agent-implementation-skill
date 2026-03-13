@@ -10,48 +10,53 @@ from orchestrator.path_registry import PathRegistry
 from orchestrator.types import Section
 
 
-def run_impact_triage(
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+def _build_triage_prompt(
     section: Section,
-    planspace: Path,
-    codespace: Path,
-    parent: str,
-    policy: dict,
-    incoming_notes: str | None,
-) -> tuple[str, list[str] | None]:
-    """Classify note impact and optionally short-circuit to alignment."""
-    if not incoming_notes or section.solve_count < 1:
-        return ("continue", None)
-
-    paths = PathRegistry(planspace)
-    triage_dir = paths.triage_dir()
-    triage_dir.mkdir(parents=True, exist_ok=True)
-    triage_prompt_path = triage_dir / f"triage-{section.number}-prompt.md"
-    triage_output_path = triage_dir / f"triage-{section.number}-output.md"
-    triage_signal_path = paths.triage_signal(section.number)
-
-    existing_proposal = paths.proposal(section.number)
+    paths: PathRegistry,
+    triage_notes_path: Path,
+    triage_signal_path: Path,
+) -> str:
+    """Assemble the prompt text for the triage agent."""
     proposal_ref = ""
+    existing_proposal = paths.proposal(section.number)
     if existing_proposal.exists():
         proposal_ref = f"3. Existing proposal: `{existing_proposal}`"
 
-    last_align = paths.artifacts / f"intg-align-{section.number}-output.md"
     align_ref = ""
+    last_align = paths.artifacts / f"intg-align-{section.number}-output.md"
     if last_align.exists():
         align_ref = f"4. Last alignment verdict: `{last_align}`"
 
-    triage_notes_path = triage_dir / f"triage-{section.number}-incoming-notes.md"
-    triage_notes_path.write_text(incoming_notes, encoding="utf-8")
+    return _compose_triage_text(
+        section.number, section.solve_count, section.path,
+        triage_notes_path, proposal_ref, align_ref, triage_signal_path,
+    )
 
-    triage_prompt_text = f"""# Task: Impact Triage for Section {section.number}
+
+def _compose_triage_text(
+    section_number: str,
+    solve_count: int,
+    section_path: Path,
+    triage_notes_path: Path,
+    proposal_ref: str,
+    align_ref: str,
+    triage_signal_path: Path,
+) -> str:
+    """Return the full prompt text for impact triage."""
+    return f"""# Task: Impact Triage for Section {section_number}
 
 ## Context
-This section has already been solved once (attempt {section.solve_count}).
+This section has already been solved once (attempt {solve_count}).
 New notes/changes arrived from other sections. Determine if they require
 re-planning or re-implementation, or if they can be acknowledged without
 expensive rework.
 
 ## Files to Read
-1. Section specification: `{section.path}`
+1. Section specification: `{section_path}`
 2. Incoming notes: `{triage_notes_path}`
 {proposal_ref}
 {align_ref}
@@ -80,33 +85,32 @@ Write a JSON signal to: `{triage_signal_path}`
 Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
 "deferred" (will address later).
 """
-    if not Services.prompt_guard().write_validated(triage_prompt_text, triage_prompt_path):
-        return ("continue", None)
-    Services.communicator().log_artifact(planspace, f"prompt:triage-{section.number}")
 
-    Services.dispatcher().dispatch(
-        Services.policies().resolve(policy,"triage"),
-        triage_prompt_path,
-        triage_output_path,
-        planspace,
-        parent,
-        codespace=codespace,
-        section_number=section.number,
-        agent_file=Services.task_router().agent_for("coordination.consequence_triage"),
-    )
 
+def _parse_triage_response(
+    triage_signal_path: Path,
+    incoming_notes: str,
+    paths: PathRegistry,
+    section: Section,
+) -> str:
+    """Read triage signal, merge acks, and decide whether rework is needed.
+
+    Returns ``"skip"`` when notes are fully acknowledged and no rework is
+    flagged, ``"continue"`` otherwise.
+    """
     triage = Services.artifact_io().read_json(triage_signal_path)
     if triage is None:
-        return ("continue", None)
+        return "continue"
 
-    needs_replan = triage.get("needs_replan", True)
-    needs_code = triage.get("needs_code_change", True)
-    if needs_replan or needs_code:
-        return ("continue", None)
+    if triage.get("needs_replan", True) or triage.get("needs_code_change", True):
+        return "continue"
 
+    # Merge new acknowledgments into the persisted ack file.
     triage_acks = triage.get("acknowledge", [])
     ack_path = paths.note_ack_signal(section.number)
-    existing_acks: dict = Services.artifact_io().read_json_or_default(ack_path, {"acknowledged": []})
+    existing_acks: dict = Services.artifact_io().read_json_or_default(
+        ack_path, {"acknowledged": []},
+    )
     existing_ids = {
         entry.get("note_id")
         for entry in existing_acks.get("acknowledged", [])
@@ -118,6 +122,7 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             existing_ids.add(note_id)
     Services.artifact_io().write_json(ack_path, existing_acks)
 
+    # Validate that every incoming note was acknowledged.
     incoming_note_ids = set(
         re.findall(r"\*\*Note ID\*\*:\s*`([^`]+)`", incoming_notes),
     )
@@ -127,8 +132,19 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
             f"Section {section.number}: triage did not acknowledge all notes "
             "— full processing",
         )
-        return ("continue", None)
+        return "continue"
 
+    return "skip"
+
+
+def _run_triage_alignment(
+    section: Section,
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+    policy: object,
+) -> tuple[str, list[str] | None]:
+    """Run a short-circuit alignment check after triage approves skip."""
     Services.logger().log(
         f"Section {section.number}: triage says no rework needed — "
         "skipping to alignment check",
@@ -140,8 +156,8 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
         parent,
         section.number,
         output_prefix="triage-align",
-        model=Services.policies().resolve(policy,"alignment"),
-        adjudicator_model=Services.policies().resolve(policy,"adjudicator"),
+        model=Services.policies().resolve(policy, "alignment"),
+        adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
     )
     if verify_result == "ALIGNMENT_CHANGED_PENDING":
         return ("abort", None)
@@ -156,7 +172,58 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
                 f"Section {section.number}: triage + alignment confirms no "
                 "rework needed",
             )
-            reported = Services.section_alignment().collect_modified_files(planspace, section, codespace)
+            reported = Services.section_alignment().collect_modified_files(
+                planspace, section, codespace,
+            )
             return ("skip", reported if reported else [])
 
     return ("continue", None)
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def run_impact_triage(
+    section: Section,
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+    incoming_notes: str | None,
+) -> tuple[str, list[str] | None]:
+    """Classify note impact and optionally short-circuit to alignment."""
+    if not incoming_notes or section.solve_count < 1:
+        return ("continue", None)
+
+    policy = Services.policies().load(planspace)
+    paths = PathRegistry(planspace)
+    triage_dir = paths.triage_dir()
+    triage_dir.mkdir(parents=True, exist_ok=True)
+    triage_prompt_path = triage_dir / f"triage-{section.number}-prompt.md"
+    triage_output_path = triage_dir / f"triage-{section.number}-output.md"
+    triage_signal_path = paths.triage_signal(section.number)
+
+    triage_notes_path = triage_dir / f"triage-{section.number}-incoming-notes.md"
+    triage_notes_path.write_text(incoming_notes, encoding="utf-8")
+
+    prompt_text = _build_triage_prompt(section, paths, triage_notes_path, triage_signal_path)
+    if not Services.prompt_guard().write_validated(prompt_text, triage_prompt_path):
+        return ("continue", None)
+    Services.communicator().log_artifact(planspace, f"prompt:triage-{section.number}")
+
+    Services.dispatcher().dispatch(
+        Services.policies().resolve(policy, "triage"),
+        triage_prompt_path,
+        triage_output_path,
+        planspace,
+        parent,
+        codespace=codespace,
+        section_number=section.number,
+        agent_file=Services.task_router().agent_for("coordination.consequence_triage"),
+    )
+
+    decision = _parse_triage_response(triage_signal_path, incoming_notes, paths, section)
+    if decision == "continue":
+        return ("continue", None)
+
+    return _run_triage_alignment(section, planspace, codespace, parent, policy)

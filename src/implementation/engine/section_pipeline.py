@@ -26,9 +26,12 @@ from orchestrator.types import ProposalPassResult, Section
 from intent.service.intent_pack_generator import ensure_global_philosophy, generate_intent_pack
 from intent.service.intent_triager import run_intent_triage
 from reconciliation.engine.cross_section_reconciler import load_reconciliation_result
-from signals.service.blocker_manager import _update_blocker_rollup
 from implementation.service.microstrategy_decider import _extract_todos_from_files
 
+
+_DEFAULT_PROPOSAL_CYCLE_MAX = 5
+_DEFAULT_IMPLEMENTATION_CYCLE_MAX = 5
+_RECURRENCE_LOOP_THRESHOLD = 2
 
 # ---------------------------------------------------------------------------
 # Private helpers — each encapsulates one concern from the section pipeline
@@ -36,8 +39,8 @@ from implementation.service.microstrategy_decider import _extract_todos_from_fil
 
 
 def _check_recurrence(planspace: Path, section: Section) -> None:
-    """Emit a recurrence signal when a section loops (solve_count >= 2)."""
-    if section.solve_count >= 2:
+    """Emit a recurrence signal when a section loops excessively."""
+    if section.solve_count >= _RECURRENCE_LOOP_THRESHOLD:
         emit_recurrence_signal(planspace, section.number, section.solve_count)
 
 
@@ -57,7 +60,6 @@ def _run_impact_triage(
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: dict,
     incoming_notes: list[dict],
 ) -> tuple[bool, list[str] | None]:
     """Run impact triage and return (should_continue, early_return_value).
@@ -70,7 +72,6 @@ def _run_impact_triage(
         planspace,
         codespace,
         parent,
-        policy,
         incoming_notes,
     )
     if triage_status == "abort":
@@ -87,7 +88,6 @@ def _surface_tools(
     planspace: Path,
     parent: str,
     codespace: Path,
-    policy: dict,
 ) -> int:
     """Surface section-relevant tools from tool registry.
 
@@ -105,10 +105,6 @@ def _surface_tools(
         planspace=planspace,
         parent=parent,
         codespace=codespace,
-        policy=policy,
-        dispatch_agent=Services.dispatcher().dispatch,
-        log=Services.logger().log,
-        update_blocker_rollup=_update_blocker_rollup,
     )
 
 
@@ -117,7 +113,6 @@ def _run_intent_bootstrap_phase(
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: dict,
     incoming_notes: list[dict],
 ) -> dict | None:
     """Wire intent bootstrap dependencies and run bootstrap.
@@ -134,7 +129,6 @@ def _run_intent_bootstrap_phase(
         planspace,
         codespace,
         parent,
-        policy,
         incoming_notes,
     )
 
@@ -188,7 +182,7 @@ def _check_upstream_freshness(
     Returns ``True`` if implementation may proceed, ``False`` otherwise.
     """
     readiness = resolve_readiness(planspace, section.number)
-    if not readiness.get("ready"):
+    if not readiness.ready:
         Services.logger().log(f"Section {section.number}: implementation steps blocked — "
             f"upstream freshness check failed (execution_ready is false)")
         return False
@@ -205,7 +199,10 @@ def _check_upstream_freshness(
 def _load_cycle_budget(paths: PathRegistry, section_number: str) -> dict:
     """Load the per-section cycle budget, falling back to defaults."""
     cycle_budget_path = paths.cycle_budget(section_number)
-    cycle_budget = {"proposal_max": 5, "implementation_max": 5}
+    cycle_budget = {
+        "proposal_max": _DEFAULT_PROPOSAL_CYCLE_MAX,
+        "implementation_max": _DEFAULT_IMPLEMENTATION_CYCLE_MAX,
+    }
     loaded = Services.artifact_io().read_json(cycle_budget_path)
     if loaded is not None:
         cycle_budget.update(loaded)
@@ -229,7 +226,6 @@ def _run_microstrategy_step(
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: dict,
     paths: PathRegistry,
 ) -> bool:
     """Run microstrategy and check for blockers.
@@ -241,7 +237,6 @@ def _run_microstrategy_step(
         planspace,
         codespace,
         parent,
-        policy,
     )
     microstrategy_blocker = paths.microstrategy_blocker_signal(section.number)
     if microstrategy_result is None and microstrategy_blocker.exists():
@@ -257,7 +252,6 @@ def _validate_tools_post_impl(
     planspace: Path,
     parent: str,
     codespace: Path,
-    policy: dict,
     all_sections: list[Section] | None,
 ) -> None:
     """Validate tool registry after implementation and handle friction."""
@@ -269,10 +263,6 @@ def _validate_tools_post_impl(
         planspace=planspace,
         parent=parent,
         codespace=codespace,
-        policy=policy,
-        dispatch_agent=Services.dispatcher().dispatch,
-        log=Services.logger().log,
-        update_blocker_rollup=_update_blocker_rollup,
     )
 
     handle_tool_friction(
@@ -285,11 +275,6 @@ def _validate_tools_post_impl(
         planspace=planspace,
         parent=parent,
         codespace=codespace,
-        policy=policy,
-        dispatch_agent=Services.dispatcher().dispatch,
-        log=Services.logger().log,
-        write_consequence_note=Services.cross_section().write_consequence_note,
-        update_blocker_rollup=_update_blocker_rollup,
     )
 
 
@@ -300,10 +285,10 @@ def _run_post_completion(
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: dict,
 ) -> None:
     """Run post-completion impact analysis and consequence notes."""
     if actually_changed and all_sections:
+        policy = Services.policies().load(planspace)
         post_section_completion(
             section, actually_changed, all_sections,
             planspace, codespace, parent,
@@ -322,7 +307,6 @@ def _run_implementation_pass(
     *,
     all_sections: list[Section] | None = None,
     artifacts: Path,
-    policy: dict,
 ) -> list[str] | None:
     """Execute implementation for a section whose proposal is already aligned.
 
@@ -349,7 +333,7 @@ def _run_implementation_pass(
         return None
 
     readiness = resolve_readiness(planspace, section.number)
-    if not readiness.get("ready"):
+    if not readiness.ready:
         Services.logger().log(f"Section {section.number}: implementation pass skipped — "
             f"execution_ready is false")
         return None
@@ -357,7 +341,7 @@ def _run_implementation_pass(
     return _run_section_implementation_steps(
         planspace, codespace, section, parent,
         all_sections=all_sections,
-        artifacts=artifacts, policy=policy,
+        artifacts=artifacts,
     )
 
 
@@ -394,14 +378,13 @@ def run_section(
     """
     paths = PathRegistry(planspace)
     artifacts = paths.artifacts
-    policy = Services.policies().load(planspace)
 
     # Implementation-only mode: skip proposal steps, jump to execution
     if pass_mode == "implementation":
         return _run_implementation_pass(
             planspace, codespace, section, parent,
             all_sections=all_sections,
-            artifacts=artifacts, policy=policy,
+            artifacts=artifacts,
         )
 
     # Recurrence signal
@@ -412,7 +395,7 @@ def run_section(
 
     # Step 0c: Impact triage — skip expensive steps if notes are trivial
     should_continue, early_return = _run_impact_triage(
-        section, planspace, codespace, parent, policy, incoming_notes,
+        section, planspace, codespace, parent, incoming_notes,
     )
     if not should_continue:
         return early_return
@@ -420,26 +403,26 @@ def run_section(
     # Step 0b: Surface section-relevant tools from tool registry
     # Compatibility note: stale surface cleanup still occurs in the extracted
     # helper via tools_available_path.exists() / tools_available_path.unlink().
-    _surface_tools(section, paths, artifacts, planspace, parent, codespace, policy)
+    _surface_tools(section, paths, artifacts, planspace, parent, codespace)
 
     # Step 1: Section setup — extract excerpts from global documents
-    if extract_excerpts(section, planspace, codespace, parent, policy) is None:
+    if extract_excerpts(section, planspace, codespace, parent) is None:
         return None
 
     # Step 1a: Problem frame quality gate (enforced)
-    if validate_problem_frame(section, planspace, codespace, parent, policy) is None:
+    if validate_problem_frame(section, planspace, codespace, parent) is None:
         return None
 
     # Step 1b: Intent bootstrap
     cycle_budget = _run_intent_bootstrap_phase(
-        section, planspace, codespace, parent, policy, incoming_notes,
+        section, planspace, codespace, parent, incoming_notes,
     )
     if cycle_budget is None:
         return None
 
     # Step 2: Proposal loop
     if run_proposal_loop(
-        section, planspace, codespace, parent, policy,
+        section, planspace, codespace, parent,
         cycle_budget, incoming_notes,
     ) is None:
         return None
@@ -455,7 +438,7 @@ def run_section(
     return _run_section_implementation_steps(
         planspace, codespace, section, parent,
         all_sections=all_sections,
-        artifacts=artifacts, policy=policy,
+        artifacts=artifacts,
     )
 
 
@@ -464,7 +447,6 @@ def _run_section_implementation_steps(
     *,
     all_sections: list[Section] | None = None,
     artifacts: Path,
-    policy: dict,
 ) -> list[str] | None:
     """Execute microstrategy through post-completion for a section.
 
@@ -483,12 +465,12 @@ def _run_section_implementation_steps(
     tool_registry_path, pre_tool_total = _count_pre_impl_tools(paths)
 
     # Step 2.5: Generate microstrategy
-    if not _run_microstrategy_step(section, planspace, codespace, parent, policy, paths):
+    if not _run_microstrategy_step(section, planspace, codespace, parent, paths):
         return None
 
     # Step 3: Strategic implementation
     actually_changed = run_implementation_loop(
-        section, planspace, codespace, parent, policy, cycle_budget,
+        section, planspace, codespace, parent, cycle_budget,
     )
     if actually_changed is None:
         return None
@@ -496,13 +478,13 @@ def _run_section_implementation_steps(
     # Step 3b-3c: Validate tool registry and handle friction
     _validate_tools_post_impl(
         section, pre_tool_total, tool_registry_path, artifacts,
-        planspace, parent, codespace, policy, all_sections,
+        planspace, parent, codespace, all_sections,
     )
 
     # Step 4: Post-completion
     _run_post_completion(
         section, actually_changed, all_sections,
-        planspace, codespace, parent, policy,
+        planspace, codespace, parent,
     )
 
     return actually_changed

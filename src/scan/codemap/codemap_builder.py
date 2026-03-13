@@ -5,6 +5,7 @@ Translates ``run_codemap_build()`` and its helpers from scan.sh.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
@@ -15,84 +16,88 @@ from scan.scan_dispatcher import dispatch_agent, read_scan_model_policy
 from .fingerprint import NON_GIT_SENTINEL, compute_codespace_fingerprint
 from containers import Services
 
-def run_codemap_build(
+
+# ------------------------------------------------------------------
+# Helpers for run_codemap_build
+# ------------------------------------------------------------------
+
+
+def _try_reuse_existing(
     *,
     codemap_path: Path,
     codespace: Path,
     artifacts_dir: Path,
     scan_log_dir: Path,
     fingerprint_path: Path,
-    model_policy: dict[str, str] | None = None,
-) -> bool:
-    """Build (or reuse) the codemap artifact.
+    model_policy: dict[str, str],
+) -> bool | None:
+    """Check whether an existing codemap can be reused.
 
-    Returns ``True`` on success, ``False`` on failure.
+    Returns ``True`` if reuse is valid, ``False`` if a rebuild is needed,
+    or ``None`` if no existing codemap is available.
     """
-    if model_policy is None:
-        model_policy = read_scan_model_policy(artifacts_dir)
-    # --- Reuse check ---
-    if codemap_path.is_file() and codemap_path.stat().st_size > 0:
-        current_fp = compute_codespace_fingerprint(codespace)
+    if not (codemap_path.is_file() and codemap_path.stat().st_size > 0):
+        return None
 
-        if fingerprint_path.is_file():
-            stored_fp = fingerprint_path.read_text().strip()
+    current_fp = compute_codespace_fingerprint(codespace)
 
-            if current_fp == stored_fp and current_fp != NON_GIT_SENTINEL:
-                print(
-                    f"[CODEMAP] Fingerprint unchanged — reusing existing "
-                    f"artifact: {codemap_path}",
-                )
-                return True
+    if fingerprint_path.is_file():
+        stored_fp = fingerprint_path.read_text().strip()
 
-            # Fingerprint changed or non-git — dispatch freshness verifier
-            if current_fp == NON_GIT_SENTINEL:
-                print(
-                    "[CODEMAP] Non-git workspace — dispatching verifier "
-                    "for heuristic freshness check",
-                )
-            else:
-                print(
-                    "[CODEMAP] Codespace fingerprint changed — "
-                    "dispatching verifier",
-                )
-
-            if _run_freshness_check(
-                codemap_path=codemap_path,
-                codespace=codespace,
-                artifacts_dir=artifacts_dir,
-                scan_log_dir=scan_log_dir,
-                fingerprint_path=fingerprint_path,
-                current_fp=current_fp,
-                stored_fp=stored_fp,
-                model_policy=model_policy,
-            ):
-                return True
-            # Fall through to rebuild
-
-        else:
-            # No stored fingerprint — cannot assume codemap is fresh.
-            # Dispatch verifier to decide reuse vs rebuild.
+        if current_fp == stored_fp and current_fp != NON_GIT_SENTINEL:
             print(
-                "[CODEMAP] No stored fingerprint — dispatching verifier "
-                "to check codemap freshness",
+                f"[CODEMAP] Fingerprint unchanged — reusing existing "
+                f"artifact: {codemap_path}",
             )
-            if _run_freshness_check(
-                codemap_path=codemap_path,
-                codespace=codespace,
-                artifacts_dir=artifacts_dir,
-                scan_log_dir=scan_log_dir,
-                fingerprint_path=fingerprint_path,
-                current_fp=current_fp,
-                stored_fp="",
-                model_policy=model_policy,
-            ):
-                return True
-            # Fall through to rebuild
+            return True
 
-    # --- Build codemap ---
+        # Fingerprint changed or non-git — dispatch freshness verifier
+        if current_fp == NON_GIT_SENTINEL:
+            print(
+                "[CODEMAP] Non-git workspace — dispatching verifier "
+                "for heuristic freshness check",
+            )
+        else:
+            print(
+                "[CODEMAP] Codespace fingerprint changed — "
+                "dispatching verifier",
+            )
+    else:
+        # No stored fingerprint — cannot assume codemap is fresh.
+        # Dispatch verifier to decide reuse vs rebuild.
+        stored_fp = ""
+        print(
+            "[CODEMAP] No stored fingerprint — dispatching verifier "
+            "to check codemap freshness",
+        )
+
+    if _run_freshness_check(
+        codemap_path=codemap_path,
+        codespace=codespace,
+        artifacts_dir=artifacts_dir,
+        scan_log_dir=scan_log_dir,
+        fingerprint_path=fingerprint_path,
+        current_fp=current_fp,
+        stored_fp=stored_fp,
+        model_policy=model_policy,
+    ):
+        return True
+    return False
+
+
+def _prepare_build_prompt(
+    *,
+    codemap_path: Path,
+    artifacts_dir: Path,
+    scan_log_dir: Path,
+) -> Path | None:
+    """Load the codemap-build template, validate it, and write the prompt file.
+
+    Returns the prompt file path on success, or ``None`` if the prompt
+    was blocked by safety validation.
+    """
     codemap_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_file = scan_log_dir / "codemap-prompt.md"
-    stderr_file = scan_log_dir / "codemap.stderr.log"
 
     signals_dir = artifacts_dir / "signals"
     signals_dir.mkdir(parents=True, exist_ok=True)
@@ -110,8 +115,25 @@ def run_codemap_build(
             f"prompt blocked — safety violations: {violations}",
             scan_log_dir,
         )
-        return False
+        return None
     prompt_file.write_text(prompt)
+    return prompt_file
+
+
+def _dispatch_build_agent(
+    *,
+    codemap_path: Path,
+    codespace: Path,
+    scan_log_dir: Path,
+    prompt_file: Path,
+    model_policy: dict[str, str],
+) -> subprocess.CompletedProcess[str] | None:
+    """Dispatch the codemap build agent and validate output.
+
+    Returns the completed process on success, or ``None`` on failure
+    (return-code non-zero or empty output).
+    """
+    stderr_file = scan_log_dir / "codemap.stderr.log"
 
     result = dispatch_agent(
         model=model_policy["codemap_build"],
@@ -129,7 +151,7 @@ def run_codemap_build(
             f"codemap agent failed (see {stderr_file})",
             scan_log_dir,
         )
-        return False
+        return None
 
     if not _has_content(codemap_path):
         log_phase_failure(
@@ -138,11 +160,74 @@ def run_codemap_build(
             "codemap agent produced empty output",
             scan_log_dir,
         )
+        return None
+
+    return result
+
+
+def _store_codespace_fingerprint(
+    *,
+    codespace: Path,
+    fingerprint_path: Path,
+) -> None:
+    fp = compute_codespace_fingerprint(codespace)
+    fingerprint_path.parent.mkdir(parents=True, exist_ok=True)
+    fingerprint_path.write_text(fp)
+    print(f"[CODEMAP] Stored codespace fingerprint: {fingerprint_path}")
+
+
+# ------------------------------------------------------------------
+# Main entry point
+# ------------------------------------------------------------------
+
+
+def run_codemap_build(
+    *,
+    codemap_path: Path,
+    codespace: Path,
+    artifacts_dir: Path,
+    scan_log_dir: Path,
+    fingerprint_path: Path,
+    model_policy: dict[str, str] | None = None,
+) -> bool:
+    """Build (or reuse) the codemap artifact.
+
+    Returns ``True`` on success, ``False`` on failure.
+    """
+    if model_policy is None:
+        model_policy = read_scan_model_policy(artifacts_dir)
+
+    reuse = _try_reuse_existing(
+        codemap_path=codemap_path,
+        codespace=codespace,
+        artifacts_dir=artifacts_dir,
+        scan_log_dir=scan_log_dir,
+        fingerprint_path=fingerprint_path,
+        model_policy=model_policy,
+    )
+    if reuse is True:
+        return True
+
+    prompt_file = _prepare_build_prompt(
+        codemap_path=codemap_path,
+        artifacts_dir=artifacts_dir,
+        scan_log_dir=scan_log_dir,
+    )
+    if prompt_file is None:
+        return False
+
+    result = _dispatch_build_agent(
+        codemap_path=codemap_path,
+        codespace=codespace,
+        scan_log_dir=scan_log_dir,
+        prompt_file=prompt_file,
+        model_policy=model_policy,
+    )
+    if result is None:
         return False
 
     print(f"[CODEMAP] Wrote: {codemap_path}")
 
-    # --- Lightweight verification ---
     _run_verification(
         codemap_path=codemap_path,
         codespace=codespace,
@@ -151,11 +236,10 @@ def run_codemap_build(
         model_policy=model_policy,
     )
 
-    # Store fingerprint
-    fp = compute_codespace_fingerprint(codespace)
-    fingerprint_path.parent.mkdir(parents=True, exist_ok=True)
-    fingerprint_path.write_text(fp)
-    print(f"[CODEMAP] Stored codespace fingerprint: {fingerprint_path}")
+    _store_codespace_fingerprint(
+        codespace=codespace,
+        fingerprint_path=fingerprint_path,
+    )
 
     return True
 
@@ -231,35 +315,48 @@ def _run_freshness_check(
         stdout_file=freshness_output,
     )
 
-    if result.returncode == 0 and freshness_signal.is_file():
-        data = Services.artifact_io().read_json(freshness_signal)
-        if not isinstance(data, dict):
-            print(
-                f"[CODEMAP][WARN] Malformed freshness signal at "
-                f"{freshness_signal} "
-                f"— renaming to .malformed.json")
-            if data is not None:
-                Services.artifact_io().rename_malformed(freshness_signal)
-            rebuild = True
-        else:
-            rebuild = data.get("rebuild", True)
+    return _interpret_freshness_signal(
+        result, freshness_signal, fingerprint_path, current_fp,
+    )
 
-        if str(rebuild).lower() == "false" or rebuild is False:
-            print("[CODEMAP] Verifier says codemap still valid — reusing")
-            fingerprint_path.write_text(current_fp)
-            return True
 
-        print("[CODEMAP] Verifier says rebuild needed — rebuilding codemap")
+def _interpret_freshness_signal(
+    result: object,
+    freshness_signal: Path,
+    fingerprint_path: Path,
+    current_fp: str,
+) -> bool:
+    """Interpret the freshness verifier result and signal file.
+
+    Returns True if codemap is still valid, False if rebuild is needed.
+    """
+    if result.returncode != 0:
+        print("[CODEMAP] Freshness check failed — rebuilding codemap")
         return False
-
-    if result.returncode == 0:
+    if not freshness_signal.is_file():
         print(
             "[CODEMAP] Verifier did not produce signal — "
             "rebuilding to be safe",
         )
-    else:
-        print("[CODEMAP] Freshness check failed — rebuilding codemap")
+        return False
 
+    data = Services.artifact_io().read_json(freshness_signal)
+    if not isinstance(data, dict):
+        print(
+            f"[CODEMAP][WARN] Malformed freshness signal at "
+            f"{freshness_signal} — renaming to .malformed.json",
+        )
+        if data is not None:
+            Services.artifact_io().rename_malformed(freshness_signal)
+        return False
+
+    rebuild = data.get("rebuild", True)
+    if str(rebuild).lower() == "false" or rebuild is False:
+        print("[CODEMAP] Verifier says codemap still valid — reusing")
+        fingerprint_path.write_text(current_fp)
+        return True
+
+    print("[CODEMAP] Verifier says rebuild needed — rebuilding codemap")
     return False
 
 

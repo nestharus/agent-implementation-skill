@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
 import re
 
@@ -20,8 +19,6 @@ _SECTION_SCOPE_RE = re.compile(r"^section-(\d+)$")
 
 def parse_signal_file(
     signal_path: Path,
-    *,
-    logger: Callable[[str], None] | None = None,
 ) -> FlowDeclaration | None:
     """Parse a task-request signal file into a FlowDeclaration."""
     if not signal_path.exists():
@@ -32,25 +29,24 @@ def parse_signal_file(
         signal_path.unlink(missing_ok=True)
         return None
 
+    log = Services.logger().log
     try:
         decl = parse_flow_signal(signal_path)
     except ValueError as exc:
-        if logger is not None:
-            logger(
-                "  task_ingestion: WARNING - malformed signal in "
-                f"{signal_path} ({exc}), renaming to .malformed.json",
-            )
+        log(
+            "  task_ingestion: WARNING - malformed signal in "
+            f"{signal_path} ({exc}), renaming to .malformed.json",
+        )
         Services.artifact_io().rename_malformed(signal_path)
         return None
 
     if decl.version >= 2:
         errors = validate_flow_declaration(decl)
         if errors:
-            if logger is not None:
-                logger(
-                    "  task_ingestion: WARNING - v2 flow declaration in "
-                    f"{signal_path} has validation errors: {errors}",
-                )
+            log(
+                "  task_ingestion: WARNING - v2 flow declaration in "
+                f"{signal_path} has validation errors: {errors}",
+            )
             Services.artifact_io().rename_malformed(signal_path)
             return None
 
@@ -90,31 +86,28 @@ def find_first_section_scope(steps: list[TaskSpec]) -> str | None:
 
 def ingest_task_requests(
     signal_path: Path,
-    *,
-    logger: Callable[[str], None] | None = None,
 ) -> list[dict]:
     """Read and parse a task-request signal file."""
-    decl = parse_signal_file(signal_path, logger=logger)
+    log = Services.logger().log
+    decl = parse_signal_file(signal_path)
     if decl is None:
         return []
 
     if decl.version >= 2:
-        if logger is not None:
-            logger(
-                "  task_ingestion: WARNING - v2 flow actions should use "
-                "ingest_and_submit, skipping",
-            )
+        log(
+            "  task_ingestion: WARNING - v2 flow actions should use "
+            "ingest_and_submit, skipping",
+        )
         return []
 
     entries = extract_legacy_tasks(decl)
     valid: list[dict] = []
     for entry in entries:
         if "task_type" not in entry:
-            if logger is not None:
-                logger(
-                    "  task_ingestion: WARNING - skipping entry without "
-                    f"task_type: {entry!r}",
-                )
+            log(
+                "  task_ingestion: WARNING - skipping entry without "
+                f"task_type: {entry!r}",
+            )
             continue
         valid.append(entry)
 

@@ -83,6 +83,128 @@ def _session_id_from(record: dict, file_stem: str) -> str:
 
 
 # ------------------------------------------------------------------
+# Per-record handlers
+# ------------------------------------------------------------------
+
+def _handle_queue_event(
+    record: dict,
+    ts_pair: tuple[str, int] | None,
+    sid: str,
+) -> TimelineEvent | None:
+    """Handle a ``queue-operation`` record with ``operation == "enqueue"``.
+
+    Returns a ``dispatch`` event, or ``None`` if the timestamp is missing.
+    """
+    if ts_pair is None:
+        return None
+    ts_str, ts_ms = ts_pair
+    content_text = record.get("content", "")
+    return TimelineEvent(
+        ts=ts_str,
+        ts_ms=ts_ms,
+        source=_SOURCE,
+        kind="dispatch",
+        detail=summarize_text(content_text),
+        session_id=sid,
+        backend=_BACKEND,
+        raw=record,
+    )
+
+
+def _handle_user_event(
+    record: dict,
+    ts_pair: tuple[str, int] | None,
+    sid: str,
+) -> TimelineEvent | None:
+    """Handle a ``user`` record.
+
+    Returns a ``message`` event, or ``None`` if the timestamp is missing.
+    """
+    msg = record.get("message", {})
+    if isinstance(msg, dict):
+        content = msg.get("content", "")
+    else:
+        content = ""
+    text = _extract_text_content(content)
+
+    # User records may lack a top-level timestamp; use the
+    # record timestamp if available, otherwise skip the event
+    # (we still track the record for session candidate metadata).
+    if ts_pair is None:
+        return None
+    ts_str, ts_ms = ts_pair
+    return TimelineEvent(
+        ts=ts_str,
+        ts_ms=ts_ms,
+        source=_SOURCE,
+        kind="message",
+        detail=summarize_text(text),
+        session_id=sid,
+        backend=_BACKEND,
+        raw=record,
+    )
+
+
+def _handle_assistant_event(
+    record: dict,
+    ts_pair: tuple[str, int] | None,
+    sid: str,
+) -> Iterator[TimelineEvent]:
+    """Handle an ``assistant`` record.
+
+    Yields a ``response`` event followed by ``tool_call`` / ``tool_result``
+    events for any tool-use content blocks.
+    """
+    if ts_pair is None:
+        return
+    ts_str, ts_ms = ts_pair
+    msg = record.get("message", {})
+    if not isinstance(msg, dict):
+        return
+    content = msg.get("content", "")
+    text = _extract_text_content(content)
+
+    yield TimelineEvent(
+        ts=ts_str,
+        ts_ms=ts_ms,
+        source=_SOURCE,
+        kind="response",
+        detail=summarize_text(text),
+        session_id=sid,
+        backend=_BACKEND,
+        raw=record,
+    )
+
+    # Emit extra events for tool_use / tool_result blocks
+    for block in _iter_content_blocks(content):
+        btype = block.get("type", "")
+        if btype == "tool_use":
+            tool_name = block.get("name", "unknown")
+            yield TimelineEvent(
+                ts=ts_str,
+                ts_ms=ts_ms,
+                source=_SOURCE,
+                kind="tool_call",
+                detail=f"tool_use: {tool_name}",
+                session_id=sid,
+                backend=_BACKEND,
+                raw=block,
+            )
+        elif btype == "tool_result":
+            tool_id = block.get("tool_use_id", "")
+            yield TimelineEvent(
+                ts=ts_str,
+                ts_ms=ts_ms,
+                source=_SOURCE,
+                kind="tool_result",
+                detail=f"tool_result: {tool_id}",
+                session_id=sid,
+                backend=_BACKEND,
+                raw=block,
+            )
+
+
+# ------------------------------------------------------------------
 # Per-file line processing
 # ------------------------------------------------------------------
 
@@ -113,98 +235,27 @@ def _iter_file_events(
             rtype = record.get("type", "")
             sid = _session_id_from(record, file_stem)
 
-            # -- queue-operation (enqueue) -> dispatch -------------------
             if rtype == "queue-operation" and record.get("operation") == "enqueue":
-                if ts_pair is None:
-                    continue
-                ts_str, ts_ms = ts_pair
-                content_text = record.get("content", "")
-                yield TimelineEvent(
-                    ts=ts_str,
-                    ts_ms=ts_ms,
-                    source=_SOURCE,
-                    kind="dispatch",
-                    detail=summarize_text(content_text),
-                    session_id=sid,
-                    backend=_BACKEND,
-                    raw=record,
-                )
-
-            # -- user message -> message ---------------------------------
+                event = _handle_queue_event(record, ts_pair, sid)
+                if event is not None:
+                    yield event
             elif rtype == "user":
-                msg = record.get("message", {})
-                if isinstance(msg, dict):
-                    content = msg.get("content", "")
-                else:
-                    content = ""
-                text = _extract_text_content(content)
-
-                # User records may lack a top-level timestamp; use the
-                # record timestamp if available, otherwise skip the event
-                # (we still track the record for session candidate metadata).
-                if ts_pair is None:
-                    continue
-                ts_str, ts_ms = ts_pair
-                yield TimelineEvent(
-                    ts=ts_str,
-                    ts_ms=ts_ms,
-                    source=_SOURCE,
-                    kind="message",
-                    detail=summarize_text(text),
-                    session_id=sid,
-                    backend=_BACKEND,
-                    raw=record,
-                )
-
-            # -- assistant message -> response + tool events -------------
+                event = _handle_user_event(record, ts_pair, sid)
+                if event is not None:
+                    yield event
             elif rtype == "assistant":
-                if ts_pair is None:
-                    continue
-                ts_str, ts_ms = ts_pair
-                msg = record.get("message", {})
-                if not isinstance(msg, dict):
-                    continue
-                content = msg.get("content", "")
-                text = _extract_text_content(content)
+                yield from _handle_assistant_event(record, ts_pair, sid)
 
-                yield TimelineEvent(
-                    ts=ts_str,
-                    ts_ms=ts_ms,
-                    source=_SOURCE,
-                    kind="response",
-                    detail=summarize_text(text),
-                    session_id=sid,
-                    backend=_BACKEND,
-                    raw=record,
-                )
 
-                # Emit extra events for tool_use / tool_result blocks
-                for block in _iter_content_blocks(content):
-                    btype = block.get("type", "")
-                    if btype == "tool_use":
-                        tool_name = block.get("name", "unknown")
-                        yield TimelineEvent(
-                            ts=ts_str,
-                            ts_ms=ts_ms,
-                            source=_SOURCE,
-                            kind="tool_call",
-                            detail=f"tool_use: {tool_name}",
-                            session_id=sid,
-                            backend=_BACKEND,
-                            raw=block,
-                        )
-                    elif btype == "tool_result":
-                        tool_id = block.get("tool_use_id", "")
-                        yield TimelineEvent(
-                            ts=ts_str,
-                            ts_ms=ts_ms,
-                            source=_SOURCE,
-                            kind="tool_result",
-                            detail=f"tool_result: {tool_id}",
-                            session_id=sid,
-                            backend=_BACKEND,
-                            raw=block,
-                        )
+def _extract_prompt_text(record: dict, rtype: str) -> str:
+    """Extract prompt text from a queue-operation or user record."""
+    if rtype == "queue-operation" and record.get("operation") == "enqueue":
+        return record.get("content", "")
+    if rtype == "user":
+        msg = record.get("message", {})
+        if isinstance(msg, dict):
+            return _extract_text_content(msg.get("content", ""))
+    return ""
 
 
 def _build_session_candidate(path: Path) -> SessionCandidate | None:
@@ -255,12 +306,7 @@ def _build_session_candidate(path: Path) -> SessionCandidate | None:
 
             # Track first prompt text
             if not first_prompt:
-                if rtype == "queue-operation" and record.get("operation") == "enqueue":
-                    first_prompt = record.get("content", "")
-                elif rtype == "user":
-                    msg = record.get("message", {})
-                    if isinstance(msg, dict):
-                        first_prompt = _extract_text_content(msg.get("content", ""))
+                first_prompt = _extract_prompt_text(record, rtype)
 
     if earliest_ts is None or earliest_ms is None:
         return None

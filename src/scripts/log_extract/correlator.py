@@ -14,6 +14,13 @@ from log_extract.models import (
 )
 
 
+# Time delta thresholds for dispatch-session correlation scoring (ms)
+_TIME_HARD_REJECT_MS = 300_000   # >5 min: no correlation possible
+_TIME_CLOSE_MS = 5_000           # <=5s: strong time proximity
+_TIME_NEAR_MS = 30_000           # <=30s: moderate time proximity
+_TIME_MODERATE_MS = 120_000      # <=2min: weak time proximity
+
+
 def correlate(
     dispatches: list[DispatchCandidate],
     sessions: list[SessionCandidate],
@@ -67,7 +74,7 @@ def _score(
         return -1, []
 
     delta_ms = abs(sess.ts_ms - disp.ts_ms)
-    if delta_ms > 300_000:
+    if delta_ms > _TIME_HARD_REJECT_MS:
         return -1, []
 
     score = 0
@@ -80,13 +87,13 @@ def _score(
         reasons.append("prompt_signature_match")
 
     # Time proximity
-    if delta_ms <= 5_000:
+    if delta_ms <= _TIME_CLOSE_MS:
         score += 30
         reasons.append("time_delta<=5s")
-    elif delta_ms <= 30_000:
+    elif delta_ms <= _TIME_NEAR_MS:
         score += 20
         reasons.append("time_delta<=30s")
-    elif delta_ms <= 120_000:
+    elif delta_ms <= _TIME_MODERATE_MS:
         score += 10
         reasons.append("time_delta<=120s")
 

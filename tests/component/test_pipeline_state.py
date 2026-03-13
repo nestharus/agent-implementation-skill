@@ -69,7 +69,6 @@ def test_wait_if_paused_replays_buffered_messages_after_resume(
         "parent",
         db_sh=DB_SH,
         agent_name="section-loop",
-        logger=lambda _msg: None,
     )
 
     parent_messages = parent.drain()
@@ -98,7 +97,6 @@ def test_pause_for_parent_consumes_alignment_changed_before_resume(
         "pause:test",
         db_sh=DB_SH,
         agent_name="section-loop",
-        logger=lambda _msg: None,
     )
 
     assert response == "resume:continue"
@@ -119,5 +117,4 @@ def test_pause_for_parent_exits_on_abort(tmp_path: Path) -> None:
             "pause:test",
             db_sh=DB_SH,
             agent_name="section-loop",
-            logger=lambda _msg: None,
         )

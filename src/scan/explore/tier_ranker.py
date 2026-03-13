@@ -31,6 +31,117 @@ def validate_tier_file(tier_file: Path) -> bool:
     return True
 
 
+def _check_tier_freshness(
+    tier_file: Path, tier_inputs_sidecar: Path,
+    tier_inputs_hash: str, section_name: str,
+) -> bool | None:
+    """Check if tier file is fresh.
+
+    Returns True if fresh (skip), False if stale/invalid (regenerate),
+    None if tier file doesn't exist.
+    """
+    if not tier_file.is_file():
+        return None
+    if not validate_tier_file(tier_file):
+        print(
+            f"[TIER] {section_name}: existing tier file invalid "
+            "(missing scan_now or bad schema) — preserving as "
+            ".malformed.json and regenerating",
+        )
+        if Services.artifact_io().rename_malformed(tier_file) is None:
+            tier_file.unlink()
+        return False
+    if (
+        tier_inputs_sidecar.is_file()
+        and tier_inputs_sidecar.read_text(encoding="utf-8").strip() == tier_inputs_hash
+    ):
+        return True
+    print(
+        f"[TIER] {section_name}: inputs changed since last "
+        "tier ranking — regenerating",
+    )
+    tier_file.unlink()
+    return False
+
+
+def _dispatch_tier_with_escalation(
+    section_name: str, codespace: Path, tier_prompt: Path,
+    tier_output: Path, artifacts_dir: Path,
+    related_files: list[str], model_policy: dict[str, str],
+) -> None:
+    """Dispatch tier ranking with model escalation on failure."""
+    tier_model = model_policy["tier_ranking"]
+    escalation_model = model_policy["exploration"]
+    result = dispatch_agent(
+        model=tier_model,
+        project=codespace,
+        prompt_file=tier_prompt,
+        agent_file=Services.task_router().agent_for("scan.tier_rank"),
+        stdout_file=tier_output,
+    )
+
+    if result.returncode == 0:
+        print(f"[TIER] {section_name}: file tiers ranked")
+        return
+
+    print(
+        f"[TIER] {section_name}: tier ranking failed with {tier_model} "
+        f"— escalating to {escalation_model}",
+    )
+    result = dispatch_agent(
+        model=escalation_model,
+        project=codespace,
+        prompt_file=tier_prompt,
+        agent_file=Services.task_router().agent_for("scan.tier_rank"),
+        stdout_file=tier_output,
+    )
+    if result.returncode == 0:
+        print(
+            f"[TIER] {section_name}: file tiers ranked "
+            "(via Opus escalation)",
+        )
+    else:
+        print(
+            f"[TIER] {section_name}: tier ranking failed after "
+            "escalation — fail-closed",
+        )
+        signals_dir = artifacts_dir / "signals"
+        signals_dir.mkdir(parents=True, exist_ok=True)
+        fail_path = signals_dir / f"{section_name}-tier-ranking-failed.json"
+        Services.artifact_io().write_json(
+            fail_path,
+            {
+                "section": section_name,
+                "related_files_count": len(related_files),
+                "error_output": str(tier_output),
+                "suggested_action": "manual_review_or_parent_escalation",
+            },
+        )
+
+
+def _validate_generated_tier(
+    tier_file: Path, section_name: str, artifacts_dir: Path,
+) -> None:
+    """Validate a newly generated tier file, removing it if invalid."""
+    if not tier_file.is_file() or validate_tier_file(tier_file):
+        return
+    print(f"[TIER] {section_name}: generated tier file invalid — fail-closed")
+    signals_dir = artifacts_dir / "signals"
+    signals_dir.mkdir(parents=True, exist_ok=True)
+    fail_path = signals_dir / f"{section_name}-tier-ranking-invalid.json"
+    write_json(
+        fail_path,
+        {
+            "section": section_name,
+            "error": "invalid_tier_file_schema",
+            "detail": "Tier file missing scan_now or has invalid structure",
+            "tier_file_path": str(tier_file),
+            "suggested_action": "manual_review_or_parent_escalation",
+        },
+    )
+    tier_file.unlink()
+
+
 def run_tier_ranking(
     section_file: Path,
     section_name: str,
@@ -52,26 +163,11 @@ def run_tier_ranking(
     )
     tier_inputs_hash = Services.hasher().content_hash(tier_inputs)
 
-    if tier_file.is_file():
-        if not validate_tier_file(tier_file):
-            print(
-                f"[TIER] {section_name}: existing tier file invalid "
-                "(missing scan_now or bad schema) — preserving as "
-                ".malformed.json and regenerating",
-            )
-            if Services.artifact_io().rename_malformed(tier_file) is None:
-                tier_file.unlink()
-        elif (
-            tier_inputs_sidecar.is_file()
-            and tier_inputs_sidecar.read_text(encoding="utf-8").strip() == tier_inputs_hash
-        ):
-            return tier_file
-        else:
-            print(
-                f"[TIER] {section_name}: inputs changed since last "
-                "tier ranking — regenerating",
-            )
-            tier_file.unlink()
+    freshness = _check_tier_freshness(
+        tier_file, tier_inputs_sidecar, tier_inputs_hash, section_name,
+    )
+    if freshness is True:
+        return tier_file
 
     section_log = scan_log_dir / section_name
     section_log.mkdir(parents=True, exist_ok=True)
@@ -95,69 +191,11 @@ def run_tier_ranking(
         return None
     tier_prompt.write_text(prompt, encoding="utf-8")
 
-    tier_model = model_policy["tier_ranking"]
-    escalation_model = model_policy["exploration"]
-    result = dispatch_agent(
-        model=tier_model,
-        project=codespace,
-        prompt_file=tier_prompt,
-        agent_file=Services.task_router().agent_for("scan.tier_rank"),
-        stdout_file=tier_output,
+    _dispatch_tier_with_escalation(
+        section_name, codespace, tier_prompt, tier_output,
+        artifacts_dir, related_files, model_policy,
     )
-
-    if result.returncode == 0:
-        print(f"[TIER] {section_name}: file tiers ranked")
-    else:
-        print(
-            f"[TIER] {section_name}: tier ranking failed with {tier_model} "
-            f"— escalating to {escalation_model}",
-        )
-        result = dispatch_agent(
-            model=escalation_model,
-            project=codespace,
-            prompt_file=tier_prompt,
-            agent_file=Services.task_router().agent_for("scan.tier_rank"),
-            stdout_file=tier_output,
-        )
-        if result.returncode == 0:
-            print(
-                f"[TIER] {section_name}: file tiers ranked "
-                "(via Opus escalation)",
-            )
-        else:
-            print(
-                f"[TIER] {section_name}: tier ranking failed after "
-                "escalation — fail-closed",
-            )
-            signals_dir = artifacts_dir / "signals"
-            signals_dir.mkdir(parents=True, exist_ok=True)
-            fail_path = signals_dir / f"{section_name}-tier-ranking-failed.json"
-            Services.artifact_io().write_json(
-                fail_path,
-                {
-                    "section": section_name,
-                    "related_files_count": len(related_files),
-                    "error_output": str(tier_output),
-                    "suggested_action": "manual_review_or_parent_escalation",
-                },
-            )
-
-    if tier_file.is_file() and not validate_tier_file(tier_file):
-        print(f"[TIER] {section_name}: generated tier file invalid — fail-closed")
-        signals_dir = artifacts_dir / "signals"
-        signals_dir.mkdir(parents=True, exist_ok=True)
-        fail_path = signals_dir / f"{section_name}-tier-ranking-invalid.json"
-        write_json(
-            fail_path,
-            {
-                "section": section_name,
-                "error": "invalid_tier_file_schema",
-                "detail": "Tier file missing scan_now or has invalid structure",
-                "tier_file_path": str(tier_file),
-                "suggested_action": "manual_review_or_parent_escalation",
-            },
-        )
-        tier_file.unlink()
+    _validate_generated_tier(tier_file, section_name, artifacts_dir)
 
     if tier_file.is_file():
         tier_inputs_sidecar.write_text(tier_inputs_hash, encoding="utf-8")

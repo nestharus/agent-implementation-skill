@@ -160,7 +160,6 @@ class TestProposalResultsValidForReconciliation:
             planspace,
             codespace,
             "parent",
-            _default_policy(),
         )
 
         # No conflicts → section stays ready
@@ -198,7 +197,6 @@ class TestProposalResultsValidForReconciliation:
             planspace,
             codespace,
             "parent",
-            _default_policy(),
         )
 
         assert "01" in result.new_section_numbers
@@ -235,7 +233,6 @@ class TestProposalPassExitSignal:
                 planspace,
                 codespace,
                 "parent",
-                _default_policy(),
             )
 
 
@@ -351,7 +348,6 @@ class TestBlockedSectionsExcludedFromImplementation:
                 planspace,
                 codespace,
                 "parent",
-                _default_policy(),
             )
 
         # Both sections had the same unresolved_contracts — reconciliation
@@ -441,7 +437,6 @@ class TestFullPhaseSequence:
             planspace,
             codespace,
             "parent",
-            _default_policy(),
         )
 
         assert sorted(reconciliation.new_section_numbers) == ["01", "02"]
@@ -514,7 +509,6 @@ class TestFullPhaseSequence:
             planspace,
             codespace,
             "parent",
-            _default_policy(),
         )
 
         assert "01" in reconciliation.new_section_numbers
@@ -606,7 +600,6 @@ class TestFullPhaseSequence:
             planspace,
             codespace,
             "parent",
-            _default_policy(),
         )
 
         # Check that reconciliation wrote the result artifact
@@ -642,7 +635,6 @@ class TestFullPhaseSequence:
             planspace,
             codespace,
             "parent",
-            _default_policy(),
         )
 
         summary_path = (

@@ -101,15 +101,11 @@ def write_research_plan_prompt(
     return prompt_path
 
 
-def write_research_ticket_prompt(
-    section_number: str,
-    planspace: Path,
-    codespace: Path | None,
-    ticket: dict,
-    ticket_index: int,
-) -> Path | None:
-    """Write prompt for a single research ticket."""
-    paths = PathRegistry(planspace)
+def _prepare_ticket_spec(
+    section_number: str, ticket: dict, ticket_index: int,
+    paths: PathRegistry,
+) -> tuple[Path, Path, Path]:
+    """Prepare ticket spec file and return (spec_path, prompt_path, result_path)."""
     phase = str(ticket.get("_phase", ""))
     spec_path = paths.research_ticket_spec(section_number, ticket_index, phase)
     prompt_path = paths.research_ticket_prompt(section_number, ticket_index, phase)
@@ -128,18 +124,39 @@ def write_research_ticket_prompt(
     ticket_payload["output_path"] = str(result_path)
     Services.artifact_io().write_json(spec_path, ticket_payload)
 
-    research_type = str(ticket_payload.get("research_type", "web"))
-    phase_note = ""
+    return spec_path, prompt_path, result_path
+
+
+def _ticket_phase_note(ticket: dict) -> str:
+    """Determine the execution phase note for a research ticket."""
+    phase = str(ticket.get("_phase", ""))
     if phase == "web":
-        phase_note = (
+        return (
             "This is the web stage of a `both` ticket. Gather source-backed findings "
             "for later synthesis with scan evidence."
         )
-    elif research_type in {"code", "both"}:
-        phase_note = (
+    research_type = str(ticket.get("research_type", "web"))
+    if research_type in {"code", "both"}:
+        return (
             "Use codemap, codemap corrections, and scan evidence from flow context. "
             "Do not do ad hoc codebase exploration beyond the prepared evidence."
         )
+    return ""
+
+
+def write_research_ticket_prompt(
+    section_number: str,
+    planspace: Path,
+    codespace: Path | None,
+    ticket: dict,
+    ticket_index: int,
+) -> Path | None:
+    """Write prompt for a single research ticket."""
+    paths = PathRegistry(planspace)
+    spec_path, prompt_path, result_path = _prepare_ticket_spec(
+        section_number, ticket, ticket_index, paths,
+    )
+    phase_note = _ticket_phase_note(ticket)
 
     lines = [
         "# Research Ticket Prompt",
@@ -159,14 +176,8 @@ def write_research_ticket_prompt(
             ("Project codemap", paths.codemap()),
             ("Codemap corrections (authoritative fixes)", paths.corrections()),
             ("Intent surfaces", paths.intent_surfaces_signal(section_number)),
-            (
-                "Implementation feedback surfaces",
-                paths.impl_feedback_surfaces(section_number),
-            ),
-            (
-                "Research addendum",
-                paths.research_addendum(section_number),
-            ),
+            ("Implementation feedback surfaces", paths.impl_feedback_surfaces(section_number)),
+            ("Research addendum", paths.research_addendum(section_number)),
             ("Research dossier", paths.research_dossier(section_number)),
         ],
         start=2,
@@ -175,33 +186,14 @@ def write_research_ticket_prompt(
         lines.extend(optional_inputs)
 
     if codespace is not None:
-        lines.extend(
-            [
-                "",
-                "## Codespace",
-                "",
-                f"`{codespace}`",
-            ]
-        )
+        lines.extend(["", "## Codespace", "", f"`{codespace}`"])
 
-    lines.extend(
-        [
-            "",
-            "## Output Path",
-            "",
-            f"- Ticket result JSON: `{result_path}`",
-        ]
-    )
+    lines.extend(["", "## Output Path", "", f"- Ticket result JSON: `{result_path}`"])
     if phase_note:
-        lines.extend(
-            [
-                "",
-                "## Execution Notes",
-                "",
-                phase_note,
-                "If your prompt is wrapped with `<flow-context>`, read the referenced flow context and use any previous result manifest as prepared evidence.",
-            ]
-        )
+        lines.extend([
+            "", "## Execution Notes", "", phase_note,
+            "If your prompt is wrapped with `<flow-context>`, read the referenced flow context and use any previous result manifest as prepared evidence.",
+        ])
 
     if not Services.prompt_guard().write_validated("\n".join(lines), prompt_path):
         return None

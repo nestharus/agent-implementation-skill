@@ -102,6 +102,16 @@ def _safe_ts(record: dict) -> tuple[str, int] | None:
     return safe_ts(record.get("timestamp"), source_label="codex")
 
 
+def _extract_first_text(content_blocks: list) -> str:
+    """Return the first non-empty text from a list of content blocks."""
+    for block in content_blocks:
+        if isinstance(block, dict):
+            text = block.get("text", "")
+            if text:
+                return text
+    return ""
+
+
 # ------------------------------------------------------------------
 # Events from a single file
 # ------------------------------------------------------------------
@@ -229,13 +239,7 @@ def _session_candidate_from_file(path: Path) -> SessionCandidate | None:
         elif rec_type == "response_item" and not first_user_text:
             role = payload.get("role", "")
             if role in ("user", "developer"):
-                content_blocks = payload.get("content") or []
-                for block in content_blocks:
-                    if isinstance(block, dict):
-                        text = block.get("text", "")
-                        if text:
-                            first_user_text = text
-                            break
+                first_user_text = _extract_first_text(payload.get("content") or [])
 
     if not session_id:
         return None

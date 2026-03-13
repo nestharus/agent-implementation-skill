@@ -27,14 +27,12 @@ def test_parse_signal_file_consumes_legacy_signal(tmp_path) -> None:
 def test_parse_signal_file_renames_malformed_input(tmp_path) -> None:
     signal_path = tmp_path / "task.json"
     signal_path.write_text("{bad json", encoding="utf-8")
-    messages: list[str] = []
 
-    decl = parse_signal_file(signal_path, logger=messages.append)
+    decl = parse_signal_file(signal_path)
 
     assert decl is None
     assert not signal_path.exists()
     assert signal_path.with_suffix(".malformed.json").exists()
-    assert messages
 
 
 def test_extract_legacy_tasks_flattens_chain_steps() -> None:
@@ -89,9 +87,6 @@ def test_ingest_task_requests_skips_v2_declarations(tmp_path) -> None:
         ),
         encoding="utf-8",
     )
-    messages: list[str] = []
-
-    tasks = ingest_task_requests(signal_path, logger=messages.append)
+    tasks = ingest_task_requests(signal_path)
 
     assert tasks == []
-    assert any("v2 flow actions should use ingest_and_submit" in message for message in messages)

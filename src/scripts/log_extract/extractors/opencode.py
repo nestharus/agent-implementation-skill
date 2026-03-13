@@ -51,18 +51,27 @@ def _safe_parse_json(raw: str | None, context: str) -> dict | None:
     return obj
 
 
+def _extract_created_ts(data: dict) -> tuple[str, int] | None:
+    """Try to parse ``time.created`` from a data dict."""
+    time_block = data.get("time")
+    if not isinstance(time_block, dict):
+        return None
+    created = time_block.get("created")
+    if created is None:
+        return None
+    try:
+        return parse_timestamp(created)
+    except (ValueError, TypeError):
+        return None
+
+
 def _ts_from_data_or_column(data: dict | None, column_value: str | None) -> tuple[str, int] | None:
     """Extract a timestamp from the data JSON's ``time.created`` (Unix ms)
     or fall back to the SQL column value."""
     if data is not None:
-        time_block = data.get("time")
-        if isinstance(time_block, dict):
-            created = time_block.get("created")
-            if created is not None:
-                try:
-                    return parse_timestamp(created)
-                except (ValueError, TypeError):
-                    pass
+        created = _extract_created_ts(data)
+        if created is not None:
+            return created
 
     if column_value:
         try:
@@ -221,6 +230,45 @@ def _iter_part_events(con: sqlite3.Connection) -> Iterator[TimelineEvent]:
 # ------------------------------------------------------------------
 
 
+def _scan_session_messages(
+    con: sqlite3.Connection, session_id: str,
+) -> tuple[str | None, int | None, str, str]:
+    """Scan messages for a session, returning (earliest_ts, earliest_ms, model, first_prompt)."""
+    earliest_ts: str | None = None
+    earliest_ms: int | None = None
+    first_prompt: str = ""
+    model: str = ""
+
+    try:
+        msg_cur = con.execute(
+            "SELECT id, time_created, data FROM message"
+            " WHERE session_id = ? ORDER BY time_created",
+            (session_id,),
+        )
+    except sqlite3.OperationalError:
+        return earliest_ts, earliest_ms, model, first_prompt
+
+    for msg_row in msg_cur:
+        mdata = _safe_parse_json(msg_row["data"], f"message {msg_row['id']}")
+        ts_pair = _ts_from_data_or_column(mdata, msg_row["time_created"])
+        if ts_pair is not None:
+            ts_str, ts_ms = ts_pair
+            if earliest_ms is None or ts_ms < earliest_ms:
+                earliest_ts = ts_str
+                earliest_ms = ts_ms
+
+        if mdata is None:
+            continue
+        if not model and mdata.get("role") == "assistant":
+            model = mdata.get("modelID", "")
+        if not first_prompt and mdata.get("role") == "user":
+            text = _extract_text_from_parts(con, msg_row["id"])
+            if text:
+                first_prompt = text
+
+    return earliest_ts, earliest_ms, model, first_prompt
+
+
 def _build_session_candidates(con: sqlite3.Connection) -> Iterator[SessionCandidate]:
     """Yield a :class:`SessionCandidate` for each session row."""
     try:
@@ -235,42 +283,10 @@ def _build_session_candidates(con: sqlite3.Connection) -> Iterator[SessionCandid
         directory = row["directory"] or ""
         session_ts = row["time_created"]
 
-        # Find earliest message timestamp for this session
-        earliest_ts: str | None = None
-        earliest_ms: int | None = None
-        first_prompt: str = ""
-        model: str = ""
+        earliest_ts, earliest_ms, model, first_prompt = _scan_session_messages(
+            con, session_id,
+        )
 
-        try:
-            msg_cur = con.execute(
-                "SELECT id, time_created, data FROM message"
-                " WHERE session_id = ? ORDER BY time_created",
-                (session_id,),
-            )
-        except sqlite3.OperationalError:
-            msg_cur = iter(())  # type: ignore[assignment]
-
-        for msg_row in msg_cur:
-            mdata = _safe_parse_json(msg_row["data"], f"message {msg_row['id']}")
-            ts_pair = _ts_from_data_or_column(mdata, msg_row["time_created"])
-            if ts_pair is not None:
-                ts_str, ts_ms = ts_pair
-                if earliest_ms is None or ts_ms < earliest_ms:
-                    earliest_ts = ts_str
-                    earliest_ms = ts_ms
-
-            if mdata is not None:
-                # Track model from first assistant message
-                if not model and mdata.get("role") == "assistant":
-                    model = mdata.get("modelID", "")
-
-                # Track first user prompt for signature
-                if not first_prompt and mdata.get("role") == "user":
-                    text = _extract_text_from_parts(con, msg_row["id"])
-                    if text:
-                        first_prompt = text
-
-        # Fall back to session time_created if no message timestamps
         if earliest_ts is None and session_ts:
             try:
                 ts_pair = parse_timestamp(session_ts)

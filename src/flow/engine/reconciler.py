@@ -86,6 +86,106 @@ def build_gate_aggregate_manifest(
     }
 
 
+def _fail_chain_gate(
+    db_path: Path,
+    planspace: Path,
+    chain_id: str,
+    task_id: int,
+    result_manifest_path: str | None,
+    flow_id: str,
+    origin_refs: list[str],
+) -> None:
+    """Cancel chain descendants and mark the gate member as failed."""
+    cancel_chain_descendants(db_path, chain_id, task_id)
+    gate_id = find_gate_for_chain(db_path, chain_id)
+    if gate_id:
+        update_gate_member(db_path, gate_id, chain_id, "failed", result_manifest_path)
+        check_and_fire_gate(db_path, planspace, gate_id, flow_id, origin_refs)
+
+
+def _load_continuation(planspace: Path, continuation_path: str | None):
+    """Try loading a continuation signal. Returns (continuation, is_malformed)."""
+    if not continuation_path:
+        return None, False
+    cont_file = planspace / continuation_path
+    if not cont_file.exists():
+        return None, False
+    try:
+        return parse_flow_signal(cont_file), False
+    except (ValueError, json.JSONDecodeError) as exc:
+        print(
+            f"[FLOW][WARN] Malformed continuation at {cont_file} "
+            f"({exc}) — renaming to .malformed.json",
+        )
+        Services.artifact_io().rename_malformed(cont_file)
+        return None, True
+
+
+def _process_continuation_actions(
+    db_path: Path,
+    continuation,
+    task_id: int,
+    flow_id: str,
+    chain_id: str,
+    origin_refs: list[str],
+    planspace: Path,
+) -> None:
+    """Submit chain/fanout actions from a continuation signal."""
+    for action in continuation.actions:
+        if isinstance(action, ChainAction) and action.steps:
+            new_ids = submit_chain(
+                db_path,
+                "reconciler",
+                action.steps,
+                flow_id=flow_id,
+                chain_id=chain_id,
+                declared_by_task_id=task_id,
+                origin_refs=origin_refs,
+                planspace=planspace,
+            )
+            if new_ids:
+                with task_db(db_path) as conn:
+                    conn.execute(
+                        "UPDATE tasks SET depends_on=? WHERE id=?",
+                        (str(task_id), new_ids[0]),
+                    )
+                    conn.commit()
+                gate_id = find_gate_for_chain(db_path, chain_id)
+                if gate_id:
+                    update_gate_member_leaf(db_path, gate_id, chain_id, new_ids[-1])
+
+        elif isinstance(action, FanoutAction) and action.branches:
+            submit_fanout(
+                db_path,
+                "reconciler",
+                action.branches,
+                flow_id=flow_id,
+                declared_by_task_id=task_id,
+                origin_refs=origin_refs,
+                gate=action.gate,
+                planspace=planspace,
+            )
+
+
+def _complete_chain_gate(
+    db_path: Path,
+    planspace: Path,
+    chain_id: str,
+    task_id: int,
+    result_manifest_path: str | None,
+    flow_id: str,
+    origin_refs: list[str],
+) -> None:
+    """Mark the gate member complete if this task is the leaf."""
+    gate_id = find_gate_for_chain(db_path, chain_id)
+    if not gate_id:
+        return
+    member_leaf = get_gate_member_leaf(db_path, gate_id, chain_id)
+    if member_leaf == task_id:
+        update_gate_member(db_path, gate_id, chain_id, "complete", result_manifest_path)
+        check_and_fire_gate(db_path, planspace, gate_id, flow_id, origin_refs)
+
+
 def reconcile_task_completion(
     db_path: Path,
     planspace: Path,
@@ -133,134 +233,39 @@ def reconcile_task_completion(
 
     origin_refs = read_origin_refs(planspace, task_id)
     _handle_research_completion(
-        db_path,
-        planspace,
-        task,
-        status,
-        output_path,
-        error,
-        origin_refs,
-        codespace,
+        db_path, planspace, task, status, output_path, error, origin_refs, codespace,
     )
     _handle_post_impl_assessment_completion(task, status, planspace, codespace)
 
     if status == "failed":
         if chain_id:
-            cancel_chain_descendants(db_path, chain_id, task_id)
-
-        if chain_id:
-            gate_id = find_gate_for_chain(db_path, chain_id)
-            if gate_id:
-                update_gate_member(
-                    db_path,
-                    gate_id,
-                    chain_id,
-                    "failed",
-                    result_manifest_path,
-                )
-                check_and_fire_gate(
-                    db_path,
-                    planspace,
-                    gate_id,
-                    flow_id,
-                    origin_refs,
-                )
+            _fail_chain_gate(
+                db_path, planspace, chain_id, task_id,
+                result_manifest_path, flow_id, origin_refs,
+            )
         return
 
-    if status == "complete":
-        continuation = None
-        if continuation_path:
-            cont_file = planspace / continuation_path
-            if cont_file.exists():
-                try:
-                    continuation = parse_flow_signal(cont_file)
-                except (ValueError, json.JSONDecodeError) as exc:
-                    print(
-                        f"[FLOW][WARN] Malformed continuation at {cont_file} "
-                        f"({exc}) — renaming to .malformed.json",
-                    )
-                    Services.artifact_io().rename_malformed(cont_file)
-                    if chain_id:
-                        cancel_chain_descendants(db_path, chain_id, task_id)
-                        gate_id = find_gate_for_chain(db_path, chain_id)
-                        if gate_id:
-                            update_gate_member(
-                                db_path,
-                                gate_id,
-                                chain_id,
-                                "failed",
-                                result_manifest_path,
-                            )
-                            check_and_fire_gate(
-                                db_path,
-                                planspace,
-                                gate_id,
-                                flow_id,
-                                origin_refs,
-                            )
-                    return
+    if status != "complete":
+        return
 
-        if continuation is not None and continuation.actions:
-            for action in continuation.actions:
-                if isinstance(action, ChainAction) and action.steps:
-                    new_ids = submit_chain(
-                        db_path,
-                        "reconciler",
-                        action.steps,
-                        flow_id=flow_id,
-                        chain_id=chain_id,
-                        declared_by_task_id=task_id,
-                        origin_refs=origin_refs,
-                        planspace=planspace,
-                    )
-                    if new_ids:
-                        with task_db(db_path) as conn:
-                            conn.execute(
-                                "UPDATE tasks SET depends_on=? WHERE id=?",
-                                (str(task_id), new_ids[0]),
-                            )
-                            conn.commit()
+    continuation, is_malformed = _load_continuation(planspace, continuation_path)
+    if is_malformed:
+        if chain_id:
+            _fail_chain_gate(
+                db_path, planspace, chain_id, task_id,
+                result_manifest_path, flow_id, origin_refs,
+            )
+        return
 
-                        gate_id = find_gate_for_chain(db_path, chain_id)
-                        if gate_id:
-                            update_gate_member_leaf(
-                                db_path,
-                                gate_id,
-                                chain_id,
-                                new_ids[-1],
-                            )
-
-                elif isinstance(action, FanoutAction) and action.branches:
-                    submit_fanout(
-                        db_path,
-                        "reconciler",
-                        action.branches,
-                        flow_id=flow_id,
-                        declared_by_task_id=task_id,
-                        origin_refs=origin_refs,
-                        gate=action.gate,
-                        planspace=planspace,
-                    )
-        else:
-            if chain_id:
-                gate_id = find_gate_for_chain(db_path, chain_id)
-                if gate_id:
-                    member_leaf = get_gate_member_leaf(db_path, gate_id, chain_id)
-                    if member_leaf == task_id:
-                        update_gate_member(
-                            db_path,
-                            gate_id,
-                            chain_id,
-                            "complete",
-                            result_manifest_path,
-                        )
-                        check_and_fire_gate(
-                            db_path,
-                            planspace,
-                            gate_id,
-                            flow_id,
-                            origin_refs,
-                        )
+    if continuation is not None and continuation.actions:
+        _process_continuation_actions(
+            db_path, continuation, task_id, flow_id, chain_id, origin_refs, planspace,
+        )
+    elif chain_id:
+        _complete_chain_gate(
+            db_path, planspace, chain_id, task_id,
+            result_manifest_path, flow_id, origin_refs,
+        )
 
 
 def _research_section_number(task: dict) -> str | None:

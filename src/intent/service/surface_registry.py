@@ -167,6 +167,30 @@ def normalize_surface_ids(
     return surfaces
 
 
+def _seen_stamp(surfaces: dict) -> dict:
+    """Build a stage/attempt stamp from the surfaces envelope."""
+    return {
+        "stage": surfaces.get("stage", "unknown"),
+        "attempt": surfaces.get("attempt", 0),
+    }
+
+
+def _build_surface_entry(surface: dict, stamp: dict) -> dict:
+    """Build a registry entry from a raw surface dict."""
+    return {
+        "id": surface.get("id", ""),
+        "kind": surface.get("kind", "unknown"),
+        "axis_id": surface.get("axis_id", ""),
+        "status": "pending",
+        "fingerprint": surface.get("_fingerprint", ""),
+        "first_seen": dict(stamp),
+        "last_seen": dict(stamp),
+        "notes": surface.get("title", ""),
+        "description": surface.get("description", ""),
+        "evidence": surface.get("evidence", ""),
+    }
+
+
 def merge_surfaces_into_registry(
     registry: dict, surfaces: dict,
 ) -> tuple[list[dict], list[str]]:
@@ -179,39 +203,18 @@ def merge_surfaces_into_registry(
     existing_ids = {s["id"] for s in registry.get("surfaces", [])}
     new_surfaces: list[dict] = []
     duplicate_ids: list[str] = []
+    stamp = _seen_stamp(surfaces)
 
     for kind in ("problem_surfaces", "philosophy_surfaces"):
         for surface in surfaces.get(kind, []):
             sid = surface.get("id", "")
             if sid in existing_ids:
-                # Update last_seen
                 for existing in registry["surfaces"]:
                     if existing["id"] == sid:
-                        existing["last_seen"] = {
-                            "stage": surfaces.get("stage", "unknown"),
-                            "attempt": surfaces.get("attempt", 0),
-                        }
+                        existing["last_seen"] = dict(stamp)
                 duplicate_ids.append(sid)
             else:
-                # Add new surface
-                entry = {
-                    "id": sid,
-                    "kind": surface.get("kind", "unknown"),
-                    "axis_id": surface.get("axis_id", ""),
-                    "status": "pending",
-                    "fingerprint": surface.get("_fingerprint", ""),
-                    "first_seen": {
-                        "stage": surfaces.get("stage", "unknown"),
-                        "attempt": surfaces.get("attempt", 0),
-                    },
-                    "last_seen": {
-                        "stage": surfaces.get("stage", "unknown"),
-                        "attempt": surfaces.get("attempt", 0),
-                    },
-                    "notes": surface.get("title", ""),
-                    "description": surface.get("description", ""),
-                    "evidence": surface.get("evidence", ""),
-                }
+                entry = _build_surface_entry(surface, stamp)
                 registry.setdefault("surfaces", []).append(entry)
                 existing_ids.add(sid)
                 new_surfaces.append(entry)

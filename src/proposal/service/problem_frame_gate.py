@@ -18,9 +18,9 @@ def validate_problem_frame(
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: dict,
 ) -> str | None:
     """Ensure the problem frame exists, has content, and is tracked."""
+    policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
     problem_frame_path = paths.problem_frame(section.number)
     if not problem_frame_path.exists():
@@ -48,63 +48,94 @@ def validate_problem_frame(
             return None
 
     if not problem_frame_path.exists():
-        Services.logger().log(
-            f"Section {section.number}: problem frame still missing after retry "
-            "— emitting needs_parent signal",
-        )
-        _write_problem_frame_signal(
-            paths.setup_signal(section.number),
-            {
-                "state": "needs_parent",
-                "detail": (
-                    f"Setup agent failed to create problem frame for section "
-                    f"{section.number} after 2 attempts. The pipeline requires "
-                    f"a problem frame before integration work can begin."
-                ),
-                "needs": (
-                    "Parent must either provide a problem frame or resolve "
-                    "why the setup agent cannot produce one."
-                ),
-                "why_blocked": (
-                    "Problem frame is a mandatory gate — without it, the "
-                    "pipeline cannot validate that the section is solving the "
-                    "right problem."
-                ),
-            },
-        )
-        _update_blocker_rollup(planspace)
-        Services.communicator().mailbox_send(
-            planspace,
-            parent,
-            f"pause:needs_parent:{section.number}:problem frame missing after retry",
-        )
+        _emit_missing_frame_blocker(paths, planspace, section, parent)
         return None
 
     pf_content = problem_frame_path.read_text(encoding="utf-8").strip()
     if not pf_content:
-        Services.logger().log(f"Section {section.number}: problem frame is empty")
-        _write_problem_frame_signal(
-            paths.setup_signal(section.number),
-            {
-                "state": "needs_parent",
-                "detail": (
-                    f"Problem frame for section {section.number} exists but is empty"
-                ),
-                "needs": (
-                    "Parent must ensure the setup agent produces a non-empty "
-                    "problem frame."
-                ),
-                "why_blocked": "Empty problem frame cannot validate problem understanding",
-            },
-        )
-        _update_blocker_rollup(planspace)
-        Services.communicator().mailbox_send(
-            planspace,
-            parent,
-            f"pause:needs_parent:{section.number}:problem frame empty",
-        )
+        _emit_empty_frame_blocker(paths, planspace, section, parent)
         return None
 
+    _validate_frame_content(paths, planspace, section, problem_frame_path)
+    return "ok"
+
+
+def _emit_missing_frame_blocker(
+    paths: PathRegistry,
+    planspace: Path,
+    section: Section,
+    parent: str,
+) -> None:
+    """Signal that the problem frame is still missing after retry."""
+    Services.logger().log(
+        f"Section {section.number}: problem frame still missing after retry "
+        "— emitting needs_parent signal",
+    )
+    _write_problem_frame_signal(
+        paths.setup_signal(section.number),
+        {
+            "state": "needs_parent",
+            "detail": (
+                f"Setup agent failed to create problem frame for section "
+                f"{section.number} after 2 attempts. The pipeline requires "
+                f"a problem frame before integration work can begin."
+            ),
+            "needs": (
+                "Parent must either provide a problem frame or resolve "
+                "why the setup agent cannot produce one."
+            ),
+            "why_blocked": (
+                "Problem frame is a mandatory gate — without it, the "
+                "pipeline cannot validate that the section is solving the "
+                "right problem."
+            ),
+        },
+    )
+    _update_blocker_rollup(planspace)
+    Services.communicator().mailbox_send(
+        planspace,
+        parent,
+        f"pause:needs_parent:{section.number}:problem frame missing after retry",
+    )
+
+
+def _emit_empty_frame_blocker(
+    paths: PathRegistry,
+    planspace: Path,
+    section: Section,
+    parent: str,
+) -> None:
+    """Signal that the problem frame exists but is empty."""
+    Services.logger().log(f"Section {section.number}: problem frame is empty")
+    _write_problem_frame_signal(
+        paths.setup_signal(section.number),
+        {
+            "state": "needs_parent",
+            "detail": (
+                f"Problem frame for section {section.number} exists but is empty"
+            ),
+            "needs": (
+                "Parent must ensure the setup agent produces a non-empty "
+                "problem frame."
+            ),
+            "why_blocked": "Empty problem frame cannot validate problem understanding",
+        },
+    )
+    _update_blocker_rollup(planspace)
+    Services.communicator().mailbox_send(
+        planspace,
+        parent,
+        f"pause:needs_parent:{section.number}:problem frame empty",
+    )
+
+
+def _validate_frame_content(
+    paths: PathRegistry,
+    planspace: Path,
+    section: Section,
+    problem_frame_path: Path,
+) -> None:
+    """Hash-check the problem frame, invalidate stale proposals, and track excerpts."""
     Services.logger().log(f"Section {section.number}: problem frame present and validated")
     pf_hash_path = paths.problem_frame_hash(section.number)
     pf_hash_path.parent.mkdir(parents=True, exist_ok=True)
@@ -145,8 +176,6 @@ def validate_problem_frame(
             "excerpt extraction from global alignment",
         )
         _write_alignment_surface(planspace, section)
-
-    return "ok"
 
 
 def _write_problem_frame_signal(signal_path: Path, payload: dict) -> None:

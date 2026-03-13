@@ -101,7 +101,6 @@ def wait_if_paused(planspace: Path, parent: str) -> None:
         parent,
         db_sh=DB_SH,
         agent_name=AGENT_NAME,
-        logger=Services.logger().log,
     )
 
 
@@ -113,7 +112,6 @@ def pause_for_parent(planspace: Path, parent: str, signal: str) -> str:
         signal,
         db_sh=DB_SH,
         agent_name=AGENT_NAME,
-        logger=Services.logger().log,
     )
 
 
@@ -137,7 +135,6 @@ def poll_control_messages(
         current_section,
         db_sh=DB_SH,
         agent_name=AGENT_NAME,
-        logger=Services.logger().log,
     )
 
 
@@ -147,7 +144,6 @@ def check_for_messages(planspace: Path) -> list[str]:
         planspace,
         db_sh=DB_SH,
         agent_name=AGENT_NAME,
-        logger=Services.logger().log,
     )
 
 
@@ -160,5 +156,4 @@ def handle_pending_messages(planspace: Path, queue: list[str],
         completed,
         db_sh=DB_SH,
         agent_name=AGENT_NAME,
-        logger=Services.logger().log,
     )

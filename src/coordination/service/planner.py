@@ -10,11 +10,8 @@ from orchestrator.path_registry import PathRegistry
 from containers import Services
 
 
-def _parse_coordination_plan(
-    agent_output: str, problems: list[dict[str, Any]],
-) -> dict[str, Any] | None:
-    """Parse JSON coordination plan from agent output."""
-    json_text = None
+def _extract_json_from_output(agent_output: str) -> str | None:
+    """Extract JSON text containing 'groups' from agent output."""
     in_fence = False
     fence_lines: list[str] = []
     for line in agent_output.split("\n"):
@@ -27,18 +24,104 @@ def _parse_coordination_plan(
             in_fence = False
             candidate = "\n".join(fence_lines)
             if '"groups"' in candidate:
-                json_text = candidate
-                break
+                return candidate
             continue
         if in_fence:
             fence_lines.append(line)
 
-    if json_text is None:
-        start = agent_output.find("{")
-        end = agent_output.rfind("}")
-        if start >= 0 and end > start:
-            json_text = agent_output[start:end + 1]
+    start = agent_output.find("{")
+    end = agent_output.rfind("}")
+    if start >= 0 and end > start:
+        return agent_output[start:end + 1]
+    return None
 
+
+def _validate_problem_indices(
+    plan: dict[str, Any], n: int,
+) -> bool:
+    """Validate that all problem indices in groups are valid and complete."""
+    seen_indices: set[int] = set()
+    for group in plan["groups"]:
+        if "problems" not in group or not isinstance(group["problems"], list):
+            Services.logger().log("  coordinator: group missing 'problems' array")
+            return False
+        for idx in group["problems"]:
+            if not isinstance(idx, int) or idx < 0 or idx >= n:
+                Services.logger().log(f"  coordinator: invalid problem index {idx}")
+                return False
+            if idx in seen_indices:
+                Services.logger().log(f"  coordinator: duplicate problem index {idx}")
+                return False
+            seen_indices.add(idx)
+
+    if len(seen_indices) != n:
+        missing = set(range(n)) - seen_indices
+        Services.logger().log(f"  coordinator: coordination plan missing indices: {missing}")
+        return False
+    return True
+
+
+def _validate_batches(plan: dict[str, Any]) -> None:
+    """Validate batch ordering in-place. Removes invalid batches."""
+    if "batches" not in plan:
+        return
+    batches = plan["batches"]
+    if not isinstance(batches, list):
+        Services.logger().log("  coordinator: 'batches' is not an array — ignoring")
+        del plan["batches"]
+        return
+
+    n_groups = len(plan["groups"])
+    seen_gidx: set[int] = set()
+    batches_valid = True
+    for batch in batches:
+        if not isinstance(batch, list):
+            batches_valid = False
+            break
+        for gidx in batch:
+            if not isinstance(gidx, int) or gidx < 0 or gidx >= n_groups:
+                Services.logger().log(f"  coordinator: invalid group index {gidx} in batches")
+                batches_valid = False
+                break
+            if gidx in seen_gidx:
+                Services.logger().log(f"  coordinator: duplicate group index {gidx} in batches")
+                batches_valid = False
+                break
+            seen_gidx.add(gidx)
+        if not batches_valid:
+            break
+    if batches_valid and len(seen_gidx) != n_groups:
+        Services.logger().log(
+            "  coordinator: batches missing group indices: "
+            f"{set(range(n_groups)) - seen_gidx}",
+        )
+        batches_valid = False
+    if not batches_valid:
+        Services.logger().log("  coordinator: invalid batches — will use file-safety batching")
+        del plan["batches"]
+
+
+def _normalize_bridge_directives(plan: dict[str, Any]) -> None:
+    """Normalize bridge directives on each group to dict form."""
+    for group in plan["groups"]:
+        bridge = group.get("bridge")
+        if bridge is None:
+            group["bridge"] = {"needed": False}
+        elif isinstance(bridge, bool):
+            group["bridge"] = {"needed": bridge}
+        elif not isinstance(bridge, dict):
+            Services.logger().log(
+                "  coordinator: bridge directive has unexpected type "
+                f"{type(bridge).__name__} — defaulting to disabled",
+            )
+            group["bridge"] = {"needed": False}
+
+
+def _parse_coordination_plan(
+    agent_output: str, problems: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Parse JSON coordination plan from agent output."""
+    json_text = _extract_json_from_output(agent_output)
     if json_text is None:
         Services.logger().log("  coordinator: no JSON found in coordination plan output")
         return None
@@ -53,75 +136,71 @@ def _parse_coordination_plan(
         Services.logger().log("  coordinator: coordination plan missing 'groups' array")
         return None
 
-    seen_indices: set[int] = set()
-    n = len(problems)
-    for group in plan["groups"]:
-        if "problems" not in group or not isinstance(group["problems"], list):
-            Services.logger().log("  coordinator: group missing 'problems' array")
-            return None
-        for idx in group["problems"]:
-            if not isinstance(idx, int) or idx < 0 or idx >= n:
-                Services.logger().log(f"  coordinator: invalid problem index {idx}")
-                return None
-            if idx in seen_indices:
-                Services.logger().log(f"  coordinator: duplicate problem index {idx}")
-                return None
-            seen_indices.add(idx)
-
-    if len(seen_indices) != n:
-        missing = set(range(n)) - seen_indices
-        Services.logger().log(f"  coordinator: coordination plan missing indices: {missing}")
+    if not _validate_problem_indices(plan, len(problems)):
         return None
 
-    if "batches" in plan:
-        batches = plan["batches"]
-        if not isinstance(batches, list):
-            Services.logger().log("  coordinator: 'batches' is not an array — ignoring")
-            del plan["batches"]
-        else:
-            n_groups = len(plan["groups"])
-            seen_gidx: set[int] = set()
-            batches_valid = True
-            for batch in batches:
-                if not isinstance(batch, list):
-                    batches_valid = False
-                    break
-                for gidx in batch:
-                    if not isinstance(gidx, int) or gidx < 0 or gidx >= n_groups:
-                        Services.logger().log(f"  coordinator: invalid group index {gidx} in batches")
-                        batches_valid = False
-                        break
-                    if gidx in seen_gidx:
-                        Services.logger().log(f"  coordinator: duplicate group index {gidx} in batches")
-                        batches_valid = False
-                        break
-                    seen_gidx.add(gidx)
-                if not batches_valid:
-                    break
-            if batches_valid and len(seen_gidx) != n_groups:
-                Services.logger().log(
-                    "  coordinator: batches missing group indices: "
-                    f"{set(range(n_groups)) - seen_gidx}",
-                )
-                batches_valid = False
-            if not batches_valid:
-                Services.logger().log("  coordinator: invalid batches — will use file-safety batching")
-                del plan["batches"]
-
-    for group in plan["groups"]:
-        bridge = group.get("bridge")
-        if bridge is None:
-            group["bridge"] = {"needed": False}
-        elif isinstance(bridge, bool):
-            group["bridge"] = {"needed": bridge}
-        elif not isinstance(bridge, dict):
-            Services.logger().log(
-                "  coordinator: bridge directive has unexpected type "
-                f"{type(bridge).__name__} — defaulting to disabled",
-            )
-            group["bridge"] = {"needed": False}
-
+    _validate_batches(plan)
+    _normalize_bridge_directives(plan)
     return plan
+
+
+def _compose_coordination_plan_text(
+    problems_path: Path,
+    codemap_ref: str,
+    recurrence_ref: str,
+    max_problem_index: int,
+) -> str:
+    """Return the coordination plan prompt text."""
+    return f"""# Task: Plan Coordination Strategy
+
+## Outstanding Problems
+
+Read the problems list from: `{problems_path}`
+{codemap_ref}
+{recurrence_ref}
+## Instructions
+
+You are the coordination planner. Read the problems above (and the
+codemap if provided) and produce a JSON coordination plan. Think
+strategically about problem relationships — don't just match files.
+Understand whether problems share root causes, whether fixing one
+affects another, and what order minimizes rework.
+
+Reply with a JSON block:
+
+```json
+{{
+  "groups": [
+    {{
+      "problems": [0, 1],
+      "reason": "Both problems stem from incomplete event model in config.py",
+      "strategy": "sequential"
+    }},
+    {{
+      "problems": [2],
+      "reason": "Independent API endpoint issue",
+      "strategy": "parallel"
+    }}
+  ],
+  "batches": [[0, 2], [1]],
+  "notes": "Optional observations about cross-group dependencies."
+}}
+```
+
+Each group's `problems` array contains indices into the problems list above.
+Every problem index (0 through {max_problem_index}) must appear in exactly
+one group.
+
+Strategy values:
+- `sequential`: problems within this group must be fixed in order
+- `parallel`: problems within this group can be fixed concurrently
+
+The `batches` array defines execution ordering of GROUPS. Each batch is a
+list of group indices to run concurrently (subject to file-safety checks).
+Batches execute sequentially — batch 0 completes before batch 1 starts.
+Example: `[[0, 2], [1]]` means run groups 0 and 2 in parallel first,
+then run group 1.
+"""
 
 
 def write_coordination_plan_prompt(
@@ -165,56 +244,12 @@ def write_coordination_plan_prompt(
             f"and flagged for escalated model usage.\n"
         )
 
-    plan_prompt_text = f"""# Task: Plan Coordination Strategy
-
-## Outstanding Problems
-
-Read the problems list from: `{problems_path}`
-{codemap_ref}
-{recurrence_ref}
-## Instructions
-
-You are the coordination planner. Read the problems above (and the
-codemap if provided) and produce a JSON coordination plan. Think
-strategically about problem relationships — don't just match files.
-Understand whether problems share root causes, whether fixing one
-affects another, and what order minimizes rework.
-
-Reply with a JSON block:
-
-```json
-{{
-  "groups": [
-    {{
-      "problems": [0, 1],
-      "reason": "Both problems stem from incomplete event model in config.py",
-      "strategy": "sequential"
-    }},
-    {{
-      "problems": [2],
-      "reason": "Independent API endpoint issue",
-      "strategy": "parallel"
-    }}
-  ],
-  "batches": [[0, 2], [1]],
-  "notes": "Optional observations about cross-group dependencies."
-}}
-```
-
-Each group's `problems` array contains indices into the problems list above.
-Every problem index (0 through {len(problems) - 1}) must appear in exactly
-one group.
-
-Strategy values:
-- `sequential`: problems within this group must be fixed in order
-- `parallel`: problems within this group can be fixed concurrently
-
-The `batches` array defines execution ordering of GROUPS. Each batch is a
-list of group indices to run concurrently (subject to file-safety checks).
-Batches execute sequentially — batch 0 completes before batch 1 starts.
-Example: `[[0, 2], [1]]` means run groups 0 and 2 in parallel first,
-then run group 1.
-"""
+    plan_prompt_text = _compose_coordination_plan_text(
+        problems_path=problems_path,
+        codemap_ref=codemap_ref,
+        recurrence_ref=recurrence_ref,
+        max_problem_index=len(problems) - 1,
+    )
     if not Services.prompt_guard().write_validated(plan_prompt_text, prompt_path):
         return None
     Services.communicator().log_artifact(planspace, "prompt:coordination-plan")

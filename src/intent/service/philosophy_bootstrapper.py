@@ -242,9 +242,9 @@ def _run_bootstrap_prompter(
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: dict[str, Any],
     paths: PathRegistry,
 ) -> dict[str, Any] | None:
+    policy = Services.policies().load(planspace)
     context_artifacts = _collect_bootstrap_context_artifacts(
         planspace,
         codespace,
@@ -417,7 +417,6 @@ def _request_user_philosophy(
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: dict[str, Any],
     detail: str,
     needs: str,
     why_blocked: str,
@@ -430,7 +429,6 @@ def _request_user_philosophy(
         planspace,
         codespace,
         parent,
-        policy,
         paths,
     )
     user_source = _write_user_source_template(paths)
@@ -493,6 +491,110 @@ def sha256_file(path: Path) -> str:
     return Services.hasher().file_hash(path)
 
 
+def _check_source_map_available(
+    source_map_path: Path,
+) -> tuple[str, dict[str, Any] | None] | None:
+    """Check if source_map_path exists and is non-empty.
+
+    Returns ``(detail, extras)`` on failure, or ``None`` to proceed.
+    """
+    if not source_map_path.exists() or source_map_path.stat().st_size == 0:
+        return (
+            "Philosophy source map is missing or empty. Distilled philosophy "
+            "cannot be verified as grounded. Section execution will be "
+            "blocked until philosophy is available.",
+            {},
+        )
+    return None
+
+
+def _validate_source_map_content(
+    source_map_path: Path,
+    philosophy_path: Path,
+    paths: PathRegistry,
+) -> tuple[str, dict[str, Any] | None, str] | None:
+    """Read and validate source map content.
+
+    Checks that the source map is a valid dict, validates its schema,
+    verifies principle mapping, and checks for stale sources.
+
+    Returns ``(detail, extras, failure_source_mode)`` on failure, or
+    ``None`` if all valid.  When *detail* is empty the caller should
+    return ``False`` without writing any signal or status (this covers
+    the case where the philosophy file itself is unreadable).
+    """
+    source_map = Services.artifact_io().read_json(source_map_path)
+    if source_map is None:
+        Services.logger().log("Intent bootstrap: malformed source map — "
+            "preserving as .malformed.json")
+        return (
+            "Philosophy source map is malformed. Section execution will "
+            "be blocked until philosophy is available.",
+            {},
+            "repo_sources",
+        )
+    if not isinstance(source_map, dict):
+        return (
+            "Philosophy source map is not a JSON object. Section "
+            "execution will be blocked until philosophy is available.",
+            {},
+            "repo_sources",
+        )
+
+    failure_source_mode = _grounding_failure_source_mode(paths, source_map)
+
+    try:
+        philosophy_text = philosophy_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ("", None, failure_source_mode)
+
+    principle_ids = _declared_principle_ids(philosophy_text)
+    if not principle_ids:
+        return None
+
+    map_keys = set(source_map.keys())
+    unmapped = principle_ids - map_keys
+    schema_error = _invalid_source_map_detail(source_map)
+    if schema_error is not None:
+        return (
+            "Philosophy source map has invalid entries "
+            f"({schema_error}). Section execution will be blocked "
+            "until philosophy is available.",
+            {},
+            failure_source_mode,
+        )
+    if unmapped:
+        return (
+            f"Principle IDs missing from source map: "
+            f"{sorted(unmapped)}. Distilled philosophy may contain "
+            f"invented principles. Section execution will be blocked.",
+            {
+                "unmapped_principles": sorted(unmapped),
+                "total_principles": len(principle_ids),
+                "mapped_principles": len(principle_ids - unmapped),
+            },
+            failure_source_mode,
+        )
+
+    # Verify that each source_file in the map still exists.
+    stale_sources = [
+        entry.get("source_file", "")
+        for entry in source_map.values()
+        if isinstance(entry, dict)
+        and not Path(entry.get("source_file", "")).exists()
+    ]
+    if stale_sources:
+        return (
+            f"Source map references {len(stale_sources)} file(s) "
+            f"that no longer exist on disk: {stale_sources[:5]}. "
+            "Philosophy must be re-distilled from current sources.",
+            {"stale_source_files": stale_sources},
+            failure_source_mode,
+        )
+
+    return None
+
+
 def validate_philosophy_grounding(
     philosophy_path: Path,
     source_map_path: Path,
@@ -500,87 +602,40 @@ def validate_philosophy_grounding(
 ) -> bool:
     """Validate that distilled philosophy is grounded in source files."""
     paths = PathRegistry(artifacts.parent)
-    detail: str | None = None
-    extras: dict[str, Any] | None = None
-    failure_source_mode = "repo_sources"
 
-    if not source_map_path.exists() or source_map_path.stat().st_size == 0:
-        detail = (
-            "Philosophy source map is missing or empty. Distilled philosophy "
-            "cannot be verified as grounded. Section execution will be "
-            "blocked until philosophy is available."
+    available_failure = _check_source_map_available(source_map_path)
+    if available_failure is not None:
+        detail, extras = available_failure
+        _write_bootstrap_signal(
+            paths,
+            state="NEEDS_PARENT",
+            detail=detail,
+            needs=(
+                "Repair the philosophy bootstrap artifacts so each principle "
+                "is grounded in a valid source map."
+            ),
+            why_blocked=(
+                "The distilled philosophy cannot be trusted until its source "
+                "map is valid and complete."
+            ),
+            extras=extras,
         )
-        extras = {}
-    elif source_map_path.exists():
-        source_map = Services.artifact_io().read_json(source_map_path)
-        if source_map is None:
-            Services.logger().log("Intent bootstrap: malformed source map — "
-                "preserving as .malformed.json")
-            detail = (
-                "Philosophy source map is malformed. Section execution will "
-                "be blocked until philosophy is available."
-            )
-            extras = {}
-        elif not isinstance(source_map, dict):
-            detail = (
-                "Philosophy source map is not a JSON object. Section "
-                "execution will be blocked until philosophy is available."
-            )
-            extras = {}
-        else:
-            failure_source_mode = _grounding_failure_source_mode(
-                paths,
-                source_map,
-            )
-            try:
-                philosophy_text = philosophy_path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                return False
+        _write_bootstrap_status(
+            paths,
+            bootstrap_state="failed",
+            blocking_state="NEEDS_PARENT",
+            source_mode="repo_sources",
+            detail=detail,
+        )
+        return False
 
-            principle_ids = _declared_principle_ids(philosophy_text)
-            if not principle_ids:
-                return True
-
-            map_keys = set(source_map.keys())
-            unmapped = principle_ids - map_keys
-            schema_error = _invalid_source_map_detail(source_map)
-            if schema_error is not None:
-                detail = (
-                    "Philosophy source map has invalid entries "
-                    f"({schema_error}). Section execution will be blocked "
-                    "until philosophy is available."
-                )
-                extras = {}
-            elif unmapped:
-                detail = (
-                    f"Principle IDs missing from source map: "
-                    f"{sorted(unmapped)}. Distilled philosophy may contain "
-                    f"invented principles. Section execution will be blocked."
-                )
-                extras = {
-                    "unmapped_principles": sorted(unmapped),
-                    "total_principles": len(principle_ids),
-                    "mapped_principles": len(principle_ids - unmapped),
-                }
-            else:
-                # Verify that each source_file in the map still exists.
-                stale_sources = [
-                    entry.get("source_file", "")
-                    for entry in source_map.values()
-                    if isinstance(entry, dict)
-                    and not Path(entry.get("source_file", "")).exists()
-                ]
-                if stale_sources:
-                    detail = (
-                        f"Source map references {len(stale_sources)} file(s) "
-                        f"that no longer exist on disk: {stale_sources[:5]}. "
-                        "Philosophy must be re-distilled from current sources."
-                    )
-                    extras = {"stale_source_files": stale_sources}
-                else:
-                    return True
-
-    if detail is not None:
+    content_failure = _validate_source_map_content(
+        source_map_path, philosophy_path, paths,
+    )
+    if content_failure is not None:
+        detail, extras, failure_source_mode = content_failure
+        if not detail:
+            return False
         _write_bootstrap_signal(
             paths,
             state="NEEDS_PARENT",
@@ -603,7 +658,8 @@ def validate_philosophy_grounding(
             detail=detail,
         )
         return False
-    return False
+
+    return True
 
 
 # ── main orchestration ────────────────────────────────────────────────
@@ -731,7 +787,6 @@ def ensure_global_philosophy(
             planspace=planspace,
             codespace=codespace,
             parent=parent,
-            policy=policy,
             source_mode="none",
             detail=(
                 "Bootstrap confirmed that the repository contains no "
@@ -900,7 +955,6 @@ If NO files contain cross-cutting reasoning philosophy, write:
                 planspace=planspace,
                 codespace=codespace,
                 parent=parent,
-                policy=policy,
                 source_mode="none",
                 detail=(
                     "Bootstrap confirmed that the repository catalog contains "
@@ -1136,7 +1190,6 @@ Write a JSON signal to: `{verify_signal}`
                 planspace=planspace,
                 codespace=codespace,
                 parent=parent,
-                policy=policy,
                 source_mode="none",
                 detail=(
                     "Bootstrap confirmed that none of the repository files "
@@ -1399,7 +1452,6 @@ genuinely ambiguous, do NOT invent filler. Instead:
                     planspace=planspace,
                     codespace=codespace,
                     parent=parent,
-                    policy=policy,
                     source_mode="user_source",
                     detail=(
                         "The user-provided philosophy input is not yet stable "
@@ -1432,7 +1484,6 @@ genuinely ambiguous, do NOT invent filler. Instead:
                 planspace=planspace,
                 codespace=codespace,
                 parent=parent,
-                policy=policy,
                 source_mode="repo_sources",
                 detail=(
                     "Bootstrap confirmed that the available repository "

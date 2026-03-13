@@ -140,6 +140,144 @@ def _emit_not_researchable_signals(
         _update_blocker_rollup(planspace)
 
 
+def _build_web_branch(
+    section_number: str,
+    planspace: Path,
+    codespace: Path | None,
+    ticket: dict,
+    ticket_index: int,
+    ticket_id: str,
+    concern_scope: str,
+    problem_id: str,
+) -> BranchSpec | None:
+    prompt_path = write_research_ticket_prompt(
+        section_number,
+        planspace,
+        codespace,
+        ticket,
+        ticket_index,
+    )
+    if prompt_path is None:
+        return None
+    return BranchSpec(
+        label=ticket_id,
+        chain_ref="research_ticket_package",
+        args={
+            "concern_scope": concern_scope,
+            "payload_path": str(prompt_path),
+            "priority": "normal",
+            "problem_id": problem_id,
+        },
+    )
+
+
+def _build_code_branch(
+    section_number: str,
+    planspace: Path,
+    codespace: Path | None,
+    ticket: dict,
+    ticket_index: int,
+    ticket_id: str,
+    concern_scope: str,
+    problem_id: str,
+) -> BranchSpec | None:
+    scan_prompt = _write_research_scan_prompt(
+        section_number,
+        planspace,
+        codespace,
+        ticket,
+        ticket_index,
+    )
+    ticket_prompt = write_research_ticket_prompt(
+        section_number,
+        planspace,
+        codespace,
+        ticket,
+        ticket_index,
+    )
+    if scan_prompt is None or ticket_prompt is None:
+        return None
+    return BranchSpec(
+        label=ticket_id,
+        chain_ref="research_code_ticket_package",
+        args={
+            "concern_scope": concern_scope,
+            "scan_payload_path": str(scan_prompt),
+            "payload_path": str(ticket_prompt),
+            "priority": "normal",
+            "problem_id": problem_id,
+        },
+    )
+
+
+def _build_both_branch(
+    section_number: str,
+    planspace: Path,
+    codespace: Path | None,
+    ticket: dict,
+    ticket_index: int,
+    ticket_id: str,
+    concern_scope: str,
+    problem_id: str,
+) -> BranchSpec | None:
+    web_ticket = dict(ticket)
+    web_ticket["research_type"] = "web"
+    web_ticket["output_path"] = str(
+        PathRegistry(planspace).research_ticket_result(
+            section_number,
+            ticket_index,
+            "web",
+        )
+    )
+    web_ticket["_phase"] = "web"
+    web_prompt = write_research_ticket_prompt(
+        section_number,
+        planspace,
+        codespace,
+        web_ticket,
+        ticket_index,
+    )
+    scan_prompt = _write_research_scan_prompt(
+        section_number,
+        planspace,
+        codespace,
+        ticket,
+        ticket_index,
+    )
+    final_prompt = write_research_ticket_prompt(
+        section_number,
+        planspace,
+        codespace,
+        ticket,
+        ticket_index,
+    )
+    if web_prompt is None or scan_prompt is None or final_prompt is None:
+        return None
+    return BranchSpec(
+        label=ticket_id,
+        steps=[
+            TaskSpec(
+                task_type="research.domain_ticket",
+                concern_scope=concern_scope,
+                payload_path=str(web_prompt),
+                problem_id=problem_id,
+            ),
+            TaskSpec(
+                task_type="scan.explore",
+                concern_scope=concern_scope,
+                payload_path=str(scan_prompt),
+                problem_id=problem_id,
+            ),
+            TaskSpec(
+                task_type="research.domain_ticket",
+                concern_scope=concern_scope,
+                payload_path=str(final_prompt),
+                problem_id=problem_id,
+            ),
+        ],
+    )
+
+
 def _build_branch(
     *,
     section_number: str,
@@ -154,113 +292,19 @@ def _build_branch(
     problem_id = f"research-{section_number}-{ticket_id}"
     research_type = str(ticket.get("research_type", "web"))
 
+    args = (
+        section_number, planspace, codespace, ticket, ticket_index,
+        ticket_id, concern_scope, problem_id,
+    )
+
     if research_type == "web":
-        prompt_path = write_research_ticket_prompt(
-            section_number,
-            planspace,
-            codespace,
-            ticket,
-            ticket_index,
-        )
-        if prompt_path is None:
-            return None
-        return BranchSpec(
-            label=ticket_id,
-            chain_ref="research_ticket_package",
-            args={
-                "concern_scope": concern_scope,
-                "payload_path": str(prompt_path),
-                "priority": "normal",
-                "problem_id": problem_id,
-            },
-        )
+        return _build_web_branch(*args)
 
     if research_type == "code":
-        scan_prompt = _write_research_scan_prompt(
-            section_number,
-            planspace,
-            codespace,
-            ticket,
-            ticket_index,
-        )
-        ticket_prompt = write_research_ticket_prompt(
-            section_number,
-            planspace,
-            codespace,
-            ticket,
-            ticket_index,
-        )
-        if scan_prompt is None or ticket_prompt is None:
-            return None
-        return BranchSpec(
-            label=ticket_id,
-            chain_ref="research_code_ticket_package",
-            args={
-                "concern_scope": concern_scope,
-                "scan_payload_path": str(scan_prompt),
-                "payload_path": str(ticket_prompt),
-                "priority": "normal",
-                "problem_id": problem_id,
-            },
-        )
+        return _build_code_branch(*args)
 
     if research_type == "both":
-        web_ticket = dict(ticket)
-        web_ticket["research_type"] = "web"
-        web_ticket["output_path"] = str(
-            PathRegistry(planspace).research_ticket_result(
-                section_number,
-                ticket_index,
-                "web",
-            )
-        )
-        web_ticket["_phase"] = "web"
-        web_prompt = write_research_ticket_prompt(
-            section_number,
-            planspace,
-            codespace,
-            web_ticket,
-            ticket_index,
-        )
-        scan_prompt = _write_research_scan_prompt(
-            section_number,
-            planspace,
-            codespace,
-            ticket,
-            ticket_index,
-        )
-        final_prompt = write_research_ticket_prompt(
-            section_number,
-            planspace,
-            codespace,
-            ticket,
-            ticket_index,
-        )
-        if web_prompt is None or scan_prompt is None or final_prompt is None:
-            return None
-        return BranchSpec(
-            label=ticket_id,
-            steps=[
-                TaskSpec(
-                    task_type="research.domain_ticket",
-                    concern_scope=concern_scope,
-                    payload_path=str(web_prompt),
-                    problem_id=problem_id,
-                ),
-                TaskSpec(
-                    task_type="scan.explore",
-                    concern_scope=concern_scope,
-                    payload_path=str(scan_prompt),
-                    problem_id=problem_id,
-                ),
-                TaskSpec(
-                    task_type="research.domain_ticket",
-                    concern_scope=concern_scope,
-                    payload_path=str(final_prompt),
-                    problem_id=problem_id,
-                ),
-            ],
-        )
+        return _build_both_branch(*args)
 
     return None
 

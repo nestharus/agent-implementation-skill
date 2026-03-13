@@ -92,7 +92,6 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
         planspace,
         codespace,
         "parent",
-        {},
         "incoming note",
     )
 
@@ -156,7 +155,6 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
         planspace,
         codespace,
         "parent",
-        {},
         None,
     )
 
@@ -220,7 +218,6 @@ def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
         planspace,
         codespace,
         "parent",
-        {},
         None,
     )
 

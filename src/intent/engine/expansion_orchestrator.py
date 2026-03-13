@@ -23,6 +23,18 @@ from intent.service.expanders import (
 )
 
 
+def _surface_from_entry(entry: dict) -> dict:
+    """Build a surface dict from a worklist entry."""
+    return {
+        "id": entry["id"],
+        "kind": entry.get("kind", ""),
+        "axis_id": entry.get("axis_id", ""),
+        "title": entry.get("notes", ""),
+        "description": entry.get("description", ""),
+        "evidence": entry.get("evidence", ""),
+    }
+
+
 def build_pending_surface_payload(worklist: list[dict], surfaces: dict) -> dict:
     """Build the budgeted pending-surface payload for expanders."""
     budgeted_ids = {surface["id"] for surface in worklist}
@@ -39,34 +51,124 @@ def build_pending_surface_payload(worklist: list[dict], surfaces: dict) -> dict:
 
     for entry in worklist:
         surface_id = entry["id"]
-        if surface_id in judge_problem:
-            if surface_id in budgeted_ids:
-                problem_surfaces.append(judge_problem[surface_id])
-        elif surface_id in judge_philosophy:
-            if surface_id in budgeted_ids:
-                philosophy_surfaces.append(judge_philosophy[surface_id])
+        if surface_id in judge_problem and surface_id in budgeted_ids:
+            problem_surfaces.append(judge_problem[surface_id])
+        elif surface_id in judge_philosophy and surface_id in budgeted_ids:
+            philosophy_surfaces.append(judge_philosophy[surface_id])
         elif surface_id.startswith("P-"):
-            problem_surfaces.append({
-                "id": surface_id,
-                "kind": entry.get("kind", ""),
-                "axis_id": entry.get("axis_id", ""),
-                "title": entry.get("notes", ""),
-                "description": entry.get("description", ""),
-                "evidence": entry.get("evidence", ""),
-            })
+            problem_surfaces.append(_surface_from_entry(entry))
         elif surface_id.startswith("F-"):
-            philosophy_surfaces.append({
-                "id": surface_id,
-                "kind": entry.get("kind", ""),
-                "axis_id": entry.get("axis_id", ""),
-                "title": entry.get("notes", ""),
-                "description": entry.get("description", ""),
-                "evidence": entry.get("evidence", ""),
-            })
+            philosophy_surfaces.append(_surface_from_entry(entry))
 
     return {
         "problem_surfaces": problem_surfaces,
         "philosophy_surfaces": philosophy_surfaces,
+    }
+
+
+def _reopen_recurring_surfaces(
+    registry, duplicate_ids, section_number, planspace, codespace, parent,
+):
+    recurrences = find_discarded_recurrences(registry, duplicate_ids)
+    if not recurrences:
+        return
+    reopened = adjudicate_recurrence(
+        section_number, planspace, codespace, parent, recurrences,
+    )
+    if reopened:
+        for surface_id in reopened:
+            for entry in registry.get("surfaces", []):
+                if entry["id"] == surface_id:
+                    entry["status"] = "pending"
+
+
+def _apply_problem_expansion(
+    delta, section_number, planspace, codespace, parent,
+    pending_surfaces_path, remaining_axis_budget,
+):
+    problem_delta = run_problem_expander(
+        section_number, planspace, codespace, parent,
+        pending_surfaces_path=pending_surfaces_path,
+        remaining_axis_budget=remaining_axis_budget,
+    )
+    if not problem_delta:
+        return
+    proposed_axes = problem_delta.get("new_axes", [])
+    if len(proposed_axes) > remaining_axis_budget:
+        Services.logger().log(f"Section {section_number}: expander proposed "
+            f"{len(proposed_axes)} new axes (budget advisory: "
+            f"{remaining_axis_budget}) — accepting all")
+    delta["applied"]["problem_definition_updated"] = (
+        problem_delta.get("applied", {})
+        .get("problem_definition_updated", False)
+    )
+    delta["applied"]["problem_rubric_updated"] = (
+        problem_delta.get("applied", {})
+        .get("problem_rubric_updated", False)
+    )
+    delta["applied_surface_ids"].extend(
+        problem_delta.get("applied_surface_ids", []),
+    )
+    delta["discarded_surface_ids"].extend(
+        problem_delta.get("discarded_surface_ids", []),
+    )
+    delta["new_axes"].extend(proposed_axes)
+    if problem_delta.get("restart_required"):
+        delta["restart_required"] = True
+        delta["restart_reason"] = problem_delta.get(
+            "restart_reason", "Problem definition expanded",
+        )
+
+
+def _apply_philosophy_expansion(
+    delta, paths, section_number, planspace, codespace, parent,
+    pending_surfaces_path,
+):
+    philosophy_delta = run_philosophy_expander(
+        section_number, planspace, codespace, parent,
+        pending_surfaces_path=pending_surfaces_path,
+    )
+    if not philosophy_delta:
+        return
+    delta["applied"]["philosophy_updated"] = (
+        philosophy_delta.get("applied", {})
+        .get("philosophy_updated", False)
+    )
+    delta["applied_surface_ids"].extend(
+        philosophy_delta.get("applied_surface_ids", []),
+    )
+    delta["discarded_surface_ids"].extend(
+        philosophy_delta.get("discarded_surface_ids", []),
+    )
+    if philosophy_delta.get("needs_user_input"):
+        delta["needs_user_input"] = True
+        delta["user_input_kind"] = "philosophy"
+        delta["user_input_path"] = str(paths.philosophy_decisions())
+        delta["restart_required"] = True
+
+
+def _finalize_expansion(
+    registry, delta, axes_added, section_number, planspace, paths, worklist,
+):
+    mark_surfaces_applied(registry, delta["applied_surface_ids"])
+    mark_surfaces_discarded(registry, delta["discarded_surface_ids"])
+    registry["axes_added_so_far"] = axes_added + len(delta["new_axes"])
+    save_surface_registry(section_number, planspace, registry)
+
+    delta_path = paths.intent_delta_signal(section_number)
+    Services.artifact_io().write_json(delta_path, delta)
+
+    expansion_applied = (
+        delta["applied"]["problem_definition_updated"]
+        or delta["applied"]["problem_rubric_updated"]
+        or delta["applied"]["philosophy_updated"]
+    )
+    return {
+        "restart_required": delta["restart_required"],
+        "needs_user_input": delta.get("needs_user_input", False),
+        "user_input_path": delta.get("user_input_path", ""),
+        "expansion_applied": expansion_applied,
+        "surfaces_found": len(worklist),
     }
 
 
@@ -95,37 +197,20 @@ def run_expansion_cycle(
 
     registry = load_surface_registry(section_number, planspace)
     surfaces = normalize_surface_ids(surfaces, registry, section_number)
-
-    new_surfaces, duplicate_ids = merge_surfaces_into_registry(
-        registry,
-        surfaces,
-    )
+    new_surfaces, duplicate_ids = merge_surfaces_into_registry(registry, surfaces)
 
     surfaces_path = paths.intent_surfaces_signal(section_number)
     Services.artifact_io().write_json(surfaces_path, surfaces)
 
     if not new_surfaces:
-        recurrences = find_discarded_recurrences(registry, duplicate_ids)
-        if recurrences:
-            reopened = adjudicate_recurrence(
-                section_number,
-                planspace,
-                codespace,
-                parent,
-                policy,
-                recurrences,
-            )
-            if reopened:
-                for surface_id in reopened:
-                    for entry in registry.get("surfaces", []):
-                        if entry["id"] == surface_id:
-                            entry["status"] = "pending"
+        _reopen_recurring_surfaces(
+            registry, duplicate_ids, section_number, planspace, codespace, parent,
+        )
 
     worklist = [
         surface for surface in registry.get("surfaces", [])
         if surface.get("status") == "pending"
     ]
-
     if not worklist:
         save_surface_registry(section_number, planspace, registry)
         return no_work
@@ -162,91 +247,20 @@ def run_expansion_cycle(
     }
 
     if budgeted_surfaces["problem_surfaces"]:
-        problem_delta = run_problem_expander(
-            section_number,
-            planspace,
-            codespace,
-            parent,
-            policy,
-            pending_surfaces_path=pending_surfaces_path,
-            remaining_axis_budget=remaining_axis_budget,
+        _apply_problem_expansion(
+            delta, section_number, planspace, codespace, parent,
+            pending_surfaces_path, remaining_axis_budget,
         )
-        if problem_delta:
-            proposed_axes = problem_delta.get("new_axes", [])
-            if len(proposed_axes) > remaining_axis_budget:
-                Services.logger().log(f"Section {section_number}: expander proposed "
-                    f"{len(proposed_axes)} new axes (budget advisory: "
-                    f"{remaining_axis_budget}) — accepting all")
-            delta["applied"]["problem_definition_updated"] = (
-                problem_delta.get("applied", {})
-                .get("problem_definition_updated", False)
-            )
-            delta["applied"]["problem_rubric_updated"] = (
-                problem_delta.get("applied", {})
-                .get("problem_rubric_updated", False)
-            )
-            delta["applied_surface_ids"].extend(
-                problem_delta.get("applied_surface_ids", []),
-            )
-            delta["discarded_surface_ids"].extend(
-                problem_delta.get("discarded_surface_ids", []),
-            )
-            delta["new_axes"].extend(proposed_axes)
-            if problem_delta.get("restart_required"):
-                delta["restart_required"] = True
-                delta["restart_reason"] = problem_delta.get(
-                    "restart_reason",
-                    "Problem definition expanded",
-                )
 
     if budgeted_surfaces["philosophy_surfaces"]:
-        philosophy_delta = run_philosophy_expander(
-            section_number,
-            planspace,
-            codespace,
-            parent,
-            policy,
-            pending_surfaces_path=pending_surfaces_path,
+        _apply_philosophy_expansion(
+            delta, paths, section_number, planspace, codespace, parent,
+            pending_surfaces_path,
         )
-        if philosophy_delta:
-            delta["applied"]["philosophy_updated"] = (
-                philosophy_delta.get("applied", {})
-                .get("philosophy_updated", False)
-            )
-            delta["applied_surface_ids"].extend(
-                philosophy_delta.get("applied_surface_ids", []),
-            )
-            delta["discarded_surface_ids"].extend(
-                philosophy_delta.get("discarded_surface_ids", []),
-            )
-            if philosophy_delta.get("needs_user_input"):
-                delta["needs_user_input"] = True
-                delta["user_input_kind"] = "philosophy"
-                delta["user_input_path"] = str(
-                    paths.philosophy_decisions()
-                )
-                delta["restart_required"] = True
 
-    mark_surfaces_applied(registry, delta["applied_surface_ids"])
-    mark_surfaces_discarded(registry, delta["discarded_surface_ids"])
-    registry["axes_added_so_far"] = axes_added + len(delta["new_axes"])
-    save_surface_registry(section_number, planspace, registry)
-
-    delta_path = paths.intent_delta_signal(section_number)
-    Services.artifact_io().write_json(delta_path, delta)
-
-    expansion_applied = (
-        delta["applied"]["problem_definition_updated"]
-        or delta["applied"]["problem_rubric_updated"]
-        or delta["applied"]["philosophy_updated"]
+    return _finalize_expansion(
+        registry, delta, axes_added, section_number, planspace, paths, worklist,
     )
-    return {
-        "restart_required": delta["restart_required"],
-        "needs_user_input": delta.get("needs_user_input", False),
-        "user_input_path": delta.get("user_input_path", ""),
-        "expansion_applied": expansion_applied,
-        "surfaces_found": len(worklist),
-    }
 
 
 def handle_user_gate(

@@ -67,11 +67,11 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_integration_proposal_prompt",
+        "proposal.service.proposal_prep.write_integration_proposal_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_integration_alignment_prompt",
+        "proposal.service.alignment_handler.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
 
@@ -98,7 +98,7 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_reconciliation_result",
+        "proposal.service.proposal_prep.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -126,11 +126,6 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
             planspace,
             codespace,
             "parent",
-            {
-                "proposal": "gpt",
-                "alignment": "judge",
-                "escalation_model": "stronger",
-            },
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )

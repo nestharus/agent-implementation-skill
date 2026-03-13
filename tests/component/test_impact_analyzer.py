@@ -86,7 +86,6 @@ def test_analyze_impacts_parses_material_impacts_from_primary_output(
             sections,
             codespace,
             "parent-task",
-            summary_reader=lambda path: path.read_text(encoding="utf-8"),
             impact_model="glm",
             normalizer_model="glm",
         )
@@ -141,7 +140,6 @@ def test_analyze_impacts_falls_back_to_normalizer_when_primary_is_invalid(
             sections,
             codespace,
             "parent-task",
-            summary_reader=lambda path: path.read_text(encoding="utf-8"),
             impact_model="glm",
             normalizer_model="glm",
         )

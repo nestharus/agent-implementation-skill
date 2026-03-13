@@ -1,5 +1,21 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
+
+
+class ControlSignal(str, Enum):
+    """Typed tokens returned by pipeline control message polling.
+
+    Inherits from ``str`` so that ``==`` comparisons with plain strings
+    continue to work (backward compatibility).
+    """
+
+    ALIGNMENT_CHANGED = "alignment_changed"
+
+    def __str__(self) -> str:  # noqa: D105
+        return self.value
 
 
 @dataclass

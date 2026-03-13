@@ -7,5 +7,5 @@ Public API (import from submodules):
     proposal_cycle: run_proposal_loop
     proposal_phase: ProposalPassExit, run_proposal_pass
     state (repository): load_proposal_state
-    readiness_resolver: resolve_readiness
+    readiness_resolver: ReadinessResult, resolve_readiness
 """

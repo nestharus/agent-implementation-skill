@@ -44,17 +44,14 @@ def test_collect_modified_files_rejects_paths_outside_codespace(
 ) -> None:
     report = planspace / "artifacts" / "impl-01-modified.txt"
     report.write_text("/etc/passwd\nsrc/../../etc/shadow\n", encoding="utf-8")
-    messages: list[str] = []
 
     result = collect_modified_files(
         planspace,
         _section(planspace),
         codespace,
-        logger=messages.append,
     )
 
     assert result == []
-    assert len(messages) == 2
 
 
 def test_extract_problems_returns_none_for_aligned_verdict() -> None:

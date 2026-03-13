@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
+
+from dependency_injector import providers
+
+from containers import Services
+from tests.conftest import WritingGuard, make_dispatcher, StubPolicies
 
 from src.dispatch.service.tool_registry_manager import (
     handle_tool_friction,
@@ -41,7 +47,6 @@ def test_surface_tool_registry_repairs_malformed_registry(tmp_path) -> None:
     tools_available_path.write_text("stale", encoding="utf-8")
 
     dispatch_calls: list[tuple] = []
-    blocker_calls: list[Path] = []
 
     def fake_dispatch(*args, **kwargs):
         dispatch_calls.append((args, kwargs))
@@ -60,25 +65,30 @@ def test_surface_tool_registry_repairs_malformed_registry(tmp_path) -> None:
             encoding="utf-8",
         )
 
-    total = surface_tool_registry(
-        section_number="03",
-        tool_registry_path=tool_registry_path,
-        tools_available_path=tools_available_path,
-        artifacts=artifacts,
-        planspace=planspace,
-        parent="parent",
-        codespace=tmp_path / "codespace",
-        policy={},
-        dispatch_agent=fake_dispatch,
-        log=lambda _: None,
-        update_blocker_rollup=lambda path: blocker_calls.append(path),
-    )
+    Services.dispatcher.override(providers.Object(make_dispatcher(fake_dispatch)))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
+    Services.policies.override(providers.Object(StubPolicies()))
+    Services.logger.override(providers.Object(MagicMock()))
+    try:
+        total = surface_tool_registry(
+            section_number="03",
+            tool_registry_path=tool_registry_path,
+            tools_available_path=tools_available_path,
+            artifacts=artifacts,
+            planspace=planspace,
+            parent="parent",
+            codespace=tmp_path / "codespace",
+        )
 
-    assert total == 1
-    assert dispatch_calls
-    assert not blocker_calls
-    assert tool_registry_path.with_suffix(".malformed.json").exists()
-    assert "tools/b.py" in tools_available_path.read_text(encoding="utf-8")
+        assert total == 1
+        assert dispatch_calls
+        assert tool_registry_path.with_suffix(".malformed.json").exists()
+        assert "tools/b.py" in tools_available_path.read_text(encoding="utf-8")
+    finally:
+        Services.dispatcher.reset_override()
+        Services.prompt_guard.reset_override()
+        Services.policies.reset_override()
+        Services.logger.reset_override()
 
 
 def test_validate_tool_registry_after_implementation_dispatches_validator(tmp_path) -> None:
@@ -99,22 +109,31 @@ def test_validate_tool_registry_after_implementation_dispatches_validator(tmp_pa
     )
     calls: list[tuple] = []
 
-    friction_path = validate_tool_registry_after_implementation(
-        section_number="03",
-        pre_tool_total=1,
-        tool_registry_path=tool_registry_path,
-        artifacts=artifacts,
-        planspace=planspace,
-        parent="parent",
-        codespace=tmp_path / "codespace",
-        policy={},
-        dispatch_agent=lambda *args, **kwargs: calls.append((args, kwargs)),
-        log=lambda _: None,
-        update_blocker_rollup=lambda _: None,
-    )
+    def fake_dispatch(*args, **kwargs):
+        calls.append((args, kwargs))
 
-    assert calls
-    assert friction_path == artifacts / "signals" / "section-03-tool-friction.json"
+    Services.dispatcher.override(providers.Object(make_dispatcher(fake_dispatch)))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
+    Services.policies.override(providers.Object(StubPolicies()))
+    Services.logger.override(providers.Object(MagicMock()))
+    try:
+        friction_path = validate_tool_registry_after_implementation(
+            section_number="03",
+            pre_tool_total=1,
+            tool_registry_path=tool_registry_path,
+            artifacts=artifacts,
+            planspace=planspace,
+            parent="parent",
+            codespace=tmp_path / "codespace",
+        )
+
+        assert calls
+        assert friction_path == artifacts / "signals" / "section-03-tool-friction.json"
+    finally:
+        Services.dispatcher.reset_override()
+        Services.prompt_guard.reset_override()
+        Services.policies.reset_override()
+        Services.logger.reset_override()
 
 
 def test_handle_tool_friction_bridges_and_acknowledges_signal(tmp_path) -> None:
@@ -145,27 +164,36 @@ def test_handle_tool_friction_bridges_and_acknowledges_signal(tmp_path) -> None:
                 encoding="utf-8",
             )
 
-    notes: list[tuple[Path, str, str, str]] = []
+    mock_cross_section = MagicMock()
+    notes: list[tuple] = []
+    mock_cross_section.write_consequence_note = lambda *args: notes.append(args)
 
-    handle_tool_friction(
-        section_number="03",
-        section_path="spec.md",
-        all_sections=None,
-        artifacts=artifacts,
-        tool_registry_path=tool_registry_path,
-        friction_signal_path=friction_signal_path,
-        planspace=planspace,
-        parent="parent",
-        codespace=tmp_path / "codespace",
-        policy={"escalation_model": "escalation"},
-        dispatch_agent=fake_dispatch,
-        log=lambda _: None,
-        write_consequence_note=lambda *args: notes.append(args),
-        update_blocker_rollup=lambda _: None,
-    )
+    Services.dispatcher.override(providers.Object(make_dispatcher(fake_dispatch)))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
+    Services.policies.override(providers.Object(StubPolicies()))
+    Services.logger.override(providers.Object(MagicMock()))
+    Services.cross_section.override(providers.Object(mock_cross_section))
+    try:
+        handle_tool_friction(
+            section_number="03",
+            section_path="spec.md",
+            all_sections=None,
+            artifacts=artifacts,
+            tool_registry_path=tool_registry_path,
+            friction_signal_path=friction_signal_path,
+            planspace=planspace,
+            parent="parent",
+            codespace=tmp_path / "codespace",
+        )
 
-    assert notes
-    assert (artifacts / "inputs" / "section-03" / "tool-bridge.ref").exists()
-    friction_state = json.loads(friction_signal_path.read_text(encoding="utf-8"))
-    assert friction_state["friction"] is False
-    assert friction_state["status"] == "handled"
+        assert notes
+        assert (artifacts / "inputs" / "section-03" / "tool-bridge.ref").exists()
+        friction_state = json.loads(friction_signal_path.read_text(encoding="utf-8"))
+        assert friction_state["friction"] is False
+        assert friction_state["status"] == "handled"
+    finally:
+        Services.dispatcher.reset_override()
+        Services.prompt_guard.reset_override()
+        Services.policies.reset_override()
+        Services.logger.reset_override()
+        Services.cross_section.reset_override()

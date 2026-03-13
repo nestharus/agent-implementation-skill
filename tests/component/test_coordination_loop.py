@@ -4,10 +4,13 @@ import json
 from pathlib import Path
 
 import pytest
+from dependency_injector import providers
 
+from containers import Services
 from coordination.engine import coordination_controller as loop
 from coordination.engine.coordination_controller import run_coordination_loop
 from orchestrator.types import Section, SectionResult
+from tests.conftest import StubPolicies
 
 
 def _make_section(planspace: Path, number: str) -> Section:
@@ -50,7 +53,6 @@ def test_run_coordination_loop_completes_when_everything_is_aligned(
         planspace,
         planspace,
         "parent",
-        {"escalation_model": "stronger-model"},
     )
 
     assert status == "complete"
@@ -73,7 +75,6 @@ def test_run_coordination_loop_restarts_when_control_message_arrives(
         planspace,
         planspace,
         "parent",
-        {"escalation_model": "stronger-model"},
     )
 
     assert status == "restart_phase1"
@@ -108,18 +109,21 @@ def test_run_coordination_loop_stalls_and_reports_remaining_sections(
         ),
     )
 
-    status = run_coordination_loop(
-        [section],
-        {"01": SectionResult(section_number="01", aligned=False, problems="still broken")},
-        {"01": section},
-        planspace,
-        planspace,
-        "parent",
-        {
-            "escalation_model": "stronger-model",
-            "escalation_triggers": {"stall_count": 2},
-        },
-    )
+    Services.policies.override(providers.Object(StubPolicies({
+        "escalation_model": "stronger-model",
+        "escalation_triggers": {"stall_count": 2},
+    })))
+    try:
+        status = run_coordination_loop(
+            [section],
+            {"01": SectionResult(section_number="01", aligned=False, problems="still broken")},
+            {"01": section},
+            planspace,
+            planspace,
+            "parent",
+        )
+    finally:
+        Services.policies.reset_override()
 
     assert status == "stalled"
     assert snapshots == [1]
@@ -177,7 +181,6 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
         planspace,
         planspace,
         "parent",
-        {"escalation_model": "stronger-model"},
     )
 
     assert status == "exhausted"
@@ -247,7 +250,6 @@ def test_run_coordination_loop_enters_coordination_for_root_reframing_delta(
         planspace,
         planspace,
         "parent",
-        {"escalation_model": "stronger-model"},
     )
 
     assert status == "complete"

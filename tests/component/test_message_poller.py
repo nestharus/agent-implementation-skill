@@ -53,7 +53,6 @@ def test_poll_control_messages_replays_non_control_messages(tmp_path: Path) -> N
         "parent",
         db_sh=DB_SH,
         agent_name="section-loop",
-        logger=lambda _msg: None,
     )
 
     assert result is None
@@ -75,7 +74,6 @@ def test_poll_control_messages_sets_alignment_flag_and_invalidates_excerpts(
         "parent",
         db_sh=DB_SH,
         agent_name="section-loop",
-        logger=lambda _msg: None,
     )
 
     assert result == "alignment_changed"
@@ -95,7 +93,6 @@ def test_handle_pending_messages_returns_true_for_abort(tmp_path: Path) -> None:
         set(),
         db_sh=DB_SH,
         agent_name="section-loop",
-        logger=lambda _msg: None,
     ) is True
 
 
@@ -112,5 +109,4 @@ def test_poll_control_messages_exits_on_abort(tmp_path: Path) -> None:
             current_section="03",
             db_sh=DB_SH,
             agent_name="section-loop",
-            logger=lambda _msg: None,
         )

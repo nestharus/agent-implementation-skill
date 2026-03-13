@@ -17,26 +17,19 @@ def _gather_complexity_signals(
     signals: dict[str, str] = {}
     paths = PathRegistry(planspace)
 
-    # 1. Section mode signal
+    # 1-2. Section mode signal + related file count (single read)
     mode_signal = paths.mode_signal(section_number)
     if mode_signal.exists():
         mode_data = Services.artifact_io().read_json(mode_signal)
         if mode_data is not None:
             signals["section_mode"] = mode_data.get("mode", "unknown")
-        else:
-            signals["section_mode"] = "unreadable"
-    else:
-        signals["section_mode"] = "unknown"
-
-    # 2. Related file count from mode signal (if it contains file info)
-    if mode_signal.exists():
-        mode_data = Services.artifact_io().read_json(mode_signal)
-        if mode_data is not None:
             file_count = len(mode_data.get("related_files", []))
             signals["related_file_count"] = str(file_count) if file_count else "unknown"
         else:
+            signals["section_mode"] = "unreadable"
             signals["related_file_count"] = "unknown"
     else:
+        signals["section_mode"] = "unknown"
         signals["related_file_count"] = "unknown"
 
     # 3. Cross-section notes (from other sections to this one, or this to others)
@@ -102,43 +95,28 @@ def _extract_todos_from_files(
     return "# TODO Blocks (In-Code Microstrategies)\n\n" + "\n".join(parts)
 
 
-def _check_needs_microstrategy(
-    proposal_path: Path, planspace: Path, section_number: str,
-    parent: str = "", codespace: Path | None = None,
-    *,
-    model: str,
-    escalation_model: str,
-) -> bool:
-    """Check if the microstrategy decider requests a microstrategy.
+def _read_microstrategy_signal(signal_path: Path) -> bool | None:
+    """Read the microstrategy signal. Returns True/False if valid, None if missing/malformed."""
+    if not signal_path.exists():
+        return None
+    data = Services.artifact_io().read_json(signal_path)
+    if data is None:
+        print(
+            f"[MICROSTRATEGY][WARN] Malformed signal at {signal_path} "
+            "— will dispatch fresh",
+        )
+        return None
+    return data.get("needs_microstrategy", False) is True
 
-    Reads the structured signal written by the microstrategy decider.
-    Falls back to dispatching the decider to produce the signal if missing.
 
-    If the signal cannot be produced after retries (including escalation),
-    defaults to True (fail-closed: prefer more strategy over silent skip).
-    """
-    # Primary: structured JSON signal
-    paths = PathRegistry(planspace)
-    signal_path = paths.microstrategy_signal(section_number)
-    if signal_path.exists():
-        data = Services.artifact_io().read_json(signal_path)
-        if data is not None:
-            return data.get("needs_microstrategy", False) is True
-        else:
-            print(
-                f"[MICROSTRATEGY][WARN] Malformed signal at {signal_path} "
-                "— renaming and dispatching fresh",
-            )
-            # Fall through to dispatch
-
-    # Fallback: dispatch to produce structured microstrategy signal
-    if not proposal_path.exists():
-        return False
-    artifacts = paths.artifacts
-    decider_prompt = artifacts / f"microstrategy-decider-{section_number}-prompt.md"
-    decider_output = artifacts / f"microstrategy-decider-{section_number}-output.md"
-    complexity = _gather_complexity_signals(planspace, section_number)
-    decider_prompt_text = f"""# Task: Microstrategy Decision for Section {section_number}
+def _build_decider_prompt(
+    proposal_path: Path,
+    section_number: str,
+    signal_path: Path,
+    complexity: dict[str, str],
+) -> str:
+    """Build the microstrategy decider prompt."""
+    return f"""# Task: Microstrategy Decision for Section {section_number}
 
 ## Files to Read
 1. Integration proposal: `{proposal_path}`
@@ -160,57 +138,92 @@ Write a JSON signal to: `{signal_path}`
 {{"needs_microstrategy": true, "reason": "..."}}
 ```
 """
-    if not Services.prompt_guard().write_validated(decider_prompt_text, decider_prompt):
+
+
+def _dispatch_and_read_signal(
+    model: str,
+    prompt_path: Path,
+    output_path: Path,
+    signal_path: Path,
+    planspace: Path,
+    parent: str,
+    codespace: Path | None,
+    section_number: str,
+) -> bool | None:
+    """Dispatch decider and read signal. Returns True/False or None if failed."""
+    Services.dispatcher().dispatch(
+        model, prompt_path, output_path,
+        planspace, parent, codespace=codespace,
+        section_number=section_number,
+        agent_file=Services.task_router().agent_for("implementation.microstrategy_decision"),
+    )
+    return _read_microstrategy_signal(signal_path)
+
+
+def _check_needs_microstrategy(
+    proposal_path: Path, planspace: Path, section_number: str,
+    parent: str = "", codespace: Path | None = None,
+    *,
+    model: str,
+    escalation_model: str,
+) -> bool:
+    """Check if the microstrategy decider requests a microstrategy.
+
+    Reads the structured signal written by the microstrategy decider.
+    Falls back to dispatching the decider to produce the signal if missing.
+
+    If the signal cannot be produced after retries (including escalation),
+    defaults to True (fail-closed: prefer more strategy over silent skip).
+    """
+    paths = PathRegistry(planspace)
+    signal_path = paths.microstrategy_signal(section_number)
+
+    cached = _read_microstrategy_signal(signal_path)
+    if cached is not None:
+        return cached
+
+    if not proposal_path.exists():
+        return False
+
+    artifacts = paths.artifacts
+    complexity = _gather_complexity_signals(planspace, section_number)
+    prompt_text = _build_decider_prompt(
+        proposal_path, section_number, signal_path, complexity,
+    )
+    prompt_path = artifacts / f"microstrategy-decider-{section_number}-prompt.md"
+    if not Services.prompt_guard().write_validated(prompt_text, prompt_path):
         return False
     signal_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # First attempt with default model
-    Services.dispatcher().dispatch(
-        model, decider_prompt, decider_output,
-        planspace, parent, codespace=codespace,
-        section_number=section_number,
-        agent_file=Services.task_router().agent_for("implementation.microstrategy_decision"),
+    output_path = artifacts / f"microstrategy-decider-{section_number}-output.md"
+    result = _dispatch_and_read_signal(
+        model, prompt_path, output_path, signal_path,
+        planspace, parent, codespace, section_number,
     )
-    if signal_path.exists():
-        data = Services.artifact_io().read_json(signal_path)
-        if data is not None:
-            return data.get("needs_microstrategy", False) is True
-        else:
-            print(
-                f"[MICROSTRATEGY][WARN] Section {section_number}: "
-                "malformed signal after primary attempt "
-                f"— retrying with escalation model",
-            )
+    if result is not None:
+        return result
 
-    # Retry with escalation model (R34/V3: fail-closed microstrategy)
-    escalation_output = (
-        artifacts
-        / f"microstrategy-decider-{section_number}-escalation-output.md"
+    print(
+        f"[MICROSTRATEGY][WARN] Section {section_number}: "
+        "malformed signal after primary attempt — retrying with escalation model",
     )
-    Services.dispatcher().dispatch(
-        escalation_model, decider_prompt, escalation_output,
-        planspace, parent, codespace=codespace,
-        section_number=section_number,
-        agent_file=Services.task_router().agent_for("implementation.microstrategy_decision"),
+    escalation_output = artifacts / f"microstrategy-decider-{section_number}-escalation-output.md"
+    result = _dispatch_and_read_signal(
+        escalation_model, prompt_path, escalation_output, signal_path,
+        planspace, parent, codespace, section_number,
     )
-    if signal_path.exists():
-        data = Services.artifact_io().read_json(signal_path)
-        if data is not None:
-            return data.get("needs_microstrategy", False) is True
-        else:
-            print(
-                f"[MICROSTRATEGY][WARN] Section {section_number}: "
-                "malformed signal after escalation attempt "
-                f"— defaulting to fail-closed (needs microstrategy)",
-            )
+    if result is not None:
+        return result
 
-    # Both attempts failed — fail-closed: default to more strategy
-    fallback = {
+    print(
+        f"[MICROSTRATEGY][WARN] Section {section_number}: "
+        "malformed signal after escalation — defaulting to fail-closed",
+    )
+    Services.artifact_io().write_json(signal_path, {
         "needs_microstrategy": True,
         "reason": (
             "fail-closed: microstrategy decider produced no valid "
             "signal after retries (default + escalation model)"
         ),
-    }
-    Services.artifact_io().write_json(signal_path, fallback)
+    })
     return True

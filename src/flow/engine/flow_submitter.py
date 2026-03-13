@@ -35,6 +35,17 @@ def new_gate_id() -> str:
     return f"gate_{uuid.uuid4()}"
 
 
+def _freshness_from_steps(steps: list[TaskSpec], planspace: Path) -> str | None:
+    """Derive a freshness token from the first step with a section scope."""
+    for step in steps:
+        if not step.concern_scope:
+            continue
+        match = re.match(r"^section-(\d+)$", step.concern_scope)
+        if match:
+            return Services.freshness().compute(planspace, match.group(1))
+    return None
+
+
 def submit_chain(
     db_path: Path,
     submitted_by: str,
@@ -146,17 +157,9 @@ def submit_fanout(
         else:
             steps = branch.steps
 
-        branch_freshness: str | None = freshness_token
+        branch_freshness = freshness_token
         if branch_freshness is None and planspace is not None:
-            for step in steps:
-                if step.concern_scope:
-                    match = re.match(r"^section-(\d+)$", step.concern_scope)
-                    if match:
-                        branch_freshness = Services.freshness().compute(
-                            planspace,
-                            match.group(1),
-                        )
-                        break
+            branch_freshness = _freshness_from_steps(steps, planspace)
 
         task_ids = submit_chain(
             db_path,

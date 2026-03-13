@@ -21,19 +21,19 @@ def build_file_to_sections(sections: list[Section]) -> dict[str, list[str]]:
     return mapping
 
 
-def _collect_outstanding_problems(
-    section_results: dict[str, SectionResult],
-    sections_by_num: dict[str, Section],
-    planspace: Path,
-) -> list[dict[str, Any]]:
-    """Collect all outstanding problems across sections."""
-    paths = PathRegistry(planspace)
+def _section_files(sections_by_num, sec_num):
+    section = sections_by_num.get(sec_num)
+    return list(section.related_files) if section else []
+
+
+def _collect_blocker_and_misalignment_problems(
+    section_results, sections_by_num, paths,
+):
     problems = []
     for sec_num, result in section_results.items():
         if result.aligned:
             continue
-        section = sections_by_num.get(sec_num)
-        files = list(section.related_files) if section else []
+        files = _section_files(sections_by_num, sec_num)
 
         blocker_path = paths.blocker_signal(sec_num)
         if blocker_path.exists():
@@ -70,7 +70,61 @@ def _collect_outstanding_problems(
                 "description": result.problems,
                 "files": files,
             })
+    return problems
 
+
+def _classify_note_ack(
+    note_id: str, target_num: str, source_label: str,
+    ack_signal: dict | None, files: list[str],
+) -> dict | None:
+    """Classify a note's ack status. Returns a problem dict, or None if accepted."""
+    if not ack_signal:
+        return None
+    acks = ack_signal.get("acknowledged", [])
+    matching_ack = next(
+        (ack for ack in acks if ack.get("note_id") == note_id),
+        None,
+    )
+    if not matching_ack:
+        return None
+
+    action = matching_ack.get("action", "accepted")
+    reason = matching_ack.get("reason", "(none)")
+    if action == "accepted":
+        return {"_skip": True}
+    if action == "rejected":
+        return {
+            "section": target_num,
+            "type": "consequence_conflict",
+            "note_id": note_id,
+            "description": (
+                f"Section {target_num} REJECTED note "
+                f"{note_id} from {source_label}. "
+                f"Reason: {reason}. "
+                f"This conflict needs coordinator resolution."
+            ),
+            "files": files,
+        }
+    if action == "deferred":
+        return {
+            "section": target_num,
+            "type": "pending_negotiation",
+            "note_id": note_id,
+            "description": (
+                f"Section {target_num} deferred note "
+                f"{note_id} from section {source_label}. "
+                f"Reason: {reason}. "
+                f"Will re-evaluate when blocking conditions resolve."
+            ),
+            "files": files,
+        }
+    return None
+
+
+def _collect_note_problems(
+    section_results, sections_by_num, paths, planspace,
+):
+    problems = []
     note_entries: list[dict[str, Any]] = []
     for target_num in sorted(section_results):
         note_entries.extend(load_incoming_notes(planspace, target_num))
@@ -82,64 +136,23 @@ def _collect_outstanding_problems(
         if not target_result or not target_result.aligned:
             continue
 
-        note_content = note["content"]
         note_id_match = re.search(
-            r'\*\*Note ID\*\*:\s*`([^`]+)`', note_content,
+            r'\*\*Note ID\*\*:\s*`([^`]+)`', note["content"],
         )
         if not note_id_match:
             continue
         note_id = note_id_match.group(1)
 
-        ack_path = paths.note_ack_signal(target_num)
-        ack_signal = Services.signals().read(ack_path)
-        if ack_signal:
-            acks = ack_signal.get("acknowledged", [])
-            matching_ack = next(
-                (ack for ack in acks if ack.get("note_id") == note_id),
-                None,
-            )
-            if matching_ack:
-                action = matching_ack.get("action", "accepted")
-                if action == "accepted":
-                    continue
+        files = _section_files(sections_by_num, target_num)
+        ack_signal = Services.signals().read(paths.note_ack_signal(target_num))
+        ack_result = _classify_note_ack(
+            note_id, target_num, source_label, ack_signal, files,
+        )
+        if ack_result is not None:
+            if not ack_result.get("_skip"):
+                problems.append(ack_result)
+            continue
 
-                section = sections_by_num.get(target_num)
-                files = list(section.related_files) if section else []
-                if action == "rejected":
-                    problems.append({
-                        "section": target_num,
-                        "type": "consequence_conflict",
-                        "note_id": note_id,
-                        "description": (
-                            f"Section {target_num} REJECTED note "
-                            f"{note_id} from {source_label}. "
-                            f"Reason: "
-                            f"{matching_ack.get('reason', '(none)')}. "
-                            f"This conflict needs coordinator "
-                            f"resolution."
-                        ),
-                        "files": files,
-                    })
-                    continue
-                if action == "deferred":
-                    problems.append({
-                        "section": target_num,
-                        "type": "pending_negotiation",
-                        "note_id": note_id,
-                        "description": (
-                            f"Section {target_num} deferred note "
-                            f"{note_id} from section {source_label}. "
-                            f"Reason: "
-                            f"{matching_ack.get('reason', '(none)')}. "
-                            f"Will re-evaluate when blocking "
-                            f"conditions resolve."
-                        ),
-                        "files": files,
-                    })
-                    continue
-
-        section = sections_by_num.get(target_num)
-        files = list(section.related_files) if section else []
         problems.append({
             "section": target_num,
             "type": "unaddressed_note",
@@ -153,7 +166,11 @@ def _collect_outstanding_problems(
             ),
             "files": files,
         })
+    return problems
 
+
+def _collect_scope_delta_problems(sections_by_num, paths):
+    problems = []
     scope_deltas_dir = paths.scope_deltas_dir()
     if not scope_deltas_dir.exists():
         return problems
@@ -201,8 +218,7 @@ def _collect_outstanding_problems(
         source = str(delta.get("source") or delta.get("origin") or "unknown")
         source_sections = ", ".join(linked_sections)
         for sec_num in linked_sections:
-            section = sections_by_num.get(sec_num)
-            files = list(section.related_files) if section else []
+            files = _section_files(sections_by_num, sec_num)
             problems.append({
                 "section": sec_num,
                 "type": "root_reframing",
@@ -218,6 +234,23 @@ def _collect_outstanding_problems(
                 "source_sections": linked_sections,
                 "requires_root_reframing": True,
             })
+    return problems
+
+
+def _collect_outstanding_problems(
+    section_results: dict[str, SectionResult],
+    sections_by_num: dict[str, Section],
+    planspace: Path,
+) -> list[dict[str, Any]]:
+    """Collect all outstanding problems across sections."""
+    paths = PathRegistry(planspace)
+    problems = _collect_blocker_and_misalignment_problems(
+        section_results, sections_by_num, paths,
+    )
+    problems.extend(_collect_note_problems(
+        section_results, sections_by_num, paths, planspace,
+    ))
+    problems.extend(_collect_scope_delta_problems(sections_by_num, paths))
     return problems
 
 

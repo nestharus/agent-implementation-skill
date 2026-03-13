@@ -241,6 +241,11 @@ def _format_tools_block(paths: PathRegistry) -> str:
         return ""
 
     malformed_path = tool_registry_path.with_suffix(".malformed.json")
+    return _compose_tools_block_text(malformed_path)
+
+
+def _compose_tools_block_text(malformed_path: Path) -> str:
+    """Return the warning text for a malformed tool registry."""
     return (
         f"\n## Tool Registry Warning\n"
         "Tool registry is malformed. "

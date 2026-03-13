@@ -26,7 +26,6 @@ def run_implementation_loop(
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: dict,
     cycle_budget: dict,
 ) -> list[str] | None:
     """Run strategic implementation until aligned, then return changed files."""
@@ -56,7 +55,7 @@ def run_implementation_loop(
         _log_attempt(section.number, impl_attempt, impl_problems)
 
         impl_result = _dispatch_implementation(
-            section, planspace, codespace, parent, policy, paths, artifacts,
+            section, planspace, codespace, parent, paths, artifacts,
             impl_problems,
         )
         if impl_result is None:
@@ -72,7 +71,7 @@ def run_implementation_loop(
             continue
 
         align_result = _dispatch_alignment_check(
-            section, planspace, codespace, parent, policy, artifacts,
+            section, planspace, codespace, parent, artifacts,
         )
         if align_result is None:
             return None
@@ -86,7 +85,7 @@ def run_implementation_loop(
 
         problems = _extract_alignment_problems(
             align_result, section.number, planspace, parent, codespace,
-            policy, artifacts,
+            artifacts,
         )
 
         underspec_action = _handle_underspec_signal(
@@ -240,7 +239,6 @@ def _dispatch_implementation(
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: dict,
     paths: PathRegistry,
     artifacts: Path,
     impl_problems: str | None,
@@ -250,12 +248,12 @@ def _dispatch_implementation(
     Returns ``None`` when the caller should ``return None`` (prompt
     blocked, alignment changed, or timeout).
     """
+    policy = Services.policies().load(planspace)
     impl_prompt = write_strategic_impl_prompt(
         section,
         planspace,
         codespace,
         impl_problems,
-        model_policy=policy,
     )
     if impl_prompt is None:
         Services.logger().log(
@@ -373,10 +371,10 @@ def _dispatch_alignment_check(
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: dict,
     artifacts: Path,
 ) -> str | None:
     """Dispatch the alignment check agent. Return result or None to abort."""
+    policy = Services.policies().load(planspace)
     Services.logger().log(f"Section {section.number}: implementation alignment check")
     impl_align_prompt = write_impl_alignment_prompt(
         section,
@@ -419,10 +417,10 @@ def _extract_alignment_problems(
     planspace: Path,
     parent: str,
     codespace: Path,
-    policy: dict,
     artifacts: Path,
 ) -> str | None:
     """Extract alignment problems from the alignment check result."""
+    policy = Services.policies().load(planspace)
     impl_align_output = artifacts / f"impl-align-{section_number}-output.md"
     return Services.section_alignment().extract_problems(
         impl_align_result,

@@ -34,6 +34,205 @@ from reconciliation.repository.results import (
 from reconciliation.repository.queue import load_reconciliation_requests
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Adjudication helpers
+# ---------------------------------------------------------------------------
+
+def _adjudicate_ungrouped(ungrouped, run_dir, kind):
+    """Run adjudicator over ungrouped candidates and return merged groups.
+
+    Each merged group is a dict with ``canonical_title``, ``members``,
+    ``source_sections``, and ``rationale``.
+    """
+    if len(ungrouped) < 2:
+        return []
+    merged_groups = adjudicate_ungrouped_candidates(ungrouped, run_dir, kind)
+    if not merged_groups:
+        return []
+
+    results = []
+    for merged_group in merged_groups:
+        members = merged_group.get("members", [])
+        canonical = merged_group.get("canonical_title", "")
+        if not members or not canonical:
+            continue
+        member_set = {m.strip().lower() for m in members}
+        merged_sections: set[str] = set()
+        matched_ungrouped: list[dict] = []
+        for item in ungrouped:
+            if item["title"] in member_set:
+                merged_sections.add(item["source_section"])
+                matched_ungrouped.append(item)
+        if merged_sections:
+            results.append({
+                "canonical": canonical.strip().lower(),
+                "sections": sorted(merged_sections),
+                "matched": matched_ungrouped,
+                "rationale": merged_group.get("rationale", ""),
+            })
+    return results
+
+
+def _merge_new_section_adjudications(adjudicated, consolidated_sections):
+    """Convert adjudicated groups into consolidated new-section entries."""
+    for group in adjudicated:
+        consolidated_sections.append({
+            "title": group["canonical"],
+            "source_sections": group["sections"],
+            "candidates": [
+                {"section": item["source_section"], "candidate": item["title"]}
+                for item in group["matched"]
+            ],
+            "type": "consolidated_new_section",
+            "adjudicated": True,
+            "rationale": group["rationale"],
+        })
+
+
+def _merge_seam_adjudications(adjudicated, shared_seams):
+    """Convert adjudicated groups into shared-seam entries."""
+    for group in adjudicated:
+        if len(group["sections"]) > 1:
+            shared_seams.append({
+                "seam": group["canonical"],
+                "sections": group["sections"],
+                "needs_substrate": True,
+                "type": "shared_seam",
+                "adjudicated": True,
+                "rationale": group["rationale"],
+            })
+
+
+def _collect_affected_sections(anchor_overlaps, contract_conflicts,
+                                consolidated_sections, substrate_seams):
+    """Gather all section numbers affected by reconciliation findings."""
+    affected: set[str] = set()
+    for overlap in anchor_overlaps:
+        affected.update(overlap.get("sections", []))
+    for conflict in contract_conflicts:
+        affected.update(conflict.get("sections", []))
+    for consolidated in consolidated_sections:
+        affected.update(consolidated.get("source_sections", []))
+    for seam in substrate_seams:
+        affected.update(seam.get("sections", []))
+    return affected
+
+
+def _extract_section_numbers(proposal_results: list) -> list[str]:
+    section_numbers: list[str] = []
+    for pr in proposal_results:
+        sec_num = (
+            pr.section_number if hasattr(pr, "section_number")
+            else pr.get("section_number", "")
+        )
+        if sec_num:
+            section_numbers.append(sec_num)
+    return section_numbers
+
+
+def _load_proposal_states(
+    run_dir: Path,
+    section_numbers: list[str],
+) -> dict[str, dict]:
+    states: dict[str, dict] = {}
+    for sec_num in section_numbers:
+        state_path = PathRegistry(run_dir).proposal_state(sec_num)
+        states[sec_num] = load_proposal_state(state_path)
+    return states
+
+
+def _merge_recon_requests_into_states(
+    recon_requests: list[dict],
+    states: dict[str, dict],
+) -> None:
+    for req in recon_requests:
+        sec = req.get("section", "")
+        if sec and sec in states:
+            state = states[sec]
+            for contract in req.get("unresolved_contracts", []):
+                if contract not in state.get("unresolved_contracts", []):
+                    state.setdefault("unresolved_contracts", []).append(
+                        contract)
+            for anchor in req.get("unresolved_anchors", []):
+                if anchor not in state.get("unresolved_anchors", []):
+                    state.setdefault("unresolved_anchors", []).append(anchor)
+
+
+def _detect_cross_section_issues(
+    states: dict[str, dict],
+    run_dir: Path,
+) -> tuple[list[dict], list[dict], list[dict], list[dict], list[dict]]:
+    anchor_overlaps = detect_anchor_overlaps(states)
+    contract_conflicts = detect_contract_conflicts(states)
+    consolidated_sections, ungrouped_titles = consolidate_new_section_candidates(
+        states
+    )
+    adjudicated = _adjudicate_ungrouped(ungrouped_titles, run_dir, "new_section")
+    _merge_new_section_adjudications(adjudicated, consolidated_sections)
+
+    shared_seams, ungrouped_seams = aggregate_shared_seams(states)
+    adjudicated = _adjudicate_ungrouped(ungrouped_seams, run_dir, "shared_seam")
+    _merge_seam_adjudications(adjudicated, shared_seams)
+
+    substrate_seams = [s for s in shared_seams if s.get("needs_substrate")]
+
+    return anchor_overlaps, contract_conflicts, consolidated_sections, shared_seams, substrate_seams
+
+
+def _build_section_result(
+    sec_num: str,
+    anchor_overlaps: list[dict],
+    contract_conflicts: list[dict],
+    consolidated_sections: list[dict],
+    substrate_seams: list[dict],
+    affected_sections: set[str],
+) -> dict:
+    sec_overlaps = [
+        o for o in anchor_overlaps if sec_num in o.get("sections", [])
+    ]
+    sec_conflicts = [
+        c for c in contract_conflicts
+        if sec_num in c.get("sections", [])
+    ]
+    sec_consolidations = [
+        c for c in consolidated_sections
+        if sec_num in c.get("source_sections", [])
+    ]
+    sec_seams = [
+        s for s in substrate_seams if sec_num in s.get("sections", [])
+    ]
+    return {
+        "section": sec_num,
+        "anchor_overlaps": sec_overlaps,
+        "contract_conflicts": sec_conflicts,
+        "consolidated_new_sections": sec_consolidations,
+        "substrate_seams": sec_seams,
+        "affected": sec_num in affected_sections,
+    }
+
+
+def _build_summary(
+    affected_sections: set[str],
+    consolidated_sections: list[dict],
+    substrate_seams: list[dict],
+    anchor_overlaps: list[dict],
+    contract_conflicts: list[dict],
+    shared_seams: list[dict],
+) -> dict:
+    return {
+        "sections_affected": sorted(affected_sections),
+        "new_sections_proposed": len(consolidated_sections),
+        "substrate_needed": len(substrate_seams) > 0,
+        "conflicts_found": len(anchor_overlaps) + len(contract_conflicts),
+        "anchor_overlaps": len(anchor_overlaps),
+        "contract_conflicts": len(contract_conflicts),
+        "shared_seams": len(shared_seams),
+        "substrate_seams": len(substrate_seams),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -100,187 +299,46 @@ def run_reconciliation_loop(
         Summary with keys ``sections_affected``, ``new_sections_proposed``,
         ``substrate_needed``, ``conflicts_found``.
     """
-    artifacts_dir = run_dir / "artifacts"
-    proposals_dir = artifacts_dir / "proposals"
+    section_numbers = _extract_section_numbers(proposal_results)
+    states = _load_proposal_states(run_dir, section_numbers)
 
-    # ------------------------------------------------------------------
-    # 1. Load all proposal-state artifacts
-    # ------------------------------------------------------------------
-    section_numbers: list[str] = []
-    for pr in proposal_results:
-        sec_num = (
-            pr.section_number if hasattr(pr, "section_number")
-            else pr.get("section_number", "")
-        )
-        if sec_num:
-            section_numbers.append(sec_num)
-
-    states: dict[str, dict] = {}
-    for sec_num in section_numbers:
-        state_path = PathRegistry(run_dir).proposal_state(sec_num)
-        states[sec_num] = load_proposal_state(state_path)
-
-    # ------------------------------------------------------------------
-    # 2. Load reconciliation requests (from Task 7 queue)
-    # ------------------------------------------------------------------
     recon_requests = load_reconciliation_requests(run_dir)
     logger.info(
         "Reconciliation: loaded %d proposal states, %d reconciliation "
         "requests",
         len(states), len(recon_requests),
     )
+    _merge_recon_requests_into_states(recon_requests, states)
 
-    # Merge reconciliation request data into states so that the
-    # detection helpers see everything.
-    for req in recon_requests:
-        sec = req.get("section", "")
-        if sec and sec in states:
-            state = states[sec]
-            # Append unresolved items from requests that are not already
-            # present in the proposal state.
-            for contract in req.get("unresolved_contracts", []):
-                if contract not in state.get("unresolved_contracts", []):
-                    state.setdefault("unresolved_contracts", []).append(
-                        contract)
-            for anchor in req.get("unresolved_anchors", []):
-                if anchor not in state.get("unresolved_anchors", []):
-                    state.setdefault("unresolved_anchors", []).append(anchor)
+    anchor_overlaps, contract_conflicts, consolidated_sections, \
+        shared_seams, substrate_seams = _detect_cross_section_issues(
+            states, run_dir,
+        )
 
-    # ------------------------------------------------------------------
-    # 3. Detect overlaps, conflicts, consolidations
-    # ------------------------------------------------------------------
-    anchor_overlaps = detect_anchor_overlaps(states)
-    contract_conflicts = detect_contract_conflicts(states)
-    consolidated_sections, ungrouped_titles = consolidate_new_section_candidates(
-        states
+    affected_sections = _collect_affected_sections(
+        anchor_overlaps, contract_conflicts,
+        consolidated_sections, substrate_seams,
     )
-    if len(ungrouped_titles) >= 2:
-        merged_groups = adjudicate_ungrouped_candidates(
-            ungrouped_titles, run_dir, "new_section",
-        )
-        for merged_group in merged_groups or []:
-            members = merged_group.get("members", [])
-            canonical = merged_group.get("canonical_title", "")
-            if not members or not canonical:
-                continue
-            member_set = {member.strip().lower() for member in members}
-            merged_candidates: list[dict] = []
-            merged_sections: set[str] = set()
-            for ungrouped in ungrouped_titles:
-                if ungrouped["title"] in member_set:
-                    merged_sections.add(ungrouped["source_section"])
-                    merged_candidates.append({
-                        "section": ungrouped["source_section"],
-                        "candidate": ungrouped["title"],
-                    })
-            if merged_sections:
-                consolidated_sections.append({
-                    "title": canonical.strip().lower(),
-                    "source_sections": sorted(merged_sections),
-                    "candidates": merged_candidates,
-                    "type": "consolidated_new_section",
-                    "adjudicated": True,
-                    "rationale": merged_group.get("rationale", ""),
-                })
 
-    shared_seams, ungrouped_seams = aggregate_shared_seams(states)
-    if len(ungrouped_seams) >= 2:
-        merged_groups = adjudicate_ungrouped_candidates(
-            ungrouped_seams, run_dir, "shared_seam",
-        )
-        for merged_group in merged_groups or []:
-            members = merged_group.get("members", [])
-            canonical = merged_group.get("canonical_title", "")
-            if not members or not canonical:
-                continue
-            member_set = {member.strip().lower() for member in members}
-            merged_sections: set[str] = set()
-            for ungrouped in ungrouped_seams:
-                if ungrouped["title"] in member_set:
-                    merged_sections.add(ungrouped["source_section"])
-            if len(merged_sections) > 1:
-                shared_seams.append({
-                    "seam": canonical.strip().lower(),
-                    "sections": sorted(merged_sections),
-                    "needs_substrate": True,
-                    "type": "shared_seam",
-                    "adjudicated": True,
-                    "rationale": merged_group.get("rationale", ""),
-                })
-
-    # Seams that involve multiple sections need substrate work
-    substrate_seams = [s for s in shared_seams if s.get("needs_substrate")]
-
-    # ------------------------------------------------------------------
-    # 4. Determine affected sections
-    # ------------------------------------------------------------------
-    affected_sections: set[str] = set()
-    for overlap in anchor_overlaps:
-        affected_sections.update(overlap.get("sections", []))
-    for conflict in contract_conflicts:
-        affected_sections.update(conflict.get("sections", []))
-    for consolidated in consolidated_sections:
-        affected_sections.update(consolidated.get("source_sections", []))
-    for seam in substrate_seams:
-        affected_sections.update(seam.get("sections", []))
-
-    # ------------------------------------------------------------------
-    # 5. Write per-section reconciliation result artifacts
-    # ------------------------------------------------------------------
     for sec_num in section_numbers:
-        sec_overlaps = [
-            o for o in anchor_overlaps if sec_num in o.get("sections", [])
-        ]
-        sec_conflicts = [
-            c for c in contract_conflicts
-            if sec_num in c.get("sections", [])
-        ]
-        sec_consolidations = [
-            c for c in consolidated_sections
-            if sec_num in c.get("source_sections", [])
-        ]
-        sec_seams = [
-            s for s in substrate_seams if sec_num in s.get("sections", [])
-        ]
-
-        result = {
-            "section": sec_num,
-            "anchor_overlaps": sec_overlaps,
-            "contract_conflicts": sec_conflicts,
-            "consolidated_new_sections": sec_consolidations,
-            "substrate_seams": sec_seams,
-            "affected": sec_num in affected_sections,
-        }
+        result = _build_section_result(
+            sec_num, anchor_overlaps, contract_conflicts,
+            consolidated_sections, substrate_seams, affected_sections,
+        )
         write_result(run_dir, sec_num, result)
 
-    # ------------------------------------------------------------------
-    # 6. Write consolidated scope-delta artifacts for new sections
-    # ------------------------------------------------------------------
     for consolidated in consolidated_sections:
         write_scope_delta(run_dir, consolidated)
 
-    # ------------------------------------------------------------------
-    # 7. Write substrate-trigger artifacts for shared seams
-    # ------------------------------------------------------------------
     for seam in substrate_seams:
         write_substrate_trigger(run_dir, seam)
 
-    # ------------------------------------------------------------------
-    # 8. Build and return summary
-    # ------------------------------------------------------------------
-    summary = {
-        "sections_affected": sorted(affected_sections),
-        "new_sections_proposed": len(consolidated_sections),
-        "substrate_needed": len(substrate_seams) > 0,
-        "conflicts_found": len(anchor_overlaps) + len(contract_conflicts),
-        "anchor_overlaps": len(anchor_overlaps),
-        "contract_conflicts": len(contract_conflicts),
-        "shared_seams": len(shared_seams),
-        "substrate_seams": len(substrate_seams),
-    }
+    summary = _build_summary(
+        affected_sections, consolidated_sections, substrate_seams,
+        anchor_overlaps, contract_conflicts, shared_seams,
+    )
     logger.info("Reconciliation summary: %s", summary)
 
-    # Write summary artifact
     Services.artifact_io().write_json(
         PathRegistry(run_dir).reconciliation_summary(), summary,
     )

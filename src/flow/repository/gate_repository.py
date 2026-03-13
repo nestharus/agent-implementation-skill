@@ -111,6 +111,72 @@ def update_gate_member(
         conn.commit()
 
 
+def _fire_synthesis_task(
+    conn: sqlite3.Connection,
+    db_path: Path,
+    planspace: Path,
+    gate: dict,
+    gate_id: str,
+    flow_id: str,
+    agg_relpath: str,
+    origin_refs: list[str],
+) -> None:
+    """Create and submit the synthesis task when a gate fires."""
+    syn_chain_id = new_chain_id()
+    syn_instance_id = new_instance_id()
+
+    syn_tid = submit_task(
+        db_path,
+        "reconciler",
+        gate["synthesis_task_type"],
+        problem_id=gate["synthesis_problem_id"],
+        concern_scope=gate["synthesis_concern_scope"],
+        payload_path=gate["synthesis_payload_path"],
+        priority=gate["synthesis_priority"] or "normal",
+        instance_id=syn_instance_id,
+        flow_id=flow_id,
+        chain_id=syn_chain_id,
+        declared_by_task_id=None,
+        trigger_gate_id=gate_id,
+        flow_context_path=agg_relpath,
+        result_manifest_path=result_manifest_relpath(0),
+    )
+
+    syn_ctx_path = flow_context_relpath(syn_tid)
+    syn_cont_path = continuation_relpath(syn_tid)
+    syn_res_path = result_manifest_relpath(syn_tid)
+
+    conn.execute(
+        """UPDATE tasks
+           SET flow_context_path=?, continuation_path=?,
+               result_manifest_path=?
+           WHERE id=?""",
+        (syn_ctx_path, syn_cont_path, syn_res_path, syn_tid),
+    )
+    conn.execute(
+        """UPDATE gates
+           SET status='fired', fired_task_id=?,
+               fired_at=datetime('now')
+           WHERE gate_id=?""",
+        (syn_tid, gate_id),
+    )
+    conn.commit()
+
+    write_flow_context(
+        planspace=planspace,
+        task_id=syn_tid,
+        instance_id=syn_instance_id,
+        flow_id=flow_id,
+        chain_id=syn_chain_id,
+        task_type=gate["synthesis_task_type"],
+        declared_by_task_id=None,
+        depends_on=None,
+        trigger_gate_id=gate_id,
+        origin_refs=origin_refs,
+        previous_task_id=None,
+    )
+
+
 def check_and_fire_gate(
     db_path: Path,
     planspace: Path,
@@ -124,11 +190,8 @@ def check_and_fire_gate(
     ``build_gate_aggregate_manifest`` is passed as a callable to avoid
     circular imports between repository and engine layers.
     """
-    conn = sqlite3.connect(str(db_path), timeout=5.0)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.row_factory = sqlite3.Row
-    try:
+    with task_db(db_path) as conn:
+        conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         cur.execute("SELECT * FROM gates WHERE gate_id = ?", (gate_id,))
         gate_row = cur.fetchone()
@@ -191,58 +254,7 @@ def check_and_fire_gate(
         conn.commit()
 
         if gate["synthesis_task_type"]:
-            syn_chain_id = new_chain_id()
-            syn_instance_id = new_instance_id()
-
-            syn_tid = submit_task(
-                db_path,
-                "reconciler",
-                gate["synthesis_task_type"],
-                problem_id=gate["synthesis_problem_id"],
-                concern_scope=gate["synthesis_concern_scope"],
-                payload_path=gate["synthesis_payload_path"],
-                priority=gate["synthesis_priority"] or "normal",
-                instance_id=syn_instance_id,
-                flow_id=flow_id,
-                chain_id=syn_chain_id,
-                declared_by_task_id=None,
-                trigger_gate_id=gate_id,
-                flow_context_path=agg_relpath,
-                result_manifest_path=result_manifest_relpath(0),
+            _fire_synthesis_task(
+                conn, db_path, planspace, gate, gate_id,
+                flow_id, agg_relpath, origin_refs,
             )
-
-            syn_ctx_path = flow_context_relpath(syn_tid)
-            syn_cont_path = continuation_relpath(syn_tid)
-            syn_res_path = result_manifest_relpath(syn_tid)
-
-            conn.execute(
-                """UPDATE tasks
-                   SET flow_context_path=?, continuation_path=?,
-                       result_manifest_path=?
-                   WHERE id=?""",
-                (syn_ctx_path, syn_cont_path, syn_res_path, syn_tid),
-            )
-            conn.execute(
-                """UPDATE gates
-                   SET status='fired', fired_task_id=?,
-                       fired_at=datetime('now')
-                   WHERE gate_id=?""",
-                (syn_tid, gate_id),
-            )
-            conn.commit()
-
-            write_flow_context(
-                planspace=planspace,
-                task_id=syn_tid,
-                instance_id=syn_instance_id,
-                flow_id=flow_id,
-                chain_id=syn_chain_id,
-                task_type=gate["synthesis_task_type"],
-                declared_by_task_id=None,
-                depends_on=None,
-                trigger_gate_id=gate_id,
-                origin_refs=origin_refs,
-                previous_task_id=None,
-            )
-    finally:
-        conn.close()

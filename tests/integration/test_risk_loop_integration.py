@@ -4,6 +4,10 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from dependency_injector import providers
+
+from conftest import make_dispatcher
+from containers import Services
 from signals.repository.artifact_io import read_json, write_json
 from implementation.engine.implementation_phase import (
     _run_risk_review,
@@ -11,6 +15,7 @@ from implementation.engine.implementation_phase import (
 )
 from implementation.repository.roal_index import read_roal_input_index
 from implementation.service.risk_history_recorder import append_risk_history
+from proposal.service.readiness_resolver import ReadinessResult
 from risk.repository.history import append_history_entry, read_history
 from risk.engine.risk_assessor import run_lightweight_risk_check, run_risk_loop
 from risk.service.package_builder import build_package_from_proposal
@@ -251,7 +256,7 @@ def test_full_risk_loop_single_step(
         json.dumps(serialize_plan(plan)),
     ]
 
-    result = _run_risk_review(planspace, "01", section, mock_dispatch)
+    result = _run_risk_review(planspace, "01", section)
 
     assert result is not None
     assert result.accepted_frontier == [package.steps[0].step_id]
@@ -299,7 +304,7 @@ def test_full_risk_loop_multi_step_with_defer(
         json.dumps(serialize_plan(plan)),
     ]
 
-    result = _run_risk_review(planspace, "01", section, mock_dispatch)
+    result = _run_risk_review(planspace, "01", section)
 
     assert result is not None
     assert result.accepted_frontier == [package.steps[0].step_id]
@@ -320,7 +325,7 @@ def test_risk_loop_fallback_on_parse_failure(
     package = build_package_from_proposal("section-01", planspace)
     mock_dispatch.return_value = "not valid json"
 
-    result = _run_risk_review(planspace, "01", section, mock_dispatch)
+    result = _run_risk_review(planspace, "01", section)
 
     assert result is not None
     assert result.accepted_frontier == []
@@ -360,7 +365,7 @@ def test_risk_loop_respects_threshold_enforcement(
         json.dumps(serialize_plan(over_threshold_plan)),
     ]
 
-    result = _run_risk_review(planspace, "01", section, mock_dispatch)
+    result = _run_risk_review(planspace, "01", section)
 
     assert result is not None
     assert result.accepted_frontier == []
@@ -421,8 +426,8 @@ def test_risk_history_accumulates(
         json.dumps(serialize_plan(second_plan)),
     ]
 
-    first_result = _run_risk_review(planspace, "01", first_section, mock_dispatch)
-    second_result = _run_risk_review(planspace, "02", second_section, mock_dispatch)
+    first_result = _run_risk_review(planspace, "01", first_section)
+    second_result = _run_risk_review(planspace, "02", second_section)
     assert first_result is not None
     assert second_result is not None
 
@@ -473,7 +478,6 @@ def test_lightweight_risk_check(
         "section-01",
         "implementation",
         package,
-        mock_dispatch,
     )
 
     assert plan.accepted_frontier == [package.steps[0].step_id]
@@ -620,21 +624,23 @@ def test_full_adaptive_cycle_relaxes_only_one_posture_level(
     def _dispatch(*_args, **_kwargs) -> str:
         return next(responses)
 
-    first_plan = run_risk_loop(
-        planspace,
-        "section-01",
-        "implementation",
-        package,
-        _dispatch,
-    )
-    append_risk_history(planspace, "01", first_plan, ["src/main.py"])
-    second_plan = run_risk_loop(
-        planspace,
-        "section-01",
-        "implementation",
-        package,
-        _dispatch,
-    )
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        first_plan = run_risk_loop(
+            planspace,
+            "section-01",
+            "implementation",
+            package,
+        )
+        append_risk_history(planspace, "01", first_plan, ["src/main.py"])
+        second_plan = run_risk_loop(
+            planspace,
+            "section-01",
+            "implementation",
+            package,
+        )
+    finally:
+        Services.dispatcher.reset_override()
 
     assert first_plan.step_decisions[0].posture == PostureProfile.P3_GUARDED
     assert second_plan.step_decisions[0].posture == PostureProfile.P2_STANDARD
@@ -700,11 +706,11 @@ def test_reassessment_executes_newly_accepted_frontier_end_to_end(
     run_calls: list[list[str]] = []
 
     monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
     monkeypatch.setattr("implementation.engine.implementation_phase._run_risk_review", lambda *_args, **_kwargs: initial_plan)
     monkeypatch.setattr("implementation.engine.implementation_phase.append_risk_history", lambda *args, **kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_phase.read_package", lambda *_args, **_kwargs: package)
-    monkeypatch.setattr("implementation.engine.implementation_phase.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("containers.LogService.log_lifecycle", lambda *args, **kwargs: None)
 
     def _run_section(*_args, **_kwargs) -> list[str]:
         files = (

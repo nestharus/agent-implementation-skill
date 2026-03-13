@@ -7,6 +7,7 @@ from pathlib import Path
 
 from dependency_injector import providers
 
+from conftest import make_dispatcher
 from containers import PromptGuard, Services
 from risk.engine import risk_assessor as risk_loop
 from risk.prompt import writers as risk_prompt_writers
@@ -234,13 +235,16 @@ def test_run_lightweight_risk_check_with_mocked_dispatch(tmp_path: Path) -> None
             return json.dumps(serialize_assessment(_assessment()))
         return json.dumps(serialize_plan(_valid_plan()))
 
-    plan = run_lightweight_risk_check(
-        tmp_path,
-        "section-03",
-        "implementation",
-        package,
-        _dispatch,
-    )
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        plan = run_lightweight_risk_check(
+            tmp_path,
+            "section-03",
+            "implementation",
+            package,
+        )
+    finally:
+        Services.dispatcher.reset_override()
 
     assert calls == ["risk-assessor.md", "execution-optimizer.md"]
     assert plan.accepted_frontier == ["explore-01"]
@@ -261,13 +265,16 @@ def test_run_lightweight_risk_check_fails_closed_when_optimizer_parse_fails(
             return json.dumps(serialize_assessment(_assessment()))
         return "not valid json"
 
-    plan = run_lightweight_risk_check(
-        tmp_path,
-        "section-03",
-        "implementation",
-        package,
-        _dispatch,
-    )
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        plan = run_lightweight_risk_check(
+            tmp_path,
+            "section-03",
+            "implementation",
+            package,
+        )
+    finally:
+        Services.dispatcher.reset_override()
 
     assert calls == ["risk-assessor.md", "execution-optimizer.md"]
     assert plan.accepted_frontier == []
@@ -288,13 +295,16 @@ def test_run_risk_loop_single_iteration_when_plan_passes(tmp_path: Path) -> None
             return json.dumps(serialize_assessment(_assessment()))
         return json.dumps(serialize_plan(_valid_plan()))
 
-    plan = run_risk_loop(
-        tmp_path,
-        "section-03",
-        "implementation",
-        package,
-        _dispatch,
-    )
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        plan = run_risk_loop(
+            tmp_path,
+            "section-03",
+            "implementation",
+            package,
+        )
+    finally:
+        Services.dispatcher.reset_override()
 
     assert calls == ["risk-assessor.md", "execution-optimizer.md"]
     assert plan.accepted_frontier == ["explore-01"]
@@ -312,13 +322,16 @@ def test_run_risk_loop_returns_mechanically_enforced_plan(tmp_path: Path) -> Non
             return json.dumps(serialize_assessment(_assessment()))
         return json.dumps(serialize_plan(_invalid_threshold_plan()))
 
-    plan = run_risk_loop(
-        tmp_path,
-        "section-03",
-        "implementation",
-        package,
-        _dispatch,
-    )
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        plan = run_risk_loop(
+            tmp_path,
+            "section-03",
+            "implementation",
+            package,
+        )
+    finally:
+        Services.dispatcher.reset_override()
 
     assert calls == ["risk-assessor.md", "execution-optimizer.md"]
     assert plan.accepted_frontier == []
@@ -342,14 +355,17 @@ def test_run_risk_loop_retries_when_plan_fails_validation(tmp_path: Path) -> Non
             return json.dumps(serialize_plan(_invalid_frontier_plan()))
         return json.dumps(serialize_plan(_valid_plan()))
 
-    plan = run_risk_loop(
-        tmp_path,
-        "section-03",
-        "implementation",
-        package,
-        _dispatch,
-        max_iterations=3,
-    )
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        plan = run_risk_loop(
+            tmp_path,
+            "section-03",
+            "implementation",
+            package,
+            max_iterations=3,
+        )
+    finally:
+        Services.dispatcher.reset_override()
 
     assert calls == [
         "risk-assessor.md",
@@ -384,13 +400,16 @@ def test_run_risk_loop_applies_history_adjustment_to_assessment(tmp_path: Path) 
             return json.dumps(serialize_assessment(_assessment()))
         return json.dumps(serialize_plan(_valid_plan()))
 
-    run_risk_loop(
-        tmp_path,
-        "section-03",
-        "implementation",
-        package,
-        _dispatch,
-    )
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        run_risk_loop(
+            tmp_path,
+            "section-03",
+            "implementation",
+            package,
+        )
+    finally:
+        Services.dispatcher.reset_override()
 
     assessment_payload = load_risk_artifact(
         tmp_path / "artifacts" / "risk" / "section-03-risk-assessment.json",
@@ -429,13 +448,16 @@ def test_run_risk_loop_applies_posture_hysteresis_after_plan(tmp_path: Path) -> 
             return json.dumps(serialize_assessment(assessment))
         return json.dumps(serialize_plan(plan))
 
-    result = run_risk_loop(
-        tmp_path,
-        "section-03",
-        "implementation",
-        package,
-        _dispatch,
-    )
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        result = run_risk_loop(
+            tmp_path,
+            "section-03",
+            "implementation",
+            package,
+        )
+    finally:
+        Services.dispatcher.reset_override()
 
     assert result.step_decisions[0].posture == PostureProfile.P1_LIGHT
 
@@ -464,13 +486,13 @@ def test_run_risk_loop_calls_prompt_guard_validation(
             return json.dumps(serialize_assessment(_assessment()))
         return json.dumps(serialize_plan(_valid_plan()))
 
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     try:
         run_risk_loop(
             tmp_path,
             "section-03",
             "implementation",
             package,
-            _dispatch,
         )
 
         assert prompt_calls == [
@@ -478,6 +500,7 @@ def test_run_risk_loop_calls_prompt_guard_validation(
             tmp_path / "artifacts" / "risk" / "section-03-risk-plan-prompt.md",
         ]
     finally:
+        Services.dispatcher.reset_override()
         Services.prompt_guard.reset_override()
 
 
@@ -499,19 +522,20 @@ def test_run_risk_loop_falls_back_when_prompt_guard_fails(
     def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
         raise AssertionError("dispatch should not be called when prompt validation fails")
 
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     try:
         plan = run_risk_loop(
             tmp_path,
             "section-03",
             "implementation",
             package,
-            _dispatch,
         )
 
         assert plan.step_decisions[0].posture == PostureProfile.P4_REOPEN
         assert plan.step_decisions[0].decision == StepDecision.REJECT_REOPEN
         assert plan.reopen_steps == ["explore-01"]
     finally:
+        Services.dispatcher.reset_override()
         Services.prompt_guard.reset_override()
 
 

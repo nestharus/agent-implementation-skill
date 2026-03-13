@@ -86,197 +86,150 @@ def _read_dispatch_meta(meta_path: Path) -> dict | None | object:
     return data
 
 
-def dispatch_task(
-    db_path: str,
-    planspace: Path,
-    task: dict[str, str],
-    codespace: Path | None = None,
-    model_policy: dict[str, str] | None = None,
-) -> None:
-    """Claim, dispatch, and complete/fail a single task."""
-    task_id = task["id"]
-    task_type = task["type"]
-    submitted_by = task.get("by", "unknown")
-    payload_path = task.get("payload")
-    registry = PathRegistry(planspace)
-
-    # Resolve agent file and model.
-    try:
-        agent_file, model = _task_registry.resolve(task_type, model_policy)
-    except ValueError as e:
-        log(f"ERROR: Cannot resolve task {task_id}: {e}")
-        db_cmd(db_path, "claim-task", DISPATCHER_NAME, task_id)
-        db_cmd(db_path, "fail-task", task_id, "--error", str(e))
-        notify_task_result(db_path, submitted_by, task_id, task_type, "failed", str(e))
-        return
-
-    # Claim the task.
-    try:
-        db_cmd(db_path, "claim-task", DISPATCHER_NAME, task_id)
-    except RuntimeError as e:
-        log(f"WARNING: Could not claim task {task_id}: {e}")
-        return
-
-    # Record agent_file and model on the task row for observability.
-    record_task_routing(
-        planspace,
-        task_id,
-        task_type,
-        agent_file,
-        model,
-        db_path=db_path,
-    )
-
-    log(f"Dispatching task {task_id}: {task_type} -> {agent_file} ({model})")
-
-    # Build the prompt path. payload_path is required for all queued tasks
-    # (R80/P1). Fail closed if absent.
-    artifacts_dir = registry.artifacts
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
-
-    if payload_path:
-        prompt_path = Path(payload_path)
-        if not prompt_path.is_absolute():
-            prompt_path = planspace / prompt_path
-        if not prompt_path.exists():
-            err = f"payload declared but not found: {prompt_path}"
-            log(f"ERROR: {err} — failing task {task_id}")
-            db_cmd(db_path, "fail-task", task_id, "--error", err)
-            notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
-            return
-        # V4/R77: validate agent-provided payload prompt
-        violations = Services.prompt_guard().validate_dynamic(
-            prompt_path.read_text(encoding="utf-8"),
+def _fail_task(db_path, task_id, task_type, submitted_by, err, *,
+               planspace=None, output_path=None, codespace=None):
+    """Mark a task as failed, notify submitter, and optionally reconcile."""
+    db_cmd(db_path, "fail-task", task_id, "--error", err)
+    notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
+    if planspace is not None:
+        reconcile_task_completion(
+            Path(db_path), planspace, int(task_id),
+            "failed", output_path,
+            error=err, codespace=codespace,
         )
-        if violations:
-            err = f"payload prompt blocked — template violations: {violations}"
-            log(f"ERROR: task {task_id}: {err}")
-            db_cmd(db_path, "fail-task", task_id, "--error", err)
-            notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
-            return
-    else:
-        # R80/P1: payload-backed context is mandatory for all queued tasks.
-        # Metadata-only dispatch produces under-specified agents.
+
+
+def _resolve_prompt(task, planspace, task_id, task_type, submitted_by, db_path):
+    """Validate and resolve the task payload to a prompt path.
+
+    Returns the prompt ``Path`` on success, ``None`` on validation failure
+    (the task is already failed in that case).
+    """
+    payload_path = task.get("payload")
+    if not payload_path:
         err = "no payload_path — queued tasks require payload-backed runtime context"
         log(f"ERROR: task {task_id}: {err}")
-        db_cmd(db_path, "fail-task", task_id, "--error", err)
-        notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
-        return
+        _fail_task(db_path, task_id, task_type, submitted_by, err)
+        return None
 
-    # --- QA dispatch interceptor (optional) ---
-    # Lazy-import inside conditional to avoid hard dependency.
-    try:
-        from qa.service.qa_interceptor import intercept_task, read_qa_parameters
-        qa_params = read_qa_parameters(planspace)
-    except Exception:
-        logger.warning(
-            "QA interceptor import failed, skipping QA gate", exc_info=True,
-        )
-        qa_params = {}
+    prompt_path = Path(payload_path)
+    if not prompt_path.is_absolute():
+        prompt_path = planspace / prompt_path
+    if not prompt_path.exists():
+        err = f"payload declared but not found: {prompt_path}"
+        log(f"ERROR: {err} — failing task {task_id}")
+        _fail_task(db_path, task_id, task_type, submitted_by, err)
+        return None
 
-    if qa_params.get("qa_mode"):
-        log(f"QA intercept: evaluating task {task_id} ({task_type})")
-        try:
-            intercept = intercept_task(task, agent_file, planspace)
-        except Exception as exc:
-            # Fail-OPEN: QA errors must not block dispatch.
-            log(f"QA ERROR for task {task_id}: {exc} — failing open (degraded)")
-            from qa.service.qa_interceptor import InterceptResult
-            intercept = InterceptResult(intercepted=True, verdict=None, output_path="dispatch_error")
+    violations = Services.prompt_guard().validate_dynamic(
+        prompt_path.read_text(encoding="utf-8"),
+    )
+    if violations:
+        err = f"payload prompt blocked — template violations: {violations}"
+        log(f"ERROR: task {task_id}: {err}")
+        _fail_task(db_path, task_id, task_type, submitted_by, err)
+        return None
 
-        record_qa_intercept(
-            planspace,
-            task_id,
-            task_type,
-            None if intercept.intercepted else intercept.verdict,
-            db_path=db_path,
-            reason_code=intercept.output_path,
-        )
+    return prompt_path
 
-        if not intercept.intercepted:
-            err = f"QA interceptor rejected: see {intercept.verdict}"
-            log(f"QA REJECT: task {task_id}: {err}")
-            db_cmd(db_path, "fail-task", task_id, "--error", err)
-            notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
-            return
-        # PAT-0014: distinguish genuine approval from degraded fallback
-        if intercept.output_path:
-            log(f"QA DEGRADED: task {task_id} (reason: {intercept.output_path}) — failing open")
-        else:
-            log(f"QA PASS: task {task_id}")
 
-    # --- Flow context wrapping (Task 5) ---
-    # If the task has flow metadata, create a wrapper prompt that
-    # prepends flow context paths.  The original prompt is NOT mutated.
-    flow_context_relpath = task.get("flow_context")
-    continuation_relpath = task.get("continuation")
-    trigger_gate_id = task.get("trigger_gate")
-    if flow_context_relpath:
-        try:
-            flow_ctx = build_flow_context(
-                planspace, int(task_id),
-                flow_context_path=flow_context_relpath,
-                continuation_path=continuation_relpath,
-                trigger_gate_id=trigger_gate_id,
-            )
-        except FlowCorruptionError as exc:
-            err = f"flow context corrupt: {exc}"
-            log(f"ERROR: task {task_id}: {err}")
-            db_cmd(db_path, "fail-task", task_id, "--error", err)
-            notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
-            return
+def _run_qa_gate(planspace, task_id, task_type, submitted_by, db_path,
+                 agent_file, model, prompt_path, task):
+    """Run the QA dispatch interceptor. Returns False if rejected."""
+    from qa.service.qa_gate import evaluate_qa_gate
+    intercept = evaluate_qa_gate(
+        planspace, None, agent_file, model, prompt_path,
+        task=task,
+    )
+    if intercept is None:
+        return True
 
-        if flow_ctx is not None:
-            # Don't expose continuation_path to agents — if they see it,
-            # they write junk files that the reconciler treats as malformed
-            # continuations, failing the gate member.  Continuation is a
-            # system-level mechanism, not an agent instruction.
-            prompt_path = write_dispatch_prompt(
-                planspace, int(task_id), prompt_path,
-                flow_context_path=flow_context_relpath,
-            )
-            log(f"  flow context wrapped -> {prompt_path.name}")
-
-    output_path = artifacts_dir / f"task-{task_id}-output.md"
-
-    # P3: Recover section identity from queued task scope
-    section_number = None
-    scope = task.get("scope")
-    if scope:
-        m = re.match(r'^section-(\d+)$', scope)
-        if m:
-            section_number = m.group(1)
-
-    # P4: Freshness gate for section-scoped queued tasks
-    freshness_token = task.get("freshness")
-    if freshness_token and section_number:
-        current_token = Services.freshness().compute(planspace, section_number)
-        if current_token != freshness_token:
-            err = (
-                f"stale alignment — section-{section_number} inputs changed "
-                f"(submitted={freshness_token[:8]}, "
-                f"current={current_token[:8]})"
-            )
-            log(f"Task {task_id} stale: {err}")
-            db_cmd(db_path, "fail-task", task_id, "--error", err)
-            notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
-            reconcile_task_completion(
-                Path(db_path), planspace, int(task_id),
-                "failed", None, error=err, codespace=codespace,
-            )
-            return
-
-    # V6: Dispatch through dispatch.engine.section_dispatcher for pause/alignment
-    # handling, context sidecars, and per-dispatch monitoring.
-    output = Services.dispatcher().dispatch(
-        model, prompt_path, output_path,
-        planspace, None,  # parent=None outside section-loop context
-        section_number=section_number,
-        codespace=codespace,
-        agent_file=agent_file,
+    log(f"QA intercept: evaluating task {task_id} ({task_type})")
+    record_qa_intercept(
+        planspace, task_id, task_type,
+        None if intercept.intercepted else intercept.verdict,
+        db_path=db_path, reason_code=intercept.output_path,
     )
 
-    # Read dispatch metadata sidecar for return-code visibility
+    if not intercept.intercepted:
+        err = f"QA interceptor rejected: see {intercept.verdict}"
+        log(f"QA REJECT: task {task_id}: {err}")
+        _fail_task(db_path, task_id, task_type, submitted_by, err)
+        return False
+
+    if intercept.output_path:
+        log(f"QA DEGRADED: task {task_id} (reason: {intercept.output_path}) — failing open")
+    else:
+        log(f"QA PASS: task {task_id}")
+    return True
+
+
+def _wrap_flow_context(task, planspace, task_id, task_type, submitted_by,
+                       db_path, prompt_path):
+    """Wrap prompt with flow context if present. Returns updated prompt path."""
+    flow_context_relpath = task.get("flow_context")
+    if not flow_context_relpath:
+        return prompt_path
+
+    continuation_relpath = task.get("continuation")
+    trigger_gate_id = task.get("trigger_gate")
+    try:
+        flow_ctx = build_flow_context(
+            planspace, int(task_id),
+            flow_context_path=flow_context_relpath,
+            continuation_path=continuation_relpath,
+            trigger_gate_id=trigger_gate_id,
+        )
+    except FlowCorruptionError as exc:
+        err = f"flow context corrupt: {exc}"
+        log(f"ERROR: task {task_id}: {err}")
+        _fail_task(db_path, task_id, task_type, submitted_by, err)
+        return None
+
+    if flow_ctx is not None:
+        prompt_path = write_dispatch_prompt(
+            planspace, int(task_id), prompt_path,
+            flow_context_path=flow_context_relpath,
+        )
+        log(f"  flow context wrapped -> {prompt_path.name}")
+
+    return prompt_path
+
+
+def _parse_section_number(scope: str | None) -> str | None:
+    """Extract section number from a scope string like 'section-3'."""
+    if not scope:
+        return None
+    m = re.match(r'^section-(\d+)$', scope)
+    return m.group(1) if m else None
+
+
+def _check_freshness(planspace, task_id, task_type, submitted_by, db_path,
+                     section_number, freshness_token, codespace):
+    """Verify the freshness token still matches current state.
+
+    Returns True if fresh (or no token to check), False if stale
+    (the task is already failed in that case).
+    """
+    if not freshness_token or not section_number:
+        return True
+    current_token = Services.freshness().compute(planspace, section_number)
+    if current_token == freshness_token:
+        return True
+    err = (
+        f"stale alignment — section-{section_number} inputs changed "
+        f"(submitted={freshness_token[:8]}, "
+        f"current={current_token[:8]})"
+    )
+    log(f"Task {task_id} stale: {err}")
+    _fail_task(db_path, task_id, task_type, submitted_by, err,
+               planspace=planspace, codespace=codespace)
+    return False
+
+
+def _finalize_task(db_path, planspace, task_id, task_type, submitted_by,
+                   output, output_path, codespace):
+    """Evaluate dispatch result and mark task complete or failed."""
     meta_path = output_path.with_suffix(".meta.json")
     meta_result = _read_dispatch_meta(meta_path)
 
@@ -286,12 +239,9 @@ def dispatch_task(
             f"renamed to {meta_path.with_suffix('.malformed.json').name}"
         )
         log(f"ERROR: task {task_id}: {err}")
-        db_cmd(db_path, "fail-task", task_id, "--error", err)
-        notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
-        reconcile_task_completion(
-            Path(db_path), planspace, int(task_id),
-            "failed", str(output_path), error=err, codespace=codespace,
-        )
+        _fail_task(db_path, task_id, task_type, submitted_by, err,
+                   planspace=planspace, output_path=str(output_path),
+                   codespace=codespace)
         return
 
     timed_out = False
@@ -303,47 +253,102 @@ def dispatch_task(
         if rc is not None and rc != 0:
             agent_failed = True
 
-    # Fallback: detect timeout from output prefix when sidecar is absent
     if not timed_out and output.startswith("TIMEOUT:"):
         timed_out = True
 
     if timed_out:
+        err = "Agent timeout (600s)"
         log(f"Task {task_id} timed out")
-        db_cmd(
-            db_path, "fail-task", task_id,
-            "--error", "Agent timeout (600s)",
-        )
-        notify_task_result(
-            db_path, submitted_by, task_id, task_type, "failed",
-            "Agent timeout (600s)",
-        )
-        reconcile_task_completion(
-            Path(db_path), planspace, int(task_id),
-            "failed", None, error="Agent timeout (600s)", codespace=codespace,
-        )
+        _fail_task(db_path, task_id, task_type, submitted_by, err,
+                   planspace=planspace, codespace=codespace)
     elif agent_failed:
         err = f"Agent exited with return code {rc}"
         log(f"Task {task_id} failed: {err}")
-        db_cmd(db_path, "fail-task", task_id, "--error", err)
-        notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
-        reconcile_task_completion(
-            Path(db_path), planspace, int(task_id),
-            "failed", str(output_path), error=err, codespace=codespace,
-        )
+        _fail_task(db_path, task_id, task_type, submitted_by, err,
+                   planspace=planspace, output_path=str(output_path),
+                   codespace=codespace)
     else:
-        db_cmd(
-            db_path, "complete-task", task_id,
-            "--output", str(output_path),
-        )
-        notify_task_result(
-            db_path, submitted_by, task_id, task_type, "complete",
-            str(output_path),
-        )
+        db_cmd(db_path, "complete-task", task_id, "--output", str(output_path))
+        notify_task_result(db_path, submitted_by, task_id, task_type, "complete",
+                           str(output_path))
         log(f"Task {task_id} complete -> {output_path}")
         reconcile_task_completion(
             Path(db_path), planspace, int(task_id),
             "complete", str(output_path), codespace=codespace,
         )
+
+
+def dispatch_task(
+    db_path: str,
+    planspace: Path,
+    task: dict[str, str],
+    codespace: Path | None = None,
+    model_policy: dict[str, str] | None = None,
+) -> None:
+    """Claim, dispatch, and complete/fail a single task."""
+    task_id = task["id"]
+    task_type = task["type"]
+    submitted_by = task.get("by", "unknown")
+    registry = PathRegistry(planspace)
+
+    # Resolve agent file and model.
+    try:
+        agent_file, model = _task_registry.resolve(task_type, model_policy)
+    except ValueError as e:
+        log(f"ERROR: Cannot resolve task {task_id}: {e}")
+        db_cmd(db_path, "claim-task", DISPATCHER_NAME, task_id)
+        _fail_task(db_path, task_id, task_type, submitted_by, str(e))
+        return
+
+    # Claim the task.
+    try:
+        db_cmd(db_path, "claim-task", DISPATCHER_NAME, task_id)
+    except RuntimeError as e:
+        log(f"WARNING: Could not claim task {task_id}: {e}")
+        return
+
+    record_task_routing(planspace, task_id, task_type, agent_file, model, db_path=db_path)
+    log(f"Dispatching task {task_id}: {task_type} -> {agent_file} ({model})")
+
+    artifacts_dir = registry.artifacts
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    # Validate and resolve prompt
+    prompt_path = _resolve_prompt(task, planspace, task_id, task_type, submitted_by, db_path)
+    if prompt_path is None:
+        return
+
+    # QA gate
+    if not _run_qa_gate(planspace, task_id, task_type, submitted_by, db_path,
+                        agent_file, model, prompt_path, task):
+        return
+
+    # Flow context wrapping
+    prompt_path = _wrap_flow_context(task, planspace, task_id, task_type,
+                                     submitted_by, db_path, prompt_path)
+    if prompt_path is None:
+        return
+
+    output_path = artifacts_dir / f"task-{task_id}-output.md"
+
+    section_number = _parse_section_number(task.get("scope"))
+
+    if not _check_freshness(planspace, task_id, task_type, submitted_by,
+                            db_path, section_number,
+                            task.get("freshness"), codespace):
+        return
+
+    # Dispatch the agent
+    output = Services.dispatcher().dispatch(
+        model, prompt_path, output_path,
+        planspace, None,
+        section_number=section_number,
+        codespace=codespace,
+        agent_file=agent_file,
+    )
+
+    _finalize_task(db_path, planspace, task_id, task_type, submitted_by,
+                   output, output_path, codespace)
 
 
 def log(msg: str) -> None:
@@ -402,7 +407,7 @@ def main() -> None:
         except KeyboardInterrupt:
             log("Shutting down (interrupted)")
             break
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — top-level daemon loop, must not crash
             log(f"ERROR in dispatch loop: {e}")
             if args.once:
                 sys.exit(1)

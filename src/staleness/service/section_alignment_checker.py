@@ -19,42 +19,12 @@ def collect_modified_files(
         planspace,
         section,
         codespace,
-        logger=Services.logger().log,
     )
 
 
-def _extract_problems(
-    result: str,
-    output_path: Path | None = None,
-    planspace: Path | None = None,
-    parent: str | None = None,
-    codespace: Path | None = None,
-    *,
-    adjudicator_model: str,
-) -> str | None:
-    """Extract problem list from an alignment check result.
-
-    Returns the problems text if misaligned, ``None`` if aligned.
-    Uses the structured JSON verdict (``aligned``, ``problems``)
-    when available.  When no JSON verdict is found, dispatches a GLM
-    adjudicator to classify the raw output — scripts never interpret
-    meaning from text.
-    """
-    import json as _json
-
-    # Primary: structured JSON verdict from alignment judge
-    verdict = _parse_alignment_verdict(result)
-    if verdict is not None:
-        return extract_problems(verdict)
-
-    # Fallback: dispatch GLM adjudicator to classify the alignment output.
-    # Scripts must not interpret meaning from text — the adjudicator decides.
-    if output_path is not None and planspace is not None and parent is not None:
-        paths = PathRegistry(planspace)
-        paths.artifacts.mkdir(parents=True, exist_ok=True)
-        adj_prompt = paths.alignment_adjudicate_prompt()
-        adj_output = paths.alignment_adjudicate_output()
-        dynamic_body = f"""# Classify Alignment Check Output
+def _build_adjudicator_prompt(output_path: Path) -> str:
+    """Build the prompt for the alignment adjudicator fallback."""
+    return f"""# Classify Alignment Check Output
 
 Read the alignment check output and determine whether the section is aligned.
 
@@ -82,13 +52,61 @@ Reply with a JSON block:
 - If you cannot determine the state → `"aligned": false` with a single
   problem: "Unable to determine alignment state from judge output"
 """
-        # Validate dynamic body before wrapping in template
+
+
+def _parse_adjudicator_response(adj_result: str) -> str | None:
+    """Parse the adjudicator's JSON response. Returns problems or None if aligned."""
+    import json as _json
+    if not adj_result or adj_result == "ALIGNMENT_CHANGED_PENDING":
+        return None
+    try:
+        json_start = adj_result.find("{")
+        json_end = adj_result.rfind("}")
+        if json_start < 0 or json_end <= json_start:
+            return None
+        data = _json.loads(adj_result[json_start:json_end + 1])
+        if data.get("aligned") is True:
+            return None
+        problems = data.get("problems")
+        if isinstance(problems, list) and problems:
+            return "\n".join(str(p) for p in problems)
+        if isinstance(problems, str) and problems.strip():
+            return problems.strip()
+        return "Adjudicator classified as misaligned (no detail)"
+    except (_json.JSONDecodeError, KeyError):
+        return None
+
+
+def _extract_problems(
+    result: str,
+    output_path: Path | None = None,
+    planspace: Path | None = None,
+    parent: str | None = None,
+    codespace: Path | None = None,
+    *,
+    adjudicator_model: str,
+) -> str | None:
+    """Extract problem list from an alignment check result.
+
+    Returns the problems text if misaligned, ``None`` if aligned.
+    """
+    verdict = _parse_alignment_verdict(result)
+    if verdict is not None:
+        return extract_problems(verdict)
+
+    if output_path is not None and planspace is not None and parent is not None:
+        paths = PathRegistry(planspace)
+        paths.artifacts.mkdir(parents=True, exist_ok=True)
+        dynamic_body = _build_adjudicator_prompt(output_path)
         violations = Services.prompt_guard().validate_dynamic(dynamic_body)
         if violations:
-            Services.logger().log(f"Alignment adjudicate prompt safety violation: "
-                f"{violations} — skipping dispatch")
+            Services.logger().log(
+                f"Alignment adjudicate prompt safety violation: "
+                f"{violations} — skipping dispatch"
+            )
             return None
 
+        adj_prompt = paths.alignment_adjudicate_prompt()
         adj_prompt.write_text(
             render_template(
                 "alignment-adjudicate", dynamic_body,
@@ -96,32 +114,13 @@ Reply with a JSON block:
             ),
             encoding="utf-8",
         )
-
         adj_result = Services.dispatcher().dispatch(
-            adjudicator_model, adj_prompt, adj_output,
+            adjudicator_model, adj_prompt, paths.alignment_adjudicate_output(),
             planspace, parent, codespace=codespace,
             agent_file=Services.task_router().agent_for("staleness.alignment_adjudicate"),
         )
-        if adj_result and adj_result != "ALIGNMENT_CHANGED_PENDING":
-            try:
-                json_start = adj_result.find("{")
-                json_end = adj_result.rfind("}")
-                if json_start >= 0 and json_end > json_start:
-                    data = _json.loads(adj_result[json_start:json_end + 1])
-                    if data.get("aligned") is True:
-                        return None
-                    problems = data.get("problems")
-                    if isinstance(problems, list) and problems:
-                        return "\n".join(str(p) for p in problems)
-                    if isinstance(problems, str) and problems.strip():
-                        return problems.strip()
-                    return ("Adjudicator classified as misaligned "
-                            "(no detail)")
-            except (_json.JSONDecodeError, KeyError):
-                pass
+        return _parse_adjudicator_response(adj_result)
 
-    # No structured verdict and no adjudicator available — treat as
-    # misaligned to avoid false convergence.
     return ("MISSING_JSON_VERDICT: alignment judge did not produce "
             "structured output and adjudicator was not available")
 

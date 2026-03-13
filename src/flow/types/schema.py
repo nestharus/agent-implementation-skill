@@ -248,6 +248,75 @@ def _known_task_types() -> frozenset[str]:
     return _task_registry.all_task_types
 
 
+def _validate_steps(
+    steps: list[TaskSpec],
+    known_types: frozenset[str],
+    prefix: str,
+) -> list[str]:
+    """Validate a list of TaskSpec entries. Returns error strings."""
+    errors: list[str] = []
+    for j, step in enumerate(steps):
+        if not step.task_type:
+            errors.append(f"{prefix}[{j}]: missing task_type")
+        elif step.task_type not in known_types:
+            errors.append(f"{prefix}[{j}]: unknown task_type {step.task_type!r}")
+        if not step.payload_path:
+            errors.append(
+                f"{prefix}[{j}]: missing payload_path "
+                f"(queued tasks require payload-backed context)"
+            )
+    return errors
+
+
+def _validate_fanout_action(
+    action: FanoutAction,
+    known_types: frozenset[str],
+    action_prefix: str,
+) -> list[str]:
+    """Validate a single FanoutAction. Returns error strings."""
+    errors: list[str] = []
+    if not action.branches:
+        errors.append(f"{action_prefix}: fanout has no branches")
+    for k, branch in enumerate(action.branches):
+        has_steps = bool(branch.steps)
+        has_ref = bool(branch.chain_ref)
+        if has_steps and has_ref:
+            errors.append(
+                f"{action_prefix}.branches[{k}]: branch must provide "
+                f"either steps or chain_ref, not both"
+            )
+        elif not has_steps and not has_ref:
+            errors.append(
+                f"{action_prefix}.branches[{k}]: branch must provide "
+                f"either steps or chain_ref"
+            )
+        errors.extend(_validate_steps(
+            branch.steps, known_types,
+            f"{action_prefix}.branches[{k}].steps",
+        ))
+        if has_ref:
+            from flow.repository.catalog import KNOWN_PACKAGES
+            if branch.chain_ref not in KNOWN_PACKAGES:
+                errors.append(
+                    f"{action_prefix}.branches[{k}]: unknown chain_ref "
+                    f"{branch.chain_ref!r}"
+                )
+    if action.gate:
+        if action.gate.mode != "all":
+            errors.append(
+                f"{action_prefix}.gate: unsupported mode "
+                f"{action.gate.mode!r} (only 'all' supported)"
+            )
+        if action.gate.synthesis:
+            tt = action.gate.synthesis.task_type
+            if tt and tt not in known_types:
+                errors.append(
+                    f"{action_prefix}.gate.synthesis: unknown "
+                    f"task_type {tt!r}"
+                )
+    return errors
+
+
 def validate_flow_declaration(decl: FlowDeclaration) -> list[str]:
     """Validate a FlowDeclaration. Returns list of error strings (empty = valid).
 
@@ -264,117 +333,37 @@ def validate_flow_declaration(decl: FlowDeclaration) -> list[str]:
     errors: list[str] = []
     known_types = _known_task_types()
 
-    # Version check
     if decl.version not in (1, 2):
-        errors.append(
-            f"Unsupported version: {decl.version} (expected 1 or 2)"
-        )
+        errors.append(f"Unsupported version: {decl.version} (expected 1 or 2)")
 
-    # Actions must be a list
     if not isinstance(decl.actions, list):
         errors.append("'actions' must be a list")
         return errors
-
     if not decl.actions:
         errors.append("'actions' list is empty — nothing to dispatch")
         return errors
 
-    # At most one top-level chain action
-    chain_count = sum(
-        1 for a in decl.actions
-        if isinstance(a, ChainAction)
-    )
+    chain_count = sum(1 for a in decl.actions if isinstance(a, ChainAction))
     if chain_count > 1:
-        errors.append(
-            f"At most one top-level chain action allowed, found {chain_count}"
-        )
+        errors.append(f"At most one top-level chain action allowed, found {chain_count}")
 
     for i, action in enumerate(decl.actions):
         if isinstance(action, ChainAction):
-            # Validate each step
             if not action.steps:
                 errors.append(f"actions[{i}]: chain has no steps")
-            for j, step in enumerate(action.steps):
-                if not step.task_type:
-                    errors.append(
-                        f"actions[{i}].steps[{j}]: missing task_type"
-                    )
-                elif step.task_type not in known_types:
-                    errors.append(
-                        f"actions[{i}].steps[{j}]: unknown task_type "
-                        f"{step.task_type!r}"
-                    )
-                if not step.payload_path:
-                    errors.append(
-                        f"actions[{i}].steps[{j}]: missing payload_path "
-                        f"(queued tasks require payload-backed context)"
-                    )
+            errors.extend(_validate_steps(
+                action.steps, known_types, f"actions[{i}].steps",
+            ))
         elif isinstance(action, FanoutAction):
-            if not action.branches:
-                errors.append(f"actions[{i}]: fanout has no branches")
-            for k, branch in enumerate(action.branches):
-                has_steps = bool(branch.steps)
-                has_ref = bool(branch.chain_ref)
-                if has_steps and has_ref:
-                    errors.append(
-                        f"actions[{i}].branches[{k}]: branch must provide "
-                        f"either steps or chain_ref, not both"
-                    )
-                elif not has_steps and not has_ref:
-                    errors.append(
-                        f"actions[{i}].branches[{k}]: branch must provide "
-                        f"either steps or chain_ref"
-                    )
-                # Validate steps if present
-                for j, step in enumerate(branch.steps):
-                    if not step.task_type:
-                        errors.append(
-                            f"actions[{i}].branches[{k}].steps[{j}]: "
-                            f"missing task_type"
-                        )
-                    elif step.task_type not in known_types:
-                        errors.append(
-                            f"actions[{i}].branches[{k}].steps[{j}]: "
-                            f"unknown task_type {step.task_type!r}"
-                        )
-                    if not step.payload_path:
-                        errors.append(
-                            f"actions[{i}].branches[{k}].steps[{j}]: "
-                            f"missing payload_path (queued tasks require "
-                            f"payload-backed context)"
-                        )
-                # Validate chain_ref if present — check against catalog.
-                if has_ref:
-                    from flow.repository.catalog import KNOWN_PACKAGES
-                    if branch.chain_ref not in KNOWN_PACKAGES:
-                        errors.append(
-                            f"actions[{i}].branches[{k}]: unknown chain_ref "
-                            f"{branch.chain_ref!r}"
-                        )
-            # Gate validation
-            if action.gate:
-                if action.gate.mode != "all":
-                    errors.append(
-                        f"actions[{i}].gate: unsupported mode "
-                        f"{action.gate.mode!r} (only 'all' supported)"
-                    )
-                if action.gate.synthesis:
-                    tt = action.gate.synthesis.task_type
-                    if tt and tt not in known_types:
-                        errors.append(
-                            f"actions[{i}].gate.synthesis: unknown "
-                            f"task_type {tt!r}"
-                        )
+            errors.extend(_validate_fanout_action(
+                action, known_types, f"actions[{i}]",
+            ))
         else:
-            # Unknown action type (was a raw dict that _parse_action
-            # could not resolve)
             kind = (
                 action.get("kind", "<missing>")
                 if isinstance(action, dict)
                 else type(action).__name__
             )
-            errors.append(
-                f"actions[{i}]: unknown action kind {kind!r}"
-            )
+            errors.append(f"actions[{i}]: unknown action kind {kind!r}")
 
     return errors

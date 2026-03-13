@@ -5,6 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from dependency_injector import providers
+
+from conftest import make_dispatcher
+from containers import Services
 from risk.repository.history import append_history_entry
 from risk.engine.risk_assessor import run_risk_loop
 from risk.repository.serialization import load_risk_artifact, serialize_assessment, serialize_plan
@@ -42,7 +46,11 @@ def test_history_adjustment_modifies_assessment_risk_score(tmp_path: Path) -> No
             return json.dumps(serialize_assessment(_assessment(raw_risk=30)))
         return json.dumps(serialize_plan(_plan(residual_risk=30, posture=PostureProfile.P1_LIGHT)))
 
-    run_risk_loop(tmp_path, "section-03", "implementation", package, _dispatch)
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        run_risk_loop(tmp_path, "section-03", "implementation", package)
+    finally:
+        Services.dispatcher.reset_override()
 
     assessment_payload = load_risk_artifact(
         tmp_path / "artifacts" / "risk" / "section-03-risk-assessment.json",
@@ -68,7 +76,11 @@ def test_posture_hysteresis_prevents_large_jumps(tmp_path: Path) -> None:
             return json.dumps(serialize_assessment(_assessment(raw_risk=85)))
         return json.dumps(serialize_plan(_plan(residual_risk=85, posture=PostureProfile.P4_REOPEN)))
 
-    plan = run_risk_loop(tmp_path, "section-03", "implementation", package, _dispatch)
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        plan = run_risk_loop(tmp_path, "section-03", "implementation", package)
+    finally:
+        Services.dispatcher.reset_override()
 
     assert plan.step_decisions[0].posture == PostureProfile.P1_LIGHT
 
@@ -97,7 +109,11 @@ def test_cooldown_prevents_immediate_relaxation(tmp_path: Path) -> None:
             return json.dumps(serialize_assessment(_assessment(raw_risk=35)))
         return json.dumps(serialize_plan(_plan(residual_risk=35, posture=PostureProfile.P1_LIGHT)))
 
-    plan = run_risk_loop(tmp_path, "section-03", "implementation", package, _dispatch)
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        plan = run_risk_loop(tmp_path, "section-03", "implementation", package)
+    finally:
+        Services.dispatcher.reset_override()
 
     assert plan.step_decisions[0].posture == PostureProfile.P3_GUARDED
 
@@ -111,14 +127,17 @@ def test_posture_floor_is_enforced(tmp_path: Path) -> None:
             return json.dumps(serialize_assessment(_assessment(raw_risk=25)))
         return json.dumps(serialize_plan(_plan(residual_risk=25, posture=PostureProfile.P1_LIGHT)))
 
-    plan = run_risk_loop(
-        tmp_path,
-        "section-03",
-        "implementation",
-        package,
-        _dispatch,
-        posture_floor=PostureProfile.P2_STANDARD,
-    )
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        plan = run_risk_loop(
+            tmp_path,
+            "section-03",
+            "implementation",
+            package,
+            posture_floor=PostureProfile.P2_STANDARD,
+        )
+    finally:
+        Services.dispatcher.reset_override()
 
     assert plan.step_decisions[0].posture == PostureProfile.P2_STANDARD
 

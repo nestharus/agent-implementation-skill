@@ -226,7 +226,6 @@ def run_intent_bootstrap(
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: dict,
     incoming_notes: str | None,
 ) -> dict | None:
     """Run intent triage, TODO surfacing, philosophy, and budget assembly."""
@@ -235,7 +234,7 @@ def run_intent_bootstrap(
         planspace=planspace,
         codespace=codespace,
         parent=parent,
-        policy=policy,
+        policy=Services.policies().load(planspace),
         paths=PathRegistry(planspace),
         state={"incoming_notes": incoming_notes or ""},
     )

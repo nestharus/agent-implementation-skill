@@ -33,8 +33,7 @@ def _monitor_service(tmp_path: Path) -> tuple[MonitorService, DatabaseClient, Pa
     db_path = tmp_path / "run.db"
     client = DatabaseClient(DB_SH, db_path)
     client.execute("init")
-    logs: list[str] = []
-    service = MonitorService(client, "section-loop", logs.append)
+    service = MonitorService(client, "section-loop")
     return service, client, db_path
 
 

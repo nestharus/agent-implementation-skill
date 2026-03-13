@@ -41,7 +41,6 @@ def _collect_and_persist_problems(
     sections_by_num: dict[str, Section],
     planspace: Path,
     paths: PathRegistry,
-    policy: dict,
 ) -> tuple[list[dict], dict | None] | None:
     """Collect outstanding problems, detect recurrence, persist state.
 
@@ -58,6 +57,7 @@ def _collect_and_persist_problems(
     Services.logger().log(f"  coordinator: {len(problems)} outstanding problems across "
         f"{len({p['section'] for p in problems})} sections")
 
+    policy = Services.policies().load(planspace)
     recurrence = _detect_recurrence_patterns(planspace, problems)
     if recurrence:
         escalation_file = paths.coordination_model_escalation()
@@ -84,13 +84,13 @@ def _build_coordination_plan(
     planspace: Path,
     parent: str,
     paths: PathRegistry,
-    policy: dict,
 ) -> tuple[list[list[dict[str, Any]]], list[str], dict] | None:
     """Dispatch planner agent, parse plan, build confirmed groups.
 
     Returns ``(confirmed_groups, group_strategies, coord_plan)`` or
     ``None`` on failure (alignment changed, parse failures).
     """
+    policy = Services.policies().load(planspace)
     coord_dir = paths.coordination_dir()
 
     ctrl = Services.pipeline_control().poll_control_messages(planspace, parent)
@@ -179,7 +179,6 @@ def _execute_plan(
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: dict,
 ) -> tuple[list[str], set[str]] | None:
     """Execute coordination plan. Returns (affected_sections, all_modified) or None."""
     try:
@@ -192,7 +191,6 @@ def _execute_plan(
             planspace,
             codespace,
             parent,
-            policy,
         )
     except CoordinationExecutionExit:
         return None
@@ -214,7 +212,6 @@ def _recheck_section_alignment(
     codespace: Path,
     parent: str,
     paths: PathRegistry,
-    policy: dict,
 ) -> bool | None:
     """Re-run alignment check on one section after coordination fixes.
 
@@ -222,6 +219,7 @@ def _recheck_section_alignment(
     or ``None`` if alignment changed (caller should abort).
     """
     coord_dir = paths.coordination_dir()
+    policy = Services.policies().load(planspace)
 
     notes = read_incoming_notes(section, planspace, codespace)
     if notes:
@@ -282,7 +280,7 @@ def _recheck_section_alignment(
             aligned=True,
         )
         _record_recurrence_resolution(
-            sec_num, problems, recurrence, coord_dir, policy,
+            sec_num, problems, recurrence, coord_dir, planspace,
         )
         return True
 
@@ -301,12 +299,33 @@ def _recheck_section_alignment(
     return False
 
 
+def _compose_recurrence_text(
+    sec_num: str,
+    description: str,
+    escalation_model: str,
+    files: list[str],
+) -> str:
+    """Return the full prose text for a recurrence resolution artifact."""
+    files_block = "\n".join(f"- `{f}`" for f in files)
+    return (
+        f"# Resolution: Section {sec_num}\n\n"
+        f"## Recurring Problem\n\n"
+        f"{description}\n\n"
+        f"## Resolution\n\n"
+        f"Resolved during coordination round via "
+        f"coordinated fix with escalated model "
+        f"({escalation_model}). Section is now ALIGNED.\n\n"
+        f"## Files Involved\n\n"
+        f"{files_block}\n"
+    )
+
+
 def _record_recurrence_resolution(
     sec_num: str,
     problems: list[dict],
     recurrence: dict | None,
     coord_dir: Path,
-    policy: dict,
+    planspace: Path,
 ) -> None:
     """Write resolution artifact if this section had a recurring problem."""
     if not recurrence:
@@ -319,21 +338,15 @@ def _record_recurrence_resolution(
     )
     if not prev_problem:
         return
+    policy = Services.policies().load(planspace)
     resolution_path = coord_dir / f"resolution-{sec_num}.md"
     resolution_path.write_text(
-        f"# Resolution: Section {sec_num}\n\n"
-        f"## Recurring Problem\n\n"
-        f"{prev_problem.get('description', 'unknown')}\n\n"
-        f"## Resolution\n\n"
-        f"Resolved during coordination round via "
-        f"coordinated fix with escalated model "
-        f"({Services.policies().resolve(policy, 'escalation_model')}). Section is now ALIGNED.\n\n"
-        f"## Files Involved\n\n"
-        + "\n".join(
-            f"- `{f}`"
-            for f in prev_problem.get("files", [])
-        )
-        + "\n",
+        _compose_recurrence_text(
+            sec_num,
+            prev_problem.get('description', 'unknown'),
+            Services.policies().resolve(policy, 'escalation_model'),
+            prev_problem.get("files", []),
+        ),
         encoding="utf-8",
     )
     Services.logger().log(f"  coordinator: recorded resolution for "
@@ -351,7 +364,6 @@ def _recheck_affected_sections(
     codespace: Path,
     parent: str,
     paths: PathRegistry,
-    policy: dict,
 ) -> bool | None:
     """Re-check alignment for all affected sections.
 
@@ -390,7 +402,7 @@ def _recheck_affected_sections(
 
         result = _recheck_section_alignment(
             sec_num, section, section_results, problems, recurrence,
-            planspace, codespace, parent, paths, policy,
+            planspace, codespace, parent, paths,
         )
         if result is None:
             return None
@@ -437,11 +449,10 @@ def run_global_coordination(
     paths = PathRegistry(planspace)
     coord_dir = paths.coordination_dir()
     coord_dir.mkdir(parents=True, exist_ok=True)
-    policy = Services.policies().load(planspace)
 
     # Phase 1: Collect problems + detect recurrence
     collected = _collect_and_persist_problems(
-        section_results, sections_by_num, planspace, paths, policy,
+        section_results, sections_by_num, planspace, paths,
     )
     if collected is None:
         return True
@@ -449,13 +460,13 @@ def run_global_coordination(
 
     # Phase 1b: Aggregate scope deltas
     try:
-        aggregate_scope_deltas(planspace, parent, policy)
+        aggregate_scope_deltas(planspace, parent)
     except ScopeDeltaAggregationExit:
         return False
 
     # Phase 2: Build coordination plan via planner agent
     plan_result = _build_coordination_plan(
-        problems, planspace, parent, paths, policy,
+        problems, planspace, parent, paths,
     )
     if plan_result is None:
         return False
@@ -466,7 +477,7 @@ def run_global_coordination(
     # checks isinstance(bridge_directive, dict) before reading bridge fields.
     exec_result = _execute_plan(
         coord_plan, confirmed_groups, sections_by_num,
-        planspace, codespace, parent, policy,
+        planspace, codespace, parent,
     )
     if exec_result is None:
         return False
@@ -476,7 +487,7 @@ def run_global_coordination(
     recheck = _recheck_affected_sections(
         affected_sections, all_modified, sections_by_num,
         section_results, problems, recurrence,
-        planspace, codespace, parent, paths, policy,
+        planspace, codespace, parent, paths,
     )
     if recheck is None:
         return False

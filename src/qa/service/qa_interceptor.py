@@ -245,6 +245,53 @@ def intercept_dispatch(
     return intercept_task(task, agent_file, planspace)
 
 
+def _read_payload_content(
+    task: dict[str, str], planspace: Path,
+) -> str:
+    """Read task payload content from the payload path."""
+    payload_path_str = task.get("payload", "")
+    if not payload_path_str:
+        return ""
+    pp = Path(payload_path_str)
+    if not pp.is_absolute():
+        pp = planspace / pp
+    if pp.exists():
+        return pp.read_text(encoding="utf-8")
+    return ""
+
+
+def _dispatch_and_evaluate(
+    task: dict[str, str], agent_file: str, planspace: Path,
+    prompt_path: Path, output_path: Path,
+) -> InterceptResult:
+    """Dispatch QA agent and evaluate verdict."""
+    policy = Services.policies().load(planspace)
+    model = Services.policies().resolve(policy, "qa_interceptor")
+    output = Services.dispatcher().dispatch(
+        model, prompt_path, output_path,
+        planspace, None,
+        agent_file=Services.task_router().agent_for("qa.qa_intercept"),
+    )
+
+    qa_verdict = parse_qa_verdict(output)
+
+    if qa_verdict.verdict == "REJECT":
+        rationale_path = _write_rationale(
+            planspace, task, agent_file,
+            qa_verdict.verdict, qa_verdict.rationale, qa_verdict.violations,
+        )
+        return InterceptResult(intercepted=False, verdict=str(rationale_path), output_path=None)
+
+    if qa_verdict.verdict == "DEGRADED":
+        rationale_path = _write_rationale(
+            planspace, task, agent_file,
+            qa_verdict.verdict, qa_verdict.rationale, qa_verdict.violations,
+        )
+        return InterceptResult(intercepted=True, verdict=str(rationale_path), output_path="unparseable")
+
+    return InterceptResult(intercepted=True, verdict=None, output_path=None)
+
+
 def intercept_task(
     task: dict[str, str],
     agent_file: str,
@@ -268,7 +315,6 @@ def intercept_task(
     submitted_by = task.get("by", "unknown")
 
     try:
-        # 1. Read target agent contract.
         try:
             target_path = Services.task_router().resolve_agent_path(agent_file)
         except FileNotFoundError:
@@ -282,29 +328,13 @@ def intercept_task(
             return InterceptResult(intercepted=True, verdict=None, output_path="target_unavailable")
         target_contract = target_path.read_text(encoding="utf-8")
 
-        # 2. Resolve submitter contract.
         submitter_contract = _resolve_submitter_contract(submitted_by)
+        payload_content = _read_payload_content(task, planspace)
 
-        # 3. Read payload.
-        payload_path_str = task.get("payload", "")
-        payload_content = ""
-        if payload_path_str:
-            pp = Path(payload_path_str)
-            if not pp.is_absolute():
-                pp = planspace / pp
-            if pp.exists():
-                payload_content = pp.read_text(encoding="utf-8")
-
-        # 4. Build QA prompt.
         qa_prompt_text = _build_qa_prompt(
             task, target_contract, submitter_contract, payload_content,
         )
 
-        # 5. Validate and write prompt to artifacts.
-        # PAT-0002 (R109): payload_content is untrusted dynamic content
-        # even though the payload path arrived through an internal task.
-        # Agent contracts are trusted but payload is not — validate the
-        # full rendered prompt before dispatch.
         intercepts_dir = PathRegistry(planspace).qa_intercepts_dir()
         intercepts_dir.mkdir(parents=True, exist_ok=True)
         prompt_path = intercepts_dir / f"qa-{task_id}-prompt.md"
@@ -321,43 +351,9 @@ def intercept_task(
             return InterceptResult(intercepted=True, verdict=None, output_path="safety_blocked")
 
         output_path = intercepts_dir / f"qa-{task_id}-output.md"
+        return _dispatch_and_evaluate(task, agent_file, planspace, prompt_path, output_path)
 
-        # 6. Dispatch QA agent.
-        policy = Services.policies().load(planspace)
-        model = Services.policies().resolve(policy, "qa_interceptor")
-        output = Services.dispatcher().dispatch(
-            model,
-            prompt_path,
-            output_path,
-            planspace,
-            None,  # parent — not inside section-loop context
-            agent_file=Services.task_router().agent_for("qa.qa_intercept"),
-        )
-
-        # 7. Parse verdict.
-        qa_verdict = parse_qa_verdict(output)
-
-        if qa_verdict.verdict == "REJECT":
-            rationale_path = _write_rationale(
-                planspace, task, agent_file,
-                qa_verdict.verdict, qa_verdict.rationale, qa_verdict.violations,
-            )
-            return InterceptResult(intercepted=False, verdict=str(rationale_path), output_path=None)
-
-        if qa_verdict.verdict == "DEGRADED":
-            # PAT-0014: QA parse failure — fail open but preserve evidence
-            rationale_path = _write_rationale(
-                planspace, task, agent_file,
-                qa_verdict.verdict, qa_verdict.rationale, qa_verdict.violations,
-            )
-            return InterceptResult(intercepted=True, verdict=str(rationale_path), output_path="unparseable")
-
-        # Genuine PASS
-        return InterceptResult(intercepted=True, verdict=None, output_path=None)
-
-    except Exception:
-        # Fail-OPEN: any error during QA means the task passes.
-        # PAT-0014: preserve degraded status distinctly from genuine PASS.
+    except Exception:  # noqa: BLE001 — fail-open: QA errors must not block dispatch
         logger.error(
             "QA evaluation failed for task %s — failing open (degraded)",
             task_id,

@@ -298,6 +298,58 @@ def write_integration_alignment_prompt(
     )
 
 
+def _build_strategic_optional_refs(
+    sec: str, paths: PathRegistry,
+) -> dict[str, str]:
+    """Build conditional path reference lines for strategic-impl prompt."""
+    refs: dict[str, str] = {}
+
+    microstrategy_path = paths.microstrategy(sec)
+    refs["micro_ref"] = (
+        f"\n6. Microstrategy (tactical per-file breakdown): "
+        f"`{microstrategy_path}`"
+        if microstrategy_path.exists() else ""
+    )
+
+    proposal_state_path = paths.proposal_state(sec)
+    refs["proposal_state_ref"] = (
+        f"\n   - Proposal-state (resolved vs unresolved): "
+        f"`{proposal_state_path}`"
+        if proposal_state_path.exists() else ""
+    )
+
+    reconciliation_path = paths.reconciliation_result(sec)
+    refs["reconciliation_ref"] = (
+        f"\n   - Reconciliation result (cross-section conflicts): "
+        f"`{reconciliation_path}`"
+        if reconciliation_path.exists() else ""
+    )
+
+    readiness_path = paths.execution_ready(sec)
+    refs["readiness_ref"] = (
+        f"\n   - Execution readiness (blocker summary): "
+        f"`{readiness_path}`"
+        if readiness_path.exists() else ""
+    )
+
+    research_addendum = paths.research_addendum(sec)
+    research_dossier = paths.research_dossier(sec)
+    research_impl_ref = ""
+    if research_addendum.exists():
+        research_impl_ref += (
+            f"\n   - Research addendum (domain constraints): "
+            f"`{research_addendum}`"
+        )
+    if research_dossier.exists():
+        research_impl_ref += (
+            f"\n   - Research dossier (background knowledge): "
+            f"`{research_dossier}`"
+        )
+    refs["research_ref"] = research_impl_ref
+
+    return refs
+
+
 def write_strategic_impl_prompt(
     section: Section,
     planspace: Path,
@@ -317,76 +369,16 @@ def write_strategic_impl_prompt(
         a_name = f"impl-{sec}"
         m_name = f"{a_name}-monitor"
 
-        proposal_excerpt = paths.proposal_excerpt(sec)
-        alignment_excerpt = paths.alignment_excerpt(sec)
-        integration_proposal = paths.proposal(sec)
-        modified_report = paths.impl_modified(sec)
-
-        # Microstrategy ref (numbered 6 in impl)
-        microstrategy_path = paths.microstrategy(sec)
-        impl_micro_ref = ""
-        if microstrategy_path.exists():
-            impl_micro_ref = (
-                f"\n6. Microstrategy (tactical per-file breakdown): "
-                f"`{microstrategy_path}`"
-            )
-
-        # Proposal-state artifact (what the proposal resolved / left unresolved)
-        proposal_state_path = paths.proposal_state(sec)
-        proposal_state_ref = ""
-        if proposal_state_path.exists():
-            proposal_state_ref = (
-                f"\n   - Proposal-state (resolved vs unresolved): "
-                f"`{proposal_state_path}`"
-            )
-
-        # Reconciliation result (cross-section conflict detection)
-        reconciliation_path = paths.reconciliation_result(sec)
-        reconciliation_ref = ""
-        if reconciliation_path.exists():
-            reconciliation_ref = (
-                f"\n   - Reconciliation result (cross-section conflicts): "
-                f"`{reconciliation_path}`"
-            )
-
-        # Execution-readiness artifact (blocker summary)
-        readiness_path = paths.execution_ready(sec)
-        readiness_ref = ""
-        if readiness_path.exists():
-            readiness_ref = (
-                f"\n   - Execution readiness (blocker summary): "
-                f"`{readiness_path}`"
-            )
-
-        # Research context for implementation
-        research_addendum = paths.research_addendum(sec)
-        research_dossier = paths.research_dossier(sec)
-        research_impl_ref = ""
-        if research_addendum.exists():
-            research_impl_ref += (
-                f"\n   - Research addendum (domain constraints): "
-                f"`{research_addendum}`"
-            )
-        if research_dossier.exists():
-            research_impl_ref += (
-                f"\n   - Research dossier (background knowledge): "
-                f"`{research_dossier}`"
-            )
-
-        # Build base prompt context to pass to extras builder
         base_ctx = build_prompt_context(section, planspace, codespace)
         impl_extras = build_impl_context_extras(
-            section,
-            planspace,
-            alignment_problems,
-            base_context=base_ctx,
+            section, planspace, alignment_problems, base_context=base_ctx,
         )
 
-        return {
-            "proposal_excerpt": proposal_excerpt,
-            "alignment_excerpt": alignment_excerpt,
-            "integration_proposal": integration_proposal,
-            "modified_report": modified_report,
+        ctx = {
+            "proposal_excerpt": paths.proposal_excerpt(sec),
+            "alignment_excerpt": paths.alignment_excerpt(sec),
+            "integration_proposal": paths.proposal(sec),
+            "modified_report": paths.impl_modified(sec),
             "problems_block": impl_extras["problems_block"],
             "decisions_block": impl_extras["decisions_block"],
             "impl_corrections_ref": impl_extras["corrections_ref"],
@@ -395,11 +387,6 @@ def write_strategic_impl_prompt(
             "impl_tools_ref": impl_extras["tools_ref"],
             "governance_ref": impl_extras["governance_ref"],
             "tooling_block": impl_extras["tooling_block"],
-            "micro_ref": impl_micro_ref,
-            "proposal_state_ref": proposal_state_ref,
-            "reconciliation_ref": reconciliation_ref,
-            "readiness_ref": readiness_ref,
-            "research_ref": research_impl_ref,
             "task_submission_path": str(
                 paths.task_request_signal("impl", sec)),
             "allowed_tasks": "scan.explore, scan.deep_analyze, implementation.strategic, staleness.alignment_check",
@@ -408,6 +395,8 @@ def write_strategic_impl_prompt(
             ),
             "mail_block": agent_mail_instructions(planspace, a_name, m_name),
         }
+        ctx.update(_build_strategic_optional_refs(sec, paths))
+        return ctx
 
     sec = section.number
     return _write_prompt(
@@ -418,6 +407,84 @@ def write_strategic_impl_prompt(
         context_builder=_build_context,
         sidecar_agent="implementation-strategist.md",
     )
+
+
+def _build_alignment_optional_refs(
+    sec: str, paths: PathRegistry,
+) -> dict[str, str]:
+    """Build conditional path reference lines for impl-alignment prompt."""
+    refs: dict[str, str] = {}
+
+    alignment_surface = paths.alignment_surface(sec)
+    refs["surface_line"] = (
+        f"\n6. Alignment surface (read first): `{alignment_surface}`"
+        if alignment_surface.exists() else ""
+    )
+
+    codemap_path = paths.codemap()
+    refs["codemap_line"] = (
+        f"\n7. Project codemap (for context): `{codemap_path}`"
+        if codemap_path.exists() else ""
+    )
+
+    codemap_corrections_path = paths.corrections()
+    refs["impl_corrections_line"] = (
+        f"\n   - Codemap corrections (authoritative fixes): "
+        f"`{codemap_corrections_path}`"
+        if codemap_corrections_path.exists() else ""
+    )
+
+    microstrategy_path = paths.microstrategy(sec)
+    refs["micro_line"] = (
+        f"\n8. Microstrategy (tactical per-file plan): "
+        f"`{microstrategy_path}`"
+        if microstrategy_path.exists() else ""
+    )
+
+    todo_path = paths.todos(sec)
+    if todo_path.exists():
+        refs["todo_line"] = (
+            f"\n9. TODO extractions (in-code microstrategies): `{todo_path}`"
+        )
+    else:
+        refs["todo_line"] = ""
+        todos_dir = paths.todos_dir()
+        if todos_dir.is_dir() and any(todos_dir.iterdir()):
+            Services.logger().log(
+                f"Section {sec}: TODO file not found at "
+                f"{todo_path} but todos/ directory is non-empty"
+            )
+
+    todo_resolution_path = (
+        paths.signals_dir() / f"section-{sec}-todo-resolution.json"
+    )
+    refs["todo_resolution_line"] = (
+        f"\n10. TODO resolution summary: `{todo_resolution_path}`"
+        if todo_resolution_path.exists() else ""
+    )
+
+    governance_packet_path = paths.governance_packet(sec)
+    refs["governance_line"] = (
+        f"\n11. Governance packet (applicable problems/patterns/profile): "
+        f"`{governance_packet_path}`"
+        if governance_packet_path.exists() else ""
+    )
+
+    impl_feedback_path = paths.impl_feedback_surfaces(sec)
+    refs["impl_feedback_block"] = (
+        "\n\n## Implementation Feedback Surfaces\n\n"
+        "If during your alignment review you discover constraints, "
+        "unexpected behaviors, or problem dimensions that the current "
+        "problem definition does not cover, write them to:\n"
+        f"`{impl_feedback_path}`\n\n"
+        "Use the same surfaces schema as intent surfaces:\n"
+        '```json\n{"problem_surfaces": [...], "philosophy_surfaces": [...]}'
+        "\n```\n"
+        "Only write surfaces for genuinely new problem dimensions, not "
+        "for implementation quality issues.\n"
+    )
+
+    return refs
 
 
 def write_impl_alignment_prompt(
@@ -432,113 +499,18 @@ def write_impl_alignment_prompt(
         paths: PathRegistry,
     ) -> dict:
         sec = section.number
-
-        alignment_excerpt = paths.alignment_excerpt(sec)
-        proposal_excerpt = paths.proposal_excerpt(sec)
-        integration_proposal = paths.proposal(sec)
-
-        # Collect modified files and union with related files
         all_paths = set(section.related_files) | set(
             Services.section_alignment().collect_modified_files(planspace, section, codespace)
         )
-        impl_files_block = format_existing_file_listing(codespace, all_paths)
 
-        # Alignment surface
-        alignment_surface = paths.alignment_surface(sec)
-        impl_surface_line = ""
-        if alignment_surface.exists():
-            impl_surface_line = (
-                f"\n6. Alignment surface (read first): `{alignment_surface}`"
-            )
-
-        # Codemap for alignment judge
-        codemap_path = paths.codemap()
-        impl_codemap_line = ""
-        if codemap_path.exists():
-            impl_codemap_line = (
-                f"\n7. Project codemap (for context): `{codemap_path}`"
-            )
-
-        # Codemap corrections
-        codemap_corrections_path = paths.corrections()
-        impl_corrections_line = ""
-        if codemap_corrections_path.exists():
-            impl_corrections_line = (
-                f"\n   - Codemap corrections (authoritative fixes): "
-                f"`{codemap_corrections_path}`"
-            )
-
-        # Microstrategy
-        microstrategy_path = paths.microstrategy(sec)
-        impl_micro_line = ""
-        if microstrategy_path.exists():
-            impl_micro_line = (
-                f"\n8. Microstrategy (tactical per-file plan): "
-                f"`{microstrategy_path}`"
-            )
-
-        # TODO extraction
-        todo_path = paths.todos(sec)
-        impl_todo_line = ""
-        if todo_path.exists():
-            impl_todo_line = (
-                f"\n9. TODO extractions (in-code microstrategies): `{todo_path}`"
-            )
-        else:
-            todos_dir = paths.todos_dir()
-            if todos_dir.is_dir() and any(todos_dir.iterdir()):
-                Services.logger().log(
-                    f"Section {sec}: TODO file not found at "
-                    f"{todo_path} but todos/ directory is non-empty"
-                )
-
-        # TODO resolution signal
-        todo_resolution_path = (
-            paths.signals_dir() / f"section-{sec}-todo-resolution.json"
-        )
-        impl_todo_resolution_line = ""
-        if todo_resolution_path.exists():
-            impl_todo_resolution_line = (
-                f"\n10. TODO resolution summary: `{todo_resolution_path}`"
-            )
-
-        # Governance packet reference
-        governance_packet_path = paths.governance_packet(sec)
-        impl_governance_line = ""
-        if governance_packet_path.exists():
-            impl_governance_line = (
-                f"\n11. Governance packet (applicable problems/patterns/profile): "
-                f"`{governance_packet_path}`"
-            )
-
-        impl_feedback_path = paths.impl_feedback_surfaces(sec)
-        impl_feedback_block = (
-            "\n\n## Implementation Feedback Surfaces\n\n"
-            "If during your alignment review you discover constraints, "
-            "unexpected behaviors, or problem dimensions that the current "
-            "problem definition does not cover, write them to:\n"
-            f"`{impl_feedback_path}`\n\n"
-            "Use the same surfaces schema as intent surfaces:\n"
-            '```json\n{"problem_surfaces": [...], "philosophy_surfaces": [...]}'
-            "\n```\n"
-            "Only write surfaces for genuinely new problem dimensions, not "
-            "for implementation quality issues.\n"
-        )
-
-        return {
-            "proposal_excerpt": proposal_excerpt,
-            "alignment_excerpt": alignment_excerpt,
-            "integration_proposal": integration_proposal,
-            "files_block": impl_files_block,
-            "surface_line": impl_surface_line,
-            "codemap_line": impl_codemap_line,
-            "impl_corrections_line": impl_corrections_line,
-            "micro_line": impl_micro_line,
-            "todo_line": impl_todo_line,
-            "todo_resolution_line": impl_todo_resolution_line,
-            "governance_line": impl_governance_line,
-            "impl_feedback_block": impl_feedback_block,
+        ctx = {
+            "proposal_excerpt": paths.proposal_excerpt(sec),
+            "alignment_excerpt": paths.alignment_excerpt(sec),
+            "integration_proposal": paths.proposal(sec),
+            "files_block": format_existing_file_listing(codespace, all_paths),
         }
+        ctx.update(_build_alignment_optional_refs(sec, paths))
+        return ctx
 
     sec = section.number
     return _write_prompt(

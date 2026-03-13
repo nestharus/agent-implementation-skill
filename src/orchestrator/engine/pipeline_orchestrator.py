@@ -82,6 +82,57 @@ def main() -> None:
         Services.logger().log("Mailbox cleaned up")
 
 
+def _record_blocked_sections(
+    blocked_sections: list[str],
+    proposal_results: dict,
+    section_results: dict[str, SectionResult],
+) -> None:
+    """Record blocked sections as non-aligned results for Phase 2."""
+    for sec_num in blocked_sections:
+        pr = proposal_results[sec_num]
+        blocker_summary = "; ".join(
+            b.get("description", "unknown")[:80]
+            for b in pr.blockers[:3]
+        ) or "execution not ready"
+        section_results.setdefault(sec_num, SectionResult(
+            section_number=sec_num,
+            aligned=False,
+            problems=f"readiness blocked: {blocker_summary}",
+        ))
+
+
+def _run_phase2(
+    all_sections: list,
+    sections_by_num: dict,
+    section_results: dict[str, SectionResult],
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+    paths: PathRegistry,
+) -> str:
+    """Run Phase 2: strategic state, global recheck, and coordination.
+
+    Returns 'restart_phase1', 'done', or a coordination status.
+    """
+    build_strategic_state(paths.decisions_dir(), section_results, planspace)
+
+    promoted = promote_debt_signals(planspace)
+    if promoted:
+        Services.logger().log(f"Stabilization: promoted {len(promoted)} debt entries to staging")
+
+    phase2_status = Services.section_alignment().run_global_recheck(
+        sections_by_num, section_results, planspace, codespace, parent,
+    )
+    if phase2_status == "restart_phase1":
+        return "restart_phase1"
+
+    coordination_status = run_coordination_loop(
+        all_sections, section_results, sections_by_num,
+        planspace, codespace, parent,
+    )
+    return coordination_status or "done"
+
+
 def _run_loop(planspace: Path, codespace: Path, parent: str,
               sections_dir: Path, global_proposal: Path,
               global_alignment: Path) -> None:
@@ -91,75 +142,39 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
     project_mode, mode_constraints = resolve_project_mode(planspace, parent)
     write_mode_contract(planspace, project_mode, mode_constraints)
 
-    # Load sections and build cross-reference map
     all_sections = load_sections(sections_dir)
-
-    # Attach global document paths to each section
     for sec in all_sections:
         sec.global_proposal_path = global_proposal
         sec.global_alignment_path = global_alignment
-
     sections_by_num = {s.number: s for s in all_sections}
-
     Services.logger().log(f"Loaded {len(all_sections)} sections")
 
-    # Outer loop: alignment_changed during Phase 2 restarts from Phase 1.
-    # Each iteration runs Phase 1 (per-section) then Phase 2 (global).
-    # The loop exits on: complete, fail, abort, or exhaustion.
     while True:
-
-        # PAT-0005: refresh policy per iteration (not startup-only)
-        policy = Services.policies().load(planspace)
-
-        # -----------------------------------------------------------------
-        # Phase 1a: Proposal pass — all sections
-        # -----------------------------------------------------------------
-        # Run every section through exploration, proposal, alignment, and
-        # readiness resolution.  No code files are modified.  Each section
-        # yields a ProposalPassResult with readiness disposition.
         section_results: dict[str, SectionResult] = {}
         try:
             proposal_results = run_proposal_pass(
-                all_sections,
-                sections_by_num,
-                planspace,
-                codespace,
-                parent,
-                policy,
+                all_sections, sections_by_num, planspace, codespace, parent,
             )
         except ProposalPassExit:
             return
 
         try:
             reconciliation = run_reconciliation_phase(
-                proposal_results,
-                sections_by_num,
-                all_sections,
-                planspace,
-                codespace,
-                parent,
-                policy,
+                proposal_results, sections_by_num, all_sections,
+                planspace, codespace, parent,
             )
         except ReconciliationPhaseExit:
             return
 
-        ready_sections = reconciliation.new_section_numbers
         blocked_sections = reconciliation.removed_section_numbers
-
         if reconciliation.alignment_changed:
-            continue  # outer while True → restart Phase 1
+            continue
 
-        # -----------------------------------------------------------------
-        # Phase 1c: Implementation pass — execution-ready sections only
-        # -----------------------------------------------------------------
         try:
             section_results.update(
                 run_implementation_pass(
-                    proposal_results,
-                    sections_by_num,
-                    planspace,
-                    codespace,
-                    parent,
+                    proposal_results, sections_by_num,
+                    planspace, codespace, parent,
                 ),
             )
         except ImplementationPassRestart:
@@ -167,19 +182,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
         except ImplementationPassExit:
             return
 
-        # Record blocked sections (proposal aligned but not
-        # execution-ready) as non-aligned results for Phase 2 to handle
-        for sec_num in blocked_sections:
-            pr = proposal_results[sec_num]
-            blocker_summary = "; ".join(
-                b.get("description", "unknown")[:80]
-                for b in pr.blockers[:3]
-            ) or "execution not ready"
-            section_results.setdefault(sec_num, SectionResult(
-                section_number=sec_num,
-                aligned=False,
-                problems=f"readiness blocked: {blocker_summary}",
-            ))
+        _record_blocked_sections(blocked_sections, proposal_results, section_results)
 
         implemented_sections = [
             sec_num for sec_num, result in section_results.items()
@@ -188,42 +191,12 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
         Services.logger().log(f"=== Phase 1 complete: {len(implemented_sections)} sections "
             f"implemented, {len(blocked_sections)} blocked ===")
 
-        # Write strategic state snapshot after Phase 1
-        decisions_dir = paths.decisions_dir()
-        build_strategic_state(decisions_dir, section_results, planspace)
-
-        # Bounded stabilization: promote any debt signals emitted during
-        # post-implementation assessment into risk-register staging.
-        promoted = promote_debt_signals(planspace)
-        if promoted:
-            Services.logger().log(f"Stabilization: promoted {len(promoted)} debt entries to staging")
-
-        phase2_status = Services.section_alignment().run_global_recheck(
-            sections_by_num,
-            section_results,
-            planspace,
-            codespace,
-            parent,
-            policy,
+        status = _run_phase2(
+            all_sections, sections_by_num, section_results,
+            planspace, codespace, parent, paths,
         )
-        if phase2_status == "restart_phase1":
-            continue  # outer while True → restart Phase 1
-
-        coordination_status = run_coordination_loop(
-            all_sections,
-            section_results,
-            sections_by_num,
-            planspace,
-            codespace,
-            parent,
-            policy,
-        )
-        if coordination_status == "restart_phase1":
-            continue  # outer while True → restart Phase 1
-
-        if coordination_status in {"complete", "exhausted", "stalled"}:
-            return
-
+        if status == "restart_phase1":
+            continue
         return
 
 

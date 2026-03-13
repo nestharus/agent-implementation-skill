@@ -15,6 +15,33 @@ logger = logging.getLogger(__name__)
 SIMILARITY_ADJUSTMENT_SCALE = 0.2
 HISTORY_ADJUSTMENT_BOUND = 10.0
 
+# Outcome string → base score for _actual_outcome_score
+_OUTCOME_SCORE: dict[str, int] = {
+    "failure": 85,
+    "failed": 85,
+    "blocked": 85,
+    "reopen": 85,
+    "reopened": 85,
+    "risk_review_failure": 90,
+    "mixed": 60,
+    "partial": 60,
+    "warning": 60,
+    "deferred": 55,
+    "over_guarded": 15,
+    "success": 20,
+    "passed": 20,
+    "accepted": 20,
+}
+
+# Verification outcome → score adjustment
+_VERIFICATION_ADJUSTMENT: dict[str, int] = {
+    "failure": 10,
+    "failed": 10,
+    "blocked": 10,
+    "success": -5,
+    "passed": -5,
+}
+
 
 def append_history_entry(history_path: Path, entry: RiskHistoryEntry) -> None:
     """Append a single entry to the JSONL history file."""
@@ -22,6 +49,23 @@ def append_history_entry(history_path: Path, entry: RiskHistoryEntry) -> None:
     with history_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(serialize_history_entry(entry), separators=(",", ":")))
         handle.write("\n")
+
+
+def _parse_history_line(
+    stripped: str, history_path: Path, line_number: int,
+) -> RiskHistoryEntry | None:
+    """Parse a single JSONL line into a RiskHistoryEntry, or None on error."""
+    try:
+        payload = json.loads(stripped)
+        if not isinstance(payload, dict):
+            raise ValueError("History line must be a JSON object")
+        return deserialize_history_entry(payload)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        logger.warning(
+            "Skipping malformed risk history line %s:%s: %s",
+            history_path, line_number, exc,
+        )
+        return None
 
 
 def read_history(history_path: Path) -> list[RiskHistoryEntry]:
@@ -36,18 +80,9 @@ def read_history(history_path: Path) -> list[RiskHistoryEntry]:
                 stripped = line.strip()
                 if not stripped:
                     continue
-                try:
-                    payload = json.loads(stripped)
-                    if not isinstance(payload, dict):
-                        raise ValueError("History line must be a JSON object")
-                    entries.append(deserialize_history_entry(payload))
-                except (TypeError, ValueError, json.JSONDecodeError) as exc:
-                    logger.warning(
-                        "Skipping malformed risk history line %s:%s: %s",
-                        history_path,
-                        line_number,
-                        exc,
-                    )
+                entry = _parse_history_line(stripped, history_path, line_number)
+                if entry is not None:
+                    entries.append(entry)
         return entries
     except OSError as exc:
         logger.warning("Malformed risk history at %s: %s", history_path, exc)
@@ -105,25 +140,8 @@ def _actual_outcome_score(entry: RiskHistoryEntry) -> int:
     outcome = entry.actual_outcome.strip().lower()
     verification = (entry.verification_outcome or "").strip().lower()
 
-    if outcome in {"failure", "failed", "blocked", "reopen", "reopened"}:
-        score = 85
-    elif outcome == "risk_review_failure":
-        score = 90
-    elif outcome in {"mixed", "partial", "warning"}:
-        score = 60
-    elif outcome == "deferred":
-        score = 55
-    elif outcome == "over_guarded":
-        score = 15
-    elif outcome in {"success", "passed", "accepted"}:
-        score = 20
-    else:
-        score = 50
-
-    if verification in {"failure", "failed", "blocked"}:
-        score += 10
-    elif verification in {"success", "passed"}:
-        score -= 5
+    score = _OUTCOME_SCORE.get(outcome, 50)
+    score += _VERIFICATION_ADJUSTMENT.get(verification, 0)
 
     score += min(len(entry.surfaced_surprises) * 5, 10)
     return clamp_int(score, 0, 100)

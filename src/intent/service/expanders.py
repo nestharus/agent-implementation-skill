@@ -9,42 +9,16 @@ from orchestrator.path_registry import PathRegistry
 from intent.service.philosophy_bootstrapper import validate_philosophy_grounding
 
 
-def run_problem_expander(
+def _compose_problem_expander_text(
     section_number: str,
-    planspace: Path,
-    codespace: Path,
-    parent: str,
-    policy: dict,
-    *,
-    pending_surfaces_path: Path | None = None,
-    remaining_axis_budget: int = 6,
-) -> dict | None:
-    """Dispatch problem-expander and return its delta."""
-    paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
-    intent_sec = paths.intent_section_dir(section_number)
-
-    surfaces_path = (
-        pending_surfaces_path
-        if pending_surfaces_path is not None
-        else paths.intent_surfaces_signal(section_number)
-    )
-    problem_path = intent_sec / "problem.md"
-    rubric_path = intent_sec / "problem-alignment.md"
-    delta_path = paths.intent_delta_signal(section_number)
-
-    prompt_path = artifacts / f"problem-expand-{section_number}-prompt.md"
-    output_path = artifacts / f"problem-expand-{section_number}-output.md"
-
-    axis_budget_note = ""
-    if remaining_axis_budget < 6:
-        axis_budget_note = (
-            f"\n**Axis budget**: {remaining_axis_budget} new axes remaining. "
-            f"Prefer expanding existing axes over adding new ones when "
-            f"possible.\n"
-        )
-
-    expand_prompt_text = f"""# Task: Expand Problem Definition for Section {section_number}
+    surfaces_path: Path,
+    problem_path: Path,
+    rubric_path: Path,
+    axis_budget_note: str,
+    delta_path: Path,
+) -> str:
+    """Return the full prompt text for the problem expander."""
+    return f"""# Task: Expand Problem Definition for Section {section_number}
 
 ## Files to Read
 1. Intent surfaces (problem portion): `{surfaces_path}`
@@ -82,55 +56,18 @@ For each surface:
 Set restart_required=true if new axes were added or existing axes
 materially changed (new constraints, new success criteria).
 """
-    if not Services.prompt_guard().write_validated(expand_prompt_text, prompt_path):
-        return None
-    Services.communicator().log_artifact(planspace, f"prompt:problem-expand-{section_number}")
-
-    result = Services.dispatcher().dispatch(
-        Services.policies().resolve(policy,"intent_problem_expander"),
-        prompt_path,
-        output_path,
-        planspace,
-        parent,
-        codespace=codespace,
-        section_number=section_number,
-        agent_file=Services.task_router().agent_for("intent.problem_expander"),
-    )
-
-    if result == "ALIGNMENT_CHANGED_PENDING":
-        return None
-
-    return Services.signals().read(delta_path)
 
 
-def run_philosophy_expander(
+def _compose_philosophy_expander_text(
     section_number: str,
-    planspace: Path,
-    codespace: Path,
-    parent: str,
-    policy: dict,
-    *,
-    pending_surfaces_path: Path | None = None,
-) -> dict | None:
-    """Dispatch philosophy-expander and return its delta."""
-    paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
-    intent_global = paths.intent_global_dir()
-
-    surfaces_path = (
-        pending_surfaces_path
-        if pending_surfaces_path is not None
-        else paths.intent_surfaces_signal(section_number)
-    )
-    philosophy_path = intent_global / "philosophy.md"
-    source_map_path = intent_global / "philosophy-source-map.json"
-    decisions_path = paths.philosophy_decisions()
-    delta_path = paths.intent_delta_signal(section_number)
-
-    prompt_path = artifacts / f"philosophy-expand-{section_number}-prompt.md"
-    output_path = artifacts / f"philosophy-expand-{section_number}-output.md"
-
-    phil_expand_text = f"""# Task: Expand Philosophy for Section {section_number}
+    surfaces_path: Path,
+    philosophy_path: Path,
+    source_map_path: Path,
+    decisions_path: Path,
+    delta_path: Path,
+) -> str:
+    """Return the full prompt text for the philosophy expander."""
+    return f"""# Task: Expand Philosophy for Section {section_number}
 
 ## Files to Read
 1. Intent surfaces (philosophy portion): `{surfaces_path}`
@@ -171,6 +108,99 @@ Validate each philosophy surface and classify it:
 }}
 ```
 """
+
+
+def run_problem_expander(
+    section_number: str,
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+    *,
+    pending_surfaces_path: Path | None = None,
+    remaining_axis_budget: int = 6,
+) -> dict | None:
+    """Dispatch problem-expander and return its delta."""
+    policy = Services.policies().load(planspace)
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
+    intent_sec = paths.intent_section_dir(section_number)
+
+    surfaces_path = (
+        pending_surfaces_path
+        if pending_surfaces_path is not None
+        else paths.intent_surfaces_signal(section_number)
+    )
+    problem_path = intent_sec / "problem.md"
+    rubric_path = intent_sec / "problem-alignment.md"
+    delta_path = paths.intent_delta_signal(section_number)
+
+    prompt_path = artifacts / f"problem-expand-{section_number}-prompt.md"
+    output_path = artifacts / f"problem-expand-{section_number}-output.md"
+
+    axis_budget_note = ""
+    if remaining_axis_budget < 6:
+        axis_budget_note = (
+            f"\n**Axis budget**: {remaining_axis_budget} new axes remaining. "
+            f"Prefer expanding existing axes over adding new ones when "
+            f"possible.\n"
+        )
+
+    expand_prompt_text = _compose_problem_expander_text(
+        section_number, surfaces_path, problem_path, rubric_path,
+        axis_budget_note, delta_path,
+    )
+    if not Services.prompt_guard().write_validated(expand_prompt_text, prompt_path):
+        return None
+    Services.communicator().log_artifact(planspace, f"prompt:problem-expand-{section_number}")
+
+    result = Services.dispatcher().dispatch(
+        Services.policies().resolve(policy,"intent_problem_expander"),
+        prompt_path,
+        output_path,
+        planspace,
+        parent,
+        codespace=codespace,
+        section_number=section_number,
+        agent_file=Services.task_router().agent_for("intent.problem_expander"),
+    )
+
+    if result == "ALIGNMENT_CHANGED_PENDING":
+        return None
+
+    return Services.signals().read(delta_path)
+
+
+def run_philosophy_expander(
+    section_number: str,
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+    *,
+    pending_surfaces_path: Path | None = None,
+) -> dict | None:
+    """Dispatch philosophy-expander and return its delta."""
+    policy = Services.policies().load(planspace)
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
+    intent_global = paths.intent_global_dir()
+
+    surfaces_path = (
+        pending_surfaces_path
+        if pending_surfaces_path is not None
+        else paths.intent_surfaces_signal(section_number)
+    )
+    philosophy_path = intent_global / "philosophy.md"
+    source_map_path = intent_global / "philosophy-source-map.json"
+    decisions_path = paths.philosophy_decisions()
+    delta_path = paths.intent_delta_signal(section_number)
+
+    prompt_path = artifacts / f"philosophy-expand-{section_number}-prompt.md"
+    output_path = artifacts / f"philosophy-expand-{section_number}-output.md"
+
+    phil_expand_text = _compose_philosophy_expander_text(
+        section_number, surfaces_path, philosophy_path, source_map_path,
+        decisions_path, delta_path,
+    )
     if not Services.prompt_guard().write_validated(phil_expand_text, prompt_path):
         return None
     Services.communicator().log_artifact(planspace, f"prompt:philosophy-expand-{section_number}")
@@ -204,15 +234,48 @@ Validate each philosophy surface and classify it:
     return delta
 
 
+def _compose_recurrence_adjudication_text(
+    section_number: str,
+    ids_list: str,
+    recurrence_path: Path,
+    adjudication_path: Path,
+) -> str:
+    """Return the full prompt text for recurrence adjudication."""
+    return f"""# Task: Adjudicate Surface Recurrence for Section {section_number}
+
+## Context
+These previously-discarded surfaces have resurfaced during alignment:
+{ids_list}
+
+Read the recurrence signal at: `{recurrence_path}`
+
+Each entry includes the surface's original description, evidence, and
+when it was last seen. Decide for each surface whether it should be
+reopened (the discard was premature or conditions changed) or kept
+discarded (it is genuinely resolved or irrelevant).
+
+## Output
+Write a JSON signal to: `{adjudication_path}`
+```json
+{{
+  "section": "{section_number}",
+  "reopen_ids": [],
+  "keep_discarded_ids": [],
+  "reason": "..."
+}}
+```
+"""
+
+
 def adjudicate_recurrence(
     section_number: str,
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: dict,
     recurrences: list[dict],
 ) -> list[str]:
     """Dispatch adjudicator to decide on discarded surfaces that resurfaced."""
+    policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
     artifacts = paths.artifacts
     signals_dir = paths.signals_dir()
@@ -244,30 +307,9 @@ def adjudicate_recurrence(
     output_path = artifacts / f"recurrence-adjudicate-{section_number}-output.md"
 
     ids_list = ", ".join(recurrence["id"] for recurrence in recurrences)
-    recurrence_prompt_text = f"""# Task: Adjudicate Surface Recurrence for Section {section_number}
-
-## Context
-These previously-discarded surfaces have resurfaced during alignment:
-{ids_list}
-
-Read the recurrence signal at: `{recurrence_path}`
-
-Each entry includes the surface's original description, evidence, and
-when it was last seen. Decide for each surface whether it should be
-reopened (the discard was premature or conditions changed) or kept
-discarded (it is genuinely resolved or irrelevant).
-
-## Output
-Write a JSON signal to: `{adjudication_path}`
-```json
-{{
-  "section": "{section_number}",
-  "reopen_ids": [],
-  "keep_discarded_ids": [],
-  "reason": "..."
-}}
-```
-"""
+    recurrence_prompt_text = _compose_recurrence_adjudication_text(
+        section_number, ids_list, recurrence_path, adjudication_path,
+    )
     if not Services.prompt_guard().write_validated(recurrence_prompt_text, prompt_path):
         return []
     Services.communicator().log_artifact(planspace, f"prompt:recurrence-adjudicate-{section_number}")

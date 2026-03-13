@@ -215,6 +215,18 @@ def _resolve_thresholds(parameters: dict) -> dict[str, int]:
     }
 
 
+def _parse_assessment_class(value: str) -> AssessmentClass | None:
+    """Try to parse a string as StepClass or DecisionClass."""
+    try:
+        return StepClass(value)
+    except ValueError:
+        pass
+    try:
+        return DecisionClass(value)
+    except ValueError:
+        return None
+
+
 def _resolve_assessment_classes(parameters: dict) -> dict[str, AssessmentClass]:
     raw = parameters.get("assessment_classes", parameters.get("step_classes", {}))
     if not isinstance(raw, dict):
@@ -224,20 +236,40 @@ def _resolve_assessment_classes(parameters: dict) -> dict[str, AssessmentClass]:
         if isinstance(assessment_class, (StepClass, DecisionClass)):
             resolved[str(step_id)] = assessment_class
         elif isinstance(assessment_class, str):
-            try:
-                resolved[str(step_id)] = StepClass(assessment_class)
-            except ValueError:
-                try:
-                    resolved[str(step_id)] = DecisionClass(assessment_class)
-                except ValueError:
-                    continue
+            parsed = _parse_assessment_class(assessment_class)
+            if parsed is not None:
+                resolved[str(step_id)] = parsed
     return resolved
+
+
+_REQUIRED_STEP_KEYS = {"task_type", "concern_scope", "payload_path"}
+
+
+def _is_valid_action(action: dict) -> bool:
+    """Validate a single action within a v2 dispatch shape."""
+    kind = action.get("kind")
+    if kind in {"chain", "fanout"}:
+        steps = action.get("steps") or action.get("tasks")
+        if not isinstance(steps, list) or not steps:
+            return False
+        return all(
+            isinstance(step, dict) and _REQUIRED_STEP_KEYS <= set(step)
+            for step in steps
+        )
+    if kind == "gate":
+        if not isinstance(action.get("mode"), str):
+            return False
+        if not isinstance(action.get("failure_policy"), str):
+            return False
+        synthesis = action.get("synthesis")
+        return synthesis is None or isinstance(synthesis, dict)
+    return False
 
 
 def _is_valid_dispatch_shape(shape: object) -> bool:
     if not isinstance(shape, dict):
         return False
-    if {"task_type", "concern_scope", "payload_path"} <= set(shape):
+    if _REQUIRED_STEP_KEYS <= set(shape):
         return True
 
     if shape.get("version") != 2:
@@ -246,30 +278,10 @@ def _is_valid_dispatch_shape(shape: object) -> bool:
     if not isinstance(actions, list) or not actions:
         return False
 
-    for action in actions:
-        if not isinstance(action, dict):
-            return False
-        kind = action.get("kind")
-        if kind in {"chain", "fanout"}:
-            steps = action.get("steps") or action.get("tasks")
-            if not isinstance(steps, list) or not steps:
-                return False
-            for step in steps:
-                if not isinstance(step, dict):
-                    return False
-                if not {"task_type", "concern_scope", "payload_path"} <= set(step):
-                    return False
-        elif kind == "gate":
-            if not isinstance(action.get("mode"), str):
-                return False
-            if not isinstance(action.get("failure_policy"), str):
-                return False
-            synthesis = action.get("synthesis")
-            if synthesis is not None and not isinstance(synthesis, dict):
-                return False
-        else:
-            return False
-    return True
+    return all(
+        isinstance(action, dict) and _is_valid_action(action)
+        for action in actions
+    )
 
 
 def _clone_decision(decision: StepMitigation) -> StepMitigation:

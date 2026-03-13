@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import subprocess
 import tempfile
-from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -90,7 +89,6 @@ def analyze_impacts(
     codespace: Path,
     parent: str,
     *,
-    summary_reader: Callable[[Path], str],
     impact_model: str,
     normalizer_model: str,
 ) -> list[MaterialImpact]:
@@ -113,101 +111,16 @@ def analyze_impacts(
         f"(of {len(other_sections)} total) for impact analysis",
     )
 
-    changes_text = "\n".join(f"- `{rel_path}`" for rel_path in modified_files) or "(none)"
-    candidate_lines = []
-    for other in candidate_sections:
-        if other.related_files:
-            files_str = ", ".join(f"`{path}`" for path in other.related_files[:10])
-            if len(other.related_files) > 10:
-                files_str += f" (+{len(other.related_files) - 10} more)"
-        else:
-            files_str = "(no current file hypothesis)"
-        candidate_lines.append(
-            f"- SECTION-{other.number}: {summary_reader(other.path)}\n"
-            f"  Related files: {files_str}",
-        )
-    candidate_text = "\n".join(candidate_lines)
-
-    skipped_nums = sorted(
-        section.number for section in other_sections if section not in candidate_sections
-    )
-    skipped_note = ""
-    if skipped_nums:
-        skipped_note = (
-            "\n\n**Not evaluated** (no seam signals — file overlap, prior notes, "
-            "snapshots, shared refs, or contract artifacts): "
-            f"sections {', '.join(skipped_nums)}"
-        )
-
     impact_prompt_path = artifacts / f"impact-{section_number}-prompt.md"
     impact_output_path = artifacts / f"impact-{section_number}-output.md"
-    impact_prompt_text = f"""# Task: Semantic Impact Analysis for Section {section_number}
+    impact_prompt_text = _build_impact_prompt(
+        section_number, section_summary, modified_files,
+        candidate_sections, other_sections,
+    )
 
-## What Section {section_number} Did
-{section_summary}
-
-## Files Modified by Section {section_number}
-{changes_text}
-
-## Candidate Sections (pre-filtered by seam signals)
-{candidate_text}
-{skipped_note}
-
-## Instructions
-
-These sections were pre-selected because they share modified files, have
-existing cross-section notes, have overlapping snapshots, share input refs,
-or have contract artifacts linking them to section {section_number}.
-Candidate selection is a routing hypothesis — the seam signals identify
-sections that MAY be affected, not sections that definitely are.
-For each candidate, determine MATERIAL vs NO_IMPACT.
-
-A change is MATERIAL if:
-- It modifies an interface, contract, or API that the other section depends on
-- It changes control flow or data structures the other section needs
-- It introduces constraints the other section must accommodate
-
-Reply with a JSON block:
-
-```json
-{{"impacts": [
-  {{"to": "04", "impact": "MATERIAL", "reason": "Modified event model interface", "contract_risk": false, "note_markdown": "## Contract Delta\\nThe event model now uses X instead of Y. Section 04 must update its event handler to accept the new schema."}},
-  {{"to": "07", "impact": "NO_IMPACT"}}
-]}}
-```
-
-Each candidate section must appear. Include `contract_risk: true` if the
-impact involves a shared interface or contract change.
-
-For each MATERIAL impact, `note_markdown` is REQUIRED — a brief markdown
-description of what changed and what the target section must accommodate.
-This is the primary content of the consequence note the target receives.
-"""
     if not Services.prompt_guard().write_validated(impact_prompt_text, impact_prompt_path):
         return []
-
-    sidecar_path = Services.context_assembly().materialize_context_sidecar(
-        str(Services.task_router().resolve_agent_path("impact-analyzer.md")),
-        planspace,
-        section=section_number,
-    )
-    if sidecar_path:
-        with impact_prompt_path.open("a", encoding="utf-8") as handle:
-            handle.write(
-                "\n## Scoped Context\n"
-                "Agent context sidecar with resolved inputs: "
-                f"`{sidecar_path}`\n",
-            )
-    Services.communicator().log_artifact(planspace, f"prompt:impact-{section_number}")
-
-    violations = Services.prompt_guard().validate_dynamic(
-        impact_prompt_path.read_text(encoding="utf-8"),
-    )
-    if violations:
-        Services.logger().log(
-            f"Section {section_number}: impact prompt safety violation: "
-            f"{violations} — skipping dispatch",
-        )
+    if not _enrich_and_validate_prompt(impact_prompt_path, planspace, section_number):
         return []
 
     Services.logger().log(f"Section {section_number}: running impact analysis")
@@ -250,23 +163,136 @@ This is the primary content of the consequence note the target receives.
             )
         return impacted_sections
 
-    Services.logger().log(
-        f"Section {section_number}: impact analysis did not produce valid "
-        "JSON — dispatching GLM to normalize raw output",
+    return _dispatch_normalizer(
+        impact_result, artifacts, section_number, normalizer_model,
+        planspace, parent, codespace, sec_num_map,
     )
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        suffix=".md",
-        dir=str(artifacts),
-        prefix=f"impact-normalize-{section_number}-raw-",
-        delete=False,
-    ) as raw_handle:
-        raw_handle.write(impact_result)
-        raw_path = Path(raw_handle.name)
 
-    normalize_prompt_path = artifacts / f"impact-normalize-{section_number}-prompt.md"
-    normalize_output_path = artifacts / f"impact-normalize-{section_number}-output.md"
-    normalize_prompt_text = f"""# Task: Normalize Impact Analysis Output
+
+def _build_impact_prompt(
+    section_number: str,
+    section_summary: str,
+    modified_files: list[str],
+    candidate_sections: list[Section],
+    other_sections: list[Section],
+) -> str:
+    changes_text = "\n".join(f"- `{rel_path}`" for rel_path in modified_files) or "(none)"
+    candidate_lines = []
+    for other in candidate_sections:
+        if other.related_files:
+            files_str = ", ".join(f"`{path}`" for path in other.related_files[:10])
+            if len(other.related_files) > 10:
+                files_str += f" (+{len(other.related_files) - 10} more)"
+        else:
+            files_str = "(no current file hypothesis)"
+        candidate_lines.append(
+            f"- SECTION-{other.number}: {Services.cross_section().extract_section_summary(other.path)}\n"
+            f"  Related files: {files_str}",
+        )
+    candidate_text = "\n".join(candidate_lines)
+
+    skipped_nums = sorted(
+        section.number for section in other_sections if section not in candidate_sections
+    )
+    skipped_note = ""
+    if skipped_nums:
+        skipped_note = (
+            "\n\n**Not evaluated** (no seam signals — file overlap, prior notes, "
+            "snapshots, shared refs, or contract artifacts): "
+            f"sections {', '.join(skipped_nums)}"
+        )
+
+    return _compose_impact_text(
+        section_number, section_summary, changes_text, candidate_text, skipped_note,
+    )
+
+
+def _compose_impact_text(
+    section_number: str,
+    section_summary: str,
+    changes_text: str,
+    candidate_text: str,
+    skipped_note: str,
+) -> str:
+    """Return the full prompt text for impact analysis."""
+    return f"""# Task: Semantic Impact Analysis for Section {section_number}
+
+## What Section {section_number} Did
+{section_summary}
+
+## Files Modified by Section {section_number}
+{changes_text}
+
+## Candidate Sections (pre-filtered by seam signals)
+{candidate_text}
+{skipped_note}
+
+## Instructions
+
+These sections were pre-selected because they share modified files, have
+existing cross-section notes, have overlapping snapshots, share input refs,
+or have contract artifacts linking them to section {section_number}.
+Candidate selection is a routing hypothesis — the seam signals identify
+sections that MAY be affected, not sections that definitely are.
+For each candidate, determine MATERIAL vs NO_IMPACT.
+
+A change is MATERIAL if:
+- It modifies an interface, contract, or API that the other section depends on
+- It changes control flow or data structures the other section needs
+- It introduces constraints the other section must accommodate
+
+Reply with a JSON block:
+
+```json
+{{"impacts": [
+  {{"to": "04", "impact": "MATERIAL", "reason": "Modified event model interface", "contract_risk": false, "note_markdown": "## Contract Delta\\nThe event model now uses X instead of Y. Section 04 must update its event handler to accept the new schema."}},
+  {{"to": "07", "impact": "NO_IMPACT"}}
+]}}
+```
+
+Each candidate section must appear. Include `contract_risk: true` if the
+impact involves a shared interface or contract change.
+
+For each MATERIAL impact, `note_markdown` is REQUIRED — a brief markdown
+description of what changed and what the target section must accommodate.
+This is the primary content of the consequence note the target receives.
+"""
+
+
+def _enrich_and_validate_prompt(
+    impact_prompt_path: Path,
+    planspace: Path,
+    section_number: str,
+) -> bool:
+    sidecar_path = Services.context_assembly().materialize_context_sidecar(
+        str(Services.task_router().resolve_agent_path("impact-analyzer.md")),
+        planspace,
+        section=section_number,
+    )
+    if sidecar_path:
+        with impact_prompt_path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                "\n## Scoped Context\n"
+                "Agent context sidecar with resolved inputs: "
+                f"`{sidecar_path}`\n",
+            )
+    Services.communicator().log_artifact(planspace, f"prompt:impact-{section_number}")
+
+    violations = Services.prompt_guard().validate_dynamic(
+        impact_prompt_path.read_text(encoding="utf-8"),
+    )
+    if violations:
+        Services.logger().log(
+            f"Section {section_number}: impact prompt safety violation: "
+            f"{violations} — skipping dispatch",
+        )
+        return False
+    return True
+
+
+def _compose_normalizer_text(raw_path: Path) -> str:
+    """Return the full prompt text for the impact normalizer."""
+    return f"""# Task: Normalize Impact Analysis Output
 
 ## Raw Output File
 `{raw_path}`
@@ -294,6 +320,35 @@ If no material impacts can be extracted, reply:
 {{"impacts": []}}
 ```
 """
+
+
+def _dispatch_normalizer(
+    impact_result: str,
+    artifacts: Path,
+    section_number: str,
+    normalizer_model: str,
+    planspace: Path,
+    parent: str,
+    codespace: Path,
+    sec_num_map: dict[int, str],
+) -> list[MaterialImpact]:
+    Services.logger().log(
+        f"Section {section_number}: impact analysis did not produce valid "
+        "JSON — dispatching GLM to normalize raw output",
+    )
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".md",
+        dir=str(artifacts),
+        prefix=f"impact-normalize-{section_number}-raw-",
+        delete=False,
+    ) as raw_handle:
+        raw_handle.write(impact_result)
+        raw_path = Path(raw_handle.name)
+
+    normalize_prompt_path = artifacts / f"impact-normalize-{section_number}-prompt.md"
+    normalize_output_path = artifacts / f"impact-normalize-{section_number}-output.md"
+    normalize_prompt_text = _compose_normalizer_text(raw_path)
     if not Services.prompt_guard().write_validated(normalize_prompt_text, normalize_prompt_path):
         return []
 

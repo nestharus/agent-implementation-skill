@@ -9,6 +9,31 @@ from orchestrator.types import Section
 from orchestrator.path_registry import PathRegistry
 
 
+def _compose_context_extras_text(
+    tool_registry_path: Path,
+    friction_signal_path: Path,
+) -> str:
+    """Return the tooling block text for implementation context extras."""
+    return (
+        f"\n## Tooling\n\n"
+        f"If you create any new tool/script intended for reuse, you MUST append an\n"
+        f"entry to the tool registry at: `{tool_registry_path}`\n"
+        f"using the documented schema (id/path/created_by/scope/status/description/\n"
+        f"registered_at). If you are unsure a script qualifies as a tool, register it\n"
+        f"as `experimental` and note the uncertainty in the description.\n\n"
+        f"### Tool Friction Detection\n\n"
+        f"If you encounter tool composition friction (tools that don't compose\n"
+        f"cleanly, a missing bridge tool, or disconnected tool islands), write a\n"
+        f"friction signal to: `{friction_signal_path}`\n\n"
+        f"Format:\n"
+        f"```json\n"
+        f'{{"friction": true, "islands": [["toolA","toolB"]], '
+        f'"missing_bridge": "description of what is missing"}}\n'
+        f"```\n"
+        f"The runner reads this file to dispatch bridge-tool creation.\n"
+    )
+
+
 def build_proposal_context_extras(
     section: Section,
     planspace: Path,
@@ -122,24 +147,7 @@ def build_impl_context_extras(
 
     tool_registry_path = paths.tool_registry()
     friction_signal_path = paths.tool_friction_signal(sec)
-    tooling_block = (
-        f"\n## Tooling\n\n"
-        f"If you create any new tool/script intended for reuse, you MUST append an\n"
-        f"entry to the tool registry at: `{tool_registry_path}`\n"
-        f"using the documented schema (id/path/created_by/scope/status/description/\n"
-        f"registered_at). If you are unsure a script qualifies as a tool, register it\n"
-        f"as `experimental` and note the uncertainty in the description.\n\n"
-        f"### Tool Friction Detection\n\n"
-        f"If you encounter tool composition friction (tools that don't compose\n"
-        f"cleanly, a missing bridge tool, or disconnected tool islands), write a\n"
-        f"friction signal to: `{friction_signal_path}`\n\n"
-        f"Format:\n"
-        f"```json\n"
-        f'{{"friction": true, "islands": [["toolA","toolB"]], '
-        f'"missing_bridge": "description of what is missing"}}\n'
-        f"```\n"
-        f"The runner reads this file to dispatch bridge-tool creation.\n"
-    )
+    tooling_block = _compose_context_extras_text(tool_registry_path, friction_signal_path)
 
     return {
         "problems_block": problems_block,

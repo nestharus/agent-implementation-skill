@@ -5,6 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from dependency_injector import providers
+
+from conftest import make_dispatcher
+from containers import Services
 from signals.repository.artifact_io import read_json, write_json
 from implementation.engine.implementation_phase import _run_risk_review
 from implementation.service.risk_history_recorder import append_risk_history
@@ -43,7 +47,11 @@ def test_run_risk_review_with_mocked_dispatch_returns_plan(
             return json.dumps(serialize_assessment(_assessment()))
         return json.dumps(serialize_plan(_plan()))
 
-    plan = _run_risk_review(planspace, "01", section, _dispatch)
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        plan = _run_risk_review(planspace, "01", section)
+    finally:
+        Services.dispatcher.reset_override()
 
     assert plan is not None
     assert plan.accepted_frontier == ["explore-01", "edit-02", "verify-03"]
@@ -65,7 +73,11 @@ def test_run_risk_review_returns_plan_when_engagement_light(
             return json.dumps(serialize_assessment(_assessment()))
         return json.dumps(serialize_plan(_plan()))
 
-    plan = _run_risk_review(planspace, "01", section, _dispatch)
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        plan = _run_risk_review(planspace, "01", section)
+    finally:
+        Services.dispatcher.reset_override()
 
     assert plan is not None
 
@@ -85,7 +97,11 @@ def test_run_risk_review_failure_blocks_fail_closed(
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
     )
 
-    plan = _run_risk_review(planspace, "01", section, lambda *args, **kwargs: "")
+    Services.dispatcher.override(providers.Object(make_dispatcher(lambda *args, **kwargs: "")))
+    try:
+        plan = _run_risk_review(planspace, "01", section)
+    finally:
+        Services.dispatcher.reset_override()
 
     assert plan is not None
     assert plan.accepted_frontier == []
@@ -109,7 +125,11 @@ def test_risk_check_proposal_returns_advisory_summary(planspace: Path) -> None:
     def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
         return json.dumps(serialize_assessment(_proposal_assessment()))
 
-    summary = _risk_check_proposal(planspace, "01", _dispatch)
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        summary = _risk_check_proposal(planspace, "01")
+    finally:
+        Services.dispatcher.reset_override()
 
     assert summary == {
         "risk_mode": "full",
@@ -128,7 +148,11 @@ def test_risk_check_proposal_writes_advisory_artifact_and_blocker(
     def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
         return json.dumps(serialize_assessment(_proposal_assessment()))
 
-    summary = _risk_check_proposal(planspace, "01", _dispatch)
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        summary = _risk_check_proposal(planspace, "01")
+    finally:
+        Services.dispatcher.reset_override()
 
     advisory_path = (
         planspace
@@ -186,7 +210,11 @@ def test_risk_check_proposal_remains_advisory_without_blocking_finalization(
     def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
         return json.dumps(serialize_assessment(_proposal_assessment()))
 
-    summary = _risk_check_proposal(planspace, "01", _dispatch)
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        summary = _risk_check_proposal(planspace, "01")
+    finally:
+        Services.dispatcher.reset_override()
 
     assert summary["recommendation"] == "recommend additional exploration"
     assert (planspace / "artifacts" / "signals" / "section-01-blocker.json").exists() is False
@@ -304,7 +332,11 @@ def testappend_risk_history_records_deferred_reopened_and_failure(
             )
         )
 
-    plan = _run_risk_review(planspace, "01", section, _dispatch)
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    try:
+        plan = _run_risk_review(planspace, "01", section)
+    finally:
+        Services.dispatcher.reset_override()
     assert plan is not None
 
     append_risk_history(

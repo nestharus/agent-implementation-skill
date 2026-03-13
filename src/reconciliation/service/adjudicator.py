@@ -13,20 +13,9 @@ from pipeline.template import render_template
 logger = logging.getLogger(__name__)
 
 
-def adjudicate_ungrouped_candidates(
-    ungrouped: list[dict],
-    planspace: Path,
-    candidate_type: str,
-) -> list[dict]:
-    """Dispatch an adjudicator agent to merge semantically similar candidates."""
-    if len(ungrouped) < 2:
-        return []
-
-    recon_dir = PathRegistry(planspace).reconciliation_dir()
-    candidates_path = recon_dir / f"ungrouped-{candidate_type}.json"
-    Services.artifact_io().write_json(candidates_path, ungrouped)
-
-    dynamic_body = f"""# Reconciliation Adjudication: {candidate_type}
+def _compose_adjudication_text(candidate_type: str, candidates_path: Path) -> str:
+    """Build the dynamic prompt body for reconciliation adjudication."""
+    return f"""# Reconciliation Adjudication: {candidate_type}
 
 ## Candidate Type
 {candidate_type.replace("_", " ").title()} candidates
@@ -54,6 +43,22 @@ group's `members` array or in the `separate` array.
 }}
 ```
 """
+
+
+def adjudicate_ungrouped_candidates(
+    ungrouped: list[dict],
+    planspace: Path,
+    candidate_type: str,
+) -> list[dict]:
+    """Dispatch an adjudicator agent to merge semantically similar candidates."""
+    if len(ungrouped) < 2:
+        return []
+
+    recon_dir = PathRegistry(planspace).reconciliation_dir()
+    candidates_path = recon_dir / f"ungrouped-{candidate_type}.json"
+    Services.artifact_io().write_json(candidates_path, ungrouped)
+
+    dynamic_body = _compose_adjudication_text(candidate_type, candidates_path)
 
     prompt_path = recon_dir / f"adjudicate-{candidate_type}-prompt.md"
     output_path = recon_dir / f"adjudicate-{candidate_type}-output.md"
@@ -83,7 +88,7 @@ group's `members` array or in the `separate` array.
             planspace=planspace,
             agent_file=Services.task_router().agent_for("reconciliation.adjudicate"),
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 — fail-open: adjudication is best-effort
         logger.warning(
             "Reconciliation adjudication dispatch failed for %s "
             "— failing open with degraded advisory (PAT-0014: dispatch_error)",

@@ -20,6 +20,71 @@ from scan.scan_dispatcher import dispatch_agent, read_scan_model_policy
 from containers import Services
 
 
+def _collect_section_scan_feedback(
+    sec_log_dir: Path, sec_name: str, scan_log_dir: Path,
+) -> tuple[list[str], list[str], list[str]]:
+    """Collect feedback entries for a single section.
+
+    Returns (irrelevant_files, missing_files, out_of_scope_items).
+    """
+    irrelevant_files: list[str] = []
+    missing_files: list[str] = []
+    out_of_scope_items: list[str] = []
+
+    for fb_file in sorted(sec_log_dir.glob("deep-*-feedback.json")):
+        data = Services.artifact_io().read_json(fb_file)
+        if data is None:
+            print(
+                f"[DEEP SCAN] WARNING: Malformed feedback JSON: "
+                f"{fb_file} (section: {sec_name})",
+            )
+            _append_to_log(
+                scan_log_dir / "failures.log",
+                f"- Malformed feedback: `{fb_file}` (section: {sec_name})",
+            )
+            continue
+
+        if not _validate_feedback_schema(data, fb_file, sec_name, scan_log_dir):
+            continue
+
+        relevant = data["relevant"]
+        if relevant is False:
+            reason = data.get("reason", "")
+            src_path = data["source_file"]
+            irrelevant_files.append(f"- {src_path}: {reason}")
+
+        for mf in data.get("missing_files", []):
+            if isinstance(mf, str) and mf.strip():
+                missing_files.append(f"- {mf.strip()}")
+
+        for oos in data.get("out_of_scope", []):
+            if isinstance(oos, str) and oos.strip():
+                out_of_scope_items.append(f"- {oos.strip()}")
+
+    return irrelevant_files, missing_files, out_of_scope_items
+
+
+def _append_section_report(
+    report_lines: list[str], sec_name: str,
+    irrelevant_files: list[str], missing_files: list[str],
+    out_of_scope_items: list[str],
+) -> None:
+    """Append a section's feedback to the report lines."""
+    report_lines.append(f"## {sec_name}\n\n")
+    if irrelevant_files:
+        report_lines.append("### Irrelevant files (consider removing)\n")
+        report_lines.extend(f"{line}\n" for line in irrelevant_files)
+        report_lines.append("\n")
+    if missing_files:
+        report_lines.append("### Missing files (consider adding)\n")
+        report_lines.extend(f"{line}\n" for line in missing_files)
+        report_lines.append("\n")
+    if out_of_scope_items:
+        report_lines.append("### Open problems (out of scope for this section)\n")
+        report_lines.extend(f"{line}\n" for line in out_of_scope_items)
+        report_lines.append("\n")
+
+
 def collect_and_route_feedback(
     *,
     section_files: list[Path],
@@ -44,71 +109,15 @@ def collect_and_route_feedback(
     ]
 
     has_feedback = False
-
     for section_file in section_files:
         sec_name = section_file.stem
         sec_log_dir = scan_log_dir / sec_name
-
-        irrelevant_files: list[str] = []
-        missing_files: list[str] = []
-        out_of_scope_items: list[str] = []
-
-        for fb_file in sorted(sec_log_dir.glob("deep-*-feedback.json")):
-            data = Services.artifact_io().read_json(fb_file)
-            if data is None:
-                print(
-                    f"[DEEP SCAN] WARNING: Malformed feedback JSON: "
-                    f"{fb_file} (section: {sec_name})",
-                )
-                _append_to_log(
-                    scan_log_dir / "failures.log",
-                    f"- Malformed feedback: `{fb_file}` (section: {sec_name})",
-                )
-                continue
-
-            # Schema validation: required fields must be present and typed
-            if not _validate_feedback_schema(data, fb_file, sec_name, scan_log_dir):
-                continue
-
-            relevant = data["relevant"]
-            if relevant is False:
-                reason = data.get("reason", "")
-                src_path = data["source_file"]
-                irrelevant_files.append(f"- {src_path}: {reason}")
-                has_feedback = True
-
-            # Collect missing files
-            for mf in data.get("missing_files", []):
-                if isinstance(mf, str) and mf.strip():
-                    missing_files.append(f"- {mf.strip()}")
-                    has_feedback = True
-
-            # Collect out-of-scope
-            for oos in data.get("out_of_scope", []):
-                if isinstance(oos, str) and oos.strip():
-                    out_of_scope_items.append(f"- {oos.strip()}")
-                    has_feedback = True
-
-        if irrelevant_files or missing_files or out_of_scope_items:
-            report_lines.append(f"## {sec_name}\n\n")
-            if irrelevant_files:
-                report_lines.append(
-                    "### Irrelevant files (consider removing)\n",
-                )
-                report_lines.extend(f"{line}\n" for line in irrelevant_files)
-                report_lines.append("\n")
-            if missing_files:
-                report_lines.append(
-                    "### Missing files (consider adding)\n",
-                )
-                report_lines.extend(f"{line}\n" for line in missing_files)
-                report_lines.append("\n")
-            if out_of_scope_items:
-                report_lines.append(
-                    "### Open problems (out of scope for this section)\n",
-                )
-                report_lines.extend(f"{line}\n" for line in out_of_scope_items)
-                report_lines.append("\n")
+        irrelevant, missing, oos = _collect_section_scan_feedback(
+            sec_log_dir, sec_name, scan_log_dir,
+        )
+        if irrelevant or missing or oos:
+            has_feedback = True
+            _append_section_report(report_lines, sec_name, irrelevant, missing, oos)
 
     if has_feedback:
         feedback_report.write_text("".join(report_lines))
@@ -120,14 +129,12 @@ def collect_and_route_feedback(
         )
         feedback_report.write_text("".join(report_lines))
 
-    # Route out-of-scope findings into scope-delta artifacts
     _route_scope_deltas(
         section_files=section_files,
         artifacts_dir=artifacts_dir,
         scan_log_dir=scan_log_dir,
     )
 
-    # Apply feedback (missing + irrelevant files)
     if has_feedback:
         _apply_feedback(
             section_files=section_files,
@@ -144,6 +151,179 @@ def collect_and_route_feedback(
 # ------------------------------------------------------------------
 # Feedback application (P10+P3)
 # ------------------------------------------------------------------
+
+
+def _collect_section_feedback_entries(
+    sec_log_dir: Path,
+) -> tuple[list[str], list[str]]:
+    """Iterate feedback files and collect missing/irrelevant file lists.
+
+    Returns ``(all_missing, all_irrelevant)`` gathered from every
+    ``deep-*-feedback.json`` in *sec_log_dir*.
+    """
+    all_missing: list[str] = []
+    all_irrelevant: list[str] = []
+
+    for fb_file in sorted(sec_log_dir.glob("deep-*-feedback.json")):
+        data = Services.artifact_io().read_json(fb_file)
+        if data is None:
+            print(
+                f"[FEEDBACK][WARN] Malformed feedback JSON in "
+                f"apply_feedback: {fb_file}",
+            )
+            continue
+
+        # Skip entries with missing required fields
+        if not isinstance(data.get("relevant"), bool):
+            continue
+        if not isinstance(data.get("source_file"), str):
+            continue
+
+        # Collect missing
+        for mf in data.get("missing_files", []):
+            if isinstance(mf, str) and mf.strip():
+                all_missing.append(mf.strip())
+
+        # Collect irrelevant
+        if data["relevant"] is False:
+            irr_path = data["source_file"]
+            if irr_path:
+                all_irrelevant.append(irr_path)
+
+    return all_missing, all_irrelevant
+
+
+def _build_updater_prompt(
+    sec_name: str,
+    section_file: Path,
+    codemap_path: Path,
+    corrections_ref: str,
+    truly_missing: list[str],
+    truly_irrelevant: list[str],
+    updater_signal: Path,
+    _paths: PathRegistry,
+) -> str | None:
+    """Build the related-files updater prompt text.
+
+    Returns the rendered prompt string, or ``None`` if prompt-guard
+    validation rejects it.
+    """
+    missing_section = ""
+    if truly_missing:
+        items = "\n".join(f"- {mf}" for mf in truly_missing)
+        missing_section = (
+            f"## Missing Files Discovered by Deep Scan\n{items}\n\n"
+        )
+
+    irrelevant_section = ""
+    if truly_irrelevant:
+        items = "\n".join(f"- {irf}" for irf in truly_irrelevant)
+        irrelevant_section = (
+            f"## Irrelevant Files Identified by Deep Scan\n{items}\n\n"
+            "These files were judged irrelevant to this section's "
+            "concern by deep scan.\nOnly include them in removals if "
+            "you agree they are unrelated to the\nsection's problem "
+            "frame. Give a short reason for each removal.\n\n"
+        )
+
+    prompt = load_scan_template("related_files_updater.md").format(
+        section_name=sec_name,
+        section_file=section_file,
+        codemap_path=codemap_path,
+        corrections_ref=corrections_ref,
+        missing_section=missing_section,
+        irrelevant_section=irrelevant_section,
+        updater_signal=updater_signal,
+    )
+    violations = Services.prompt_guard().validate_dynamic(prompt)
+    if violations:
+        print(
+            f"[FEEDBACK] {sec_name}: updater prompt blocked — "
+            f"safety violations: {violations}",
+        )
+        return None
+    return prompt
+
+
+def _dispatch_updater_and_apply(
+    sec_name: str,
+    codespace: Path,
+    updater_prompt_path: Path,
+    updater_output: Path,
+    updater_signal: Path,
+    section_file: Path,
+    model_policy: dict[str, str],
+    scan_log_dir: Path,
+    _paths: PathRegistry,
+) -> None:
+    """Dispatch updater agent, escalate on failure, and apply the signal."""
+    updater_model = model_policy["feedback_updater"]
+    escalation_model = model_policy["exploration"]
+    result = dispatch_agent(
+        model=updater_model,
+        project=codespace,
+        prompt_file=updater_prompt_path,
+        agent_file=Services.task_router().agent_for("scan.adjudicate"),
+        stdout_file=updater_output,
+    )
+
+    # Check if signal is valid; escalate on failure
+    if result.returncode == 0 and updater_signal.is_file():
+        valid_signal = _is_valid_updater_signal(updater_signal)
+    else:
+        valid_signal = False
+
+    if not valid_signal and result.returncode == 0:
+        print(
+            f"[FEEDBACK] {sec_name}: {updater_model} updater produced "
+            f"no valid signal — escalating to {escalation_model}",
+        )
+        result = dispatch_agent(
+            model=escalation_model,
+            project=codespace,
+            prompt_file=updater_prompt_path,
+            agent_file=Services.task_router().agent_for("scan.adjudicate"),
+            stdout_file=updater_output,
+        )
+        valid_signal = (
+            result.returncode == 0
+            and updater_signal.is_file()
+            and _is_valid_updater_signal(updater_signal)
+        )
+
+    if not valid_signal:
+        if result.returncode != 0:
+            _append_to_log(
+                scan_log_dir / "failures.log",
+                f"- Updater failed for {sec_name} (no valid signal "
+                "after escalation)",
+            )
+        return
+
+    sig_data = Services.artifact_io().read_json(updater_signal)
+    if sig_data is None:
+        print(
+            f"[FEEDBACK][WARN] Malformed updater signal: "
+            f"{updater_signal} — preserved as .malformed.json",
+        )
+        return
+    status = sig_data.get("status", "")
+
+    if status == "stale":
+        applied = apply_related_files_update(
+            section_file, updater_signal)
+        # Acknowledge the signal — update status so it isn't
+        # re-applied on subsequent runs.
+        try:
+            sig_data["status"] = "applied" if applied else "no_change"
+            Services.artifact_io().write_json(updater_signal, sig_data)
+        except OSError:
+            pass  # Best-effort ack; signal file may be read-only
+        if applied:
+            print(
+                f"[FEEDBACK] {sec_name}: related files updated "
+                "from deep scan feedback",
+            )
 
 
 def _apply_feedback(
@@ -172,34 +352,9 @@ def _apply_feedback(
         sec_log_dir = scan_log_dir / sec_name
         section_text = section_file.read_text()
 
-        all_missing: list[str] = []
-        all_irrelevant: list[str] = []
-
-        for fb_file in sorted(sec_log_dir.glob("deep-*-feedback.json")):
-            data = Services.artifact_io().read_json(fb_file)
-            if data is None:
-                print(
-                    f"[FEEDBACK][WARN] Malformed feedback JSON in "
-                    f"apply_feedback: {fb_file}",
-                )
-                continue
-
-            # Skip entries with missing required fields
-            if not isinstance(data.get("relevant"), bool):
-                continue
-            if not isinstance(data.get("source_file"), str):
-                continue
-
-            # Collect missing
-            for mf in data.get("missing_files", []):
-                if isinstance(mf, str) and mf.strip():
-                    all_missing.append(mf.strip())
-
-            # Collect irrelevant
-            if data["relevant"] is False:
-                irr_path = data["source_file"]
-                if irr_path:
-                    all_irrelevant.append(irr_path)
+        all_missing, all_irrelevant = _collect_section_feedback_entries(
+            sec_log_dir,
+        )
 
         # Filter missing to those not already in the section
         truly_missing = [
@@ -219,111 +374,21 @@ def _apply_feedback(
             f"{len(truly_irrelevant)} irrelevant",
         )
 
-        # Dispatch updater agent
-        updater_prompt = sec_log_dir / "related-files-updater-prompt.md"
-        updater_output = sec_log_dir / "related-files-updater-output.md"
+        # Build updater prompt
         updater_signal = _paths.scan_related_files_update_signal(sec_name)
-
-        missing_section = ""
-        if truly_missing:
-            items = "\n".join(f"- {mf}" for mf in truly_missing)
-            missing_section = (
-                f"## Missing Files Discovered by Deep Scan\n{items}\n\n"
-            )
-
-        irrelevant_section = ""
-        if truly_irrelevant:
-            items = "\n".join(f"- {irf}" for irf in truly_irrelevant)
-            irrelevant_section = (
-                f"## Irrelevant Files Identified by Deep Scan\n{items}\n\n"
-                "These files were judged irrelevant to this section's "
-                "concern by deep scan.\nOnly include them in removals if "
-                "you agree they are unrelated to the\nsection's problem "
-                "frame. Give a short reason for each removal.\n\n"
-            )
-
-        prompt = load_scan_template("related_files_updater.md").format(
-            section_name=sec_name,
-            section_file=section_file,
-            codemap_path=codemap_path,
-            corrections_ref=corrections_ref,
-            missing_section=missing_section,
-            irrelevant_section=irrelevant_section,
-            updater_signal=updater_signal,
+        prompt = _build_updater_prompt(
+            sec_name, section_file, codemap_path, corrections_ref,
+            truly_missing, truly_irrelevant, updater_signal, _paths,
         )
-        violations = Services.prompt_guard().validate_dynamic(prompt)
-        if violations:
-            print(
-                f"[FEEDBACK] {sec_name}: updater prompt blocked — "
-                f"safety violations: {violations}",
-            )
+        if prompt is None:
             continue
-        updater_prompt.write_text(prompt)
 
-        updater_model = model_policy["feedback_updater"]
-        escalation_model = model_policy["exploration"]
-        result = dispatch_agent(
-            model=updater_model,
-            project=codespace,
-            prompt_file=updater_prompt,
-            agent_file=Services.task_router().agent_for("scan.adjudicate"),
-            stdout_file=updater_output,
+        updater_prompt_path = sec_log_dir / "related-files-updater-prompt.md"
+        updater_prompt_path.write_text(prompt)
+        updater_output = sec_log_dir / "related-files-updater-output.md"
+
+        _dispatch_updater_and_apply(
+            sec_name, codespace, updater_prompt_path, updater_output,
+            updater_signal, section_file, model_policy, scan_log_dir,
+            _paths,
         )
-
-        # Check if signal is valid; escalate on failure
-        if result.returncode == 0 and updater_signal.is_file():
-            valid_signal = _is_valid_updater_signal(updater_signal)
-        else:
-            valid_signal = False
-
-        if not valid_signal and result.returncode == 0:
-            print(
-                f"[FEEDBACK] {sec_name}: {updater_model} updater produced "
-                f"no valid signal — escalating to {escalation_model}",
-            )
-            result = dispatch_agent(
-                model=escalation_model,
-                project=codespace,
-                prompt_file=updater_prompt,
-                agent_file=Services.task_router().agent_for("scan.adjudicate"),
-                stdout_file=updater_output,
-            )
-            valid_signal = (
-                result.returncode == 0
-                and updater_signal.is_file()
-                and _is_valid_updater_signal(updater_signal)
-            )
-
-        if not valid_signal:
-            if result.returncode != 0:
-                _append_to_log(
-                    scan_log_dir / "failures.log",
-                    f"- Updater failed for {sec_name} (no valid signal "
-                    "after escalation)",
-                )
-            continue
-
-        sig_data = Services.artifact_io().read_json(updater_signal)
-        if sig_data is None:
-            print(
-                f"[FEEDBACK][WARN] Malformed updater signal: "
-                f"{updater_signal} — preserved as .malformed.json",
-            )
-            continue
-        status = sig_data.get("status", "")
-
-        if status == "stale":
-            applied = apply_related_files_update(
-                section_file, updater_signal)
-            # Acknowledge the signal — update status so it isn't
-            # re-applied on subsequent runs.
-            try:
-                sig_data["status"] = "applied" if applied else "no_change"
-                Services.artifact_io().write_json(updater_signal, sig_data)
-            except OSError:
-                pass  # Best-effort ack; signal file may be read-only
-            if applied:
-                print(
-                    f"[FEEDBACK] {sec_name}: related files updated "
-                    "from deep scan feedback",
-                )

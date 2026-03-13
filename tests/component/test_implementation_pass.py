@@ -11,6 +11,7 @@ from implementation.engine.implementation_phase import (
 )
 from implementation.repository.roal_index import read_roal_input_index
 from implementation.service.risk_history_recorder import append_risk_history
+from proposal.service.readiness_resolver import ReadinessResult
 from risk.repository.history import read_history
 from risk.repository.serialization import serialize_assessment, serialize_package
 from risk.types import (
@@ -174,7 +175,7 @@ def _patch_implementation_pass_basics(
         )
     monkeypatch.setattr(
         "implementation.engine.implementation_phase.resolve_readiness",
-        lambda *_args, **_kwargs: {"ready": True},
+        lambda *_args, **_kwargs: ReadinessResult(ready=True),
     )
     monkeypatch.setattr(
         "implementation.engine.implementation_phase._run_risk_review",
@@ -185,7 +186,7 @@ def _patch_implementation_pass_basics(
         run_section_fn,
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase.subprocess.run",
+        "containers.LogService.log_lifecycle",
         lambda *args, **kwargs: None,
     )
     if reassess_fn is not None:
@@ -211,7 +212,7 @@ def test_run_implementation_pass_records_results_and_hashes(
     )
     monkeypatch.setattr(
         "implementation.engine.implementation_phase.resolve_readiness",
-        lambda *_args, **_kwargs: {"ready": True},
+        lambda *_args, **_kwargs: ReadinessResult(ready=True),
     )
     monkeypatch.setattr(
         "implementation.engine.implementation_phase._run_risk_review",
@@ -222,7 +223,7 @@ def test_run_implementation_pass_records_results_and_hashes(
         lambda *args, **kwargs: ["src/app.py"],
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase.subprocess.run",
+        "containers.LogService.log_lifecycle",
         lambda *args, **kwargs: None,
     )
 
@@ -268,10 +269,10 @@ def test_run_implementation_pass_writes_accepted_steps_artifact(
         ],
     )
     monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
     monkeypatch.setattr("implementation.engine.implementation_phase._run_risk_review", lambda *_args, **_kwargs: plan)
     monkeypatch.setattr("implementation.engine.implementation_phase.run_section", lambda *args, **kwargs: ["src/app.py"])
-    monkeypatch.setattr("implementation.engine.implementation_phase.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("containers.LogService.log_lifecycle", lambda *args, **kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_phase.append_risk_history", lambda *args, **kwargs: None)
 
     run_implementation_pass(
@@ -338,10 +339,10 @@ def test_run_implementation_pass_writes_deferred_steps_artifact(
         ],
     )
     monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
     monkeypatch.setattr("implementation.engine.implementation_phase._run_risk_review", lambda *_args, **_kwargs: plan)
     monkeypatch.setattr("implementation.engine.implementation_phase.run_section", lambda *args, **kwargs: ["src/app.py"])
-    monkeypatch.setattr("implementation.engine.implementation_phase.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("containers.LogService.log_lifecycle", lambda *args, **kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_phase.append_risk_history", lambda *args, **kwargs: None)
 
     run_implementation_pass(
@@ -411,13 +412,13 @@ def test_run_implementation_pass_writes_reopen_blocker_and_skips(
         ],
     )
     monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
     monkeypatch.setattr("implementation.engine.implementation_phase._run_risk_review", lambda *_args, **_kwargs: plan)
     monkeypatch.setattr(
         "implementation.engine.implementation_phase.run_section",
         lambda *args, **kwargs: run_calls.append("run") or ["src/app.py"],
     )
-    monkeypatch.setattr("implementation.engine.implementation_phase.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("containers.LogService.log_lifecycle", lambda *args, **kwargs: None)
 
     results = run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
@@ -462,7 +463,7 @@ def test_run_implementation_pass_fail_closed_on_roal_failure(
     section = _make_section(planspace, "01")
     run_calls: list[str] = []
     monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
     monkeypatch.setattr(
         "implementation.engine.implementation_phase._run_risk_review",
         lambda *_args, **_kwargs: _plan(accepted_frontier=[]),
@@ -471,7 +472,7 @@ def test_run_implementation_pass_fail_closed_on_roal_failure(
         "implementation.engine.implementation_phase.run_section",
         lambda *args, **kwargs: run_calls.append("run") or ["src/app.py"],
     )
-    monkeypatch.setattr("implementation.engine.implementation_phase.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("containers.LogService.log_lifecycle", lambda *args, **kwargs: None)
 
     results = run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
@@ -489,10 +490,10 @@ def test_run_implementation_pass_skip_mode_proceeds_without_risk_artifacts(
     noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
     monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
     monkeypatch.setattr("implementation.engine.implementation_phase._run_risk_review", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_phase.run_section", lambda *args, **kwargs: ["src/app.py"])
-    monkeypatch.setattr("implementation.engine.implementation_phase.subprocess.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("containers.LogService.log_lifecycle", lambda *args, **kwargs: None)
 
     results = run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
@@ -1019,11 +1020,11 @@ def test_run_implementation_pass_invokes_roal_when_section_is_ready(
     )
     monkeypatch.setattr(
         "implementation.engine.implementation_phase.resolve_readiness",
-        lambda *_args, **_kwargs: {"ready": True},
+        lambda *_args, **_kwargs: ReadinessResult(ready=True),
     )
     monkeypatch.setattr(
         "implementation.engine.implementation_phase._run_risk_review",
-        lambda planspace_arg, sec_num, section_arg, _dispatch: (
+        lambda planspace_arg, sec_num, section_arg: (
             risk_plans.append((sec_num, section_arg.number)) or None
         ),
     )
@@ -1032,7 +1033,7 @@ def test_run_implementation_pass_invokes_roal_when_section_is_ready(
         lambda *args, **kwargs: ["src/app.py"],
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase.subprocess.run",
+        "containers.LogService.log_lifecycle",
         lambda *args, **kwargs: None,
     )
 

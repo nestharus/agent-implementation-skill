@@ -214,6 +214,29 @@ class IntentRiskHint:
     posture_floor: PostureProfile | None = None
 
 
+@dataclass(frozen=True)
+class EngagementContext:
+    """Bundled signals for risk engagement mode selection.
+
+    Replaces the 8-boolean parameter list of ``determine_engagement``
+    with a single typed container.
+    """
+
+    has_shared_seams: bool = False
+    has_consequence_notes: bool = False
+    has_stale_inputs: bool = False
+    has_recent_failures: bool = False
+    has_tool_changes: bool = False
+    freshness_changed: bool = False
+    has_decision_classes: bool = False
+    has_unresolved_value_scales: bool = False
+
+    @property
+    def skip_floor_hit(self) -> bool:
+        """True when safety-floor signals override a light/skip hint."""
+        return self.has_shared_seams or self.has_stale_inputs or self.has_recent_failures
+
+
 def clamp_int(value: int, lower: int, upper: int) -> int:
     return max(lower, min(upper, value))
 

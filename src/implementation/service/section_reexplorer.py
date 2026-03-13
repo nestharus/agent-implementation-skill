@@ -7,49 +7,24 @@ from pipeline.template import TASK_SUBMISSION_SEMANTICS
 from orchestrator.types import Section
 
 
-def _reexplore_section(
-    section: Section, planspace: Path, codespace: Path, parent: str,
-    model: str,
-) -> str | None:
-    """Dispatch a re-explorer when a section has no related files.
-
-    The agent reads the codemap + section text and either proposes
-    candidate files or declares greenfield. If files are found, the
-    agent appends ``## Related Files`` to the section file directly.
-
-    Returns the raw agent output, or "ALIGNMENT_CHANGED_PENDING" if
-    alignment changed during dispatch.
-
-    Exploration model selection is delegated to ``task_router`` via the
-    ``scan.exploration`` policy key when queued ``scan_explore`` tasks
-    are dispatched — no ``exploration_model`` parameter is needed here.
-    """
-    paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
-    codemap_path = paths.codemap()
-    prompt_path = artifacts / f"reexplore-{section.number}-prompt.md"
-    output_path = artifacts / f"reexplore-{section.number}-output.md"
-    summary = Services.cross_section().extract_section_summary(section.path)
-
-    codemap_ref = ""
-    if codemap_path.exists():
-        codemap_ref = f"3. Codemap: `{codemap_path}`"
-
-    corrections_path = paths.corrections()
-    corrections_ref = ""
-    if corrections_path.exists():
-        corrections_ref = (
-            f"4. Codemap corrections (authoritative fixes): "
-            f"`{corrections_path}`"
-        )
-
-    rendered = f"""# Task: Re-Explore Section {section.number}
+def _compose_reexplore_text(
+    section_number: str,
+    section_path: Path,
+    summary: str,
+    codespace: Path,
+    codemap_ref: str,
+    corrections_ref: str,
+    planspace: Path,
+    output_path: Path,
+) -> str:
+    """Return the re-exploration prompt text."""
+    return f"""# Task: Re-Explore Section {section_number}
 
 ## Summary
 {summary}
 
 ## Files to Read
-1. Section specification: `{section.path}`
+1. Section specification: `{section_path}`
 2. Codespace root: `{codespace}`
 {codemap_ref}
 {corrections_ref}
@@ -65,9 +40,9 @@ Your job is to determine why and classify the situation.
 3. Explore the codespace strategically — search for files that relate
    to this section's problem space
 4. If you need deeper exploration, submit a task request to
-   `{planspace}/artifacts/signals/task-requests-reexplore-{section.number}.json`:
+   `{planspace}/artifacts/signals/task-requests-reexplore-{section_number}.json`:
    ```json
-   {{"task_type": "scan.explore", "concern_scope": "section-{section.number}", "payload_path": "<path-to-exploration-prompt>", "priority": "normal"}}
+   {{"task_type": "scan.explore", "concern_scope": "section-{section_number}", "payload_path": "<path-to-exploration-prompt>", "priority": "normal"}}
    ```
    The above is the legacy single-task format (still accepted). You may
    also use the v2 envelope format with chain or fanout actions — see
@@ -83,7 +58,7 @@ Your job is to determine why and classify the situation.
 ## Output
 
 If you find related files, append them to the section file at
-`{section.path}` using the standard format:
+`{section_path}` using the standard format:
 
 ```
 ## Related Files
@@ -98,18 +73,60 @@ Then write a brief classification to `{output_path}`:
 - Any open problems or research questions
 
 **Also write a structured JSON signal** to
-`{planspace}/artifacts/signals/section-{section.number}-mode.json`:
+`{planspace}/artifacts/signals/section-{section_number}-mode.json`:
 ```json
 {{"mode": "brownfield|greenfield|hybrid", "confidence": "high|medium|low", "reason": "..."}}
 ```
 This is how the pipeline reads your classification — the script reads
 the JSON, not unstructured text.
 """
-    # V3: Validate dynamic content — violations block dispatch
+
+
+def _build_reexplore_prompt(
+    section: Section,
+    planspace: Path,
+    codespace: Path,
+    output_path: Path,
+    paths: PathRegistry,
+) -> str:
+    """Build the re-exploration prompt for a section with no related files."""
+    summary = Services.cross_section().extract_section_summary(section.path)
+    codemap_path = paths.codemap()
+    codemap_ref = f"3. Codemap: `{codemap_path}`" if codemap_path.exists() else ""
+    corrections_path = paths.corrections()
+    corrections_ref = (
+        f"4. Codemap corrections (authoritative fixes): `{corrections_path}`"
+        if corrections_path.exists()
+        else ""
+    )
+    return _compose_reexplore_text(
+        section_number=section.number,
+        section_path=section.path,
+        summary=summary,
+        codespace=codespace,
+        codemap_ref=codemap_ref,
+        corrections_ref=corrections_ref,
+        planspace=planspace,
+        output_path=output_path,
+    )
+
+
+def _reexplore_section(
+    section: Section, planspace: Path, codespace: Path, parent: str,
+    model: str,
+) -> str | None:
+    """Dispatch a re-explorer when a section has no related files."""
+    paths = PathRegistry(planspace)
+    prompt_path = paths.artifacts / f"reexplore-{section.number}-prompt.md"
+    output_path = paths.artifacts / f"reexplore-{section.number}-output.md"
+
+    rendered = _build_reexplore_prompt(section, planspace, codespace, output_path, paths)
     violations = Services.prompt_guard().validate_dynamic(rendered)
     if violations:
-        Services.logger().log(f"  ERROR: prompt {prompt_path.name} blocked — template "
-            f"violations: {violations}")
+        Services.logger().log(
+            f"  ERROR: prompt {prompt_path.name} blocked — template "
+            f"violations: {violations}"
+        )
         return None
     prompt_path.write_text(rendered, encoding="utf-8")
     Services.communicator().log_artifact(planspace, f"prompt:reexplore-{section.number}")
@@ -121,11 +138,9 @@ the JSON, not unstructured text.
         agent_file=Services.task_router().agent_for("implementation.reexplore"),
     )
 
-    # V6: Submit agent-emitted follow-up work into the queue
     if result != "ALIGNMENT_CHANGED_PENDING":
         Services.flow_ingestion().ingest_and_submit(
-            planspace,
-            db_path=paths.run_db(),
+            planspace, db_path=paths.run_db(),
             submitted_by=f"reexplore-{section.number}",
             signal_path=paths.signals_dir()
             / f"task-requests-reexplore-{section.number}.json",
@@ -133,6 +148,54 @@ the JSON, not unstructured text.
         )
 
     return result
+
+
+def _collect_surface_entries(
+    paths: PathRegistry, sec: str,
+) -> list[tuple[str, Path]]:
+    """Collect (label, path) pairs for all existing alignment artifacts."""
+    entries: list[tuple[str, Path]] = []
+    simple_artifacts: list[tuple[str, Path]] = [
+        ("Proposal excerpt", paths.proposal_excerpt(sec)),
+        ("Alignment excerpt", paths.alignment_excerpt(sec)),
+        ("Integration proposal", paths.proposal(sec)),
+        ("Proposal-state artifact", paths.proposal_state(sec)),
+        ("TODO extraction", paths.todos(sec)),
+        ("Microstrategy", paths.microstrategy(sec)),
+    ]
+    for label, path in simple_artifacts:
+        if path.exists():
+            entries.append((label, path))
+
+    problem_frame = paths.problem_frame(sec)
+    if problem_frame.exists():
+        entries.append((
+            "Problem frame (derived summary; defer to excerpts on conflict)",
+            problem_frame,
+        ))
+
+    notes_dir = paths.notes_dir()
+    if notes_dir.exists():
+        for note in sorted(notes_dir.glob(f"from-*-to-{sec}.md")):
+            entries.append(("Incoming note", note))
+
+    decisions_dir = paths.decisions_dir()
+    if decisions_dir.exists():
+        for dec in sorted(decisions_dir.glob(f"section-{sec}*.md")):
+            entries.append(("Decision", dec))
+
+    intent_sec_dir = paths.intent_section_dir(sec)
+    intent_artifacts: list[tuple[str, Path]] = [
+        ("Intent problem definition", intent_sec_dir / "problem.md"),
+        ("Intent alignment rubric", intent_sec_dir / "problem-alignment.md"),
+        ("Philosophy excerpt", intent_sec_dir / "philosophy-excerpt.md"),
+        ("Surface registry", intent_sec_dir / "surface-registry.json"),
+    ]
+    for label, path in intent_artifacts:
+        if path.exists():
+            entries.append((label, path))
+
+    return entries
 
 
 def _write_alignment_surface(
@@ -144,91 +207,16 @@ def _write_alignment_surface(
     knows exactly which artifacts exist for this section and where to
     find them.
     """
-    paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
+    registry = PathRegistry(planspace)
     sec = section.number
-    sections_dir = paths.sections_dir()
-    sections_dir.mkdir(parents=True, exist_ok=True)
-    surface_path = paths.alignment_surface(sec)
+    registry.sections_dir().mkdir(parents=True, exist_ok=True)
+    surface_path = registry.alignment_surface(sec)
 
-    lines = [f"# Alignment Surface: Section {sec}\n"]
-    lines.append("Authoritative inputs for alignment judgement:\n")
-
-    # Proposal excerpt
-    proposal_excerpt = paths.proposal_excerpt(sec)
-    if proposal_excerpt.exists():
-        lines.append(f"- **Proposal excerpt**: `{proposal_excerpt}`")
-
-    # Alignment excerpt
-    alignment_excerpt = paths.alignment_excerpt(sec)
-    if alignment_excerpt.exists():
-        lines.append(f"- **Alignment excerpt**: `{alignment_excerpt}`")
-
-    # Integration proposal
-    integration_proposal = paths.proposal(sec)
-    if integration_proposal.exists():
-        lines.append(
-            f"- **Integration proposal**: `{integration_proposal}`")
-
-    # Proposal-state artifact (machine-readable problem state)
-    proposal_state_path = paths.proposal_state(sec)
-    if proposal_state_path.exists():
-        lines.append(
-            f"- **Proposal-state artifact**: `{proposal_state_path}`")
-
-    # TODO extraction
-    todos_path = paths.todos(sec)
-    if todos_path.exists():
-        lines.append(f"- **TODO extraction**: `{todos_path}`")
-
-    # Microstrategy
-    microstrategy_path = paths.microstrategy(sec)
-    if microstrategy_path.exists():
-        lines.append(f"- **Microstrategy**: `{microstrategy_path}`")
-
-    # Problem frame
-    problem_frame = paths.problem_frame(sec)
-    if problem_frame.exists():
-        lines.append(
-            f"- **Problem frame** (derived summary; defer to excerpts "
-            f"on conflict): `{problem_frame}`")
-
-    # Incoming consequence notes
-    notes_dir = paths.notes_dir()
-    if notes_dir.exists():
-        incoming = sorted(notes_dir.glob(f"from-*-to-{sec}.md"))
-        for note in incoming:
-            lines.append(f"- **Incoming note**: `{note}`")
-
-    # Decisions (glob matches both section-03.md and section-03-*.md)
-    decisions_dir = paths.decisions_dir()
-    if decisions_dir.exists():
-        decisions = sorted(decisions_dir.glob(f"section-{sec}*.md"))
-        for dec in decisions:
-            lines.append(f"- **Decision**: `{dec}`")
-
-    # V1/R61: Intent pack artifacts — propagate to alignment surface
-    # so the surface is truly authoritative over all alignment inputs.
-    intent_sec_dir = paths.intent_section_dir(sec)
-    intent_problem = intent_sec_dir / "problem.md"
-    if intent_problem.exists():
-        lines.append(
-            f"- **Intent problem definition**: `{intent_problem}`")
-
-    intent_rubric = intent_sec_dir / "problem-alignment.md"
-    if intent_rubric.exists():
-        lines.append(
-            f"- **Intent alignment rubric**: `{intent_rubric}`")
-
-    intent_philosophy = intent_sec_dir / "philosophy-excerpt.md"
-    if intent_philosophy.exists():
-        lines.append(
-            f"- **Philosophy excerpt**: `{intent_philosophy}`")
-
-    intent_registry = intent_sec_dir / "surface-registry.json"
-    if intent_registry.exists():
-        lines.append(
-            f"- **Surface registry**: `{intent_registry}`")
-
+    lines = [
+        f"# Alignment Surface: Section {sec}\n",
+        "Authoritative inputs for alignment judgement:\n",
+    ]
+    for label, path in _collect_surface_entries(registry, sec):
+        lines.append(f"- **{label}**: `{path}`")
     lines.append("")  # trailing newline
     surface_path.write_text("\n".join(lines), encoding="utf-8")

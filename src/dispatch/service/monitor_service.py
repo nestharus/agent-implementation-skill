@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -29,11 +28,9 @@ class MonitorService:
         self,
         db: DatabaseClient,
         controller_name: str,
-        logger: Callable[[str], None] | None = None,
     ) -> None:
         self._db = db
         self._controller_name = controller_name
-        self._logger = logger
 
     def start(self, agent_name: str, prompt_path: Path) -> MonitorHandle:
         """Register the agent mailbox, log dispatch start, and spawn monitor."""
@@ -110,5 +107,4 @@ class MonitorService:
         return output
 
     def _log(self, message: str) -> None:
-        if self._logger is not None:
-            self._logger(message)
+        Services.logger().log(message)

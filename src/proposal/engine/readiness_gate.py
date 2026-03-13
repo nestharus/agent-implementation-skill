@@ -23,7 +23,7 @@ from flow.types.routing import submit_task
 
 
 @dataclass
-class ReadinessResult:
+class GateResult:
     ready: bool
     blockers: list[dict]
     proposal_pass_result: ProposalPassResult | None = None
@@ -112,6 +112,77 @@ def publish_discoveries(
         )
 
 
+def _route_blocking_research(
+    registry: PathRegistry,
+    signal_dir: Path,
+    section_number: str,
+    planspace: Path,
+    codespace: Path | None,
+    questions: list[str],
+) -> None:
+    """Dispatch research or escalate blocking research questions."""
+    trigger_hash = compute_trigger_hash(questions)
+    cycle_id = f"research-{section_number}-{trigger_hash[:12]}"
+
+    if is_research_complete_for_trigger(section_number, planspace, trigger_hash):
+        _emit_needs_parent_research_signals(
+            signal_dir, section_number, questions,
+            needs="Parent/coordination answer — research could not resolve",
+            why_blocked="Research completed but blocking question remains unresolved",
+            detail_log="research complete but question unresolved — emitting NEEDS_PARENT signal",
+        )
+        return
+
+    research_section_dir = registry.research_section_dir(section_number)
+    research_section_dir.mkdir(parents=True, exist_ok=True)
+    trigger_path = registry.research_trigger(section_number)
+    trigger = {
+        "section": section_number,
+        "trigger_source": "proposal-state:blocking_research_questions",
+        "questions": questions,
+        "trigger_hash": trigger_hash,
+        "cycle_id": cycle_id,
+    }
+    Services.artifact_io().write_json(trigger_path, trigger)
+    prompt_path = write_research_plan_prompt(
+        section_number, planspace, codespace, trigger_path,
+    )
+    if prompt_path is None:
+        _emit_needs_parent_research_signals(
+            signal_dir, section_number, questions,
+            needs="Parent/coordination answer to this blocking research question",
+            why_blocked="Research prompt generation failed validation and cannot be dispatched safely",
+            detail_log="research prompt blocked by validation — emitting NEEDS_PARENT signal",
+        )
+        write_research_status(
+            section_number, planspace, "failed",
+            detail="research plan prompt blocked by validation",
+            trigger_hash=trigger_hash, cycle_id=cycle_id,
+        )
+        return
+
+    # Write status BEFORE computing freshness so the hash includes
+    # research-status.json at both submission and dispatch time.
+    write_research_status(
+        section_number, planspace, "planned",
+        trigger_hash=trigger_hash, cycle_id=cycle_id,
+    )
+    freshness = Services.freshness().compute(planspace, section_number)
+    task_id = submit_task(
+        registry.run_db(),
+        f"readiness-{section_number}",
+        "research.plan",
+        concern_scope=f"section-{section_number}",
+        payload_path=str(prompt_path),
+        problem_id=f"research-{section_number}",
+        freshness_token=freshness,
+    )
+    Services.logger().log(
+        f"Section {section_number}: dispatched research_plan "
+        f"task {task_id} with prompt and freshness token"
+    )
+
+
 def route_blockers(
     section_number: str,
     proposal_state: dict,
@@ -149,94 +220,10 @@ def route_blockers(
         for question in proposal_state.get("blocking_research_questions", [])
     ]
     if blocking_research_questions:
-        trigger_hash = compute_trigger_hash(blocking_research_questions)
-        cycle_id = f"research-{section_number}-{trigger_hash[:12]}"
-        if is_research_complete_for_trigger(
-            section_number,
-            planspace,
-            trigger_hash,
-        ):
-            _emit_needs_parent_research_signals(
-                signal_dir,
-                section_number,
-                blocking_research_questions,
-                needs="Parent/coordination answer — research could not resolve",
-                why_blocked=(
-                    "Research completed but blocking question remains unresolved"
-                ),
-                detail_log=(
-                    "research complete but question unresolved — "
-                    "emitting NEEDS_PARENT signal"
-                ),
-            )
-        else:
-            research_section_dir = registry.research_section_dir(section_number)
-            research_section_dir.mkdir(parents=True, exist_ok=True)
-            trigger_path = registry.research_trigger(section_number)
-            trigger = {
-                "section": section_number,
-                "trigger_source": "proposal-state:blocking_research_questions",
-                "questions": blocking_research_questions,
-                "trigger_hash": trigger_hash,
-                "cycle_id": cycle_id,
-            }
-            Services.artifact_io().write_json(trigger_path, trigger)
-            prompt_path = write_research_plan_prompt(
-                section_number,
-                planspace,
-                codespace,
-                trigger_path,
-            )
-            if prompt_path is not None:
-                # Write status BEFORE computing freshness so the hash
-                # includes research-status.json at both submission and
-                # dispatch time (prevents stale-alignment false positives).
-                write_research_status(
-                    section_number,
-                    planspace,
-                    "planned",
-                    trigger_hash=trigger_hash,
-                    cycle_id=cycle_id,
-                )
-                freshness = Services.freshness().compute(planspace, section_number)
-                task_id = submit_task(
-                    registry.run_db(),
-                    f"readiness-{section_number}",
-                    "research.plan",
-                    concern_scope=f"section-{section_number}",
-                    payload_path=str(prompt_path),
-                    problem_id=f"research-{section_number}",
-                    freshness_token=freshness,
-                )
-                Services.logger().log(
-                    f"Section {section_number}: dispatched research_plan "
-                    f"task {task_id} with prompt and freshness token"
-                )
-            else:
-                _emit_needs_parent_research_signals(
-                    signal_dir,
-                    section_number,
-                    blocking_research_questions,
-                    needs=(
-                        "Parent/coordination answer to this blocking research question"
-                    ),
-                    why_blocked=(
-                        "Research prompt generation failed validation and "
-                        "cannot be dispatched safely"
-                    ),
-                    detail_log=(
-                        "research prompt blocked by validation — "
-                        "emitting NEEDS_PARENT signal"
-                    ),
-                )
-                write_research_status(
-                    section_number,
-                    planspace,
-                    "failed",
-                    detail="research plan prompt blocked by validation",
-                    trigger_hash=trigger_hash,
-                    cycle_id=cycle_id,
-                )
+        _route_blocking_research(
+            registry, signal_dir, section_number, planspace,
+            codespace, blocking_research_questions,
+        )
 
     for i, seam in enumerate(proposal_state.get("shared_seam_candidates", [])):
         trigger = {
@@ -298,7 +285,7 @@ def resolve_and_route(
     parent: str,
     pass_mode: str,
     codespace: Path | None = None,
-) -> ReadinessResult:
+) -> GateResult:
     """Resolve readiness, publish discoveries, and route blockers."""
     registry = PathRegistry(planspace)
     proposal_state_path = registry.proposal_state(section.number)
@@ -307,9 +294,9 @@ def resolve_and_route(
     publish_discoveries(section.number, proposal_state, planspace)
 
     readiness = resolve_readiness(planspace, section.number)
-    if not readiness.get("ready"):
-        blockers = readiness.get("blockers", [])
-        rationale = readiness.get("rationale", "unknown")
+    if not readiness.ready:
+        blockers = readiness.blockers
+        rationale = readiness.rationale or "unknown"
         Services.logger().log(
             f"Section {section.number}: execution blocked — "
             f"readiness=false, rationale={rationale}, blockers={len(blockers)}"
@@ -348,7 +335,7 @@ def resolve_and_route(
                 ),
                 proposal_state_path=str(proposal_state_path),
             )
-        return ReadinessResult(
+        return GateResult(
             ready=False,
             blockers=blockers,
             proposal_pass_result=proposal_pass_result,
@@ -368,7 +355,7 @@ def resolve_and_route(
             needs_reconciliation=False,
             proposal_state_path=str(proposal_state_path),
         )
-    return ReadinessResult(
+    return GateResult(
         ready=True,
         blockers=[],
         proposal_pass_result=proposal_pass_result,

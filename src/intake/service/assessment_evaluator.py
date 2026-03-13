@@ -13,24 +13,17 @@ from containers import Services
 _VALID_VERDICTS = {"accept", "accept_with_debt", "refactor_required"}
 
 
-def write_post_impl_assessment_prompt(
+def _compose_assessment_text(
     section_number: str,
-    planspace: Path,
-    codespace: Path,
-) -> Path | None:
-    """Write the post-implementation assessment prompt."""
-    del codespace
-
-    paths = PathRegistry(planspace)
-    prompt_path = paths.post_impl_assessment_prompt(section_number)
-    governance_packet = paths.governance_packet(section_number)
-    trace_index = paths.trace_index(section_number)
-    trace_map = paths.trace_map(section_number)
-    integration_proposal = paths.proposal(section_number)
-    problem_frame = paths.problem_frame(section_number)
-    assessment_output = paths.post_impl_assessment(section_number)
-
-    content = f"""# Task: Post-Implementation Governance Assessment for Section {section_number}
+    governance_packet: Path,
+    trace_index: Path,
+    trace_map: Path,
+    integration_proposal: Path,
+    problem_frame: Path,
+    assessment_output: Path,
+) -> str:
+    """Return the post-implementation assessment prompt text."""
+    return f"""# Task: Post-Implementation Governance Assessment for Section {section_number}
 
 ## Files to Read
 1. Governance packet: `{governance_packet}`
@@ -92,6 +85,34 @@ Required JSON shape:
 
 Be conservative. When uncertain, prefer `accept_with_debt` over silent acceptance.
 """
+
+
+def write_post_impl_assessment_prompt(
+    section_number: str,
+    planspace: Path,
+    codespace: Path,
+) -> Path | None:
+    """Write the post-implementation assessment prompt."""
+    del codespace
+
+    paths = PathRegistry(planspace)
+    prompt_path = paths.post_impl_assessment_prompt(section_number)
+    governance_packet = paths.governance_packet(section_number)
+    trace_index = paths.trace_index(section_number)
+    trace_map = paths.trace_map(section_number)
+    integration_proposal = paths.proposal(section_number)
+    problem_frame = paths.problem_frame(section_number)
+    assessment_output = paths.post_impl_assessment(section_number)
+
+    content = _compose_assessment_text(
+        section_number=section_number,
+        governance_packet=governance_packet,
+        trace_index=trace_index,
+        trace_map=trace_map,
+        integration_proposal=integration_proposal,
+        problem_frame=problem_frame,
+        assessment_output=assessment_output,
+    )
 
     if not Services.prompt_guard().write_validated(content, prompt_path):
         return None

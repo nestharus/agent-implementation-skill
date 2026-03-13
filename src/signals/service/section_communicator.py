@@ -17,7 +17,7 @@ def log(msg: str) -> None:
 
 def _mailbox(planspace: Path) -> MailboxService:
     return MailboxService.for_planspace(
-        planspace, db_sh=DB_SH, agent_name=AGENT_NAME, logger=log,
+        planspace, db_sh=DB_SH, agent_name=AGENT_NAME,
     )
 
 

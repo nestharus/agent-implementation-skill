@@ -57,6 +57,82 @@ def append_risk_review_failure_history(
         )
 
 
+def _determine_decision_outcome(
+    decision,
+    risk_plan: RiskPlan,
+    accepted_outcome: str,
+    accepted_surprises: list[str],
+    accepted_verification: str | None,
+) -> tuple[str, list[str], str | None]:
+    """Map a step decision to its (outcome, surprises, verification) tuple."""
+    if decision.decision == StepDecision.ACCEPT:
+        return accepted_outcome, list(accepted_surprises), accepted_verification
+    if decision.decision == StepDecision.REJECT_DEFER:
+        return (
+            "deferred",
+            _unique_strings(
+                decision.wait_for + list(risk_plan.expected_reassessment_inputs),
+            ),
+            None,
+        )
+    return (
+        "reopened",
+        [decision.reason] if decision.reason
+        else ["ROAL reopened this step for higher-level routing"],
+        None,
+    )
+
+
+def _record_over_guarding(
+    decision,
+    package_step,
+    assessment_step,
+    risk_plan: RiskPlan,
+    prior_history: list[RiskHistoryEntry],
+    accepted_verification: str | None,
+    history_path: Path,
+) -> None:
+    """Record an over_guarded entry if prior rejections exist for this pattern."""
+    current_signature = pattern_signature(
+        package_step.assessment_class,
+        assessment_step.dominant_risks,
+        assessment_step.modifiers.blast_radius,
+    )
+    prior_rejections = [
+        entry
+        for entry in prior_history
+        if pattern_signature(
+            entry.assessment_class,
+            entry.dominant_risks,
+            entry.blast_radius_band,
+        ) == current_signature
+        and entry.actual_outcome.strip().lower() in {"deferred", "reopened"}
+    ]
+    if prior_rejections:
+        append_history_entry(
+            history_path,
+            RiskHistoryEntry(
+                package_id=risk_plan.package_id,
+                step_id=decision.step_id,
+                layer=risk_plan.layer,
+                assessment_class=package_step.assessment_class,
+                posture=decision.posture or PostureProfile.P2_STANDARD,
+                predicted_risk=(
+                    decision.residual_risk
+                    if decision.residual_risk is not None
+                    else assessment_step.raw_risk
+                ),
+                actual_outcome="over_guarded",
+                surfaced_surprises=[
+                    "similar deferred or reopened work later completed safely",
+                ],
+                verification_outcome=accepted_verification,
+                dominant_risks=list(assessment_step.dominant_risks),
+                blast_radius_band=assessment_step.modifiers.blast_radius,
+            ),
+        )
+
+
 def append_risk_history(
     planspace: Path,
     sec_num: str,
@@ -87,7 +163,7 @@ def append_risk_history(
         accepted_verification = "failed"
     elif modified:
         accepted_outcome = "success"
-        accepted_surprises = []
+        accepted_surprises: list[str] = []
         accepted_verification = "passed"
     else:
         accepted_outcome = "warning"
@@ -99,24 +175,13 @@ def append_risk_history(
         assessment_step = assessment_steps.get(decision.step_id)
         if package_step is None:
             continue
-        if decision.decision == StepDecision.ACCEPT:
-            actual_outcome = accepted_outcome
-            surfaced_surprises = list(accepted_surprises)
-            verification_outcome = accepted_verification
-        elif decision.decision == StepDecision.REJECT_DEFER:
-            actual_outcome = "deferred"
-            surfaced_surprises = _unique_strings(
-                decision.wait_for + list(risk_plan.expected_reassessment_inputs),
+
+        actual_outcome, surfaced_surprises, verification_outcome = (
+            _determine_decision_outcome(
+                decision, risk_plan,
+                accepted_outcome, accepted_surprises, accepted_verification,
             )
-            verification_outcome = None
-        else:
-            actual_outcome = "reopened"
-            surfaced_surprises = (
-                [decision.reason]
-                if decision.reason
-                else ["ROAL reopened this step for higher-level routing"]
-            )
-            verification_outcome = None
+        )
         append_history_entry(
             paths.risk_history(),
             RiskHistoryEntry(
@@ -150,41 +215,8 @@ def append_risk_history(
             and actual_outcome in {"success", "warning"}
             and assessment_step is not None
         ):
-            current_signature = pattern_signature(
-                package_step.assessment_class,
-                assessment_step.dominant_risks,
-                assessment_step.modifiers.blast_radius,
+            _record_over_guarding(
+                decision, package_step, assessment_step,
+                risk_plan, prior_history, accepted_verification,
+                paths.risk_history(),
             )
-            prior_rejections = [
-                entry
-                for entry in prior_history
-                if pattern_signature(
-                    entry.assessment_class,
-                    entry.dominant_risks,
-                    entry.blast_radius_band,
-                ) == current_signature
-                and entry.actual_outcome.strip().lower() in {"deferred", "reopened"}
-            ]
-            if prior_rejections:
-                append_history_entry(
-                    paths.risk_history(),
-                    RiskHistoryEntry(
-                        package_id=risk_plan.package_id,
-                        step_id=decision.step_id,
-                        layer=risk_plan.layer,
-                        assessment_class=package_step.assessment_class,
-                        posture=decision.posture or PostureProfile.P2_STANDARD,
-                        predicted_risk=(
-                            decision.residual_risk
-                            if decision.residual_risk is not None
-                            else assessment_step.raw_risk
-                        ),
-                        actual_outcome="over_guarded",
-                        surfaced_surprises=[
-                            "similar deferred or reopened work later completed safely",
-                        ],
-                        verification_outcome=accepted_verification,
-                        dominant_risks=list(assessment_step.dominant_risks),
-                        blast_radius_band=assessment_step.modifiers.blast_radius,
-                    ),
-                )

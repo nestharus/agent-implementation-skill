@@ -60,11 +60,11 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_integration_proposal_prompt",
+        "proposal.service.proposal_prep.write_integration_proposal_prompt",
         lambda *_args, **_kwargs: prompt_path,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_integration_alignment_prompt",
+        "proposal.service.alignment_handler.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: align_prompt_path,
     )
 
@@ -86,7 +86,7 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_reconciliation_result",
+        "proposal.service.proposal_prep.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -100,11 +100,6 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
             planspace,
             codespace,
             "parent",
-            {
-                "proposal": "gpt",
-                "alignment": "claude",
-                "escalation_model": "stronger",
-            },
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -138,11 +133,11 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_integration_proposal_prompt",
+        "proposal.service.proposal_prep.write_integration_proposal_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_integration_alignment_prompt",
+        "proposal.service.alignment_handler.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
 
@@ -166,7 +161,7 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
         lambda *_args, **_kwargs: next(problems),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_reconciliation_result",
+        "proposal.service.proposal_prep.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -180,11 +175,6 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
             planspace,
             codespace,
             "parent",
-            {
-                "proposal": "gpt",
-                "alignment": "claude",
-                "escalation_model": "stronger",
-            },
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -222,11 +212,11 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_integration_proposal_prompt",
+        "proposal.service.proposal_prep.write_integration_proposal_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_integration_alignment_prompt",
+        "proposal.service.alignment_handler.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
 
@@ -251,15 +241,15 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
     Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
     monkeypatch.setattr(Services.dispatch_helpers(), "check_agent_signals", _signals)
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_reconciliation_result",
+        "proposal.service.proposal_prep.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle._append_open_problem",
+        "proposal.service.cycle_control._append_open_problem",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle._update_blocker_rollup",
+        "proposal.service.cycle_control._update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -273,11 +263,6 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
             planspace,
             codespace,
             "parent",
-            {
-                "proposal": "gpt",
-                "alignment": "claude",
-                "escalation_model": "stronger",
-            },
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )

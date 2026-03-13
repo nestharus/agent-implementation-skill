@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
 from pathlib import Path
 
 from signals.service.database_client import DatabaseClient
@@ -41,11 +40,9 @@ class MailboxService:
         self,
         db: DatabaseClient,
         agent_name: str,
-        logger: Callable[[str], None] | None = None,
     ) -> None:
         self._db = db
         self._agent_name = agent_name
-        self._logger = logger
 
     @classmethod
     def for_planspace(
@@ -54,11 +51,10 @@ class MailboxService:
         *,
         db_sh: Path,
         agent_name: str,
-        logger: Callable[[str], None] | None = None,
     ) -> MailboxService:
         """Create a mailbox wired to the run database for *planspace*."""
         db = DatabaseClient.for_planspace(planspace, db_sh)
-        return cls(db, agent_name, logger=logger)
+        return cls(db, agent_name)
 
     def send(self, target: str, message: str) -> None:
         """Send a message and emit summary events for monitored prefixes."""
@@ -105,5 +101,5 @@ class MailboxService:
         self._db.unregister(self._agent_name, check=False)
 
     def _log(self, message: str) -> None:
-        if self._logger is not None:
-            self._logger(message)
+        from containers import Services
+        Services.logger().log(message)

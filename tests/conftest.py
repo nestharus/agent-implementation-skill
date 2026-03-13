@@ -390,7 +390,7 @@ class NoOpSectionAlignment(SectionAlignmentService):
         return None
 
     def run_global_recheck(self, sections_by_num, section_results,
-                           planspace, codespace, parent, policy) -> str:
+                           planspace, codespace, parent) -> str:
         return "aligned"
 
 

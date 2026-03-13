@@ -213,7 +213,7 @@ def _setup_stale_reopen(planspace: Path, codespace: Path) -> Path:
     # First readiness check: should be ready
     readiness_1 = resolve_readiness(planspace, "22")
     # Persist the initial readiness result for later comparison
-    initial_ready = readiness_1.get("ready")
+    initial_ready = readiness_1.ready
 
     # Step 2: Section 23 introduces a shared seam conflict with section 22
     state_23 = {
@@ -275,7 +275,7 @@ def _setup_stale_reopen(planspace: Path, codespace: Path) -> Path:
     # Store the before/after for the check to inspect
     check_meta = {
         "initial_ready": initial_ready,
-        "post_reconciliation_ready": readiness_2.get("ready"),
+        "post_reconciliation_ready": readiness_2.ready,
     }
     meta_path = artifacts / "readiness" / "section-22-check-meta.json"
     meta_path.write_text(

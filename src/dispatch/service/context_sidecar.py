@@ -9,6 +9,18 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 
+def _parse_inline_yaml_list(text: str) -> list[str]:
+    """Parse a YAML inline list like ``[a, b, c]`` into string items."""
+    if not (text.startswith("[") and text.endswith("]")):
+        return []
+    items: list[str] = []
+    for item in text[1:-1].split(","):
+        value = item.strip().strip("'\"")
+        if value:
+            items.append(value)
+    return items
+
+
 def parse_context_field(agent_file: str) -> list[str]:
     """Extract the ``context:`` list from an agent file's YAML frontmatter."""
     path = Path(agent_file)
@@ -31,12 +43,7 @@ def parse_context_field(agent_file: str) -> list[str]:
         if stripped.startswith("context:"):
             inline = stripped[len("context:"):].strip()
             if inline:
-                if inline.startswith("[") and inline.endswith("]"):
-                    for item in inline[1:-1].split(","):
-                        value = item.strip().strip("'\"")
-                        if value:
-                            categories.append(value)
-                    return categories
+                return _parse_inline_yaml_list(inline)
             in_context = True
             continue
         if in_context:

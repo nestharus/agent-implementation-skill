@@ -95,9 +95,9 @@ def events_from_home(
     for path in iter_files(home):
         try:
             yield from events_from_file(path)
-        except Exception as exc:
-            if source_label:
-                print(f"{source_label}: error reading {path}: {exc}", file=sys.stderr)
+        except Exception as exc:  # noqa: BLE001 — best-effort file scanning
+            label = source_label or "log_extract"
+            print(f"{label}: error reading {path}: {exc}", file=sys.stderr)
 
 
 def session_candidates_from_home(
@@ -126,6 +126,6 @@ def session_candidates_from_home(
             candidate = candidate_from_file(path)
             if candidate is not None:
                 yield candidate
-        except Exception as exc:
-            if source_label:
-                print(f"{source_label}: error reading {path}: {exc}", file=sys.stderr)
+        except Exception as exc:  # noqa: BLE001 — best-effort file scanning
+            label = source_label or "log_extract"
+            print(f"{label}: error reading {path}: {exc}", file=sys.stderr)

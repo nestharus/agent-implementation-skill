@@ -49,7 +49,7 @@ def iter_events(gemini_homes: list[Path]) -> Iterator[TimelineEvent]:
     for home in gemini_homes:
         try:
             yield from _events_from_home(home)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — best-effort home scanning
             print(f"gemini: unexpected error scanning {home}: {exc}", file=sys.stderr)
 
 
@@ -64,7 +64,7 @@ def iter_session_candidates(gemini_homes: list[Path]) -> Iterator[SessionCandida
     for home in gemini_homes:
         try:
             yield from _session_candidates_from_home(home)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — best-effort home scanning
             print(f"gemini: unexpected error scanning {home}: {exc}", file=sys.stderr)
 
 
@@ -167,38 +167,32 @@ def _extract_role(record: dict) -> str:
     return str(record.get("role", record.get("author", ""))).lower()
 
 
+def _join_parts(items: list) -> str:
+    """Join a list of string/dict parts into a single text string."""
+    parts: list[str] = []
+    for item in items:
+        if isinstance(item, str):
+            parts.append(item)
+        elif isinstance(item, dict):
+            t = item.get("text", "")
+            if t:
+                parts.append(t)
+    return " ".join(parts) if parts else ""
+
+
 def _extract_text(record: dict) -> str:
     """Best-effort text extraction from a record."""
-    # Direct text/content field
     for key in ("text", "content", "message", "body"):
         val = record.get(key)
         if isinstance(val, str) and val.strip():
             return val
-        # content may be a list of parts
         if isinstance(val, list):
-            parts: list[str] = []
-            for item in val:
-                if isinstance(item, str):
-                    parts.append(item)
-                elif isinstance(item, dict):
-                    t = item.get("text", "")
-                    if t:
-                        parts.append(t)
-            if parts:
-                return " ".join(parts)
-    # Nested parts structure (Gemini API style)
+            joined = _join_parts(val)
+            if joined:
+                return joined
     parts_field = record.get("parts")
     if isinstance(parts_field, list):
-        parts = []
-        for p in parts_field:
-            if isinstance(p, str):
-                parts.append(p)
-            elif isinstance(p, dict):
-                t = p.get("text", "")
-                if t:
-                    parts.append(t)
-        if parts:
-            return " ".join(parts)
+        return _join_parts(parts_field)
     return ""
 
 

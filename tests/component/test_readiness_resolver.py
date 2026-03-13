@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.proposal.service.readiness_resolver import resolve_readiness
+from src.proposal.service.readiness_resolver import ReadinessResult, resolve_readiness
 
 
 def test_resolve_readiness_writes_ready_artifact(tmp_path: Path) -> None:
-    """Tests use runtime layout: planspace → artifacts/ → proposals/."""
+    """Tests use runtime layout: planspace -> artifacts/ -> proposals/."""
     planspace = tmp_path / "planspace"
     proposal_state = (
         planspace / "artifacts" / "proposals"
@@ -37,14 +37,19 @@ def test_resolve_readiness_writes_ready_artifact(tmp_path: Path) -> None:
 
     result = resolve_readiness(planspace, "03")
 
-    assert result["ready"] is True
-    assert result["blockers"] == []
-    assert result["artifact_path"].exists()
-    assert json.loads(result["artifact_path"].read_text(encoding="utf-8")) == {
+    assert isinstance(result, ReadinessResult)
+    assert result.ready is True
+    assert result.blockers == []
+    assert result.artifact_path is not None
+    assert result.artifact_path.exists()
+    assert json.loads(result.artifact_path.read_text(encoding="utf-8")) == {
         "ready": True,
         "blockers": [],
         "rationale": "ready",
     }
+    # Backward-compat dict-style access
+    assert result["ready"] is True
+    assert result["blockers"] == []
 
 
 def test_resolve_readiness_fails_closed_when_artifact_missing(tmp_path: Path) -> None:
@@ -52,9 +57,10 @@ def test_resolve_readiness_fails_closed_when_artifact_missing(tmp_path: Path) ->
     planspace.mkdir()
     result = resolve_readiness(planspace, "04")
 
-    assert result["ready"] is False
-    assert result["blockers"] == []
-    assert result["rationale"] == "proposal-state artifact missing"
+    assert isinstance(result, ReadinessResult)
+    assert result.ready is False
+    assert result.blockers == []
+    assert result.rationale == "proposal-state artifact missing"
 
 
 def _make_proposal_state(planspace: Path, section: str, **overrides) -> None:
@@ -107,20 +113,20 @@ def _make_packet(planspace: Path, section: str, **overrides) -> None:
 
 
 def test_empty_identity_with_populated_packet_blocks(tmp_path: Path) -> None:
-    """PAT-0013: empty governance identity when packet has candidates → blocked."""
+    """PAT-0013: empty governance identity when packet has candidates -> blocked."""
     planspace = tmp_path / "planspace"
     _make_proposal_state(planspace, "10")
     _make_packet(planspace, "10")
 
     result = resolve_readiness(planspace, "10")
 
-    assert result["ready"] is False
-    blocker_states = [b["state"] for b in result["blockers"]]
+    assert result.ready is False
+    blocker_states = [b["state"] for b in result.blockers]
     assert "governance_identity_missing" in blocker_states
 
 
 def test_wrong_profile_id_blocks(tmp_path: Path) -> None:
-    """PAT-0013: profile_id mismatch with governing_profile → blocked."""
+    """PAT-0013: profile_id mismatch with governing_profile -> blocked."""
     planspace = tmp_path / "planspace"
     _make_proposal_state(
         planspace, "11",
@@ -132,13 +138,13 @@ def test_wrong_profile_id_blocks(tmp_path: Path) -> None:
 
     result = resolve_readiness(planspace, "11")
 
-    assert result["ready"] is False
-    blocker_states = [b["state"] for b in result["blockers"]]
+    assert result.ready is False
+    blocker_states = [b["state"] for b in result.blockers]
     assert "governance_profile_mismatch" in blocker_states
 
 
 def test_declared_ids_with_missing_packet_blocks(tmp_path: Path) -> None:
-    """PAT-0013: governance IDs declared but no packet → blocked."""
+    """PAT-0013: governance IDs declared but no packet -> blocked."""
     planspace = tmp_path / "planspace"
     _make_proposal_state(
         planspace, "12",
@@ -150,13 +156,13 @@ def test_declared_ids_with_missing_packet_blocks(tmp_path: Path) -> None:
 
     result = resolve_readiness(planspace, "12")
 
-    assert result["ready"] is False
-    blocker_states = [b["state"] for b in result["blockers"]]
+    assert result.ready is False
+    blocker_states = [b["state"] for b in result.blockers]
     assert "governance_packet_missing" in blocker_states
 
 
 def test_correct_identity_with_packet_passes(tmp_path: Path) -> None:
-    """PAT-0013: matching governance identity with valid packet → ready."""
+    """PAT-0013: matching governance identity with valid packet -> ready."""
     planspace = tmp_path / "planspace"
     _make_proposal_state(
         planspace, "13",
@@ -168,8 +174,8 @@ def test_correct_identity_with_packet_passes(tmp_path: Path) -> None:
 
     result = resolve_readiness(planspace, "13")
 
-    assert result["ready"] is True
-    assert result["blockers"] == []
+    assert result.ready is True
+    assert result.blockers == []
 
 
 def test_packet_ambiguity_without_proposal_questions_blocks(tmp_path: Path) -> None:
@@ -180,7 +186,7 @@ def test_packet_ambiguity_without_proposal_questions_blocks(tmp_path: Path) -> N
         problem_ids=["PRB-0001"],
         pattern_ids=["PAT-0001"],
         profile_id="PHI-global",
-        governance_questions=[],  # empty — ambiguity not carried
+        governance_questions=[],  # empty -- ambiguity not carried
     )
     _make_packet(
         planspace, "14",
@@ -190,8 +196,8 @@ def test_packet_ambiguity_without_proposal_questions_blocks(tmp_path: Path) -> N
 
     result = resolve_readiness(planspace, "14")
 
-    assert result["ready"] is False
-    blocker_states = [b["state"] for b in result["blockers"]]
+    assert result.ready is False
+    blocker_states = [b["state"] for b in result.blockers]
     assert "governance_ambiguity_unresolved" in blocker_states
 
 
@@ -214,8 +220,8 @@ def test_packet_ambiguity_with_proposal_questions_passes(tmp_path: Path) -> None
     result = resolve_readiness(planspace, "15")
 
     # Governance questions in proposal-state DO block via the existing
-    # _validate_governance_identity check, but that's the correct behavior —
+    # _validate_governance_identity check, but that's the correct behavior --
     # the ambiguity is surfaced structurally, not silently dropped.
-    blocker_states = [b["state"] for b in result["blockers"]]
+    blocker_states = [b["state"] for b in result.blockers]
     assert "governance_ambiguity_unresolved" not in blocker_states
     assert "governance_question" in blocker_states

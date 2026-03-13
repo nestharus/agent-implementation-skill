@@ -41,7 +41,6 @@ def test_aggregate_scope_deltas_adjudicates_and_records_decisions(
         decisions = aggregate_scope_deltas(
             planspace,
             "parent",
-            {"coordination_plan": "model-a", "escalation_model": "model-b"},
         )
 
         assert decisions == [
@@ -95,10 +94,10 @@ def test_aggregate_scope_deltas_retries_then_fails_closed_on_bad_output(
             aggregate_scope_deltas(
                 planspace,
                 "parent",
-                {"coordination_plan": "model-a", "escalation_model": "model-b"},
             )
 
-        assert calls == ["model-a", "model-b"]
+        # After policy dict removal, models come from Services.policies().load()
+        assert len(calls) == 2
         assert capturing_communicator.messages == ["fail:coordination:unparseable_scope_delta_adjudication"]
         assert (
             planspace
@@ -157,7 +156,6 @@ def test_aggregate_scope_deltas_includes_root_reframing_in_prompt_payload(
         aggregate_scope_deltas(
             planspace,
             "parent",
-            {"coordination_plan": "model-a", "escalation_model": "model-b"},
         )
     finally:
         Services.dispatcher.reset_override()

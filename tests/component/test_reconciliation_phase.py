@@ -66,7 +66,6 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
         planspace,
         codespace,
         "parent",
-        {},
     )
 
     assert result.new_section_numbers == ["01"]
@@ -112,7 +111,6 @@ def test_run_reconciliation_phase_restarts_on_alignment_change(
         planspace,
         codespace,
         "parent",
-        {},
     )
 
     assert result.new_section_numbers == []
@@ -153,7 +151,6 @@ def test_run_reconciliation_phase_exits_when_parent_aborts(
             planspace,
             codespace,
             "parent",
-            {},
         )
 
     assert capturing_communicator.messages == ["fail:aborted"]

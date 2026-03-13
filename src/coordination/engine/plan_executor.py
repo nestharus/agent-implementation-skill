@@ -18,6 +18,28 @@ class CoordinationExecutionExit(Exception):
     """Raised when coordination execution must stop early."""
 
 
+def _try_place_in_batch(
+    group_index: int,
+    files: set[str],
+    batches: list[list[int]],
+    group_file_sets: list[set[str]],
+    *,
+    allowed_indices: set[int] | None = None,
+) -> None:
+    """Place group_index into an existing compatible batch, or create a new one."""
+    if not files:
+        batches.append([group_index])
+        return
+    for batch in batches:
+        if allowed_indices is not None and any(i not in allowed_indices for i in batch):
+            continue
+        batch_files = set().union(*(group_file_sets[i] for i in batch))
+        if not batch_files or not (files & batch_files):
+            batch.append(group_index)
+            return
+    batches.append([group_index])
+
+
 def _build_execution_batches(
     coord_plan: dict[str, Any],
     confirmed_groups: list[list[dict[str, Any]]],
@@ -31,24 +53,12 @@ def _build_execution_batches(
         agent_batches = coord_plan["batches"]
         batches: list[list[int]] = []
         for agent_batch in agent_batches:
+            allowed = set(agent_batch)
             for group_index in agent_batch:
-                files = group_file_sets[group_index]
-                if not files:
-                    batches.append([group_index])
-                    continue
-                placed = False
-                for batch in batches:
-                    if any(batch_index not in agent_batch for batch_index in batch):
-                        continue
-                    batch_files = set()
-                    for batch_index in batch:
-                        batch_files |= group_file_sets[batch_index]
-                    if not batch_files or not (files & batch_files):
-                        batch.append(group_index)
-                        placed = True
-                        break
-                if not placed:
-                    batches.append([group_index])
+                _try_place_in_batch(
+                    group_index, group_file_sets[group_index],
+                    batches, group_file_sets, allowed_indices=allowed,
+                )
         Services.logger().log(
             f"  coordinator: using agent-specified batch ordering "
             f"({len(agent_batches)} agent batches → "
@@ -58,20 +68,7 @@ def _build_execution_batches(
 
     batches = []
     for group_index, files in enumerate(group_file_sets):
-        if not files:
-            batches.append([group_index])
-            continue
-        placed = False
-        for batch in batches:
-            batch_files = set()
-            for batch_index in batch:
-                batch_files |= group_file_sets[batch_index]
-            if batch_files and not (files & batch_files):
-                batch.append(group_index)
-                placed = True
-                break
-        if not placed:
-            batches.append([group_index])
+        _try_place_in_batch(group_index, files, batches, group_file_sets)
     return batches
 
 
@@ -147,6 +144,61 @@ def _inject_bridge_note_ids(
         )
 
 
+def _ensure_contract_delta(
+    contract_delta_path: Path,
+    bridge_model: str,
+    bridge_prompt: Path,
+    bridge_output: Path,
+    planspace: Path,
+    parent: str,
+    codespace: Path,
+    paths: PathRegistry,
+    group_index: int,
+    group_sections: list[str],
+    bridge_reason: str,
+) -> bool:
+    """Retry bridge dispatch if contract delta missing. Returns True on success."""
+    paths.contracts_dir().mkdir(parents=True, exist_ok=True)
+    if contract_delta_path.exists():
+        return True
+
+    Services.logger().log(
+        f"  coordinator: bridge didn't write contract "
+        f"delta — retrying (group {group_index})",
+    )
+    Services.dispatcher().dispatch(
+        bridge_model, bridge_prompt, bridge_output,
+        planspace, parent, codespace=codespace,
+        agent_file=Services.task_router().agent_for("coordination.bridge"),
+    )
+    if contract_delta_path.exists():
+        return True
+
+    Services.logger().log(
+        f"  coordinator: bridge failed to write contract "
+        f"delta after retry — pausing for parent "
+        f"(group {group_index})",
+    )
+    blocker_signal = {
+        "state": "needs_parent",
+        "why_blocked": (
+            f"Bridge agent for group {group_index} failed to "
+            f"produce contract delta after retry. "
+            f"Sections: {group_sections}. "
+            f"Reason: {bridge_reason}"
+        ),
+    }
+    blocker_path = paths.signals_dir() / f"blocker-bridge-{group_index}.json"
+    blocker_path.parent.mkdir(parents=True, exist_ok=True)
+    blocker_path.write_text(json.dumps(blocker_signal, indent=2), encoding="utf-8")
+    Services.communicator().mailbox_send(
+        planspace,
+        f"pause:needs_parent:bridge-{group_index}:contract delta missing after retry",
+        "coordinator",
+    )
+    return False
+
+
 def _run_bridge_for_group(
     *,
     group_index: int,
@@ -154,9 +206,9 @@ def _run_bridge_for_group(
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: dict[str, str],
     bridge_reason: str,
 ) -> None:
+    policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
     group_sections = sorted({problem["section"] for problem in group})
     contract_delta_path = paths.contracts_dir() / f"contract-delta-group-{group_index}.md"
@@ -186,44 +238,11 @@ def _run_bridge_for_group(
         agent_file=Services.task_router().agent_for("coordination.bridge"),
     )
 
-    paths.contracts_dir().mkdir(parents=True, exist_ok=True)
-    if not contract_delta_path.exists():
-        Services.logger().log(
-            f"  coordinator: bridge didn't write contract "
-            f"delta — retrying (group {group_index})",
-        )
-        Services.dispatcher().dispatch(
-            bridge_model,
-            bridge_prompt,
-            bridge_output,
-            planspace,
-            parent,
-            codespace=codespace,
-            agent_file=Services.task_router().agent_for("coordination.bridge"),
-        )
-    if not contract_delta_path.exists():
-        Services.logger().log(
-            f"  coordinator: bridge failed to write contract "
-            f"delta after retry — pausing for parent "
-            f"(group {group_index})",
-        )
-        blocker_signal = {
-            "state": "needs_parent",
-            "why_blocked": (
-                f"Bridge agent for group {group_index} failed to "
-                f"produce contract delta after retry. "
-                f"Sections: {group_sections}. "
-                f"Reason: {bridge_reason}"
-            ),
-        }
-        blocker_path = paths.signals_dir() / f"blocker-bridge-{group_index}.json"
-        blocker_path.parent.mkdir(parents=True, exist_ok=True)
-        blocker_path.write_text(json.dumps(blocker_signal, indent=2), encoding="utf-8")
-        Services.communicator().mailbox_send(
-            planspace,
-            f"pause:needs_parent:bridge-{group_index}:contract delta missing after retry",
-            "coordinator",
-        )
+    if not _ensure_contract_delta(
+        contract_delta_path, bridge_model, bridge_prompt, bridge_output,
+        planspace, parent, codespace, paths,
+        group_index, group_sections, bridge_reason,
+    ):
         return
 
     _inject_bridge_note_ids(notes_dir, group_index, group_sections, contract_delta_path)
@@ -348,15 +367,91 @@ def read_execution_modified_files(planspace: Path) -> list[str]:
     return [str(file_path) for file_path in files] if isinstance(files, list) else []
 
 
+def _run_bridges_and_overlaps_for_batch(
+    batch: list[int],
+    confirmed_groups: list[list[dict[str, Any]]],
+    coord_plan: dict[str, Any],
+    coord_dir: Path,
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+) -> None:
+    for group_index in batch:
+        group = confirmed_groups[group_index]
+        plan_group = (
+            coord_plan["groups"][group_index]
+            if group_index < len(coord_plan["groups"])
+            else {}
+        )
+        bridge_directive = plan_group.get("bridge", {})
+        if not isinstance(bridge_directive, dict):
+            bridge_directive = {}
+        if bridge_directive.get("needed", False):
+            _run_bridge_for_group(
+                group_index=group_index,
+                group=group,
+                planspace=planspace,
+                codespace=codespace,
+                parent=parent,
+                bridge_reason=bridge_directive.get("reason", "planner-requested"),
+            )
+        else:
+            _write_overlap_stats(coord_dir, group_index, group)
+
+
+def _dispatch_batch_parallel(
+    batch: list[int],
+    batch_num: int,
+    confirmed_groups: list[list[dict[str, Any]]],
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+    fix_model_default: str,
+) -> list[str]:
+    Services.logger().log(f"  coordinator: batch {batch_num} — {len(batch)} groups in parallel")
+    modified: list[str] = []
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {
+            pool.submit(
+                _dispatch_fix_group,
+                confirmed_groups[group_index],
+                group_index,
+                planspace,
+                codespace,
+                parent,
+                fix_model_default,
+            ): group_index
+            for group_index in batch
+        }
+        sentinel_hit = False
+        for future in as_completed(futures):
+            group_index = futures[future]
+            try:
+                _, group_modified = future.result()
+                if group_modified is None:
+                    sentinel_hit = True
+                    continue
+                modified.extend(group_modified)
+                Services.logger().log(
+                    f"  coordinator: group {group_index} fix "
+                    f"complete ({len(group_modified)} files modified)",
+                )
+            except Exception as exc:  # noqa: BLE001 — fail-open: individual group failures must not crash coordination
+                Services.logger().log(f"  coordinator: group {group_index} fix FAILED: {exc}")
+        if sentinel_hit:
+            raise CoordinationExecutionExit
+    return modified
+
+
 def execute_coordination_plan(
     plan: dict[str, Any],
     sections_by_num: dict[str, Section],
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: dict[str, str],
 ) -> list[str]:
     """Execute the coordination plan and return affected section numbers."""
+    policy = Services.policies().load(planspace)
     coord_plan = plan["coord_plan"]
     confirmed_groups = plan["confirmed_groups"]
     batches = _build_execution_batches(coord_plan, confirmed_groups)
@@ -376,28 +471,10 @@ def execute_coordination_plan(
         if ctrl == "alignment_changed":
             raise CoordinationExecutionExit
 
-        for group_index in batch:
-            group = confirmed_groups[group_index]
-            plan_group = (
-                coord_plan["groups"][group_index]
-                if group_index < len(coord_plan["groups"])
-                else {}
-            )
-            bridge_directive = plan_group.get("bridge", {})
-            if not isinstance(bridge_directive, dict):
-                bridge_directive = {}
-            if bridge_directive.get("needed", False):
-                _run_bridge_for_group(
-                    group_index=group_index,
-                    group=group,
-                    planspace=planspace,
-                    codespace=codespace,
-                    parent=parent,
-                    policy=policy,
-                    bridge_reason=bridge_directive.get("reason", "planner-requested"),
-                )
-            else:
-                _write_overlap_stats(coord_dir, group_index, group)
+        _run_bridges_and_overlaps_for_batch(
+            batch, confirmed_groups, coord_plan, coord_dir,
+            planspace, codespace, parent,
+        )
 
         fix_model_default = Services.policies().resolve(policy, "coordination_fix")
         if len(batch) == 1:
@@ -415,37 +492,12 @@ def execute_coordination_plan(
             all_modified.extend(modified)
             continue
 
-        Services.logger().log(f"  coordinator: batch {batch_num} — {len(batch)} groups in parallel")
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            futures = {
-                pool.submit(
-                    _dispatch_fix_group,
-                    confirmed_groups[group_index],
-                    group_index,
-                    planspace,
-                    codespace,
-                    parent,
-                    fix_model_default,
-                ): group_index
-                for group_index in batch
-            }
-            sentinel_hit = False
-            for future in as_completed(futures):
-                group_index = futures[future]
-                try:
-                    _, modified = future.result()
-                    if modified is None:
-                        sentinel_hit = True
-                        continue
-                    all_modified.extend(modified)
-                    Services.logger().log(
-                        f"  coordinator: group {group_index} fix "
-                        f"complete ({len(modified)} files modified)",
-                    )
-                except Exception as exc:
-                    Services.logger().log(f"  coordinator: group {group_index} fix FAILED: {exc}")
-            if sentinel_hit:
-                raise CoordinationExecutionExit
+        all_modified.extend(
+            _dispatch_batch_parallel(
+                batch, batch_num, confirmed_groups,
+                planspace, codespace, parent, fix_model_default,
+            ),
+        )
 
     Services.logger().log(f"  coordinator: fixes complete, {len(all_modified)} total files modified")
 

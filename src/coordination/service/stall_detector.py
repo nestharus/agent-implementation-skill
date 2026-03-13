@@ -12,6 +12,9 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 
+STALL_TERMINATION_THRESHOLD = 3
+
+
 class StallDetector:
     """Detects when a coordination loop stops making progress.
 
@@ -23,14 +26,13 @@ class StallDetector:
         self,
         planspace: Path,
         parent: str,
-        policy: dict,
     ) -> None:
         self._planspace = planspace
         self._parent = parent
-        self._policy = policy
         self._paths = PathRegistry(planspace)
         self._stall_count = 0
         self._prev_unresolved: int | None = None
+        policy = Services.policies().load(planspace)
         self._escalation_threshold = policy.get(
             "escalation_triggers", {},
         ).get("stall_count", 2)
@@ -53,8 +55,8 @@ class StallDetector:
 
     @property
     def should_terminate(self) -> bool:
-        """True when the loop has stalled for 3+ consecutive rounds."""
-        return self._stall_count >= 3
+        """True when the loop has stalled for too many consecutive rounds."""
+        return self._stall_count >= STALL_TERMINATION_THRESHOLD
 
     @property
     def stall_count(self) -> int:
@@ -70,10 +72,11 @@ class StallDetector:
             f"Coordination churning ({self._stall_count} rounds without "
             "improvement) — escalating model",
         )
+        policy = Services.policies().load(self._planspace)
         escalation_file = self._paths.coordination_model_escalation()
         escalation_file.parent.mkdir(parents=True, exist_ok=True)
         escalation_file.write_text(
-            Services.policies().resolve(self._policy, "escalation_model"),
+            Services.policies().resolve(policy, "escalation_model"),
             encoding="utf-8",
         )
         Services.communicator().mailbox_send(

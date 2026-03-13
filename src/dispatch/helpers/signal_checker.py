@@ -6,7 +6,6 @@ from pathlib import Path
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from signals.repository.signal_reader import read_signal_tuple
 from signals.types import SignalResult
 
 
@@ -56,7 +55,7 @@ def check_agent_signals(
     """Check for agent signals via the structured JSON file."""
     del output, output_path, planspace, parent, codespace
     if signal_path:
-        result = read_signal_tuple(signal_path)
+        result = Services.signals().read_tuple(signal_path)
         if result.signal_type:
             return result
     return SignalResult(signal_type=None, detail="")

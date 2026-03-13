@@ -51,11 +51,11 @@ def _install_common_patches(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_integration_proposal_prompt",
+        "proposal.service.proposal_prep.write_integration_proposal_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_integration_alignment_prompt",
+        "proposal.service.alignment_handler.write_integration_alignment_prompt",
         lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
     monkeypatch.setattr(
@@ -64,7 +64,7 @@ def _install_common_patches(
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_reconciliation_result",
+        "proposal.service.proposal_prep.load_reconciliation_result",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -113,7 +113,7 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
     expansion_calls: list[str] = []
 
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
+        "proposal.service.surface_handler.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
@@ -134,12 +134,6 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
             planspace,
             codespace,
             "parent",
-            {
-                "proposal": "gpt",
-                "alignment": "claude",
-                "intent_judge": "claude",
-                "escalation_model": "stronger",
-            },
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -177,7 +171,7 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
     expansion_calls: list[str] = []
 
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
+        "proposal.service.surface_handler.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
@@ -198,12 +192,6 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
             planspace,
             codespace,
             "parent",
-            {
-                "proposal": "gpt",
-                "alignment": "claude",
-                "intent_judge": "claude",
-                "escalation_model": "stronger",
-            },
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -248,7 +236,7 @@ def test_misaligned_definition_gap_expansion_respects_budget(
         },
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_combined_intent_surfaces",
+        "proposal.service.surface_handler.load_combined_intent_surfaces",
         lambda *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
@@ -269,12 +257,6 @@ def test_misaligned_definition_gap_expansion_respects_budget(
             planspace,
             codespace,
             "parent",
-            {
-                "proposal": "gpt",
-                "alignment": "claude",
-                "intent_judge": "claude",
-                "escalation_model": "stronger",
-            },
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
