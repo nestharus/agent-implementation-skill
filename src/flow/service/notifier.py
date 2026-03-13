@@ -10,6 +10,7 @@ from orchestrator.path_registry import PathRegistry
 from flow.service.task_db_client import DB_SH, db_cmd, task_db
 
 DISPATCHER_NAME = "task-dispatcher"
+_NOTIFY_SUBPROCESS_TIMEOUT_SECONDS = 10
 
 
 def notify_task_result(
@@ -96,7 +97,7 @@ def record_qa_intercept(
             ],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=_NOTIFY_SUBPROCESS_TIMEOUT_SECONDS,
         )
     except Exception as exc:  # noqa: BLE001
         # Non-critical — logging failure must not block dispatch.

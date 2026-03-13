@@ -396,6 +396,38 @@ def bootstrap_governance_if_missing(codespace: Path, planspace: Path) -> bool:
     return True
 
 
+_GOVERNANCE_INDEX_SPECS: list[tuple] = [
+    ("problem_index", parse_problem_index, "governance problem index",
+     [], "governance_problem_index"),
+    ("pattern_index", parse_pattern_index, "governance pattern index",
+     [], "governance_pattern_index"),
+    ("profile_index", parse_philosophy_profiles, "philosophy profiles",
+     [], "governance_profile_index"),
+    ("region_profile_map", parse_region_profile_map, "region-profile map",
+     {"default": "", "overrides": {}}, "governance_region_profile_map"),
+    ("synthesis_cues", parse_synthesis_cues, "synthesis cues",
+     {}, "governance_synthesis_cues"),
+    ("constraint_index", parse_constraint_index, "governance constraint index",
+     [], "governance_constraint_index"),
+]
+
+
+def _parse_governance_indexes(
+    codespace: Path,
+) -> tuple[dict[str, object], list[str]]:
+    """Parse all governance indexes, collecting failures."""
+    parsed: dict[str, object] = {}
+    parse_failures: list[str] = []
+    for name, parser, label, default, _dest in _GOVERNANCE_INDEX_SPECS:
+        try:
+            parsed[name] = parser(codespace)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to parse %s: %s", label, exc)
+            parse_failures.append(f"{name}: {exc}")
+            parsed[name] = default
+    return parsed, parse_failures
+
+
 def build_governance_indexes(codespace: Path, planspace: Path) -> bool:
     """Parse governance docs and mirror advisory JSON indexes into planspace.
 
@@ -407,59 +439,12 @@ def build_governance_indexes(codespace: Path, planspace: Path) -> bool:
     paths = PathRegistry(planspace)
     paths.governance_dir().mkdir(parents=True, exist_ok=True)
 
-    problem_index: list[dict] = []
-    pattern_index: list[dict] = []
-    profile_index: list[dict] = []
-    region_profile_map: dict = {"default": "", "overrides": {}}
-    parse_failures: list[str] = []
+    parsed, parse_failures = _parse_governance_indexes(codespace)
 
-    try:
-        problem_index = parse_problem_index(codespace)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to parse governance problem index: %s", exc)
-        parse_failures.append(f"problem_index: {exc}")
+    for name, _parser, _label, _default, dest_method in _GOVERNANCE_INDEX_SPECS:
+        dest_path = getattr(paths, dest_method)()
+        Services.artifact_io().write_json(dest_path, parsed[name])
 
-    try:
-        pattern_index = parse_pattern_index(codespace)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to parse governance pattern index: %s", exc)
-        parse_failures.append(f"pattern_index: {exc}")
-
-    try:
-        profile_index = parse_philosophy_profiles(codespace)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to parse philosophy profiles: %s", exc)
-        parse_failures.append(f"profile_index: {exc}")
-
-    try:
-        region_profile_map = parse_region_profile_map(codespace)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to parse region-profile map: %s", exc)
-        parse_failures.append(f"region_profile_map: {exc}")
-
-    synthesis_cues: dict[str, list[str]] = {}
-    try:
-        synthesis_cues = parse_synthesis_cues(codespace)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to parse synthesis cues: %s", exc)
-        parse_failures.append(f"synthesis_cues: {exc}")
-
-    constraint_index: list[dict] = []
-    try:
-        constraint_index = parse_constraint_index(codespace)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to parse governance constraint index: %s", exc)
-        parse_failures.append(f"constraint_index: {exc}")
-
-    Services.artifact_io().write_json(paths.governance_problem_index(), problem_index)
-    Services.artifact_io().write_json(paths.governance_pattern_index(), pattern_index)
-    Services.artifact_io().write_json(paths.governance_profile_index(), profile_index)
-    Services.artifact_io().write_json(paths.governance_region_profile_map(), region_profile_map)
-    Services.artifact_io().write_json(paths.governance_synthesis_cues(), synthesis_cues)
-    Services.artifact_io().write_json(paths.governance_constraint_index(), constraint_index)
-
-    # Write index status so downstream consumers can distinguish parse
-    # failure from true no-governance
     status = {
         "ok": len(parse_failures) == 0,
         "parse_failures": parse_failures,

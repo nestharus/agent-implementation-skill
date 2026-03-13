@@ -8,6 +8,8 @@ from pathlib import Path
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 
+_PROBLEM_FRAME_TRUNCATION = 2000
+
 
 def _list_index(path: Path) -> list[dict]:
     data = Services.artifact_io().read_json(path)
@@ -152,7 +154,7 @@ def _load_governance_inputs(
     problem_frame_path = paths.problem_frame(section_number)
     if problem_frame_path.exists():
         try:
-            problem_frame_text = problem_frame_path.read_text(encoding="utf-8")[:2000]
+            problem_frame_text = problem_frame_path.read_text(encoding="utf-8")[:_PROBLEM_FRAME_TRUNCATION]
         except OSError:
             pass
     combined_summary = f"{section_summary} {problem_frame_text}".strip()

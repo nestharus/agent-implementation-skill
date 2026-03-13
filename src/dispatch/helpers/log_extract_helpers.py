@@ -11,6 +11,7 @@ _SECTION_RE = re.compile(r"(?:section[-_]?)(\d{2})\b|[-_:](\d{2})(?:[-_.:,\s]|$)
 
 # Timestamps above this magnitude are assumed to be in milliseconds, not seconds
 _EPOCH_MS_MAGNITUDE_THRESHOLD = 1e12
+_PROMPT_SIGNATURE_TRUNCATION = 4000
 
 
 def parse_timestamp(value: str | int | float, *, assume_tz: str = "UTC") -> tuple[str, int]:
@@ -52,7 +53,7 @@ def parse_timestamp(value: str | int | float, *, assume_tz: str = "UTC") -> tupl
 
 def prompt_signature(text: str) -> str:
     """Stable hash of prompt text for correlation matching."""
-    normalized = " ".join(text.split())[:4000]
+    normalized = " ".join(text.split())[:_PROMPT_SIGNATURE_TRUNCATION]
     return Services.hasher().content_hash(normalized)
 
 

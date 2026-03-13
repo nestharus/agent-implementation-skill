@@ -9,6 +9,8 @@ from pathlib import Path
 
 from containers import Services
 
+_DEFAULT_AGENT_TIMEOUT_SECONDS = 600
+
 
 @dataclass
 class AgentResult:
@@ -24,7 +26,7 @@ def run_agent(
     *,
     agent_file: str,
     codespace: Path | None = None,
-    timeout: int = 600,
+    timeout: int = _DEFAULT_AGENT_TIMEOUT_SECONDS,
 ) -> AgentResult:
     """Run the ``agents`` binary and return the raw process result."""
     del output_path

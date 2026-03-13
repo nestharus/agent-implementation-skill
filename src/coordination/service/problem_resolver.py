@@ -169,6 +169,35 @@ def _collect_note_problems(
     return problems
 
 
+def _resolve_delta_linked_sections(
+    delta: dict, delta_path: Path,
+) -> list[str] | None:
+    """Validate a scope delta and resolve its linked sections.
+
+    Returns sorted section list, or None if the delta should be skipped.
+    """
+    if delta.get("adjudicated") or not delta.get("requires_root_reframing", False):
+        return None
+
+    linked_sections = [
+        str(section)
+        for section in delta.get("source_sections", [])
+        if str(section).strip()
+    ]
+    if not linked_sections:
+        section = str(delta.get("section", "")).strip()
+        if section:
+            linked_sections.append(section)
+    linked_sections = sorted(set(linked_sections))
+    if not linked_sections:
+        Services.logger().log(
+            f"  coordinator: WARNING — root-reframing scope-delta "
+            f"{delta_path.name} has no linked sections; leaving it pending",
+        )
+        return None
+    return linked_sections
+
+
 def _collect_scope_delta_problems(sections_by_num, paths):
     problems = []
     scope_deltas_dir = paths.scope_deltas_dir()
@@ -193,24 +222,9 @@ def _collect_scope_delta_problems(sections_by_num, paths):
             )
             Services.artifact_io().rename_malformed(delta_path)
             continue
-        if delta.get("adjudicated") or not delta.get("requires_root_reframing", False):
-            continue
 
-        linked_sections = [
-            str(section)
-            for section in delta.get("source_sections", [])
-            if str(section).strip()
-        ]
-        if not linked_sections:
-            section = str(delta.get("section", "")).strip()
-            if section:
-                linked_sections.append(section)
-        linked_sections = sorted(set(linked_sections))
-        if not linked_sections:
-            Services.logger().log(
-                f"  coordinator: WARNING — root-reframing scope-delta "
-                f"{delta_path.name} has no linked sections; leaving it pending",
-            )
+        linked_sections = _resolve_delta_linked_sections(delta, delta_path)
+        if linked_sections is None:
             continue
 
         delta_id = str(delta.get("delta_id", delta_path.stem))
