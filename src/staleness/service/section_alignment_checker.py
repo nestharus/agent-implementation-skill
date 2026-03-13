@@ -8,7 +8,7 @@ from orchestrator.path_registry import PathRegistry
 from pipeline.template import render_template
 from containers import Services
 from staleness.helpers.verdict_parsers import parse_alignment_verdict as _parse_alignment_verdict
-from orchestrator.types import Section
+from orchestrator.types import Section, ControlSignal
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
@@ -147,7 +147,7 @@ def _run_alignment_check_with_retries(
     for attempt in range(1, max_retries + 2):  # 1 initial + max_retries
         ctrl = Services.pipeline_control().poll_control_messages(
             planspace, parent, current_section=sec_num)
-        if ctrl == "alignment_changed":
+        if ctrl == ControlSignal.ALIGNMENT_CHANGED:
             return ALIGNMENT_CHANGED_PENDING
         align_prompt = write_impl_alignment_prompt(
             section, planspace, codespace,

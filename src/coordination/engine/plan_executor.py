@@ -11,7 +11,7 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 from coordination.prompt.writers import write_bridge_prompt, write_fix_prompt
 from flow.service.task_request_ingestor import ingest_and_submit
-from orchestrator.types import Section
+from orchestrator.types import Section, ControlSignal
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 _NOTE_FINGERPRINT_LENGTH = 12
@@ -471,7 +471,7 @@ def execute_coordination_plan(
 
     for batch_num, batch in enumerate(batches):
         ctrl = Services.pipeline_control().poll_control_messages(planspace, parent)
-        if ctrl == "alignment_changed":
+        if ctrl == ControlSignal.ALIGNMENT_CHANGED:
             raise CoordinationExecutionExit
 
         _run_bridges_and_overlaps_for_batch(

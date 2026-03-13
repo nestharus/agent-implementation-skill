@@ -8,6 +8,7 @@ from pipeline.template import TASK_SUBMISSION_SEMANTICS
 from dispatch.prompt.writers import agent_mail_instructions
 from implementation.service.microstrategy_decider import _check_needs_microstrategy
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from orchestrator.types import ControlSignal
 
 
 def _build_microstrategy_prompt(
@@ -109,7 +110,7 @@ def _dispatch_and_retry(
     ctrl = Services.pipeline_control().poll_control_messages(
         planspace, parent, current_section=section_number,
     )
-    if ctrl == "alignment_changed":
+    if ctrl == ControlSignal.ALIGNMENT_CHANGED:
         return ALIGNMENT_CHANGED_PENDING
 
     micro_output_path = artifacts / f"microstrategy-{section_number}-output.md"

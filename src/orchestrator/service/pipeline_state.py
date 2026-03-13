@@ -8,6 +8,7 @@ from pathlib import Path
 from containers import Services
 from signals.service.database_client import DatabaseClient
 from signals.service.mailbox_service import MailboxService
+from orchestrator.types import ControlSignal
 
 _PAUSE_POLL_TIMEOUT_SECONDS = 5
 
@@ -55,7 +56,7 @@ def wait_if_paused(
             mailbox.send(parent, "fail:aborted")
             mailbox.cleanup()
             sys.exit(0)
-        if msg.startswith("alignment_changed"):
+        if msg.startswith(ControlSignal.ALIGNMENT_CHANGED):
             log("Alignment changed while paused — invalidating excerpts")
             Services.change_tracker().invalidate_excerpts(planspace)
             Services.change_tracker().set_flag(planspace)
@@ -90,7 +91,7 @@ def pause_for_parent(
             mailbox.send(parent, "fail:aborted")
             mailbox.cleanup()
             sys.exit(0)
-        if msg.startswith("alignment_changed"):
+        if msg.startswith(ControlSignal.ALIGNMENT_CHANGED):
             log("Alignment changed during pause — invalidating excerpts")
             Services.change_tracker().invalidate_excerpts(planspace)
             Services.change_tracker().set_flag(planspace)

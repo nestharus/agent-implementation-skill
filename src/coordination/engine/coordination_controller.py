@@ -16,7 +16,7 @@ from coordination.engine.global_coordinator import (
     run_global_coordination,
 )
 from coordination.service.stall_detector import StallDetector
-from orchestrator.types import Section, SectionResult
+from orchestrator.types import Section, SectionResult, ControlSignal
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,7 @@ class AssessmentResult:
 def _check_alignment(planspace: Path, parent: str) -> bool:
     """Poll for alignment changes.  Returns True if changed."""
     ctrl = Services.pipeline_control().poll_control_messages(planspace, parent)
-    if ctrl == "alignment_changed":
+    if ctrl == ControlSignal.ALIGNMENT_CHANGED:
         Services.logger().log("Alignment changed — restarting from Phase 1")
         return True
     return False

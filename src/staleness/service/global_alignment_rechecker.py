@@ -12,7 +12,7 @@ from staleness.service.section_alignment_checker import (
     _run_alignment_check_with_retries,
 )
 from coordination.service.completion_handler import read_incoming_notes
-from orchestrator.types import Section, SectionResult
+from orchestrator.types import Section, SectionResult, ControlSignal
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
@@ -64,7 +64,7 @@ def _recheck_section(
     prev_hash_file.write_text(cur_hash, encoding="utf-8")
 
     ctrl = Services.pipeline_control().poll_control_messages(planspace, parent, sec_num)
-    if ctrl == "alignment_changed":
+    if ctrl == ControlSignal.ALIGNMENT_CHANGED:
         Services.logger().log("Alignment changed during Phase 2 — restarting from Phase 1")
         return CoordinationStatus.RESTART_PHASE1
 

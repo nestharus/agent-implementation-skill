@@ -23,7 +23,7 @@ from implementation.service.scope_delta_aggregator import (
 
 
 from coordination.service.completion_handler import read_incoming_notes
-from orchestrator.types import Section, SectionResult
+from orchestrator.types import Section, SectionResult, ControlSignal
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
@@ -139,7 +139,7 @@ def _build_coordination_plan(
     policy = Services.policies().load(planspace)
 
     ctrl = Services.pipeline_control().poll_control_messages(planspace, parent)
-    if ctrl == "alignment_changed":
+    if ctrl == ControlSignal.ALIGNMENT_CHANGED:
         return None
 
     coord_plan = _dispatch_and_parse_plan(
@@ -431,7 +431,7 @@ def _recheck_affected_sections(
         prev_hash_file.write_text(current_hash, encoding="utf-8")
 
         ctrl = Services.pipeline_control().poll_control_messages(planspace, parent, sec_num)
-        if ctrl == "alignment_changed":
+        if ctrl == ControlSignal.ALIGNMENT_CHANGED:
             Services.logger().log("  coordinator: alignment changed — aborting re-checks")
             return None
 
