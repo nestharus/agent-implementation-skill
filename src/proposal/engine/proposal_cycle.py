@@ -54,7 +54,6 @@ def _evaluate_alignment(
     planspace: Path,
     parent: str,
     codespace: Path,
-    policy: object,
 ) -> tuple[str | None, bool]:
     """Extract problems from alignment result, handling timeout.
 
@@ -64,6 +63,7 @@ def _evaluate_alignment(
     if align_result.startswith("TIMEOUT:"):
         return "Previous alignment check timed out.", True
 
+    policy = Services.policies().load(planspace)
     problems = Services.section_alignment().extract_problems(
         align_result,
         output_path=align_output,
@@ -101,7 +101,6 @@ def _run_alignment_phase(
     planspace: Path,
     codespace: Path,
     parent: str,
-    policy: object,
     paths,
     align_result: str,
     align_output: Path,
@@ -117,7 +116,7 @@ def _run_alignment_phase(
     - ``'break'`` to exit loop with success.
     """
     problems, is_timeout = _evaluate_alignment(
-        align_result, align_output, planspace, parent, codespace, policy,
+        align_result, align_output, planspace, parent, codespace,
     )
     if is_timeout:
         Services.logger().log(
@@ -206,7 +205,6 @@ def run_proposal_loop(
     incoming_notes: str | None,
 ) -> str | None:
     """Run the integration proposal loop until aligned or aborted."""
-    policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
     integration_proposal = paths.proposal(section.number)
     cycle_budget_path = paths.cycle_budget(section.number)
@@ -258,7 +256,7 @@ def run_proposal_loop(
         align_result, align_output = align_check
 
         action, problems, intent_mode = _run_alignment_phase(
-            section, planspace, codespace, parent, policy, paths,
+            section, planspace, codespace, parent, paths,
             align_result, align_output,
             intent_mode, intent_budgets, expansion_counts,
         )

@@ -468,6 +468,9 @@ Functions that take parameters obtainable from the DI container are exposing unn
   - `ALIGNMENT_CHANGED_PENDING` constant in `dispatch/types.py` (34 literals → 1 constant, 20 files)
   - `ControlSignal.ALIGNMENT_CHANGED` enum usage expanded (9 literals → enum, 7 files)
   - `SIGNAL_NEEDS_PARENT`, `SIGNAL_NEED_DECISION`, `SIGNAL_OUT_OF_SCOPE`, `BLOCKING_NEEDS_PARENT`, `BLOCKING_NEED_DECISION` constants in `signals/types.py` (~60 literals → 5 constants, 23 files)
+  - `ACTION_CONTINUE`, `ACTION_ABORT`, `ACTION_SKIP` for triage/proposal control flow (~30 literals → 3 constants, 16 files)
+  - `ALIGNMENT_INVALID_FRAME` for alignment checker results (3 literals → 1 constant, 3 files)
+  - `PASS_MODE_PROPOSAL`, `PASS_MODE_IMPLEMENTATION` for section pipeline (7 literals → 2 constants, 6 files)
   - Remaining: `"why_blocked"` (dict key, low risk), `"-output.md"`/`"-prompt.md"` suffixes (path construction, low risk).
 
 ### 132. Expanded reviewer category scan (Cycle 10)

@@ -579,7 +579,7 @@ def _compose_bridge_success_text(
 
 def _handle_bridge_success(
     *, bridge_data, section_number, all_sections, tool_registry_path,
-    pre_bridge_registry_hash, paths, artifacts, policy, planspace, parent,
+    pre_bridge_registry_hash, paths, artifacts, planspace, parent,
     codespace,
 ):
     default_proposal_path = paths.tool_bridge_proposal(section_number)
@@ -627,6 +627,7 @@ def _handle_bridge_success(
             ),
             digest_prompt,
         )
+        policy = Services.policies().load(planspace)
         Services.dispatcher().dispatch(
             Services.policies().resolve(policy, "tool_registrar"),
             digest_prompt,
@@ -709,7 +710,7 @@ def handle_tool_friction(
             bridge_data=bridge_data, section_number=section_number,
             all_sections=all_sections, tool_registry_path=tool_registry_path,
             pre_bridge_registry_hash=pre_bridge_registry_hash, paths=paths,
-            artifacts=artifacts, policy=policy, planspace=planspace,
+            artifacts=artifacts, planspace=planspace,
             parent=parent, codespace=codespace,
         )
     else:
