@@ -15,18 +15,7 @@ from risk.types import (
     RiskPlan,
     StepDecision,
 )
-
-
-def _unique_strings(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for value in values:
-        item = str(value).strip()
-        if not item or item in seen:
-            continue
-        seen.add(item)
-        ordered.append(item)
-    return ordered
+from implementation.service.risk_artifact_writer import _unique_strings
 
 
 def append_risk_review_failure_history(
