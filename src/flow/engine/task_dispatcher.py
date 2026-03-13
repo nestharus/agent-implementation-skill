@@ -44,6 +44,7 @@ from flow.service.flow_facade import (
 from taskrouter import ensure_discovered, registry as _task_registry
 
 from containers import Services
+from signals.types import TRUNCATE_TOKEN
 
 DISPATCHER_NAME = "task-dispatcher"
 logger = logging.getLogger(__name__)
@@ -218,8 +219,8 @@ def _check_freshness(planspace, task_id, task_type, submitted_by, db_path,
         return True
     err = (
         f"stale alignment — section-{section_number} inputs changed "
-        f"(submitted={freshness_token[:8]}, "
-        f"current={current_token[:8]})"
+        f"(submitted={freshness_token[:TRUNCATE_TOKEN]}, "
+        f"current={current_token[:TRUNCATE_TOKEN]})"
     )
     log(f"Task {task_id} stale: {err}")
     _fail_task(db_path, task_id, task_type, submitted_by, err,

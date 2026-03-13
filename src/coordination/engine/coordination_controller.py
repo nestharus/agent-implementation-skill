@@ -17,6 +17,7 @@ from coordination.engine.global_coordinator import (
 )
 from coordination.service.stall_detector import StallDetector
 from orchestrator.types import Section, SectionResult, ControlSignal
+from signals.types import TRUNCATE_DETAIL, TRUNCATE_MEDIUM
 
 
 @dataclass(frozen=True)
@@ -93,7 +94,7 @@ def _report_result(
         )
         build_strategic_state(decisions_dir, section_results, planspace)
         for result in remaining:
-            summary = (result.problems or "unknown")[:120]
+            summary = (result.problems or "unknown")[:TRUNCATE_MEDIUM]
             Services.logger().log(f"  - Section {result.section_number}: {summary}")
             Services.communicator().mailbox_send(
                 planspace, parent,
@@ -119,7 +120,7 @@ def _report_result(
                 {
                     "type": p["type"],
                     "section": p["section"],
-                    "description": p["description"][:200],
+                    "description": p["description"][:TRUNCATE_DETAIL],
                 }
                 for p in outstanding
             ],

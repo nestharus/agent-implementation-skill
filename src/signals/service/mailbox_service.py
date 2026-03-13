@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 from signals.service.database_client import DatabaseClient
+from signals.types import TRUNCATE_SUMMARY
 
 _SUMMARY_PREFIXES = (
     "summary:",
@@ -59,7 +60,7 @@ class MailboxService:
     def send(self, target: str, message: str) -> None:
         """Send a message and emit summary events for monitored prefixes."""
         self._db.send(target, message, sender=self._agent_name)
-        self._log(f"  mail → {target}: {message[:80]}")
+        self._log(f"  mail → {target}: {message[:TRUNCATE_SUMMARY]}")
         for prefix in _SUMMARY_PREFIXES:
             if message.startswith(prefix):
                 self._db.log_event(
@@ -78,7 +79,7 @@ class MailboxService:
         message = result.stdout.strip()
         if result.returncode != 0 or message == "TIMEOUT":
             return "TIMEOUT"
-        self._log(f"  mail ← received: {message[:80]}")
+        self._log(f"  mail ← received: {message[:TRUNCATE_SUMMARY]}")
         return message
 
     def drain(self) -> list[str]:

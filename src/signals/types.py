@@ -31,6 +31,14 @@ ALIGNMENT_INVALID_FRAME = "INVALID_FRAME"
 PASS_MODE_PROPOSAL = "proposal"
 PASS_MODE_IMPLEMENTATION = "implementation"
 
+# ── display truncation limits ────────────────────────────────────────
+
+TRUNCATE_DETAIL = 200       # problem descriptions, event details, decision records
+TRUNCATE_SUMMARY = 80       # mailbox previews, blocker one-liners
+TRUNCATE_MEDIUM = 120       # coordination result summaries
+TRUNCATE_REASON = 150       # scope-delta reason strings
+TRUNCATE_TOKEN = 8          # hash / freshness-token previews
+
 
 class AgentSignal(BaseModel):
     """Structured signal written by agents to communicate state.

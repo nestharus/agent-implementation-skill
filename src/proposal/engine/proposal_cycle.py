@@ -24,7 +24,7 @@ from proposal.service.surface_handler import (
     handle_aligned_surfaces,
     handle_misaligned_surfaces,
 )
-from signals.types import ACTION_ABORT, ACTION_CONTINUE
+from signals.types import ACTION_ABORT, ACTION_CONTINUE, TRUNCATE_DETAIL
 
 
 def _check_proposal_written(
@@ -83,7 +83,7 @@ def _log_misalignment_problems(
     proposal_attempt: int,
 ) -> None:
     """Log and notify parent about alignment problems."""
-    short = problems[:200]
+    short = problems[:TRUNCATE_DETAIL]
     Services.logger().log(
         f"Section {section_number}: integration proposal problems "
         f"(attempt {proposal_attempt}): {short}"

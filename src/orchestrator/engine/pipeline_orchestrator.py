@@ -26,6 +26,7 @@ from _config import AGENT_NAME
 from flow.service.task_db_client import init_db
 
 from containers import Services
+from signals.types import TRUNCATE_SUMMARY
 from orchestrator.engine.strategic_state_builder import build_strategic_state
 from orchestrator.types import SectionResult
 
@@ -88,7 +89,7 @@ def _record_blocked_sections(
     for sec_num in blocked_sections:
         pr = proposal_results[sec_num]
         blocker_summary = "; ".join(
-            b.get("description", "unknown")[:80]
+            b.get("description", "unknown")[:TRUNCATE_SUMMARY]
             for b in pr.blockers[:3]
         ) or "execution not ready"
         section_results.setdefault(sec_num, SectionResult(

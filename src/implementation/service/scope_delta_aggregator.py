@@ -12,6 +12,7 @@ from implementation.service.scope_delta_parser import (
     parse_scope_delta_adjudication,
 )
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from signals.types import TRUNCATE_REASON
 
 
 class ScopeDeltaAggregationExit(Exception):
@@ -233,7 +234,7 @@ def _record_decisions(
         Services.communicator().mailbox_send(
             planspace,
             parent,
-            f"summary:scope-delta:{label}:{action}:{reason[:150]}",
+            f"summary:scope-delta:{label}:{action}:{reason[:TRUNCATE_REASON]}",
         )
 
         existing = load_decisions(decisions_dir, section=section)

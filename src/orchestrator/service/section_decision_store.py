@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from orchestrator.repository.decisions import Decision, load_decisions, record_decision
 from orchestrator.path_registry import PathRegistry
+from signals.types import TRUNCATE_DETAIL
 
 if TYPE_CHECKING:
     from orchestrator.types import Section
@@ -57,7 +58,7 @@ def extract_section_summary(section_path: Path) -> str:
     for line in text.split("\n"):
         line = line.strip()
         if line and not line.startswith("---") and not line.startswith("#"):
-            return line[:200]
+            return line[:TRUNCATE_DETAIL]
     return "(no summary available)"
 
 

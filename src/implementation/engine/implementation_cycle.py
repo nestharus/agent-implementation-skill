@@ -11,6 +11,7 @@ from implementation.service.change_verifier import verify_changed_files
 from implementation.service.trace_map_builder import build_trace_map
 from flow.types.schema import TaskSpec
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from signals.types import TRUNCATE_DETAIL
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +219,7 @@ def _log_alignment_problems(
     parent: str,
 ) -> None:
     """Log and notify parent about alignment problems found."""
-    short = problems[:200]
+    short = problems[:TRUNCATE_DETAIL]
     Services.logger().log(
         f"Section {section_number}: implementation problems "
         f"(attempt {impl_attempt}): {short}"

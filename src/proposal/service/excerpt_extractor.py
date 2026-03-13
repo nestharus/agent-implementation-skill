@@ -11,7 +11,7 @@ from signals.service.blocker_manager import (
     _update_blocker_rollup,
 )
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
-from signals.types import ACTION_CONTINUE, SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE
+from signals.types import ACTION_CONTINUE, SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE, TRUNCATE_DETAIL
 
 
 def _write_scope_delta(
@@ -46,7 +46,7 @@ def _handle_setup_signal(
         _append_open_problem(planspace, section_number, detail, signal)
         Services.communicator().mailbox_send(
             planspace, parent,
-            f"open-problem:{section_number}:{signal}:{detail[:200]}",
+            f"open-problem:{section_number}:{signal}:{detail[:TRUNCATE_DETAIL]}",
         )
     if signal == SIGNAL_OUT_OF_SCOPE:
         _write_scope_delta(paths, signal_dir, section_number, detail)

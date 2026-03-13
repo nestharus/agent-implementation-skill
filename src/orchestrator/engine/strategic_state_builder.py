@@ -14,7 +14,7 @@ from risk.repository.serialization import (
     load_risk_plan,
 )
 from risk.types import StepDecision
-from signals.types import SIGNAL_NEEDS_PARENT
+from signals.types import SIGNAL_NEEDS_PARENT, TRUNCATE_DETAIL
 
 
 @dataclass(frozen=True)
@@ -121,7 +121,7 @@ def _classify_sections(
         tally.open_problems.append({
             "id": f"p-{sec_num}",
             "scope": f"section-{sec_num}",
-            "summary": (str(problems)[:200] if problems else "unresolved"),
+            "summary": (str(problems)[:TRUNCATE_DETAIL] if problems else "unresolved"),
         })
 
     return tally
@@ -163,7 +163,7 @@ def _check_blocker(
     if blocker.get("state") == SIGNAL_NEEDS_PARENT:
         tally.blocked[sec_num] = {
             "problem_id": blocker.get("problem_id", ""),
-            "reason": blocker.get("detail", "")[:200],
+            "reason": blocker.get("detail", "")[:TRUNCATE_DETAIL],
         }
         return True
     return False

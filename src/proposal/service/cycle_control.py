@@ -19,6 +19,7 @@ from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from signals.types import (
     ACTION_ABORT, ACTION_CONTINUE,
     SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE,
+    TRUNCATE_DETAIL,
 )
 
 
@@ -190,7 +191,7 @@ def handle_proposal_signals(
         Services.communicator().mailbox_send(
             planspace,
             parent,
-            f"open-problem:{section_number}:{signal}:{detail[:200]}",
+            f"open-problem:{section_number}:{signal}:{detail[:TRUNCATE_DETAIL]}",
         )
     if signal == SIGNAL_OUT_OF_SCOPE:
         scope_delta_dir = paths.scope_deltas_dir()
