@@ -8,6 +8,10 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 from intent.service.philosophy_bootstrapper import validate_philosophy_grounding
 
+# When remaining axis budget falls below this, prompt the expander to prefer
+# expanding existing axes over creating new ones.
+_AXIS_BUDGET_CONSERVE_THRESHOLD = 6
+
 
 def _compose_problem_expander_text(
     section_number: str,
@@ -138,7 +142,7 @@ def run_problem_expander(
     output_path = artifacts / f"problem-expand-{section_number}-output.md"
 
     axis_budget_note = ""
-    if remaining_axis_budget < 6:
+    if remaining_axis_budget < _AXIS_BUDGET_CONSERVE_THRESHOLD:
         axis_budget_note = (
             f"\n**Axis budget**: {remaining_axis_budget} new axes remaining. "
             f"Prefer expanding existing axes over adding new ones when "

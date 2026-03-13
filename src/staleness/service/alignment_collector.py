@@ -9,6 +9,32 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 
+def _resolve_relative(
+    line: str, codespace_resolved: Path, codespace: Path,
+) -> str | None:
+    """Resolve a reported path to a safe relative path under *codespace*.
+
+    Returns the relative path string, or ``None`` if the path escapes codespace.
+    """
+    pp = Path(line)
+    if pp.is_absolute():
+        try:
+            return str(pp.resolve().relative_to(codespace_resolved))
+        except ValueError:
+            Services.logger().log(
+                f"  WARNING: reported path outside codespace, skipping: {line}",
+            )
+            return None
+    full = (codespace / pp).resolve()
+    try:
+        return str(full.relative_to(codespace_resolved))
+    except ValueError:
+        Services.logger().log(
+            f"  WARNING: reported path escapes codespace, skipping: {line}",
+        )
+        return None
+
+
 def collect_modified_files(
     planspace: Path,
     section: Any,
@@ -20,37 +46,19 @@ def collect_modified_files(
     Absolute paths are converted to relative (if under codespace) or
     rejected. Paths containing ``..`` that escape codespace are rejected.
     """
-    log = Services.logger().log
     paths = PathRegistry(planspace)
     modified_report = paths.impl_modified(section.number)
+    if not modified_report.exists():
+        return []
     codespace_resolved = codespace.resolve()
-    modified = set()
-    if modified_report.exists():
-        for line in modified_report.read_text(encoding="utf-8").strip().split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            pp = Path(line)
-            if pp.is_absolute():
-                try:
-                    rel = pp.resolve().relative_to(codespace_resolved)
-                except ValueError:
-                    log(
-                        "  WARNING: reported path outside codespace, "
-                        f"skipping: {line}",
-                    )
-                    continue
-            else:
-                full = (codespace / pp).resolve()
-                try:
-                    rel = full.relative_to(codespace_resolved)
-                except ValueError:
-                    log(
-                        "  WARNING: reported path escapes codespace, "
-                        f"skipping: {line}",
-                    )
-                    continue
-            modified.add(str(rel))
+    modified: set[str] = set()
+    for line in modified_report.read_text(encoding="utf-8").strip().split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        rel = _resolve_relative(line, codespace_resolved, codespace)
+        if rel is not None:
+            modified.add(rel)
     return list(modified)
 
 

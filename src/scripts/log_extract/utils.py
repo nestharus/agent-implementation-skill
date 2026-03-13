@@ -52,9 +52,12 @@ def load_model_backend_map(planspace: Path) -> dict[str, tuple[str, str]]:
     return result
 
 
+_MAX_PARENT_TRAVERSAL_DEPTH = 20
+
+
 def _find_models_dir(start: Path) -> Path | None:
     current = start.resolve()
-    for _ in range(20):
+    for _ in range(_MAX_PARENT_TRAVERSAL_DEPTH):
         candidate = current / ".agents" / "models"
         if candidate.is_dir():
             return candidate

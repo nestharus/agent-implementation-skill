@@ -20,6 +20,9 @@ _TIME_CLOSE_MS = 5_000           # <=5s: strong time proximity
 _TIME_NEAR_MS = 30_000           # <=30s: moderate time proximity
 _TIME_MODERATE_MS = 120_000      # <=2min: weak time proximity
 
+# Minimum score for a correlation link to be accepted
+_MIN_CORRELATION_SCORE = 35
+
 
 def correlate(
     dispatches: list[DispatchCandidate],
@@ -49,7 +52,7 @@ def correlate(
     for score, _delta, _si, d_id, s_id, reasons in scored:
         if d_id in used_dispatches or s_id in used_sessions:
             continue
-        if score < 35:
+        if score < _MIN_CORRELATION_SCORE:
             continue
         links.append(CorrelationLink(
             session_id=s_id,

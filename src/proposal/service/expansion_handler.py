@@ -13,6 +13,38 @@ from containers import Services
 from intent.service.expansion_facade import handle_user_gate, run_expansion_cycle
 
 
+def _handle_budget_exhaustion(
+    section_number: str, planspace: Path, parent: str,
+    paths: PathRegistry, expansion_count: int, expansion_max: int,
+) -> str | None:
+    """Handle the case where expansion budget is exhausted.
+
+    Returns ``"break"`` to accept alignment, or ``None`` to abort.
+    """
+    Services.logger().log(
+        f"Section {section_number}: intent expansion "
+        f"budget exhausted ({expansion_count}/{expansion_max}) "
+        f"— pausing for decision"
+    )
+    stalled_signal = {
+        "section": section_number,
+        "reason": "expansion budget exhausted",
+        "cycles": expansion_count,
+    }
+    Services.artifact_io().write_json(
+        paths.intent_stalled_signal(section_number),
+        stalled_signal,
+    )
+    response = Services.pipeline_control().pause_for_parent(
+        planspace, parent,
+        f"pause:intent-stalled:{section_number}:"
+        f"expansion budget exhausted ({expansion_count}/{expansion_max})",
+    )
+    if not response.startswith("resume"):
+        return None
+    return "break"
+
+
 def run_aligned_expansion(
     section_number: str,
     planspace: Path,
@@ -35,29 +67,10 @@ def run_aligned_expansion(
     expansion_count = expansion_counts.get(section_number, 0)
 
     if expansion_count >= expansion_max:
-        Services.logger().log(
-            f"Section {section_number}: intent expansion "
-            f"budget exhausted ({expansion_count}/{expansion_max}) "
-            f"— pausing for decision"
+        return _handle_budget_exhaustion(
+            section_number, planspace, parent, paths,
+            expansion_count, expansion_max,
         )
-        stalled_signal = {
-            "section": section_number,
-            "reason": "expansion budget exhausted",
-            "cycles": expansion_count,
-        }
-        Services.artifact_io().write_json(
-            paths.intent_stalled_signal(section_number),
-            stalled_signal,
-        )
-        response = Services.pipeline_control().pause_for_parent(
-            planspace,
-            parent,
-            f"pause:intent-stalled:{section_number}:"
-            f"expansion budget exhausted ({expansion_count}/{expansion_max})",
-        )
-        if not response.startswith("resume"):
-            return None
-        return "break"
 
     Services.logger().log(
         f"Section {section_number}: surfaces found — "

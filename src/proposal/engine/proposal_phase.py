@@ -13,6 +13,8 @@ from proposal.repository.state import load_proposal_state
 from risk.service.engagement import determine_engagement
 from risk.engine.risk_assessor import run_lightweight_risk_check
 from risk.service.package_builder import build_package_from_proposal
+
+_RAW_RISK_EXPLORATION_THRESHOLD = 60
 from risk.repository.serialization import load_risk_assessment
 from risk.types import EngagementContext, RiskAssessment, RiskMode, RiskPackage, RiskType
 from scan.service.section_loader import parse_related_files
@@ -261,10 +263,10 @@ def _risk_check_proposal(
 def _proposal_needs_additional_exploration(assessment: object) -> bool:
     risky = {RiskType.BRUTE_FORCE_REGRESSION, RiskType.SILENT_DRIFT}
     if any(risk in risky for risk in getattr(assessment, "dominant_risks", [])):
-        if getattr(assessment, "package_raw_risk", 0) >= 60:
+        if getattr(assessment, "package_raw_risk", 0) >= _RAW_RISK_EXPLORATION_THRESHOLD:
             return True
     for step_assessment in getattr(assessment, "step_assessments", []):
-        if step_assessment.raw_risk < 60:
+        if step_assessment.raw_risk < _RAW_RISK_EXPLORATION_THRESHOLD:
             continue
         if any(risk in risky for risk in step_assessment.dominant_risks):
             return True

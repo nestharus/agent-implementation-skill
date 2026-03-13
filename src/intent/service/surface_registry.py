@@ -205,18 +205,20 @@ def merge_surfaces_into_registry(
     duplicate_ids: list[str] = []
     stamp = _seen_stamp(surfaces)
 
+    existing_by_id = {s["id"]: s for s in registry.get("surfaces", [])}
+
     for kind in ("problem_surfaces", "philosophy_surfaces"):
         for surface in surfaces.get(kind, []):
             sid = surface.get("id", "")
             if sid in existing_ids:
-                for existing in registry["surfaces"]:
-                    if existing["id"] == sid:
-                        existing["last_seen"] = dict(stamp)
+                if sid in existing_by_id:
+                    existing_by_id[sid]["last_seen"] = dict(stamp)
                 duplicate_ids.append(sid)
             else:
                 entry = _build_surface_entry(surface, stamp)
                 registry.setdefault("surfaces", []).append(entry)
                 existing_ids.add(sid)
+                existing_by_id[sid] = entry
                 new_surfaces.append(entry)
 
     return new_surfaces, duplicate_ids

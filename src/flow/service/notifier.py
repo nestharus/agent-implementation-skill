@@ -98,7 +98,7 @@ def record_qa_intercept(
             text=True,
             timeout=10,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         # Non-critical — logging failure must not block dispatch.
         Services.logger().log(
             f"QA intercept logging failed ({exc}) — failing open",

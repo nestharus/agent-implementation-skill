@@ -53,26 +53,30 @@ def _iter_content_blocks(content: object) -> Iterator[dict]:
                 yield block
 
 
+def _try_parse_ts(value: object) -> tuple[str, int] | None:
+    """Attempt to parse a single timestamp value, returning None on failure."""
+    if value is None:
+        return None
+    try:
+        return parse_timestamp(value)
+    except (ValueError, TypeError):
+        return None
+
+
 def _record_timestamp(record: dict) -> tuple[str, int] | None:
     """Try to extract a parsed timestamp from *record*."""
     # Explicit timestamp field (queue-operation records)
-    ts_raw = record.get("timestamp")
-    if ts_raw is not None:
-        try:
-            return parse_timestamp(ts_raw)
-        except (ValueError, TypeError):
-            pass
+    result = _try_parse_ts(record.get("timestamp"))
+    if result is not None:
+        return result
 
     # Some records embed a timestamp inside the message envelope
     msg = record.get("message")
     if isinstance(msg, dict):
         for key in ("timestamp", "ts"):
-            val = msg.get(key)
-            if val is not None:
-                try:
-                    return parse_timestamp(val)
-                except (ValueError, TypeError):
-                    pass
+            result = _try_parse_ts(msg.get(key))
+            if result is not None:
+                return result
 
     return None
 
@@ -208,6 +212,23 @@ def _handle_assistant_event(
 # Per-file line processing
 # ------------------------------------------------------------------
 
+def _dispatch_record(
+    record: dict, ts_pair: tuple[str, int] | None, sid: str,
+) -> Iterator[TimelineEvent]:
+    """Dispatch a parsed record to the appropriate handler."""
+    rtype = record.get("type", "")
+    if rtype == "queue-operation" and record.get("operation") == "enqueue":
+        event = _handle_queue_event(record, ts_pair, sid)
+        if event is not None:
+            yield event
+    elif rtype == "user":
+        event = _handle_user_event(record, ts_pair, sid)
+        if event is not None:
+            yield event
+    elif rtype == "assistant":
+        yield from _handle_assistant_event(record, ts_pair, sid)
+
+
 def _iter_file_events(
     path: Path,
 ) -> Iterator[TimelineEvent]:
@@ -232,19 +253,8 @@ def _iter_file_events(
                 continue
 
             ts_pair = _record_timestamp(record)
-            rtype = record.get("type", "")
             sid = _session_id_from(record, file_stem)
-
-            if rtype == "queue-operation" and record.get("operation") == "enqueue":
-                event = _handle_queue_event(record, ts_pair, sid)
-                if event is not None:
-                    yield event
-            elif rtype == "user":
-                event = _handle_user_event(record, ts_pair, sid)
-                if event is not None:
-                    yield event
-            elif rtype == "assistant":
-                yield from _handle_assistant_event(record, ts_pair, sid)
+            yield from _dispatch_record(record, ts_pair, sid)
 
 
 def _extract_prompt_text(record: dict, rtype: str) -> str:

@@ -5,6 +5,29 @@ from __future__ import annotations
 from risk.types import AssessmentClass, DecisionClass, RiskPlan, StepAssessment, StepClass, StepDecision, StepMitigation
 
 
+def _validate_accept_decision(
+    decision: object, assessment_classes: dict, thresholds: dict,
+    violations: list[str],
+) -> None:
+    """Validate an ACCEPT step decision against policy thresholds."""
+    sid = decision.step_id
+    if decision.posture is None:
+        violations.append(f"accepted step {sid} is missing posture")
+    if decision.residual_risk is None:
+        violations.append(f"accepted step {sid} is missing residual_risk")
+    assessment_class = assessment_classes.get(sid)
+    threshold = thresholds.get(assessment_class.value) if assessment_class is not None else None
+    if threshold is None:
+        violations.append(f"accepted step {sid} is missing a policy threshold")
+    elif decision.residual_risk is not None and decision.residual_risk > threshold:
+        violations.append(
+            f"accepted step {sid} residual risk "
+            f"{decision.residual_risk} exceeds {assessment_class.value} threshold {threshold}"
+        )
+    if decision.route_to is not None:
+        violations.append(f"accepted step {sid} must not set route_to")
+
+
 def validate_risk_plan(plan: RiskPlan, parameters: dict) -> list[str]:
     """Validate that a risk plan meets policy requirements."""
     violations: list[str] = []
@@ -31,27 +54,7 @@ def validate_risk_plan(plan: RiskPlan, parameters: dict) -> list[str]:
 
         if decision.decision == StepDecision.ACCEPT:
             expected_accepted.append(decision.step_id)
-            if decision.posture is None:
-                violations.append(f"accepted step {decision.step_id} is missing posture")
-            if decision.residual_risk is None:
-                violations.append(
-                    f"accepted step {decision.step_id} is missing residual_risk"
-                )
-            assessment_class = assessment_classes.get(decision.step_id)
-            threshold = thresholds.get(assessment_class.value) if assessment_class is not None else None
-            if threshold is None:
-                violations.append(
-                    f"accepted step {decision.step_id} is missing a policy threshold"
-                )
-            elif decision.residual_risk is not None and decision.residual_risk > threshold:
-                violations.append(
-                    f"accepted step {decision.step_id} residual risk "
-                    f"{decision.residual_risk} exceeds {assessment_class.value} threshold {threshold}"
-                )
-            if decision.route_to is not None:
-                violations.append(
-                    f"accepted step {decision.step_id} must not set route_to"
-                )
+            _validate_accept_decision(decision, assessment_classes, thresholds, violations)
         elif decision.decision == StepDecision.REJECT_DEFER:
             expected_deferred.append(decision.step_id)
             if decision.route_to is not None:

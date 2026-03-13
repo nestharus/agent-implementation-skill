@@ -81,20 +81,22 @@ def _session_candidates_from_home(home: Path) -> Iterator[SessionCandidate]:
 def _iter_records(path: Path) -> Iterator[dict]:
     """Yield parsed JSON objects from a JSONL file, skipping bad lines."""
     try:
-        with path.open("r", encoding="utf-8") as fh:
-            for lineno, line in enumerate(fh, 1):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    yield json.loads(line)
-                except json.JSONDecodeError as exc:
-                    print(
-                        f"codex: {path}:{lineno}: skipping truncated/malformed line: {exc}",
-                        file=sys.stderr,
-                    )
+        fh = path.open("r", encoding="utf-8")
     except OSError as exc:
         print(f"codex: cannot read {path}: {exc}", file=sys.stderr)
+        return
+    with fh:
+        for lineno, line in enumerate(fh, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError as exc:
+                print(
+                    f"codex: {path}:{lineno}: skipping truncated/malformed line: {exc}",
+                    file=sys.stderr,
+                )
 
 
 def _safe_ts(record: dict) -> tuple[str, int] | None:

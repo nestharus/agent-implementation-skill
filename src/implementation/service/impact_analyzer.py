@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
 MaterialImpact = tuple[str, str, bool, str]
 
+_RELATED_FILES_DISPLAY_LIMIT = 10
+
 
 def collect_impact_candidates(
     planspace: Path,
@@ -180,9 +182,9 @@ def _build_impact_prompt(
     candidate_lines = []
     for other in candidate_sections:
         if other.related_files:
-            files_str = ", ".join(f"`{path}`" for path in other.related_files[:10])
-            if len(other.related_files) > 10:
-                files_str += f" (+{len(other.related_files) - 10} more)"
+            files_str = ", ".join(f"`{path}`" for path in other.related_files[:_RELATED_FILES_DISPLAY_LIMIT])
+            if len(other.related_files) > _RELATED_FILES_DISPLAY_LIMIT:
+                files_str += f" (+{len(other.related_files) - _RELATED_FILES_DISPLAY_LIMIT} more)"
         else:
             files_str = "(no current file hypothesis)"
         candidate_lines.append(

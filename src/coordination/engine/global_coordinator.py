@@ -202,6 +202,46 @@ def _execute_plan(
 # Phase 4: Re-check alignment on affected sections
 # ---------------------------------------------------------------------------
 
+
+def _classify_alignment_result(
+    sec_num: str,
+    align_problems: str | None,
+    signal: str | None,
+    detail: str | None,
+    section_results: dict[str, SectionResult],
+    problems: list[dict],
+    recurrence: dict | None,
+    coord_dir: Path,
+    planspace: Path,
+) -> bool:
+    """Classify alignment check outcome and record result.
+
+    Returns ``True`` if aligned, ``False`` if still has problems.
+    """
+    if align_problems is None and signal is None:
+        Services.logger().log(f"  coordinator: section {sec_num} now ALIGNED")
+        section_results[sec_num] = SectionResult(
+            section_number=sec_num, aligned=True,
+        )
+        _record_recurrence_resolution(
+            sec_num, problems, recurrence, coord_dir, planspace,
+        )
+        return True
+
+    Services.logger().log(f"  coordinator: section {sec_num} still has problems")
+    combined_problems = align_problems or ""
+    if signal:
+        combined_problems += (
+            f"\n[signal:{signal}] {detail}" if combined_problems
+            else f"[signal:{signal}] {detail}"
+        )
+    section_results[sec_num] = SectionResult(
+        section_number=sec_num, aligned=False,
+        problems=combined_problems or None,
+    )
+    return False
+
+
 def _recheck_section_alignment(
     sec_num: str,
     section: Section,
@@ -273,30 +313,10 @@ def _recheck_section_alignment(
         planspace=planspace, parent=parent, codespace=codespace,
     )
 
-    if align_problems is None and signal is None:
-        Services.logger().log(f"  coordinator: section {sec_num} now ALIGNED")
-        section_results[sec_num] = SectionResult(
-            section_number=sec_num,
-            aligned=True,
-        )
-        _record_recurrence_resolution(
-            sec_num, problems, recurrence, coord_dir, planspace,
-        )
-        return True
-
-    Services.logger().log(f"  coordinator: section {sec_num} still has problems")
-    combined_problems = align_problems or ""
-    if signal:
-        combined_problems += (
-            f"\n[signal:{signal}] {detail}" if combined_problems
-            else f"[signal:{signal}] {detail}"
-        )
-    section_results[sec_num] = SectionResult(
-        section_number=sec_num,
-        aligned=False,
-        problems=combined_problems or None,
+    return _classify_alignment_result(
+        sec_num, align_problems, signal, detail,
+        section_results, problems, recurrence, coord_dir, planspace,
     )
-    return False
 
 
 def _compose_recurrence_text(

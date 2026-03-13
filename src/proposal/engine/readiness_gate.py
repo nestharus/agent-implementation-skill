@@ -183,19 +183,10 @@ def _route_blocking_research(
     )
 
 
-def route_blockers(
-    section_number: str,
-    proposal_state: dict,
-    planspace: Path,
-    parent: str,
-    codespace: Path | None = None,
+def _route_user_root_questions(
+    signal_dir: Path, section_number: str, proposal_state: dict,
 ) -> None:
-    """Route proposal blockers to their downstream consumers."""
-    del parent
-    registry = PathRegistry(planspace)
-    signal_dir = registry.signals_dir()
-    signal_dir.mkdir(parents=True, exist_ok=True)
-
+    """Emit NEED_DECISION signals for user-root questions."""
     for i, question in enumerate(proposal_state.get("user_root_questions", [])):
         q_signal = {
             "state": "need_decision",
@@ -215,16 +206,11 @@ def route_blockers(
             f"signal for user_root_question[{i}]"
         )
 
-    blocking_research_questions = [
-        str(question)
-        for question in proposal_state.get("blocking_research_questions", [])
-    ]
-    if blocking_research_questions:
-        _route_blocking_research(
-            registry, signal_dir, section_number, planspace,
-            codespace, blocking_research_questions,
-        )
 
+def _route_shared_seams(
+    signal_dir: Path, section_number: str, proposal_state: dict,
+) -> None:
+    """Emit substrate triggers and needs_parent signals for shared seams."""
     for i, seam in enumerate(proposal_state.get("shared_seam_candidates", [])):
         trigger = {
             "section": section_number,
@@ -239,7 +225,6 @@ def route_blockers(
             f"for shared_seam_candidate[{i}]"
         )
 
-    for i, seam in enumerate(proposal_state.get("shared_seam_candidates", [])):
         seam_signal = {
             "state": "needs_parent",
             "section": section_number,
@@ -257,25 +242,57 @@ def route_blockers(
         sig_path = signal_dir / f"section-{section_number}-seam-{i}-signal.json"
         Services.artifact_io().write_json(sig_path, seam_signal)
 
+
+def _route_unresolved_contracts(
+    section_number: str, proposal_state: dict, planspace: Path,
+) -> None:
+    """Queue reconciliation for unresolved contracts/anchors."""
     unresolved_contracts = [
-        str(contract) for contract in proposal_state.get("unresolved_contracts", [])
+        str(c) for c in proposal_state.get("unresolved_contracts", [])
     ]
     unresolved_anchors = [
-        str(anchor) for anchor in proposal_state.get("unresolved_anchors", [])
+        str(a) for a in proposal_state.get("unresolved_anchors", [])
     ]
-    if unresolved_contracts or unresolved_anchors:
-        queue_reconciliation_request(
-            planspace,
-            section_number,
-            unresolved_contracts,
-            unresolved_anchors,
-        )
-        Services.logger().log(
-            f"Section {section_number}: queued reconciliation "
-            f"request ({len(unresolved_contracts)} contracts, "
-            f"{len(unresolved_anchors)} anchors)"
+    if not unresolved_contracts and not unresolved_anchors:
+        return
+    queue_reconciliation_request(
+        planspace, section_number,
+        unresolved_contracts, unresolved_anchors,
+    )
+    Services.logger().log(
+        f"Section {section_number}: queued reconciliation "
+        f"request ({len(unresolved_contracts)} contracts, "
+        f"{len(unresolved_anchors)} anchors)"
+    )
+
+
+def route_blockers(
+    section_number: str,
+    proposal_state: dict,
+    planspace: Path,
+    parent: str,
+    codespace: Path | None = None,
+) -> None:
+    """Route proposal blockers to their downstream consumers."""
+    del parent
+    registry = PathRegistry(planspace)
+    signal_dir = registry.signals_dir()
+    signal_dir.mkdir(parents=True, exist_ok=True)
+
+    _route_user_root_questions(signal_dir, section_number, proposal_state)
+
+    blocking_research_questions = [
+        str(question)
+        for question in proposal_state.get("blocking_research_questions", [])
+    ]
+    if blocking_research_questions:
+        _route_blocking_research(
+            registry, signal_dir, section_number, planspace,
+            codespace, blocking_research_questions,
         )
 
+    _route_shared_seams(signal_dir, section_number, proposal_state)
+    _route_unresolved_contracts(section_number, proposal_state, planspace)
     _update_blocker_rollup(planspace)
 
 

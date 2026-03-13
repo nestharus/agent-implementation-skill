@@ -9,12 +9,15 @@ from containers import Services
 
 _SECTION_RE = re.compile(r"(?:section[-_]?)(\d{2})\b|[-_:](\d{2})(?:[-_.:,\s]|$)")
 
+# Timestamps above this magnitude are assumed to be in milliseconds, not seconds
+_EPOCH_MS_MAGNITUDE_THRESHOLD = 1e12
+
 
 def parse_timestamp(value: str | int | float, *, assume_tz: str = "UTC") -> tuple[str, int]:
     """Normalize a timestamp to ``(iso_str, epoch_ms)``."""
     del assume_tz
     if isinstance(value, (int, float)):
-        if value > 1e12:
+        if value > _EPOCH_MS_MAGNITUDE_THRESHOLD:
             ms = int(value)
         else:
             ms = int(value * 1000)
