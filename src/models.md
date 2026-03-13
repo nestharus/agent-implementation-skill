@@ -210,7 +210,7 @@ alignment-judge agent explicitly rejects.
 
 ## Agent Definitions and Model Selection
 
-Agent definition files (`agents/*.md`) encode a reusable **reasoning
+Agent definition files (`<system>/agents/*.md`) encode a reusable **reasoning
 method** — how to think about a class of problems. They do not contain
 runtime paths or specific task context. Model selection determines the
 **controllability and capability** applied to that method.

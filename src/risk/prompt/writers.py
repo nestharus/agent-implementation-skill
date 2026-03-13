@@ -39,16 +39,8 @@ def write_risk_assessment_prompt(
         ("Problem frame", paths.problem_frame(section_number), "text"),
         ("Governance packet", paths.governance_packet(section_number), "json"),
         ("Microstrategy", paths.microstrategy(section_number), "text"),
-        (
-            "Proposal state",
-            paths.proposals_dir() / f"{scope}-proposal-state.json",
-            "json",
-        ),
-        (
-            "Readiness",
-            paths.readiness_dir() / f"{scope}-execution-ready.json",
-            "json",
-        ),
+        ("Proposal state", paths.proposal_state(section_number), "json"),
+        ("Readiness", paths.execution_ready(section_number), "json"),
         ("Tool registry", paths.tool_registry(), "json"),
         ("Codemap", paths.codemap(), "text"),
     ]

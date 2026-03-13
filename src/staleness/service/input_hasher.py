@@ -61,7 +61,7 @@ def section_inputs_hash(
         paths.research_derived_surfaces(sec_num),
         paths.impl_feedback_surfaces(sec_num),
         paths.research_section_dir(sec_num) / "research-status.json",
-        paths.intent_global_dir() / "philosophy.md",
+        paths.philosophy(),
         paths.intent_global_dir() / "philosophy-source-manifest.json",
         paths.intent_global_dir() / "philosophy-source-map.json",
         paths.intent_section_dir(sec_num) / "problem.md",

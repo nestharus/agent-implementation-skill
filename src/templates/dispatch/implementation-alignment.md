@@ -11,7 +11,7 @@
 5. Implemented files (prioritize by impact; use diffs/tooling first; spot-check low-risk changes):
 {files_block}{surface_line}{codemap_line}{impl_corrections_line}{micro_line}{todo_line}{todo_resolution_line}{intent_problem_ref}{intent_rubric_ref}{intent_philosophy_ref}
 
-## Worktree root
+## Codespace root
 `{codespace}`
 {impl_feedback_block}
 
@@ -32,7 +32,7 @@ Check SHAPE AND DIRECTION:
   (implemented, rewritten with justification, or explicitly deferred)
 
 **Go beyond the file list.** The section spec may require creating new
-files or producing artifacts at specific paths. Check the worktree for
+files or producing artifacts at specific paths. Check the codespace for
 any file the section mentions that should exist.
 
 Do NOT check:

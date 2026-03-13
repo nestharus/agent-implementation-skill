@@ -14,7 +14,7 @@ Agents reason about what they find — the script only coordinates dispatch,
 checks outputs, and logs failures.
 
 **Terminology enforcement**: The alignment-judge agent rejects invalid
-frames (`frame_ok=false`) — see `agents/alignment-judge.md`.
+frames (`frame_ok=false`) — see `proposal/agents/alignment-judge.md`.
 
 ## Workflow Orchestration
 
@@ -23,7 +23,7 @@ Each stage below corresponds to a schedule step in the `implement-proposal.md`
 template. The orchestrator pops steps and dispatches agents to the matching
 stage section. Stage 3 dispatches agents to explore the codebase and build
 a codemap, then per-section agents identify related files, preserving the
-public `scan.sh quick|deep|both` interface and `## Related Files` output
+public `python -m scan quick|deep|both` interface and `## Related Files` output
 format.
 
 Schedule step → Skill section mapping:
@@ -37,11 +37,11 @@ Schedule step → Skill section mapping:
 
 ## Your Role in the Pipeline
 
-The control plane is script-owned (`section-loop.py`, `workflow.sh`,
-`task_dispatcher.py`). You **start** the pipeline, **monitor** its
-progress, **respond** to blockers, and **read** artifacts. You do NOT
-build prompts, launch agents directly, or manage dispatch loops — scripts
-handle all mechanical coordination.
+The control plane is module-owned (`orchestrator.engine.pipeline_orchestrator`,
+`workflow.sh`, `flow.engine.task_dispatcher`). You **start** the pipeline,
+**monitor** its progress, **respond** to blockers, and **read** artifacts.
+You do NOT build prompts, launch agents directly, or manage dispatch
+loops — the control plane handles all mechanical coordination.
 
 - **Start** the pipeline via `workflow.sh`
 - **Monitor** progress via `db.sh tail` / `db.sh query`
@@ -162,24 +162,21 @@ brownfield projects.
 
 Enter at any stage if prior stages are already complete.
 
-## Worktree Model
+## Workspace Model
 
-Each **task** (proposal, feature, etc.) gets one worktree. All stages
-within that task run sequentially in the same worktree. There are no
-per-block worktrees.
+Each **task** gets a planspace (artifacts, state, coordination) and
+operates on a codespace (project source). All stages within a task run
+sequentially in the same workspace.
 
 ```
-task worktree (one per task)
-  ├── Stage 1: writes to planspace only
-  ├── Stage 2: updates docstrings in source files
-  ├── Stage 3: writes to planspace only (relevance map)
+planspace (~/.claude/workspaces/<task-slug>/)
+  ├── Stage 1: writes section specs to planspace
+  ├── Stage 2: updates docstrings in codespace
+  ├── Stage 3: writes relevance map to planspace
   ├── Stages 4-5: agents implement strategically per section + global coordination
-  ├── Stage 6: verify in-place
+  ├── Stage 6: verify in codespace
   └── Stage 7: final verification + commit
 ```
-
-**Cross-task parallelism**: Multiple tasks can run simultaneously in
-separate worktrees. Each task is fully independent.
 
 **Within-task sequencing**: Default behavior is sequential execution
 within a task, with explicit per-stage concurrency exceptions documented in
@@ -383,10 +380,10 @@ proportional to work actually done.
 **Shell-script driven** — dispatches agents, checks outputs, logs failures.
 
 ```bash
-bash "$WORKFLOW_HOME/scripts/scan.sh" both <planspace> <codespace>
+python -m scan both <planspace> <codespace>
 # or separately:
-bash "$WORKFLOW_HOME/scripts/scan.sh" quick <planspace> <codespace>
-bash "$WORKFLOW_HOME/scripts/scan.sh" deep  <planspace> <codespace>
+python -m scan quick <planspace> <codespace>
+python -m scan deep  <planspace> <codespace>
 ```
 
 Stage placement is unchanged: this runs after Stage 2 and before the
@@ -394,9 +391,9 @@ section-loop (Stages 4-5). The public CLI remains unchanged.
 
 ### CLI contract (public interface)
 
-- `bash "$WORKFLOW_HOME/scripts/scan.sh" quick <planspace> <codespace>`
-- `bash "$WORKFLOW_HOME/scripts/scan.sh" deep <planspace> <codespace>`
-- `bash "$WORKFLOW_HOME/scripts/scan.sh" both <planspace> <codespace>`
+- `python -m scan quick <planspace> <codespace>`
+- `python -m scan deep <planspace> <codespace>`
+- `python -m scan both <planspace> <codespace>`
 
 ### Parameter types
 
@@ -450,7 +447,7 @@ discovered. The agent decides what's important, not a template.
    file and source file. The agent reads both, reasons about relevance,
    and writes structured JSON feedback.
 4. Output is structured JSON with fields: `relevant`, `missing_files`,
-   `out_of_scope`, `summary_lines`. See `agents/scan-file-analyzer.md`.
+   `out_of_scope`, `summary_lines`. See `scan/agents/scan-file-analyzer.md`.
 5. Skip missing/invalid file paths with diagnostics. On per-pair failures,
    record diagnostics and continue remaining pairs.
 
@@ -508,15 +505,15 @@ A file can appear in multiple section files.
 
 | File | Purpose |
 |------|---------|
-| `$WORKFLOW_HOME/scripts/section-loop.py` | Strategic section-loop orchestrator (integration proposals, implementation, cross-section communication, global coordination) |
-| `$WORKFLOW_HOME/scripts/task_dispatcher.py` | Task queue — polls for task submissions, dispatches under script control |
+| `orchestrator.engine.pipeline_orchestrator` | Strategic section-loop orchestrator (integration proposals, implementation, cross-section communication, global coordination) |
+| `flow.engine.task_dispatcher` | Task queue — polls for task submissions, dispatches under module control |
 | `$WORKFLOW_HOME/scripts/db.sh` | SQLite-backed coordination database |
 
 ### Control plane
 
 The control plane is script-owned:
 
-1. **Section-loop script** (`scripts/section-loop.py`): Strategic orchestrator.
+1. **Section-loop orchestrator** (`orchestrator.engine.pipeline_orchestrator`): Strategic orchestrator.
    Runs sections sequentially through the integration proposal + implementation
    flow. Dispatches agents, manages cross-section communication (snapshots,
    impact analysis, consequence notes), and runs the global coordination phase
@@ -535,7 +532,7 @@ The control plane is script-owned:
    at the coordination round level. Cleans up agent registrations via
    `db.sh cleanup` after each per-section dispatch.
 
-2. **Per-dispatch agent monitor** (`agents/agent-monitor.md`, GLM): One per
+2. **Per-dispatch agent monitor** (`dispatch/agents/agent-monitor.md`, GLM): One per
    agent dispatch. Launched from `dispatch.py` alongside each strategic agent.
    Reads the agent's narration messages via `db.sh drain` on the agent's
    named queue, tracks `plan:` messages, detects repetition patterns indicating
@@ -545,11 +542,11 @@ The control plane is script-owned:
    One monitor per agent dispatch, exits when agent finishes.
 
 3. **Task ingestion**: After each strategic agent completes,
-   `scripts/section_loop/task_ingestion.py` reads any task-request
+   the task ingestion module reads any task-request
    artifact files the agent emitted and dispatches them through the
-   standard dispatch boundary via `task_router.py`. Separately,
-   `scripts/task_dispatcher.py` polls the DB task queue (`db.sh
-   next-task`) for tasks submitted programmatically.
+   standard dispatch boundary via the task router. Separately,
+   `flow.engine.task_dispatcher` polls the DB task queue for tasks
+   submitted programmatically.
 
 The workflow schedule is managed by `scripts/workflow.sh` and the
 section-loop script, not by an orchestrator agent. All coordination goes
@@ -563,7 +560,7 @@ not consumed -- the database file is the complete audit trail.
 
 ```
 Orchestrator (manages workflow schedule, dispatches steps)
-  └─ section-loop.py (script-owned pipeline)
+  └─ pipeline_orchestrator (module-owned pipeline)
        ├─ db.sh send (messages) + db.sh log summary (events)
        ├─ db.sh query lifecycle --tag pipeline-state (pause check)
        ├─ recv on section-loop queue (when paused by signals)
@@ -780,7 +777,7 @@ edge cases not in constraints) are NOT checked.
 
 Opus checks **go beyond the listed files**. The section spec may require
 creating new files, modifying files not in the original list, or producing
-artifacts at specific worktree paths. Opus verifies the worktree for any
+artifacts at specific codespace paths. Opus verifies the codespace for any
 file the section mentions should exist — not just what's enumerated.
 
 If problems found → feedback goes back to GPT, which revises the
@@ -853,7 +850,7 @@ holistically, grouped by root cause, and fixed in coordinated batches.
 
 ### Cleanup
 
-section-loop.py cleans up its own agent registration on exit via
+The pipeline orchestrator cleans up its own agent registration on exit via
 `db.sh cleanup` (normal completion, abort, or error). The `finally` block
 in `main()` ensures cleanup runs even on exceptions. The parent should also
 verify cleanup after the background task exits. Messages and events remain
@@ -941,7 +938,7 @@ recorded as telemetry only.
 ### CLI
 
 ```bash
-scripts/substrate.sh <planspace> <codespace>
+python -m scan.substrate <planspace> <codespace>
 ```
 
 ## Stage 4: Section Setup + Integration Proposal
@@ -1154,7 +1151,7 @@ external artifacts — no markers placed in source code.
 ## Stage 6: Verification
 
 After the section queue is empty (all sections clean), verify in the
-task worktree:
+codespace:
 
 ### 6a: Constraint Alignment Check (GPT-GPT-high)
 Check against design principles. Fix violations.

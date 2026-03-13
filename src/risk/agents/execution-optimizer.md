@@ -235,7 +235,7 @@ Choose the more conservative posture, or defer / reopen.
 ## Output
 
 Write JSON matching the `RiskPlan` schema from
-`src/scripts/lib/risk/types.py`:
+`src/risk/types.py`:
 
 ```json
 {

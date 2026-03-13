@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
@@ -23,20 +22,13 @@ def read_scan_model_policy(artifacts_dir: Path) -> dict[str, str]:
     """Read scan-stage model policy from ``model-policy.json``."""
     policy = dict(DEFAULT_SCAN_MODELS)
     policy_path = PathRegistry(artifacts_dir.parent).model_policy()
-    if policy_path.is_file():
-        try:
-            data = json.loads(policy_path.read_text())
-            scan_overrides = data.get("scan", {})
-            if isinstance(scan_overrides, dict):
-                for key, val in scan_overrides.items():
-                    if key in policy and isinstance(val, str):
-                        policy[key] = val
-        except (json.JSONDecodeError, OSError) as exc:
-            print(
-                f"[SCAN] WARNING: model-policy.json exists but is "
-                f"invalid ({exc}) - renaming to .malformed.json",
-            )
-            Services.artifact_io().rename_malformed(policy_path)
+    data = Services.artifact_io().read_json(policy_path)
+    if isinstance(data, dict):
+        scan_overrides = data.get("scan", {})
+        if isinstance(scan_overrides, dict):
+            for key, val in scan_overrides.items():
+                if key in policy and isinstance(val, str):
+                    policy[key] = val
     return policy
 
 

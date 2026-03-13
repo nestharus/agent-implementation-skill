@@ -14,11 +14,11 @@ suggestion). Tests get rerun. Repeat for remaining failures.
 
 ## Setup
 
-### Create RCA Worktree
+### Create RCA Investigation Branch
 
-A single worktree for GPT to investigate in. GPT only reads and
+A temporary git worktree for GPT to investigate in. GPT only reads and
 reports — it does not modify files. Fixes are applied to the working
-branch, not the worktree.
+branch, not the investigation worktree.
 
 ```bash
 git worktree add .worktrees/rca-<issue-slug> -b rca/<issue-slug>

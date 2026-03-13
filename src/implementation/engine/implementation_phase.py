@@ -255,9 +255,7 @@ def _run_risk_review(
 
     try:
         package = build_package_from_proposal(scope, planspace)
-        proposal_state = load_proposal_state(
-            paths.proposals_dir() / f"{scope}-proposal-state.json"
-        )
+        proposal_state = load_proposal_state(paths.proposal_state(sec_num))
         hints = load_risk_hints(planspace, sec_num)
         triage_signal = hints["signal"]
         triage_confidence = hints["triage_confidence"]

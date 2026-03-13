@@ -10,8 +10,10 @@ import sqlite3
 from pathlib import Path
 
 from containers import Services
+from orchestrator.path_registry import PathRegistry
 from flow.service.task_db_client import task_db
 from flow.repository.flow_context_store import (
+    continuation_relpath,
     flow_context_relpath,
     gate_aggregate_relpath,
     read_flow_json,
@@ -176,7 +178,9 @@ def check_and_fire_gate(
         )
 
         agg_relpath = gate_aggregate_relpath(gate_id)
-        Services.artifact_io().write_json(planspace / agg_relpath, aggregate)
+        Services.artifact_io().write_json(
+            PathRegistry(planspace).flow_gate_aggregate(gate_id), aggregate
+        )
 
         conn.execute(
             """UPDATE gates
@@ -208,9 +212,7 @@ def check_and_fire_gate(
             )
 
             syn_ctx_path = flow_context_relpath(syn_tid)
-            syn_cont_path = (
-                f"artifacts/flows/task-{syn_tid}-continuation.json"
-            )
+            syn_cont_path = continuation_relpath(syn_tid)
             syn_res_path = result_manifest_relpath(syn_tid)
 
             conn.execute(

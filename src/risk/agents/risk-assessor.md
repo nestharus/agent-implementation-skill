@@ -213,7 +213,7 @@ history patterns that materially shaped the assessment.
 ## Output
 
 Write JSON matching the `RiskAssessment` schema from
-`src/scripts/lib/risk/types.py`:
+`src/risk/types.py`:
 
 ```json
 {

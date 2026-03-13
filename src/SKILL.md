@@ -1,6 +1,6 @@
 ---
 name: agent-implementation-skill
-description: Multi-model agent implementation workflow for software development. Orchestrates research, evaluation, design baseline, implementation, RCA, structured decomposition, constraint discovery, model selection, and agent-driven Stage 3 codemap exploration across external AI models (GPT, GLM, Claude). Use when implementing features through a structured multi-phase pipeline with worktrees, dynamic scheduling, and SQLite-backed agent coordination.
+description: Multi-model agent implementation workflow for software development. Orchestrates research, evaluation, design baseline, implementation, RCA, structured decomposition, constraint discovery, model selection, and agent-driven Stage 3 codemap exploration across external AI models (GPT, GLM, Claude). Use when implementing features through a structured multi-phase pipeline with planspace/codespace separation, dynamic scheduling, and SQLite-backed agent coordination.
 ---
 
 # Development Workflow
@@ -31,15 +31,11 @@ $WORKFLOW_HOME/
   scripts/
     workflow.sh         # schedule driver ([wait]/[run]/[done]/[fail])
     db.sh               # SQLite-backed coordination database
-    scan.sh             # Stage 3 coordinator: dispatches agents to explore codespace and build codemap, then per-section file identification
-    substrate.sh        # Stage 3.5 shim: sets PYTHONPATH, runs python -m substrate
-    substrate/          # Stage 3.5: shared integration substrate discovery (shards → prune → seed) for vacuum/signal-triggered sections
-    section-loop.py     # strategic section-loop orchestrator: integration proposals, strategic implementation, cross-section communication, global coordination (Stages 4-5 of implement.md)
   tools/
     extract-docstring-py  # extract Python module docstrings
     extract-summary-md    # extract YAML frontmatter from markdown
     README.md             # tool interface spec (for Opus to write new tools)
-  agents/              # agent role definitions (see agents/*.md for full inventory)
+  <system>/agents/      # agent definitions distributed across system modules (scan/, proposal/, implementation/, etc.)
   templates/
     implement-proposal.md   # 10-step implementation schedule
     research-cycle.md       # 7-step research schedule
@@ -48,15 +44,16 @@ $WORKFLOW_HOME/
 
 Workspaces live on native filesystem for performance, separate from project:
 - **Planspace**: `~/.claude/workspaces/<task-slug>/` — schedule, state, log, artifacts, coordination database
-- **Codespace**: project root or worktree — where source code lives
+- **Codespace**: project root — where source code lives
 
 Clean up planspace when workflow is fully complete (`rm -rf` the workspace dir).
 
 ## Your Role
 
 **BEFORE DOING ANYTHING ELSE**: Determine your role in the pipeline,
-then read the corresponding file from `$WORKFLOW_HOME/agents/`. That
-file defines your rules. Do not proceed until you have read it.
+then read the corresponding agent definition file. Agent definitions are
+distributed under system-owned directories (e.g., `$WORKFLOW_HOME/<system>/agents/<name>.md`);
+the task router resolves agent files by name. Do not proceed until you have read it.
 
 ## Phase Detection
 
@@ -79,7 +76,7 @@ Check these in order:
 | `research.md` | Exploration → alignment → proposal → refinement |
 | `evaluate.md` | Proposal alignment review (Accept / Reject / Push Back) |
 | `baseline.md` | Atomize proposal into constraints / patterns / tradeoffs |
-| `implement.md` | Multi-model implementation with worktrees + dynamic scheduling |
+| `implement.md` | Multi-model implementation with planspace/codespace + dynamic scheduling |
 | `rca.md` | Root cause analysis + architectural fix for test failures |
 | `audit.md` | Concern-based problem decomposition + alignment tracing |
 | `constraints.md` | Surface implicit constraints, validate design principles |
@@ -181,7 +178,7 @@ agents --model <model> --file <planspace>/artifacts/step-N-prompt.md \
   > <planspace>/artifacts/step-N-output.md 2>&1
 
 # Agent file dispatch — agent instructions prepended to prompt
-agents --agent-file "$WORKFLOW_HOME/agents/alignment-judge.md" \
+agents --agent-file "$WORKFLOW_HOME/proposal/agents/alignment-judge.md" \
   --file <planspace>/artifacts/alignment-prompt.md
 
 # Parallel dispatch with db.sh coordination

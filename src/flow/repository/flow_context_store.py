@@ -118,7 +118,7 @@ def write_dispatch_prompt(
 
     wrapper_content = "\n".join(header_lines) + "\n" + original_content
 
-    dispatch_path = flows_dir / f"task-{task_id}-dispatch.md"
+    dispatch_path = PathRegistry(planspace).flow_dispatch_prompt(task_id)
     dispatch_path.write_text(wrapper_content, encoding="utf-8")
 
     return dispatch_path
@@ -162,5 +162,5 @@ def write_flow_context(
         result_manifest_path=result_manifest_relpath(task_id),
     )
 
-    context_path = flows_dir / f"task-{task_id}-context.json"
+    context_path = PathRegistry(planspace).flow_context(task_id)
     Services.artifact_io().write_json(context_path, flow_context_to_dict(context))

@@ -95,9 +95,9 @@ Post-implementation assessment emits `accept_with_debt` verdicts with typed `deb
 ### RISK-0007: PathRegistry consumer saturation gap
 
 - **Category**: pattern-drift / operability
-- **Region**: PathRegistry consumers across scan, intent/prompt assembly, tool surfaces, freshness/hash services, dispatch prompt assembly, implementation services, orchestrator
-- **Description**: PAT-0003 had correct accessors for several durable families, but authoritative consumers still reconstructed those paths manually. This created writer/reader drift risk and made governance health notes inaccurate (PAT-0003 claimed "Healthy" while ad-hoc construction remained widespread).
+- **Region**: PathRegistry consumers across scan, intent/prompt assembly, tool surfaces, freshness/hash services, dispatch prompt assembly, implementation services, orchestrator, flow system, coordination
+- **Description**: PAT-0003 had correct accessors for several durable families, but authoritative consumers still reconstructed those paths manually. R113 resolved two families but the broader problem persists: flow system has parallel relpath helpers, trace/decision/governance/intent/coordination families lack accessors entirely, and existing accessors (`proposal_state`, `execution_ready`, `philosophy`) had bypass sites.
 - **Severity**: low-medium
-- **Status**: resolved (R113)
-- **Acceptance rationale**: N/A — resolved.
-- **Mitigation**: CP-1 saturation sweep (R110) + CP-4 sweep (R112) + R113 added `reconciliation_result()` and `execution_ready()` file-level accessors and migrated all remaining consumers (`freshness_calculator.py`, `input_hasher.py`, `package_builder.py`, `proposal_phase.py`, `cross_section_reconciler.py`, `results.py`, `readiness_resolver.py`, `dispatch/prompt/writers.py`, `proposal_cycle.py`). All known authoritative consumers now use PathRegistry accessors.
+- **Status**: open → mitigated (R114)
+- **Acceptance rationale**: R114 added 5 flow family accessors, migrated flow absolute-path sites, and fixed 4 existing-accessor bypasses. Remaining families (trace, decision, governance helpers, intent triage, coordination) are documented gaps.
+- **Mitigation**: R110-R113 saturation sweeps + R114 flow family accessors and bypass fixes. Remaining families cataloged in PRB-0021.

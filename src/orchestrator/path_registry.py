@@ -69,6 +69,21 @@ class PathRegistry:
     def flows_dir(self) -> Path:
         return self._artifacts / "flows"
 
+    def flow_context(self, task_id: int) -> Path:
+        return self.flows_dir() / f"task-{task_id}-context.json"
+
+    def flow_continuation(self, task_id: int) -> Path:
+        return self.flows_dir() / f"task-{task_id}-continuation.json"
+
+    def flow_result_manifest(self, task_id: int) -> Path:
+        return self.flows_dir() / f"task-{task_id}-result.json"
+
+    def flow_dispatch_prompt(self, task_id: int) -> Path:
+        return self.flows_dir() / f"task-{task_id}-dispatch.md"
+
+    def flow_gate_aggregate(self, gate_id: str) -> Path:
+        return self.flows_dir() / f"{gate_id}-aggregate.json"
+
     def qa_intercepts_dir(self) -> Path:
         return self._artifacts / "qa-intercepts"
 

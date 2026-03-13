@@ -6,4 +6,4 @@
 [wait] 3. plan-fix | claude-opus -- plan correct fix from RCA report (rca.md Step 2)
 [wait] 4. apply-fix | claude-opus -- apply fix to working branch (rca.md Step 2)
 [wait] 5. verify | glm -- rerun tests, check for regressions (rca.md Step 3)
-[wait] 6. cleanup | claude-opus -- remove worktrees, commit (rca.md Cleanup)
+[wait] 6. cleanup | claude-opus -- finalize and commit (rca.md Cleanup)

@@ -40,11 +40,11 @@ In a multi-pass pipeline, artifacts from earlier passes may be stale when later 
 
 ## PRB-0004: Agent Output Corruption
 
-**Status**: active
+**Status**: active — substantially addressed (R114)
 **Provenance**: audit-inferred (early rounds)
 **Regions**: all artifact readers, JSON parsing, prompt output consumption
 
-AI agents produce structured output (JSON, markdown with frontmatter) that may be syntactically or semantically malformed. Silent discard loses debugging evidence. Silent acceptance propagates bad data.
+AI agents produce structured output (JSON, markdown with frontmatter) that may be syntactically or semantically malformed. Silent discard loses debugging evidence. Silent acceptance propagates bad data. R114 migrated the last known bypass (`scan/service/scan_dispatch_config.py`) to shared `read_json()`.
 
 **Solution surfaces**: Corruption preservation (PAT-0001), fail-closed defaults (PAT-0008), structured validation.
 
@@ -220,11 +220,11 @@ Legacy execution surfaces remain under live discovery trees after migration. R11
 
 ## PRB-0019: Runtime Inventory Drift / Authoritative Interface Mismatch
 
-**Status**: active — substantially addressed (R111-R113)
+**Status**: active — substantially addressed (R111-R114)
 **Provenance**: audit-inferred (R111)
-**Regions**: system-synthesis.md, governance/audit/prompt.md, operator docs, eval adapters, pyproject.toml
+**Regions**: system-synthesis.md, governance/audit/prompt.md, operator docs, eval adapters, pyproject.toml, runtime-facing templates, agent definitions
 
-Authoritative path/count/entrypoint claims are hand-maintained and diverge from live runtime registries after structural migrations. R111 corrected system-synthesis.md and governance/audit/prompt.md (paths/counts). R112 corrected governance/audit/prompt.md region paths to current layout (48 agents / 12 namespaces), fixed pyproject.toml (stale pythonpath entries), and updated eval harness + trigger adapter imports. R113 fixed `src/flow/engine/task_dispatcher.py` docstring (stale `scripts/task_dispatcher.py` → `flow.engine.task_dispatcher`), `src/models.md` stale `.agents/models/` reference, and `system-synthesis.md` problem count (19→20).
+Authoritative path/count/entrypoint claims are hand-maintained and diverge from live runtime registries after structural migrations. R111 corrected system-synthesis.md and governance/audit/prompt.md (paths/counts). R112 corrected governance/audit/prompt.md region paths to current layout (48 agents / 12 namespaces), fixed pyproject.toml (stale pythonpath entries), and updated eval harness + trigger adapter imports. R113 fixed `src/flow/engine/task_dispatcher.py` docstring, `src/models.md` stale reference, and `system-synthesis.md` problem count. R114 fixed stale runtime substrate references across SKILL.md, implement.md, models.md, rca.md, templates (`implementation-alignment.md`, `rca-cycle.md`), and agent definitions (`risk-assessor.md`, `execution-optimizer.md`) — removing references to retired `scan.sh`, `substrate.sh`, `section-loop.py`, worktree model, and stale `agents/` paths.
 
 **Solution surfaces**: PAT-0016 (Runtime Inventory Truth & Surface Retirement), registry-derived inventory, atomic doc updates with code changes.
 
@@ -232,11 +232,11 @@ Authoritative path/count/entrypoint claims are hand-maintained and diverge from 
 
 ## PRB-0020: Governance Self-Report Drift / False Health Reporting
 
-**Status**: active — substantially addressed (R112-R113)
+**Status**: active — substantially addressed (R112-R114)
 **Provenance**: audit-inferred (R112)
 **Regions**: governance/patterns/index.md, governance/risk-register.md, governance/problems/index.md, governance/audit/history.md
 
-Governance self-report surfaces (pattern health notes, risk register status, problem archive status, audit history counts) diverge from actual codebase state. R112 audit found: PAT-0001 health note claimed healthy while `tool_registry_manager.py` violated it; RISK-0007 marked mitigated while PAT-0003 islands remained; R111 history reported 50 agents / 11 namespaces vs live 49 / 12. R112 corrected pattern catalog (TP-1 through TP-4), updated risk register (RISK-0007 reopened), and corrected audit history counts. R113 refreshed all four pattern health notes (PAT-0001/0003/0015/0016) to match delivered code and updated RISK-0007 to resolved.
+Governance self-report surfaces (pattern health notes, risk register status, problem archive status, audit history counts) diverge from actual codebase state. R112-R113 corrected pattern health notes and risk register status, but R113 falsely claimed PAT-0001/PAT-0003 as "Healthy" and RISK-0007 as "resolved" while bypasses and unsaturated families remained. R114 corrected all four pattern health notes to reflect actual code state: PAT-0001 now genuinely healthy (last bypass fixed), PAT-0003 truthfully reported as "improved but not converged," PAT-0015 as "improved," PAT-0016 as "improved."
 
 **Solution surfaces**: PAT-0016 scope expansion to governance self-reports (R112), truthful pattern health notes, audit-time verification of present-tense claims.
 
@@ -244,10 +244,10 @@ Governance self-report surfaces (pattern health notes, risk register status, pro
 
 ## PRB-0021: PathRegistry Consumer Saturation / File-Level Accessor Incompleteness
 
-**Status**: resolved (R113)
-**Provenance**: audit-inferred (R113)
-**Regions**: PathRegistry, freshness/hashing, reconciliation, readiness, dispatch prompts, proposal cycle
+**Status**: active — partially addressed (R113-R114)
+**Provenance**: audit-inferred (R113), reopened R114
+**Regions**: PathRegistry, freshness/hashing, reconciliation, readiness, dispatch prompts, proposal cycle, flow system, traceability, coordination
 
-Durable artifact families used at multiple authoritative sites (`reconciliation-result.json`, `execution-ready.json`) had only directory-level accessors (`reconciliation_dir()`, `readiness_dir()`) but no file-level accessors, forcing consumers to manually construct filenames. This caused PAT-0003 to cycle through partial "saturation sweeps" (R110, R112) without fully converging. R113 added `reconciliation_result()` and `execution_ready()` file-level accessors to PathRegistry and migrated all known authoritative consumers in a single atomic sweep.
+Durable artifact families used at multiple authoritative sites had only directory-level accessors or no accessors at all. R113 added `reconciliation_result()` and `execution_ready()` file-level accessors. R114 added 5 flow family accessors (`flow_context`, `flow_continuation`, `flow_result_manifest`, `flow_dispatch_prompt`, `flow_gate_aggregate`), migrated flow absolute-path construction, and fixed 4 existing-accessor bypasses (`proposal_state`, `execution_ready`, `philosophy`). Remaining unsaturated families: trace index, section decision, governance helper files, intent triage signal, coordination contract/modification families.
 
-**Solution surfaces**: PAT-0003 file-level accessor requirement, PathRegistry `reconciliation_result()` + `execution_ready()` accessors, atomic consumer migration.
+**Solution surfaces**: PAT-0003 file-level accessor requirement, family-level accessor addition + atomic consumer migration, flow family accessors (R114).

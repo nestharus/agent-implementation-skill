@@ -961,25 +961,22 @@ docs, executable adapters, and discovery boundaries agree.
 
 ## Health Notes
 
-- **PAT-0001 (Corruption Preservation)**: Healthy. R112 migrated
-  `tool_registry_manager.py` to shared `read_json()`/`rename_malformed()` and
-  removed the `writers.py` copy-back. R113 migrated the last three local
-  malformed-artifact conventions (`flow_signal_parser.py`,
-  `scan/service/feedback_router.py`, `risk/repository/history.py`) to shared
-  `Services.artifact_io().rename_malformed()`. All known sites now use shared
-  corruption preservation primitives.
+- **PAT-0001 (Corruption Preservation)**: Healthy. R114 migrated the last
+  known bypass (`scan/service/scan_dispatch_config.py`) from local
+  `json.loads()` to `Services.artifact_io().read_json()`. All known
+  authoritative JSON readers now use shared corruption preservation primitives.
 - **PAT-0002 (Prompt Safety)**: Healthy. R109 clarified that payload-file
   contents are untrusted dynamic content even when delivered through internal
   tasks. QA interceptor now validates payload content before dispatch.
-- **PAT-0003 (Path Registry)**: Healthy. R112 migrated `context_builder.py`,
-  `section_reexplorer.py`, `strategic_state_builder.py`, and
-  `codemap_builder.py`. R113 added `reconciliation_result()` and
-  `execution_ready()` file-level accessors and migrated all known authoritative
-  consumers: `freshness_calculator.py`, `input_hasher.py`,
-  `package_builder.py`, `proposal_phase.py`, `cross_section_reconciler.py`,
-  `reconciliation/repository/results.py`, `readiness_resolver.py`,
-  `dispatch/prompt/writers.py`, `proposal_cycle.py`. All known repeated
-  durable-family consumers now use PathRegistry accessors.
+- **PAT-0003 (Path Registry)**: Improved but not converged. R114 added flow
+  family accessors (`flow_context`, `flow_continuation`, `flow_result_manifest`,
+  `flow_dispatch_prompt`, `flow_gate_aggregate`) and migrated flow absolute-path
+  sites. R114 also fixed 4 existing-accessor bypasses (`implementation_phase.py`,
+  `risk/prompt/writers.py`, `scan/substrate/prompt_builder.py`,
+  `staleness/service/input_hasher.py`). Remaining gaps: trace index family,
+  decision artifact family, governance helper families, intent triage family,
+  coordination families still lack PathRegistry accessors. Flow relpath helpers
+  are synchronized with PathRegistry naming but not mechanically derived from it.
 - **PAT-0004 (Flow System)**: Healthy.
 - **PAT-0005 (Policy-Driven Models)**: Healthy. R110 replaced the last two
   local `policy.get()` fallback sites (`proposal_cycle.py` intent_judge,
@@ -1012,17 +1009,16 @@ docs, executable adapters, and discovery boundaries agree.
   `safety_blocked`); dispatcher logs `qa:degraded` distinctly from
   `qa:passed`; notifier carries reason_code through lifecycle events;
   reconciliation adjudicator references PAT-0014 degraded states in warnings.
-- **PAT-0015 (Positive Contract Testing)**: Healthy. R112 repaired
-  `evals/harness.py` and `evals/agentic/trigger_adapters.py` import paths.
-  R113 added `dependency-injector` to `pyproject.toml` dependencies (package
-  bootstrap contract) and rebuilt `test_taskrouter.py` discovery test to
-  derive route/namespace expectations dynamically from `taskrouter.discovery`
-  instead of hard-coding stale counts.
+- **PAT-0015 (Positive Contract Testing)**: Improved. R112 repaired eval
+  imports. R113 added `dependency-injector` to `pyproject.toml` and made
+  discovery test dynamic. Still missing: authoritative operator-doc/runtime-
+  contract checks, active-template/runtime-substrate checks, and family-
+  saturation checks for recurring durable families.
 - **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Improved.
-  R112 deleted `monitor.md`, repaired eval adapters, fixed `pyproject.toml`
-  paths, and updated `audit/prompt.md` regions. R113 fixed `models.md` stale
-  `.agents/models/` reference, `task_dispatcher.py` stale docstring path, and
-  `system-synthesis.md` problem count (19→20). Remaining work: `SKILL.md` and
-  `implement.md` reference the current script-based layout accurately, but
-  some phrasing implies legacy multi-model/worktree surfaces that no longer
-  exist.
+  R114 fixed stale runtime references across SKILL.md (directory listing,
+  description, agent paths), implement.md (control plane table, worktree→
+  workspace model, scan/substrate invocation, section-loop→orchestrator
+  references), models.md (agent path), rca.md (heading clarification),
+  implementation-alignment.md (worktree→codespace), rca-cycle.md (cleanup
+  step), risk-assessor.md and execution-optimizer.md (schema paths).
+  Remaining: rca.md uses git worktrees for investigation (legitimate).

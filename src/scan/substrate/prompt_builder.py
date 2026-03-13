@@ -100,7 +100,7 @@ def write_pruner_prompt(
     codemap_corrections_path = registry.corrections()
     proposal_path = registry.global_proposal()
     alignment_path = registry.global_alignment()
-    philosophy_path = registry.intent_global_dir() / "philosophy.md"
+    philosophy_path = registry.philosophy()
 
     sections_list = ", ".join(target_sections)
 
