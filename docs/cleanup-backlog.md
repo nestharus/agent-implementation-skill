@@ -465,6 +465,12 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Risk**: String literals duplicated across many files. Typo in one file = silent behavioral divergence. `ALIGNMENT_CHANGED_PENDING` is partially mitigated by `DispatchResult.__eq__` backward-compat.
 - **Status**: Partially addressed — Cycle 9 extracted magic numbers (stall threshold, cycle budgets, correlation time deltas, DB timeouts) to named constants in 4 files. Cycle 10: Extracted 7 more magic numbers to constants: `_RAW_RISK_EXPLORATION_THRESHOLD` (proposal_phase.py), `_MIN_CORRELATION_SCORE` (correlator.py), `_AXIS_BUDGET_CONSERVE_THRESHOLD` (expanders.py), `_FULL_ASSESSMENT_FILE_THRESHOLD`/`_FULL_ASSESSMENT_STEP_THRESHOLD` (engagement.py), `_MAX_PARENT_TRAVERSAL_DEPTH` (utils.py), `_EPOCH_MS_MAGNITUDE_THRESHOLD` (log_extract_helpers.py), `_RELATED_FILES_DISPLAY_LIMIT` (impact_analyzer.py). String literal consolidation deferred due to 20-file blast radius.
 
+### 132. Expanded reviewer category scan (Cycle 10)
+- **Category**: Multi-category scan
+- **Source**: External reviewer configs at `/mnt/c/Users/xteam/IdeaProjects/ai-workflow/.ai/agents/20-code-artifact/reviewers`
+- **Scanned**: CODE-B6 (long if/elif chains ≥5 branches), CODE-E5 (resource cleanup / open without context manager), CODE-E10 (assertion misuse for runtime validation), CODE-S1 (module-level constant naming)
+- **Status**: DONE — All 4 categories clean. Max if/elif chain is 4 branches. All sqlite3.connect() and open() calls properly managed. Zero assert statements in src/. All module-level constants use UPPER_SNAKE_CASE.
+
 ---
 
 ## NOT A BUG
