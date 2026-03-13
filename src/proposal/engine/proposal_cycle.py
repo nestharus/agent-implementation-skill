@@ -243,7 +243,7 @@ def _build_proposal_prompt(
         )
         return None
 
-    recon_result = load_reconciliation_result(artifacts, section.number)
+    recon_result = load_reconciliation_result(planspace, section.number)
     if recon_result and recon_result.get("affected"):
         recon_path = paths.reconciliation_result(section.number)
         with intg_prompt.open("a", encoding="utf-8") as handle:

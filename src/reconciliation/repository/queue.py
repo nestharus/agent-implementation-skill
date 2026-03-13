@@ -6,19 +6,20 @@ import logging
 from pathlib import Path
 
 from containers import Services
+from orchestrator.path_registry import PathRegistry
 
 logger = logging.getLogger(__name__)
 
 
 def queue_reconciliation_request(
-    section_dir: Path,
+    planspace: Path,
     section_number: str,
     unresolved_contracts: list[str],
     unresolved_anchors: list[str],
 ) -> Path:
     """Write a reconciliation-request artifact for *section_number*."""
-    recon_dir = section_dir / "reconciliation-requests"
-    recon_dir.mkdir(parents=True, exist_ok=True)
+    paths = PathRegistry(planspace)
+    paths.reconciliation_requests_dir().mkdir(parents=True, exist_ok=True)
 
     request = {
         "section": section_number,
@@ -26,7 +27,7 @@ def queue_reconciliation_request(
         "unresolved_anchors": unresolved_anchors,
     }
 
-    request_path = recon_dir / f"section-{section_number}-reconciliation.json"
+    request_path = paths.reconciliation_request(section_number)
     Services.artifact_io().write_json(request_path, request)
     logger.info(
         "Reconciliation request written for section %s (%d contracts, %d anchors) at %s",
@@ -38,9 +39,10 @@ def queue_reconciliation_request(
     return request_path
 
 
-def load_reconciliation_requests(run_dir: Path) -> list[dict]:
-    """Load all reconciliation requests from a run directory."""
-    recon_dir = run_dir / "artifacts" / "reconciliation-requests"
+def load_reconciliation_requests(planspace: Path) -> list[dict]:
+    """Load all reconciliation requests from a planspace directory."""
+    paths = PathRegistry(planspace)
+    recon_dir = paths.reconciliation_requests_dir()
     if not recon_dir.exists():
         return []
 

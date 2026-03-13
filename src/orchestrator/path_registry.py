@@ -54,6 +54,15 @@ class PathRegistry:
     def reconciliation_dir(self) -> Path:
         return self._artifacts / "reconciliation"
 
+    def reconciliation_requests_dir(self) -> Path:
+        return self._artifacts / "reconciliation-requests"
+
+    def reconciliation_request(self, section_number: str) -> Path:
+        return self.reconciliation_requests_dir() / f"section-{section_number}-reconciliation.json"
+
+    def reconciliation_summary(self) -> Path:
+        return self.reconciliation_dir() / "reconciliation-summary.json"
+
     def scope_deltas_dir(self) -> Path:
         return self._artifacts / "scope-deltas"
 

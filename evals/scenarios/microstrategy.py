@@ -11,10 +11,34 @@ Scenarios:
 from __future__ import annotations
 
 import json
+import re
 import textwrap
 from pathlib import Path
 
 from evals.harness import Check, Scenario
+
+
+def _extract_json_from_output(text: str) -> dict | None:
+    """Extract a JSON object from agent stdout.
+
+    GLM (text-completion model) outputs JSON in stdout, often wrapped
+    in markdown code fences.  Try fenced block first, then raw parse.
+    """
+    # Try fenced JSON block
+    match = re.search(r"```(?:json)?\s*\n(\{.*?\})\s*\n```", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except json.JSONDecodeError:
+            pass
+    # Try raw JSON object anywhere in text
+    match = re.search(r"\{[^{}]*\}", text)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            pass
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -177,32 +201,30 @@ def _setup_simple(planspace: Path, codespace: Path) -> Path:
                 return yaml.safe_load(f)
     """), encoding="utf-8")
 
-    # Write the prompt (mirrors _check_needs_microstrategy prompt)
+    # Write the prompt — inline the proposal content so GLM (text-completion
+    # model without file I/O) can process it directly.  Avoid textwrap.dedent
+    # with multi-line interpolation (breaks common-indent detection).
     prompt_path = artifacts / "microstrategy-decider-03-prompt.md"
-    signal_path = signals / "proposal-03-microstrategy.json"
-    prompt_path.write_text(textwrap.dedent(f"""\
-        # Task: Microstrategy Decision for Section 03
-
-        ## Files to Read
-        1. Integration proposal: `{proposal_path}`
-
-        ## Complexity Signals (mechanically gathered)
-        - Related file count: 1
-        - Cross-section notes: 0
-        - Cross-section decisions: 0
-        - TODO extraction exists: False
-        - Previous proposal attempts: 0
-        - Section mode: brownfield
-
-        ## Instructions
-        Read the integration proposal and the complexity signals above. Apply your
-        decision method to determine whether this section needs a microstrategy.
-
-        Write a JSON signal to: `{signal_path}`
-        ```json
-        {{"needs_microstrategy": true|false, "reason": "..."}}
-        ```
-    """), encoding="utf-8")
+    prompt_path.write_text(
+        "# Task: Microstrategy Decision for Section 03\n\n"
+        "## Integration Proposal\n\n"
+        f"{_SIMPLE_PROPOSAL}\n\n"
+        "## Complexity Signals (mechanically gathered)\n"
+        "- Related file count: 1\n"
+        "- Cross-section notes: 0\n"
+        "- Cross-section decisions: 0\n"
+        "- TODO extraction exists: False\n"
+        "- Previous proposal attempts: 0\n"
+        "- Section mode: brownfield\n\n"
+        "## Instructions\n"
+        "Read the integration proposal and the complexity signals above. Apply your\n"
+        "decision method to determine whether this section needs a microstrategy.\n\n"
+        'Output the following JSON (and nothing else):\n'
+        '```json\n'
+        '{"needs_microstrategy": true|false, "reason": "..."}\n'
+        '```\n',
+        encoding="utf-8",
+    )
 
     return prompt_path
 
@@ -299,32 +321,29 @@ def _setup_complex(planspace: Path, codespace: Path) -> Path:
         "status": "decided",
     }]) + "\n", encoding="utf-8")
 
-    # Write the prompt
+    # Write the prompt — inline the proposal content so GLM (text-completion
+    # model without file I/O) can process it directly.
     prompt_path = artifacts / "microstrategy-decider-04-prompt.md"
-    signal_path = signals / "proposal-04-microstrategy.json"
-    prompt_path.write_text(textwrap.dedent(f"""\
-        # Task: Microstrategy Decision for Section 04
-
-        ## Files to Read
-        1. Integration proposal: `{proposal_path}`
-
-        ## Complexity Signals (mechanically gathered)
-        - Related file count: 6
-        - Cross-section notes: 1
-        - Cross-section decisions: 1
-        - TODO extraction exists: True
-        - Previous proposal attempts: 0
-        - Section mode: brownfield
-
-        ## Instructions
-        Read the integration proposal and the complexity signals above. Apply your
-        decision method to determine whether this section needs a microstrategy.
-
-        Write a JSON signal to: `{signal_path}`
-        ```json
-        {{"needs_microstrategy": true|false, "reason": "..."}}
-        ```
-    """), encoding="utf-8")
+    prompt_path.write_text(
+        "# Task: Microstrategy Decision for Section 04\n\n"
+        "## Integration Proposal\n\n"
+        f"{_COMPLEX_PROPOSAL}\n\n"
+        "## Complexity Signals (mechanically gathered)\n"
+        "- Related file count: 6\n"
+        "- Cross-section notes: 1\n"
+        "- Cross-section decisions: 1\n"
+        "- TODO extraction exists: True\n"
+        "- Previous proposal attempts: 0\n"
+        "- Section mode: brownfield\n\n"
+        "## Instructions\n"
+        "Read the integration proposal and the complexity signals above. Apply your\n"
+        "decision method to determine whether this section needs a microstrategy.\n\n"
+        'Output the following JSON (and nothing else):\n'
+        '```json\n'
+        '{"needs_microstrategy": true|false, "reason": "..."}\n'
+        '```\n',
+        encoding="utf-8",
+    )
 
     return prompt_path
 
@@ -333,39 +352,52 @@ def _setup_complex(planspace: Path, codespace: Path) -> Path:
 # Check functions
 # ---------------------------------------------------------------------------
 
+def _read_signal(
+    planspace: Path, signal_name: str, agent_output: str,
+) -> tuple[dict | None, str]:
+    """Read signal from file or parse from agent stdout.
+
+    GLM outputs JSON to stdout (can't write files). Agentic models
+    (Claude, GPT) write signal files.  Try both.
+    """
+    signal_path = planspace / "artifacts" / "signals" / signal_name
+    if signal_path.exists():
+        try:
+            data = json.loads(signal_path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data, "from signal file"
+        except json.JSONDecodeError:
+            pass
+    # Fallback: parse from agent stdout (GLM path)
+    data = _extract_json_from_output(agent_output)
+    if data is not None:
+        return data, "from agent stdout"
+    return None, "no signal found (file missing, stdout empty or unparseable)"
+
+
 def _check_simple_no_microstrategy(
     planspace: Path, codespace: Path, agent_output: str,
 ) -> tuple[bool, str]:
     """Verify needs_microstrategy=false for simple proposal."""
-    signal_path = (planspace / "artifacts" / "signals"
-                   / "proposal-03-microstrategy.json")
-    if not signal_path.exists():
-        return False, f"Signal file not written: {signal_path}"
-    try:
-        data = json.loads(signal_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        return False, f"Signal file is not valid JSON: {exc}"
+    data, source = _read_signal(planspace, "proposal-03-microstrategy.json", agent_output)
+    if data is None:
+        return False, source
     needs = data.get("needs_microstrategy")
     if needs is False:
-        return True, "needs_microstrategy=false"
-    return False, f"Expected needs_microstrategy=false, got {needs}"
+        return True, f"needs_microstrategy=false ({source})"
+    return False, f"Expected needs_microstrategy=false, got {needs} ({source})"
 
 
 def _check_simple_has_reason(
     planspace: Path, codespace: Path, agent_output: str,
 ) -> tuple[bool, str]:
     """Verify signal has a non-empty reason field."""
-    signal_path = (planspace / "artifacts" / "signals"
-                   / "proposal-03-microstrategy.json")
-    if not signal_path.exists():
-        return False, "Signal file not written"
-    try:
-        data = json.loads(signal_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return False, "Signal file is not valid JSON"
+    data, source = _read_signal(planspace, "proposal-03-microstrategy.json", agent_output)
+    if data is None:
+        return False, source
     reason = data.get("reason", "")
     if reason and len(reason) > 5:
-        return True, f"reason present ({len(reason)} chars)"
+        return True, f"reason present ({len(reason)} chars, {source})"
     return False, f"reason field missing or too short: '{reason}'"
 
 
@@ -373,35 +405,25 @@ def _check_complex_needs_microstrategy(
     planspace: Path, codespace: Path, agent_output: str,
 ) -> tuple[bool, str]:
     """Verify needs_microstrategy=true for complex proposal."""
-    signal_path = (planspace / "artifacts" / "signals"
-                   / "proposal-04-microstrategy.json")
-    if not signal_path.exists():
-        return False, f"Signal file not written: {signal_path}"
-    try:
-        data = json.loads(signal_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        return False, f"Signal file is not valid JSON: {exc}"
+    data, source = _read_signal(planspace, "proposal-04-microstrategy.json", agent_output)
+    if data is None:
+        return False, source
     needs = data.get("needs_microstrategy")
     if needs is True:
-        return True, "needs_microstrategy=true"
-    return False, f"Expected needs_microstrategy=true, got {needs}"
+        return True, f"needs_microstrategy=true ({source})"
+    return False, f"Expected needs_microstrategy=true, got {needs} ({source})"
 
 
 def _check_complex_has_reason(
     planspace: Path, codespace: Path, agent_output: str,
 ) -> tuple[bool, str]:
     """Verify signal has a non-empty reason field."""
-    signal_path = (planspace / "artifacts" / "signals"
-                   / "proposal-04-microstrategy.json")
-    if not signal_path.exists():
-        return False, "Signal file not written"
-    try:
-        data = json.loads(signal_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return False, "Signal file is not valid JSON"
+    data, source = _read_signal(planspace, "proposal-04-microstrategy.json", agent_output)
+    if data is None:
+        return False, source
     reason = data.get("reason", "")
     if reason and len(reason) > 5:
-        return True, f"reason present ({len(reason)} chars)"
+        return True, f"reason present ({len(reason)} chars, {source})"
     return False, f"reason field missing or too short: '{reason}'"
 
 

@@ -25,10 +25,10 @@ from pathlib import Path
 from evals.harness import Check, Scenario
 
 # We import reconciliation machinery to run it mechanically during setup.
-# The sys.path insertion matches what harness.py does.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src" / "scripts"))
-from proposal.proposal_state_repository import save_proposal_state  # noqa: E402
-from reconciliation.loop_reconciliation import run_reconciliation  # noqa: E402
+# Modules live under src/ (containerized layout since R113+).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
+from proposal.repository.state import save_proposal_state  # noqa: E402
+from reconciliation.engine.cross_section_reconciler import run_reconciliation_loop  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +156,7 @@ def _setup_shared_seam(planspace: Path, codespace: Path) -> Path:
         {"section_number": "11"},
         {"section_number": "12"},
     ]
-    run_reconciliation(planspace, proposal_results)
+    run_reconciliation_loop(planspace, proposal_results)
 
     # Codespace (minimal)
     (codespace / "payments").mkdir(parents=True, exist_ok=True)
@@ -250,7 +250,7 @@ def _setup_new_section(planspace: Path, codespace: Path) -> Path:
         {"section_number": "13"},
         {"section_number": "14"},
     ]
-    run_reconciliation(planspace, proposal_results)
+    run_reconciliation_loop(planspace, proposal_results)
 
     # Codespace (minimal)
     (codespace / "onboarding").mkdir(parents=True, exist_ok=True)
@@ -336,7 +336,7 @@ def _setup_contract_conflict(planspace: Path, codespace: Path) -> Path:
         {"section_number": "15"},
         {"section_number": "16"},
     ]
-    run_reconciliation(planspace, proposal_results)
+    run_reconciliation_loop(planspace, proposal_results)
 
     # Codespace (minimal)
     (codespace / "orders").mkdir(parents=True, exist_ok=True)

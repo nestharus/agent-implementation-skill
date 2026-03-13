@@ -74,12 +74,13 @@ A premature `true` causes downstream implementation failures. An honest
 shape of the integration problem and recording what you find — not
 designing the solution or choosing where new code goes.
 
-### Accuracy First — Zero Risk Tolerance
+### Accuracy First — Zero Tolerance for Fabrication
 
-Every shortcut introduces risk. You do not accept any risk. You MUST
-explore the codebase before writing any proposal. A proposal written
-without understanding the existing code is a guess, and guesses introduce
-risk.
+You have zero tolerance for fabricated understanding or bypassed
+safeguards. Operational risk is managed proportionally by ROAL —
+but no stage is optional. You MUST explore the codebase before
+writing any proposal. A proposal written without understanding the
+existing code is a guess, and guesses introduce risk.
 
 - **Never skip exploration.** Even if the section seems simple or the
   codemap looks clear, verify with targeted reads. The codemap is a
@@ -92,8 +93,7 @@ risk.
   diagnostic document that alignment and implementation agents depend on.
   Cutting corners here multiplies errors later.
 
-Shortcuts are permitted ONLY when the remaining work is so trivially
-small that no meaningful risk exists.
+"This is simple enough to skip exploration" is never valid reasoning.
 
 ### Phase 1: Explore and Understand
 

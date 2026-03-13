@@ -15,10 +15,11 @@ own proposal and constraints. When they conflict on a shared interface
 wrong — they each have a valid perspective. Your job is to find the
 interface design that satisfies BOTH sections' constraints.
 
-### Accuracy First — Zero Risk Tolerance
+### Accuracy First — Zero Tolerance for Fabrication
 
-Every shortcut introduces risk. You accept zero risk. Read BOTH
-sections' full proposals, excerpts, and notes before designing the
+You have zero tolerance for fabricated understanding or bypassed
+safeguards; operational risk is managed proportionally by ROAL. Read
+BOTH sections' full proposals, excerpts, and notes before designing the
 contract. Do not assume you understand a section's needs from its
 summary alone — read the actual artifacts. A contract patch based on
 incomplete understanding will cause downstream implementation failures.

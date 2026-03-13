@@ -193,7 +193,7 @@ def _check_upstream_freshness(
             f"upstream freshness check failed (execution_ready is false)")
         return False
 
-    recon_result = load_reconciliation_result(artifacts, section.number)
+    recon_result = load_reconciliation_result(planspace, section.number)
     if recon_result and recon_result.get("affected"):
         Services.logger().log(f"Section {section.number}: implementation steps blocked — "
             f"reconciliation result marks section as affected")
@@ -342,7 +342,7 @@ def _run_implementation_pass(
     # Fail-closed: if a reconciliation result exists and marks this
     # section as affected, block implementation — the section must go
     # through re-proposal to incorporate reconciliation findings.
-    recon_result = load_reconciliation_result(artifacts, section.number)
+    recon_result = load_reconciliation_result(planspace, section.number)
     if recon_result and recon_result.get("affected"):
         Services.logger().log(f"Section {section.number}: implementation pass blocked — "
             f"reconciliation result marks section as affected")

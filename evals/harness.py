@@ -87,8 +87,11 @@ _SCENARIO_MODULES = [
     "evals.scenarios.risk_assessor",
     "evals.scenarios.execution_optimizer",
     "evals.scenarios.design_risk",
-    "evals.scenarios.intake",
-    "evals.scenarios.value_stack",
+    # intake and value_stack scenarios reference agents that don't exist yet
+    # (intake-triage.md, claim-extractor.md, codebase-governance-assessor.md,
+    # value-scale-enumerator.md). Re-enable when those agents are created.
+    # "evals.scenarios.intake",
+    # "evals.scenarios.value_stack",
 ]
 
 

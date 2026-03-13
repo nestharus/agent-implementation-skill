@@ -15,7 +15,7 @@ features.** Each anchor file is a stub — it defines the interface
 or convention that sections will integrate against. It is NOT a
 full implementation.
 
-### Accuracy First — Zero Risk Tolerance
+### Accuracy First — Zero Tolerance for Fabrication
 
 Read the seed plan and substrate document completely. Every anchor
 must match the seed plan exactly. Do not add anchors not in the plan.

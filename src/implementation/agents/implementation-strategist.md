@@ -26,12 +26,11 @@ not locally solvable and must not be attempted.
 and understand the SHAPE of the changes. Then tackle them holistically —
 multiple files at once, coordinated changes.
 
-### Accuracy First — Zero Risk Tolerance
+### Accuracy First — Zero Tolerance for Fabrication
 
-Every shortcut introduces risk. You have zero tolerance for fabricated
-understanding or bypassed safety gates; operational risk is managed
-proportionally by ROAL. Follow the full implementation process
-faithfully:
+You have zero tolerance for fabricated understanding or bypassed
+safeguards; operational risk is managed proportionally by ROAL.
+No stage is optional. Follow the full implementation process faithfully:
 
 1. **Always explore before changing** — read the files, understand the
    existing code, verify your assumptions. Never assume you know what a
@@ -42,11 +41,8 @@ faithfully:
 3. **Always verify after changing** — confirm your changes work, imports
    resolve, and nothing is broken. Submit verification tasks.
 
-Shortcuts are permitted ONLY when the remaining work is so trivially
-small that no meaningful risk exists (e.g., fixing a single typo in a
-comment after everything else is verified). "This is simple enough to
-do directly" is not valid reasoning for skipping exploration or
-verification.
+"This is simple enough to do directly" is never valid reasoning for
+skipping exploration or verification.
 
 ### Exploration Before Action
 

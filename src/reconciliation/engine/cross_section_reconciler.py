@@ -39,16 +39,15 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def load_reconciliation_result(
-    section_dir: Path,
+    planspace: Path,
     section_number: str,
 ) -> dict | None:
     """Load a section's reconciliation result if it exists.
 
     Parameters
     ----------
-    section_dir:
-        The ``planspace / "artifacts"`` directory (or equivalent root
-        containing a ``reconciliation/`` subdirectory).
+    planspace:
+        The planspace root directory containing ``artifacts/``.
     section_number:
         Zero-padded section number (e.g. ``"03"``).
 
@@ -58,7 +57,6 @@ def load_reconciliation_result(
         The reconciliation result dict, or ``None`` if no result file
         exists or the file is malformed.
     """
-    planspace = section_dir.parent if section_dir.name == "artifacts" else section_dir
     return load_result(planspace, section_number)
 
 
@@ -283,10 +281,8 @@ def run_reconciliation_loop(
     logger.info("Reconciliation summary: %s", summary)
 
     # Write summary artifact
-    summary_path = (
-        run_dir / "artifacts" / "reconciliation"
-        / "reconciliation-summary.json"
+    Services.artifact_io().write_json(
+        PathRegistry(run_dir).reconciliation_summary(), summary,
     )
-    Services.artifact_io().write_json(summary_path, summary)
 
     return summary

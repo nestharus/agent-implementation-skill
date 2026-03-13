@@ -281,7 +281,7 @@ def route_blockers(
     ]
     if unresolved_contracts or unresolved_anchors:
         queue_reconciliation_request(
-            registry.artifacts,
+            planspace,
             section_number,
             unresolved_contracts,
             unresolved_anchors,

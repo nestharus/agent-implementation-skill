@@ -25,10 +25,11 @@ from pathlib import Path
 from evals.harness import Check, Scenario
 
 # Import the readiness and proposal-state machinery for mechanical setup.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src" / "scripts"))
-from proposal.proposal_state_repository import save_proposal_state  # noqa: E402
-from proposal.readiness_resolver import resolve_readiness  # noqa: E402
-from reconciliation.loop_reconciliation import run_reconciliation  # noqa: E402
+# Modules live under src/ (containerized layout since R113+).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
+from proposal.repository.state import save_proposal_state  # noqa: E402
+from proposal.service.readiness_resolver import resolve_readiness  # noqa: E402
+from reconciliation.engine.cross_section_reconciler import run_reconciliation_loop  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +267,7 @@ def _setup_stale_reopen(planspace: Path, codespace: Path) -> Path:
         {"section_number": "22"},
         {"section_number": "23"},
     ]
-    run_reconciliation(planspace, proposal_results)
+    run_reconciliation_loop(planspace, proposal_results)
 
     # Step 4: Re-resolve readiness for section 22
     readiness_2 = resolve_readiness(planspace, "22")

@@ -12,10 +12,10 @@ from src.reconciliation.repository.queue import (
 def test_queue_reconciliation_request_writes_expected_json(
     tmp_path: Path,
 ) -> None:
-    artifacts_dir = tmp_path / "planspace" / "artifacts"
+    planspace = tmp_path / "planspace"
 
     request_path = queue_reconciliation_request(
-        artifacts_dir,
+        planspace,
         "03",
         ["contract-a"],
         ["anchor-b"],

@@ -1060,6 +1060,46 @@ no traced problem/pattern basis is also a violation.
 
 ---
 
+## PAT-0018: Behavioral Doctrine Projection
+
+**Problem**: PRB-0023 (Behavioral Doctrine Projection Drift)
+
+**Regions**: Proposal, Implementation, Coordination, Risk, Scan
+
+**Solution surfaces**: Agent files, dispatch templates, operator docs
+
+**Template**:
+1. One bounded set of **authoritative doctrine surfaces** owns the live
+   method contract (`src/SKILL.md`, `src/implement.md`).
+2. All routed agent files, dispatch templates, and validating agents
+   **must** be atomically updated when that doctrine changes.
+3. No surface may reintroduce literal "zero risk" claims, "trivially
+   small" shortcut exceptions, or "simple enough to skip a step"
+   reasoning when the authoritative doctrine says otherwise.
+4. The authoritative doctrine heading is **"Accuracy First — Zero
+   Tolerance for Fabrication"** with body text asserting zero tolerance
+   for fabricated understanding or bypassed safeguards, and proportional
+   operational risk via ROAL.
+
+**Known instances**:
+- `src/proposal/agents/integration-proposer.md`
+- `src/templates/dispatch/integration-proposal.md`
+- `src/implementation/agents/implementation-strategist.md`
+- `src/templates/dispatch/strategic-implementation.md`
+- `src/coordination/agents/coordination-planner.md`
+- `src/coordination/agents/bridge-agent.md`
+- `src/risk/agents/risk-assessor.md`
+- `src/scan/agents/substrate-shard-explorer.md`
+- `src/scan/agents/substrate-pruner.md`
+- `src/scan/agents/substrate-seeder.md`
+
+**Conformance**: All listed surfaces must use the authoritative heading
+and must not contain the stale "Zero Risk Tolerance" heading, "trivially
+small" exception language, or "accept zero risk" phrasing. Positive
+contract tests enforce this (PAT-0015).
+
+---
+
 ## Health Notes
 
 - **PAT-0001 (Corruption Preservation)**: Healthy. R114 migrated the last
@@ -1070,10 +1110,10 @@ no traced problem/pattern basis is also a violation.
   contents are untrusted dynamic content even when delivered through internal
   tasks. QA interceptor now validates payload content before dispatch.
 - **PAT-0003 (Path Registry)**: Substantially converged. R115 added accessors
-  for 6 remaining families (decision md/json, governance synthesis-cues/index-
-  status, trace-index, intent-triage signal/prompt/output, coordination
-  problems/escalation/fix/bridge/align/task-request, bridge-tools prompt/
-  output/escalation) and migrated ~30 consumer sites. Remaining gaps: glob-
+  for 6 remaining families. R116 added reconciliation-requests and
+  reconciliation-summary accessors and migrated queue.py and
+  cross_section_reconciler.py. `load_reconciliation_result()` normalized to
+  planspace root (mixed-root contract eliminated). Remaining gaps: glob-
   pattern consumers for decisions (section_reexplorer, microstrategy_decider),
   `decisions.py` repository functions that take raw `decisions_dir` parameter,
   and flow relpath helpers (kept by design for DB-storage relative paths).
@@ -1110,10 +1150,12 @@ no traced problem/pattern basis is also a violation.
   `qa:passed`; notifier carries reason_code through lifecycle events;
   reconciliation adjudicator references PAT-0014 degraded states in warnings.
 - **PAT-0015 (Positive Contract Testing)**: Improved. R115 resolved the
-  proposal-state split-brain by rolling back ungoverned fields, eliminating
-  the immediate contract violation. Still missing: positive contract tests
-  that lock proposal-state schema projection across agent/template/eval
-  surfaces, and family-saturation checks for PAT-0003 recurring families.
+  proposal-state split-brain by rolling back ungoverned fields. R116 added
+  positive contract tests for doctrine projection (PAT-0018 heading/wording
+  across 10 agent/template surfaces), reconciliation family-saturation
+  (PAT-0003), and system-synthesis count accuracy (PAT-0016). Still missing:
+  positive contract tests that lock proposal-state schema projection across
+  agent/template/eval surfaces.
 - **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Improved.
   R114 fixed stale runtime references across SKILL.md (directory listing,
   description, agent paths), implement.md (control plane table, worktree→
@@ -1128,3 +1170,8 @@ no traced problem/pattern basis is also a violation.
   schema, fail-closed default, and all test/eval fixtures. The canonical
   schema now matches the active agent file, dispatch template, and all eval
   surfaces. Still missing: positive contract tests that lock the projection.
+- **PAT-0018 (Behavioral Doctrine Projection)**: Healthy. R116 synchronized
+  all 10 live agent/template doctrine surfaces to match the authoritative
+  wording in SKILL.md and implement.md. Positive contract tests added to
+  lock the heading ("Zero Tolerance for Fabrication") and prevent re-
+  introduction of the stale "trivially small" shortcut exception.

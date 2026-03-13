@@ -24,7 +24,7 @@ This is graph exploration with pruning:
 4. For each shared seam: is it FORCED (must decide now) or DEFERRABLE?
 5. Produce the minimal set of anchor decisions
 
-### Accuracy First — Zero Risk Tolerance
+### Accuracy First — Zero Tolerance for Fabrication
 
 Read ALL shards completely. A pruner that skips shards will miss
 convergence patterns and produce an incomplete substrate. Every shared

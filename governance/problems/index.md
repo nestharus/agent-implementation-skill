@@ -220,11 +220,11 @@ Legacy execution surfaces remain under live discovery trees after migration. R11
 
 ## PRB-0019: Runtime Inventory Drift / Authoritative Interface Mismatch
 
-**Status**: active — substantially addressed (R111-R114)
+**Status**: active — substantially addressed (R111-R116)
 **Provenance**: audit-inferred (R111)
 **Regions**: system-synthesis.md, governance/audit/prompt.md, operator docs, eval adapters, pyproject.toml, runtime-facing templates, agent definitions
 
-Authoritative path/count/entrypoint claims are hand-maintained and diverge from live runtime registries after structural migrations. R111 corrected system-synthesis.md and governance/audit/prompt.md (paths/counts). R112 corrected governance/audit/prompt.md region paths to current layout (48 agents / 12 namespaces), fixed pyproject.toml (stale pythonpath entries), and updated eval harness + trigger adapter imports. R113 fixed `src/flow/engine/task_dispatcher.py` docstring, `src/models.md` stale reference, and `system-synthesis.md` problem count. R114 fixed stale runtime substrate references across SKILL.md, implement.md, models.md, rca.md, templates (`implementation-alignment.md`, `rca-cycle.md`), and agent definitions (`risk-assessor.md`, `execution-optimizer.md`) — removing references to retired `scan.sh`, `substrate.sh`, `section-loop.py`, worktree model, and stale `agents/` paths.
+Authoritative path/count/entrypoint claims are hand-maintained and diverge from live runtime registries after structural migrations. R111 corrected system-synthesis.md and governance/audit/prompt.md (paths/counts). R112 corrected governance/audit/prompt.md region paths to current layout (48 agents / 12 namespaces), fixed pyproject.toml (stale pythonpath entries), and updated eval harness + trigger adapter imports. R113 fixed `src/flow/engine/task_dispatcher.py` docstring, `src/models.md` stale reference, and `system-synthesis.md` problem count. R114 fixed stale runtime substrate references across SKILL.md, implement.md, models.md, rca.md, templates (`implementation-alignment.md`, `rca-cycle.md`), and agent definitions (`risk-assessor.md`, `execution-optimizer.md`) — removing references to retired `scan.sh`, `substrate.sh`, `section-loop.py`, worktree model, and stale `agents/` paths. R116 corrected `system-synthesis.md` stale counts (21→23 problems, 16→18 patterns) and added PAT-0017/PAT-0018 to the governance-layer pattern list.
 
 **Solution surfaces**: PAT-0016 (Runtime Inventory Truth & Surface Retirement), registry-derived inventory, atomic doc updates with code changes.
 
@@ -232,11 +232,11 @@ Authoritative path/count/entrypoint claims are hand-maintained and diverge from 
 
 ## PRB-0020: Governance Self-Report Drift / False Health Reporting
 
-**Status**: active — substantially addressed (R112-R114)
+**Status**: active — substantially addressed (R112-R116)
 **Provenance**: audit-inferred (R112)
 **Regions**: governance/patterns/index.md, governance/risk-register.md, governance/problems/index.md, governance/audit/history.md
 
-Governance self-report surfaces (pattern health notes, risk register status, problem archive status, audit history counts) diverge from actual codebase state. R112-R113 corrected pattern health notes and risk register status, but R113 falsely claimed PAT-0001/PAT-0003 as "Healthy" and RISK-0007 as "resolved" while bypasses and unsaturated families remained. R114 corrected all four pattern health notes to reflect actual code state: PAT-0001 now genuinely healthy (last bypass fixed), PAT-0003 truthfully reported as "improved but not converged," PAT-0015 as "improved," PAT-0016 as "improved."
+Governance self-report surfaces (pattern health notes, risk register status, problem archive status, audit history counts) diverge from actual codebase state. R112-R113 corrected pattern health notes and risk register status, but R113 falsely claimed PAT-0001/PAT-0003 as "Healthy" and RISK-0007 as "resolved" while bypasses and unsaturated families remained. R114 corrected all four pattern health notes to reflect actual code state: PAT-0001 now genuinely healthy (last bypass fixed), PAT-0003 truthfully reported as "improved but not converged," PAT-0015 as "improved," PAT-0016 as "improved." R116 updated PAT-0003 health notes to include reconciliation family migration, PAT-0015 health notes to include doctrine-projection and reconciliation-family positive contract tests, and added PAT-0018 health note.
 
 **Solution surfaces**: PAT-0016 scope expansion to governance self-reports (R112), truthful pattern health notes, audit-time verification of present-tense claims.
 
@@ -244,13 +244,13 @@ Governance self-report surfaces (pattern health notes, risk register status, pro
 
 ## PRB-0021: PathRegistry Consumer Saturation / File-Level Accessor Incompleteness
 
-**Status**: substantially addressed (R113-R115)
-**Provenance**: audit-inferred (R113), reopened R114, substantially addressed R115
+**Status**: substantially addressed (R113-R116)
+**Provenance**: audit-inferred (R113), reopened R114, substantially addressed R115, reconciliation family R116
 **Regions**: PathRegistry, freshness/hashing, reconciliation, readiness, dispatch prompts, proposal cycle, flow system, traceability, coordination
 
-Durable artifact families used at multiple authoritative sites had only directory-level accessors or no accessors at all. R113 added `reconciliation_result()` and `execution_ready()` file-level accessors. R114 added 5 flow family accessors and fixed 4 existing-accessor bypasses. R115 added accessors for 6 remaining families (decision md/json, governance synthesis-cues/index-status, trace-index, intent-triage signal/prompt/output, coordination problems/escalation/fix/bridge/align/task-request, bridge-tools prompt/output/escalation) and migrated ~30 consumer sites. Remaining: glob-pattern consumers for decisions, `decisions.py` repository functions with raw Path parameter, flow relpath helpers (kept by design for DB storage).
+Durable artifact families used at multiple authoritative sites had only directory-level accessors or no accessors at all. R113 added `reconciliation_result()` and `execution_ready()` file-level accessors. R114 added 5 flow family accessors and fixed 4 existing-accessor bypasses. R115 added accessors for 6 remaining families (decision md/json, governance synthesis-cues/index-status, trace-index, intent-triage signal/prompt/output, coordination problems/escalation/fix/bridge/align/task-request, bridge-tools prompt/output/escalation) and migrated ~30 consumer sites. R116 added 3 reconciliation family accessors (`reconciliation_requests_dir()`, `reconciliation_request()`, `reconciliation_summary()`), migrated `queue.py` and `cross_section_reconciler.py` consumers, and normalized `load_reconciliation_result()` to accept planspace root exclusively (eliminating mixed-root semantics). Remaining: glob-pattern consumers for decisions, `decisions.py` repository functions with raw Path parameter, flow relpath helpers (kept by design for DB storage).
 
-**Solution surfaces**: PAT-0003 file-level accessor requirement, family-level accessor addition + atomic consumer migration, flow family accessors (R114), 6-family saturation sweep (R115).
+**Solution surfaces**: PAT-0003 file-level accessor requirement, family-level accessor addition + atomic consumer migration, flow family accessors (R114), 6-family saturation sweep (R115), reconciliation family migration (R116).
 
 ---
 
@@ -265,3 +265,17 @@ The canonical proposal-state schema in `src/proposal/repository/state.py` requir
 R115 rolled back the three ungoverned fields from the schema, fail-closed default, and all test/eval fixtures. PAT-0017 was added to prevent recurrence.
 
 **Solution surfaces**: PAT-0017 (Proposal-State Contract Projection), schema rollback, fixture cleanup.
+
+---
+
+## PRB-0023: Behavioral Doctrine Projection Drift / Method-of-Thinking Split-Brain
+
+**Status**: resolved (R116)
+**Provenance**: audit-inferred (R116)
+**Regions**: agent definitions (proposal, implementation, coordination, risk, scan), dispatch templates, SKILL.md, implement.md
+
+Authoritative execution doctrine in `src/SKILL.md` and `src/implement.md` evolved from literal "accept zero risk" language (R62 anti-shortcut hardening) to proportional ROAL risk with zero tolerance for fabrication/bypasses. Multiple routed agent files and dispatch templates continued publishing the older wording — including "accept zero risk," "do not accept any risk," and "trivially small shortcuts are permitted" — creating a split-brain between the authoritative doctrine and the live method-of-thinking surfaces that agents actually consume at runtime.
+
+R116 synchronized all 10 affected agent/template surfaces with the authoritative doctrine, added PAT-0018 (Behavioral Doctrine Projection) to prevent recurrence, and landed positive contract tests (PAT-0015) to lock the projection mechanically.
+
+**Solution surfaces**: PAT-0018 (Behavioral Doctrine Projection), atomic doctrine sweep across 10 agent/template surfaces, positive contract tests for doctrine heading and "trivially small" absence (R116).

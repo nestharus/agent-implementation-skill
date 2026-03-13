@@ -259,4 +259,4 @@ class TestStrategicImplementationRiskInputs:
         assert "Additional Inputs (from coordination)" in content
         assert str(coordination_payload) in content
         assert "fabricated" in content
-        assert "bypassed safety gates" in content
+        assert "bypassed" in content and "safeguards" in content
