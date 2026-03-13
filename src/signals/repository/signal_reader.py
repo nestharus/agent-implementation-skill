@@ -7,17 +7,17 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from signals.repository.artifact_io import read_json, rename_malformed
-from signals.types import AgentSignal, SignalResult
+from signals.types import AgentSignal, SignalResult, SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE, SIGNAL_NEED_DECISION
 
 _SIGNAL_STATE_MAP: dict[str, str] = {
     "underspec": "underspec",
     "underspecified": "underspec",
-    "need_decision": "need_decision",
+    SIGNAL_NEED_DECISION: SIGNAL_NEED_DECISION,
     "dependency": "dependency",
     "loop_detected": "loop_detected",
-    "out_of_scope": "out_of_scope",
-    "out-of-scope": "out_of_scope",
-    "needs_parent": "needs_parent",
+    SIGNAL_OUT_OF_SCOPE: SIGNAL_OUT_OF_SCOPE,
+    "out-of-scope": SIGNAL_OUT_OF_SCOPE,
+    SIGNAL_NEEDS_PARENT: SIGNAL_NEEDS_PARENT,
 }
 
 
@@ -26,7 +26,7 @@ def read_signal_tuple(signal_path: Path) -> SignalResult:
 
     Returns a ``SignalResult`` whose ``signal_type`` is ``None`` when the
     file does not exist, or one of the recognised signal states otherwise.
-    Unknown / malformed signals fail closed as ``"needs_parent"``.
+    Unknown / malformed signals fail closed as ``SIGNAL_NEEDS_PARENT``.
     """
     if not signal_path.exists():
         return SignalResult(signal_type=None, detail="")
@@ -36,7 +36,7 @@ def read_signal_tuple(signal_path: Path) -> SignalResult:
             signal = AgentSignal.model_validate(data)
         except ValidationError:
             return SignalResult(
-                signal_type="needs_parent",
+                signal_type=SIGNAL_NEEDS_PARENT,
                 detail=(
                     f"Signal at {signal_path} failed validation — "
                     f"failing closed"
@@ -60,7 +60,7 @@ def read_signal_tuple(signal_path: Path) -> SignalResult:
         if mapped is not None:
             return SignalResult(signal_type=mapped, detail=detail)
         return SignalResult(
-            signal_type="needs_parent",
+            signal_type=SIGNAL_NEEDS_PARENT,
             detail=(
                 f"Unknown signal state '{state}' in {signal_path} — "
                 f"failing closed. Original detail: {detail}"
@@ -76,7 +76,7 @@ def read_signal_tuple(signal_path: Path) -> SignalResult:
         )
         rename_malformed(signal_path)
     return SignalResult(
-        signal_type="needs_parent",
+        signal_type=SIGNAL_NEEDS_PARENT,
         detail=(
             f"Malformed signal JSON at {signal_path} ({exc}) — "
             f"failing closed"

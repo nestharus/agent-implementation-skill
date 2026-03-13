@@ -12,6 +12,7 @@ from signals.service.blocker_manager import _update_blocker_rollup
 from implementation.service.section_reexplorer import _write_alignment_surface
 from orchestrator.types import Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from signals.types import SIGNAL_NEEDS_PARENT
 
 
 def validate_problem_frame(
@@ -75,7 +76,7 @@ def _emit_missing_frame_blocker(
     _write_problem_frame_signal(
         paths.setup_signal(section.number),
         {
-            "state": "needs_parent",
+            "state": SIGNAL_NEEDS_PARENT,
             "detail": (
                 f"Setup agent failed to create problem frame for section "
                 f"{section.number} after 2 attempts. The pipeline requires "
@@ -111,7 +112,7 @@ def _emit_empty_frame_blocker(
     _write_problem_frame_signal(
         paths.setup_signal(section.number),
         {
-            "state": "needs_parent",
+            "state": SIGNAL_NEEDS_PARENT,
             "detail": (
                 f"Problem frame for section {section.number} exists but is empty"
             ),

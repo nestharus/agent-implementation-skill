@@ -9,6 +9,7 @@ from dispatch.prompt.writers import agent_mail_instructions
 from implementation.service.microstrategy_decider import _check_needs_microstrategy
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from orchestrator.types import ControlSignal
+from signals.types import BLOCKING_NEEDS_PARENT
 
 
 def _build_microstrategy_prompt(
@@ -162,7 +163,7 @@ def _handle_microstrategy_failure(
         f"failed — emitting blocker signal"
     )
     blocker = {
-        "state": "NEEDS_PARENT",
+        "state": BLOCKING_NEEDS_PARENT,
         "section": str(section_number),
         "detail": "Microstrategy generation failed after primary + escalation attempts",
         "needs": "Tactical breakdown from upstream or decision to proceed without microstrategy",

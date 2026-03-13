@@ -10,6 +10,7 @@ from coordination.repository.notes import read_incoming_notes as load_incoming_n
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 from orchestrator.types import Section, SectionResult
+from signals.types import SIGNAL_NEEDS_PARENT
 
 
 def build_file_to_sections(sections: list[Section]) -> dict[str, list[str]]:
@@ -39,10 +40,10 @@ def _collect_blocker_and_misalignment_problems(
         if blocker_path.exists():
             blocker = Services.artifact_io().read_json(blocker_path)
             if blocker is not None:
-                if blocker.get("state") == "needs_parent":
+                if blocker.get("state") == SIGNAL_NEEDS_PARENT:
                     problems.append({
                         "section": sec_num,
-                        "type": "needs_parent",
+                        "type": SIGNAL_NEEDS_PARENT,
                         "description": blocker.get("detail", ""),
                         "needs": blocker.get("needs", ""),
                         "files": files,
@@ -51,7 +52,7 @@ def _collect_blocker_and_misalignment_problems(
             else:
                 problems.append({
                     "section": sec_num,
-                    "type": "needs_parent",
+                    "type": SIGNAL_NEEDS_PARENT,
                     "description": (
                         f"Blocker signal at {blocker_path} is malformed "
                         "or unreadable; cannot determine blocker state — "

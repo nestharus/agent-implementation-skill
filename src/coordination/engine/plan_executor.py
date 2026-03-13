@@ -13,6 +13,7 @@ from coordination.prompt.writers import write_bridge_prompt, write_fix_prompt
 from flow.service.task_request_ingestor import ingest_and_submit
 from orchestrator.types import Section, ControlSignal
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from signals.types import SIGNAL_NEEDS_PARENT
 
 _NOTE_FINGERPRINT_LENGTH = 12
 
@@ -183,7 +184,7 @@ def _ensure_contract_delta(
         f"(group {group_index})",
     )
     blocker_signal = {
-        "state": "needs_parent",
+        "state": SIGNAL_NEEDS_PARENT,
         "why_blocked": (
             f"Bridge agent for group {group_index} failed to "
             f"produce contract delta after retry. "

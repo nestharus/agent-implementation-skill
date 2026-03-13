@@ -11,6 +11,7 @@ from signals.service.blocker_manager import (
     _update_blocker_rollup,
 )
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from signals.types import SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE
 
 
 def _write_scope_delta(
@@ -24,7 +25,7 @@ def _write_scope_delta(
     scope_delta = {
         "delta_id": f"delta-{section_number}-setup-oos",
         "section": section_number,
-        "signal": "out_of_scope",
+        "signal": SIGNAL_OUT_OF_SCOPE,
         "detail": detail,
         "requires_root_reframing": True,
         "signal_path": str(setup_sig_path),
@@ -41,13 +42,13 @@ def _handle_setup_signal(
     section_number: str, paths: PathRegistry, signal_dir: Path,
 ) -> str | None:
     """Handle a setup agent signal. Returns None to abort, 'continue' to retry."""
-    if signal in ("needs_parent", "out_of_scope"):
+    if signal in (SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE):
         _append_open_problem(planspace, section_number, detail, signal)
         Services.communicator().mailbox_send(
             planspace, parent,
             f"open-problem:{section_number}:{signal}:{detail[:200]}",
         )
-    if signal == "out_of_scope":
+    if signal == SIGNAL_OUT_OF_SCOPE:
         _write_scope_delta(paths, signal_dir, section_number, detail)
     _update_blocker_rollup(planspace)
     response = Services.pipeline_control().pause_for_parent(

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
+from signals.types import SIGNAL_OUT_OF_SCOPE
 
 
 def _is_valid_updater_signal(signal_path: Path) -> bool:
@@ -47,7 +48,7 @@ def _validate_feedback_schema(
         )
         return False
 
-    for field in ("missing_files", "out_of_scope"):
+    for field in ("missing_files", SIGNAL_OUT_OF_SCOPE):
         val = data.get(field)
         if val is not None and not isinstance(val, list):
             print(
@@ -96,7 +97,7 @@ def _route_scope_deltas(
                     f"scope-delta routing: {fb_file}",
                 )
                 continue
-            for item in data.get("out_of_scope", []):
+            for item in data.get(SIGNAL_OUT_OF_SCOPE, []):
                 if isinstance(item, str) and item.strip():
                     all_oos.append(item.strip())
 

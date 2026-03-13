@@ -20,6 +20,7 @@ from research.prompt.writers import (
 )
 from containers import Services
 from signals.service.blocker_manager import _update_blocker_rollup
+from signals.types import SIGNAL_NEEDS_PARENT, SIGNAL_NEED_DECISION
 
 
 def _ordered_ticket_ids(plan: dict) -> list[str]:
@@ -116,16 +117,16 @@ def _emit_not_researchable_signals(
     for index, item in enumerate(items):
         question = str(item.get("question", "")).strip()
         reason = str(item.get("reason", "")).strip()
-        route = str(item.get("route") or item.get("state") or "needs_parent").strip()
-        if route not in {"need_decision", "needs_parent"}:
-            route = "needs_parent"
+        route = str(item.get("route") or item.get("state") or SIGNAL_NEEDS_PARENT).strip()
+        if route not in {SIGNAL_NEED_DECISION, SIGNAL_NEEDS_PARENT}:
+            route = SIGNAL_NEEDS_PARENT
         signal = {
             "state": route,
             "section": section_number,
             "detail": question or f"Planner returned not_researchable[{index}]",
             "needs": (
                 "User decision on a non-researchable question"
-                if route == "need_decision"
+                if route == SIGNAL_NEED_DECISION
                 else "Parent/coordination resolution for a non-researchable blocker"
             ),
             "why_blocked": reason or "Planner marked this question as not researchable",

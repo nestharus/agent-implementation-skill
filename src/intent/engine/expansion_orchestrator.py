@@ -24,6 +24,7 @@ from intent.service.expanders import (
     run_philosophy_expander,
     run_problem_expander,
 )
+from signals.types import BLOCKING_NEED_DECISION
 
 
 def _surface_from_entry(entry: dict) -> dict:
@@ -318,7 +319,7 @@ def handle_user_gate(
     )
     if not blocker_path.exists():
         Services.artifact_io().write_json(blocker_path, {
-            "state": "NEED_DECISION",
+            "state": BLOCKING_NEED_DECISION,
             "detail": message["detail"],
             "needs": message["needs"],
             "why_blocked": message["why_blocked"],

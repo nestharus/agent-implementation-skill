@@ -1,4 +1,4 @@
-"""Pydantic models for structured agent signals."""
+"""Pydantic models and constants for structured agent signals."""
 
 from __future__ import annotations
 
@@ -7,6 +7,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
+
+# ── signal / blocking state constants ────────────────────────────────
+
+SIGNAL_NEEDS_PARENT = "needs_parent"
+SIGNAL_NEED_DECISION = "need_decision"
+SIGNAL_OUT_OF_SCOPE = "out_of_scope"
+BLOCKING_NEEDS_PARENT = "NEEDS_PARENT"
+BLOCKING_NEED_DECISION = "NEED_DECISION"
 
 
 class AgentSignal(BaseModel):

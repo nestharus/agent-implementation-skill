@@ -21,6 +21,7 @@ from intake.service.governance_packet_builder import build_section_governance_pa
 from orchestrator.types import Section
 
 from pipeline import AlignmentGuard, Pipeline, PipelineContext, Step
+from signals.types import BLOCKING_NEEDS_PARENT, BLOCKING_NEED_DECISION
 
 _SECTION_SUMMARY_TRUNCATION = 500
 
@@ -116,7 +117,7 @@ def _step_philosophy(ctx: PipelineContext) -> dict:
     if result["status"] != "ready":
         blocking_state = result.get("blocking_state")
         sec = ctx.section.number
-        if blocking_state == "NEED_DECISION":
+        if blocking_state == BLOCKING_NEED_DECISION:
             Services.logger().log(
                 f"Section {sec}: philosophy bootstrap needs "
                 f"user input — {result['detail']}",
@@ -126,7 +127,7 @@ def _step_philosophy(ctx: PipelineContext) -> dict:
                 ctx.planspace, ctx.parent,
                 "pause:need_decision:global:philosophy bootstrap requires user input",
             )
-        elif blocking_state == "NEEDS_PARENT":
+        elif blocking_state == BLOCKING_NEEDS_PARENT:
             Services.logger().log(
                 f"Section {sec}: philosophy bootstrap needs "
                 f"parent intervention — {result['detail']}",

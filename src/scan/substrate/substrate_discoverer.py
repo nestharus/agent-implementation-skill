@@ -39,6 +39,7 @@ from scan.substrate.prompt_builder import (
 from scan.substrate.related_files import apply_related_files_updates
 from scan.substrate.schemas import read_seed_plan_failclosed, read_shard_failclosed
 from containers import Services
+from signals.types import BLOCKING_NEEDS_PARENT
 
 
 # ---- Helpers ----
@@ -60,7 +61,7 @@ def _check_prerequisites(
         print("[SUBSTRATE] No project-mode signal found -- writing NEEDS_PARENT")
         _write_status(
             artifacts_dir,
-            state="NEEDS_PARENT",
+            state=BLOCKING_NEEDS_PARENT,
             project_mode="unknown",
             total_sections=0,
             vacuum_sections=[],
@@ -73,7 +74,7 @@ def _check_prerequisites(
         print(f"[SUBSTRATE] Sections directory not found: {sections_dir}")
         _write_status(
             artifacts_dir,
-            state="NEEDS_PARENT",
+            state=BLOCKING_NEEDS_PARENT,
             project_mode=project_mode,
             total_sections=0,
             vacuum_sections=[],
@@ -87,7 +88,7 @@ def _check_prerequisites(
         print("[SUBSTRATE] No section files found")
         _write_status(
             artifacts_dir,
-            state="NEEDS_PARENT",
+            state=BLOCKING_NEEDS_PARENT,
             project_mode=project_mode,
             total_sections=0,
             vacuum_sections=[],
@@ -280,10 +281,10 @@ def _validate_pruner_outputs(
         prune_signal = Services.artifact_io().read_json(prune_signal_path)
         if isinstance(prune_signal, dict):
             status_val = prune_signal.get("state", "").upper()
-            if status_val == "NEEDS_PARENT":
+            if status_val == BLOCKING_NEEDS_PARENT:
                 reason = prune_signal.get("reason", "no reason given")
                 print(f"[SUBSTRATE] Pruner signalled NEEDS_PARENT: {reason}")
-                _write_status(artifacts_dir, state="NEEDS_PARENT",
+                _write_status(artifacts_dir, state=BLOCKING_NEEDS_PARENT,
                               notes=f"Pruner deferred: {reason}",
                               **status_kwargs)
                 return None

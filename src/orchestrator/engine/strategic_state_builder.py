@@ -14,6 +14,7 @@ from risk.repository.serialization import (
     load_risk_plan,
 )
 from risk.types import StepDecision
+from signals.types import SIGNAL_NEEDS_PARENT
 
 
 @dataclass(frozen=True)
@@ -159,7 +160,7 @@ def _check_blocker(
             "reason": "blocker signal malformed",
         }
         return True
-    if blocker.get("state") == "needs_parent":
+    if blocker.get("state") == SIGNAL_NEEDS_PARENT:
         tally.blocked[sec_num] = {
             "problem_id": blocker.get("problem_id", ""),
             "reason": blocker.get("detail", "")[:200],

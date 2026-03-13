@@ -24,6 +24,7 @@ from implementation.service.section_reexplorer import _reexplore_section
 from implementation.engine.section_pipeline import run_section
 from orchestrator.types import ProposalPassResult, Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from signals.types import SIGNAL_NEEDS_PARENT
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ def _write_proposal_risk_blocker(
     Services.artifact_io().write_json(
         blocker_path,
         {
-            "state": "needs_parent",
+            "state": SIGNAL_NEEDS_PARENT,
             "blocker_type": "proposal_risk_advisory",
             "source": "roal",
             "section": sec_num,

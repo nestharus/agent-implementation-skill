@@ -6,6 +6,7 @@ from typing import Any
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from signals.service.blocker_manager import _update_blocker_rollup
+from signals.types import SIGNAL_NEEDS_PARENT
 
 
 def _extract_tools(registry: dict | list) -> list:
@@ -117,7 +118,7 @@ def _handle_repair_result(
         f"repair failed — writing blocker signal"
     )
     blocker = {
-        "state": "needs_parent",
+        "state": SIGNAL_NEEDS_PARENT,
         "detail": (
             "Tool registry malformed; repair agent "
             "could not fix it."
@@ -354,7 +355,7 @@ def _dispatch_post_impl_repair(
             f"registry repair failed — writing blocker"
         )
         blocker = {
-            "state": "needs_parent",
+            "state": SIGNAL_NEEDS_PARENT,
             "detail": (
                 "Tool registry malformed after "
                 "implementation; repair agent could "
@@ -435,7 +436,7 @@ def _validate_bridge_signal(
     bridge_data = Services.artifact_io().read_json(bridge_signal_path)
     if bridge_data is None:
         return False, None
-    if bridge_data.get("status") not in ("bridged", "no_action", "needs_parent"):
+    if bridge_data.get("status") not in ("bridged", "no_action", SIGNAL_NEEDS_PARENT):
         return False, bridge_data
     proposal_path = Path(
         bridge_data.get("proposal_path", str(default_proposal_path))
@@ -657,7 +658,7 @@ def _handle_bridge_failure(*, section_number, paths, planspace):
     Services.artifact_io().write_json(
         paths.post_impl_blocker_signal(section_number),
         {
-            "state": "needs_parent",
+            "state": SIGNAL_NEEDS_PARENT,
             "detail": (
                 "Bridge-tools agent failed to produce valid output "
                 "after primary + escalation dispatch. Tool friction "

@@ -12,6 +12,7 @@ from risk.types import (
     RiskPlan,
     StepDecision,
 )
+from signals.types import SIGNAL_NEEDS_PARENT
 
 _RISK_ITERATIONS_BASE = 5
 _RISK_ITERATIONS_CAP = 9
@@ -127,7 +128,7 @@ def write_reopen_blocker(
         "coordination",
     )
     payload = {
-        "state": "needs_parent",
+        "state": SIGNAL_NEEDS_PARENT,
         "blocker_type": "risk_reopen",
         "source": "roal",
         "section": sec_num,
@@ -150,7 +151,7 @@ def write_risk_review_failure_blocker(
 ) -> Path:
     paths = PathRegistry(planspace)
     payload = {
-        "state": "needs_parent",
+        "state": SIGNAL_NEEDS_PARENT,
         "blocker_type": "risk_review_failure",
         "source": "roal",
         "section": sec_num,

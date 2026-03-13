@@ -20,6 +20,7 @@ from signals.service.blocker_manager import (
 )
 from orchestrator.types import ProposalPassResult
 from flow.types.routing import submit_task
+from signals.types import SIGNAL_NEEDS_PARENT, SIGNAL_NEED_DECISION
 
 _CANDIDATE_HASH_LENGTH = 8
 _TRIGGER_HASH_LENGTH = 12
@@ -44,7 +45,7 @@ def _emit_needs_parent_research_signals(
     """Emit one needs_parent signal per blocking research question."""
     for i, question in enumerate(research_questions):
         research_signal = {
-            "state": "needs_parent",
+            "state": SIGNAL_NEEDS_PARENT,
             "section": section_number,
             "detail": question,
             "needs": needs,
@@ -192,7 +193,7 @@ def _route_user_root_questions(
     """Emit NEED_DECISION signals for user-root questions."""
     for i, question in enumerate(proposal_state.get("user_root_questions", [])):
         q_signal = {
-            "state": "need_decision",
+            "state": SIGNAL_NEED_DECISION,
             "section": section_number,
             "detail": str(question),
             "needs": "User/parent decision on this question",
@@ -229,7 +230,7 @@ def _route_shared_seams(
         )
 
         seam_signal = {
-            "state": "needs_parent",
+            "state": SIGNAL_NEEDS_PARENT,
             "section": section_number,
             "detail": (
                 "Shared seam candidate requires cross-section "

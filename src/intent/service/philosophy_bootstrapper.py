@@ -35,6 +35,7 @@ from intent.service.philosophy_dispatcher import (
     _dispatch_classified_signal_stage,
 )
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from signals.types import BLOCKING_NEEDS_PARENT, BLOCKING_NEED_DECISION, SIGNAL_NEEDS_PARENT, SIGNAL_NEED_DECISION
 
 # ── constants ─────────────────────────────────────────────────────────
 
@@ -452,7 +453,7 @@ def _request_user_philosophy(
         paths,
         status="needs_user_input",
         bootstrap_state="needs_user_input",
-        blocking_state="NEED_DECISION",
+        blocking_state=BLOCKING_NEED_DECISION,
         source_mode=source_mode,
         detail=signal_detail or detail,
         needs=needs,
@@ -610,7 +611,7 @@ def validate_philosophy_grounding(
         detail, extras = available_failure
         _write_bootstrap_signal(
             paths,
-            state="NEEDS_PARENT",
+            state=BLOCKING_NEEDS_PARENT,
             detail=detail,
             needs=(
                 "Repair the philosophy bootstrap artifacts so each principle "
@@ -625,7 +626,7 @@ def validate_philosophy_grounding(
         _write_bootstrap_status(
             paths,
             bootstrap_state="failed",
-            blocking_state="NEEDS_PARENT",
+            blocking_state=BLOCKING_NEEDS_PARENT,
             source_mode="repo_sources",
             detail=detail,
         )
@@ -640,7 +641,7 @@ def validate_philosophy_grounding(
             return False
         _write_bootstrap_signal(
             paths,
-            state="NEEDS_PARENT",
+            state=BLOCKING_NEEDS_PARENT,
             detail=detail,
             needs=(
                 "Repair the philosophy bootstrap artifacts so each principle "
@@ -655,7 +656,7 @@ def validate_philosophy_grounding(
         _write_bootstrap_status(
             paths,
             bootstrap_state="failed",
-            blocking_state="NEEDS_PARENT",
+            blocking_state=BLOCKING_NEEDS_PARENT,
             source_mode=failure_source_mode,
             detail=detail,
         )
@@ -911,7 +912,7 @@ If NO files contain cross-cutting reasoning philosophy, write:
             ctx.paths,
             status="failed",
             bootstrap_state="failed",
-            blocking_state="NEEDS_PARENT",
+            blocking_state=BLOCKING_NEEDS_PARENT,
             source_mode="none",
             detail=(
                 "Philosophy source selector prompt could not be validated. "
@@ -961,7 +962,7 @@ If NO files contain cross-cutting reasoning philosophy, write:
             ctx.paths,
             stage="selector",
             attempts=selector_run["attempts"],
-            final_outcome="need_decision",
+            final_outcome=SIGNAL_NEED_DECISION,
         )
         return _request_user_philosophy(
             ctx.paths,
@@ -992,7 +993,7 @@ If NO files contain cross-cutting reasoning philosophy, write:
         ctx.paths,
         stage="selector",
         attempts=selector_run["attempts"],
-        final_outcome="needs_parent",
+        final_outcome=SIGNAL_NEEDS_PARENT,
     )
     detail = (
         "Philosophy source selector did not write its required signal "
@@ -1013,7 +1014,7 @@ If NO files contain cross-cutting reasoning philosophy, write:
         ctx.paths,
         status="failed",
         bootstrap_state="failed",
-        blocking_state="NEEDS_PARENT",
+        blocking_state=BLOCKING_NEEDS_PARENT,
         source_mode="none",
         detail=detail,
         needs="Repair the philosophy source selector agent output.",
@@ -1146,7 +1147,7 @@ Write a JSON signal to: `{verify_signal}`
             ctx.paths,
             status="failed",
             bootstrap_state="failed",
-            blocking_state="NEEDS_PARENT",
+            blocking_state=BLOCKING_NEEDS_PARENT,
             source_mode="repo_sources",
             detail=(
                 "Philosophy source verifier prompt could not be validated. "
@@ -1224,7 +1225,7 @@ Write a JSON signal to: `{verify_signal}`
         ctx.paths,
         status="failed",
         bootstrap_state="failed",
-        blocking_state="NEEDS_PARENT",
+        blocking_state=BLOCKING_NEEDS_PARENT,
         source_mode="repo_sources",
         detail=(
             "Philosophy verifier did not emit a valid signal for "
@@ -1285,7 +1286,7 @@ def _validate_selected_sources(ctx: _BootstrapContext) -> dict[str, Any] | None:
             ctx.paths,
             status="failed",
             bootstrap_state="failed",
-            blocking_state="NEEDS_PARENT",
+            blocking_state=BLOCKING_NEEDS_PARENT,
             source_mode="none",
             detail=(
                 "Philosophy bootstrap ended selector processing without a "
@@ -1317,7 +1318,7 @@ def _validate_selected_sources(ctx: _BootstrapContext) -> dict[str, Any] | None:
             ctx.paths,
             status="failed",
             bootstrap_state="failed",
-            blocking_state="NEEDS_PARENT",
+            blocking_state=BLOCKING_NEEDS_PARENT,
             source_mode="none",
             detail=(
                 "Philosophy source selector returned source paths that do "
@@ -1426,7 +1427,7 @@ def _run_distiller(ctx: _BootstrapContext) -> dict[str, Any] | None:
             ctx.paths,
             status="failed",
             bootstrap_state="failed",
-            blocking_state="NEEDS_PARENT",
+            blocking_state=BLOCKING_NEEDS_PARENT,
             source_mode="repo_sources",
             detail=(
                 "Philosophy distillation prompt could not be validated. "
@@ -1583,7 +1584,7 @@ def _handle_distiller_failure(
         ctx.paths,
         status="failed",
         bootstrap_state="failed",
-        blocking_state="NEEDS_PARENT",
+        blocking_state=BLOCKING_NEEDS_PARENT,
         source_mode="repo_sources",
         detail=detail,
         needs="Repair the philosophy distillation step.",
@@ -1606,7 +1607,7 @@ def _finalize_philosophy(ctx: _BootstrapContext) -> dict[str, Any]:
             "— blocking section (fail-closed)")
         return _bootstrap_result(
             status="failed",
-            blocking_state="NEEDS_PARENT",
+            blocking_state=BLOCKING_NEEDS_PARENT,
             philosophy_path=None,
             detail=(
                 "Philosophy grounding validation failed. Section execution "

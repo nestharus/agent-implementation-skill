@@ -16,6 +16,7 @@ from signals.service.blocker_manager import (
     _update_blocker_rollup,
 )
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from signals.types import SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE
 
 
 def check_early_abort(
@@ -181,14 +182,14 @@ def handle_proposal_signals(
     if not signal:
         return None
 
-    if signal in ("needs_parent", "out_of_scope"):
+    if signal in (SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE):
         _append_open_problem(planspace, section_number, detail, signal)
         Services.communicator().mailbox_send(
             planspace,
             parent,
             f"open-problem:{section_number}:{signal}:{detail[:200]}",
         )
-    if signal == "out_of_scope":
+    if signal == SIGNAL_OUT_OF_SCOPE:
         scope_delta_dir = paths.scope_deltas_dir()
         scope_delta_dir.mkdir(parents=True, exist_ok=True)
         proposal_sig_path = paths.proposal_signal(section_number)
@@ -196,7 +197,7 @@ def handle_proposal_signals(
         scope_delta = {
             "delta_id": f"delta-{section_number}-proposal-oos",
             "section": section_number,
-            "signal": "out_of_scope",
+            "signal": SIGNAL_OUT_OF_SCOPE,
             "detail": detail,
             "requires_root_reframing": True,
             "signal_path": str(proposal_sig_path),

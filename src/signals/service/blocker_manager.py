@@ -5,6 +5,7 @@ from pathlib import Path
 from signals.repository.artifact_io import read_json, rename_malformed
 from containers import Services
 from orchestrator.path_registry import PathRegistry
+from signals.types import SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE, SIGNAL_NEED_DECISION
 
 
 _SHARED_SEAM_PREFIX = (
@@ -16,10 +17,10 @@ _SEAM_HASH_LENGTH = 12
 _STATE_TO_CATEGORY: dict[str, str] = {
     "underspecified": "missing_info",
     "underspec": "missing_info",
-    "need_decision": "decision_required",
-    "out_of_scope": "scope_expansion",
+    SIGNAL_NEED_DECISION: "decision_required",
+    SIGNAL_OUT_OF_SCOPE: "scope_expansion",
     "out-of-scope": "scope_expansion",
-    "needs_parent": "needs_parent",
+    SIGNAL_NEEDS_PARENT: SIGNAL_NEEDS_PARENT,
     "dependency": "dependency",
 }
 
@@ -28,7 +29,7 @@ _BTYPE_TO_CATEGORY: dict[str, str] = {
     "user_root_questions": "decision_required",
     "unresolved_contracts": "dependency",
     "unresolved_anchors": "dependency",
-    "shared_seam_candidates": "needs_parent",
+    "shared_seam_candidates": SIGNAL_NEEDS_PARENT,
 }
 
 
@@ -181,7 +182,7 @@ def _update_blocker_rollup(planspace: Path) -> None:
         "decision_required": [],
         "dependency": [],
         "scope_expansion": [],
-        "needs_parent": [],
+        SIGNAL_NEEDS_PARENT: [],
         "malformed_signal": [],
         "governance": [],
     })
@@ -193,7 +194,7 @@ def _update_blocker_rollup(planspace: Path) -> None:
         "decision_required": "Decisions Required (NEED_DECISION)",
         "dependency": "Dependencies (DEPENDENCY)",
         "scope_expansion": "Scope Expansion (OUT_OF_SCOPE)",
-        "needs_parent": "Parent Coordination / Decision Required (NEEDS_PARENT)",
+        SIGNAL_NEEDS_PARENT: "Parent Coordination / Decision Required (NEEDS_PARENT)",
         "malformed_signal": "Malformed Signal Files (parse error)",
         "governance": "Governance (GOVERNANCE)",
     }
@@ -201,7 +202,7 @@ def _update_blocker_rollup(planspace: Path) -> None:
     lines = ["# Blocker Rollup (auto-generated)\n",
              f"**{len(blockers)} sections need input:**\n"]
     for cat_key in ("missing_info", "decision_required", "dependency",
-                    "scope_expansion", "needs_parent",
+                    "scope_expansion", SIGNAL_NEEDS_PARENT,
                     "malformed_signal", "governance"):
         cat_blockers = groups[cat_key]
         if not cat_blockers:

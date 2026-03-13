@@ -39,6 +39,7 @@ from flow.repository.gate_repository import (
     update_gate_member,
     update_gate_member_leaf,
 )
+from signals.types import SIGNAL_NEEDS_PARENT
 
 logger = logging.getLogger(__name__)
 
@@ -444,7 +445,7 @@ def _emit_refactor_blocker(
         or "post-implementation assessment requires a refactor pass"
     )
     payload = {
-        "state": "needs_parent",
+        "state": SIGNAL_NEEDS_PARENT,
         "blocker_type": "post_impl_refactor_required",
         "source": "post_impl_assessment",
         "section": section_number,

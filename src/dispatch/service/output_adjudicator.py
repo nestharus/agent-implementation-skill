@@ -7,6 +7,7 @@ from containers import Services
 from pipeline.template import render_template
 from orchestrator.path_registry import PathRegistry
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from signals.types import SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE, SIGNAL_NEED_DECISION
 
 
 def _compose_adjudication_text(output_path: Path) -> str:
@@ -82,16 +83,16 @@ def adjudicate_agent_output(
             detail = data.get("detail", "")
             if state in ("underspecified", "underspec"):
                 return "underspec", detail
-            if state == "need_decision":
-                return "need_decision", detail
+            if state == SIGNAL_NEED_DECISION:
+                return SIGNAL_NEED_DECISION, detail
             if state == "dependency":
                 return "dependency", detail
             if state == "loop_detected":
                 return "loop_detected", detail
-            if state == "needs_parent":
-                return "needs_parent", detail
-            if state in ("out_of_scope", "out-of-scope"):
-                return "out_of_scope", detail
+            if state == SIGNAL_NEEDS_PARENT:
+                return SIGNAL_NEEDS_PARENT, detail
+            if state in (SIGNAL_OUT_OF_SCOPE, "out-of-scope"):
+                return SIGNAL_OUT_OF_SCOPE, detail
     except (json.JSONDecodeError, KeyError) as exc:
         print(
             f"[ADJUDICATOR][WARN] Malformed adjudicator verdict JSON "

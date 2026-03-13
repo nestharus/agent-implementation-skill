@@ -18,6 +18,7 @@ from scan.service.template_loader import load_scan_template
 
 from scan.scan_dispatcher import dispatch_agent, read_scan_model_policy
 from containers import Services
+from signals.types import SIGNAL_OUT_OF_SCOPE
 
 
 def _collect_section_scan_feedback(
@@ -57,7 +58,7 @@ def _collect_section_scan_feedback(
             if isinstance(mf, str) and mf.strip():
                 missing_files.append(f"- {mf.strip()}")
 
-        for oos in data.get("out_of_scope", []):
+        for oos in data.get(SIGNAL_OUT_OF_SCOPE, []):
             if isinstance(oos, str) and oos.strip():
                 out_of_scope_items.append(f"- {oos.strip()}")
 
