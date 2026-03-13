@@ -518,6 +518,24 @@ Functions that take parameters obtainable from the DI container are exposing unn
   - `task_dispatcher.py:221` `freshness_token[:8]` — display only in error message
 - **Status**: DONE
 
+### 135. Cycle 11 — full rescan, deduplication, reviewer category sweep
+- **Category**: Multi-category rescan
+- **Rescan results** (CODE-S2, CODE-S8, CODE-E1, CODE-E11, CODE-B4, CODE-B6, CODE-E2, CODE-E5, CODE-E10):
+  - **CODE-S2 (function length)**: Only 2 functions >50 exec lines — `ensure_global_philosophy` (215, deferred) and `run()` CLI entry point (51, borderline). All others under 50. Clean.
+  - **CODE-S8 (magic numbers)**: All hash truncation, timeout, and content truncation constants extracted. Remaining `[:N]` are display-only in log/error messages. Clean.
+  - **CODE-E1 (exception specificity)**: Zero `except Exception` without `# noqa: BLE001`. Zero bare `except:`. Clean.
+  - **CODE-E11 (mutable defaults)**: Zero `def func(items=[])` patterns. Clean.
+  - **CODE-E2 (exception swallowing)**: All `except ... pass` patterns are intentional fail-open with specific exception types (OSError, json.JSONDecodeError, etc.) and fallback paths. Clean.
+  - **CODE-E5 (resource cleanup)**: All `open()` calls use `with` context managers. Clean.
+  - **CODE-E10 (assert misuse)**: Zero `assert` statements in production code. Clean.
+  - **CODE-B4 (nesting depth)**: Only `philosophy_bootstrapper` exceeds depth 4 (deferred). Clean.
+  - **CODE-B6 (if/elif chains)**: Max chain is 3 branches. All pure lookups already converted. Clean.
+  - **Dead functions**: 25 candidates reported by scanner, all verified as false positives (registry-dispatched, test-imported, or method calls on self).
+  - **Import-time side effects**: Only legitimate patterns (route decorators, CLI entry points, type registration).
+- **Deduplication**:
+  - `_unique_strings()` was copy-pasted in `risk_artifact_writer.py` and `risk_history_recorder.py`. Now imports from canonical location.
+- **Status**: DONE — codebase clean across all CODE-* categories
+
 ---
 
 ## NOT A BUG
