@@ -133,6 +133,20 @@ def _record_over_guarding(
         )
 
 
+def _classify_implementation_outcome(
+    modified: list[str], implementation_failed: bool,
+) -> tuple[str, list[str], str | None]:
+    """Classify the implementation outcome for risk history recording.
+
+    Returns (outcome, surprises, verification_outcome).
+    """
+    if implementation_failed:
+        return "failure", ["implementation failed after ROAL acceptance"], "failed"
+    if modified:
+        return "success", [], "passed"
+    return "warning", ["implementation completed without file modifications"], None
+
+
 def append_risk_history(
     planspace: Path,
     sec_num: str,
@@ -157,18 +171,9 @@ def append_risk_history(
     }
 
     modified = list(modified_files or [])
-    if implementation_failed:
-        accepted_outcome = "failure"
-        accepted_surprises = ["implementation failed after ROAL acceptance"]
-        accepted_verification = "failed"
-    elif modified:
-        accepted_outcome = "success"
-        accepted_surprises: list[str] = []
-        accepted_verification = "passed"
-    else:
-        accepted_outcome = "warning"
-        accepted_surprises = ["implementation completed without file modifications"]
-        accepted_verification = None
+    accepted_outcome, accepted_surprises, accepted_verification = (
+        _classify_implementation_outcome(modified, implementation_failed)
+    )
 
     for decision in risk_plan.step_decisions:
         package_step = package_steps.get(decision.step_id)

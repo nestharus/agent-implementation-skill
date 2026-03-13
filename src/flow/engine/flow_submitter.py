@@ -126,6 +126,45 @@ def submit_chain(
     return task_ids
 
 
+def _insert_gate_record(
+    db_path: Path,
+    gate_id: str,
+    flow_id: str,
+    declared_by_task_id: int | None,
+    gate: GateSpec,
+    branch_info: list[tuple[str, int, str]],
+) -> None:
+    """Insert a gate and its members into the task database."""
+    synthesis = gate.synthesis if gate else None
+    with task_db(db_path) as conn:
+        conn.execute(
+            """INSERT INTO gates(
+                   gate_id, flow_id, created_by_task_id, mode,
+                   failure_policy, expected_count,
+                   synthesis_task_type, synthesis_problem_id,
+                   synthesis_concern_scope, synthesis_payload_path,
+                   synthesis_priority)
+               VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                gate_id, flow_id, declared_by_task_id,
+                gate.mode, gate.failure_policy, len(branch_info),
+                synthesis.task_type if synthesis else None,
+                synthesis.problem_id if synthesis else None,
+                synthesis.concern_scope if synthesis else None,
+                synthesis.payload_path if synthesis else None,
+                synthesis.priority if synthesis else None,
+            ),
+        )
+        for child_chain_id, leaf_tid, label in branch_info:
+            conn.execute(
+                """INSERT INTO gate_members(
+                       gate_id, chain_id, slot_label, leaf_task_id)
+                   VALUES(?, ?, ?, ?)""",
+                (gate_id, child_chain_id, label or None, leaf_tid),
+            )
+        conn.commit()
+
+
 def submit_fanout(
     db_path: Path,
     submitted_by: str,
@@ -177,39 +216,9 @@ def submit_fanout(
             branch_info.append((child_chain_id, task_ids[-1], branch.label))
 
     if gate_id is not None and branch_info:
-        synthesis = gate.synthesis if gate else None
-        with task_db(db_path) as conn:
-            conn.execute(
-                """INSERT INTO gates(
-                       gate_id, flow_id, created_by_task_id, mode,
-                       failure_policy, expected_count,
-                       synthesis_task_type, synthesis_problem_id,
-                       synthesis_concern_scope, synthesis_payload_path,
-                       synthesis_priority)
-                   VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    gate_id,
-                    flow_id,
-                    declared_by_task_id,
-                    gate.mode,
-                    gate.failure_policy,
-                    len(branch_info),
-                    synthesis.task_type if synthesis else None,
-                    synthesis.problem_id if synthesis else None,
-                    synthesis.concern_scope if synthesis else None,
-                    synthesis.payload_path if synthesis else None,
-                    synthesis.priority if synthesis else None,
-                ),
-            )
-
-            for child_chain_id, leaf_tid, label in branch_info:
-                conn.execute(
-                    """INSERT INTO gate_members(
-                           gate_id, chain_id, slot_label, leaf_task_id)
-                       VALUES(?, ?, ?, ?)""",
-                    (gate_id, child_chain_id, label or None, leaf_tid),
-                )
-
-            conn.commit()
+        _insert_gate_record(
+            db_path, gate_id, flow_id, declared_by_task_id,
+            gate, branch_info,
+        )
 
     return gate_id
