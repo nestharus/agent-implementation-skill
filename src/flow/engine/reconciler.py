@@ -282,6 +282,38 @@ def _section_number(task: dict) -> str | None:
     return None
 
 
+def _handle_synthesis_completion(
+    db_path: Path,
+    planspace: Path,
+    section_number: str,
+    task: dict,
+    output_path: str | None,
+    origin_refs: list[str],
+    trigger_hash: str,
+    cycle_id: str,
+) -> None:
+    """Handle research.synthesis task completion — verify or finalize."""
+    plan = validate_research_plan(PathRegistry(planspace).research_plan(section_number))
+    verify_claims = bool(
+        isinstance(plan, dict)
+        and isinstance(plan.get("flow"), dict)
+        and plan["flow"].get("verify_claims")
+    )
+    if verify_claims:
+        submit_research_verify(
+            section_number, planspace,
+            db_path=db_path,
+            declared_by_task_id=int(task["id"]),
+            origin_refs=origin_refs + ([output_path] if output_path else []),
+        )
+    else:
+        write_research_status(
+            section_number, planspace, "synthesized",
+            detail="research synthesis complete",
+            trigger_hash=trigger_hash, cycle_id=cycle_id,
+        )
+
+
 def _handle_research_completion(
     db_path: Path,
     planspace: Path,
@@ -334,39 +366,17 @@ def _handle_research_completion(
         return
 
     if task_type == "research.synthesis":
-        plan = validate_research_plan(PathRegistry(planspace).research_plan(section_number))
-        verify_claims = bool(
-            isinstance(plan, dict)
-            and isinstance(plan.get("flow"), dict)
-            and plan["flow"].get("verify_claims")
+        _handle_synthesis_completion(
+            db_path, planspace, section_number, task,
+            output_path, origin_refs, trigger_hash, cycle_id,
         )
-        if verify_claims:
-            submit_research_verify(
-                section_number,
-                planspace,
-                db_path=db_path,
-                declared_by_task_id=int(task["id"]),
-                origin_refs=origin_refs + ([output_path] if output_path else []),
-            )
-        else:
-            write_research_status(
-                section_number,
-                planspace,
-                "synthesized",
-                detail="research synthesis complete",
-                trigger_hash=trigger_hash,
-                cycle_id=cycle_id,
-            )
         return
 
     if task_type == "research.verify":
         write_research_status(
-            section_number,
-            planspace,
-            "verified",
+            section_number, planspace, "verified",
             detail="research verification complete",
-            trigger_hash=trigger_hash,
-            cycle_id=cycle_id,
+            trigger_hash=trigger_hash, cycle_id=cycle_id,
         )
 
 

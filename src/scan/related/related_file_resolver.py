@@ -315,6 +315,24 @@ def _apply_and_finalize(
     codemap_hash_file.write_text(combined_hash)
 
 
+def _compute_validation_hashes(
+    section_file: Path, codemap_path: Path, corrections_file: Path,
+) -> tuple[str, str, str, str]:
+    """Compute content hashes for validation freshness check.
+
+    Returns (codemap_hash, corrections_hash, section_text_raw, combined_hash).
+    """
+    codemap_hash = _sha256_file(codemap_path) if codemap_path.is_file() else ""
+    corrections_hash = (
+        _sha256_file(corrections_file) if corrections_file.is_file() else ""
+    )
+    section_text_raw = section_file.read_text() if section_file.is_file() else ""
+    section_hash = Services.hasher().content_hash(strip_scan_summaries(section_text_raw))
+    combined = f"{codemap_hash}:{corrections_hash}:{section_hash}"
+    combined_hash = Services.hasher().content_hash(combined)
+    return codemap_hash, corrections_hash, section_text_raw, combined_hash
+
+
 def validate_existing_related_files(
     *,
     section_file: Path,
@@ -331,14 +349,9 @@ def validate_existing_related_files(
     section_log.mkdir(parents=True, exist_ok=True)
     codemap_hash_file = section_log / "codemap-hash.txt"
 
-    codemap_hash = _sha256_file(codemap_path) if codemap_path.is_file() else ""
-    corrections_hash = (
-        _sha256_file(corrections_file) if corrections_file.is_file() else ""
+    codemap_hash, corrections_hash, section_text_raw, combined_hash = (
+        _compute_validation_hashes(section_file, codemap_path, corrections_file)
     )
-    section_text_raw = section_file.read_text() if section_file.is_file() else ""
-    section_hash = Services.hasher().content_hash(strip_scan_summaries(section_text_raw))
-    combined = f"{codemap_hash}:{corrections_hash}:{section_hash}"
-    combined_hash = Services.hasher().content_hash(combined)
 
     signal_file = PathRegistry(
         artifacts_dir.parent

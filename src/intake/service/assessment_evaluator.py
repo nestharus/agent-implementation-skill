@@ -212,21 +212,13 @@ def _debt_key(entry: dict) -> str:
     return hashlib.sha256(parts.encode()).hexdigest()[:16]
 
 
-def promote_debt_signals(planspace: Path) -> list[dict]:
-    """Consume risk-register-signal files and stage them for register promotion.
+def _collect_debt_candidates(
+    signals_dir: Path,
+) -> tuple[list[dict], list[Path]]:
+    """Parse risk-register-signal files into debt candidates.
 
-    Reads all risk-register-signal-*.json files, extracts typed debt_items,
-    deduplicates against existing staging entries, writes a consolidated
-    staging artifact, and returns only newly promoted entries.
+    Returns (candidates, consumed_signal_paths).
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-    paths = PathRegistry(planspace)
-    signals_dir = paths.signals_dir()
-    if not signals_dir.exists():
-        return []
-
     candidates: list[dict] = []
     consumed_signals: list[Path] = []
     for signal_path in sorted(signals_dir.glob("*-risk-register-signal.json")):
@@ -254,7 +246,25 @@ def promote_debt_signals(planspace: Path) -> list[dict]:
                 "profile_id": data.get("profile_id", ""),
             })
         consumed_signals.append(signal_path)
+    return candidates, consumed_signals
 
+
+def promote_debt_signals(planspace: Path) -> list[dict]:
+    """Consume risk-register-signal files and stage them for register promotion.
+
+    Reads all risk-register-signal-*.json files, extracts typed debt_items,
+    deduplicates against existing staging entries, writes a consolidated
+    staging artifact, and returns only newly promoted entries.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    paths = PathRegistry(planspace)
+    signals_dir = paths.signals_dir()
+    if not signals_dir.exists():
+        return []
+
+    candidates, consumed_signals = _collect_debt_candidates(signals_dir)
     if not candidates:
         return []
 

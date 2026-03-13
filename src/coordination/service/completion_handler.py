@@ -200,6 +200,54 @@ def post_section_completion(
     )
 
 
+_MAX_DIFF_LINES = 100
+
+
+def _build_source_diffs(
+    source_num: str,
+    section: Section,
+    paths: PathRegistry,
+    codespace: Path,
+) -> str | None:
+    """Build diff text comparing a source section's snapshot to current files.
+
+    Returns formatted markdown diff block, or ``None`` if no diffs found.
+    """
+    if not re.fullmatch(r"\d+", source_num):
+        return None
+    source_snapshot_dir = paths.snapshot_section(source_num)
+    if not source_snapshot_dir.exists():
+        return None
+
+    diff_parts: list[str] = []
+    for rel_path in section.related_files:
+        snapshot_file = source_snapshot_dir / rel_path
+        if not snapshot_file.exists():
+            continue
+        diff_text = compute_text_diff(snapshot_file, codespace / rel_path)
+        if not diff_text:
+            continue
+        diff_lines = diff_text.split("\n")
+        if len(diff_lines) > _MAX_DIFF_LINES:
+            diff_text = "\n".join(diff_lines[:_MAX_DIFF_LINES])
+            diff_text += (
+                f"\n... (truncated — {len(diff_lines) - _MAX_DIFF_LINES}"
+                f" more lines)"
+            )
+        diff_parts.append(
+            f"### Diff: `{rel_path}` "
+            f"(section {source_num}'s snapshot vs current)\n"
+            f"```diff\n{diff_text}\n```"
+        )
+
+    if not diff_parts:
+        return None
+    return (
+        f"### File Diffs Since Section {source_num}\n\n"
+        + "\n\n".join(diff_parts)
+    )
+
+
 def read_incoming_notes(
     section: Section,
     planspace: Path,
@@ -246,39 +294,10 @@ def read_incoming_notes(
 
         parts.append(note_text)
         source_num = note["source"]
-        if not re.fullmatch(r"\d+", source_num):
-            continue
-
-        source_snapshot_dir = paths.snapshot_section(source_num)
-        if not source_snapshot_dir.exists():
-            continue
-
-        diff_parts: list[str] = []
-        max_diff_lines = 100
-        for rel_path in section.related_files:
-            snapshot_file = source_snapshot_dir / rel_path
-            current_file = codespace / rel_path
-            if not snapshot_file.exists():
-                continue
-            diff_text = compute_text_diff(snapshot_file, current_file)
-            if diff_text:
-                diff_lines = diff_text.split("\n")
-                if len(diff_lines) > max_diff_lines:
-                    diff_text = "\n".join(diff_lines[:max_diff_lines])
-                    diff_text += (
-                        f"\n... (truncated — {len(diff_lines) - max_diff_lines}"
-                        f" more lines)"
-                    )
-                diff_parts.append(
-                    f"### Diff: `{rel_path}` "
-                    f"(section {source_num}'s snapshot vs current)\n"
-                    f"```diff\n{diff_text}\n```"
-                )
-
-        if diff_parts:
-            parts.append(
-                f"### File Diffs Since Section {source_num}\n\n"
-                + "\n\n".join(diff_parts)
-            )
+        diff_section = _build_source_diffs(
+            source_num, section, paths, codespace,
+        )
+        if diff_section:
+            parts.append(diff_section)
 
     return "\n\n---\n\n".join(parts)

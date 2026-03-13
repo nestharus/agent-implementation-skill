@@ -79,24 +79,15 @@ def _collect_and_persist_problems(
 # Phase 2: Build coordination plan via planner agent
 # ---------------------------------------------------------------------------
 
-def _build_coordination_plan(
+def _dispatch_and_parse_plan(
     problems: list[dict],
     planspace: Path,
     parent: str,
     paths: PathRegistry,
-) -> tuple[list[list[dict[str, Any]]], list[str], dict] | None:
-    """Dispatch planner agent, parse plan, build confirmed groups.
-
-    Returns ``(confirmed_groups, group_strategies, coord_plan)`` or
-    ``None`` on failure (alignment changed, parse failures).
-    """
-    policy = Services.policies().load(planspace)
+    policy: dict,
+) -> dict | None:
+    """Dispatch planner agent with retry, return parsed plan or None."""
     coord_dir = paths.coordination_dir()
-
-    ctrl = Services.pipeline_control().poll_control_messages(planspace, parent)
-    if ctrl == "alignment_changed":
-        return None
-
     plan_prompt = write_coordination_plan_prompt(problems, planspace)
     plan_output = coord_dir / "coordination-plan-output.md"
     Services.logger().log("  coordinator: dispatching coordination-planner agent")
@@ -128,9 +119,32 @@ def _build_coordination_plan(
             "attempts": 2,
         })
         Services.communicator().mailbox_send(
-            planspace, parent,
-            "fail:coordination:unparseable_plan_json",
+            planspace, parent, "fail:coordination:unparseable_plan_json",
         )
+    return coord_plan
+
+
+def _build_coordination_plan(
+    problems: list[dict],
+    planspace: Path,
+    parent: str,
+    paths: PathRegistry,
+) -> tuple[list[list[dict[str, Any]]], list[str], dict] | None:
+    """Dispatch planner agent, parse plan, build confirmed groups.
+
+    Returns ``(confirmed_groups, group_strategies, coord_plan)`` or
+    ``None`` on failure (alignment changed, parse failures).
+    """
+    policy = Services.policies().load(planspace)
+
+    ctrl = Services.pipeline_control().poll_control_messages(planspace, parent)
+    if ctrl == "alignment_changed":
+        return None
+
+    coord_plan = _dispatch_and_parse_plan(
+        problems, planspace, parent, paths, policy,
+    )
+    if coord_plan is None:
         return None
 
     confirmed_groups: list[list[dict[str, Any]]] = []
