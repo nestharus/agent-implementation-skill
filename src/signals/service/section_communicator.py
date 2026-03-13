@@ -80,10 +80,7 @@ def _record_traceability(
 
     # Inherit governance identity from proposal-state if available
     governance: dict = {}
-    state_path = (
-        paths.proposals_dir()
-        / f"section-{section}-proposal-state.json"
-    )
+    state_path = paths.proposal_state(section)
     if state_path.exists():
         ps = load_proposal_state(state_path)
         governance = {

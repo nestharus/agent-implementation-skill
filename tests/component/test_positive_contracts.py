@@ -33,6 +33,7 @@ _DOCTRINE_SURFACES = [
     "scan/agents/substrate-shard-explorer.md",
     "scan/agents/substrate-pruner.md",
     "scan/agents/substrate-seeder.md",
+    "implementation/agents/microstrategy-writer.md",
 ]
 
 

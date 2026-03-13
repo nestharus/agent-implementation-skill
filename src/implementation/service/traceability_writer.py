@@ -17,10 +17,7 @@ def _proposal_governance_ids(planspace: Path, section_number: str) -> dict:
     from proposal.repository.state import load_proposal_state
 
     paths = PathRegistry(planspace)
-    state_path = (
-        paths.proposals_dir()
-        / f"section-{section_number}-proposal-state.json"
-    )
+    state_path = paths.proposal_state(section_number)
     state = load_proposal_state(state_path)
     return {
         "problem_ids": [

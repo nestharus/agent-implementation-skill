@@ -90,7 +90,7 @@ def _collect_outstanding_problems(
             continue
         note_id = note_id_match.group(1)
 
-        ack_path = paths.signals_dir() / f"note-ack-{target_num}.json"
+        ack_path = paths.note_ack_signal(target_num)
         ack_signal = Services.signals().read(ack_path)
         if ack_signal:
             acks = ack_signal.get("acknowledged", [])
@@ -269,9 +269,8 @@ def _detect_recurrence_patterns(
         ],
     }
 
-    coord_dir = paths.coordination_dir()
-    coord_dir.mkdir(parents=True, exist_ok=True)
-    recurrence_path = coord_dir / "recurrence.json"
+    recurrence_path = paths.coordination_recurrence()
+    recurrence_path.parent.mkdir(parents=True, exist_ok=True)
     Services.artifact_io().write_json(recurrence_path, report)
     Services.communicator().log_artifact(planspace, "coordination:recurrence")
 

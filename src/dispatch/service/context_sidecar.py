@@ -74,7 +74,7 @@ def _resolve_decision_history(planspace: Path, section: str | None) -> str:
     if section:
         json_path = paths.decision_json(section)
     else:
-        json_path = paths.decisions_dir() / "global.json"
+        json_path = paths.global_decision_json()
     return Services.artifact_io().read_if_exists(json_path)
 
 
@@ -105,7 +105,7 @@ def _resolve_related_files(planspace: Path, section: str | None) -> str:
     if not section:
         return ""
     paths = PathRegistry(planspace)
-    json_path = paths.signals_dir() / f"related-files-{section}.json"
+    json_path = paths.related_files_signal(section)
     if json_path.exists():
         return json_path.read_text(encoding="utf-8")
 

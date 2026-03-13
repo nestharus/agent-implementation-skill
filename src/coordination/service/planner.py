@@ -155,7 +155,7 @@ def write_coordination_plan_prompt(
         )
 
     recurrence_ref = ""
-    recurrence_path = paths.coordination_dir() / "recurrence.json"
+    recurrence_path = paths.coordination_recurrence()
     if recurrence_path.exists():
         recurrence_ref = (
             f"\n## Recurrence Data\n\n"

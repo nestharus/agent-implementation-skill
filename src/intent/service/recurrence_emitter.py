@@ -18,10 +18,7 @@ def emit_recurrence_signal(
         "recurring": True,
         "escalate_to_coordinator": True,
     }
-    recurrence_path = (
-        PathRegistry(planspace).signals_dir()
-        / f"section-{section_number}-recurrence.json"
-    )
+    recurrence_path = PathRegistry(planspace).recurrence_signal(section_number)
     Services.artifact_io().write_json(recurrence_path, recurrence_signal)
     Services.logger().log(
         f"Section {section_number}: recurrence signal written "

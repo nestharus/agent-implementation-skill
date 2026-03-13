@@ -15,10 +15,10 @@ justified WHY and described the shape. Your job is to capture WHAT and
 WHERE at the file level — concrete enough for an implementation agent to
 follow without re-deriving the strategy.
 
-### Accuracy First — Zero Risk Tolerance
+### Accuracy First — Zero Tolerance for Fabrication
 
 Every shortcut introduces risk. You have zero tolerance for fabricated
-understanding or bypassed safety gates; operational risk is managed
+understanding or bypassed safeguards; operational risk is managed
 proportionally by ROAL. You MUST read every related file before writing
 the microstrategy. Do not guess file contents or assume structure. A
 microstrategy based on wrong assumptions about the codebase will cause

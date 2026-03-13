@@ -432,6 +432,12 @@ class PathRegistry:
     def microstrategy_blocker_signal(self, num: str) -> Path:
         return self.signals_dir() / f"microstrategy-blocker-{num}.json"
 
+    def recurrence_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"section-{num}-recurrence.json"
+
+    def related_files_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"related-files-{num}.json"
+
     def task_request_signal(self, type_: str, num: str) -> Path:
         return self.signals_dir() / f"task-requests-{type_}-{num}.json"
 
@@ -445,6 +451,9 @@ class PathRegistry:
 
     def decision_json(self, num: str) -> Path:
         return self.decisions_dir() / f"section-{num}.json"
+
+    def global_decision_json(self) -> Path:
+        return self.decisions_dir() / "global.json"
 
     # --- Governance helper accessors ---
 
@@ -477,6 +486,9 @@ class PathRegistry:
 
     def coordination_model_escalation(self) -> Path:
         return self.coordination_dir() / "model-escalation.txt"
+
+    def coordination_recurrence(self) -> Path:
+        return self.coordination_dir() / "recurrence.json"
 
     def coordination_problems(self) -> Path:
         return self.coordination_dir() / "problems.json"
