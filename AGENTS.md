@@ -134,7 +134,7 @@ Delete the old zip and recreate:
 ```bash
 cd /home/nes/projects/agent-implementation-skill
 rm -f ~/work/tmp/execution-philosophy/codebase.zip
-zip -r ~/work/tmp/execution-philosophy/codebase.zip src/ evals/ governance/ philosophy/ system-synthesis.md -x '*__pycache__*' -x 'src/.venv/*'
+zip -r ~/work/tmp/execution-philosophy/codebase.zip src/ evals/ tests/ governance/ philosophy/ system-synthesis.md -x '*__pycache__*' -x 'src/.venv/*'
 ```
 
 ---
@@ -231,7 +231,7 @@ Investigation prompts and findings go in `.tmp/agentic-evals/`.
 
 Common dismissal patterns from history:
 
-- **Tests / pyproject.toml absent from zip** — settled in R46/R47: audit bundle = deployed layout. Not a violation.
+- **Tests / pyproject.toml absent from zip** — tests/ included in bundle as of R118. pyproject.toml ships under src/.
 - **Model names in `models.md`** — `gpt-5.4-high` and `gpt-5.4-xhigh` are current names.
 - **Any violation in a "Settled Concerns" section** — already guarded by tests; re-raising is a cycle.
 

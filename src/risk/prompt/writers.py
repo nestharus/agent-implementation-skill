@@ -183,10 +183,7 @@ def _collect_roal_evidence(
     """Collect section-scoped evidence artifacts for ROAL prompts."""
     evidence: list[tuple[str, Path]] = []
 
-    manifest_path = (
-        paths.input_refs_dir(section_number)
-        / f"section-{section_number}-modified-file-manifest.json"
-    )
+    manifest_path = paths.modified_file_manifest(section_number)
     if manifest_path.exists():
         evidence.append(("Modified-file manifest", manifest_path))
 
@@ -197,11 +194,10 @@ def _collect_roal_evidence(
     for recon in sorted(paths.reconciliation_dir().glob(f"*{scope}*")):
         evidence.append(("Reconciliation result", recon))
 
-    for risk_artifact_name in (
-        f"section-{section_number}-risk-accepted-steps.json",
-        f"section-{section_number}-risk-deferred.json",
+    for risk_path in (
+        paths.risk_accepted_steps(section_number),
+        paths.risk_deferred(section_number),
     ):
-        risk_path = paths.input_refs_dir(section_number) / risk_artifact_name
         if risk_path.exists():
             evidence.append(("Previous risk artifact", risk_path))
 

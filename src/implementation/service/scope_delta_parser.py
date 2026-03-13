@@ -4,6 +4,8 @@ import json
 import re
 from pathlib import Path
 
+from orchestrator.path_registry import PathRegistry
+
 _FENCE_RE = re.compile(r"```(?:json)?\s*\n(.*?)\n```", re.DOTALL)
 _VALID_ACTIONS = {"accept", "reject", "absorb"}
 
@@ -69,17 +71,17 @@ def parse_scope_delta_adjudication(output_text: str) -> dict | None:
     return None
 
 
-def normalize_section_id(sec_str: str, scope_deltas_dir: Path) -> str:
+def normalize_section_id(sec_str: str, paths: PathRegistry) -> str:
     """Normalize a section ID to match existing delta filenames."""
     sec_str = str(sec_str).strip()
 
-    if (scope_deltas_dir / f"section-{sec_str}-scope-delta.json").exists():
+    if paths.scope_delta_section(sec_str).exists():
         return sec_str
 
     try:
         num = int(sec_str)
         padded = f"{num:02d}"
-        if (scope_deltas_dir / f"section-{padded}-scope-delta.json").exists():
+        if paths.scope_delta_section(padded).exists():
             return padded
     except ValueError:
         pass

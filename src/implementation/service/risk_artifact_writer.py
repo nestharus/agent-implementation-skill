@@ -64,7 +64,7 @@ def write_accepted_steps(
     return write_section_input_artifact(
         paths,
         sec_num,
-        f"section-{sec_num}-risk-accepted-steps.json",
+        paths.risk_accepted_steps(sec_num).name,
         payload,
     )
 
@@ -97,7 +97,7 @@ def write_deferred_steps(
     return write_section_input_artifact(
         paths,
         sec_num,
-        f"section-{sec_num}-risk-deferred.json",
+        paths.risk_deferred(sec_num).name,
         payload,
     )
 
@@ -261,7 +261,7 @@ def write_modified_file_manifest(
     return write_section_input_artifact(
         paths,
         sec_num,
-        f"section-{sec_num}-modified-file-manifest.json",
+        paths.modified_file_manifest(sec_num).name,
         {
             "modified_files": list(modified_files),
             "count": len(modified_files),

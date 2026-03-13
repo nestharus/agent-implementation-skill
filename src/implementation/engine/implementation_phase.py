@@ -150,11 +150,8 @@ def _deferred_reassessment_inputs_ready(
         return False
 
     paths = PathRegistry(planspace)
-    input_dir = paths.input_refs_dir(sec_num)
     available = {
-        "modified-file-manifest": (
-            input_dir / f"section-{sec_num}-modified-file-manifest.json"
-        ),
+        "modified-file-manifest": paths.modified_file_manifest(sec_num),
         "alignment-check-result": (
             paths.artifacts / f"impl-align-{sec_num}-output.md"
         ),
@@ -208,9 +205,7 @@ def _maybe_reassess_deferred_steps(
 ) -> RiskPlan | None:
     scope = f"section-{sec_num}"
     paths = PathRegistry(planspace)
-    deferred_path = (
-        paths.input_refs_dir(sec_num) / f"{scope}-risk-deferred.json"
-    )
+    deferred_path = paths.risk_deferred(sec_num)
     deferred_payload = Services.artifact_io().read_json(deferred_path)
     if not isinstance(deferred_payload, dict):
         return None

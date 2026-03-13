@@ -88,7 +88,7 @@ def extract_excerpts(
                     "signal_payload": signal_payload,
                 }
                 Services.artifact_io().write_json(
-                    scope_delta_dir / f"section-{section.number}-scope-delta.json",
+                    paths.scope_delta_section(section.number),
                     scope_delta,
                 )
             _update_blocker_rollup(planspace)

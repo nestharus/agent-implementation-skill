@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 from containers import Services
+from orchestrator.path_registry import PathRegistry
 
 
 def _is_valid_updater_signal(signal_path: Path) -> bool:
@@ -77,7 +78,8 @@ def _route_scope_deltas(
     """Route out-of-scope findings into scope-delta artifacts."""
     print("--- Deep Scan: routing out-of-scope findings ---")
 
-    scope_deltas_dir = artifacts_dir / "scope-deltas"
+    paths = PathRegistry(artifacts_dir.parent)
+    scope_deltas_dir = paths.scope_deltas_dir()
     scope_deltas_dir.mkdir(parents=True, exist_ok=True)
 
     for section_file in section_files:
@@ -101,7 +103,7 @@ def _route_scope_deltas(
         if not all_oos:
             continue
 
-        delta_path = scope_deltas_dir / f"section-{sec_num}-scope-delta.json"
+        delta_path = paths.scope_delta_section(sec_num)
 
         if delta_path.is_file():
             existing = Services.artifact_io().read_json(delta_path)

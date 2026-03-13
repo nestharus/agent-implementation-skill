@@ -39,7 +39,7 @@ Post-implementation assessment emits `accept_with_debt` verdicts with typed `deb
 - **Description**: R107 replaced ~47 `policy.get("key", "literal")` callsites with `resolve(policy, "key")`. If `resolve()` has a bug or if a key is missing from ModelPolicy, the wrong model (or None) could be dispatched.
 - **Severity**: low
 - **Status**: mitigated
-- **Acceptance rationale**: All 1499 tests pass. `resolve()` falls back to ModelPolicy defaults which are the same values the literals used.
+- **Acceptance rationale**: `resolve()` falls back to ModelPolicy defaults which are the same values the literals used. All dispatch paths are covered by tests.
 - **Mitigation**: ModelPolicy dataclass defines all known keys with defaults. Tests cover all dispatch paths with mocked agents.
 
 ---

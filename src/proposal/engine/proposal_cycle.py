@@ -375,7 +375,7 @@ def _handle_proposal_signals(
             "signal_payload": signal_payload,
         }
         Services.artifact_io().write_json(
-            scope_delta_dir / f"section-{section_number}-scope-delta.json",
+            paths.scope_delta_section(section_number),
             scope_delta,
         )
     _update_blocker_rollup(planspace)

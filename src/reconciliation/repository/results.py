@@ -22,8 +22,7 @@ def write_scope_delta(planspace: Path, scope_delta: dict) -> Path:
     """Write a consolidated scope-delta artifact from reconciliation."""
     sources = "-".join(scope_delta.get("source_sections", ["unknown"]))
     title_slug = scope_delta.get("title", "unknown")[:40].replace(" ", "_")
-    filename = f"reconciliation-{sources}-{title_slug}.json"
-    path = PathRegistry(planspace).scope_deltas_dir() / filename
+    path = PathRegistry(planspace).scope_delta_reconciliation(sources, title_slug)
     title_hash = Services.hasher().content_hash(scope_delta.get("title", ""))[:8]
     delta_id = f"delta-recon-{sources}-{title_hash}"
     delta = {

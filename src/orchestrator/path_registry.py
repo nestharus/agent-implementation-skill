@@ -66,6 +66,15 @@ class PathRegistry:
     def scope_deltas_dir(self) -> Path:
         return self._artifacts / "scope-deltas"
 
+    def scope_delta_section(self, num: str) -> Path:
+        return self.scope_deltas_dir() / f"section-{num}-scope-delta.json"
+
+    def scope_delta_candidate(self, num: str, cand_hash: str) -> Path:
+        return self.scope_deltas_dir() / f"section-{num}-candidate-{cand_hash}-scope-delta.json"
+
+    def scope_delta_reconciliation(self, sources: str, title_slug: str) -> Path:
+        return self.scope_deltas_dir() / f"reconciliation-{sources}-{title_slug}.json"
+
     def contracts_dir(self) -> Path:
         return self._artifacts / "contracts"
 
@@ -180,6 +189,15 @@ class PathRegistry:
 
     def input_refs_dir(self, num: str) -> Path:
         return self.inputs_dir() / f"section-{num}"
+
+    def risk_accepted_steps(self, num: str) -> Path:
+        return self.input_refs_dir(num) / f"section-{num}-risk-accepted-steps.json"
+
+    def risk_deferred(self, num: str) -> Path:
+        return self.input_refs_dir(num) / f"section-{num}-risk-deferred.json"
+
+    def modified_file_manifest(self, num: str) -> Path:
+        return self.input_refs_dir(num) / f"section-{num}-modified-file-manifest.json"
 
     def intent_section_dir(self, num: str) -> Path:
         return self.intent_sections_dir() / f"section-{num}"
@@ -553,6 +571,9 @@ class PathRegistry:
 
     def open_problems_dir(self) -> Path:
         return self._artifacts / "open-problems"
+
+    def research_questions_artifact(self, num: str) -> Path:
+        return self.open_problems_dir() / f"section-{num}-research-questions.json"
 
     def triage_dir(self) -> Path:
         return self._artifacts / "triage"

@@ -160,7 +160,7 @@ def _build_delta_id_map(delta_files: list[Path]) -> dict[str, Path]:
 def _apply_adjudication(
     decision: dict,
     *,
-    scope_deltas_dir: Path,
+    paths: PathRegistry,
     delta_id_to_path: dict[str, Path],
 ) -> None:
     delta_id = str(decision.get("delta_id", ""))
@@ -169,8 +169,8 @@ def _apply_adjudication(
     if delta_id and delta_id in delta_id_to_path:
         delta_path = delta_id_to_path[delta_id]
     else:
-        section = normalize_section_id(str(decision.get("section", "")), scope_deltas_dir)
-        delta_path = scope_deltas_dir / f"section-{section}-scope-delta.json"
+        section = normalize_section_id(str(decision.get("section", "")), paths)
+        delta_path = paths.scope_delta_section(section)
 
     if delta_path.exists():
         delta = Services.artifact_io().read_json(delta_path)
@@ -211,8 +211,6 @@ def _record_decisions(
     planspace: Path,
     parent: str,
     decisions: list[dict],
-    *,
-    scope_deltas_dir: Path,
 ) -> None:
     paths = PathRegistry(planspace)
     decisions_rollup_path = paths.coordination_dir() / "scope-delta-decisions.json"
@@ -222,7 +220,7 @@ def _record_decisions(
     decisions_dir = paths.decisions_dir()
     for decision in decisions:
         delta_id = str(decision.get("delta_id", ""))
-        section = normalize_section_id(str(decision.get("section", "")), scope_deltas_dir)
+        section = normalize_section_id(str(decision.get("section", "")), paths)
         action = decision.get("action", "")
         reason = decision.get("reason", "")
         label = delta_id or section
@@ -304,7 +302,7 @@ def aggregate_scope_deltas(
     for decision in decisions:
         _apply_adjudication(
             decision,
-            scope_deltas_dir=scope_deltas_dir,
+            paths=paths,
             delta_id_to_path=delta_id_to_path,
         )
 
@@ -312,6 +310,5 @@ def aggregate_scope_deltas(
         planspace,
         parent,
         decisions,
-        scope_deltas_dir=scope_deltas_dir,
     )
     return decisions

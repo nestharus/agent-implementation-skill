@@ -81,10 +81,7 @@ def publish_discoveries(
             "requires_root_reframing": False,
             "source": "proposal-state:new_section_candidates",
         }
-        delta_path = (
-            scope_delta_dir
-            / f"section-{section_number}-candidate-{cand_hash}-scope-delta.json"
-        )
+        delta_path = registry.scope_delta_candidate(section_number, cand_hash)
         Services.artifact_io().write_json(delta_path, scope_delta)
         Services.logger().log(
             f"Section {section_number}: wrote scope-delta for "
@@ -107,7 +104,7 @@ def publish_discoveries(
             "research_questions": [str(q) for q in rq_list],
             "source": "proposal-state",
         }
-        rq_path = open_problems_dir / f"section-{section_number}-research-questions.json"
+        rq_path = registry.research_questions_artifact(section_number)
         Services.artifact_io().write_json(rq_path, rq_artifact)
         Services.logger().log(
             f"Section {section_number}: wrote {len(rq_list)} "
