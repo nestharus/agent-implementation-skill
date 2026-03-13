@@ -115,20 +115,16 @@ def find_entry_span(
         if in_fence:
             continue
 
-        if entry_rel_start is not None:
-            # Look for end boundary
-            if line.startswith("### ") or (
+        if entry_rel_start is not None and (
+            line.startswith("### ") or (
                 line.startswith("## ") and not line.startswith("### ")
-            ):
-                return (block_start + entry_rel_start,
-                        block_start + line_rel)
-        elif line.startswith(marker):
-            # Exact heading match (line is "### path" possibly
-            # followed by nothing, spaces, or more text)
+            )
+        ):
+            return (block_start + entry_rel_start, block_start + line_rel)
+
+        if entry_rel_start is None and line.startswith(marker):
             rest = line[len(marker):]
             if not rest or rest[0] in (" ", "\t"):
-                entry_rel_start = line_rel
-            elif rest == "":
                 entry_rel_start = line_rel
 
     if entry_rel_start is not None:

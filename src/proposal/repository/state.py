@@ -62,15 +62,9 @@ def _fail_closed_default() -> dict:
 def validate_proposal_state(state: dict) -> dict:
     """Validate and normalize a proposal state dict."""
     for key, expected_type in PROPOSAL_STATE_SCHEMA.items():
-        if expected_type is list:
-            if key not in state or not isinstance(state[key], list):
-                state[key] = []
-        elif expected_type is bool:
-            if key not in state or not isinstance(state[key], bool):
-                state[key] = False
-        elif expected_type is str:
-            if key not in state or not isinstance(state[key], str):
-                state[key] = ""
+        if key in state and isinstance(state[key], expected_type):
+            continue
+        state[key] = expected_type()
     return state
 
 

@@ -55,9 +55,11 @@ def build_pending_surface_payload(worklist: list[dict], surfaces: dict) -> dict:
 
     for entry in worklist:
         surface_id = entry["id"]
-        if surface_id in judge_problem and surface_id in budgeted_ids:
+        if surface_id not in budgeted_ids:
+            continue
+        if surface_id in judge_problem:
             problem_surfaces.append(judge_problem[surface_id])
-        elif surface_id in judge_philosophy and surface_id in budgeted_ids:
+        elif surface_id in judge_philosophy:
             philosophy_surfaces.append(judge_philosophy[surface_id])
         elif surface_id.startswith("P-"):
             problem_surfaces.append(_surface_from_entry(entry))

@@ -57,18 +57,18 @@ def _field_map(body: str) -> dict[str, str]:
                 fields[current_label] = " ".join(current_parts).strip()
             current_label = match.group("label").strip().lower()
             current_parts = [match.group("value").strip()]
-        elif current_label is not None:
-            stripped = line.strip()
-            if not stripped:
-                fields[current_label] = " ".join(current_parts).strip()
-                current_label = None
-                current_parts = []
-            elif stripped.startswith(("- ", "* ", "## ", "---")):
-                fields[current_label] = " ".join(current_parts).strip()
-                current_label = None
-                current_parts = []
-            else:
-                current_parts.append(stripped)
+            continue
+
+        if current_label is None:
+            continue
+
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("- ", "* ", "## ", "---")):
+            fields[current_label] = " ".join(current_parts).strip()
+            current_label = None
+            current_parts = []
+        else:
+            current_parts.append(stripped)
 
     if current_label is not None:
         fields[current_label] = " ".join(current_parts).strip()
