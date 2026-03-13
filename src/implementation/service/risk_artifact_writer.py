@@ -13,6 +13,9 @@ from risk.types import (
     StepDecision,
 )
 
+_RISK_ITERATIONS_BASE = 5
+_RISK_ITERATIONS_CAP = 9
+
 
 def _unique_strings(values: list[str]) -> list[str]:
     seen: set[str] = set()
@@ -239,9 +242,9 @@ def load_risk_hints(planspace: Path, sec_num: str) -> dict:
     risk_mode_hint = str(triage_signal.get("risk_mode", ""))
     posture_floor = triage_signal.get("posture_floor")
     budget_hint = triage_signal.get("risk_budget_hint", 0)
-    max_iterations = 5
+    max_iterations = _RISK_ITERATIONS_BASE
     if isinstance(budget_hint, int):
-        max_iterations = min(5 + max(budget_hint, 0), 9)
+        max_iterations = min(_RISK_ITERATIONS_BASE + max(budget_hint, 0), _RISK_ITERATIONS_CAP)
 
     return {
         "signal": triage_signal,

@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 SIMILARITY_ADJUSTMENT_SCALE = 0.2
 HISTORY_ADJUSTMENT_BOUND = 10.0
 
+# Per-surprise score contribution in _actual_outcome_score
+_SURPRISE_SCORE_WEIGHT = 5
+_SURPRISE_SCORE_CAP = 10
+
 # Outcome string → base score for _actual_outcome_score
 _OUTCOME_SCORE: dict[str, int] = {
     "failure": 85,
@@ -143,7 +147,7 @@ def _actual_outcome_score(entry: RiskHistoryEntry) -> int:
     score = _OUTCOME_SCORE.get(outcome, 50)
     score += _VERIFICATION_ADJUSTMENT.get(verification, 0)
 
-    score += min(len(entry.surfaced_surprises) * 5, 10)
+    score += min(len(entry.surfaced_surprises) * _SURPRISE_SCORE_WEIGHT, _SURPRISE_SCORE_CAP)
     return clamp_int(score, 0, 100)
 
 

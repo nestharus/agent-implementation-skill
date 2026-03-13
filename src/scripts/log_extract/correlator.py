@@ -23,6 +23,16 @@ _TIME_MODERATE_MS = 120_000      # <=2min: weak time proximity
 # Minimum score for a correlation link to be accepted
 _MIN_CORRELATION_SCORE = 35
 
+# Scoring weights for correlation signals
+_SCORE_PROMPT_SIGNATURE = 60
+_SCORE_TIME_CLOSE = 30
+_SCORE_TIME_NEAR = 20
+_SCORE_TIME_MODERATE = 10
+_SCORE_CWD_EXACT = 15
+_SCORE_CWD_BASENAME = 5
+_SCORE_MODEL_EXACT = 15
+_SCORE_MODEL_COMPATIBLE = 8
+
 
 def correlate(
     dispatches: list[DispatchCandidate],
@@ -86,36 +96,36 @@ def _score(
     # Prompt signature match
     if (disp.prompt_signature and sess.prompt_signature
             and disp.prompt_signature == sess.prompt_signature):
-        score += 60
+        score += _SCORE_PROMPT_SIGNATURE
         reasons.append("prompt_signature_match")
 
     # Time proximity
     if delta_ms <= _TIME_CLOSE_MS:
-        score += 30
+        score += _SCORE_TIME_CLOSE
         reasons.append("time_delta<=5s")
     elif delta_ms <= _TIME_NEAR_MS:
-        score += 20
+        score += _SCORE_TIME_NEAR
         reasons.append("time_delta<=30s")
     elif delta_ms <= _TIME_MODERATE_MS:
-        score += 10
+        score += _SCORE_TIME_MODERATE
         reasons.append("time_delta<=120s")
 
     # CWD match
     if disp.cwd and sess.cwd:
         if disp.cwd == sess.cwd:
-            score += 15
+            score += _SCORE_CWD_EXACT
             reasons.append("cwd_exact")
         elif disp.cwd.rsplit("/", 1)[-1] == sess.cwd.rsplit("/", 1)[-1]:
-            score += 5
+            score += _SCORE_CWD_BASENAME
             reasons.append("cwd_basename")
 
     # Model match
     if disp.model and sess.model:
         if disp.model == sess.model:
-            score += 15
+            score += _SCORE_MODEL_EXACT
             reasons.append("model_exact")
         elif _compatible_models(disp.model, sess.model):
-            score += 8
+            score += _SCORE_MODEL_COMPATIBLE
             reasons.append("model_compatible")
 
     # Section match

@@ -15,6 +15,7 @@ from risk.engine.risk_assessor import run_lightweight_risk_check
 from risk.service.package_builder import build_package_from_proposal
 
 _RAW_RISK_EXPLORATION_THRESHOLD = 60
+_RISK_SEVERITY_BLOCKER_THRESHOLD = 3
 from risk.repository.serialization import load_risk_assessment
 from risk.types import EngagementContext, RiskAssessment, RiskMode, RiskPackage, RiskType
 from scan.service.section_loader import parse_related_files
@@ -68,7 +69,7 @@ def _write_proposal_risk_blocker(
     reasons = [
         f"{risk}={severities[risk]}"
         for risk in ("brute_force_regression", "silent_drift")
-        if severities.get(risk, 0) >= 3 and risk in dominant_risks
+        if severities.get(risk, 0) >= _RISK_SEVERITY_BLOCKER_THRESHOLD and risk in dominant_risks
     ]
     detail = (
         "ROAL recommends additional exploration before implementation due to "

@@ -9,6 +9,8 @@ from containers import Services
 from signals.service.database_client import DatabaseClient
 from signals.service.mailbox_service import MailboxService
 
+_PAUSE_POLL_TIMEOUT_SECONDS = 5
+
 
 def check_pipeline_state(planspace: Path, *, db_sh: Path) -> str:
     """Return the latest pipeline-state lifecycle value."""
@@ -45,7 +47,7 @@ def wait_if_paused(
     mailbox.send(parent, "status:paused")
     buffered: list[str] = []
     while check_pipeline_state(planspace, db_sh=db_sh) == "paused":
-        msg = mailbox.recv(timeout=5)
+        msg = mailbox.recv(timeout=_PAUSE_POLL_TIMEOUT_SECONDS)
         if msg == "TIMEOUT":
             continue
         if msg.startswith("abort"):
