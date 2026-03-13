@@ -9,6 +9,8 @@ from orchestrator.path_registry import PathRegistry
 from risk.repository.history import read_history
 from risk.types import PostureProfile
 
+_SUMMARY_SNIPPET_TRUNCATION = 500
+
 
 def run_intent_triage(
     section_number: str,
@@ -193,7 +195,7 @@ def _build_triage_prompt(
         related_files_count=related_files_count,
         incoming_notes_count=incoming_notes_count,
         solve_count=solve_count,
-        summary_snippet=section_summary[:500] if section_summary else "(none)",
+        summary_snippet=section_summary[:_SUMMARY_SNIPPET_TRUNCATION] if section_summary else "(none)",
     )
 
 

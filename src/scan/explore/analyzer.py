@@ -14,11 +14,14 @@ from scan.codemap.cache import FileCardCache, is_valid_cached_feedback
 from scan.scan_dispatcher import dispatch_agent
 from containers import Services
 
+_PATH_TOKEN_MAX_LENGTH = 80
+_SOURCE_HASH_LENGTH = 10
+
 
 def safe_name(source_file: str) -> str:
     """Compute the safe filename token for a source file path."""
     path_token = source_file.replace("/", "_").replace(".", "_")
-    path_token = re.sub(r"[^a-zA-Z0-9_-]", "", path_token)[:80]
+    path_token = re.sub(r"[^a-zA-Z0-9_-]", "", path_token)[:_PATH_TOKEN_MAX_LENGTH]
 
     if "." in source_file:
         extension_token = source_file.rsplit(".", 1)[1]
@@ -27,7 +30,7 @@ def safe_name(source_file: str) -> str:
 
     source_hash = hashlib.sha1(  # noqa: S324
         source_file.encode(),
-    ).hexdigest()[:10]
+    ).hexdigest()[:_SOURCE_HASH_LENGTH]
     return f"{path_token}.{extension_token}.{source_hash}"
 
 

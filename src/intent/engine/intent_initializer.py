@@ -22,6 +22,8 @@ from orchestrator.types import Section
 
 from pipeline import AlignmentGuard, Pipeline, PipelineContext, Step
 
+_SECTION_SUMMARY_TRUNCATION = 500
+
 
 # Module-level callback — monkey-patched by runner before use; default
 # routes through the DI container so standalone calls also work.
@@ -57,7 +59,7 @@ def _step_triage(ctx: PipelineContext) -> dict:
         related_files_count=len(ctx.section.related_files),
         incoming_notes_count=notes_count,
         solve_count=ctx.section.solve_count,
-        section_summary=pf_content[:500] if pf_content else "",
+        section_summary=pf_content[:_SECTION_SUMMARY_TRUNCATION] if pf_content else "",
     )
     ctx.state["intent_mode"] = result.get("intent_mode", "lightweight")
     ctx.state["intent_budgets"] = result.get("budgets", {})
@@ -146,7 +148,7 @@ def _step_governance(ctx: PipelineContext) -> str:
         ctx.section.number,
         ctx.planspace,
         ctx.codespace,
-        pf_content[:500] if pf_content else "",
+        pf_content[:_SECTION_SUMMARY_TRUNCATION] if pf_content else "",
     )
     return "ok"
 
