@@ -184,7 +184,7 @@ def build_coordination_branches(
     branches: list[BranchSpec] = []
     registry = PathRegistry(planspace)
     for group_id in sorted(groups):
-        prompt_path = registry.coordination_dir() / f"fix-{group_id}-prompt.md"
+        prompt_path = registry.coordination_fix_prompt(group_id)
         branches.append(
             BranchSpec(
                 label=f"coord-fix-{group_id}",

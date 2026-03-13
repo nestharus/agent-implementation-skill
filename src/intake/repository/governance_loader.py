@@ -455,7 +455,7 @@ def build_governance_indexes(codespace: Path, planspace: Path) -> bool:
     Services.artifact_io().write_json(paths.governance_pattern_index(), pattern_index)
     Services.artifact_io().write_json(paths.governance_profile_index(), profile_index)
     Services.artifact_io().write_json(paths.governance_region_profile_map(), region_profile_map)
-    Services.artifact_io().write_json(paths.governance_dir() / "synthesis-cues.json", synthesis_cues)
+    Services.artifact_io().write_json(paths.governance_synthesis_cues(), synthesis_cues)
     Services.artifact_io().write_json(paths.governance_constraint_index(), constraint_index)
 
     # Write index status so downstream consumers can distinguish parse
@@ -464,7 +464,7 @@ def build_governance_indexes(codespace: Path, planspace: Path) -> bool:
         "ok": len(parse_failures) == 0,
         "parse_failures": parse_failures,
     }
-    Services.artifact_io().write_json(paths.governance_dir() / "index-status.json", status)
+    Services.artifact_io().write_json(paths.governance_index_status(), status)
 
     if parse_failures:
         logger.warning(

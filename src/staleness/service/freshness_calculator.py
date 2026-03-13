@@ -33,7 +33,7 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
 
     _add(registry.tool_registry())
 
-    decisions_path = registry.decisions_dir() / f"section-{sec}.md"
+    decisions_path = registry.decision_md(sec)
     _add(decisions_path)
 
     _add(registry.microstrategy(sec))

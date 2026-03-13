@@ -34,8 +34,8 @@ def build_prompt_context(
     summary = Services.cross_section().extract_section_summary(section.path)
 
     # --- decisions ---
-    decisions_file = paths.decisions_dir() / f"section-{sec}.md"
-    decisions_json = paths.decisions_dir() / f"section-{sec}.json"
+    decisions_file = paths.decision_md(sec)
+    decisions_json = paths.decision_json(sec)
     decisions_block = ""
     if decisions_file.exists():
         json_ref = ""

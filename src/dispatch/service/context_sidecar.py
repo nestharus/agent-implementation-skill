@@ -71,11 +71,10 @@ def _resolve_section_spec(planspace: Path, section: str | None) -> str:
 
 def _resolve_decision_history(planspace: Path, section: str | None) -> str:
     paths = PathRegistry(planspace)
-    decisions_dir = paths.decisions_dir()
     if section:
-        json_path = decisions_dir / f"section-{section}.json"
+        json_path = paths.decision_json(section)
     else:
-        json_path = decisions_dir / "global.json"
+        json_path = paths.decisions_dir() / "global.json"
     return Services.artifact_io().read_if_exists(json_path)
 
 
@@ -125,7 +124,7 @@ def _resolve_related_files(planspace: Path, section: str | None) -> str:
 
 def _resolve_coordination_state(planspace: Path, _section: str | None) -> str:
     return Services.artifact_io().read_if_exists(
-        PathRegistry(planspace).coordination_dir() / "problems.json"
+        PathRegistry(planspace).coordination_problems()
     )
 
 

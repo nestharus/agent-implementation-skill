@@ -57,7 +57,7 @@ def _write_traceability_index(
     integration_proposal = paths.proposal(sec)
     microstrategy = paths.microstrategy(sec)
     todos_extraction = paths.todos(sec)
-    alignment_surface = paths.sections_dir() / f"section-{sec}-alignment-surface.md"
+    alignment_surface = paths.alignment_surface(sec)
     problem_frame = paths.problem_frame(sec)
 
     # Collect alignment verdicts from output files using structured JSON
@@ -126,7 +126,7 @@ def _write_traceability_index(
         },
     }
 
-    trace_path = trace_dir / f"section-{sec}.json"
+    trace_path = paths.trace_index(sec)
     Services.artifact_io().write_json(trace_path, index)
     Services.logger().log(f"Section {sec}: traceability index written to {trace_path}")
 
@@ -141,7 +141,7 @@ def update_trace_governance(
 ) -> bool:
     """Update governance fields in an existing trace index."""
     paths = PathRegistry(planspace)
-    trace_path = paths.trace_dir() / f"section-{section_number}.json"
+    trace_path = paths.trace_index(section_number)
     data = Services.artifact_io().read_json(trace_path)
     if not isinstance(data, dict):
         return False
@@ -193,9 +193,7 @@ def _verify_traceability(planspace: Path, section_number: str) -> list[str]:
 
     Returns a list of violations (empty = pass).
     """
-    trace_path = (
-        PathRegistry(planspace).trace_dir() / f"section-{section_number}.json"
-    )
+    trace_path = PathRegistry(planspace).trace_index(section_number)
     violations: list[str] = []
 
     if not trace_path.exists():

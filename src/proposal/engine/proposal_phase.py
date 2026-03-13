@@ -121,7 +121,7 @@ def _risk_check_proposal(
         proposal_state = load_proposal_state(
             paths.proposal_state(sec_num)
         )
-        triage_signal = Services.artifact_io().read_json(paths.signals_dir() / f"intent-triage-{sec_num}.json")
+        triage_signal = Services.artifact_io().read_json(paths.intent_triage_signal(sec_num))
         triage_confidence = "low"
         risk_mode_hint = ""
         if isinstance(triage_signal, dict):

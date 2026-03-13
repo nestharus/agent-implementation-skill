@@ -158,11 +158,10 @@ def _run_bridge_for_group(
     bridge_reason: str,
 ) -> None:
     paths = PathRegistry(planspace)
-    coord_dir = paths.coordination_dir()
     group_sections = sorted({problem["section"] for problem in group})
     contract_delta_path = paths.contracts_dir() / f"contract-delta-group-{group_index}.md"
     notes_dir = paths.notes_dir()
-    bridge_output = coord_dir / f"bridge-{group_index}-output.md"
+    bridge_output = paths.coordination_bridge_output(group_index)
 
     bridge_prompt = write_bridge_prompt(
         group, group_index, group_sections,
@@ -260,13 +259,13 @@ def _dispatch_fix_group(
             f"by template safety — skipping dispatch")
         return group_id, None
     fix_output = coord_dir / f"fix-{group_id}-output.md"
-    modified_report = coord_dir / f"fix-{group_id}-modified.txt"
+    modified_report = paths.coordination_fix_modified(group_id)
 
     if not default_fix_model:
         default_fix_model = Services.policies().resolve(policy, "coordination_fix")
     fix_model = default_fix_model
     coord_escalated_from = None
-    escalation_file = coord_dir / "model-escalation.txt"
+    escalation_file = paths.coordination_model_escalation()
     if escalation_file.exists():
         coord_escalated_from = fix_model
         fix_model = escalation_file.read_text(encoding="utf-8").strip()
@@ -294,7 +293,7 @@ def _dispatch_fix_group(
         planspace,
         db_path=paths.run_db(),
         submitted_by=f"coordination-fix-{group_id}",
-        signal_path=coord_dir / f"signals/task-requests-coord-{group_id}.json",
+        signal_path=paths.coordination_task_request(group_id),
         origin_refs=[str(fix_prompt)],
     )
 

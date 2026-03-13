@@ -850,10 +850,12 @@ documented in the agent file or function docstring.
 (grepping codebase files to confirm deleted strings are absent) rather than
 positive assertions about current system behavior.
 
-**Regions**: integration tests, regression tests, component tests
+**Regions**: integration tests, regression tests, component tests, authoritative
+prompt/template/eval contracts
 
 **Solution surfaces**: Positive behavioral assertions, output-shape contracts,
-round-trip fixture tests, presence tests over absence tests.
+round-trip fixture tests, presence tests over absence tests, cross-surface
+schema sync checks, family-saturation checks.
 
 **Philosophy**: Tests assert what the system *does*, not what it *used to
 contain*. Grepping source files for absent strings is repository archaeology,
@@ -889,6 +891,13 @@ a false pass — either way it says nothing about whether the behavior is correc
    meant to exercise the live runtime, include at least one positive contract
    that imports or executes that surface against the current package layout.
    Import/bootstrap failure is a broken contract, not incidental drift.
+9. When a machine artifact schema is published in multiple active surfaces
+   (repository schema, agent file, dispatch template, validator, scenario
+   prompt, fixture), include a positive contract that compares those surfaces to
+   the canonical schema.
+10. When a recurring durable family is mid-migration, add at least one positive
+    family-saturation check proving that authoritative readers/writers use the
+    canonical accessor or that any exceptions are explicitly cataloged.
 
 **Canonical instance**: `run_structural_checks()` in
 `evals/agentic/structural_checks.py`
@@ -903,15 +912,22 @@ a false pass — either way it says nothing about whether the behavior is correc
   — fail-closed bootstrap status contract
 - `evals/agentic/fixtures/qa-intercept-on-dispatch/scenario.yaml`
   — advisory interception artifact contract
+- `evals/scenarios/proposal_state.py`,
+  `evals/scenarios/readiness_gate.py`, and
+  `evals/scenarios/risk_assessor.py` — proposal-state contract surfaces
+- Proposal-state fixture artifacts under
+  `evals/agentic/fixtures/*/planspace/artifacts/proposals/section-01-proposal-state.json`
+  — canonical schema examples used by agentic scenarios
 
 **Conformance**: New regression tests MUST express invariants as positive
 assertions about current behavior. Source-text grep for absent strings is a
 violation unless the invariant genuinely requires source-level verification.
 Converting existing source-grep tests to positive contracts is expected during
 audit rounds. High-risk archive→runtime projection contracts,
-writer→reader handoff contracts, and authoritative runtime-inventory
-contracts should have at least one representative positive test with
-realistic fixture or registry shapes.
+writer→reader handoff contracts, authoritative runtime-inventory
+contracts, cross-surface schema-projection contracts, and recurring
+family-saturation contracts should each have at least one representative
+positive test with realistic fixture or registry shapes.
 
 ---
 
@@ -959,10 +975,6 @@ retired. Governance cannot steer the system if its own state reports are stale.
    authoritative surfaces when they make present-tense claims about runtime or
    migration state, and must be updated atomically with the corresponding code
    or explicitly scoped as historical context.
-8. Agent definitions and active runtime-facing prompt templates that name
-   schema files, runtime directories, entrypoints, or execution substrate
-   are authoritative contract surfaces and must follow the same
-   synchronization rule as operator docs.
 
 **Canonical instance**: `src/taskrouter/agents.py` +
 `src/taskrouter/discovery.py`
@@ -975,13 +987,6 @@ retired. Governance cannot steer the system if its own state reports are stale.
 - `governance/audit/prompt.md` — audit-facing codebase map
 - `src/SKILL.md`, `src/implement.md`, and `src/models.md` — operator-facing
   runtime docs
-- `src/rca.md` — RCA workflow operator doc
-- `src/templates/dispatch/implementation-alignment.md` — active alignment
-  template with codespace references
-- `src/templates/rca-cycle.md` — RCA schedule template
-- `src/risk/agents/risk-assessor.md` and
-  `src/risk/agents/execution-optimizer.md` — agent definitions with schema
-  path references
 - `src/dispatch/agents/` legacy residues — retirement-boundary surfaces
 - `evals/harness.py` and `evals/agentic/trigger_adapters.py` — executable
   runtime-entry surfaces
@@ -999,6 +1004,62 @@ docs, executable adapters, and discovery boundaries agree.
 
 ---
 
+
+## PAT-0017: Proposal-State Contract Projection
+
+**Problem class**: The canonical proposal-state schema can drift away from the
+active agent/template/eval surfaces that publish, validate, or exemplify it,
+creating split-brain instructions and false confidence.
+
+**Regions**: proposal-state repository, proposal prompts, alignment validation,
+readiness, eval scenarios, eval fixtures
+
+**Solution surfaces**: Canonical schema ownership, atomic cross-surface
+projection, fail-closed runtime validation, schema-sync contract tests,
+fixture-shape checks.
+
+**Philosophy**: Proposals are problem-state artifacts. Migration must be atomic
+per surface. Scripts validate structure. Do not add constraints that the user
+did not ask for without first grounding them in a problem and pattern change.
+
+**Template**:
+1. One authoritative surface owns the machine-readable proposal-state schema.
+2. Any required-field change must update every active surface that enumerates,
+   examples, or validates the schema in the same change: agent file, dispatch
+   template, validating agent, scenario prompt, and fixture.
+3. Runtime validation remains fail-closed on missing keys or wrong types.
+4. Example fixtures must include every canonical key, even when the value is an
+   empty list or empty string.
+5. Positive contract tests must compare canonical schema keys against all active
+   prompt/template/eval surfaces that publish that schema.
+6. New required schema fields must trace to an archived problem or accepted
+   pattern change before they become part of the canonical contract.
+
+**Canonical instance**: `src/proposal/repository/state.py` +
+`src/proposal/agents/integration-proposer.md`
+
+**Known instances**:
+- `src/proposal/repository/state.py`
+- `src/proposal/agents/integration-proposer.md`
+- `src/templates/dispatch/integration-proposal.md`
+- `src/staleness/agents/alignment-judge.md`
+- `src/proposal/service/readiness_resolver.py`
+- `src/proposal/engine/readiness_gate.py`
+- `evals/scenarios/proposal_state.py`
+- `evals/scenarios/readiness_gate.py`
+- `evals/scenarios/risk_assessor.py`
+- `evals/agentic/fixtures/readiness-triggers-research-planner/planspace/artifacts/proposals/section-01-proposal-state.json`
+- `evals/agentic/fixtures/research-branch-stale-after-input-change/planspace/artifacts/proposals/section-01-proposal-state.json`
+- `evals/agentic/fixtures/research-flow-synthesizes-dossier/planspace/artifacts/proposals/section-01-proposal-state.json`
+- `evals/agentic/fixtures/research-planner-routes-value-choice-upward/planspace/artifacts/proposals/section-01-proposal-state.json`
+
+**Conformance**: Proposal-state producers, validators, examples, and fixtures
+must agree on the exact required key set. A runtime schema change that is not
+atomically reflected across those surfaces is a violation. Requiring fields with
+no traced problem/pattern basis is also a violation.
+
+---
+
 ## Health Notes
 
 - **PAT-0001 (Corruption Preservation)**: Healthy. R114 migrated the last
@@ -1008,15 +1069,14 @@ docs, executable adapters, and discovery boundaries agree.
 - **PAT-0002 (Prompt Safety)**: Healthy. R109 clarified that payload-file
   contents are untrusted dynamic content even when delivered through internal
   tasks. QA interceptor now validates payload content before dispatch.
-- **PAT-0003 (Path Registry)**: Improved but not converged. R114 added flow
-  family accessors (`flow_context`, `flow_continuation`, `flow_result_manifest`,
-  `flow_dispatch_prompt`, `flow_gate_aggregate`) and migrated flow absolute-path
-  sites. R114 also fixed 4 existing-accessor bypasses (`implementation_phase.py`,
-  `risk/prompt/writers.py`, `scan/substrate/prompt_builder.py`,
-  `staleness/service/input_hasher.py`). Remaining gaps: trace index family,
-  decision artifact family, governance helper families, intent triage family,
-  coordination families still lack PathRegistry accessors. Flow relpath helpers
-  are synchronized with PathRegistry naming but not mechanically derived from it.
+- **PAT-0003 (Path Registry)**: Substantially converged. R115 added accessors
+  for 6 remaining families (decision md/json, governance synthesis-cues/index-
+  status, trace-index, intent-triage signal/prompt/output, coordination
+  problems/escalation/fix/bridge/align/task-request, bridge-tools prompt/
+  output/escalation) and migrated ~30 consumer sites. Remaining gaps: glob-
+  pattern consumers for decisions (section_reexplorer, microstrategy_decider),
+  `decisions.py` repository functions that take raw `decisions_dir` parameter,
+  and flow relpath helpers (kept by design for DB-storage relative paths).
 - **PAT-0004 (Flow System)**: Healthy.
 - **PAT-0005 (Policy-Driven Models)**: Healthy. R110 replaced the last two
   local `policy.get()` fallback sites (`proposal_cycle.py` intent_judge,
@@ -1049,11 +1109,11 @@ docs, executable adapters, and discovery boundaries agree.
   `safety_blocked`); dispatcher logs `qa:degraded` distinctly from
   `qa:passed`; notifier carries reason_code through lifecycle events;
   reconciliation adjudicator references PAT-0014 degraded states in warnings.
-- **PAT-0015 (Positive Contract Testing)**: Improved. R112 repaired eval
-  imports. R113 added `dependency-injector` to `pyproject.toml` and made
-  discovery test dynamic. Still missing: authoritative operator-doc/runtime-
-  contract checks, active-template/runtime-substrate checks, and family-
-  saturation checks for recurring durable families.
+- **PAT-0015 (Positive Contract Testing)**: Improved. R115 resolved the
+  proposal-state split-brain by rolling back ungoverned fields, eliminating
+  the immediate contract violation. Still missing: positive contract tests
+  that lock proposal-state schema projection across agent/template/eval
+  surfaces, and family-saturation checks for PAT-0003 recurring families.
 - **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Improved.
   R114 fixed stale runtime references across SKILL.md (directory listing,
   description, agent paths), implement.md (control plane table, worktree→
@@ -1062,3 +1122,9 @@ docs, executable adapters, and discovery boundaries agree.
   implementation-alignment.md (worktree→codespace), rca-cycle.md (cleanup
   step), risk-assessor.md and execution-optimizer.md (schema paths).
   Remaining: rca.md uses git worktrees for investigation (legitimate).
+- **PAT-0017 (Proposal-State Contract Projection)**: Healthy. R115 rolled back
+  the three ungoverned required fields (`constraint_ids`,
+  `governance_candidate_refs`, `design_decision_refs`) from the canonical
+  schema, fail-closed default, and all test/eval fixtures. The canonical
+  schema now matches the active agent file, dispatch template, and all eval
+  surfaces. Still missing: positive contract tests that lock the projection.

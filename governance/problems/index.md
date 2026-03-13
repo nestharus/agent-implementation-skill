@@ -244,10 +244,24 @@ Governance self-report surfaces (pattern health notes, risk register status, pro
 
 ## PRB-0021: PathRegistry Consumer Saturation / File-Level Accessor Incompleteness
 
-**Status**: active — partially addressed (R113-R114)
-**Provenance**: audit-inferred (R113), reopened R114
+**Status**: substantially addressed (R113-R115)
+**Provenance**: audit-inferred (R113), reopened R114, substantially addressed R115
 **Regions**: PathRegistry, freshness/hashing, reconciliation, readiness, dispatch prompts, proposal cycle, flow system, traceability, coordination
 
-Durable artifact families used at multiple authoritative sites had only directory-level accessors or no accessors at all. R113 added `reconciliation_result()` and `execution_ready()` file-level accessors. R114 added 5 flow family accessors (`flow_context`, `flow_continuation`, `flow_result_manifest`, `flow_dispatch_prompt`, `flow_gate_aggregate`), migrated flow absolute-path construction, and fixed 4 existing-accessor bypasses (`proposal_state`, `execution_ready`, `philosophy`). Remaining unsaturated families: trace index, section decision, governance helper files, intent triage signal, coordination contract/modification families.
+Durable artifact families used at multiple authoritative sites had only directory-level accessors or no accessors at all. R113 added `reconciliation_result()` and `execution_ready()` file-level accessors. R114 added 5 flow family accessors and fixed 4 existing-accessor bypasses. R115 added accessors for 6 remaining families (decision md/json, governance synthesis-cues/index-status, trace-index, intent-triage signal/prompt/output, coordination problems/escalation/fix/bridge/align/task-request, bridge-tools prompt/output/escalation) and migrated ~30 consumer sites. Remaining: glob-pattern consumers for decisions, `decisions.py` repository functions with raw Path parameter, flow relpath helpers (kept by design for DB storage).
 
-**Solution surfaces**: PAT-0003 file-level accessor requirement, family-level accessor addition + atomic consumer migration, flow family accessors (R114).
+**Solution surfaces**: PAT-0003 file-level accessor requirement, family-level accessor addition + atomic consumer migration, flow family accessors (R114), 6-family saturation sweep (R115).
+
+---
+
+## PRB-0022: Proposal-State Contract Split-Brain
+
+**Status**: resolved (R115)
+**Provenance**: audit-inferred (R115)
+**Regions**: proposal-state schema, agent definitions, dispatch templates, readiness gate, eval fixtures
+
+The canonical proposal-state schema in `src/proposal/repository/state.py` required three fields (`constraint_ids`, `governance_candidate_refs`, `design_decision_refs`) that no active agent definition, dispatch template, or eval surface knew to produce. The runtime's `load_proposal_state()` treated missing keys as corruption and renamed the file to `.malformed.json`, causing sections to fail-closed when agents produced valid-looking output that happened to lack the ungoverned fields. The three fields had no traceable problem or pattern justification and were never consumed by any downstream surface (readiness resolver, readiness gate, reconciliation).
+
+R115 rolled back the three ungoverned fields from the schema, fail-closed default, and all test/eval fixtures. PAT-0017 was added to prevent recurrence.
+
+**Solution surfaces**: PAT-0017 (Proposal-State Contract Projection), schema rollback, fixture cleanup.

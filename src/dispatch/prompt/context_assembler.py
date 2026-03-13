@@ -87,7 +87,7 @@ def build_impl_context_extras(
             f"Read them and address ALL of them: `{problems_file}`\n"
         )
 
-    decisions_file = paths.decisions_dir() / f"section-{sec}.md"
+    decisions_file = paths.decision_md(sec)
     decisions_block = ""
     if decisions_file.exists():
         decisions_block = (

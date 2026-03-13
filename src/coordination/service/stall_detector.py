@@ -70,9 +70,7 @@ class StallDetector:
             f"Coordination churning ({self._stall_count} rounds without "
             "improvement) — escalating model",
         )
-        escalation_file = (
-            self._paths.coordination_dir() / "model-escalation.txt"
-        )
+        escalation_file = self._paths.coordination_model_escalation()
         escalation_file.parent.mkdir(parents=True, exist_ok=True)
         escalation_file.write_text(
             Services.policies().resolve(self._policy, "escalation_model"),

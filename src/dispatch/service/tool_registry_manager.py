@@ -330,8 +330,8 @@ def handle_tool_friction(
         f"Section {section_number}: tooling friction detected — "
         f"dispatching bridge-tools agent"
     )
-    bridge_tools_prompt = artifacts / f"bridge-tools-{section_number}-prompt.md"
-    bridge_tools_output = artifacts / f"bridge-tools-{section_number}-output.md"
+    bridge_tools_prompt = paths.bridge_tools_prompt(section_number)
+    bridge_tools_output = paths.bridge_tools_output(section_number)
     bridge_signal_path = paths.tool_bridge_signal(section_number)
     default_proposal_path = paths.tool_bridge_proposal(section_number)
     if not Services.prompt_guard().write_validated(
@@ -407,9 +407,7 @@ with JSON:
             f"Section {section_number}: bridge signal missing or "
             f"invalid — retrying with escalation model"
         )
-        escalation_output = (
-            artifacts / f"bridge-tools-{section_number}-escalation-output.md"
-        )
+        escalation_output = paths.bridge_tools_escalation_output(section_number)
         dispatch_agent(
             Services.policies().resolve(policy, "escalation_model"),
             bridge_tools_prompt,

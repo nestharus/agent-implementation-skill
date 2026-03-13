@@ -28,13 +28,11 @@ def run_intent_triage(
     """
     policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
-    signals_dir = paths.signals_dir()
-    signals_dir.mkdir(parents=True, exist_ok=True)
+    paths.signals_dir().mkdir(parents=True, exist_ok=True)
 
-    triage_signal_path = signals_dir / f"intent-triage-{section_number}.json"
-    triage_prompt_path = artifacts / f"intent-triage-{section_number}-prompt.md"
-    triage_output_path = artifacts / f"intent-triage-{section_number}-output.md"
+    triage_signal_path = paths.intent_triage_signal(section_number)
+    triage_prompt_path = paths.intent_triage_prompt(section_number)
+    triage_output_path = paths.intent_triage_output(section_number)
 
     section_spec = paths.section_spec(section_number)
     proposal_excerpt = paths.proposal_excerpt(section_number)
@@ -222,8 +220,7 @@ def load_triage_result(
     planspace: Path,
 ) -> dict | None:
     """Load a previously-written triage result from signal file."""
-    signals_dir = PathRegistry(planspace).signals_dir()
-    triage_signal_path = signals_dir / f"intent-triage-{section_number}.json"
+    triage_signal_path = PathRegistry(planspace).intent_triage_signal(section_number)
     triage = Services.signals().read(
         triage_signal_path,
         expected_fields=["intent_mode"],

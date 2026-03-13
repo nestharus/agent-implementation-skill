@@ -97,7 +97,7 @@ Post-implementation assessment emits `accept_with_debt` verdicts with typed `deb
 - **Category**: pattern-drift / operability
 - **Region**: PathRegistry consumers across scan, intent/prompt assembly, tool surfaces, freshness/hash services, dispatch prompt assembly, implementation services, orchestrator, flow system, coordination
 - **Description**: PAT-0003 had correct accessors for several durable families, but authoritative consumers still reconstructed those paths manually. R113 resolved two families but the broader problem persists: flow system has parallel relpath helpers, trace/decision/governance/intent/coordination families lack accessors entirely, and existing accessors (`proposal_state`, `execution_ready`, `philosophy`) had bypass sites.
-- **Severity**: low-medium
-- **Status**: open → mitigated (R114)
-- **Acceptance rationale**: R114 added 5 flow family accessors, migrated flow absolute-path sites, and fixed 4 existing-accessor bypasses. Remaining families (trace, decision, governance helpers, intent triage, coordination) are documented gaps.
-- **Mitigation**: R110-R113 saturation sweeps + R114 flow family accessors and bypass fixes. Remaining families cataloged in PRB-0021.
+- **Severity**: low
+- **Status**: mitigated → substantially resolved (R115)
+- **Acceptance rationale**: R115 added accessors for all 6 remaining families and migrated ~30 consumer sites. Residual gaps are glob-pattern consumers (cannot use file-level accessors), `decisions.py` repository functions with raw Path parameter, and flow relpath helpers (kept by design for DB storage).
+- **Mitigation**: R110-R114 saturation sweeps + R115 6-family accessor addition and consumer migration. Remaining gaps documented in PRB-0021.

@@ -135,7 +135,7 @@ def build_section_governance_packet(
     del codespace  # codespace docs are parsed into planspace indexes
 
     # Load synthesis cues for additional matching signal (PAT-0011 R109)
-    synthesis_cues_path = PathRegistry(planspace).governance_dir() / "synthesis-cues.json"
+    synthesis_cues_path = PathRegistry(planspace).governance_synthesis_cues()
     synthesis_cues = Services.artifact_io().read_json(synthesis_cues_path)
     if not isinstance(synthesis_cues, dict):
         synthesis_cues = {}
@@ -161,7 +161,7 @@ def build_section_governance_packet(
     region_profile_map = _dict_index(paths.governance_region_profile_map())
 
     # Check for authoritative parse failures (PAT-0008 R108)
-    index_status_path = paths.governance_dir() / "index-status.json"
+    index_status_path = paths.governance_index_status()
     index_parse_failures: list[str] = []
     index_status = Services.artifact_io().read_json(index_status_path)
     if isinstance(index_status, dict):

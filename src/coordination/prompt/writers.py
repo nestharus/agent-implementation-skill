@@ -25,10 +25,9 @@ def write_fix_prompt(
     in a coordinated way.
     """
     paths = PathRegistry(planspace)
-    coord_dir = paths.coordination_dir()
-    coord_dir.mkdir(parents=True, exist_ok=True)
-    prompt_path = coord_dir / f"fix-{group_id}-prompt.md"
-    modified_report = coord_dir / f"fix-{group_id}-modified.txt"
+    paths.coordination_dir().mkdir(parents=True, exist_ok=True)
+    prompt_path = paths.coordination_fix_prompt(group_id)
+    modified_report = paths.coordination_fix_modified(group_id)
 
     problems_text = _format_problems(group)
     file_list = _format_file_list(group, codespace)
@@ -36,7 +35,7 @@ def write_fix_prompt(
     codemap_block = _format_codemap_block(paths)
     tools_block = _format_tools_block(paths)
 
-    task_submission_path = coord_dir / f"signals/task-requests-coord-{group_id}.json"
+    task_submission_path = paths.coordination_task_request(group_id)
 
     template = load_template("coordination/coordinator-fix.md", SRC_TEMPLATE_DIR)
     rendered = render(template, {
@@ -85,10 +84,9 @@ def write_bridge_prompt(
 ) -> Path | None:
     """Write a prompt for bridge resolution of cross-section overlap."""
     paths = PathRegistry(planspace)
-    coord_dir = paths.coordination_dir()
-    coord_dir.mkdir(parents=True, exist_ok=True)
-    bridge_prompt = coord_dir / f"bridge-{group_index}-prompt.md"
-    contract_path = coord_dir / f"contract-patch-{group_index}.md"
+    paths.coordination_dir().mkdir(parents=True, exist_ok=True)
+    bridge_prompt = paths.coordination_bridge_prompt(group_index)
+    contract_path = paths.coordination_contract_patch(group_index)
     contract_delta_path = paths.contracts_dir() / f"contract-delta-group-{group_index}.md"
     notes_dir = paths.notes_dir()
     notes_dir.mkdir(parents=True, exist_ok=True)

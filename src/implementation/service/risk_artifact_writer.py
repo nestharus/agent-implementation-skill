@@ -222,7 +222,7 @@ def has_recent_loop_detected_signal(
 
 def load_risk_hints(planspace: Path, sec_num: str) -> dict:
     triage_signal = Services.artifact_io().read_json(
-        PathRegistry(planspace).signals_dir() / f"intent-triage-{sec_num}.json",
+        PathRegistry(planspace).intent_triage_signal(sec_num),
     )
     if not isinstance(triage_signal, dict):
         return {

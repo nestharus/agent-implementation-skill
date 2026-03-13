@@ -91,9 +91,6 @@ def _write_proposal_state(
         "profile_id": "",
         "pattern_deviations": [],
         "governance_questions": [],
-        "constraint_ids": [],
-        "governance_candidate_refs": [],
-        "design_decision_refs": [],
     }
     if overrides:
         state.update(overrides)

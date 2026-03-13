@@ -149,7 +149,7 @@ def _write_alignment_surface(
     sec = section.number
     sections_dir = paths.sections_dir()
     sections_dir.mkdir(parents=True, exist_ok=True)
-    surface_path = sections_dir / f"section-{sec}-alignment-surface.md"
+    surface_path = paths.alignment_surface(sec)
 
     lines = [f"# Alignment Surface: Section {sec}\n"]
     lines.append("Authoritative inputs for alignment judgement:\n")

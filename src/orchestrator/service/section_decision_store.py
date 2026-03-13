@@ -15,9 +15,7 @@ if TYPE_CHECKING:
 
 def read_decisions(planspace: Path, section_number: str) -> str:
     """Read accumulated decisions for a section."""
-    decisions_file = (
-        PathRegistry(planspace).decisions_dir() / f"section-{section_number}.md"
-    )
+    decisions_file = PathRegistry(planspace).decision_md(section_number)
     if decisions_file.exists():
         return decisions_file.read_text(encoding="utf-8")
     return ""

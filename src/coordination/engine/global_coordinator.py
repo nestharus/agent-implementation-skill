@@ -47,7 +47,6 @@ def _collect_and_persist_problems(
 
     Returns ``(problems, recurrence)`` or ``None`` if no problems exist.
     """
-    coord_dir = paths.coordination_dir()
     problems = _collect_outstanding_problems(
         section_results, sections_by_num, planspace,
     )
@@ -61,7 +60,7 @@ def _collect_and_persist_problems(
 
     recurrence = _detect_recurrence_patterns(planspace, problems)
     if recurrence:
-        escalation_file = coord_dir / "model-escalation.txt"
+        escalation_file = paths.coordination_model_escalation()
         escalation_file.write_text(
             Services.policies().resolve(policy, "escalation_model"), encoding="utf-8")
         Services.logger().log(f"  coordinator: recurrence escalation — setting model to "
@@ -69,7 +68,7 @@ def _collect_and_persist_problems(
             f"{recurrence['recurring_problem_count']} recurring problems "
             f"across sections {recurrence['recurring_sections']}")
 
-    state_path = coord_dir / "problems.json"
+    state_path = paths.coordination_problems()
     Services.artifact_io().write_json(state_path, problems)
     Services.communicator().log_artifact(planspace,"coordination:problems")
 
@@ -261,21 +260,18 @@ def _recheck_section_alignment(
         )
         return False
 
-    coord_align_output = (
-        paths.artifacts / f"coord-align-{sec_num}-output.md"
-    )
+    coord_align_output = paths.coordination_align_output(sec_num)
     align_problems = Services.section_alignment().extract_problems(
         align_result, output_path=coord_align_output,
         planspace=planspace, parent=parent, codespace=codespace,
         adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
     )
-    coord_signal_dir = coord_dir / "signals"
+    coord_signal_dir = paths.coordination_signals_dir()
     coord_signal_dir.mkdir(parents=True, exist_ok=True)
     signal, detail = Services.dispatch_helpers().check_agent_signals(
         align_result,
-        signal_path=(coord_signal_dir
-                     / f"coord-align-{sec_num}-signal.json"),
-        output_path=coord_dir / f"coord-align-{sec_num}-output.md",
+        signal_path=paths.coordination_align_signal(sec_num),
+        output_path=paths.coordination_align_output(sec_num),
         planspace=planspace, parent=parent, codespace=codespace,
     )
 

@@ -43,7 +43,7 @@ def section_inputs_hash(
 
     for input_path in (
         paths.section_spec(sec_num),
-        paths.decisions_dir() / f"section-{sec_num}.md",
+        paths.decision_md(sec_num),
         paths.proposal(sec_num),
         paths.microstrategy(sec_num),
         paths.todos(sec_num),

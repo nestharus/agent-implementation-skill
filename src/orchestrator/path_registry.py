@@ -429,6 +429,84 @@ class PathRegistry:
     def tools_available(self, num: str) -> Path:
         return self.sections_dir() / f"section-{num}-tools-available.md"
 
+    # --- Decision artifact accessors ---
+
+    def decision_md(self, num: str) -> Path:
+        return self.decisions_dir() / f"section-{num}.md"
+
+    def decision_json(self, num: str) -> Path:
+        return self.decisions_dir() / f"section-{num}.json"
+
+    # --- Governance helper accessors ---
+
+    def governance_synthesis_cues(self) -> Path:
+        return self.governance_dir() / "synthesis-cues.json"
+
+    def governance_index_status(self) -> Path:
+        return self.governance_dir() / "index-status.json"
+
+    # --- Trace index accessor ---
+
+    def trace_index(self, num: str) -> Path:
+        return self.trace_dir() / f"section-{num}.json"
+
+    # --- Intent-triage accessors ---
+
+    def intent_triage_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"intent-triage-{num}.json"
+
+    def intent_triage_prompt(self, num: str) -> Path:
+        return self._artifacts / f"intent-triage-{num}-prompt.md"
+
+    def intent_triage_output(self, num: str) -> Path:
+        return self._artifacts / f"intent-triage-{num}-output.md"
+
+    # --- Coordination artifact accessors ---
+
+    def coordination_signals_dir(self) -> Path:
+        return self.coordination_dir() / "signals"
+
+    def coordination_model_escalation(self) -> Path:
+        return self.coordination_dir() / "model-escalation.txt"
+
+    def coordination_problems(self) -> Path:
+        return self.coordination_dir() / "problems.json"
+
+    def coordination_fix_prompt(self, group_id: int) -> Path:
+        return self.coordination_dir() / f"fix-{group_id}-prompt.md"
+
+    def coordination_fix_modified(self, group_id: int) -> Path:
+        return self.coordination_dir() / f"fix-{group_id}-modified.txt"
+
+    def coordination_task_request(self, group_id: int) -> Path:
+        return self.coordination_signals_dir() / f"task-requests-coord-{group_id}.json"
+
+    def coordination_bridge_prompt(self, group_index: int) -> Path:
+        return self.coordination_dir() / f"bridge-{group_index}-prompt.md"
+
+    def coordination_bridge_output(self, group_index: int) -> Path:
+        return self.coordination_dir() / f"bridge-{group_index}-output.md"
+
+    def coordination_contract_patch(self, group_index: int) -> Path:
+        return self.coordination_dir() / f"contract-patch-{group_index}.md"
+
+    def coordination_align_signal(self, num: str) -> Path:
+        return self.coordination_signals_dir() / f"coord-align-{num}-signal.json"
+
+    def coordination_align_output(self, num: str) -> Path:
+        return self.coordination_signals_dir() / f"coord-align-{num}-output.md"
+
+    # --- Bridge-tools accessors ---
+
+    def bridge_tools_prompt(self, num: str) -> Path:
+        return self._artifacts / f"bridge-tools-{num}-prompt.md"
+
+    def bridge_tools_output(self, num: str) -> Path:
+        return self._artifacts / f"bridge-tools-{num}-output.md"
+
+    def bridge_tools_escalation_output(self, num: str) -> Path:
+        return self._artifacts / f"bridge-tools-{num}-escalation-output.md"
+
     def alignment_surface(self, num: str) -> Path:
         return self.sections_dir() / f"section-{num}-alignment-surface.md"
 

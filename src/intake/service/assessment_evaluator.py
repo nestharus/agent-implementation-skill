@@ -24,7 +24,7 @@ def write_post_impl_assessment_prompt(
     paths = PathRegistry(planspace)
     prompt_path = paths.post_impl_assessment_prompt(section_number)
     governance_packet = paths.governance_packet(section_number)
-    trace_index = paths.trace_dir() / f"section-{section_number}.json"
+    trace_index = paths.trace_index(section_number)
     trace_map = paths.trace_map(section_number)
     integration_proposal = paths.proposal(section_number)
     problem_frame = paths.problem_frame(section_number)
