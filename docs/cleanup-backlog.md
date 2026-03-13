@@ -490,6 +490,34 @@ Functions that take parameters obtainable from the DI container are exposing unn
   - `pipeline_control._set_alignment_changed_flag` — dead wrapper + unused import
 - **Status**: DONE
 
+### 134. Cycle 10 continued — hash constants, governance decomposition, remaining magic numbers
+- **Category**: CODE-S8 (magic numbers), CODE-S2 (function length)
+- **Hash truncation constants** (10 constants across 8 files):
+  - `results.py`: `_TITLE_SLUG_MAX_LENGTH` (40) / `_TITLE_HASH_LENGTH` (8)
+  - `assessment_evaluator.py`: `_DEBT_KEY_HASH_LENGTH` (16)
+  - `surface_registry.py`: `_FINGERPRINT_LENGTH` (12)
+  - `readiness_gate.py`: `_CANDIDATE_HASH_LENGTH` (8) / `_TRIGGER_HASH_LENGTH` (12)
+  - `blocker_manager.py`: `_SEAM_HASH_LENGTH` (12)
+  - `freshness_calculator.py`: `_FRESHNESS_HASH_LENGTH` (16)
+  - `plan_executor.py`: `_NOTE_FINGERPRINT_LENGTH` (12)
+  - `completion_handler.py`: `_NOTE_HASH_LENGTH` (12)
+- **Function decompositions** (2 files):
+  - `governance_loader.build_governance_indexes`: data-driven refactoring — 6 identical try/except blocks → `_parse_governance_indexes` loop over `_GOVERNANCE_INDEX_SPECS`
+  - `problem_resolver._collect_scope_delta_problems`: extract `_resolve_delta_linked_sections`
+- **Timeout/truncation constants** (8 constants across 5 files):
+  - `agent_executor.py`: `_DEFAULT_AGENT_TIMEOUT_SECONDS` (600)
+  - `section_dispatcher.py`: `_SECTION_DISPATCH_TIMEOUT_SECONDS` (1800)
+  - `notifier.py`: `_NOTIFY_SUBPROCESS_TIMEOUT_SECONDS` (10)
+  - `governance_packet_builder.py`: `_PROBLEM_FRAME_TRUNCATION` (2000)
+  - `log_extract_helpers.py`: `_PROMPT_SIGNATURE_TRUNCATION` (4000)
+  - `analyzer.py`: `_PATH_TOKEN_MAX_LENGTH` (80) / `_SOURCE_HASH_LENGTH` (10)
+  - `intent_initializer.py`: `_SECTION_SUMMARY_TRUNCATION` (500)
+  - `intent_triager.py`: `_SUMMARY_SNIPPET_TRUNCATION` (500)
+- **Deferred**:
+  - Display-only truncations (`[:120]`, `[:200]`, `[:80]` in log/summary strings) — low value
+  - `task_dispatcher.py:221` `freshness_token[:8]` — display only in error message
+- **Status**: DONE
+
 ---
 
 ## NOT A BUG
