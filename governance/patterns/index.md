@@ -255,6 +255,20 @@ consumer migration, runtime-shape tests.
   `src/proposal/engine/proposal_cycle.py`,
   `src/dispatch/service/context_sidecar.py`, and
   `src/implementation/service/triage_orchestrator.py`
+- Scope-delta family consumers in
+  `src/proposal/engine/readiness_gate.py`,
+  `src/proposal/engine/proposal_cycle.py`,
+  `src/proposal/service/excerpt_extractor.py`,
+  `src/scan/service/feedback_router.py`,
+  `src/implementation/service/scope_delta_parser.py`,
+  `src/implementation/service/scope_delta_aggregator.py`, and
+  `src/reconciliation/repository/results.py`
+- Research-question family consumer in
+  `src/proposal/engine/readiness_gate.py`
+- Section-input risk-artifact family consumers in
+  `src/implementation/service/risk_artifact_writer.py`,
+  `src/risk/prompt/writers.py`, and
+  `src/implementation/engine/implementation_phase.py`
 
 **Conformance**: No durable artifact path may be reconstructed ad hoc. Any new
 artifact path MUST be added to `PathRegistry`, and all authoritative consumers
@@ -1110,18 +1124,17 @@ contract tests enforce this (PAT-0015).
 - **PAT-0002 (Prompt Safety)**: Healthy. R109 clarified that payload-file
   contents are untrusted dynamic content even when delivered through internal
   tasks. QA interceptor now validates payload content before dispatch.
-- **PAT-0003 (Path Registry)**: Substantially converged. R115 added accessors
-  for 6 remaining families. R116 added reconciliation family accessors. R117
-  added 4 more accessors (recurrence_signal, coordination_recurrence,
-  related_files_signal, global_decision_json) and migrated proposal_state()
-  bypasses (traceability_writer, section_communicator), note_ack_signal()
-  bypass (problem_resolver), recurrence family (recurrence_emitter,
-  problem_resolver, planner), and context_sidecar (global decisions,
-  related-files signals). Remaining gaps: glob-pattern consumers for decisions
-  (section_reexplorer, microstrategy_decider) and recurrence signals
-  (problem_resolver discovery glob), `decisions.py` repository functions that
-  take raw `decisions_dir` parameter, and flow relpath helpers (kept by design
-  for DB-storage relative paths).
+- **PAT-0003 (Path Registry)**: Substantially converged. R118 added 7 accessors
+  for 3 newly identified families (scope-delta: scope_delta_section/candidate/
+  reconciliation, research-question: research_questions_artifact, section-input
+  risk-artifact: risk_accepted_steps/risk_deferred/modified_file_manifest) and
+  migrated 12 consumer files. R117 added 4 accessors and migrated 7 consumers.
+  R116 added reconciliation family. R115 added 6 families. Remaining gaps:
+  glob-pattern consumers for research-question discovery
+  (strategic_state_builder.py), decisions (section_reexplorer,
+  microstrategy_decider), and recurrence signals (problem_resolver discovery
+  glob); `decisions.py` repository functions with raw `decisions_dir` parameter;
+  flow relpath helpers (kept by design for DB-storage relative paths).
 - **PAT-0004 (Flow System)**: Healthy.
 - **PAT-0005 (Policy-Driven Models)**: Healthy. R110 replaced the last two
   local `policy.get()` fallback sites (`proposal_cycle.py` intent_judge,

@@ -232,25 +232,25 @@ Authoritative path/count/entrypoint claims are hand-maintained and diverge from 
 
 ## PRB-0020: Governance Self-Report Drift / False Health Reporting
 
-**Status**: active — substantially addressed (R112-R117)
+**Status**: active — substantially addressed (R112-R118)
 **Provenance**: audit-inferred (R112)
 **Regions**: governance/patterns/index.md, governance/risk-register.md, governance/problems/index.md, governance/audit/history.md
 
 Governance self-report surfaces (pattern health notes, risk register status, problem archive status, audit history counts) diverge from actual codebase state. R112-R113 corrected pattern health notes and risk register status, but R113 falsely claimed PAT-0001/PAT-0003 as "Healthy" and RISK-0007 as "resolved" while bypasses and unsaturated families remained. R114 corrected all four pattern health notes to reflect actual code state: PAT-0001 now genuinely healthy (last bypass fixed), PAT-0003 truthfully reported as "improved but not converged," PAT-0015 as "improved," PAT-0016 as "improved." R116 updated PAT-0003 health notes to include reconciliation family migration, PAT-0015 health notes to include doctrine-projection and reconciliation-family positive contract tests, and added PAT-0018 health note. R117 corrected PAT-0018 known instances (11th surface was missing) and PAT-0003 health note (4 new accessors + 7 consumer migrations).
 
-**Solution surfaces**: PAT-0016 scope expansion to governance self-reports (R112), truthful pattern health notes, audit-time verification of present-tense claims.
+**Solution surfaces**: PAT-0016 scope expansion to governance self-reports (R112), truthful pattern health notes, audit-time verification of present-tense claims, RISK-0002 stale test count fixed (R118).
 
 ---
 
 ## PRB-0021: PathRegistry Consumer Saturation / File-Level Accessor Incompleteness
 
-**Status**: substantially addressed (R113-R117)
-**Provenance**: audit-inferred (R113), reopened R114, substantially addressed R115, reconciliation family R116, residual sweep R117
+**Status**: substantially addressed (R113-R118)
+**Provenance**: audit-inferred (R113), reopened R114, substantially addressed R115, reconciliation family R116, residual sweep R117, 3-family sweep R118
 **Regions**: PathRegistry, freshness/hashing, reconciliation, readiness, dispatch prompts, proposal cycle, flow system, traceability, coordination, signals, intent
 
 Durable artifact families used at multiple authoritative sites had only directory-level accessors or no accessors at all. R113 added `reconciliation_result()` and `execution_ready()` file-level accessors. R114 added 5 flow family accessors and fixed 4 existing-accessor bypasses. R115 added accessors for 6 remaining families (decision md/json, governance synthesis-cues/index-status, trace-index, intent-triage signal/prompt/output, coordination problems/escalation/fix/bridge/align/task-request, bridge-tools prompt/output/escalation) and migrated ~30 consumer sites. R116 added 3 reconciliation family accessors (`reconciliation_requests_dir()`, `reconciliation_request()`, `reconciliation_summary()`), migrated `queue.py` and `cross_section_reconciler.py` consumers, and normalized `load_reconciliation_result()` to accept planspace root exclusively (eliminating mixed-root semantics). R117 added 4 more accessors (`recurrence_signal()`, `coordination_recurrence()`, `related_files_signal()`, `global_decision_json()`) and migrated 7 consumer sites: proposal_state() bypasses (traceability_writer, section_communicator), note_ack_signal() bypass (problem_resolver), recurrence family (recurrence_emitter, problem_resolver, planner), context_sidecar (global decisions, related-files signals). Remaining: glob-pattern consumers for decisions and recurrence discovery, `decisions.py` repository functions with raw Path parameter, flow relpath helpers (kept by design for DB storage).
 
-**Solution surfaces**: PAT-0003 file-level accessor requirement, family-level accessor addition + atomic consumer migration, flow family accessors (R114), 6-family saturation sweep (R115), reconciliation family migration (R116), residual sweep (R117).
+**Solution surfaces**: PAT-0003 file-level accessor requirement, family-level accessor addition + atomic consumer migration, flow family accessors (R114), 6-family saturation sweep (R115), reconciliation family migration (R116), residual sweep (R117), 3-family sweep with 7 accessors and 12 consumer migrations (R118).
 
 ---
 
