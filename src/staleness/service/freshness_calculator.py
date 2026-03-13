@@ -7,6 +7,8 @@ from pathlib import Path
 from staleness.helpers.content_hasher import content_hash
 from orchestrator.path_registry import PathRegistry
 
+_FRESHNESS_HASH_LENGTH = 16
+
 
 def compute_section_freshness(planspace: Path, section_number: str) -> str:
     """Compute a canonical alignment fingerprint for a section."""
@@ -90,4 +92,4 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
 
     _add(registry.governance_packet(sec))
 
-    return content_hash(b"".join(hash_parts))[:16]
+    return content_hash(b"".join(hash_parts))[:_FRESHNESS_HASH_LENGTH]

@@ -10,6 +10,7 @@ from orchestrator.path_registry import PathRegistry
 _SHARED_SEAM_PREFIX = (
     "shared seam candidate requires cross-section substrate work:"
 )
+_SEAM_HASH_LENGTH = 12
 
 # Signal state → blocker category mapping (used in _update_blocker_rollup)
 _STATE_TO_CATEGORY: dict[str, str] = {
@@ -72,7 +73,7 @@ def _dedupe_rollup_blockers(blockers: list[dict]) -> list[dict]:
             normalized = " ".join(detail.lower().split())
             seam_key = Services.hasher().content_hash(
                 f"{blocker.get('section', 'unknown')}::{normalized}"
-            )[:12]
+            )[:_SEAM_HASH_LENGTH]
             dedupe_key = f"shared-seam::{seam_key}"
             if dedupe_key in seen_keys:
                 continue

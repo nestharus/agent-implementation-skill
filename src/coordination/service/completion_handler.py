@@ -16,6 +16,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from containers import Services
+
+_NOTE_HASH_LENGTH = 12
+
 from coordination.repository.notes import (
     read_incoming_notes as load_incoming_notes,
     write_consequence_note,
@@ -171,7 +174,7 @@ def post_section_completion(
 
     for target_num, reason, contract_risk, note_md in impacted_sections:
         note_name = f"from-{sec_num}-to-{target_num}.md"
-        note_id = Services.hasher().content_hash(f"{note_name}:{files_fingerprint}")[:12]
+        note_id = Services.hasher().content_hash(f"{note_name}:{files_fingerprint}")[:_NOTE_HASH_LENGTH]
         note_content = _build_consequence_note(
             sec_num, target_num, reason, note_md, note_id,
             section_summary, modified_files, integration_proposal,

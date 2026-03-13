@@ -10,6 +10,9 @@ from orchestrator.path_registry import PathRegistry
 
 logger = logging.getLogger(__name__)
 
+_TITLE_SLUG_MAX_LENGTH = 40
+_TITLE_HASH_LENGTH = 8
+
 
 def write_result(planspace: Path, section_number: str, result: dict) -> Path:
     """Write a per-section reconciliation result artifact."""
@@ -21,9 +24,9 @@ def write_result(planspace: Path, section_number: str, result: dict) -> Path:
 def write_scope_delta(planspace: Path, scope_delta: dict) -> Path:
     """Write a consolidated scope-delta artifact from reconciliation."""
     sources = "-".join(scope_delta.get("source_sections", ["unknown"]))
-    title_slug = scope_delta.get("title", "unknown")[:40].replace(" ", "_")
+    title_slug = scope_delta.get("title", "unknown")[:_TITLE_SLUG_MAX_LENGTH].replace(" ", "_")
     path = PathRegistry(planspace).scope_delta_reconciliation(sources, title_slug)
-    title_hash = Services.hasher().content_hash(scope_delta.get("title", ""))[:8]
+    title_hash = Services.hasher().content_hash(scope_delta.get("title", ""))[:_TITLE_HASH_LENGTH]
     delta_id = f"delta-recon-{sources}-{title_hash}"
     delta = {
         "delta_id": delta_id,

@@ -7,6 +7,8 @@ from orchestrator.path_registry import PathRegistry
 
 from containers import Services
 
+_FINGERPRINT_LENGTH = 12
+
 
 def load_surface_registry(
     section_number: str, planspace: Path,
@@ -152,7 +154,7 @@ def normalize_surface_ids(
                 str(surface.get(f, "")).strip()
                 for f in ("kind", "axis_id", "title", "description", "evidence")
             )
-            fp = Services.hasher().content_hash(fp_input)[:12]
+            fp = Services.hasher().content_hash(fp_input)[:_FINGERPRINT_LENGTH]
             surface["_fingerprint"] = fp
 
             if fp in fp_to_id:

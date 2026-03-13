@@ -11,6 +11,7 @@ from containers import Services
 # update_trace_governance is imported inside promote_debt_signals()
 
 _VALID_VERDICTS = {"accept", "accept_with_debt", "refactor_required"}
+_DEBT_KEY_HASH_LENGTH = 16
 
 
 def _compose_assessment_text(
@@ -209,7 +210,7 @@ def _debt_key(entry: dict) -> str:
         ",".join(str(x) for x in entry.get("pattern_ids", []) if x),
         str(entry.get("profile_id", "")),
     ])
-    return hashlib.sha256(parts.encode()).hexdigest()[:16]
+    return hashlib.sha256(parts.encode()).hexdigest()[:_DEBT_KEY_HASH_LENGTH]
 
 
 def _collect_debt_candidates(

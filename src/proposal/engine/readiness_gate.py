@@ -21,6 +21,9 @@ from signals.service.blocker_manager import (
 from orchestrator.types import ProposalPassResult
 from flow.types.routing import submit_task
 
+_CANDIDATE_HASH_LENGTH = 8
+_TRIGGER_HASH_LENGTH = 12
+
 
 @dataclass
 class GateResult:
@@ -71,7 +74,7 @@ def publish_discoveries(
     for candidate in proposal_state.get("new_section_candidates", []):
         scope_delta_dir.mkdir(parents=True, exist_ok=True)
         cand_text = str(candidate)
-        cand_hash = Services.hasher().content_hash(cand_text)[:8]
+        cand_hash = Services.hasher().content_hash(cand_text)[:_CANDIDATE_HASH_LENGTH]
         delta_id = f"delta-{section_number}-candidate-{cand_hash}"
         scope_delta = {
             "delta_id": delta_id,
@@ -122,7 +125,7 @@ def _route_blocking_research(
 ) -> None:
     """Dispatch research or escalate blocking research questions."""
     trigger_hash = compute_trigger_hash(questions)
-    cycle_id = f"research-{section_number}-{trigger_hash[:12]}"
+    cycle_id = f"research-{section_number}-{trigger_hash[:_TRIGGER_HASH_LENGTH]}"
 
     if is_research_complete_for_trigger(section_number, planspace, trigger_hash):
         _emit_needs_parent_research_signals(

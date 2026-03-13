@@ -13,6 +13,8 @@ from coordination.prompt.writers import write_bridge_prompt, write_fix_prompt
 from flow.service.task_request_ingestor import ingest_and_submit
 from orchestrator.types import Section
 
+_NOTE_FINGERPRINT_LENGTH = 12
+
 
 class CoordinationExecutionExit(Exception):
     """Raised when coordination execution must stop early."""
@@ -136,7 +138,7 @@ def _inject_bridge_note_ids(
         note_text = note_path.read_text(encoding="utf-8")
         if "**Note ID**:" in note_text:
             continue
-        fingerprint = Services.hasher().content_hash(delta_bytes + section_num.encode("utf-8"))[:12]
+        fingerprint = Services.hasher().content_hash(delta_bytes + section_num.encode("utf-8"))[:_NOTE_FINGERPRINT_LENGTH]
         note_path.write_text(
             f"**Note ID**: `bridge-{group_index}-to-{section_num}-{fingerprint}`\n\n"
             f"{note_text}",
