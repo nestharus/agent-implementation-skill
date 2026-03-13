@@ -91,6 +91,63 @@ def validate_risk_plan(plan: RiskPlan, parameters: dict) -> list[str]:
     return violations
 
 
+_THRESHOLD_WAIT_FOR = "threshold-compliant-plan"
+
+
+def _apply_threshold_override(
+    decision: StepMitigation,
+    assessment_class: object | None,
+    threshold: int | None,
+) -> StepMitigation:
+    """Build a deferred decision when a step exceeds its threshold."""
+    reason_parts = [decision.reason] if decision.reason else []
+    if assessment_class is None or threshold is None:
+        reason_parts.append(
+            "fail-closed: missing assessment class or threshold "
+            "during threshold enforcement"
+        )
+    else:
+        reason_parts.append(
+            f"fail-closed: residual risk {decision.residual_risk} exceeds "
+            f"{assessment_class.value} threshold {threshold}"
+        )
+    wait_for = list(decision.wait_for)
+    if _THRESHOLD_WAIT_FOR not in wait_for:
+        wait_for.append(_THRESHOLD_WAIT_FOR)
+    return StepMitigation(
+        step_id=decision.step_id,
+        decision=StepDecision.REJECT_DEFER,
+        posture=decision.posture,
+        mitigations=list(decision.mitigations),
+        residual_risk=decision.residual_risk,
+        reason="; ".join(part for part in reason_parts if part),
+        wait_for=wait_for,
+        route_to=None,
+        dispatch_shape=None,
+    )
+
+
+def _rebuild_plan(plan: RiskPlan, decisions: list[StepMitigation]) -> RiskPlan:
+    """Reconstruct a RiskPlan from updated decisions."""
+    return RiskPlan(
+        plan_id=plan.plan_id,
+        assessment_id=plan.assessment_id,
+        package_id=plan.package_id,
+        layer=plan.layer,
+        step_decisions=decisions,
+        accepted_frontier=[
+            d.step_id for d in decisions if d.decision == StepDecision.ACCEPT
+        ],
+        deferred_steps=[
+            d.step_id for d in decisions if d.decision == StepDecision.REJECT_DEFER
+        ],
+        reopen_steps=[
+            d.step_id for d in decisions if d.decision == StepDecision.REJECT_REOPEN
+        ],
+        expected_reassessment_inputs=list(plan.expected_reassessment_inputs),
+    )
+
+
 def enforce_thresholds(
     plan: RiskPlan,
     assessments: dict[str, StepAssessment],
@@ -108,70 +165,21 @@ def enforce_thresholds(
         assessment = assessments.get(decision.step_id)
         assessment_class = assessment.assessment_class if assessment is not None else None
         threshold = thresholds.get(assessment_class.value) if assessment_class is not None else None
-        residual_risk = decision.residual_risk
 
         if (
             assessment_class is None
             or threshold is None
-            or residual_risk is None
-            or residual_risk > threshold
+            or decision.residual_risk is None
+            or decision.residual_risk > threshold
         ):
-            reason_parts = [decision.reason] if decision.reason else []
-            if assessment_class is None or threshold is None:
-                reason_parts.append(
-                    "fail-closed: missing assessment class or threshold during threshold enforcement"
-                )
-            else:
-                reason_parts.append(
-                    f"fail-closed: residual risk {residual_risk} exceeds "
-                    f"{assessment_class.value} threshold {threshold}"
-                )
-            wait_for = list(decision.wait_for)
-            if "threshold-compliant-plan" not in wait_for:
-                wait_for.append("threshold-compliant-plan")
             decisions.append(
-                StepMitigation(
-                    step_id=decision.step_id,
-                    decision=StepDecision.REJECT_DEFER,
-                    posture=decision.posture,
-                    mitigations=list(decision.mitigations),
-                    residual_risk=decision.residual_risk,
-                    reason="; ".join(part for part in reason_parts if part),
-                    wait_for=wait_for,
-                    route_to=None,
-                    dispatch_shape=None,
-                )
+                _apply_threshold_override(decision, assessment_class, threshold)
             )
             continue
 
         decisions.append(_clone_decision(decision))
 
-    accepted_frontier = [
-        decision.step_id
-        for decision in decisions
-        if decision.decision == StepDecision.ACCEPT
-    ]
-    deferred_steps = [
-        decision.step_id
-        for decision in decisions
-        if decision.decision == StepDecision.REJECT_DEFER
-    ]
-    reopen_steps = [
-        decision.step_id
-        for decision in decisions
-        if decision.decision == StepDecision.REJECT_REOPEN
-    ]
-    return RiskPlan(
-        plan_id=plan.plan_id,
-        assessment_id=plan.assessment_id,
-        package_id=plan.package_id,
-        layer=plan.layer,
-        step_decisions=decisions,
-        accepted_frontier=accepted_frontier,
-        deferred_steps=deferred_steps,
-        reopen_steps=reopen_steps,
-        expected_reassessment_inputs=list(plan.expected_reassessment_inputs),
-    )
+    return _rebuild_plan(plan, decisions)
 
 
 def load_default_parameters() -> dict:

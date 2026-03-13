@@ -489,19 +489,17 @@ def _persist_section_hashes(
     sections_by_num: dict[str, Section],
 ) -> None:
     """Write baseline and phase2 section-input hashes after implementation."""
+    cur_hash = Services.pipeline_control().section_inputs_hash(
+        sec_num, planspace, codespace, sections_by_num,
+    )
+
     baseline_hash_dir = paths.section_inputs_hashes_dir()
     baseline_hash_dir.mkdir(parents=True, exist_ok=True)
-    paths.section_input_hash(sec_num).write_text(
-        Services.pipeline_control().section_inputs_hash(sec_num, planspace, codespace, sections_by_num),
-        encoding="utf-8",
-    )
+    paths.section_input_hash(sec_num).write_text(cur_hash, encoding="utf-8")
 
     phase2_hash_dir = paths.phase2_inputs_hashes_dir()
     phase2_hash_dir.mkdir(parents=True, exist_ok=True)
-    paths.phase2_input_hash(sec_num).write_text(
-        Services.pipeline_control().section_inputs_hash(sec_num, planspace, codespace, sections_by_num),
-        encoding="utf-8",
-    )
+    paths.phase2_input_hash(sec_num).write_text(cur_hash, encoding="utf-8")
 
 
 def _prepare_risk_plan(
