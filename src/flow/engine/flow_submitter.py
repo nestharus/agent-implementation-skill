@@ -14,6 +14,7 @@ from flow.repository.flow_context_store import (
     write_flow_context,
 )
 from flow.service.task_db_client import task_db
+from flow.types.context import FlowTask
 from flow.types.routing import submit_task
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from containers import Services
@@ -108,14 +109,16 @@ def submit_chain(
         if planspace is not None:
             write_flow_context(
                 planspace=planspace,
-                task_id=tid,
-                instance_id=instance_id,
-                flow_id=flow_id,
-                chain_id=chain_id,
-                task_type=step.task_type,
-                declared_by_task_id=declared_by_task_id,
-                depends_on=depends_on,
-                trigger_gate_id=None,
+                task=FlowTask(
+                    task_id=tid,
+                    instance_id=instance_id,
+                    flow_id=flow_id,
+                    chain_id=chain_id,
+                    task_type=step.task_type,
+                    declared_by_task_id=declared_by_task_id,
+                    depends_on=depends_on,
+                    trigger_gate_id=None,
+                ),
                 origin_refs=refs,
                 previous_task_id=previous_task_id,
             )

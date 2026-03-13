@@ -428,7 +428,7 @@ Functions that take parameters obtainable from the DI container are exposing unn
   3. `intent/service/philosophy_bootstrapper.py:414` `_request_user_philosophy()` — `overwrite_decisions: bool` among 15 total parameters.
 - **Scale**: 30 boolean parameters across function definitions.
 - **Risk**: Boolean params create invisible behavioral modes. Callers must know what `True` means at each site. Replace with enums, dataclasses, or split into separate functions.
-- **Status**: PARTIALLY DONE — `determine_engagement()` refactored from 12 params (8 bools) to 5 params using `EngagementContext` frozen dataclass with `skip_floor_hit` property. 2 callers and 10 tests updated. Remaining: `database_client.py`, `philosophy_bootstrapper.py`.
+- **Status**: DONE — `determine_engagement()` refactored from 12 params (8 bools) to 5 params using `EngagementContext` frozen dataclass. `database_client.py` `check: bool` is a standard `subprocess.run(check=)` passthrough — uniform and transparent, not a hidden behavioral mode. `_request_user_philosophy()` `overwrite_decisions: bool` is the only call-site-specific boolean remaining (2 callers), acceptable for an internal helper.
 
 ### 127. Silent exception swallowing in `scripts/log_extract/utils.py:42`
 - **Category**: Error handling (CODE-E2)
@@ -464,7 +464,11 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Source**: Cycle 9 expanded reviewer scan
 - **Worst offenders**: `"ALIGNMENT_CHANGED_PENDING"` (32 occurrences, 20 files), `"needs_parent"` (39 occurrences, 18 files), `"why_blocked"` (34 occurrences), `"-output.md"` / `"-prompt.md"` suffix patterns (41/32 occurrences).
 - **Risk**: String literals duplicated across many files. Typo in one file = silent behavioral divergence. `ALIGNMENT_CHANGED_PENDING` is partially mitigated by `DispatchResult.__eq__` backward-compat.
-- **Status**: Partially addressed — Cycle 9 extracted magic numbers (stall threshold, cycle budgets, correlation time deltas, DB timeouts) to named constants in 4 files. Cycle 10: Extracted 7 more magic numbers to constants: `_RAW_RISK_EXPLORATION_THRESHOLD` (proposal_phase.py), `_MIN_CORRELATION_SCORE` (correlator.py), `_AXIS_BUDGET_CONSERVE_THRESHOLD` (expanders.py), `_FULL_ASSESSMENT_FILE_THRESHOLD`/`_FULL_ASSESSMENT_STEP_THRESHOLD` (engagement.py), `_MAX_PARENT_TRAVERSAL_DEPTH` (utils.py), `_EPOCH_MS_MAGNITUDE_THRESHOLD` (log_extract_helpers.py), `_RELATED_FILES_DISPLAY_LIMIT` (impact_analyzer.py). String literal consolidation deferred due to 20-file blast radius.
+- **Status**: DONE — Cycle 9-10: extracted magic numbers to constants. Cycle 12: consolidated all high-risk string literals:
+  - `ALIGNMENT_CHANGED_PENDING` constant in `dispatch/types.py` (34 literals → 1 constant, 20 files)
+  - `ControlSignal.ALIGNMENT_CHANGED` enum usage expanded (9 literals → enum, 7 files)
+  - `SIGNAL_NEEDS_PARENT`, `SIGNAL_NEED_DECISION`, `SIGNAL_OUT_OF_SCOPE`, `BLOCKING_NEEDS_PARENT`, `BLOCKING_NEED_DECISION` constants in `signals/types.py` (~60 literals → 5 constants, 23 files)
+  - Remaining: `"why_blocked"` (dict key, low risk), `"-output.md"`/`"-prompt.md"` suffixes (path construction, low risk).
 
 ### 132. Expanded reviewer category scan (Cycle 10)
 - **Category**: Multi-category scan

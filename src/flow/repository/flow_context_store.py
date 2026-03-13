@@ -126,14 +126,7 @@ def write_dispatch_prompt(
 
 def write_flow_context(
     planspace: Path,
-    task_id: int,
-    instance_id: str,
-    flow_id: str,
-    chain_id: str,
-    task_type: str,
-    declared_by_task_id: int | None,
-    depends_on: int | None,
-    trigger_gate_id: str | None,
+    task: FlowTask,
     origin_refs: list[str],
     previous_task_id: int | None,
 ) -> None:
@@ -146,21 +139,12 @@ def write_flow_context(
         previous_result = result_manifest_relpath(previous_task_id)
 
     context = FlowContext(
-        task=FlowTask(
-            task_id=task_id,
-            instance_id=instance_id,
-            flow_id=flow_id,
-            chain_id=chain_id,
-            task_type=task_type,
-            declared_by_task_id=declared_by_task_id,
-            depends_on=depends_on,
-            trigger_gate_id=trigger_gate_id,
-        ),
+        task=task,
         origin_refs=origin_refs or [],
         previous_result_manifest=previous_result,
-        continuation_path=continuation_relpath(task_id),
-        result_manifest_path=result_manifest_relpath(task_id),
+        continuation_path=continuation_relpath(task.task_id),
+        result_manifest_path=result_manifest_relpath(task.task_id),
     )
 
-    context_path = PathRegistry(planspace).flow_context(task_id)
+    context_path = PathRegistry(planspace).flow_context(task.task_id)
     Services.artifact_io().write_json(context_path, flow_context_to_dict(context))

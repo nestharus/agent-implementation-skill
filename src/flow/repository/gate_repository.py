@@ -21,6 +21,7 @@ from flow.repository.flow_context_store import (
     write_flow_context,
 )
 from flow.engine.flow_submitter import new_chain_id, new_instance_id
+from flow.types.context import FlowTask
 from flow.types.routing import submit_task
 
 
@@ -164,14 +165,16 @@ def _fire_synthesis_task(
 
     write_flow_context(
         planspace=planspace,
-        task_id=syn_tid,
-        instance_id=syn_instance_id,
-        flow_id=flow_id,
-        chain_id=syn_chain_id,
-        task_type=gate["synthesis_task_type"],
-        declared_by_task_id=None,
-        depends_on=None,
-        trigger_gate_id=gate_id,
+        task=FlowTask(
+            task_id=syn_tid,
+            instance_id=syn_instance_id,
+            flow_id=flow_id,
+            chain_id=syn_chain_id,
+            task_type=gate["synthesis_task_type"],
+            declared_by_task_id=None,
+            depends_on=None,
+            trigger_gate_id=gate_id,
+        ),
         origin_refs=origin_refs,
         previous_task_id=None,
     )

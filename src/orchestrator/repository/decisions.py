@@ -127,38 +127,8 @@ def _decision_from_entry(entry: dict[str, Any]) -> Decision:
     )
 
 
-def _compose_prose_entry_text(
-    decision_id: str,
-    status: str,
-    scope: str,
-    section: str | None,
-    concern_scope: str,
-    proposal_summary: str,
-    alignment_line: str,
-    child_problems: str,
-    why_line: str,
-    evidence_line: str,
-    next_line: str,
-    timestamp: str,
-) -> str:
-    """Return the formatted prose text for a single decision entry."""
-    section_suffix = f" (section {section})" if section else ""
-    return (
-        f"\n## Decision {decision_id} ({status})\n\n"
-        f"- **Scope**: {scope}{section_suffix}\n"
-        f"- **Concern**: {concern_scope}\n"
-        f"- **Summary**: {proposal_summary}\n"
-        f"- **Status**: {status}"
-        f"{alignment_line}"
-        f"{child_problems}"
-        f"{why_line}"
-        f"{evidence_line}"
-        f"{next_line}\n"
-        f"- **Timestamp**: {timestamp}\n"
-    )
-
-
 def _format_prose_entry(decision: Decision) -> str:
+    """Return the formatted prose text for a single decision entry."""
     child_problems = ""
     if decision.new_child_problems:
         items = "\n".join(f"  - {problem}" for problem in decision.new_child_problems)
@@ -183,17 +153,17 @@ def _format_prose_entry(decision: Decision) -> str:
             f"\n- **Alignment to parent**: {decision.alignment_to_parent}"
         )
 
-    return _compose_prose_entry_text(
-        decision_id=decision.id,
-        status=decision.status,
-        scope=decision.scope,
-        section=decision.section,
-        concern_scope=decision.concern_scope,
-        proposal_summary=decision.proposal_summary,
-        alignment_line=alignment_line,
-        child_problems=child_problems,
-        why_line=why_line,
-        evidence_line=evidence_line,
-        next_line=next_line,
-        timestamp=decision.timestamp,
+    section_suffix = f" (section {decision.section})" if decision.section else ""
+    return (
+        f"\n## Decision {decision.id} ({decision.status})\n\n"
+        f"- **Scope**: {decision.scope}{section_suffix}\n"
+        f"- **Concern**: {decision.concern_scope}\n"
+        f"- **Summary**: {decision.proposal_summary}\n"
+        f"- **Status**: {decision.status}"
+        f"{alignment_line}"
+        f"{child_problems}"
+        f"{why_line}"
+        f"{evidence_line}"
+        f"{next_line}\n"
+        f"- **Timestamp**: {decision.timestamp}\n"
     )

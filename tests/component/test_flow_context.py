@@ -15,6 +15,7 @@ from flow.repository.flow_context_store import (
     write_dispatch_prompt,
     write_flow_context,
 )
+from flow.types.context import FlowTask
 
 
 def test_relpath_helpers_match_existing_layout() -> None:
@@ -31,14 +32,16 @@ def test_write_flow_context_writes_expected_json(tmp_path) -> None:
 
     write_flow_context(
         planspace=planspace,
-        task_id=11,
-        instance_id="inst_1",
-        flow_id="flow_1",
-        chain_id="chain_1",
-        task_type="staleness.alignment_check",
-        declared_by_task_id=10,
-        depends_on=10,
-        trigger_gate_id=None,
+        task=FlowTask(
+            task_id=11,
+            instance_id="inst_1",
+            flow_id="flow_1",
+            chain_id="chain_1",
+            task_type="staleness.alignment_check",
+            declared_by_task_id=10,
+            depends_on=10,
+            trigger_gate_id=None,
+        ),
         origin_refs=["ref-1"],
         previous_task_id=10,
     )
