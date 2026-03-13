@@ -12,6 +12,7 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.writers import write_integration_alignment_prompt
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from signals.types import ACTION_ABORT, ACTION_CONTINUE
 
 
 def run_alignment_check(
@@ -96,10 +97,10 @@ def handle_alignment_signals(
         f"pause:underspec:{section_number}:{detail}",
     )
     if not response.startswith("resume"):
-        return "abort"
+        return ACTION_ABORT
     payload = response.partition(":")[2].strip()
     if payload:
         Services.cross_section().persist_decision(planspace, section_number, payload)
     if Services.pipeline_control().alignment_changed_pending(planspace):
-        return "abort"
-    return "continue"
+        return ACTION_ABORT
+    return ACTION_CONTINUE

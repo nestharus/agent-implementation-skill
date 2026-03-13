@@ -19,6 +19,7 @@ from intent.service.surface_registry import (
     save_surface_registry,
 )
 from proposal.service.expansion_handler import run_aligned_expansion, run_misaligned_expansion
+from signals.types import ACTION_ABORT, ACTION_CONTINUE
 
 
 DEFINITION_GAP_KINDS = {
@@ -125,7 +126,7 @@ def handle_aligned_surfaces(
                 surface_count,
             )
             return (
-                "continue",
+                ACTION_CONTINUE,
                 "full",
                 "Lightweight section discovered structured surfaces; "
                 "re-propose under full intent mode.",
@@ -138,10 +139,10 @@ def handle_aligned_surfaces(
                 surface_count,
             )
             if action is None:
-                return "abort", intent_mode, None
-            if action == "continue":
+                return ACTION_ABORT, intent_mode, None
+            if action == ACTION_CONTINUE:
                 return (
-                    "continue",
+                    ACTION_CONTINUE,
                     intent_mode,
                     "Intent expanded; re-propose against "
                     "updated problem/philosophy definitions.",

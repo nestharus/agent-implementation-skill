@@ -20,7 +20,7 @@ from signals.service.blocker_manager import (
 )
 from orchestrator.types import ProposalPassResult
 from flow.types.routing import submit_task
-from signals.types import SIGNAL_NEEDS_PARENT, SIGNAL_NEED_DECISION
+from signals.types import PASS_MODE_PROPOSAL, SIGNAL_NEEDS_PARENT, SIGNAL_NEED_DECISION
 
 _CANDIDATE_HASH_LENGTH = 8
 _TRIGGER_HASH_LENGTH = 12
@@ -368,7 +368,7 @@ def resolve_and_route(
         )
 
         proposal_pass_result = None
-        if pass_mode == "proposal":
+        if pass_mode == PASS_MODE_PROPOSAL:
             proposal_pass_result = _build_proposal_pass_result(
                 section.number, str(proposal_state_path), proposal_state,
                 execution_ready=False, blockers=blockers,
@@ -380,7 +380,7 @@ def resolve_and_route(
         )
 
     proposal_pass_result = None
-    if pass_mode == "proposal":
+    if pass_mode == PASS_MODE_PROPOSAL:
         Services.logger().log(
             f"Section {section.number}: proposal pass complete — "
             f"execution_ready=true, deferring implementation"

@@ -24,6 +24,7 @@ from proposal.service.surface_handler import (
     handle_aligned_surfaces,
     handle_misaligned_surfaces,
 )
+from signals.types import ACTION_ABORT, ACTION_CONTINUE
 
 
 def _check_proposal_written(
@@ -123,26 +124,26 @@ def _run_alignment_phase(
             f"Section {section.number}: proposal alignment check "
             f"timed out — retrying"
         )
-        return "continue", problems, intent_mode
+        return ACTION_CONTINUE, problems, intent_mode
 
     align_signal = handle_alignment_signals(
         section.number, planspace, parent, codespace,
         align_result, align_output, paths,
     )
-    if align_signal == "abort":
-        return "abort", None, intent_mode
-    if align_signal == "continue":
-        return "continue", None, intent_mode
+    if align_signal == ACTION_ABORT:
+        return ACTION_ABORT, None, intent_mode
+    if align_signal == ACTION_CONTINUE:
+        return ACTION_CONTINUE, None, intent_mode
 
     if problems is None:
         action, intent_mode, reproposal_reason = handle_aligned_surfaces(
             section.number, planspace, codespace, parent, paths,
             intent_mode, intent_budgets, expansion_counts,
         )
-        if action == "abort":
-            return "abort", None, intent_mode
-        if action == "continue":
-            return "continue", reproposal_reason, intent_mode
+        if action == ACTION_ABORT:
+            return ACTION_ABORT, None, intent_mode
+        if action == ACTION_CONTINUE:
+            return ACTION_CONTINUE, reproposal_reason, intent_mode
         _write_alignment_surface(planspace, section)
         return "break", None, intent_mode
 
@@ -150,7 +151,7 @@ def _run_alignment_phase(
         section.number, planspace, codespace, parent, paths,
         intent_mode, intent_budgets, expansion_counts,
     )
-    return "continue", problems, intent_mode
+    return ACTION_CONTINUE, problems, intent_mode
 
 
 def _dispatch_and_validate_proposal(
@@ -171,27 +172,27 @@ def _dispatch_and_validate_proposal(
         proposal_problems, incoming_notes, paths,
     )
     if intg_prompt is None:
-        return "abort", None
+        return ACTION_ABORT, None
 
     intg_result = dispatch_proposal(
         section.number, planspace, codespace, parent,
         proposal_model, intg_prompt, paths, integration_proposal,
     )
     if intg_result is None:
-        return "abort", None
+        return ACTION_ABORT, None
 
     signal_action = handle_proposal_signals(
         section.number, planspace, parent, codespace, intg_result, paths,
     )
-    if signal_action == "abort":
-        return "abort", None
-    if signal_action == "continue":
-        return "continue", None
+    if signal_action == ACTION_ABORT:
+        return ACTION_ABORT, None
+    if signal_action == ACTION_CONTINUE:
+        return ACTION_CONTINUE, None
 
     if not _check_proposal_written(
         section.number, planspace, parent, integration_proposal,
     ):
-        return "abort", None
+        return ACTION_ABORT, None
 
     return "proceed", intg_result
 
@@ -243,9 +244,9 @@ def run_proposal_loop(
             proposal_problems, incoming_notes, proposal_attempt,
             paths, integration_proposal,
         )
-        if dispatch_action == "abort":
+        if dispatch_action == ACTION_ABORT:
             return None
-        if dispatch_action == "continue":
+        if dispatch_action == ACTION_CONTINUE:
             continue
 
         # --- alignment check ---
@@ -261,11 +262,11 @@ def run_proposal_loop(
             align_result, align_output,
             intent_mode, intent_budgets, expansion_counts,
         )
-        if action == "abort":
+        if action == ACTION_ABORT:
             return None
         if action == "break":
             break
-        # action == "continue"
+        # action == ACTION_CONTINUE
         proposal_problems = problems
         if problems is not None:
             _log_misalignment_problems(

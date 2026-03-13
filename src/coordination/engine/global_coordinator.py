@@ -25,6 +25,7 @@ from implementation.service.scope_delta_aggregator import (
 from coordination.service.completion_handler import read_incoming_notes
 from orchestrator.types import Section, SectionResult, ControlSignal
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from signals.types import ALIGNMENT_INVALID_FRAME
 
 
 # Coordination round limits: hard cap to prevent runaway, but rounds
@@ -289,7 +290,7 @@ def _recheck_section_alignment(
     )
     if align_result == ALIGNMENT_CHANGED_PENDING:
         return None
-    if align_result == "INVALID_FRAME":
+    if align_result == ALIGNMENT_INVALID_FRAME:
         Services.logger().log(f"  coordinator: section {sec_num} invalid alignment "
             f"frame — requires parent intervention")
         Services.communicator().mailbox_send(

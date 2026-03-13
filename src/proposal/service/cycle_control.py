@@ -16,7 +16,10 @@ from signals.service.blocker_manager import (
     _update_blocker_rollup,
 )
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
-from signals.types import SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE
+from signals.types import (
+    ACTION_ABORT, ACTION_CONTINUE,
+    SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE,
+)
 
 
 def check_early_abort(
@@ -214,10 +217,10 @@ def handle_proposal_signals(
         f"pause:{signal}:{section_number}:{detail}",
     )
     if not response.startswith("resume"):
-        return "abort"
+        return ACTION_ABORT
     payload = response.partition(":")[2].strip()
     if payload:
         Services.cross_section().persist_decision(planspace, section_number, payload)
     if Services.pipeline_control().alignment_changed_pending(planspace):
-        return "abort"
-    return "continue"
+        return ACTION_ABORT
+    return ACTION_CONTINUE

@@ -10,6 +10,7 @@ from containers import Services
 from staleness.helpers.verdict_parsers import parse_alignment_verdict as _parse_alignment_verdict
 from orchestrator.types import Section, ControlSignal
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from signals.types import ALIGNMENT_INVALID_FRAME
 
 
 def collect_modified_files(
@@ -172,7 +173,7 @@ def _run_alignment_check_with_retries(
                 Services.logger().log(f"  alignment judge reported invalid frame for "
                     f"section {sec_num} — structural failure, "
                     f"requires parent intervention")
-                return "INVALID_FRAME"
+                return ALIGNMENT_INVALID_FRAME
             return result
         Services.logger().log(f"  alignment check for section {sec_num} timed out "
             f"(attempt {attempt}/{max_retries + 1})")

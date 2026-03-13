@@ -11,6 +11,7 @@ from pathlib import Path
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 from intent.service.expansion_facade import handle_user_gate, run_expansion_cycle
+from signals.types import ACTION_CONTINUE
 
 
 def _handle_budget_exhaustion(
@@ -111,7 +112,7 @@ def run_aligned_expansion(
             f"Section {section_number}: intent "
             f"expanded — re-proposing"
         )
-        return "continue"
+        return ACTION_CONTINUE
 
     return "break"
 

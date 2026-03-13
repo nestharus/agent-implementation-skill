@@ -24,7 +24,7 @@ from implementation.service.section_reexplorer import _reexplore_section
 from implementation.engine.section_pipeline import run_section
 from orchestrator.types import ProposalPassResult, Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
-from signals.types import SIGNAL_NEEDS_PARENT
+from signals.types import PASS_MODE_PROPOSAL, SIGNAL_NEEDS_PARENT
 
 logger = logging.getLogger(__name__)
 
@@ -450,7 +450,7 @@ def run_proposal_pass(
             section,
             parent,
             all_sections=all_sections,
-            pass_mode="proposal",
+            pass_mode=PASS_MODE_PROPOSAL,
         )
 
         if _check_alignment_and_requeue(

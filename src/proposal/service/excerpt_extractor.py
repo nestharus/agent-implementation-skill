@@ -11,7 +11,7 @@ from signals.service.blocker_manager import (
     _update_blocker_rollup,
 )
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
-from signals.types import SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE
+from signals.types import ACTION_CONTINUE, SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE
 
 
 def _write_scope_delta(
@@ -62,7 +62,7 @@ def _handle_setup_signal(
         Services.cross_section().persist_decision(planspace, section_number, payload)
     if Services.pipeline_control().alignment_changed_pending(planspace):
         return None
-    return "continue"
+    return ACTION_CONTINUE
 
 
 def extract_excerpts(

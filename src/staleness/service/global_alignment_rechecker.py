@@ -13,6 +13,7 @@ from staleness.service.section_alignment_checker import (
 )
 from coordination.service.completion_handler import read_incoming_notes
 from orchestrator.types import Section, SectionResult, ControlSignal
+from signals.types import ALIGNMENT_INVALID_FRAME
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
@@ -80,7 +81,7 @@ def _recheck_section(
     )
     if align_result == ALIGNMENT_CHANGED_PENDING:
         return CoordinationStatus.RESTART_PHASE1
-    if align_result == "INVALID_FRAME":
+    if align_result == ALIGNMENT_INVALID_FRAME:
         Services.logger().log(
             f"Section {sec_num}: invalid alignment frame — requires parent intervention",
         )

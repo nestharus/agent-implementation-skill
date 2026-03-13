@@ -9,6 +9,7 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 from orchestrator.types import Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from signals.types import ACTION_ABORT, ACTION_CONTINUE, ACTION_SKIP
 
 
 # ---------------------------------------------------------------------------
@@ -101,10 +102,10 @@ def _parse_triage_response(
     """
     triage = Services.artifact_io().read_json(triage_signal_path)
     if triage is None:
-        return "continue"
+        return ACTION_CONTINUE
 
     if triage.get("needs_replan", True) or triage.get("needs_code_change", True):
-        return "continue"
+        return ACTION_CONTINUE
 
     # Merge new acknowledgments into the persisted ack file.
     triage_acks = triage.get("acknowledge", [])
@@ -133,9 +134,9 @@ def _parse_triage_response(
             f"Section {section.number}: triage did not acknowledge all notes "
             "— full processing",
         )
-        return "continue"
+        return ACTION_CONTINUE
 
-    return "skip"
+    return ACTION_SKIP
 
 
 def _run_triage_alignment(
@@ -161,7 +162,7 @@ def _run_triage_alignment(
         adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
     )
     if verify_result == ALIGNMENT_CHANGED_PENDING:
-        return ("abort", None)
+        return (ACTION_ABORT, None)
     if verify_result:
         verdict = Services.section_alignment().parse_alignment_verdict(verify_result)
         if (
@@ -176,9 +177,9 @@ def _run_triage_alignment(
             reported = Services.section_alignment().collect_modified_files(
                 planspace, section, codespace,
             )
-            return ("skip", reported if reported else [])
+            return (ACTION_SKIP, reported if reported else [])
 
-    return ("continue", None)
+    return (ACTION_CONTINUE, None)
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +195,7 @@ def run_impact_triage(
 ) -> tuple[str, list[str] | None]:
     """Classify note impact and optionally short-circuit to alignment."""
     if not incoming_notes or section.solve_count < 1:
-        return ("continue", None)
+        return (ACTION_CONTINUE, None)
 
     policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
@@ -209,7 +210,7 @@ def run_impact_triage(
 
     prompt_text = _build_triage_prompt(section, paths, triage_notes_path, triage_signal_path)
     if not Services.prompt_guard().write_validated(prompt_text, triage_prompt_path):
-        return ("continue", None)
+        return (ACTION_CONTINUE, None)
     Services.communicator().log_artifact(planspace, f"prompt:triage-{section.number}")
 
     Services.dispatcher().dispatch(
@@ -224,7 +225,7 @@ def run_impact_triage(
     )
 
     decision = _parse_triage_response(triage_signal_path, incoming_notes, paths, section)
-    if decision == "continue":
-        return ("continue", None)
+    if decision == ACTION_CONTINUE:
+        return (ACTION_CONTINUE, None)
 
     return _run_triage_alignment(section, planspace, codespace, parent, policy)

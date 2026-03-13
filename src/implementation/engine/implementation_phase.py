@@ -40,6 +40,7 @@ from implementation.service.risk_history_recorder import (
     append_risk_review_failure_history,
 )
 from orchestrator.types import ProposalPassResult, Section, SectionResult
+from signals.types import PASS_MODE_IMPLEMENTATION
 
 _MAX_FRONTIER_ITERATIONS = 3
 
@@ -385,7 +386,7 @@ def _execute_frontier_slice(
         section,
         parent,
         all_sections=list(sections_by_num.values()),
-        pass_mode="implementation",
+        pass_mode=PASS_MODE_IMPLEMENTATION,
     )
 
     Services.pipeline_control().check_alignment_and_raise(
@@ -575,7 +576,7 @@ def _implement_section(
     modified_files = run_section(
         planspace, codespace, section, parent,
         all_sections=list(sections_by_num.values()),
-        pass_mode="implementation",
+        pass_mode=PASS_MODE_IMPLEMENTATION,
     )
 
     Services.pipeline_control().check_alignment_and_raise(

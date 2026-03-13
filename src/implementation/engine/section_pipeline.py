@@ -27,6 +27,10 @@ from intent.service.intent_pack_generator import ensure_global_philosophy, gener
 from intent.service.intent_triager import run_intent_triage
 from reconciliation.engine.cross_section_reconciler import load_reconciliation_result
 from implementation.service.microstrategy_decider import _extract_todos_from_files
+from signals.types import (
+    ACTION_ABORT, ACTION_CONTINUE, ACTION_SKIP,
+    PASS_MODE_IMPLEMENTATION, PASS_MODE_PROPOSAL,
+)
 
 
 _DEFAULT_PROPOSAL_CYCLE_MAX = 5
@@ -74,9 +78,9 @@ def _run_impact_triage(
         parent,
         incoming_notes,
     )
-    if triage_status == "abort":
+    if triage_status == ACTION_ABORT:
         return False, None
-    if triage_status == "skip":
+    if triage_status == ACTION_SKIP:
         return False, triage_files if triage_files is not None else []
     return True, None
 
@@ -157,7 +161,7 @@ def _resolve_readiness_and_route(
     )
     if not readiness_result.ready:
         return readiness_result.proposal_pass_result
-    if pass_mode == "proposal":
+    if pass_mode == PASS_MODE_PROPOSAL:
         return readiness_result.proposal_pass_result
     return _CONTINUE
 
@@ -380,7 +384,7 @@ def run_section(
     artifacts = paths.artifacts
 
     # Implementation-only mode: skip proposal steps, jump to execution
-    if pass_mode == "implementation":
+    if pass_mode == PASS_MODE_IMPLEMENTATION:
         return _run_implementation_pass(
             planspace, codespace, section, parent,
             all_sections=all_sections,
