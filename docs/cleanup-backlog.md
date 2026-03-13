@@ -471,6 +471,25 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Scanned**: CODE-B6 (long if/elif chains ≥5 branches), CODE-E5 (resource cleanup / open without context manager), CODE-E10 (assertion misuse for runtime validation), CODE-S1 (module-level constant naming)
 - **Status**: DONE — All 4 categories clean. Max if/elif chain is 4 branches. All sqlite3.connect() and open() calls properly managed. Zero assert statements in src/. All module-level constants use UPPER_SNAKE_CASE.
 
+### 133. Cycle 10 continued — decompositions, magic numbers, dead code
+- **Category**: CODE-S2 (function length), CODE-S8 (magic numbers), dead code removal
+- **Decompositions** (5 functions):
+  - `readiness_gate.resolve_and_route`: extract `_build_proposal_pass_result` (eliminates duplicate ProposalPassResult construction)
+  - `global_alignment_rechecker._recheck_section`: extract `_apply_alignment_outcome` (problem extraction + signal check phase)
+  - `task_request_ingestor.ingest_and_submit`: extract `_submit_chain_action` / `_submit_fanout_action`
+  - `substrate_discoverer._run_pruning`: extract `_validate_pruner_outputs` (3 failure paths with shared status writes)
+  - `signal_reader.read_signal_tuple`: replace 6-way state if-chain with `_SIGNAL_STATE_MAP` dict lookup
+- **Magic numbers** (13 constants extracted across 5 files):
+  - `correlator.py`: 8 scoring weights (`_SCORE_PROMPT_SIGNATURE`, `_SCORE_TIME_CLOSE/NEAR/MODERATE`, `_SCORE_CWD_EXACT/BASENAME`, `_SCORE_MODEL_EXACT/COMPATIBLE`)
+  - `risk_artifact_writer.py`: `_RISK_ITERATIONS_BASE` / `_RISK_ITERATIONS_CAP`
+  - `history.py`: `_SURPRISE_SCORE_WEIGHT` / `_SURPRISE_SCORE_CAP`
+  - `proposal_phase.py`: `_RISK_SEVERITY_BLOCKER_THRESHOLD`
+  - `pipeline_state.py`: `_PAUSE_POLL_TIMEOUT_SECONDS`
+- **Dead code removed**:
+  - `traceability_writer._verify_traceability` (71 lines) — defined but never called
+  - `pipeline_control._set_alignment_changed_flag` — dead wrapper + unused import
+- **Status**: DONE
+
 ---
 
 ## NOT A BUG
