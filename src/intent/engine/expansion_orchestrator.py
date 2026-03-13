@@ -6,6 +6,9 @@ from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
 from containers import Services
+
+_MAX_SURFACES_PER_CYCLE_DEFAULT = 8
+_MAX_AXES_TOTAL_DEFAULT = 6
 from intent.service.surface_registry import (
     find_discarded_recurrences,
     load_combined_intent_surfaces,
@@ -215,7 +218,7 @@ def run_expansion_cycle(
         save_surface_registry(section_number, planspace, registry)
         return no_work
 
-    max_surfaces = budget_config.get("max_new_surfaces_per_cycle", 8)
+    max_surfaces = budget_config.get("max_new_surfaces_per_cycle", _MAX_SURFACES_PER_CYCLE_DEFAULT)
     if len(worklist) > max_surfaces:
         Services.logger().log(f"Section {section_number}: {len(worklist)} pending surfaces "
             f"exceeds budget of {max_surfaces} — processing oldest "
@@ -229,7 +232,7 @@ def run_expansion_cycle(
     Services.artifact_io().write_json(pending_surfaces_path, budgeted_surfaces)
 
     axes_added = registry.get("axes_added_so_far", 0)
-    max_axes = budget_config.get("max_new_axes_total", 6)
+    max_axes = budget_config.get("max_new_axes_total", _MAX_AXES_TOTAL_DEFAULT)
     remaining_axis_budget = max(0, max_axes - axes_added)
 
     delta = {
