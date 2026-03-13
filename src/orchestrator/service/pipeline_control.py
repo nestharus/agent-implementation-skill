@@ -5,7 +5,6 @@ from staleness.service.change_tracker import (
     check_pending as alignment_changed_pending_flag,
     invalidate_excerpts as invalidate_all_excerpts,
     make_alignment_checker,
-    set_flag as set_alignment_changed_flag,
 )
 from signals.service.message_poller import (
     check_for_messages as drain_messages,
@@ -32,15 +31,6 @@ def check_pipeline_state(planspace: Path) -> str:
 
 def _invalidate_excerpts(planspace: Path) -> None:
     invalidate_all_excerpts(planspace)
-
-
-def _set_alignment_changed_flag(planspace: Path) -> None:
-    """Write flag file so the main loop knows to requeue sections."""
-    set_alignment_changed_flag(
-        planspace,
-        db_sh=DB_SH,
-        agent_name=AGENT_NAME,
-    )
 
 
 def alignment_changed_pending(planspace: Path) -> bool:
