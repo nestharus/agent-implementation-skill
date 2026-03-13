@@ -28,7 +28,7 @@ from intent.service.intent_triager import run_intent_triage
 from reconciliation.engine.cross_section_reconciler import load_reconciliation_result
 from implementation.service.microstrategy_decider import _extract_todos_from_files
 from signals.types import (
-    ACTION_ABORT, ACTION_CONTINUE, ACTION_SKIP,
+    ACTION_ABORT, ACTION_SKIP,
     PASS_MODE_IMPLEMENTATION, PASS_MODE_PROPOSAL,
 )
 
