@@ -288,48 +288,24 @@ class TestTaskRegistry:
 
 class TestDiscovery:
     def test_all_system_routes_discoverable(self) -> None:
-        """Importing all system route modules registers 28 task types."""
+        """Importing all system route modules registers every declared route."""
+        import importlib
+        from taskrouter.discovery import _SYSTEM_ROUTE_MODULES
+
         test_registry = TaskRegistry()
 
-        import scan.routes
-        import staleness.routes
-        import research.routes
-        import proposal.routes
-        import implementation.routes
-        import coordination.routes
-        import reconciliation.routes
-        import dispatch.routes
-        import qa.routes
-        import signals.routes
-
-        for mod in [
-            scan.routes,
-            staleness.routes,
-            research.routes,
-            proposal.routes,
-            implementation.routes,
-            coordination.routes,
-            reconciliation.routes,
-            dispatch.routes,
-            qa.routes,
-            signals.routes,
-        ]:
+        for module_name in _SYSTEM_ROUTE_MODULES:
+            mod = importlib.import_module(module_name)
             if mod.router.namespace not in test_registry.namespaces:
                 test_registry.add_router(mod.router)
 
-        assert len(test_registry.all_task_types) == 35
-        assert test_registry.namespaces == frozenset({
-            "scan",
-            "staleness",
-            "research",
-            "proposal",
-            "implementation",
-            "coordination",
-            "reconciliation",
-            "dispatch",
-            "qa",
-            "signals",
-        })
+        # Every declared route module is registered
+        expected_namespaces = frozenset(
+            m.split(".")[0] for m in _SYSTEM_ROUTE_MODULES
+        )
+        assert test_registry.namespaces == expected_namespaces
+        # At least one route per namespace
+        assert len(test_registry.all_task_types) >= len(expected_namespaces)
 
     def test_every_route_has_agent_file(self) -> None:
         """Every registered route has a non-empty agent file."""

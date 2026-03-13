@@ -13,6 +13,8 @@ Entry point: ``run_reconciliation_loop(run_dir, proposal_results)``.
 import logging
 from pathlib import Path
 
+from orchestrator.path_registry import PathRegistry
+
 from containers import Services
 from proposal.repository.state import load_proposal_state
 from reconciliation.service.adjudicator import adjudicate_ungrouped_candidates
@@ -117,7 +119,7 @@ def run_reconciliation_loop(
 
     states: dict[str, dict] = {}
     for sec_num in section_numbers:
-        state_path = proposals_dir / f"section-{sec_num}-proposal-state.json"
+        state_path = PathRegistry(run_dir).proposal_state(sec_num)
         states[sec_num] = load_proposal_state(state_path)
 
     # ------------------------------------------------------------------

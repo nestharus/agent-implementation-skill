@@ -341,10 +341,7 @@ def write_strategic_impl_prompt(
             )
 
         # Reconciliation result (cross-section conflict detection)
-        reconciliation_path = (
-            paths.reconciliation_dir()
-            / f"section-{sec}-reconciliation-result.json"
-        )
+        reconciliation_path = paths.reconciliation_result(sec)
         reconciliation_ref = ""
         if reconciliation_path.exists():
             reconciliation_ref = (
@@ -353,10 +350,7 @@ def write_strategic_impl_prompt(
             )
 
         # Execution-readiness artifact (blocker summary)
-        readiness_path = (
-            paths.readiness_dir()
-            / f"section-{sec}-execution-ready.json"
-        )
+        readiness_path = paths.execution_ready(sec)
         readiness_ref = ""
         if readiness_path.exists():
             readiness_ref = (

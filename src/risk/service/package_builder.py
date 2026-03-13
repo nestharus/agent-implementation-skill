@@ -52,12 +52,8 @@ def build_package_from_proposal(
     proposal_excerpt_path = paths.proposal_excerpt(section_number)
     microstrategy_path = paths.microstrategy(section_number)
     problem_frame_path = paths.problem_frame(section_number)
-    proposal_state_path = (
-        paths.proposals_dir() / f"{scope}-proposal-state.json"
-    )
-    readiness_path = (
-        paths.readiness_dir() / f"{scope}-execution-ready.json"
-    )
+    proposal_state_path = paths.proposal_state(section_number)
+    readiness_path = paths.execution_ready(section_number)
 
     proposal_excerpt = read_text(proposal_excerpt_path)
     problem_frame = read_text(problem_frame_path)

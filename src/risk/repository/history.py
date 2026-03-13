@@ -6,6 +6,7 @@ import json
 import logging
 from pathlib import Path
 
+from containers import Services
 from risk.repository.serialization import deserialize_history_entry, serialize_history_entry
 from risk.types import AssessmentClass, RiskHistoryEntry, RiskType, clamp_float, clamp_int
 
@@ -50,7 +51,7 @@ def read_history(history_path: Path) -> list[RiskHistoryEntry]:
         return entries
     except OSError as exc:
         logger.warning("Malformed risk history at %s: %s", history_path, exc)
-        _rename_malformed_history(history_path)
+        Services.artifact_io().rename_malformed(history_path)
         return []
 
 
@@ -127,26 +128,5 @@ def _actual_outcome_score(entry: RiskHistoryEntry) -> int:
     score += min(len(entry.surfaced_surprises) * 5, 10)
     return clamp_int(score, 0, 100)
 
-
-def _rename_malformed_history(history_path: Path) -> Path | None:
-    if not history_path.exists():
-        return None
-
-    malformed_path = history_path.with_suffix(".malformed.json")
-    try:
-        history_path.rename(malformed_path)
-        logger.warning(
-            "Preserved malformed risk history: %s -> %s",
-            history_path,
-            malformed_path,
-        )
-        return malformed_path
-    except OSError as exc:
-        logger.warning(
-            "Failed to preserve malformed risk history %s: %s",
-            history_path,
-            exc,
-        )
-        return None
 
 

@@ -113,20 +113,13 @@ def _route_scope_deltas(
                     )
                     continue
             else:
-                malformed_path = (
-                    scope_deltas_dir
-                    / f"section-{sec_num}-scope-delta.malformed.json"
-                )
-                if delta_path.exists():
-                    try:
-                        delta_path.rename(malformed_path)
-                    except OSError:
-                        pass
-                print(
-                    f"[SCOPE][WARN] section-{sec_num}: malformed "
-                    f"scope-delta JSON preserved as "
-                    f"{malformed_path.name}",
-                )
+                preserved = Services.artifact_io().rename_malformed(delta_path)
+                if preserved:
+                    print(
+                        f"[SCOPE][WARN] section-{sec_num}: malformed "
+                        f"scope-delta JSON preserved as "
+                        f"{preserved.name}",
+                    )
 
         delta = {
             "delta_id": f"delta-{sec_num}-scan-deep",

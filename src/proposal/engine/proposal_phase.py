@@ -119,7 +119,7 @@ def _risk_check_proposal(
             steps=list(package.steps),
         )
         proposal_state = load_proposal_state(
-            paths.proposals_dir() / f"{scope}-proposal-state.json"
+            paths.proposal_state(sec_num)
         )
         triage_signal = Services.artifact_io().read_json(paths.signals_dir() / f"intent-triage-{sec_num}.json")
         triage_confidence = "low"

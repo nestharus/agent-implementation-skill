@@ -961,32 +961,25 @@ docs, executable adapters, and discovery boundaries agree.
 
 ## Health Notes
 
-- **PAT-0001 (Corruption Preservation)**: **Unhealthy.** R111 correctly
-  migrated the last two known scan/substrate local malformed-artifact
-  conventions (`scan/substrate/related_files.py` and
-  `scan/substrate/schemas.py`) to shared `read_json()`/`rename_malformed()`
-  primitives, but the delivered snapshot still has live violations in
-  `src/dispatch/service/tool_registry_manager.py` (local `json.loads()` +
-  `.copy2()` preservation that leaves the corrupt canonical file in place) and
-  `src/coordination/prompt/writers.py` (copy-back restoration from
-  `.malformed.json`). The pattern remains correct; conformance regressed or was
-  overstated in the catalog.
+- **PAT-0001 (Corruption Preservation)**: Healthy. R112 migrated
+  `tool_registry_manager.py` to shared `read_json()`/`rename_malformed()` and
+  removed the `writers.py` copy-back. R113 migrated the last three local
+  malformed-artifact conventions (`flow_signal_parser.py`,
+  `scan/service/feedback_router.py`, `risk/repository/history.py`) to shared
+  `Services.artifact_io().rename_malformed()`. All known sites now use shared
+  corruption preservation primitives.
 - **PAT-0002 (Prompt Safety)**: Healthy. R109 clarified that payload-file
   contents are untrusted dynamic content even when delivered through internal
   tasks. QA interceptor now validates payload content before dispatch.
-- **PAT-0003 (Path Registry)**: **Unhealthy.** The template remains correct,
-  but saturation is still incomplete for several durable families. Confirmed
-  live islands in this snapshot include manual construction of
-  `tools-available` and `alignment-surface` in
-  `src/dispatch/prompt/context_builder.py`, manual `alignment-surface` and
-  `proposal-state` references in
-  `src/implementation/service/section_reexplorer.py`, manual
-  `strategic-state.json` in
-  `src/orchestrator/engine/strategic_state_builder.py`, and manual
-  `codemap-corrections.json` in `src/scan/codemap/codemap_builder.py`.
-  The next round must finish consumer saturation for these confirmed families
-  and then re-audit any remaining repeated section-scoped durable families
-  before declaring PAT-0003 healthy.
+- **PAT-0003 (Path Registry)**: Healthy. R112 migrated `context_builder.py`,
+  `section_reexplorer.py`, `strategic_state_builder.py`, and
+  `codemap_builder.py`. R113 added `reconciliation_result()` and
+  `execution_ready()` file-level accessors and migrated all known authoritative
+  consumers: `freshness_calculator.py`, `input_hasher.py`,
+  `package_builder.py`, `proposal_phase.py`, `cross_section_reconciler.py`,
+  `reconciliation/repository/results.py`, `readiness_resolver.py`,
+  `dispatch/prompt/writers.py`, `proposal_cycle.py`. All known repeated
+  durable-family consumers now use PathRegistry accessors.
 - **PAT-0004 (Flow System)**: Healthy.
 - **PAT-0005 (Policy-Driven Models)**: Healthy. R110 replaced the last two
   local `policy.get()` fallback sites (`proposal_cycle.py` intent_judge,
@@ -1019,25 +1012,17 @@ docs, executable adapters, and discovery boundaries agree.
   `safety_blocked`); dispatcher logs `qa:degraded` distinctly from
   `qa:passed`; notifier carries reason_code through lifecycle events;
   reconciliation adjudicator references PAT-0014 degraded states in warnings.
-- **PAT-0015 (Positive Contract Testing)**: **Unhealthy.** The philosophy is
-  settled, and the current snapshot's structural checks are positive assertions
-  over current outputs. However, no current positive contract checks
-  authoritative runtime-inventory truth, retirement-boundary correctness, or
-  the executable eval-entry surfaces themselves (`evals/harness.py`,
-  `evals/agentic/trigger_adapters.py`). `pyproject.toml` also still points
-  pytest at nonexistent legacy paths, reinforcing that the contract surface is
-  incomplete in the delivered codebase.
-- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**:
-  **Unhealthy.** R111 correctly updated `system-synthesis.md` to
-  `49 agents / 48 routes / 12 namespaces`, but the delivered snapshot still
-  contains stale authoritative surfaces: `governance/audit/prompt.md` still
-  claims `50 agents across 11 systems` and points auditors to nonexistent
-  `src/scripts/*` regions; `src/SKILL.md`, `src/implement.md`, and
-  `src/models.md` still describe the legacy layout; `evals/harness.py` and
-  `evals/agentic/trigger_adapters.py` still target pre-migration import/script
-  paths; `src/flow/engine/task_dispatcher.py` and two risk agent files still
-  publish stale paths; `src/pyproject.toml` still declares legacy test/import
-  roots; `src/dispatch/agents/monitor.md` remains in live discovery despite no
-  runtime route; and `governance/problems/index.md`,
-  `governance/risk-register.md`, and `governance/audit/history.md` contain
-  present-tense claims that no longer match the code.
+- **PAT-0015 (Positive Contract Testing)**: Healthy. R112 repaired
+  `evals/harness.py` and `evals/agentic/trigger_adapters.py` import paths.
+  R113 added `dependency-injector` to `pyproject.toml` dependencies (package
+  bootstrap contract) and rebuilt `test_taskrouter.py` discovery test to
+  derive route/namespace expectations dynamically from `taskrouter.discovery`
+  instead of hard-coding stale counts.
+- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Improved.
+  R112 deleted `monitor.md`, repaired eval adapters, fixed `pyproject.toml`
+  paths, and updated `audit/prompt.md` regions. R113 fixed `models.md` stale
+  `.agents/models/` reference, `task_dispatcher.py` stale docstring path, and
+  `system-synthesis.md` problem count (19→20). Remaining work: `SKILL.md` and
+  `implement.md` reference the current script-based layout accurately, but
+  some phrasing implies legacy multi-model/worktree surfaces that no longer
+  exist.

@@ -1,11 +1,10 @@
 # Model Selection: Multi-Model Task Routing
 
-Models are configured in `.agents/models/` (TOML files). Invoke via:
+Models are selected via `model-policy.json` in the planspace and resolved
+through `dispatch.service.model_policy.resolve()`. CLI invocation:
 ```bash
 agents --model <model-name> --file <prompt.md>
 ```
-
-All CLI models run from the ai-workflow repo root.
 
 ## Decision Tree
 

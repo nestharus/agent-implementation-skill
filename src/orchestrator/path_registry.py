@@ -357,6 +357,12 @@ class PathRegistry:
     def proposal_state(self, num: str) -> Path:
         return self.proposals_dir() / f"section-{num}-proposal-state.json"
 
+    def reconciliation_result(self, num: str) -> Path:
+        return self.reconciliation_dir() / f"section-{num}-reconciliation-result.json"
+
+    def execution_ready(self, num: str) -> Path:
+        return self.readiness_dir() / f"section-{num}-execution-ready.json"
+
     def intent_surfaces_signal(self, num: str) -> Path:
         return self.signals_dir() / f"intent-surfaces-{num}.json"
 

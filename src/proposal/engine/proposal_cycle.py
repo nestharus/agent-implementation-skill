@@ -245,10 +245,7 @@ def _build_proposal_prompt(
 
     recon_result = load_reconciliation_result(artifacts, section.number)
     if recon_result and recon_result.get("affected"):
-        recon_path = (
-            paths.reconciliation_dir()
-            / f"section-{section.number}-reconciliation-result.json"
-        )
+        recon_path = paths.reconciliation_result(section.number)
         with intg_prompt.open("a", encoding="utf-8") as handle:
             handle.write(
                 "\n## Reconciliation Context\n\n"

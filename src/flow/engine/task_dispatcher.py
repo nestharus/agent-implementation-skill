@@ -12,9 +12,9 @@ Single-threaded poll loop that:
 This is infrastructure, not an agent. It runs as a long-lived process.
 
 Usage:
-    python3 scripts/task_dispatcher.py <planspace>
-    python3 scripts/task_dispatcher.py <planspace> --poll-interval 5
-    python3 scripts/task_dispatcher.py <planspace> --once  # single pass, no loop
+    python -m flow.engine.task_dispatcher <planspace>
+    python -m flow.engine.task_dispatcher <planspace> --poll-interval 5
+    python -m flow.engine.task_dispatcher <planspace> --once  # single pass, no loop
 """
 
 from __future__ import annotations

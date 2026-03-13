@@ -53,10 +53,9 @@ def section_inputs_hash(
         paths.project_mode_json(),
         paths.section_mode_txt(sec_num),
         paths.problem_frame(sec_num),
-        paths.proposals_dir() / f"section-{sec_num}-proposal-state.json",
-        paths.reconciliation_dir()
-        / f"section-{sec_num}-reconciliation-result.json",
-        paths.readiness_dir() / f"section-{sec_num}-execution-ready.json",
+        paths.proposal_state(sec_num),
+        paths.reconciliation_result(sec_num),
+        paths.execution_ready(sec_num),
         paths.research_dossier(sec_num),
         paths.research_addendum(sec_num),
         paths.research_derived_surfaces(sec_num),

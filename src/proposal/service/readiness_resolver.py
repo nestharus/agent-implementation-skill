@@ -239,7 +239,7 @@ def resolve_readiness(planspace: Path, section_number: str) -> dict:
 
     readiness_dir = paths.readiness_dir()
     readiness_dir.mkdir(parents=True, exist_ok=True)
-    artifact_path = readiness_dir / f"section-{section_number}-execution-ready.json"
+    artifact_path = paths.execution_ready(section_number)
     try:
         Services.artifact_io().write_json(artifact_path, result)
     except OSError:

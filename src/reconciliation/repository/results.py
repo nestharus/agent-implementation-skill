@@ -13,10 +13,7 @@ logger = logging.getLogger(__name__)
 
 def write_result(planspace: Path, section_number: str, result: dict) -> Path:
     """Write a per-section reconciliation result artifact."""
-    path = (
-        PathRegistry(planspace).reconciliation_dir()
-        / f"section-{section_number}-reconciliation-result.json"
-    )
+    path = PathRegistry(planspace).reconciliation_result(section_number)
     Services.artifact_io().write_json(path, result)
     return path
 
@@ -61,10 +58,7 @@ def write_substrate_trigger(planspace: Path, trigger: dict) -> Path:
 
 def load_result(planspace: Path, section_number: str) -> dict | None:
     """Load a section reconciliation result if present and well-formed."""
-    path = (
-        PathRegistry(planspace).reconciliation_dir()
-        / f"section-{section_number}-reconciliation-result.json"
-    )
+    path = PathRegistry(planspace).reconciliation_result(section_number)
     data = Services.artifact_io().read_json(path)
     if data is None:
         return None

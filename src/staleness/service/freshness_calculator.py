@@ -66,21 +66,13 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
     ):
         _add(intent_file)
 
-    proposal_state_path = (
-        registry.proposals_dir() / f"section-{sec}-proposal-state.json"
-    )
+    proposal_state_path = registry.proposal_state(sec)
     _add(proposal_state_path)
 
-    reconciliation_path = (
-        registry.reconciliation_dir()
-        / f"section-{sec}-reconciliation-result.json"
-    )
+    reconciliation_path = registry.reconciliation_result(sec)
     _add(reconciliation_path)
 
-    readiness_path = (
-        registry.readiness_dir()
-        / f"section-{sec}-execution-ready.json"
-    )
+    readiness_path = registry.execution_ready(sec)
     _add(readiness_path)
 
     # Research artifacts steer proposal/implementation prompts and expansion.

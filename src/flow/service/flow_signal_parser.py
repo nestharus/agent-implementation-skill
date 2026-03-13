@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 import re
 
+from containers import Services
 from flow.types.schema import (
     ChainAction,
     FlowDeclaration,
@@ -39,10 +40,7 @@ def parse_signal_file(
                 "  task_ingestion: WARNING - malformed signal in "
                 f"{signal_path} ({exc}), renaming to .malformed.json",
             )
-        try:
-            signal_path.rename(signal_path.with_suffix(".malformed.json"))
-        except OSError:
-            pass
+        Services.artifact_io().rename_malformed(signal_path)
         return None
 
     if decl.version >= 2:
@@ -53,10 +51,7 @@ def parse_signal_file(
                     "  task_ingestion: WARNING - v2 flow declaration in "
                     f"{signal_path} has validation errors: {errors}",
                 )
-            try:
-                signal_path.rename(signal_path.with_suffix(".malformed.json"))
-            except OSError:
-                pass
+            Services.artifact_io().rename_malformed(signal_path)
             return None
 
     signal_path.unlink(missing_ok=True)

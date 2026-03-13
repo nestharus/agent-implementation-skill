@@ -98,6 +98,6 @@ Post-implementation assessment emits `accept_with_debt` verdicts with typed `deb
 - **Region**: PathRegistry consumers across scan, intent/prompt assembly, tool surfaces, freshness/hash services, dispatch prompt assembly, implementation services, orchestrator
 - **Description**: PAT-0003 had correct accessors for several durable families, but authoritative consumers still reconstructed those paths manually. This created writer/reader drift risk and made governance health notes inaccurate (PAT-0003 claimed "Healthy" while ad-hoc construction remained widespread).
 - **Severity**: low-medium
-- **Status**: open → mitigated (R112)
-- **Acceptance rationale**: R110 CP-1 saturation sweep migrated 12 consumer files. R112 CP-4 migrated 4 remaining confirmed islands (`context_builder.py`, `section_reexplorer.py`, `strategic_state_builder.py`, `codemap_builder.py`). All known authoritative consumers now use PathRegistry accessors.
-- **Mitigation**: CP-1 saturation sweep (R110) + CP-4 sweep (R112) across all confirmed consumers. PAT-0003 template extended with rules 8-9. Health notes updated to reflect actual state.
+- **Status**: resolved (R113)
+- **Acceptance rationale**: N/A — resolved.
+- **Mitigation**: CP-1 saturation sweep (R110) + CP-4 sweep (R112) + R113 added `reconciliation_result()` and `execution_ready()` file-level accessors and migrated all remaining consumers (`freshness_calculator.py`, `input_hasher.py`, `package_builder.py`, `proposal_phase.py`, `cross_section_reconciler.py`, `results.py`, `readiness_resolver.py`, `dispatch/prompt/writers.py`, `proposal_cycle.py`). All known authoritative consumers now use PathRegistry accessors.
