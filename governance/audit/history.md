@@ -1,6 +1,6 @@
 # Audit History
 
-Concern-based audit log. 114 rounds completed in the philosophy audit cycle.
+Concern-based audit log. 115 rounds completed in the philosophy audit cycle.
 Rounds 1-20 are summarized as conclusions. Rounds 21-50 aggregated as settled
 concerns. Rounds 52-91 aggregated as settled concern threads with established
 patterns. Rounds 92+ are recent with full detail.
@@ -269,5 +269,7 @@ Intent layer audited normally from R52 onward as part of codebase.
 | 113 | 6f262e3 | 1561 | 8 | PAT-0003 file-level accessors + full consumer saturation, PAT-0001 shared rename migration (3 files), bootstrap contract (dependency-injector in pyproject.toml), dynamic discovery test, doc truth fixes (models.md, task_dispatcher.py, system-synthesis.md), governance health note refresh, PRB-0021 added, RISK-0007 resolved |
 
 | 114 | 563778a | 1561 | 6 | Runtime-truth sweep + PAT-0001/PAT-0003 saturation: V6 scan_dispatch_config.py PAT-0001 last bypass (json.loads→read_json), V5 fixed 4 existing-accessor bypasses (proposal_state/execution_ready/philosophy in implementation_phase.py, risk/prompt/writers.py, prompt_builder.py, input_hasher.py), V4 added 5 flow family PathRegistry accessors + migrated flow absolute-path sites + fixed gate_repository inline path, V2 fixed template/agent stale refs (implementation-alignment.md worktree→codespace, rca-cycle.md cleanup, risk-assessor.md + execution-optimizer.md schema path), V1 runtime-truth sweep across SKILL.md (dir listing, description, agent paths, workspace model), implement.md (control plane, worktree→workspace, scan/substrate/section-loop→module refs), models.md, rca.md, V3 governance truth correction (health notes corrected: PAT-0001 healthy, PAT-0003 improved/not converged, PAT-0015 improved, PAT-0016 improved; PRB-0021 reopened, RISK-0007 reopened to mitigated, PRB-0004/0019/0020 updated) |
+
+| 115 | 7e2d825 | 1561 | 7 | Proposal-state contract rollback + PAT-0003 6-family saturation + PAT-0017: V8 rolled back 3 ungoverned required proposal-state fields (constraint_ids, governance_candidate_refs, design_decision_refs) from schema/default/fixtures/evals — runtime was rejecting valid agent output as malformed (critical). V1-V6 added PathRegistry accessors for 6 remaining families (decision md/json, governance synthesis-cues/index-status, trace-index, intent-triage signal/prompt/output, coordination problems/escalation/fix/bridge/align/task-request, bridge-tools prompt/output/escalation) and migrated ~30 consumer sites. V7 dismissed (flow relpath duplication — kept by design per R114 for DB-storage relative paths). TP-1 PAT-0003 health updated (substantially converged). TP-2 PAT-0015 updated (rules 9-10 added: cross-surface schema sync, family-saturation checks). TP-3 PAT-0017 added (Proposal-State Contract Projection). PRB-0022 added (proposal-state split-brain, resolved). PRB-0021 updated to substantially addressed. RISK-0007 substantially resolved. |
 
 **Current state**: 48 agents, 48 routes, 12 namespaces.
