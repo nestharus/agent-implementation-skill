@@ -24,6 +24,7 @@ from implementation.service.scope_delta_aggregator import (
 
 from coordination.service.completion_handler import read_incoming_notes
 from orchestrator.types import Section, SectionResult
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
 # Coordination round limits: hard cap to prevent runaway, but rounds
@@ -95,7 +96,7 @@ def _dispatch_and_parse_plan(
         Services.policies().resolve(policy, "coordination_plan"), plan_prompt, plan_output,
         planspace, parent, agent_file=Services.task_router().agent_for("coordination.plan"),
     )
-    if plan_result == "ALIGNMENT_CHANGED_PENDING":
+    if plan_result == ALIGNMENT_CHANGED_PENDING:
         return None
 
     coord_plan = _parse_coordination_plan(plan_result, problems)
@@ -107,7 +108,7 @@ def _dispatch_and_parse_plan(
             Services.policies().resolve(policy, "escalation_model"), plan_prompt, plan_output_retry,
             planspace, parent, agent_file=Services.task_router().agent_for("coordination.plan"),
         )
-        if retry_result == "ALIGNMENT_CHANGED_PENDING":
+        if retry_result == ALIGNMENT_CHANGED_PENDING:
             return None
         coord_plan = _parse_coordination_plan(retry_result, problems)
 
@@ -286,7 +287,7 @@ def _recheck_section_alignment(
         model=Services.policies().resolve(policy, "alignment"),
         adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
     )
-    if align_result == "ALIGNMENT_CHANGED_PENDING":
+    if align_result == ALIGNMENT_CHANGED_PENDING:
         return None
     if align_result == "INVALID_FRAME":
         Services.logger().log(f"  coordinator: section {sec_num} invalid alignment "

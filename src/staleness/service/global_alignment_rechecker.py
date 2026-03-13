@@ -13,6 +13,7 @@ from staleness.service.section_alignment_checker import (
 )
 from coordination.service.completion_handler import read_incoming_notes
 from orchestrator.types import Section, SectionResult
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
 def _update_result(
@@ -77,7 +78,7 @@ def _recheck_section(
         model=Services.policies().resolve(policy, "alignment"),
         adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
     )
-    if align_result == "ALIGNMENT_CHANGED_PENDING":
+    if align_result == ALIGNMENT_CHANGED_PENDING:
         return CoordinationStatus.RESTART_PHASE1
     if align_result == "INVALID_FRAME":
         Services.logger().log(

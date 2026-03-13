@@ -12,6 +12,7 @@ from orchestrator.path_registry import PathRegistry
 from coordination.prompt.writers import write_bridge_prompt, write_fix_prompt
 from flow.service.task_request_ingestor import ingest_and_submit
 from orchestrator.types import Section
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 _NOTE_FINGERPRINT_LENGTH = 12
 
@@ -307,7 +308,7 @@ def _dispatch_fix_group(
         planspace, parent, codespace=codespace,
         agent_file=Services.task_router().agent_for("coordination.fix"),
     )
-    if result == "ALIGNMENT_CHANGED_PENDING":
+    if result == ALIGNMENT_CHANGED_PENDING:
         return group_id, None
 
     ingest_and_submit(

@@ -16,6 +16,7 @@ from intent.service.philosophy_catalog import (
 from orchestrator.path_registry import PathRegistry
 
 from orchestrator.types import Section
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
 
@@ -367,7 +368,7 @@ def generate_intent_pack(
         codespace=codespace, section_number=sec,
         agent_file=Services.task_router().agent_for("intent.pack_generator"),
     )
-    if result == "ALIGNMENT_CHANGED_PENDING":
+    if result == ALIGNMENT_CHANGED_PENDING:
         return intent_sec
 
     registry_path = intent_sec / "surface-registry.json"

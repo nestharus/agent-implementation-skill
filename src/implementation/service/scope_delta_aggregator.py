@@ -11,6 +11,7 @@ from implementation.service.scope_delta_parser import (
     normalize_section_id,
     parse_scope_delta_adjudication,
 )
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
 class ScopeDeltaAggregationExit(Exception):
@@ -121,7 +122,7 @@ def _dispatch_adjudication(
         parent,
         agent_file=Services.task_router().agent_for("coordination.plan"),
     )
-    if adjudication_result == "ALIGNMENT_CHANGED_PENDING":
+    if adjudication_result == ALIGNMENT_CHANGED_PENDING:
         raise ScopeDeltaAggregationExit
 
     adj_data = parse_scope_delta_adjudication(adjudication_result)
@@ -145,7 +146,7 @@ def _dispatch_adjudication(
         parent,
         agent_file=Services.task_router().agent_for("coordination.plan"),
     )
-    if retry_result == "ALIGNMENT_CHANGED_PENDING":
+    if retry_result == ALIGNMENT_CHANGED_PENDING:
         raise ScopeDeltaAggregationExit
 
     return parse_scope_delta_adjudication(retry_result)

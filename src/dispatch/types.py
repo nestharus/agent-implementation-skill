@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from enum import Enum, auto
 
 
+ALIGNMENT_CHANGED_PENDING = "ALIGNMENT_CHANGED_PENDING"
+
+
 class DispatchStatus(Enum):
     SUCCESS = auto()
     ALIGNMENT_CHANGED = auto()
@@ -23,7 +26,7 @@ class DispatchResult:
     def __eq__(self, other):
         if isinstance(other, str):
             # Backward compatibility: allow comparison with sentinel strings
-            if other == "ALIGNMENT_CHANGED_PENDING":
+            if other == ALIGNMENT_CHANGED_PENDING:
                 return self.status is DispatchStatus.ALIGNMENT_CHANGED
             if other.startswith("QA_REJECTED:"):
                 return self.status is DispatchStatus.QA_REJECTED
@@ -32,7 +35,7 @@ class DispatchResult:
 
     def __str__(self) -> str:
         if self.status is DispatchStatus.ALIGNMENT_CHANGED:
-            return "ALIGNMENT_CHANGED_PENDING"
+            return ALIGNMENT_CHANGED_PENDING
         if self.status is DispatchStatus.QA_REJECTED:
             return f"QA_REJECTED:{self.output}"
         return self.output

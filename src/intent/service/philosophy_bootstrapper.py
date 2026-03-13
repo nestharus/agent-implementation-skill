@@ -34,6 +34,7 @@ from intent.service.philosophy_dispatcher import (
     _attempt_output_path,
     _dispatch_classified_signal_stage,
 )
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 # ── constants ─────────────────────────────────────────────────────────
 
@@ -320,7 +321,7 @@ Write JSON to: `{guidance_path}`
         codespace=codespace,
         agent_file=Services.task_router().agent_for("intent.philosophy_bootstrap"),
     )
-    if result == "ALIGNMENT_CHANGED_PENDING":
+    if result == ALIGNMENT_CHANGED_PENDING:
         return None
 
     classification = _classify_guidance_result(guidance_path)
@@ -1452,7 +1453,7 @@ def _run_distiller(ctx: _BootstrapContext) -> dict[str, Any] | None:
             agent_file=Services.task_router().agent_for("intent.philosophy_distiller"),
         )
 
-        if result == "ALIGNMENT_CHANGED_PENDING":
+        if result == ALIGNMENT_CHANGED_PENDING:
             return _bootstrap_result(
                 status="ready",
                 blocking_state=None,

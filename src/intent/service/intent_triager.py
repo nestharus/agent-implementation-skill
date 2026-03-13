@@ -8,6 +8,7 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 from risk.repository.history import read_history
 from risk.types import PostureProfile
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 _SUMMARY_SNIPPET_TRUNCATION = 500
 
@@ -58,7 +59,7 @@ def run_intent_triage(
         planspace, parent, codespace, section_number,
     )
 
-    if result == "ALIGNMENT_CHANGED_PENDING":
+    if result == ALIGNMENT_CHANGED_PENDING:
         return _augment_risk_hints(
             _full_default(section_number), section_number, planspace, **risk_kw,
         )

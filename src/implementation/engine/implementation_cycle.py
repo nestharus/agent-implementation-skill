@@ -10,6 +10,7 @@ from implementation.service.traceability_writer import _write_traceability_index
 from implementation.service.change_verifier import verify_changed_files
 from implementation.service.trace_map_builder import build_trace_map
 from flow.types.schema import TaskSpec
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +276,7 @@ def _dispatch_implementation(
         section_number=section.number,
         agent_file=Services.task_router().agent_for("implementation.strategic"),
     )
-    if impl_result == "ALIGNMENT_CHANGED_PENDING":
+    if impl_result == ALIGNMENT_CHANGED_PENDING:
         return None
 
     Services.communicator().mailbox_send(
@@ -392,7 +393,7 @@ def _dispatch_alignment_check(
         section_number=section.number,
         agent_file=Services.task_router().agent_for("staleness.alignment_check"),
     )
-    if impl_align_result == "ALIGNMENT_CHANGED_PENDING":
+    if impl_align_result == ALIGNMENT_CHANGED_PENDING:
         return None
 
     return impl_align_result

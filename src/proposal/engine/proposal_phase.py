@@ -23,6 +23,7 @@ from containers import Services
 from implementation.service.section_reexplorer import _reexplore_section
 from implementation.engine.section_pipeline import run_section
 from orchestrator.types import ProposalPassResult, Section
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 logger = logging.getLogger(__name__)
 
@@ -325,7 +326,7 @@ def _reexplore_missing_files(
         parent,
         model=policy["setup"],
     )
-    if reexplore_result == "ALIGNMENT_CHANGED_PENDING":
+    if reexplore_result == ALIGNMENT_CHANGED_PENDING:
         _check_alignment_and_requeue(
             planspace,
             codespace,

@@ -10,6 +10,7 @@ from signals.service.blocker_manager import (
     _append_open_problem,
     _update_blocker_rollup,
 )
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
 def _write_scope_delta(
@@ -92,7 +93,7 @@ def extract_excerpts(
             codespace=codespace, section_number=section.number,
             agent_file=Services.task_router().agent_for("proposal.section_setup"),
         )
-        if output == "ALIGNMENT_CHANGED_PENDING":
+        if output == ALIGNMENT_CHANGED_PENDING:
             return None
         Services.communicator().mailbox_send(
             planspace, parent,

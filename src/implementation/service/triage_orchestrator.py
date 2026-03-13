@@ -8,6 +8,7 @@ from pathlib import Path
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from orchestrator.types import Section
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +160,7 @@ def _run_triage_alignment(
         model=Services.policies().resolve(policy, "alignment"),
         adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
     )
-    if verify_result == "ALIGNMENT_CHANGED_PENDING":
+    if verify_result == ALIGNMENT_CHANGED_PENDING:
         return ("abort", None)
     if verify_result:
         verdict = Services.section_alignment().parse_alignment_verdict(verify_result)

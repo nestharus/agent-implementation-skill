@@ -5,6 +5,7 @@ from orchestrator.path_registry import PathRegistry
 
 from pipeline.template import TASK_SUBMISSION_SEMANTICS
 from orchestrator.types import Section
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
 def _compose_reexplore_text(
@@ -138,7 +139,7 @@ def _reexplore_section(
         agent_file=Services.task_router().agent_for("implementation.reexplore"),
     )
 
-    if result != "ALIGNMENT_CHANGED_PENDING":
+    if result != ALIGNMENT_CHANGED_PENDING:
         Services.flow_ingestion().ingest_and_submit(
             planspace, db_path=paths.run_db(),
             submitted_by=f"reexplore-{section.number}",

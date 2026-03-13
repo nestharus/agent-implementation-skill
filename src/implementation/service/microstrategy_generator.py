@@ -7,6 +7,7 @@ from orchestrator.path_registry import PathRegistry
 from pipeline.template import TASK_SUBMISSION_SEMANTICS
 from dispatch.prompt.writers import agent_mail_instructions
 from implementation.service.microstrategy_decider import _check_needs_microstrategy
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
 def _build_microstrategy_prompt(
@@ -109,7 +110,7 @@ def _dispatch_and_retry(
         planspace, parent, current_section=section_number,
     )
     if ctrl == "alignment_changed":
-        return "ALIGNMENT_CHANGED_PENDING"
+        return ALIGNMENT_CHANGED_PENDING
 
     micro_output_path = artifacts / f"microstrategy-{section_number}-output.md"
     micro_result = Services.dispatcher().dispatch(
@@ -119,7 +120,7 @@ def _dispatch_and_retry(
         codespace=codespace, section_number=section_number,
         agent_file=Services.task_router().agent_for("implementation.microstrategy"),
     )
-    if micro_result == "ALIGNMENT_CHANGED_PENDING":
+    if micro_result == ALIGNMENT_CHANGED_PENDING:
         return micro_result
 
     paths = PathRegistry(planspace)
@@ -143,7 +144,7 @@ def _dispatch_and_retry(
             codespace=codespace, section_number=section_number,
             agent_file=Services.task_router().agent_for("implementation.microstrategy"),
         )
-        if escalated_result == "ALIGNMENT_CHANGED_PENDING":
+        if escalated_result == ALIGNMENT_CHANGED_PENDING:
             return escalated_result
 
     return None

@@ -7,6 +7,7 @@ import pytest
 from dependency_injector import providers
 
 from containers import AgentDispatcher, PromptGuard, SectionAlignmentService, Services
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from src.implementation.service.triage_orchestrator import run_impact_triage
 from orchestrator.types import Section
 
@@ -160,7 +161,7 @@ def test_run_impact_triage_aborts_when_alignment_changes_mid_check(
 
     class _AbortAlignment(SectionAlignmentService):
         def run_alignment_check(self, *_args, **_kwargs):
-            return "ALIGNMENT_CHANGED_PENDING"
+            return ALIGNMENT_CHANGED_PENDING
 
     Services.dispatcher.override(providers.Object(_NoOpDispatcher()))
     Services.prompt_guard.override(providers.Object(_NoOpGuard()))

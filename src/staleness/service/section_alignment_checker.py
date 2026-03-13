@@ -9,6 +9,7 @@ from pipeline.template import render_template
 from containers import Services
 from staleness.helpers.verdict_parsers import parse_alignment_verdict as _parse_alignment_verdict
 from orchestrator.types import Section
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
 def collect_modified_files(
@@ -57,7 +58,7 @@ Reply with a JSON block:
 def _parse_adjudicator_response(adj_result: str) -> str | None:
     """Parse the adjudicator's JSON response. Returns problems or None if aligned."""
     import json as _json
-    if not adj_result or adj_result == "ALIGNMENT_CHANGED_PENDING":
+    if not adj_result or adj_result == ALIGNMENT_CHANGED_PENDING:
         return None
     try:
         json_start = adj_result.find("{")
@@ -147,7 +148,7 @@ def _run_alignment_check_with_retries(
         ctrl = Services.pipeline_control().poll_control_messages(
             planspace, parent, current_section=sec_num)
         if ctrl == "alignment_changed":
-            return "ALIGNMENT_CHANGED_PENDING"
+            return ALIGNMENT_CHANGED_PENDING
         align_prompt = write_impl_alignment_prompt(
             section, planspace, codespace,
         )
@@ -158,7 +159,7 @@ def _run_alignment_check_with_retries(
             section_number=sec_num,
             agent_file=Services.task_router().agent_for("staleness.alignment_check"),
         )
-        if result == "ALIGNMENT_CHANGED_PENDING":
+        if result == ALIGNMENT_CHANGED_PENDING:
             return result
         if not result.startswith("TIMEOUT:"):
             # Check for structured JSON verdict from alignment judge

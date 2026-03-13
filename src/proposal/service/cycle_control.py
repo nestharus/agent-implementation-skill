@@ -15,6 +15,7 @@ from signals.service.blocker_manager import (
     _append_open_problem,
     _update_blocker_rollup,
 )
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
 def check_early_abort(
@@ -121,7 +122,7 @@ def dispatch_proposal(
         section_number=section_number,
         agent_file=Services.task_router().agent_for("proposal.integration"),
     )
-    if intg_result == "ALIGNMENT_CHANGED_PENDING":
+    if intg_result == ALIGNMENT_CHANGED_PENDING:
         return None
     Services.communicator().mailbox_send(
         planspace,

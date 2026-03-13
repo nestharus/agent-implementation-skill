@@ -11,6 +11,7 @@ from pathlib import Path
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.writers import write_integration_alignment_prompt
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
 def run_alignment_check(
@@ -56,7 +57,7 @@ def run_alignment_check(
         section_number=section_number,
         agent_file=alignment_agent_file,
     )
-    if align_result == "ALIGNMENT_CHANGED_PENDING":
+    if align_result == ALIGNMENT_CHANGED_PENDING:
         return None
 
     return align_result, align_output

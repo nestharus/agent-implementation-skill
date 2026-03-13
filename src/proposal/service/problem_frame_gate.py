@@ -11,6 +11,7 @@ from dispatch.prompt.writers import write_section_setup_prompt
 from signals.service.blocker_manager import _update_blocker_rollup
 from implementation.service.section_reexplorer import _write_alignment_surface
 from orchestrator.types import Section
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
 def validate_problem_frame(
@@ -44,7 +45,7 @@ def validate_problem_frame(
             section_number=section.number,
             agent_file=Services.task_router().agent_for("proposal.section_setup"),
         )
-        if retry_result == "ALIGNMENT_CHANGED_PENDING":
+        if retry_result == ALIGNMENT_CHANGED_PENDING:
             return None
 
     if not problem_frame_path.exists():

@@ -6,6 +6,7 @@ from pathlib import Path
 from containers import Services
 from pipeline.template import render_template
 from orchestrator.path_registry import PathRegistry
+from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 
 def _compose_adjudication_text(output_path: Path) -> str:
@@ -68,8 +69,8 @@ def adjudicate_agent_output(
         planspace, parent, codespace=codespace,
         agent_file=Services.task_router().agent_for("staleness.state_adjudicate"),
     )
-    if result == "ALIGNMENT_CHANGED_PENDING":
-        return None, "ALIGNMENT_CHANGED_PENDING"
+    if result == ALIGNMENT_CHANGED_PENDING:
+        return None, ALIGNMENT_CHANGED_PENDING
 
     # Parse JSON from adjudicator output
     try:
