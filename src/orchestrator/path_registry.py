@@ -267,14 +267,6 @@ class PathRegistry:
     def risk_parameters(self) -> Path:
         return self.risk_dir() / "risk-parameters.json"
 
-    # --- Intake artifact accessors ---
-
-    def intake_dir(self) -> Path:
-        return self._artifacts / "intake"
-
-    def stack_eval(self, scope: str) -> Path:
-        return self.risk_dir() / f"{scope}-stack-eval.json"
-
     # --- Research artifact accessors ---
 
     def research_dir(self) -> Path:
