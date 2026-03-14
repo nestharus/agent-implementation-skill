@@ -427,7 +427,6 @@ def _write_bootstrap_decisions(
 
 
 def _request_user_philosophy(
-    paths: PathRegistry,
     *,
     planspace: Path,
     codespace: Path,
@@ -440,6 +439,7 @@ def _request_user_philosophy(
     extras: dict[str, Any] | None = None,
     overwrite_decisions: bool = True,
 ) -> dict[str, Any]:
+    paths = PathRegistry(planspace)
     guidance = _run_bootstrap_prompter(
         planspace,
         codespace,
@@ -800,7 +800,6 @@ def _resolve_source_records(ctx: _BootstrapContext) -> dict[str, Any] | None:
         Services.logger().log("Intent bootstrap: no markdown files found for philosophy "
             "catalog — requesting user bootstrap input")
         return _request_user_philosophy(
-            ctx.paths,
             planspace=ctx.planspace,
             codespace=ctx.codespace,
             parent=ctx.parent,
@@ -982,7 +981,6 @@ def _run_source_selector(ctx: _BootstrapContext) -> dict[str, Any] | None:
             final_outcome=SIGNAL_NEED_DECISION,
         )
         return _request_user_philosophy(
-            ctx.paths,
             planspace=ctx.planspace,
             codespace=ctx.codespace,
             parent=ctx.parent,
@@ -1213,7 +1211,6 @@ def _run_source_verifier(ctx: _BootstrapContext) -> dict[str, Any] | None:
         Services.logger().log("Intent bootstrap: verifier rejected all shortlisted "
             "philosophy candidates")
         return _request_user_philosophy(
-            ctx.paths,
             planspace=ctx.planspace,
             codespace=ctx.codespace,
             parent=ctx.parent,
@@ -1531,7 +1528,6 @@ def _handle_distiller_failure(
                     overwrite=True,
                 )
             return _request_user_philosophy(
-                ctx.paths,
                 planspace=ctx.planspace,
                 codespace=ctx.codespace,
                 parent=ctx.parent,
@@ -1559,7 +1555,6 @@ def _handle_distiller_failure(
         Services.logger().log("Intent bootstrap: distiller found no extractable "
             "philosophy in verified sources")
         return _request_user_philosophy(
-            ctx.paths,
             planspace=ctx.planspace,
             codespace=ctx.codespace,
             parent=ctx.parent,

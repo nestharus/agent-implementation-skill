@@ -14,13 +14,13 @@ from signals.types import BLOCKING_NEEDS_PARENT
 
 def _build_microstrategy_prompt(
     section,
-    paths: PathRegistry,
     codespace: Path,
     planspace: Path,
     integration_proposal: Path,
     microstrategy_path: Path,
     agent_name: str,
 ) -> str:
+    paths = PathRegistry(planspace)
     file_list = "\n".join(
         f"- `{codespace / relative_path}`" for relative_path in section.related_files
     )
@@ -36,9 +36,7 @@ def _build_microstrategy_prompt(
 
     return _compose_microstrategy_text(
         section.number, integration_proposal,
-        paths.alignment_excerpt(section.number), todos_ref, governance_ref,
-        file_list, microstrategy_path,
-        paths.task_request_signal("micro", section.number),
+        todos_ref, governance_ref, file_list, microstrategy_path,
         planspace, agent_name,
     )
 
@@ -46,16 +44,17 @@ def _build_microstrategy_prompt(
 def _compose_microstrategy_text(
     section_number: str,
     integration_proposal: Path,
-    alignment_excerpt: Path,
     todos_ref: str,
     governance_ref: str,
     file_list: str,
     microstrategy_path: Path,
-    task_request_signal: Path,
     planspace: Path,
     agent_name: str,
 ) -> str:
     """Return the full prompt text for microstrategy generation."""
+    paths = PathRegistry(planspace)
+    alignment_excerpt = paths.alignment_excerpt(section_number)
+    task_request_signal = paths.task_request_signal("micro", section_number)
     return f"""# Task: Microstrategy for Section {section_number}
 
 ## Context
@@ -217,7 +216,7 @@ def run_microstrategy(
     micro_prompt_path = paths.artifacts / f"microstrategy-{section.number}-prompt.md"
 
     rendered = _build_microstrategy_prompt(
-        section, paths, codespace, planspace,
+        section, codespace, planspace,
         integration_proposal, microstrategy_path, agent_name,
     )
     violations = Services.prompt_guard().validate_dynamic(rendered)

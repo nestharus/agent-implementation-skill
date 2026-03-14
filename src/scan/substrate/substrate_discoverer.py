@@ -298,12 +298,10 @@ def _validate_pruner_outputs(
 
 
 def _run_pruning(
-    registry: PathRegistry,
     codespace: Path,
     planspace: Path,
     valid_shards: list[str],
     model_policy: dict,
-    artifacts_dir: Path,
     project_mode: str,
     total_sections: int,
     vacuum_sections: list[str],
@@ -314,6 +312,8 @@ def _run_pruning(
     Returns ``(seed_plan, substrate_md_path)`` on success, or ``None``
     on failure (writes status on failure).
     """
+    registry = PathRegistry(planspace)
+    artifacts_dir = registry.artifacts
     print("[SUBSTRATE] Phase B: Pruner (strategic merge)")
     logs_dir = registry.substrate_dir() / "logs"
     pruner_prompt = write_pruner_prompt(
@@ -471,8 +471,8 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
 
     # Phase B: Pruning
     pruning_result = _run_pruning(
-        registry, codespace, planspace, valid_shards, model_policy,
-        artifacts_dir, project_mode, total_sections, vacuum_sections,
+        codespace, planspace, valid_shards, model_policy,
+        project_mode, total_sections, vacuum_sections,
         trigger_threshold,
     )
     if pruning_result is None:

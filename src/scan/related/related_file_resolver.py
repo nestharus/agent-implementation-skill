@@ -241,13 +241,14 @@ def _apply_and_finalize(
     codespace: Path,
     missing_existing: list[str],
     model_policy: dict[str, str],
-    validate_prompt: Path,
-    validate_output: Path,
+    section_log: Path,
     codemap_hash: str,
     corrections_hash: str,
     combined_hash: str,
-    codemap_hash_file: Path,
 ) -> None:
+    validate_prompt = section_log / "validate-prompt.md"
+    validate_output = section_log / "validate-output.md"
+    codemap_hash_file = section_log / "codemap-hash.txt"
     normalized = _normalize_validation_signal(
         signal_file,
         codespace=codespace,
@@ -420,12 +421,10 @@ def validate_existing_related_files(
         codespace=codespace,
         missing_existing=missing_existing,
         model_policy=model_policy,
-        validate_prompt=validate_prompt,
-        validate_output=validate_output,
+        section_log=section_log,
         codemap_hash=codemap_hash,
         corrections_hash=corrections_hash,
         combined_hash=combined_hash,
-        codemap_hash_file=codemap_hash_file,
     )
 
 
