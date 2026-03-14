@@ -9,8 +9,10 @@ from dispatch.prompt.writers import write_impl_alignment_prompt, write_strategic
 from implementation.service.traceability_writer import _write_traceability_index
 from implementation.service.change_verifier import verify_changed_files
 from implementation.service.trace_map_builder import build_trace_map
+from flow.types.context import FlowEnvelope
 from flow.types.schema import TaskSpec
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from proposal.service.cycle_control import check_early_abort
 from signals.types import TRUNCATE_DETAIL
 
 
@@ -40,7 +42,7 @@ def run_implementation_loop(
     impl_attempt = 0
 
     while True:
-        if _should_abort(planspace, parent, section.number):
+        if check_early_abort(section.number, planspace, parent):
             return None
 
         impl_attempt += 1
@@ -62,8 +64,7 @@ def run_implementation_loop(
             return None
 
         dispatch_action = _handle_post_dispatch(
-            impl_result, section.number, planspace, parent,
-            codespace,
+            section.number, planspace, parent,
         )
         if dispatch_action == _ABORT:
             return None
@@ -88,7 +89,7 @@ def run_implementation_loop(
         )
 
         underspec_action = _handle_underspec_signal(
-            align_result, section.number, planspace, parent, codespace,
+            section.number, planspace, parent,
         )
         if underspec_action == _ABORT:
             return None
@@ -118,23 +119,6 @@ def run_implementation_loop(
 # Pre-loop guard checks
 # ---------------------------------------------------------------------------
 
-
-def _should_abort(
-    planspace: Path, parent: str, section_number: str,
-) -> bool:
-    """Return True if a pending message or alignment change requires abort."""
-    if Services.pipeline_control().handle_pending_messages(planspace):
-        Services.communicator().mailbox_send(planspace, parent, f"fail:{section_number}:aborted")
-        return True
-
-    if Services.pipeline_control().alignment_changed_pending(planspace):
-        Services.logger().log(
-            f"Section {section_number}: alignment changed — "
-            "aborting section to restart Phase 1"
-        )
-        return True
-
-    return False
 
 
 # ---------------------------------------------------------------------------
@@ -299,11 +283,9 @@ def _dispatch_implementation(
 
 
 def _handle_post_dispatch(
-    impl_result: str,
     section_number: str,
     planspace: Path,
     parent: str,
-    codespace: Path,
 ) -> str:
     """Ingest tasks and check agent signals after implementation dispatch.
 
@@ -424,11 +406,9 @@ def _extract_alignment_problems(
 
 
 def _handle_underspec_signal(
-    impl_align_result: str,
     section_number: str,
     planspace: Path,
     parent: str,
-    codespace: Path,
 ) -> str:
     """Check for underspec signal after alignment; return loop action."""
     paths = PathRegistry(planspace)
@@ -496,8 +476,16 @@ def _dispatch_post_impl_assessment(
         return
 
     Services.flow_ingestion().submit_chain(
-        paths.run_db(),
-        f"post-impl-{section_number}",
+        FlowEnvelope(
+            db_path=paths.run_db(),
+            submitted_by=f"post-impl-{section_number}",
+            origin_refs=[
+                str(paths.trace_dir() / f"section-{section_number}.json"),
+                str(paths.trace_map(section_number)),
+                str(paths.proposal(section_number)),
+            ],
+            planspace=planspace,
+        ),
         [
             TaskSpec(
                 task_type="implementation.post_assessment",
@@ -506,10 +494,4 @@ def _dispatch_post_impl_assessment(
                 problem_id=f"post-impl-{section_number}",
             )
         ],
-        origin_refs=[
-            str(paths.trace_dir() / f"section-{section_number}.json"),
-            str(paths.trace_map(section_number)),
-            str(paths.proposal(section_number)),
-        ],
-        planspace=planspace,
     )

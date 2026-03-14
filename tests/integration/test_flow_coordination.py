@@ -26,6 +26,7 @@ from flow.repository.catalog import (
     build_coordination_branches,
     resolve_chain_ref,
 )
+from flow.types.context import FlowEnvelope
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from flow.service.flow_facade import (
     reconcile_task_completion,
@@ -264,16 +265,14 @@ class TestConcurrentInstanceIsolation:
         ]
 
         gate_a = submit_fanout(
-            db_path, "section-01", branches_a,
-            flow_id="flow_section_01",
+            FlowEnvelope(db_path=db_path, submitted_by="section-01", flow_id="flow_section_01", planspace=planspace),
+            branches_a,
             gate=GateSpec(mode="all", failure_policy="include"),
-            planspace=planspace,
         )
         gate_b = submit_fanout(
-            db_path, "section-02", branches_b,
-            flow_id="flow_section_02",
+            FlowEnvelope(db_path=db_path, submitted_by="section-02", flow_id="flow_section_02", planspace=planspace),
+            branches_b,
             gate=GateSpec(mode="all", failure_policy="include"),
-            planspace=planspace,
         )
 
         # Gates are distinct
@@ -311,16 +310,14 @@ class TestConcurrentInstanceIsolation:
         ]
 
         gate_1 = submit_fanout(
-            db_path, "caller-1", branches,
-            flow_id="flow_1",
+            FlowEnvelope(db_path=db_path, submitted_by="caller-1", flow_id="flow_1", planspace=planspace),
+            branches,
             gate=GateSpec(),
-            planspace=planspace,
         )
         gate_2 = submit_fanout(
-            db_path, "caller-2", branches,
-            flow_id="flow_2",
+            FlowEnvelope(db_path=db_path, submitted_by="caller-2", flow_id="flow_2", planspace=planspace),
+            branches,
             gate=GateSpec(),
-            planspace=planspace,
         )
 
         members_1 = _query_gate_members(db_path, gate_1)
@@ -357,10 +354,9 @@ class TestCoordinationGateFiring:
             for i in range(3)
         ]
         gate_id = submit_fanout(
-            db_path, "coordinator", branches,
-            flow_id="flow_coord",
+            FlowEnvelope(db_path=db_path, submitted_by="coordinator", flow_id="flow_coord", planspace=planspace),
+            branches,
             gate=GateSpec(mode="all", failure_policy="include"),
-            planspace=planspace,
         )
 
         all_tasks = _query_all_tasks(db_path)
@@ -403,8 +399,8 @@ class TestCoordinationGateFiring:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "coordinator", branches,
-            flow_id="flow_syn",
+            FlowEnvelope(db_path=db_path, submitted_by="coordinator", flow_id="flow_syn", planspace=planspace),
+            branches,
             gate=GateSpec(
                 mode="all",
                 failure_policy="include",
@@ -413,7 +409,6 @@ class TestCoordinationGateFiring:
                     concern_scope="post-coordination",
                 ),
             ),
-            planspace=planspace,
         )
 
         tasks = _query_all_tasks(db_path)
@@ -449,10 +444,9 @@ class TestCoordinationGateFiring:
             for i in range(2)
         ]
         gate_id = submit_fanout(
-            db_path, "coordinator", branches,
-            flow_id="flow_partial",
+            FlowEnvelope(db_path=db_path, submitted_by="coordinator", flow_id="flow_partial", planspace=planspace),
+            branches,
             gate=GateSpec(mode="all", failure_policy="include"),
-            planspace=planspace,
         )
 
         tasks = _query_all_tasks(db_path)
@@ -501,10 +495,9 @@ class TestResultSeparation:
             for i in range(2)
         ]
         gate_id = submit_fanout(
-            db_path, "coordinator", branches,
-            flow_id="flow_results",
+            FlowEnvelope(db_path=db_path, submitted_by="coordinator", flow_id="flow_results", planspace=planspace),
+            branches,
             gate=GateSpec(mode="all", failure_policy="include"),
-            planspace=planspace,
         )
 
         tasks = _query_all_tasks(db_path)
@@ -554,8 +547,8 @@ class TestEdgeCases:
     ) -> None:
         """Empty branch list returns None (no gate created)."""
         result = submit_fanout(
-            db_path, "coordinator", [],
-            flow_id="flow_empty",
+            FlowEnvelope(db_path=db_path, submitted_by="coordinator", flow_id="flow_empty"),
+            [],
             gate=GateSpec(),
         )
         assert result is None
@@ -572,10 +565,9 @@ class TestEdgeCases:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "coordinator", branches,
-            flow_id="flow_single",
+            FlowEnvelope(db_path=db_path, submitted_by="coordinator", flow_id="flow_single", planspace=planspace),
+            branches,
             gate=GateSpec(mode="all", failure_policy="include"),
-            planspace=planspace,
         )
         assert gate_id is not None
 
@@ -600,10 +592,9 @@ class TestEdgeCases:
         assert len(branches) == 2
 
         gate_id = submit_fanout(
-            db_path, "coordinator", branches,
-            flow_id="flow_e2e",
+            FlowEnvelope(db_path=db_path, submitted_by="coordinator", flow_id="flow_e2e", planspace=planspace),
+            branches,
             gate=GateSpec(mode="all", failure_policy="include"),
-            planspace=planspace,
         )
         assert gate_id is not None
 

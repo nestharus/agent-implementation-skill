@@ -29,6 +29,7 @@ from flow.service.flow_facade import (
     submit_fanout,
     write_dispatch_prompt,
 )
+from flow.types.context import FlowEnvelope
 from flow.types.schema import BranchSpec, GateSpec
 
 
@@ -106,9 +107,8 @@ class TestBuildFlowContext:
     ) -> None:
         """build_flow_context reads the JSON file and returns its contents."""
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [TaskSpec(task_type="staleness.alignment_check")],
-            planspace=planspace,
         )
         tid = ids[0]
         task = _query_task(db_path, tid)
@@ -129,12 +129,11 @@ class TestBuildFlowContext:
     ) -> None:
         """Second task in a chain can discover predecessor result manifest."""
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [
                 TaskSpec(task_type="staleness.alignment_check"),
                 TaskSpec(task_type="signals.impact_analysis"),
             ],
-            planspace=planspace,
         )
         second_task = _query_task(db_path, ids[1])
 
@@ -152,9 +151,8 @@ class TestBuildFlowContext:
     ) -> None:
         """build_flow_context fills in continuation_path from DB row."""
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [TaskSpec(task_type="staleness.alignment_check")],
-            planspace=planspace,
         )
         tid = ids[0]
         task = _query_task(db_path, tid)
@@ -570,13 +568,11 @@ class TestEndToEndFlowContext:
     ) -> None:
         """A chain task's flow context can be read via build_flow_context."""
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace, origin_refs=["section-01"]),
             [
                 TaskSpec(task_type="staleness.alignment_check"),
                 TaskSpec(task_type="signals.impact_analysis"),
             ],
-            planspace=planspace,
-            origin_refs=["section-01"],
         )
 
         # Second task should be able to discover predecessor
@@ -599,12 +595,11 @@ class TestEndToEndFlowContext:
     ) -> None:
         """Chain task gets a wrapper prompt with flow context paths."""
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [
                 TaskSpec(task_type="staleness.alignment_check"),
                 TaskSpec(task_type="signals.impact_analysis"),
             ],
-            planspace=planspace,
         )
 
         task2 = _query_task(db_path, ids[1])
@@ -642,8 +637,8 @@ class TestEndToEndFlowContext:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_syn_ctx",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_syn_ctx", planspace=planspace),
+            branches,
             gate=GateSpec(
                 mode="all",
                 failure_policy="include",
@@ -652,7 +647,6 @@ class TestEndToEndFlowContext:
                     problem_id="P-syn",
                 ),
             ),
-            planspace=planspace,
         )
 
         # Complete the branch task to fire the gate.

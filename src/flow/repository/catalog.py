@@ -28,6 +28,7 @@ def _proposal_alignment_package(
     args: dict, origin_refs: list[str]
 ) -> list[TaskSpec]:
     """proposal.integration → staleness.alignment_check."""
+    del origin_refs
     return [
         TaskSpec(
             task_type="proposal.integration",
@@ -50,6 +51,7 @@ def _implementation_alignment_package(
     args: dict, origin_refs: list[str]
 ) -> list[TaskSpec]:
     """implementation.strategic → staleness.alignment_check."""
+    del origin_refs
     return [
         TaskSpec(
             task_type="implementation.strategic",
@@ -78,6 +80,7 @@ def _coordination_fix_package(
     chain_id.  The ``payload_path`` arg should point to the per-group
     fix prompt written by ``write_fix_prompt()``.
     """
+    del origin_refs
     return [
         TaskSpec(
             task_type="coordination.fix",

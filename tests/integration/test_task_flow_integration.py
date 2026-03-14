@@ -26,6 +26,7 @@ import pytest
 
 from _paths import DB_SH
 
+from flow.types.context import FlowEnvelope
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from flow.service.flow_facade import (
     reconcile_task_completion,
@@ -324,9 +325,8 @@ class TestLinearChainContinuation:
         continuation adding C. Verify all result manifests and chain wiring."""
         # Step 1: Submit initial chain with just step A
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [TaskSpec(task_type="staleness.alignment_check")],
-            planspace=planspace,
         )
         assert len(ids) == 1
         tid_a = ids[0]
@@ -408,12 +408,11 @@ class TestLinearChainContinuation:
     ) -> None:
         """Step B is not runnable until step A completes."""
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [
                 TaskSpec(task_type="staleness.alignment_check"),
                 TaskSpec(task_type="signals.impact_analysis"),
             ],
-            planspace=planspace,
         )
 
         # Only step A is runnable
@@ -453,8 +452,8 @@ class TestFanoutGateSynthesis:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_fanout_syn",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_fanout_syn", planspace=planspace),
+            branches,
             gate=GateSpec(
                 mode="all",
                 failure_policy="include",
@@ -463,7 +462,6 @@ class TestFanoutGateSynthesis:
                     concern_scope="synthesis-scope",
                 ),
             ),
-            planspace=planspace,
         )
         assert gate_id is not None
 
@@ -526,13 +524,12 @@ class TestFanoutGateSynthesis:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_partial",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_partial", planspace=planspace),
+            branches,
             gate=GateSpec(
                 mode="all",
                 synthesis=TaskSpec(task_type="coordination.fix"),
             ),
-            planspace=planspace,
         )
 
         all_tasks = _query_all_tasks(db_path)
@@ -572,10 +569,9 @@ class TestGatedChainExtensionDelaysGateFire:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_extend_gate",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_extend_gate", planspace=planspace),
+            branches,
             gate=GateSpec(mode="all", failure_policy="include"),
-            planspace=planspace,
         )
 
         all_tasks = _query_all_tasks(db_path)
@@ -643,13 +639,12 @@ class TestFailedBranchCancellation:
     ) -> None:
         """3-step chain: complete step 1, fail step 2, verify step 3 cancelled."""
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [
                 TaskSpec(task_type="staleness.alignment_check"),
                 TaskSpec(task_type="signals.impact_analysis"),
                 TaskSpec(task_type="coordination.fix"),
             ],
-            planspace=planspace,
         )
         tid_1, tid_2, tid_3 = ids
 
@@ -704,14 +699,13 @@ class TestFailurePolicyIncludeVsBlock:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_include",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_include", planspace=planspace),
+            branches,
             gate=GateSpec(
                 mode="all",
                 failure_policy="include",
                 synthesis=TaskSpec(task_type="coordination.fix"),
             ),
-            planspace=planspace,
         )
 
         members = _query_gate_members(db_path, gate_id)
@@ -761,14 +755,13 @@ class TestFailurePolicyIncludeVsBlock:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_block",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_block", planspace=planspace),
+            branches,
             gate=GateSpec(
                 mode="all",
                 failure_policy="block",
                 synthesis=TaskSpec(task_type="coordination.fix"),
             ),
-            planspace=planspace,
         )
 
         members = _query_gate_members(db_path, gate_id)
@@ -818,25 +811,23 @@ class TestConcurrentPackageIsolation:
             ]
 
         gate_id_1 = submit_fanout(
-            db_path, "agent-1", _make_branches(),
-            flow_id="flow_concurrent_1",
+            FlowEnvelope(db_path=db_path, submitted_by="agent-1", flow_id="flow_concurrent_1", planspace=planspace),
+            _make_branches(),
             gate=GateSpec(
                 mode="all",
                 failure_policy="include",
                 synthesis=TaskSpec(task_type="coordination.fix"),
             ),
-            planspace=planspace,
         )
 
         gate_id_2 = submit_fanout(
-            db_path, "agent-2", _make_branches(),
-            flow_id="flow_concurrent_2",
+            FlowEnvelope(db_path=db_path, submitted_by="agent-2", flow_id="flow_concurrent_2", planspace=planspace),
+            _make_branches(),
             gate=GateSpec(
                 mode="all",
                 failure_policy="include",
                 synthesis=TaskSpec(task_type="coordination.fix"),
             ),
-            planspace=planspace,
         )
 
         assert gate_id_1 != gate_id_2
@@ -916,8 +907,8 @@ class TestNestedSynthesisEmittingWork:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_nested",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_nested", planspace=planspace),
+            branches,
             gate=GateSpec(
                 mode="all",
                 failure_policy="include",
@@ -926,7 +917,6 @@ class TestNestedSynthesisEmittingWork:
                     concern_scope="nested-scope",
                 ),
             ),
-            planspace=planspace,
         )
 
         # Complete the branch
@@ -1008,14 +998,13 @@ class TestNestedSynthesisEmittingWork:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_nested_fanout",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_nested_fanout", planspace=planspace),
+            branches,
             gate=GateSpec(
                 mode="all",
                 failure_policy="include",
                 synthesis=TaskSpec(task_type="signals.impact_analysis"),
             ),
-            planspace=planspace,
         )
 
         # Complete branch -> gate fires -> synthesis created

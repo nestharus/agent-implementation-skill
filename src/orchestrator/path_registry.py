@@ -272,9 +272,6 @@ class PathRegistry:
     def intake_dir(self) -> Path:
         return self._artifacts / "intake"
 
-    def intake_session_dir(self, session_id: str) -> Path:
-        return self.intake_dir() / "sessions" / session_id
-
     def stack_eval(self, scope: str) -> Path:
         return self.risk_dir() / f"{scope}-stack-eval.json"
 

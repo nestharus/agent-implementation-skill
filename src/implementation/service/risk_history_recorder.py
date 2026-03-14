@@ -16,7 +16,7 @@ from risk.types import (
     RiskPlan,
     StepDecision,
 )
-from implementation.service.risk_artifact_writer import _unique_strings
+from implementation.service.risk_artifact_writer import unique_strings
 
 
 def append_risk_review_failure_history(
@@ -60,7 +60,7 @@ def _determine_decision_outcome(
     if decision.decision == StepDecision.REJECT_DEFER:
         return (
             "deferred",
-            _unique_strings(
+            unique_strings(
                 decision.wait_for + list(risk_plan.expected_reassessment_inputs),
             ),
             None,

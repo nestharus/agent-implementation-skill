@@ -58,10 +58,10 @@ def test_resolve_scan_agent_path_validates_presence(tmp_path, monkeypatch) -> No
         lambda self, name: agent_path if name == "scan-test.md" else (_ for _ in ()).throw(FileNotFoundError(name)),
     )
 
-    assert resolve_scan_agent_path(tmp_path, "scan-test.md") == agent_path
+    assert resolve_scan_agent_path("scan-test.md") == agent_path
 
     with pytest.raises(FileNotFoundError):
-        resolve_scan_agent_path(tmp_path, "missing.md")
+        resolve_scan_agent_path("missing.md")
 
 
 def test_build_scan_dispatch_command_matches_agents_invocation(tmp_path) -> None:

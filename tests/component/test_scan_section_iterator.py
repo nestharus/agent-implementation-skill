@@ -5,6 +5,7 @@ from pathlib import Path
 
 from src.scan.related.section_iterator import scan_sections
 from src.scan.codemap.cache import FileCardCache
+from src.scan.scan_context import ScanContext
 
 
 def _write_tier_file(path: Path, files: list[str]) -> None:
@@ -14,13 +15,22 @@ def _write_tier_file(path: Path, files: list[str]) -> None:
     )
 
 
+def _ctx(tmp_path: Path, **overrides) -> ScanContext:
+    return ScanContext(
+        codespace=overrides.get("codespace", tmp_path / "codespace"),
+        codemap_path=overrides.get("codemap_path", tmp_path / "codemap.md"),
+        corrections_path=overrides.get("corrections_path", tmp_path / "corrections.json"),
+        scan_log_dir=overrides.get("scan_log_dir", tmp_path / "scan-logs"),
+        model_policy=overrides.get("model_policy", {"deep_analysis": "glm"}),
+    )
+
+
 def test_scan_sections_returns_failure_when_tier_ranking_unavailable(
     tmp_path,
     monkeypatch,
 ) -> None:
     section_file = tmp_path / "section-01.md"
     section_file.write_text("# Section\n", encoding="utf-8")
-    scan_log_dir = tmp_path / "scan-logs"
 
     monkeypatch.setattr(
         "src.scan.related.section_iterator.deep_scan_related_files",
@@ -33,19 +43,15 @@ def test_scan_sections_returns_failure_when_tier_ranking_unavailable(
 
     failed = scan_sections(
         [section_file],
-        tmp_path / "codemap.md",
-        tmp_path / "codespace",
+        _ctx(tmp_path),
         tmp_path / "artifacts",
-        scan_log_dir,
         FileCardCache(tmp_path / "file-cards"),
-        tmp_path / "corrections.json",
-        {"deep_analysis": "glm"},
         {},
     )
 
     assert failed is True
     assert "tier ranking unavailable" in (
-        scan_log_dir / "failures.log"
+        tmp_path / "scan-logs" / "failures.log"
     ).read_text(encoding="utf-8")
 
 
@@ -75,13 +81,9 @@ def test_scan_sections_skips_already_scanned_files(
 
     failed = scan_sections(
         [section_file],
-        tmp_path / "codemap.md",
-        tmp_path / "codespace",
+        _ctx(tmp_path),
         tmp_path / "artifacts",
-        tmp_path / "scan-logs",
         FileCardCache(tmp_path / "file-cards"),
-        tmp_path / "corrections.json",
-        {"deep_analysis": "glm"},
         {"section-01": {"src/main.py"}},
     )
 
@@ -114,13 +116,9 @@ def test_scan_sections_analyzes_new_files_and_updates_state(
 
     failed = scan_sections(
         [section_file],
-        tmp_path / "codemap.md",
-        tmp_path / "codespace",
+        _ctx(tmp_path),
         tmp_path / "artifacts",
-        tmp_path / "scan-logs",
         FileCardCache(tmp_path / "file-cards"),
-        tmp_path / "corrections.json",
-        {"deep_analysis": "glm"},
         already_scanned,
     )
 

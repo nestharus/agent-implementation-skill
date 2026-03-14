@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
+from scan.scan_context import ScanContext
 from scan.service.phase_failure_logger import log_phase_failure
 from scan.service.template_loader import load_scan_template
 from scan.related.related_file_resolver import (
@@ -29,7 +30,13 @@ def run_section_exploration(
     if model_policy is None:
         model_policy = read_scan_model_policy(artifacts_dir)
     section_files = list_section_files(sections_dir)
-    corrections_file = PathRegistry(artifacts_dir.parent).corrections()
+    ctx = ScanContext.from_artifacts(
+        codespace=codespace,
+        codemap_path=codemap_path,
+        artifacts_dir=artifacts_dir,
+        scan_log_dir=scan_log_dir,
+        model_policy=model_policy,
+    )
 
     for section_file in section_files:
         section_name = section_file.stem  # e.g. "section-01"
@@ -40,12 +47,8 @@ def run_section_exploration(
             validate_existing_related_files(
                 section_file=section_file,
                 section_name=section_name,
-                codemap_path=codemap_path,
-                codespace=codespace,
+                ctx=ctx,
                 artifacts_dir=artifacts_dir,
-                scan_log_dir=scan_log_dir,
-                corrections_file=corrections_file,
-                model_policy=model_policy,
             )
             continue
 

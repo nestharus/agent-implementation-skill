@@ -196,7 +196,7 @@ def _extract_text(record: dict) -> str:
     return ""
 
 
-def _extract_id(record: dict, path: Path) -> str:
+def _extract_id(record: dict) -> str:
     """Best-effort session/record id extraction."""
     for key in ("id", "session_id", "sessionId", "name"):
         val = record.get(key)
@@ -220,7 +220,7 @@ def _events_from_file(path: Path) -> Iterator[TimelineEvent]:
         role = _extract_role(record)
         text = _extract_text(record)
         detail = summarize_text(text) if text else ""
-        record_id = _extract_id(record, path)
+        record_id = _extract_id(record)
 
         if role in ("model", "assistant", "bot"):
             kind = "response"
@@ -260,7 +260,7 @@ def _session_candidate_from_file(path: Path) -> SessionCandidate | None:
     for record in _load_records(path):
         # Track session id
         if not session_id:
-            session_id = _extract_id(record, path)
+            session_id = _extract_id(record)
 
         # Track earliest timestamp
         ts_pair = _safe_ts(record)

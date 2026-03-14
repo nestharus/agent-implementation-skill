@@ -11,19 +11,6 @@ from pathlib import Path
 
 from containers import Services
 
-# ---- Enumerations ----
-
-TOUCHPOINTS_ENUM = [
-    "types", "errors", "config", "auth", "db", "api", "events",
-    "logging", "routing", "ui", "cli", "testing", "build", "deploy",
-    "docs",
-]
-
-KIND_ENUM = [
-    "api", "service", "type", "db", "event", "job", "ui", "config",
-    "lib", "test",
-]
-
 # ---- Shard schema v1 ----
 
 _SHARD_REQUIRED = [

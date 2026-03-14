@@ -359,9 +359,9 @@ class FlowIngestionService:
         from flow.service.task_request_ingestor import ingest_and_submit
         return ingest_and_submit(planspace, submitted_by, signal_path, db_path=db_path, **kwargs)
 
-    def submit_chain(self, db_path, submitted_by, steps, **kwargs):
+    def submit_chain(self, env, steps, **kwargs):
         from flow.engine.flow_submitter import submit_chain
-        return submit_chain(db_path, submitted_by, steps, **kwargs)
+        return submit_chain(env, steps, **kwargs)
 
 
 class StalenessDetectionService:

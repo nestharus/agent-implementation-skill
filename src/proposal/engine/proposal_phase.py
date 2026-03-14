@@ -278,7 +278,6 @@ def _proposal_needs_additional_exploration(assessment: object) -> bool:
 
 def _check_alignment_and_requeue(
     planspace: Path,
-    codespace: Path,
     completed: set[str],
     queue: list[str],
     sections_by_num: dict[str, Section],
@@ -329,7 +328,6 @@ def _reexplore_missing_files(
     if reexplore_result == ALIGNMENT_CHANGED_PENDING:
         _check_alignment_and_requeue(
             planspace,
-            codespace,
             completed,
             queue,
             sections_by_num,
@@ -418,7 +416,7 @@ def run_proposal_pass(
 
         if Services.pipeline_control().alignment_changed_pending(planspace):  # noqa: SIM102
             if _check_alignment_and_requeue(
-                planspace, codespace, completed, queue, sections_by_num,
+                planspace, completed, queue, sections_by_num,
             ):
                 continue
 
@@ -452,7 +450,7 @@ def run_proposal_pass(
         )
 
         if _check_alignment_and_requeue(
-            planspace, codespace, completed, queue, sections_by_num,
+            planspace, completed, queue, sections_by_num,
             current_section=sec_num,
         ):
             continue

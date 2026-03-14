@@ -66,7 +66,7 @@ def run_risk_loop(
         write_risk_artifact(paths.risk_assessment(scope), serialize_assessment(assessment))
 
         plan = _validate_and_dispatch_optimization(
-            planspace, scope, package, parameters, assessment,
+            planspace, scope,
             retry_hint=(iteration > 1 and last_plan is not None),
         )
         if plan is None:
@@ -126,7 +126,7 @@ def run_lightweight_risk_check(
     write_risk_artifact(paths.risk_assessment(scope), serialize_assessment(assessment))
 
     plan = _validate_and_dispatch_lightweight_optimization(
-        planspace, scope, package, parameters, assessment,
+        planspace, scope,
     )
     if plan is None:
         return _write_and_return_lightweight_fallback(
@@ -190,9 +190,6 @@ def _validate_and_dispatch_assessment(
 def _validate_and_dispatch_optimization(
     planspace: Path,
     scope: str,
-    package: RiskPackage,
-    parameters: dict,
-    assessment: RiskAssessment,
     *,
     retry_hint: bool = False,
 ) -> RiskPlan | None:
@@ -231,9 +228,6 @@ def _validate_and_dispatch_optimization(
 def _validate_and_dispatch_lightweight_optimization(
     planspace: Path,
     scope: str,
-    package: RiskPackage,
-    parameters: dict,
-    assessment: RiskAssessment,
 ) -> RiskPlan | None:
     """Lightweight variant of optimization dispatch (includes try/except)."""
     paths = PathRegistry(planspace)

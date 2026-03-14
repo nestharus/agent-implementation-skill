@@ -3,6 +3,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class FlowEnvelope:
+    """Common metadata for submitting tasks into a flow.
+
+    Bundles the 7 parameters shared by submit_chain and submit_fanout.
+    """
+
+    db_path: Path
+    submitted_by: str
+    flow_id: str | None = None
+    declared_by_task_id: int | None = None
+    origin_refs: list[str] = field(default_factory=list)
+    planspace: Path | None = None
+    freshness_token: str | None = None
 
 
 @dataclass

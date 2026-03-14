@@ -7,10 +7,8 @@ P4: Coordination prompt writes to artifact file (no inline JSON)
 import json
 from pathlib import Path
 
-from coordination.engine.global_coordinator import (
-    _collect_outstanding_problems,
-    write_coordination_plan_prompt,
-)
+from coordination.service.problem_resolver import _collect_outstanding_problems
+from coordination.service.planner import write_coordination_plan_prompt
 from orchestrator.types import Section, SectionResult
 
 

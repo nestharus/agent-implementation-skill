@@ -8,6 +8,7 @@ from typing import Any
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
+from scan.scan_context import ScanContext
 from scan.service.template_loader import load_scan_template
 from scan.codemap.cache import strip_scan_summaries
 from scan.scan_dispatcher import dispatch_agent
@@ -238,28 +239,26 @@ def _apply_and_finalize(
     section_name: str,
     section_file: Path,
     signal_file: Path,
-    codespace: Path,
+    ctx: ScanContext,
     missing_existing: list[str],
-    model_policy: dict[str, str],
-    section_log: Path,
-    codemap_hash: str,
-    corrections_hash: str,
-    combined_hash: str,
+    validation_hashes: tuple[str, str, str],
 ) -> None:
+    codemap_hash, corrections_hash, combined_hash = validation_hashes
+    section_log = ctx.scan_log_dir / section_name
     validate_prompt = section_log / "validate-prompt.md"
     validate_output = section_log / "validate-output.md"
     codemap_hash_file = section_log / "codemap-hash.txt"
     normalized = _normalize_validation_signal(
         signal_file,
-        codespace=codespace,
+        codespace=ctx.codespace,
         missing_existing=missing_existing,
     )
 
-    escalation_model = model_policy.get("exploration", model_policy["validation"])
+    escalation_model = ctx.model_policy.get("exploration", ctx.model_policy["validation"])
     if (
         result.returncode == 0
         and normalized is None
-        and escalation_model != model_policy["validation"]
+        and escalation_model != ctx.model_policy["validation"]
     ):
         print(
             f"[EXPLORE] {section_name}: validator produced no valid signal — "
@@ -268,14 +267,14 @@ def _apply_and_finalize(
         signal_file.unlink(missing_ok=True)
         result = dispatch_agent(
             model=escalation_model,
-            project=codespace,
+            project=ctx.codespace,
             prompt_file=validate_prompt,
             agent_file=Services.task_router().agent_for("scan.adjudicate"),
             stdout_file=validate_output,
         )
         normalized = _normalize_validation_signal(
             signal_file,
-            codespace=codespace,
+            codespace=ctx.codespace,
             missing_existing=missing_existing,
         )
 
@@ -338,26 +337,22 @@ def validate_existing_related_files(
     *,
     section_file: Path,
     section_name: str,
-    codemap_path: Path,
-    codespace: Path,
+    ctx: ScanContext,
     artifacts_dir: Path,
-    scan_log_dir: Path,
-    corrections_file: Path,
-    model_policy: dict[str, str],
 ) -> None:
     """Check if codemap OR section changed; if so, dispatch validation."""
-    section_log = scan_log_dir / section_name
+    section_log = ctx.scan_log_dir / section_name
     section_log.mkdir(parents=True, exist_ok=True)
     codemap_hash_file = section_log / "codemap-hash.txt"
 
     codemap_hash, corrections_hash, section_text_raw, combined_hash = (
-        _compute_validation_hashes(section_file, codemap_path, corrections_file)
+        _compute_validation_hashes(section_file, ctx.codemap_path, ctx.corrections_path)
     )
 
     signal_file = PathRegistry(
         artifacts_dir.parent
     ).scan_related_files_update_signal(section_name)
-    missing_existing = _missing_existing_related_files(section_text_raw, codespace)
+    missing_existing = _missing_existing_related_files(section_text_raw, ctx.codespace)
 
     prev_hash = ""
     if codemap_hash_file.is_file():
@@ -365,7 +360,7 @@ def validate_existing_related_files(
 
     cached_signal = _normalize_validation_signal(
         signal_file,
-        codespace=codespace,
+        codespace=ctx.codespace,
         missing_existing=missing_existing,
         allow_applied=True,
     )
@@ -394,8 +389,8 @@ def validate_existing_related_files(
     prompt = _build_validation_prompt(
         section_name=section_name,
         section_file=section_file,
-        codemap_path=codemap_path,
-        corrections_file=corrections_file,
+        codemap_path=ctx.codemap_path,
+        corrections_file=ctx.corrections_path,
         signal_file=signal_file,
         missing_existing=missing_existing,
     )
@@ -406,8 +401,8 @@ def validate_existing_related_files(
     signal_file.unlink(missing_ok=True)
 
     result = dispatch_agent(
-        model=model_policy["validation"],
-        project=codespace,
+        model=ctx.model_policy["validation"],
+        project=ctx.codespace,
         prompt_file=validate_prompt,
         agent_file=Services.task_router().agent_for("scan.adjudicate"),
         stdout_file=validate_output,
@@ -418,13 +413,9 @@ def validate_existing_related_files(
         section_name=section_name,
         section_file=section_file,
         signal_file=signal_file,
-        codespace=codespace,
+        ctx=ctx,
         missing_existing=missing_existing,
-        model_policy=model_policy,
-        section_log=section_log,
-        codemap_hash=codemap_hash,
-        corrections_hash=corrections_hash,
-        combined_hash=combined_hash,
+        validation_hashes=(codemap_hash, corrections_hash, combined_hash),
     )
 
 

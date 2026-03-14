@@ -394,7 +394,7 @@ def _run_seeding_and_apply(
 
     # ---- Apply related-files updates ----
     print("[SUBSTRATE] Applying related-files updates")
-    updated_count = apply_related_files_updates(planspace, codespace)
+    updated_count = apply_related_files_updates(planspace)
     print(f"[SUBSTRATE] Updated {updated_count} section spec(s)")
 
     return updated_count

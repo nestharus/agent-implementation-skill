@@ -128,8 +128,6 @@ def test_post_section_completion_writes_note_and_contract_artifact(
             planspace,
             codespace,
             "parent",
-            impact_model="glm",
-            normalizer_model="glm",
         )
 
         note_path = planspace / "artifacts" / "notes" / "from-01-to-02.md"

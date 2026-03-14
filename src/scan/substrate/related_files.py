@@ -54,7 +54,7 @@ def _read_signal_failclosed(path: Path) -> dict | None:
     return data
 
 
-def apply_related_files_updates(planspace: Path, codespace: Path) -> int:
+def apply_related_files_updates(planspace: Path) -> int:
     """Apply all related-files-update signals to section specs.
 
     Reads ``artifacts/signals/related-files-update/section-*.json``.
@@ -63,18 +63,7 @@ def apply_related_files_updates(planspace: Path, codespace: Path) -> int:
     Updates section specs by appending ``### <path>`` lines after the
     last entry under ``## Related Files``.
 
-    Parameters
-    ----------
-    planspace:
-        Root of the planspace directory.
-    codespace:
-        Root of the codespace directory (currently unused but passed
-        for consistency with the runner API).
-
-    Returns
-    -------
-    int
-        Count of sections that were actually updated.
+    Returns the count of sections that were actually updated.
     """
     registry = PathRegistry(planspace)
     signals_dir = registry.related_files_update_dir()

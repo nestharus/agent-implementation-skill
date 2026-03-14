@@ -7,13 +7,18 @@ Uses real file I/O and real db.sh for pipeline state queries.
 from pathlib import Path
 
 from orchestrator.service.pipeline_control import (
-    _check_and_clear_alignment_changed,
-    _invalidate_excerpts,
     _section_inputs_hash,
     alignment_changed_pending,
     check_pipeline_state,
 )
+from staleness.service.change_tracker import (
+    invalidate_excerpts as _invalidate_excerpts,
+    make_alignment_checker,
+)
+from _config import AGENT_NAME, DB_SH
 from orchestrator.types import Section
+
+_check_and_clear_alignment_changed = make_alignment_checker(DB_SH, AGENT_NAME)
 
 
 class TestAlignmentChangedFlag:

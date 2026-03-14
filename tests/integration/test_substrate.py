@@ -708,9 +708,7 @@ class TestRelatedFilesUpdates:
             json.dumps({"additions": ["src/anchor.py"], "removals": []})
         )
 
-        count = apply_related_files_updates(
-            substrate_planspace, substrate_codespace,
-        )
+        count = apply_related_files_updates(substrate_planspace)
         assert count == 1
 
         # Verify the section was updated
@@ -734,9 +732,7 @@ class TestRelatedFilesUpdates:
             json.dumps({"additions": ["src/already.py"], "removals": []})
         )
 
-        count = apply_related_files_updates(
-            substrate_planspace, substrate_codespace,
-        )
+        count = apply_related_files_updates(substrate_planspace)
         # No update needed — already present
         assert count == 0
 
@@ -752,9 +748,7 @@ class TestRelatedFilesUpdates:
         signal_dir.mkdir(parents=True, exist_ok=True)
         (signal_dir / "section-01.json").write_text("{bad json")
 
-        count = apply_related_files_updates(
-            substrate_planspace, substrate_codespace,
-        )
+        count = apply_related_files_updates(substrate_planspace)
         assert count == 0
         assert (signal_dir / "section-01.malformed.json").exists()
 
@@ -763,9 +757,7 @@ class TestRelatedFilesUpdates:
     ) -> None:
         from scan.substrate.related_files import apply_related_files_updates
 
-        count = apply_related_files_updates(
-            substrate_planspace, substrate_codespace,
-        )
+        count = apply_related_files_updates(substrate_planspace)
         assert count == 0
 
 

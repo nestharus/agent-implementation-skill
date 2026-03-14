@@ -679,16 +679,19 @@ class TestScanLoopClosure:
         tier_input = strip_scan_summaries(raw) + "\n" + "src/main.py"
         tier_sidecar.write_text(hashlib.sha256(tier_input.encode()).hexdigest())
 
+        from scan.scan_context import ScanContext
         _scan_sections(
             section_files=[sec_file],
-            codemap_path=artifacts / "codemap.md",
-            codespace=scan_codespace,
+            ctx=ScanContext(
+                codespace=scan_codespace,
+                codemap_path=artifacts / "codemap.md",
+                corrections_path=artifacts / "signals" / "codemap-corrections.json",
+                scan_log_dir=scan_log,
+                model_policy={"tier_ranking": "glm", "exploration": "claude-opus",
+                              "deep_analysis": "glm"},
+            ),
             artifacts_dir=artifacts,
-            scan_log_dir=scan_log,
             file_card_cache=FileCardCache(artifacts / "file-cards"),
-            corrections_path=artifacts / "signals" / "codemap-corrections.json",
-            model_policy={"tier_ranking": "glm", "exploration": "claude-opus",
-                          "deep_analysis": "glm"},
             already_scanned=already_scanned,
         )
 
@@ -733,18 +736,21 @@ class TestDeepScanTierRankingFailureUnit:
             args=[], returncode=1, stdout="", stderr="tier failed",
         )
 
+        from scan.scan_context import ScanContext
         result = _scan_sections(
             section_files=[sec_file],
-            codemap_path=artifacts / "codemap.md",
-            codespace=scan_codespace,
+            ctx=ScanContext(
+                codespace=scan_codespace,
+                codemap_path=artifacts / "codemap.md",
+                corrections_path=artifacts / "signals" / "codemap-corrections.json",
+                scan_log_dir=scan_log,
+                model_policy={
+                    "tier_ranking": "glm", "exploration": "claude-opus",
+                    "deep_analysis": "glm",
+                },
+            ),
             artifacts_dir=artifacts,
-            scan_log_dir=scan_log,
             file_card_cache=FileCardCache(artifacts / "file-cards"),
-            corrections_path=artifacts / "signals" / "codemap-corrections.json",
-            model_policy={
-                "tier_ranking": "glm", "exploration": "claude-opus",
-                "deep_analysis": "glm",
-            },
             already_scanned={},
         )
 

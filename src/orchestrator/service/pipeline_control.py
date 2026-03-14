@@ -3,8 +3,6 @@ from typing import Any
 
 from staleness.service.change_tracker import (
     check_pending as alignment_changed_pending_flag,
-    invalidate_excerpts as invalidate_all_excerpts,
-    make_alignment_checker,
 )
 from signals.service.message_poller import (
     check_for_messages as drain_messages,
@@ -29,16 +27,9 @@ def check_pipeline_state(planspace: Path) -> str:
     return query_pipeline_state(planspace, db_sh=DB_SH)
 
 
-def _invalidate_excerpts(planspace: Path) -> None:
-    invalidate_all_excerpts(planspace)
-
-
 def alignment_changed_pending(planspace: Path) -> bool:
     """Check if alignment_changed flag is set (non-clearing)."""
     return alignment_changed_pending_flag(planspace)
-
-
-_check_and_clear_alignment_changed = make_alignment_checker(DB_SH, AGENT_NAME)
 
 
 def requeue_changed_sections(

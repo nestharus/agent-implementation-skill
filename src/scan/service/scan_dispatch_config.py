@@ -32,12 +32,8 @@ def read_scan_model_policy(artifacts_dir: Path) -> dict[str, str]:
     return policy
 
 
-def resolve_scan_agent_path(workflow_home: Path, agent_file: str) -> Path:
-    """Resolve a scan agent definition path.
-
-    The ``workflow_home`` parameter is kept for call-site compatibility
-    but is ignored — resolution goes through the central agent index.
-    """
+def resolve_scan_agent_path(agent_file: str) -> Path:
+    """Resolve a scan agent definition path."""
     return Services.task_router().resolve_agent_path(agent_file)
 
 

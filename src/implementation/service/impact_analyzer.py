@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from containers import Services
 from _config import AGENT_NAME, DB_SH
+from dispatch.helpers.signal_checker import extract_fenced_block
 from orchestrator.path_registry import PathRegistry
 from orchestrator.service.section_decision_store import (
     build_section_number_map,
@@ -90,11 +91,11 @@ def analyze_impacts(
     all_sections: list[Section],
     codespace: Path,
     parent: str,
-    *,
-    impact_model: str,
-    normalizer_model: str,
 ) -> list[MaterialImpact]:
     """Run the full impact analysis pipeline and return material impacts."""
+    policy = Services.policies().load(planspace)
+    impact_model = Services.policies().resolve(policy, "impact_analysis")
+    normalizer_model = Services.policies().resolve(policy, "impact_normalizer")
     artifacts = PathRegistry(planspace).artifacts
     other_sections = [section for section in all_sections if section.number != section_number]
     if not other_sections:
@@ -412,23 +413,9 @@ def _parse_material_impacts(
 
 
 def _extract_json_block(output: str, *, marker: str) -> str | None:
-    in_fence = False
-    fence_lines: list[str] = []
-    for line in output.split("\n"):
-        stripped = line.strip()
-        if stripped.startswith("```") and not in_fence:
-            in_fence = True
-            fence_lines = []
-            continue
-        if stripped.startswith("```") and in_fence:
-            candidate = "\n".join(fence_lines)
-            if marker in candidate:
-                return candidate
-            in_fence = False
-            continue
-        if in_fence:
-            fence_lines.append(line)
-
+    result = extract_fenced_block(output, marker)
+    if result is not None:
+        return result
     start = output.find("{")
     end = output.rfind("}")
     if start >= 0 and end > start:

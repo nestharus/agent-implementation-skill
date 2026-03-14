@@ -15,6 +15,7 @@ from src.scan.related.related_file_resolver import (
     validate_existing_related_files,
 )
 from src.scan.codemap.cache import strip_scan_summaries
+from src.scan.scan_context import ScanContext
 
 
 def test_list_section_files_filters_and_sorts(tmp_path) -> None:
@@ -133,12 +134,14 @@ def test_validate_existing_related_files_skips_when_inputs_unchanged(
     validate_existing_related_files(
         section_file=section_file,
         section_name="section-07",
-        codemap_path=codemap_path,
-        codespace=codespace,
+        ctx=ScanContext(
+            codespace=codespace,
+            codemap_path=codemap_path,
+            corrections_path=corrections_file,
+            scan_log_dir=scan_log_dir,
+            model_policy={"validation": "test-model"},
+        ),
         artifacts_dir=artifacts_dir,
-        scan_log_dir=scan_log_dir,
-        corrections_file=corrections_file,
-        model_policy={"validation": "test-model"},
     )
 
     assert (
@@ -223,12 +226,14 @@ def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
         validate_existing_related_files(
             section_file=section_file,
             section_name="section-08",
-            codemap_path=codemap_path,
-            codespace=codespace,
+            ctx=ScanContext(
+                codespace=codespace,
+                codemap_path=codemap_path,
+                corrections_path=artifacts_dir / "signals" / "codemap-corrections.json",
+                scan_log_dir=scan_log_dir,
+                model_policy={"validation": "test-model"},
+            ),
             artifacts_dir=artifacts_dir,
-            scan_log_dir=scan_log_dir,
-            corrections_file=artifacts_dir / "signals" / "codemap-corrections.json",
-            model_policy={"validation": "test-model"},
         )
 
         updated_text = section_file.read_text(encoding="utf-8")

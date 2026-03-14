@@ -13,11 +13,9 @@ from proposal.service.readiness_resolver import resolve_readiness
 from proposal.service.excerpt_extractor import extract_excerpts
 from implementation.engine.implementation_cycle import run_implementation_loop
 from intent.service.recurrence_emitter import emit_recurrence_signal
-from dispatch.service.tool_registry_manager import (
-    handle_tool_friction,
-    surface_tool_registry,
-    validate_tool_registry_after_implementation,
-)
+from dispatch.service.tool_surface_writer import surface_tool_registry
+from dispatch.service.tool_validator import validate_tool_registry_after_implementation
+from dispatch.service.tool_bridge import handle_tool_friction
 
 from coordination.service.completion_handler import (
     post_section_completion,
@@ -288,12 +286,9 @@ def _run_post_completion(
 ) -> None:
     """Run post-completion impact analysis and consequence notes."""
     if actually_changed and all_sections:
-        policy = Services.policies().load(planspace)
         post_section_completion(
             section, actually_changed, all_sections,
             planspace, codespace, parent,
-            impact_model=Services.policies().resolve(policy, "impact_analysis"),
-            normalizer_model=Services.policies().resolve(policy, "impact_normalizer"),
         )
 
 

@@ -22,6 +22,7 @@ import pytest
 from _paths import DB_SH
 from conftest import override_dispatcher_and_guard
 
+from flow.types.context import FlowEnvelope
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from flow.exceptions import FlowCorruptionError
 from flow.service.flow_facade import (
@@ -243,9 +244,8 @@ class TestBuildFlowContextFailClosed:
     ) -> None:
         """Valid flow context is returned normally (no regression)."""
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [TaskSpec(task_type="staleness.alignment_check")],
-            planspace=planspace,
         )
         tid = ids[0]
         task = _query_task(db_path, tid)
@@ -269,9 +269,8 @@ class TestReconcileMalformedContinuation:
         self, db_path: Path, planspace: Path,
     ) -> None:
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [TaskSpec(task_type="staleness.alignment_check")],
-            planspace=planspace,
         )
         tid = ids[0]
         _mark_task_running(db_path, tid)
@@ -292,9 +291,8 @@ class TestReconcileMalformedContinuation:
         self, db_path: Path, planspace: Path,
     ) -> None:
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [TaskSpec(task_type="staleness.alignment_check")],
-            planspace=planspace,
         )
         tid = ids[0]
         _mark_task_running(db_path, tid)
@@ -326,10 +324,9 @@ class TestReconcileMalformedContinuation:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_malcont",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_malcont", planspace=planspace),
+            branches,
             gate=GateSpec(mode="all", failure_policy="include"),
-            planspace=planspace,
         )
 
         all_tasks = _query_all_tasks(db_path)
@@ -366,10 +363,9 @@ class TestReconcileMalformedContinuation:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_gate_corrupt",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_gate_corrupt", planspace=planspace),
+            branches,
             gate=GateSpec(mode="all", failure_policy="include"),
-            planspace=planspace,
         )
 
         all_tasks = _query_all_tasks(db_path)
@@ -397,9 +393,8 @@ class TestReconcileMalformedContinuation:
         self, db_path: Path, planspace: Path, capsys,
     ) -> None:
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [TaskSpec(task_type="staleness.alignment_check")],
-            planspace=planspace,
         )
         tid = ids[0]
         _mark_task_running(db_path, tid)
@@ -429,10 +424,8 @@ class TestReadOriginRefsFailClosed:
         self, db_path: Path, planspace: Path,
     ) -> None:
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", origin_refs=["ref-1", "ref-2"], planspace=planspace),
             [TaskSpec(task_type="staleness.alignment_check")],
-            origin_refs=["ref-1", "ref-2"],
-            planspace=planspace,
         )
         result = _read_origin_refs(planspace, ids[0])
         assert result == ["ref-1", "ref-2"]

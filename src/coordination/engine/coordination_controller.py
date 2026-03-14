@@ -135,7 +135,6 @@ def _report_result(
 
 
 def run_coordination_loop(
-    all_sections: list[Section],
     section_results: dict[str, SectionResult],
     sections_by_num: dict[str, Section],
     ctx: DispatchContext,
@@ -180,7 +179,7 @@ def run_coordination_loop(
         )
 
         all_done = run_global_coordination(
-            all_sections, section_results, sections_by_num, ctx,
+            section_results, sections_by_num, ctx,
         )
 
         if Services.pipeline_control().check_alignment_and_return(

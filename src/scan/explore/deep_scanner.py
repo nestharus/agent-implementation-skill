@@ -7,10 +7,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from orchestrator.path_registry import PathRegistry
 from scan.related.match_updater import deep_scan_related_files
 from scan.related.related_file_resolver import list_section_files
 from scan.related.section_iterator import scan_sections as _scan_sections
+from scan.scan_context import ScanContext
 
 from scan.codemap.cache import FileCardCache
 from scan.scan_dispatcher import read_scan_model_policy
@@ -43,7 +43,13 @@ def run_deep_scan(
 
     section_files = list_section_files(sections_dir)
     file_card_cache = FileCardCache(artifacts_dir / "file-cards")
-    corrections_path = PathRegistry(artifacts_dir.parent).corrections()
+    ctx = ScanContext.from_artifacts(
+        codespace=codespace,
+        codemap_path=codemap_path,
+        artifacts_dir=artifacts_dir,
+        scan_log_dir=scan_log_dir,
+        model_policy=model_policy,
+    )
     already_scanned: dict[str, set[str]] = {}
     any_failures = False
 
@@ -56,13 +62,9 @@ def run_deep_scan(
 
         phase_failed = _scan_sections(
             section_files=section_files,
-            codemap_path=codemap_path,
-            codespace=codespace,
+            ctx=ctx,
             artifacts_dir=artifacts_dir,
-            scan_log_dir=scan_log_dir,
             file_card_cache=file_card_cache,
-            corrections_path=corrections_path,
-            model_policy=model_policy,
             already_scanned=already_scanned,
         )
         if phase_failed:

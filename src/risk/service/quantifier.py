@@ -215,17 +215,6 @@ DEFAULT_CLASS_THRESHOLDS: dict[AssessmentClass, int] = {
     DecisionClass.IRREVERSIBLE: 20,
 }
 
-DEFAULT_RISK_PARAMETERS: dict[str, Any] = {
-    "posture_bands": [
-        {"min": lower, "max": upper, "posture": posture.value}
-        for lower, upper, posture in DEFAULT_POSTURE_BANDS
-    ],
-    "class_thresholds": {
-        assessment_class.value: threshold
-        for assessment_class, threshold in DEFAULT_CLASS_THRESHOLDS.items()
-    },
-}
-
 MAX_SEVERITY = 4
 RISK_MIN = 0
 RISK_MAX = 100

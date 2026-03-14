@@ -18,6 +18,7 @@ import pytest
 from _paths import DB_SH
 
 from flow.repository.catalog import KNOWN_PACKAGES, resolve_chain_ref
+from flow.types.context import FlowEnvelope
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from flow.service.flow_facade import submit_chain, submit_fanout
 
@@ -102,12 +103,12 @@ class TestSubmitChain:
     """Tests for submit_chain()."""
 
     def test_empty_steps_returns_empty(self, db_path: Path) -> None:
-        result = submit_chain(db_path, "test-agent", [])
+        result = submit_chain(FlowEnvelope(db_path=db_path, submitted_by="test-agent"), [])
         assert result == []
 
     def test_single_step_chain(self, db_path: Path) -> None:
         steps = [TaskSpec(task_type="staleness.alignment_check")]
-        ids = submit_chain(db_path, "test-agent", steps)
+        ids = submit_chain(FlowEnvelope(db_path=db_path, submitted_by="test-agent"), steps)
         assert len(ids) == 1
 
         task = _query_task(db_path, ids[0])
@@ -123,7 +124,7 @@ class TestSubmitChain:
             TaskSpec(task_type="signals.impact_analysis"),
             TaskSpec(task_type="coordination.fix"),
         ]
-        ids = submit_chain(db_path, "test-agent", steps)
+        ids = submit_chain(FlowEnvelope(db_path=db_path, submitted_by="test-agent"), steps)
         assert len(ids) == 3
 
         t0 = _query_task(db_path, ids[0])
@@ -145,7 +146,7 @@ class TestSubmitChain:
             TaskSpec(task_type="staleness.alignment_check"),
             TaskSpec(task_type="signals.impact_analysis"),
         ]
-        ids = submit_chain(db_path, "test-agent", steps)
+        ids = submit_chain(FlowEnvelope(db_path=db_path, submitted_by="test-agent"), steps)
 
         t0 = _query_task(db_path, ids[0])
         t1 = _query_task(db_path, ids[1])
@@ -158,7 +159,7 @@ class TestSubmitChain:
             TaskSpec(task_type="staleness.alignment_check"),
             TaskSpec(task_type="signals.impact_analysis"),
         ]
-        ids = submit_chain(db_path, "test-agent", steps)
+        ids = submit_chain(FlowEnvelope(db_path=db_path, submitted_by="test-agent"), steps)
 
         t0 = _query_task(db_path, ids[0])
         t1 = _query_task(db_path, ids[1])
@@ -171,7 +172,7 @@ class TestSubmitChain:
             TaskSpec(task_type="staleness.alignment_check"),
             TaskSpec(task_type="signals.impact_analysis"),
         ]
-        ids = submit_chain(db_path, "test-agent", steps)
+        ids = submit_chain(FlowEnvelope(db_path=db_path, submitted_by="test-agent"), steps)
 
         t0 = _query_task(db_path, ids[0])
         t1 = _query_task(db_path, ids[1])
@@ -183,8 +184,10 @@ class TestSubmitChain:
         """Caller-provided flow_id and chain_id are used."""
         steps = [TaskSpec(task_type="staleness.alignment_check")]
         ids = submit_chain(
-            db_path, "test-agent", steps,
-            flow_id="flow_custom", chain_id="chain_custom",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent",
+                         flow_id="flow_custom"),
+            steps,
+            chain_id="chain_custom",
         )
 
         task = _query_task(db_path, ids[0])
@@ -194,8 +197,9 @@ class TestSubmitChain:
     def test_declared_by_task_id_propagated(self, db_path: Path) -> None:
         steps = [TaskSpec(task_type="staleness.alignment_check")]
         ids = submit_chain(
-            db_path, "test-agent", steps,
-            declared_by_task_id=42,
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent",
+                         declared_by_task_id=42),
+            steps,
         )
 
         task = _query_task(db_path, ids[0])
@@ -204,7 +208,7 @@ class TestSubmitChain:
     def test_flow_context_paths_set(self, db_path: Path) -> None:
         """Each task has flow_context_path, continuation_path, result_manifest_path."""
         steps = [TaskSpec(task_type="staleness.alignment_check")]
-        ids = submit_chain(db_path, "test-agent", steps)
+        ids = submit_chain(FlowEnvelope(db_path=db_path, submitted_by="test-agent"), steps)
         tid = ids[0]
 
         task = _query_task(db_path, tid)
@@ -221,9 +225,9 @@ class TestSubmitChain:
             TaskSpec(task_type="signals.impact_analysis"),
         ]
         ids = submit_chain(
-            db_path, "test-agent", steps,
-            origin_refs=["ref-1"],
-            planspace=flow_planspace,
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent",
+                         origin_refs=["ref-1"], planspace=flow_planspace),
+            steps,
         )
 
         # First task context
@@ -249,7 +253,7 @@ class TestSubmitChain:
     def test_no_context_files_without_planspace(self, db_path: Path, tmp_path: Path) -> None:
         """No flow context files created when planspace is None."""
         steps = [TaskSpec(task_type="staleness.alignment_check")]
-        submit_chain(db_path, "test-agent", steps)
+        submit_chain(FlowEnvelope(db_path=db_path, submitted_by="test-agent"), steps)
         # No artifacts directory should exist in tmp_path
         assert not (tmp_path / "artifacts").exists()
 
@@ -264,7 +268,7 @@ class TestSubmitChain:
                 problem_id="P-99",
             ),
         ]
-        ids = submit_chain(db_path, "test-agent", steps)
+        ids = submit_chain(FlowEnvelope(db_path=db_path, submitted_by="test-agent"), steps)
 
         task = _query_task(db_path, ids[0])
         assert task["task_type"] == "signals.impact_analysis"
@@ -283,8 +287,9 @@ class TestSubmitFanout:
 
     def test_empty_branches_returns_none(self, db_path: Path) -> None:
         result = submit_fanout(
-            db_path, "test-agent", [],
-            flow_id="flow_test",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent",
+                         flow_id="flow_test"),
+            [],
         )
         assert result is None
 
@@ -301,8 +306,9 @@ class TestSubmitFanout:
             ),
         ]
         submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_fan",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent",
+                         flow_id="flow_fan"),
+            branches,
         )
 
         # Query all tasks
@@ -335,8 +341,9 @@ class TestSubmitFanout:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_gated",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent",
+                         flow_id="flow_gated"),
+            branches,
             gate=GateSpec(mode="all", failure_policy="include"),
         )
 
@@ -363,8 +370,9 @@ class TestSubmitFanout:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_members",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent",
+                         flow_id="flow_members"),
+            branches,
             gate=GateSpec(),
         )
 
@@ -388,8 +396,9 @@ class TestSubmitFanout:
             BranchSpec(steps=[TaskSpec(task_type="staleness.alignment_check")]),
         ]
         result = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_nogate",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent",
+                         flow_id="flow_nogate"),
+            branches,
         )
         assert result is None
 
@@ -399,8 +408,9 @@ class TestSubmitFanout:
             BranchSpec(steps=[TaskSpec(task_type="staleness.alignment_check")]),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_syn",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent",
+                         flow_id="flow_syn"),
+            branches,
             gate=GateSpec(
                 synthesis=TaskSpec(
                     task_type="signals.impact_analysis",
@@ -429,8 +439,9 @@ class TestSubmitFanout:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_ref",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent",
+                         flow_id="flow_ref"),
+            branches,
             gate=GateSpec(),
         )
 
@@ -463,8 +474,9 @@ class TestSubmitFanout:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_multi",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent",
+                         flow_id="flow_multi"),
+            branches,
             gate=GateSpec(),
         )
 
@@ -495,9 +507,9 @@ class TestSubmitFanout:
             ),
         ]
         submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_ctx",
-            planspace=flow_planspace,
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent",
+                         flow_id="flow_ctx", planspace=flow_planspace),
+            branches,
         )
 
         conn = sqlite3.connect(str(db_path), timeout=5.0)
@@ -517,9 +529,9 @@ class TestSubmitFanout:
             BranchSpec(steps=[TaskSpec(task_type="staleness.alignment_check")]),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_decl",
-            declared_by_task_id=99,
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent",
+                         flow_id="flow_decl", declared_by_task_id=99),
+            branches,
             gate=GateSpec(),
         )
 
@@ -606,11 +618,11 @@ class TestIdUniqueness:
     def test_multiple_chains_unique_ids(self, db_path: Path) -> None:
         """Two separate chains get distinct flow/chain IDs."""
         ids1 = submit_chain(
-            db_path, "agent-1",
+            FlowEnvelope(db_path=db_path, submitted_by="agent-1"),
             [TaskSpec(task_type="staleness.alignment_check")],
         )
         ids2 = submit_chain(
-            db_path, "agent-2",
+            FlowEnvelope(db_path=db_path, submitted_by="agent-2"),
             [TaskSpec(task_type="signals.impact_analysis")],
         )
 

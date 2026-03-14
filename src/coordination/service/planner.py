@@ -8,27 +8,14 @@ from typing import Any
 
 from orchestrator.path_registry import PathRegistry
 from containers import Services
+from dispatch.helpers.signal_checker import extract_fenced_block
 
 
 def _extract_json_from_output(agent_output: str) -> str | None:
     """Extract JSON text containing 'groups' from agent output."""
-    in_fence = False
-    fence_lines: list[str] = []
-    for line in agent_output.split("\n"):
-        stripped = line.strip()
-        if stripped.startswith("```") and not in_fence:
-            in_fence = True
-            fence_lines = []
-            continue
-        if stripped.startswith("```") and in_fence:
-            in_fence = False
-            candidate = "\n".join(fence_lines)
-            if '"groups"' in candidate:
-                return candidate
-            continue
-        if in_fence:
-            fence_lines.append(line)
-
+    result = extract_fenced_block(agent_output, '"groups"')
+    if result is not None:
+        return result
     start = agent_output.find("{")
     end = agent_output.rfind("}")
     if start >= 0 and end > start:

@@ -254,12 +254,14 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Category**: Cohesion / maintainability
 - **Source**: Cohesion analysis (R118)
 - **Worst offenders**:
-  1. `philosophy_bootstrapper.py` — 1533 lines, 22 functions, 7 topics (path helpers, signal writers, context collectors, bootstrap prompter, user-input flow, grounding validation, multi-stage orchestration)
-  2. `tool_registry_manager.py` — 536 lines, 4 functions with unrelated callback signatures. `handle_tool_friction` (222 lines) has no relationship to `write_tool_surface` (32 lines).
+  1. `philosophy_bootstrapper.py` — 1183 lines, analyzed in Cycle 19: all functions small (max 37 exec), further decomposition creates circular deps
+  2. `tool_registry_manager.py` — DONE, decomposed into `tool_surface_writer.py`, `tool_validator.py`, `tool_bridge.py` (Cycle 20). Original deleted.
   3. `package_builder.py` — 449 lines, 22 functions mixing package lifecycle, persistence, microstrategy text parsing, step materialization, and generic text utilities.
   4. `risk_artifact_writer.py` — 269 lines mixing write-side producers with read-side queries (`has_stale_freshness_token`, `has_recent_loop_detected_signal`).
   5. `pipeline_control.py` — 164 lines, facade re-exporting from 3 modules plus local implementation for `requeue_changed_sections`.
+  6. `research_plan_executor.py` — DONE, split into `research_branch_builder.py` + executor (Cycle 20).
 - **Risk**: Any change to one topic within a low-cohesion file forces loading and understanding all other unrelated topics. Merge conflicts collide with unrelated code. Test files must cover unrelated concerns together.
+- **Status**: PARTIALLY DONE — 2 of 5 worst offenders decomposed. #1 analyzed as irreducible.
 
 ### 104. Policy dict threading — 30+ functions take policy: dict unnecessarily
 - **Category**: DI gap / parameter coupling
@@ -335,7 +337,7 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Category**: Dead code
 - **Source**: Rescan R119
 - **What**: `build_gate_aggregate_manifest` and `build_result_manifest` re-exported but never consumed via the facade.
-- **Status**: NOT DEAD — used by `tests/integration/test_task_flow_reconciliation.py`. Skipped.
+- **Status**: DONE — removed dead re-exports. Test updated to import from canonical source (`flow.engine.reconciler`).
 
 ### 115. `proposal/engine/proposal_cycle.py` grown to 766 lines
 - **Category**: God module
@@ -445,14 +447,15 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Scale**: Originally 57 functions >100 lines (FAIL). After Cycles 4-9: **1 function remains** (56 brought under 100). Cycle 8 decompositions: `run_substrate_discovery` (334→sub-100, extracted 5 phase helpers), `run_proposal_loop` (134→77 lines, extracted `_dispatch_and_validate_proposal` + `_run_alignment_phase`), `run_implementation_pass` (122→sub-100, extracted `_implement_section` + `_prepare_risk_plan` + `_handle_failed_impl`), `_iter_file_events` (119→sub-100, extracted per-record-type handlers), `_run_frontier_iterations` (112→54 lines, extracted `_execute_frontier_slice`), `validate_philosophy_grounding` (111→sub-100, extracted source map validation helpers). Cycle 9: reduced 4 more functions in 80-97 range: `_write_alignment_surface` (97→22, data-driven via `_collect_surface_entries`), `_run_freshness_check` (96→69, extracted `_interpret_freshness_signal`), `_run_bridge_for_group` (91→58, extracted `_ensure_contract_delta`), `_write_traceability_index` (completed extraction of `_collect_alignment_verdicts` + `_optional_artifact`, now 45 lines).
 - Cycle 10: Reduced `route_blockers` (81→22, extracted `_route_user_root_questions`, `_route_shared_seams`, `_route_unresolved_contracts`), `_recheck_section_alignment` (78→60, extracted `_classify_alignment_result`), `run_aligned_expansion` (72→52, extracted `_handle_budget_exhaustion`), `validate_risk_plan` (72→57, extracted `_validate_accept_decision`).
 - Cycle 11: Decomposed `ensure_global_philosophy` (918 lines, 215 exec) → 12 exec-line coordinator + 10 phase helpers (max 37 exec lines each). Introduced `_BootstrapContext` dataclass for shared state. Phase loop pattern: each helper returns `dict | None` — non-None short-circuits the coordinator. Helpers: `_check_philosophy_freshness`, `_resolve_source_records`, `_run_source_selector`, `_run_extension_pass`, `_run_source_verifier`, `_build_verification_shortlist`, `_validate_selected_sources`, `_build_distiller_prompt`, `_run_distiller`, `_handle_distiller_failure`, `_finalize_philosophy`.
-- **Status**: DONE — all functions under 50 exec lines.
+- Cycle 17: Decomposed 3 remaining 100+ exec-line functions in `philosophy_bootstrapper.py`: `_run_source_selector` (117→23, extracted `_handle_selector_empty` + `_handle_selector_failure`), `_run_source_verifier` (102→25, extracted `_handle_verifier_empty` + `_handle_verifier_failure`), `_handle_distiller_failure` (102→15, extracted `_handle_distiller_empty_user_source` + `_handle_distiller_empty_repo_source`). Extracted 3 modules from bootstrapper (1744→1188 lines): `philosophy_prompts.py` (4 prompt text composers, 237 lines), `philosophy_bootstrap_state.py` (constants, path helpers, signal/status writers, 166 lines), `philosophy_grounding.py` (grounding validation + sha256_file, 230 lines). Dead code cleanup: removed unused `integration_proposal` variable in `proposal_cycle.py`, removed dead `_invalidate_excerpts`/`_check_and_clear_alignment_changed` wrappers from `pipeline_control.py`, removed dead `_summary_tag` wrapper from `section_communicator.py`.
+- **Status**: DONE — all functions under 50 exec lines (1 at exactly 50 in scripts/log_extract/cli.py).
 
 ### 129. 60 functions have 8+ parameters (CODE-S3 FAIL inventory)
 - **Category**: Code style / parameter count
 - **Source**: Expanded reviewer scan R120 (CODE-S3 from code-style-review)
 - **Top 5**: `submit_task()` 18 params, `_request_user_philosophy()` 15 params, `_dispatch_classified_signal_stage()` 13 params, `_write_prompt()` 13 params, `handle_tool_friction()` 12 params.
 - **Overlap**: Subsumes #93 (long parameter lists). This is the precise inventory.
-- **Status**: PARTIALLY DONE — Down to 48 functions with 8+ params (from 128+). Systematic elimination of redundant `paths: PathRegistry` (derivable from `planspace`), `policy: dict` (derivable via `Services.policies().load(planspace)`), `artifacts` (derivable from `planspace`), `coord_dir` (derivable from `planspace`), `sec_num` (derivable from `section.number`), and dead params across ~80 functions in Cycles 12-16. Remaining 49 are mostly at 8-9 params with no derivable redundancy — params are genuinely distinct data (DB insertion columns, dispatch configs, prompt data, hash inputs). Top remaining: `submit_task` (17, all keyword-only DB columns), `_apply_and_finalize` (11), `_block_bootstrap` (10).
+- **Status**: PARTIALLY DONE — Down to 24 functions with 8+ params (from 128+). Cycle 16 structural changes: `TaskHandle` dataclass (4 dispatcher helpers: 8-9→5-6), `ScanContext` dataclass (6 scan functions: 8-11→4-7), `FlowEnvelope` dataclass (6 flow submission functions: 8-9→3-4), `DispatchContext` adoption in philosophy_dispatcher (2 functions: 10→8, 8→6), `_compute_intent_pack_hash` refactored to derive paths from `PathRegistry+Section` (9→3), `_compose_intent_pack_text` simplified (8→7), `_build_consequence_note` derives paths internally (10→9), `_request_user_philosophy` uses `DispatchContext` (10→8). Cycle 17: `_block_bootstrap` extracted to `philosophy_bootstrap_state.py` (no longer counted as bootstrapper function). Cycle 18: `block_bootstrap` status/bootstrap_state merged (10→9), `post_section_completion` models internalized (8→6), `_compose_microstrategy_text` paths derived (8→6), `_compose_reexplore_text` output_path derived (8→7), `evaluate_qa_gate` unused model/section_number removed (8→5), dead params removed across 12 functions. Cycle 19: `analyze_impacts` models internalized (9→7), dead `all_sections` removed from `run_coordination_loop` cascade (3 functions), dead `impl_result` removed from `_handle_post_dispatch`. Remaining 24: 4 at 9 params (dispatch core, block_bootstrap, consequence_note), 20 at 8 params — all verified irreducible (distinct data values, no derivability).
 
 ### 130. Broad `except Exception` without `# noqa: BLE001` (CODE-E1)
 - **Category**: Error handling / exception specificity
@@ -676,6 +679,84 @@ Functions that take parameters obtainable from the DI container are exposing unn
   - `db_path` made keyword-only optional param, derived from `PathRegistry(planspace).run_db()` when not provided
   - All 5 production callers simplified (removed `db_path=paths.run_db()`)
   - 17 test calls updated to pass `db_path=` as keyword arg
+- **Status**: DONE
+
+### 143. Cycle 18 — dead code cleanup, dead parameter sweep, parameter reduction
+- **Category**: Dead code / parameter reduction
+- **Dead code removed** (6 items across 5 files):
+  - `PathRegistry.intake_session_dir` method (path_registry.py)
+  - `DispatchEvaluation` dataclass (qa_interceptor.py)
+  - `DEFAULT_FAILURE_COOLDOWN` constant (posture.py)
+  - `DEFAULT_RISK_PARAMETERS` constant (quantifier.py)
+  - `TOUCHPOINTS_ENUM`, `KIND_ENUM` constants (schemas.py)
+- **Dead parameters removed** (20+ params across 15 functions):
+  - `codespace` dead in: `_handle_post_dispatch`, `_handle_underspec_signal` (implementation_cycle.py), `_persist_section_hashes` (implementation_phase.py), `_check_alignment_and_requeue` (proposal_phase.py)
+  - `codespace`+`align_result`+`align_output` dead in `handle_alignment_signals` (alignment_handler.py)
+  - `codespace`+`intg_result` dead in `handle_proposal_signals` (cycle_control.py)
+  - `impl_align_result` dead in `_handle_underspec_signal`, `impl_result` dead in `_handle_post_dispatch`
+  - `sections` dead in `run_global_coordination` (global_coordinator.py)
+  - `model`+`section_number` dead in `evaluate_qa_gate` (qa_gate.py, 8→5 params)
+  - `assessment`+`package`+`parameters` dead in `_validate_and_dispatch_optimization` and `_validate_and_dispatch_lightweight_optimization` (risk_assessor.py, 6→3 and 6→2)
+  - `workflow_home` dead in `resolve_scan_agent_path` (scan_dispatch_config.py)
+  - `codespace` dead in `apply_related_files_updates` (related_files.py)
+  - `origin_refs` suppressed with `del` in 3 catalog package functions (protocol interface)
+- **Parameter reduction** (8+ param functions: 28→25):
+  - `block_bootstrap`: merged redundant `status`/`bootstrap_state` (10→9)
+  - `post_section_completion`: internalized `impact_model`+`normalizer_model` (8→6)
+  - `_compose_microstrategy_text`: derived `integration_proposal`+`microstrategy_path` from PathRegistry (8→6)
+  - `_compose_reexplore_text`: derived `output_path` from PathRegistry (8→7)
+  - `_build_microstrategy_prompt`: cascade reduction (6→4)
+  - `_build_reexplore_prompt`: cascade reduction (4→3)
+- **Status**: DONE
+
+### 144. Cycle 19 — dead parameter sweep, model internalization, rescan
+- **Category**: Dead code / parameter reduction
+- **Dead parameters removed** (4 params across 3 functions):
+  - `all_sections` dead in `run_coordination_loop` (coordination_controller.py) — cascade through `_run_phase2` (pipeline_orchestrator.py), 5 test callers updated
+  - `impl_result` dead in `_handle_post_dispatch` (implementation_cycle.py, 4→3 params) — caller updated
+- **Model internalization** (`analyze_impacts`: 9→7 params):
+  - `impact_model` and `normalizer_model` now derived internally via `Services.policies().load(planspace)` + `Services.policies().resolve(policy, ...)`
+  - Caller `post_section_completion` simplified (removed policy resolution at call site)
+  - Dead `policy` variable assignment removed from `post_section_completion`
+  - 2 test callers updated to remove `impact_model`/`normalizer_model` kwargs
+- **Comprehensive rescan results** (all clean):
+  - Zero dead private functions (27 candidates verified as cross-module imports)
+  - Zero dead constants
+  - Zero dead classes
+  - Zero dead variable assignments
+  - Zero unused imports (8 known re-exports confirmed)
+  - Zero dead parameters across entire codebase (excluding protocol functions)
+- **8+ param functions**: 25→24 (5 at 9→4 at 9, 20 at 8 unchanged)
+- **Status**: DONE
+
+### 145. Cycle 20 — god module decomposition, duplicate elimination, dead param removal
+- **Category**: God modules / duplicate code / dead params
+- **God module decomposition**:
+  - `tool_registry_manager.py` (726 lines) → 3 focused modules:
+    - `tool_surface_writer.py` (~200 lines) — tool surfacing and registry repair
+    - `tool_validator.py` (~190 lines) — post-implementation validation
+    - `tool_bridge.py` (~290 lines) — bridge agent and friction handling
+  - `research_plan_executor.py` (539 lines) → split into:
+    - `research_branch_builder.py` (~270 lines) — branch building and ticket translation
+    - `research_plan_executor.py` (~240 lines) — execution orchestration and flow submission
+  - Original `tool_registry_manager.py` deleted (zero imports confirmed)
+- **Duplicate code eliminated**:
+  - Fence parser: extracted `extract_fenced_block()` to `dispatch/helpers/signal_checker.py`, replacing inline copies in `impact_analyzer.py` and `planner.py`
+  - Abort check: removed `_should_abort()` from `implementation_cycle.py` (duplicate of `check_early_abort` in `cycle_control.py`)
+- **Dead param removed**:
+  - `path` param dead in `_extract_id(record, path)` in `gemini.py` — removed, 2 callers updated
+- **Test import hygiene**:
+  - `test_coordination.py` updated to import from canonical source modules instead of re-exports via `global_coordinator.py`
+- **Files over 500 lines**: 9→8 (`tool_registry_manager.py` eliminated)
+- **Additional cleanup** (Cycle 21):
+  - Dead re-exports `build_gate_aggregate_manifest`/`build_result_manifest` removed from `flow_facade.py`, test updated to import from canonical `flow.engine.reconciler`
+  - `ScanContext.from_artifacts()` factory method added — deduplicates `corrections_path = PathRegistry(artifacts_dir.parent).corrections()` + `ScanContext(...)` construction across 3 files (section_explorer, deep_scanner, feedback_collector)
+  - `_unique_strings` promoted to public `unique_strings` — was private function imported cross-module by `risk_history_recorder.py`
+  - `handle_pause_response()` extracted to `cycle_control.py` — deduplicates 7-line pause/resume/abort flow from `cycle_control.py` and `alignment_handler.py`
+  - `_should_abort()` in `implementation_cycle.py` eliminated — was exact duplicate of `check_early_abort` in `cycle_control.py`
+  - `_build_consequence_note` reduced from 9→8 params: internalized `paths` (derived from `planspace`) and `snapshot_dir` (derived from `PathRegistry.snapshot_section`)
+  - Unused import `ACTION_ABORT`/`ACTION_CONTINUE` removed from `alignment_handler.py` (became dead after `handle_pause_response` extraction)
+- **8+ param functions**: 5 at 9 params → 3 at 9 params
 - **Status**: DONE
 
 ---
@@ -902,7 +983,7 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Status**: DONE — extracted `make_alignment_checker` factory. All 6 copies replaced.
 
 ### 43. God modules (>500 lines) — tracking
-- **Status**: DONE — All engine files decomposed to under 600 lines. Remaining near-boundary files (`implementation_pass.py` 591, `tool_registry_manager.py` 557, `proposal/engine/loop.py` 519) are acceptable at current sizes.
+- **Status**: DONE — All engine files decomposed to under 600 lines. `tool_registry_manager.py` decomposed into 3 modules and deleted. `research_plan_executor.py` split into 2 modules. Remaining 8 files over 500 lines are coherent single-concern modules (largest: `philosophy_bootstrapper.py` 1183 lines — all functions small, further decomposition creates circular deps).
 
 ### 46. `normalize_section_number` + `build_section_number_map` duplicated
 - **Status**: DONE — removed copies, now imports from canonical location.

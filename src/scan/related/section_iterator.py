@@ -8,6 +8,7 @@ from pathlib import Path
 from containers import Services
 from scan.explore.analyzer import analyze_file
 from scan.related.match_updater import deep_scan_related_files
+from scan.scan_context import ScanContext
 from scan.service.phase_failure_logger import log_phase_failure
 from scan.explore.tier_ranker import run_tier_ranking
 from scan.codemap.cache import FileCardCache
@@ -40,13 +41,9 @@ def _get_scan_files(tier_file: Path) -> tuple[list[str], str]:
 
 def scan_sections(
     section_files: list[Path],
-    codemap_path: Path,
-    codespace: Path,
+    ctx: ScanContext,
     artifacts_dir: Path,
-    scan_log_dir: Path,
     file_card_cache: FileCardCache,
-    corrections_path: Path,
-    model_policy: dict[str, str],
     already_scanned: dict[str, set[str]],
 ) -> bool:
     """Run one pass of per-section tier ranking + per-file analysis."""
@@ -54,7 +51,7 @@ def scan_sections(
 
     for section_file in section_files:
         section_name = section_file.stem
-        section_log = scan_log_dir / section_name
+        section_log = ctx.scan_log_dir / section_name
         section_log.mkdir(parents=True, exist_ok=True)
 
         related_files = deep_scan_related_files(section_file)
@@ -65,10 +62,10 @@ def scan_sections(
             section_file,
             section_name,
             related_files,
-            codespace,
+            ctx.codespace,
             artifacts_dir,
-            scan_log_dir,
-            model_policy,
+            ctx.scan_log_dir,
+            ctx.model_policy,
         )
 
         scan_files: list[str] = []
@@ -90,7 +87,7 @@ def scan_sections(
                 "deep-scan",
                 section_name,
                 "tier ranking unavailable — deep scan skipped",
-                scan_log_dir,
+                ctx.scan_log_dir,
             )
             continue
 
@@ -103,12 +100,8 @@ def scan_sections(
                 section_file,
                 section_name,
                 source_file,
-                codespace,
-                codemap_path,
-                corrections_path,
-                scan_log_dir,
+                ctx,
                 file_card_cache,
-                model_policy,
             )
             done.add(source_file)
             if not ok:

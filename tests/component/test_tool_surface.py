@@ -9,12 +9,9 @@ from dependency_injector import providers
 from containers import Services
 from tests.conftest import WritingGuard, make_dispatcher, StubPolicies
 
-from src.dispatch.service.tool_registry_manager import (
-    handle_tool_friction,
-    surface_tool_registry,
-    validate_tool_registry_after_implementation,
-    write_tool_surface,
-)
+from src.dispatch.service.tool_surface_writer import surface_tool_registry, write_tool_surface
+from src.dispatch.service.tool_validator import validate_tool_registry_after_implementation
+from src.dispatch.service.tool_bridge import handle_tool_friction
 
 
 def test_write_tool_surface_filters_cross_section_and_local_tools(tmp_path) -> None:

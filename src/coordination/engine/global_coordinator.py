@@ -451,7 +451,6 @@ def _recheck_affected_sections(
 # ---------------------------------------------------------------------------
 
 def run_global_coordination(
-    sections: list[Section],
     section_results: dict[str, SectionResult],
     sections_by_num: dict[str, Section],
     ctx: DispatchContext,

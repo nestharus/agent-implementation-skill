@@ -16,6 +16,7 @@ from flow.engine.flow_submitter import (
     submit_chain,
     submit_fanout,
 )
+from flow.types.context import FlowEnvelope
 from flow.types.schema import ChainAction, FanoutAction, parse_flow_signal
 from research.engine.orchestrator import (
     load_research_status,
@@ -132,17 +133,20 @@ def _process_continuation_actions(
     planspace: Path,
 ) -> None:
     """Submit chain/fanout actions from a continuation signal."""
+    env = FlowEnvelope(
+        db_path=db_path,
+        submitted_by="reconciler",
+        flow_id=flow_id,
+        declared_by_task_id=task_id,
+        origin_refs=origin_refs,
+        planspace=planspace,
+    )
     for action in continuation.actions:
         if isinstance(action, ChainAction) and action.steps:
             new_ids = submit_chain(
-                db_path,
-                "reconciler",
+                env,
                 action.steps,
-                flow_id=flow_id,
                 chain_id=chain_id,
-                declared_by_task_id=task_id,
-                origin_refs=origin_refs,
-                planspace=planspace,
             )
             if new_ids:
                 with task_db(db_path) as conn:
@@ -157,14 +161,9 @@ def _process_continuation_actions(
 
         elif isinstance(action, FanoutAction) and action.branches:
             submit_fanout(
-                db_path,
-                "reconciler",
+                env,
                 action.branches,
-                flow_id=flow_id,
-                declared_by_task_id=task_id,
-                origin_refs=origin_refs,
                 gate=action.gate,
-                planspace=planspace,
             )
 
 

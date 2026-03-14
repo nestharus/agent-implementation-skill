@@ -30,15 +30,6 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class DispatchEvaluation:
-    """Structured result from ``intercept_dispatch``."""
-
-    should_intercept: bool
-    reason: str | None
-    qa_prompt_path: str | None
-
-
-@dataclass(frozen=True)
 class InterceptResult:
     """Structured result from ``intercept_task``."""
 

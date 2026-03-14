@@ -46,6 +46,32 @@ def write_model_choice_signal(
     Services.artifact_io().write_json(signal_path, signal)
 
 
+def extract_fenced_block(text: str, marker: str) -> str | None:
+    """Return the first markdown-fenced block whose content contains *marker*.
+
+    Scans ``text`` for triple-backtick fences and returns the raw content
+    (without the fence delimiters) of the first block containing *marker*.
+    Returns ``None`` if no matching block is found.
+    """
+    in_fence = False
+    fence_lines: list[str] = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("```") and not in_fence:
+            in_fence = True
+            fence_lines = []
+            continue
+        if stripped.startswith("```") and in_fence:
+            candidate = "\n".join(fence_lines)
+            if marker in candidate:
+                return candidate
+            in_fence = False
+            continue
+        if in_fence:
+            fence_lines.append(line)
+    return None
+
+
 def check_agent_signals(
     signal_path: Path | None = None,
 ) -> SignalResult:

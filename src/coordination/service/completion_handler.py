@@ -57,13 +57,15 @@ def _build_consequence_note(
     note_id: str,
     section_summary: str,
     modified_files: list[str],
-    integration_proposal: Path,
-    snapshot_dir: Path,
-    ack_signal_path: Path,
+    planspace: Path,
 ) -> str:
     """Build the markdown content for a consequence note."""
+    paths = PathRegistry(planspace)
+    snapshot_dir = paths.snapshot_section(sec_num)
     delta_content = note_md if note_md else f"Impact reason: {reason}"
     file_changes = "\n".join(f"- `{rel_path}`" for rel_path in modified_files)
+    integration_proposal = paths.proposal(sec_num)
+    ack_signal_path = paths.note_ack_signal(target_num)
     return f"""# Consequence Note: Section {sec_num} -> Section {target_num}
 
 **Note ID**: `{note_id}`
@@ -146,8 +148,6 @@ def post_section_completion(
     planspace: Path,
     codespace: Path,
     parent: str,
-    impact_model: str,
-    normalizer_model: str,
 ) -> None:
     """Post-completion steps after a section is aligned."""
     paths = PathRegistry(planspace)
@@ -164,21 +164,18 @@ def post_section_completion(
     impacted_sections = analyze_impacts(
         planspace, sec_num, section_summary, modified_files, all_sections,
         codespace, parent,
-        impact_model=impact_model, normalizer_model=normalizer_model,
     )
     if not impacted_sections:
         return
 
     files_fingerprint = _compute_files_fingerprint(modified_files, codespace)
-    integration_proposal = paths.proposal(sec_num)
 
     for target_num, reason, contract_risk, note_md in impacted_sections:
         note_name = f"from-{sec_num}-to-{target_num}.md"
         note_id = Services.hasher().content_hash(f"{note_name}:{files_fingerprint}")[:_NOTE_HASH_LENGTH]
         note_content = _build_consequence_note(
             sec_num, target_num, reason, note_md, note_id,
-            section_summary, modified_files, integration_proposal,
-            snapshot_dir, paths.note_ack_signal(target_num),
+            section_summary, modified_files, planspace,
         )
         note_path = write_consequence_note(planspace, sec_num, target_num, note_content)
         Services.communicator().log_artifact(planspace, f"note:from-{sec_num}-to-{target_num}")

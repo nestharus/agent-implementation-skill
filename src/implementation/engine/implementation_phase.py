@@ -482,7 +482,6 @@ def _run_frontier_iterations(
 def _persist_section_hashes(
     sec_num: str,
     planspace: Path,
-    codespace: Path,
     sections_by_num: dict[str, Section],
 ) -> None:
     """Write baseline and phase2 section-input hashes after implementation."""
@@ -601,7 +600,7 @@ def _implement_section(
         f"done:{sec_num}:{len(all_modified_files)} files modified",
     )
 
-    _persist_section_hashes(sec_num, planspace, codespace, sections_by_num)
+    _persist_section_hashes(sec_num, planspace, sections_by_num)
     Services.logger().log(f"Section {sec_num}: implementation done")
     Services.logger().log_lifecycle(planspace, f"end:section:{sec_num}:impl", "done")
 

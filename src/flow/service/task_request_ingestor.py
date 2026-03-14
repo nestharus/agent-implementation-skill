@@ -30,6 +30,7 @@ from flow.types.schema import (
     FanoutAction,
 )
 from flow.engine.flow_submitter import new_flow_id
+from flow.types.context import FlowEnvelope
 
 from containers import Services
 
@@ -59,60 +60,42 @@ def ingest_task_requests(signal_path: Path) -> list[dict]:
 
 def _submit_chain_action(
     action: ChainAction,
-    planspace: Path,
-    db_path: Path,
-    submitted_by: str,
+    env: FlowEnvelope,
     submit_chain,
     *,
-    flow_id: str | None,
     chain_id: str | None,
-    declared_by_task_id: int | None,
-    refs: list[str],
 ) -> list[int]:
     """Submit a chain action and return task IDs."""
+    from dataclasses import replace as _replace
+
     if not action.steps:
         return []
     token: str | None = None
     section_scope = find_first_section_scope(action.steps)
-    if section_scope:
-        token = Services.freshness().compute(planspace, section_scope)
+    if section_scope and env.planspace is not None:
+        token = Services.freshness().compute(env.planspace, section_scope)
     return submit_chain(
-        db_path,
-        submitted_by,
+        _replace(env, freshness_token=token) if token else env,
         action.steps,
-        flow_id=flow_id,
         chain_id=chain_id,
-        declared_by_task_id=declared_by_task_id,
-        origin_refs=refs,
-        planspace=planspace,
-        freshness_token=token,
     )
 
 
 def _submit_fanout_action(
     action: FanoutAction,
-    db_path: Path,
-    submitted_by: str,
+    env: FlowEnvelope,
     submit_fanout,
-    *,
-    flow_id: str | None,
-    declared_by_task_id: int | None,
-    refs: list[str],
-    planspace: Path,
 ) -> None:
     """Submit a fanout action (branches + optional gate)."""
+    from dataclasses import replace as _replace
+
     if not action.branches:
         return
-    fanout_flow_id = flow_id or new_flow_id()
+    fanout_env = _replace(env, flow_id=env.flow_id or new_flow_id())
     submit_fanout(
-        db_path,
-        submitted_by,
+        fanout_env,
         action.branches,
-        flow_id=fanout_flow_id,
-        declared_by_task_id=declared_by_task_id,
-        origin_refs=refs,
         gate=action.gate,
-        planspace=planspace,
     )
 
 
@@ -156,22 +139,25 @@ def ingest_and_submit(
         submit_fanout,
     )
 
+    env = FlowEnvelope(
+        db_path=db_path,
+        submitted_by=submitted_by,
+        flow_id=flow_id,
+        declared_by_task_id=declared_by_task_id,
+        origin_refs=origin_refs or [],
+        planspace=planspace,
+    )
+
     all_task_ids: list[int] = []
-    refs = origin_refs or []
 
     for action in decl.actions:
         if isinstance(action, ChainAction):
             all_task_ids.extend(_submit_chain_action(
-                action, planspace, db_path, submitted_by, submit_chain,
-                flow_id=flow_id, chain_id=chain_id,
-                declared_by_task_id=declared_by_task_id, refs=refs,
+                action, env, submit_chain,
+                chain_id=chain_id,
             ))
         elif isinstance(action, FanoutAction):
-            _submit_fanout_action(
-                action, db_path, submitted_by, submit_fanout,
-                flow_id=flow_id, declared_by_task_id=declared_by_task_id,
-                refs=refs, planspace=planspace,
-            )
+            _submit_fanout_action(action, env, submit_fanout)
         else:
             Services.logger().log(f"  task_ingestion: WARNING — unknown action type "
                 f"{type(action).__name__}, skipping")

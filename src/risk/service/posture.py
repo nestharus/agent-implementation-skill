@@ -16,7 +16,6 @@ POSTURE_BOUNDS: dict[PostureProfile, tuple[int, int]] = {
 }
 HYSTERESIS_WINDOW = 5
 RELAX_SUCCESS_THRESHOLD = 3
-DEFAULT_FAILURE_COOLDOWN = 2
 
 
 def select_posture(

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from containers import Services
+from pipeline.context import DispatchContext
 
 
 def _attempt_output_path(output_path: Path, attempt: int) -> Path:
@@ -42,15 +43,16 @@ def _dispatch_with_signal_check(
     model: str,
     prompt: Path,
     output: Path,
-    planspace: Path,
-    parent: str,
+    ctx: DispatchContext,
     *,
     expected_signal: Path,
     classifier: Callable[[Path], dict[str, Any]],
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Dispatch an agent and verify the expected signal artifact exists."""
-    Services.dispatcher().dispatch(model, prompt, output, planspace, parent, **kwargs)
+    Services.dispatcher().dispatch(
+        model, prompt, output, ctx.planspace, ctx.parent, **kwargs,
+    )
     return classifier(expected_signal)
 
 
@@ -62,9 +64,7 @@ def _dispatch_classified_signal_stage(
     signal_path: Path,
     models: list[str],
     classifier: Callable[[Path], dict[str, Any]],
-    planspace: Path,
-    parent: str,
-    codespace: Path,
+    ctx: DispatchContext,
     agent_file: str,
 ) -> dict[str, Any]:
     attempts: list[dict[str, Any]] = []
@@ -76,11 +76,10 @@ def _dispatch_classified_signal_stage(
             model,
             prompt_path,
             _attempt_output_path(output_path, attempt),
-            planspace,
-            parent,
+            ctx,
             expected_signal=signal_path,
             classifier=classifier,
-            codespace=codespace,
+            codespace=ctx.codespace,
             agent_file=agent_file,
         )
         _record_stage_attempt(

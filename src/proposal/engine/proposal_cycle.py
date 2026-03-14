@@ -121,8 +121,7 @@ def _run_alignment_phase(
         return ACTION_CONTINUE, problems, intent_mode
 
     align_signal = handle_alignment_signals(
-        section.number, ctx.planspace, ctx.parent, ctx.codespace,
-        align_result, align_output,
+        section.number, ctx.planspace, ctx.parent,
     )
     if align_signal == ACTION_ABORT:
         return ACTION_ABORT, None, intent_mode
@@ -177,7 +176,7 @@ def _dispatch_and_validate_proposal(
         return ACTION_ABORT, None
 
     signal_action = handle_proposal_signals(
-        section.number, ctx.planspace, ctx.parent, ctx.codespace, intg_result,
+        section.number, ctx.planspace, ctx.parent,
     )
     if signal_action == ACTION_ABORT:
         return ACTION_ABORT, None
@@ -200,7 +199,6 @@ def run_proposal_loop(
 ) -> str | None:
     """Run the integration proposal loop until aligned or aborted."""
     paths = PathRegistry(ctx.planspace)
-    integration_proposal = paths.proposal(section.number)
     cycle_budget_path = paths.cycle_budget(section.number)
     triage_result = load_triage_result(section.number, ctx.planspace) or {}
     intent_mode = triage_result.get("intent_mode", "lightweight")
@@ -231,7 +229,7 @@ def run_proposal_loop(
             f"(attempt {proposal_attempt})"
         )
 
-        dispatch_action, intg_result = _dispatch_and_validate_proposal(
+        dispatch_action, _ = _dispatch_and_validate_proposal(
             section, ctx,
             proposal_problems, incoming_notes, proposal_attempt,
         )

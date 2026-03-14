@@ -16,8 +16,6 @@ def _build_microstrategy_prompt(
     section,
     codespace: Path,
     planspace: Path,
-    integration_proposal: Path,
-    microstrategy_path: Path,
     agent_name: str,
 ) -> str:
     paths = PathRegistry(planspace)
@@ -35,24 +33,24 @@ def _build_microstrategy_prompt(
         governance_ref = f"\nRead the governance packet: `{governance_packet}`"
 
     return _compose_microstrategy_text(
-        section.number, integration_proposal,
-        todos_ref, governance_ref, file_list, microstrategy_path,
+        section.number,
+        todos_ref, governance_ref, file_list,
         planspace, agent_name,
     )
 
 
 def _compose_microstrategy_text(
     section_number: str,
-    integration_proposal: Path,
     todos_ref: str,
     governance_ref: str,
     file_list: str,
-    microstrategy_path: Path,
     planspace: Path,
     agent_name: str,
 ) -> str:
     """Return the full prompt text for microstrategy generation."""
     paths = PathRegistry(planspace)
+    integration_proposal = paths.proposal(section_number)
+    microstrategy_path = paths.microstrategy(section_number)
     alignment_excerpt = paths.alignment_excerpt(section_number)
     task_request_signal = paths.task_request_signal("micro", section_number)
     return f"""# Task: Microstrategy for Section {section_number}
@@ -216,8 +214,7 @@ def run_microstrategy(
     micro_prompt_path = paths.artifacts / f"microstrategy-{section.number}-prompt.md"
 
     rendered = _build_microstrategy_prompt(
-        section, codespace, planspace,
-        integration_proposal, microstrategy_path, agent_name,
+        section, codespace, planspace, agent_name,
     )
     violations = Services.prompt_guard().validate_dynamic(rendered)
     if violations:

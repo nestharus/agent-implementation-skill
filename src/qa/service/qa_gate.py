@@ -22,9 +22,7 @@ logger = logging.getLogger(__name__)
 
 def evaluate_qa_gate(
     planspace: Path,
-    section_number: str | None,
     agent_file: str,
-    model: str,
     prompt_path: Path,
     *,
     task: dict[str, str] | None = None,

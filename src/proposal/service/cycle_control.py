@@ -23,6 +23,26 @@ from signals.types import (
 )
 
 
+def handle_pause_response(
+    planspace: Path,
+    section_number: str,
+    response: str,
+) -> str:
+    """Process a pause_for_parent response and return an action.
+
+    Returns ``ACTION_ABORT`` if the parent rejected or alignment changed,
+    ``ACTION_CONTINUE`` otherwise.  Persists any payload decision.
+    """
+    if not response.startswith("resume"):
+        return ACTION_ABORT
+    payload = response.partition(":")[2].strip()
+    if payload:
+        Services.cross_section().persist_decision(planspace, section_number, payload)
+    if Services.pipeline_control().alignment_changed_pending(planspace):
+        return ACTION_ABORT
+    return ACTION_CONTINUE
+
+
 def check_early_abort(
     section_number: str,
     planspace: Path,
@@ -160,8 +180,6 @@ def handle_proposal_signals(
     section_number: str,
     planspace: Path,
     parent: str,
-    codespace: Path,
-    intg_result: str,
 ) -> str | None:
     """Check agent signals after proposal dispatch.
 
@@ -209,11 +227,4 @@ def handle_proposal_signals(
         parent,
         f"pause:{signal}:{section_number}:{detail}",
     )
-    if not response.startswith("resume"):
-        return ACTION_ABORT
-    payload = response.partition(":")[2].strip()
-    if payload:
-        Services.cross_section().persist_decision(planspace, section_number, payload)
-    if Services.pipeline_control().alignment_changed_pending(planspace):
-        return ACTION_ABORT
-    return ACTION_CONTINUE
+    return handle_pause_response(planspace, section_number, response)

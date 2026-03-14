@@ -39,8 +39,8 @@ def _check_pre_dispatch_state(
 
 
 def _evaluate_qa_intercept(
-    planspace: Path, section_number: str | None,
-    agent_file: str, model: str, prompt_path: Path,
+    planspace: Path,
+    agent_file: str, prompt_path: Path,
     agent_name: str | None,
 ) -> DispatchResult | None:
     """Run QA gate evaluation. Returns rejection result or None to proceed."""
@@ -48,7 +48,7 @@ def _evaluate_qa_intercept(
         return None
     from qa.service.qa_gate import evaluate_qa_gate
     intercept = evaluate_qa_gate(
-        planspace, section_number, agent_file, model, prompt_path,
+        planspace, agent_file, prompt_path,
         submitted_by=agent_name or "section-loop",
     )
     if intercept is None:
@@ -143,8 +143,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
 
     if planspace:
         qa_result = _evaluate_qa_intercept(
-            planspace, section_number, agent_file, model,
-            prompt_path, agent_name,
+            planspace, agent_file, prompt_path, agent_name,
         )
         if qa_result is not None:
             return qa_result

@@ -105,7 +105,6 @@ def _record_blocked_sections(
 
 
 def _run_phase2(
-    all_sections: list,
     sections_by_num: dict,
     section_results: dict[str, SectionResult],
     ctx: DispatchContext,
@@ -127,7 +126,7 @@ def _run_phase2(
         return "restart_phase1"
 
     coordination_status = run_coordination_loop(
-        all_sections, section_results, sections_by_num, ctx,
+        section_results, sections_by_num, ctx,
     )
     return coordination_status or "done"
 
@@ -190,7 +189,7 @@ def _run_loop(ctx: DispatchContext,
             f"implemented, {len(blocked_sections)} blocked ===")
 
         status = _run_phase2(
-            all_sections, sections_by_num, section_results, ctx,
+            sections_by_num, section_results, ctx,
         )
         if status == "restart_phase1":
             continue

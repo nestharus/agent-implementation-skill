@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from _paths import DB_SH
+from flow.types.context import FlowEnvelope
 from flow.types.schema import TaskSpec
 from src.signals.repository.artifact_io import write_json
 from src.research.engine.orchestrator import write_research_status
@@ -79,10 +80,8 @@ def test_reconcile_task_completion_writes_result_manifest(tmp_path) -> None:
     _init_db(db_path)
 
     [task_id] = submit_chain(
-        db_path,
-        "tester",
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
         [TaskSpec(task_type="staleness.alignment_check")],
-        planspace=planspace,
     )
     _update_task_status(db_path, task_id, "complete")
 
@@ -109,10 +108,8 @@ def test_reconcile_task_completion_extends_chain_from_continuation(tmp_path) -> 
     _init_db(db_path)
 
     [task_id] = submit_chain(
-        db_path,
-        "tester",
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
         [TaskSpec(task_type="staleness.alignment_check")],
-        planspace=planspace,
     )
     continuation_path = planspace / f"artifacts/flows/task-{task_id}-continuation.json"
     continuation_path.write_text(
@@ -151,8 +148,7 @@ def test_reconcile_task_completion_runs_research_plan_executor(
     _init_db(db_path)
 
     [task_id] = submit_chain(
-        db_path,
-        "tester",
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
         [
             TaskSpec(
                 task_type="research.plan",
@@ -160,7 +156,6 @@ def test_reconcile_task_completion_runs_research_plan_executor(
                 payload_path=str(planspace / "artifacts" / "research-plan-03-prompt.md"),
             )
         ],
-        planspace=planspace,
     )
     _update_task_status(db_path, task_id, "complete")
     called: list[tuple[str, Path | None]] = []
@@ -217,8 +212,7 @@ def test_reconcile_task_completion_submits_research_verify_after_synthesis(
     )
 
     [task_id] = submit_chain(
-        db_path,
-        "tester",
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
         [
             TaskSpec(
                 task_type="research.synthesis",
@@ -226,7 +220,6 @@ def test_reconcile_task_completion_submits_research_verify_after_synthesis(
                 payload_path=str(planspace / "artifacts" / "research-synthesis-03-prompt.md"),
             )
         ],
-        planspace=planspace,
     )
     _update_task_status(db_path, task_id, "complete")
 
@@ -304,8 +297,7 @@ def test_reconcile_task_completion_records_post_impl_debt_signal(tmp_path) -> No
     )
 
     [task_id] = submit_chain(
-        db_path,
-        "tester",
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
         [
             TaskSpec(
                 task_type="implementation.post_assessment",
@@ -313,7 +305,6 @@ def test_reconcile_task_completion_records_post_impl_debt_signal(tmp_path) -> No
                 payload_path=str(prompt_path),
             )
         ],
-        planspace=planspace,
     )
     _update_task_status(db_path, task_id, "complete")
 
@@ -386,8 +377,7 @@ def test_reconcile_task_completion_emits_post_impl_refactor_blocker(tmp_path) ->
     )
 
     [task_id] = submit_chain(
-        db_path,
-        "tester",
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
         [
             TaskSpec(
                 task_type="implementation.post_assessment",
@@ -395,7 +385,6 @@ def test_reconcile_task_completion_emits_post_impl_refactor_blocker(tmp_path) ->
                 payload_path=str(prompt_path),
             )
         ],
-        planspace=planspace,
     )
     _update_task_status(db_path, task_id, "complete")
 

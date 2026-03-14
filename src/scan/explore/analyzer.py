@@ -7,6 +7,7 @@ import re
 import shutil
 from pathlib import Path
 
+from scan.scan_context import ScanContext
 from scan.service.phase_failure_logger import log_phase_failure
 from scan.service.template_loader import load_scan_template
 from scan.related.match_updater import update_match
@@ -133,18 +134,16 @@ def _validate_and_write_prompt(
 
 
 def _dispatch_and_validate(
-    model_policy: dict[str, str],
-    codespace: Path,
+    ctx: ScanContext,
     prompt_file: Path,
     response_file: Path,
     stderr_file: Path,
     section_name: str,
     source_file: str,
-    scan_log_dir: Path,
 ) -> bool:
     result = dispatch_agent(
-        model=model_policy["deep_analysis"],
-        project=codespace,
+        model=ctx.model_policy["deep_analysis"],
+        project=ctx.codespace,
         prompt_file=prompt_file,
         agent_file=Services.task_router().agent_for("scan.deep_analyze"),
         stdout_file=response_file,
@@ -155,7 +154,7 @@ def _dispatch_and_validate(
             "deep-scan",
             f"{section_name}:{source_file}",
             f"deep analysis failed (see {stderr_file})",
-            scan_log_dir,
+            ctx.scan_log_dir,
         )
         return False
 
@@ -164,7 +163,7 @@ def _dispatch_and_validate(
             "deep-scan",
             f"{section_name}:{source_file}",
             "agent produced empty output",
-            scan_log_dir,
+            ctx.scan_log_dir,
         )
         return False
 
@@ -175,25 +174,21 @@ def analyze_file(
     section_file: Path,
     section_name: str,
     source_file: str,
-    codespace: Path,
-    codemap_path: Path,
-    corrections_path: Path,
-    scan_log_dir: Path,
+    ctx: ScanContext,
     file_card_cache: FileCardCache,
-    model_policy: dict[str, str],
 ) -> bool:
     """Run deep analysis on a single file."""
-    abs_source = codespace / source_file
+    abs_source = ctx.codespace / source_file
     if not abs_source.is_file():
         log_phase_failure(
             "deep-scan",
             f"{section_name}:{source_file}",
             "source file missing in codespace",
-            scan_log_dir,
+            ctx.scan_log_dir,
         )
         return False
 
-    section_log = scan_log_dir / section_name
+    section_log = ctx.scan_log_dir / section_name
     section_log.mkdir(parents=True, exist_ok=True)
     prompt_file, response_file, stderr_file, feedback_file = _resolve_log_paths(
         section_log, source_file,
@@ -202,31 +197,31 @@ def analyze_file(
     content_key = file_card_cache.content_hash(
         section_file,
         abs_source,
-        corrections_path,
+        ctx.corrections_path,
     )
 
     cached = _try_cached_response(
         file_card_cache, content_key,
         section_file, section_name, source_file,
-        response_file, feedback_file, scan_log_dir,
+        response_file, feedback_file, ctx.scan_log_dir,
     )
     if cached is not None:
         return cached
 
     prompt = _build_prompt(
-        section_file, abs_source, codemap_path,
-        corrections_path, feedback_file, source_file,
+        section_file, abs_source, ctx.codemap_path,
+        ctx.corrections_path, feedback_file, source_file,
     )
 
     if not _validate_and_write_prompt(
-        prompt, prompt_file, section_name, source_file, scan_log_dir,
+        prompt, prompt_file, section_name, source_file, ctx.scan_log_dir,
     ):
         return False
 
     if not _dispatch_and_validate(
-        model_policy, codespace, prompt_file,
+        ctx, prompt_file,
         response_file, stderr_file,
-        section_name, source_file, scan_log_dir,
+        section_name, source_file,
     ):
         return False
 
@@ -241,7 +236,7 @@ def analyze_file(
             "deep-update",
             f"{section_name}:{source_file}",
             "failed to update section file",
-            scan_log_dir,
+            ctx.scan_log_dir,
         )
         return False
 

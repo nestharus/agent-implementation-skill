@@ -19,6 +19,7 @@ from _paths import DB_SH
 from conftest import override_dispatcher_and_guard
 from containers import FreshnessService, Services
 
+from flow.types.context import FlowEnvelope
 from flow.types.schema import TaskSpec
 from flow.service.flow_facade import (
     reconcile_task_completion,
@@ -327,8 +328,7 @@ class TestDispatchChainContinuation:
 
         # Submit a 2-step chain via submit_chain.
         task_ids = submit_chain(
-            db_path_obj,
-            "test-submitter",
+            FlowEnvelope(db_path=db_path_obj, submitted_by="test-submitter", planspace=ps),
             [
                 TaskSpec(
                     task_type="staleness.alignment_check",
@@ -339,7 +339,6 @@ class TestDispatchChainContinuation:
                     payload_path=str(payload2),
                 ),
             ],
-            planspace=ps,
         )
         assert len(task_ids) == 2
         tid1, tid2 = task_ids
@@ -417,14 +416,12 @@ class TestDispatchChainFailureCancelsDescendants:
 
         # Submit a 3-step chain.
         task_ids = submit_chain(
-            db_path_obj,
-            "test-submitter",
+            FlowEnvelope(db_path=db_path_obj, submitted_by="test-submitter", planspace=ps),
             [
                 TaskSpec(task_type="staleness.alignment_check", payload_path=str(payloads[0])),
                 TaskSpec(task_type="signals.impact_analysis", payload_path=str(payloads[1])),
                 TaskSpec(task_type="coordination.fix", payload_path=str(payloads[2])),
             ],
-            planspace=ps,
         )
         assert len(task_ids) == 3
         tid1, tid2, tid3 = task_ids

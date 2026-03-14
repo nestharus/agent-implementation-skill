@@ -9,6 +9,7 @@ from dependency_injector import providers
 from containers import PromptGuard, Services
 from src.scan.explore.analyzer import analyze_file, safe_name
 from src.scan.codemap.cache import FileCardCache
+from src.scan.scan_context import ScanContext
 
 
 def test_safe_name_matches_bash_compatible_scheme() -> None:
@@ -28,12 +29,14 @@ def test_analyze_file_returns_false_when_source_missing(tmp_path) -> None:
         section_file,
         "section-01",
         "src/missing.py",
-        tmp_path / "codespace",
-        tmp_path / "codemap.md",
-        tmp_path / "corrections.json",
-        scan_log_dir,
+        ScanContext(
+            codespace=tmp_path / "codespace",
+            codemap_path=tmp_path / "codemap.md",
+            corrections_path=tmp_path / "corrections.json",
+            scan_log_dir=scan_log_dir,
+            model_policy={"deep_analysis": "glm"},
+        ),
         FileCardCache(tmp_path / "file-cards"),
-        {"deep_analysis": "glm"},
     )
 
     assert ok is False
@@ -88,12 +91,14 @@ def test_analyze_file_uses_cached_response_and_feedback(
         section_file,
         "section-01",
         "src/main.py",
-        codespace,
-        tmp_path / "codemap.md",
-        tmp_path / "missing.json",
-        tmp_path / "scan-logs",
+        ScanContext(
+            codespace=codespace,
+            codemap_path=tmp_path / "codemap.md",
+            corrections_path=tmp_path / "missing.json",
+            scan_log_dir=tmp_path / "scan-logs",
+            model_policy={"deep_analysis": "glm"},
+        ),
         cache,
-        {"deep_analysis": "glm"},
     )
 
     assert ok is True
@@ -155,12 +160,14 @@ def test_analyze_file_dispatches_and_caches_response(
             section_file,
             "section-01",
             "src/main.py",
-            codespace,
-            tmp_path / "codemap.md",
-            tmp_path / "corrections.json",
-            scan_log_dir,
+            ScanContext(
+                codespace=codespace,
+                codemap_path=tmp_path / "codemap.md",
+                corrections_path=tmp_path / "corrections.json",
+                scan_log_dir=scan_log_dir,
+                model_policy={"deep_analysis": "glm"},
+            ),
             cache,
-            {"deep_analysis": "glm"},
         )
 
         assert ok is True

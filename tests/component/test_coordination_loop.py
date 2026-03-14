@@ -48,7 +48,6 @@ def test_run_coordination_loop_completes_when_everything_is_aligned(
     )
 
     status = run_coordination_loop(
-        [section],
         {"01": SectionResult(section_number="01", aligned=True)},
         {"01": section},
         DispatchContext(planspace=planspace, codespace=planspace, parent="parent"),
@@ -68,7 +67,6 @@ def test_run_coordination_loop_restarts_when_control_message_arrives(
     capturing_pipeline_control._poll_return = "alignment_changed"
 
     status = run_coordination_loop(
-        [section],
         {"01": SectionResult(section_number="01", aligned=False, problems="x")},
         {"01": section},
         DispatchContext(planspace=planspace, codespace=planspace, parent="parent"),
@@ -112,7 +110,6 @@ def test_run_coordination_loop_stalls_and_reports_remaining_sections(
     })))
     try:
         status = run_coordination_loop(
-            [section],
             {"01": SectionResult(section_number="01", aligned=False, problems="still broken")},
             {"01": section},
             DispatchContext(planspace=planspace, codespace=planspace, parent="parent"),
@@ -170,7 +167,6 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
     )
 
     status = run_coordination_loop(
-        [section],
         {"01": SectionResult(section_number="01", aligned=True)},
         {"01": section},
         DispatchContext(planspace=planspace, codespace=planspace, parent="parent"),
@@ -237,7 +233,6 @@ def test_run_coordination_loop_enters_coordination_for_root_reframing_delta(
     )
 
     status = run_coordination_loop(
-        [section],
         {"01": SectionResult(section_number="01", aligned=True)},
         {"01": section},
         DispatchContext(planspace=planspace, codespace=planspace, parent="parent"),

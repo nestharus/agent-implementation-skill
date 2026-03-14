@@ -18,7 +18,7 @@ _RISK_ITERATIONS_BASE = 5
 _RISK_ITERATIONS_CAP = 9
 
 
-def _unique_strings(values: list[str]) -> list[str]:
+def unique_strings(values: list[str]) -> list[str]:
     seen: set[str] = set()
     ordered: list[str] = []
     for value in values:
@@ -55,7 +55,7 @@ def write_accepted_steps(
     payload = {
         "accepted_steps": list(risk_plan.accepted_frontier),
         "posture": posture.value,
-        "mitigations": _unique_strings(
+        "mitigations": unique_strings(
             [
                 mitigation
                 for decision in accepted
@@ -87,14 +87,14 @@ def write_deferred_steps(
     ]
     payload = {
         "deferred_steps": list(risk_plan.deferred_steps),
-        "wait_for": _unique_strings(
+        "wait_for": unique_strings(
             [
                 item
                 for decision in deferred
                 for item in decision.wait_for
             ]
         ),
-        "reassessment_inputs": _unique_strings(
+        "reassessment_inputs": unique_strings(
             list(risk_plan.expected_reassessment_inputs),
         ),
     }

@@ -86,8 +86,6 @@ def test_analyze_impacts_parses_material_impacts_from_primary_output(
             sections,
             codespace,
             "parent-task",
-            impact_model="glm",
-            normalizer_model="glm",
         )
 
         assert impacts == [("02", "Changed API", True, "Update consumer")]
@@ -140,8 +138,6 @@ def test_analyze_impacts_falls_back_to_normalizer_when_primary_is_invalid(
             sections,
             codespace,
             "parent-task",
-            impact_model="glm",
-            normalizer_model="glm",
         )
 
         assert impacts == [("03", "Normalized reason", False, "Normalized note")]

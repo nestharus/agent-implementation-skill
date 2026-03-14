@@ -6,7 +6,7 @@ from pathlib import Path
 
 from _config import AGENT_NAME, DB_SH
 from signals.service.database_client import DatabaseClient
-from signals.service.mailbox_service import MailboxService, summary_tag
+from signals.service.mailbox_service import MailboxService
 from orchestrator.path_registry import PathRegistry
 
 
@@ -19,11 +19,6 @@ def _mailbox(planspace: Path) -> MailboxService:
     return MailboxService.for_planspace(
         planspace, db_sh=DB_SH, agent_name=AGENT_NAME,
     )
-
-
-def _summary_tag(message: str) -> str:
-    """Backward-compatible wrapper around extracted mailbox logic."""
-    return summary_tag(message)
 
 
 def mailbox_send(planspace: Path, target: str, message: str) -> None:

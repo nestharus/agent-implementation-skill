@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 from _paths import DB_SH
+from flow.types.context import FlowEnvelope
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from src.flow.engine.flow_submitter import (
     new_chain_id,
@@ -49,13 +50,11 @@ def test_submit_chain_writes_db_and_flow_context(tmp_path) -> None:
     _init_db(db_path)
 
     ids = submit_chain(
-        db_path,
-        "tester",
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
         [
             TaskSpec(task_type="staleness.alignment_check"),
             TaskSpec(task_type="signals.impact_analysis"),
         ],
-        planspace=planspace,
     )
 
     assert len(ids) == 2
@@ -73,19 +72,16 @@ def test_submit_fanout_creates_gate_and_members(tmp_path) -> None:
     _init_db(db_path)
 
     gate_id = submit_fanout(
-        db_path,
-        "tester",
+        FlowEnvelope(db_path=db_path, submitted_by="tester", flow_id="flow_test", planspace=planspace),
         [
             BranchSpec(label="a", steps=[TaskSpec(task_type="staleness.alignment_check")]),
             BranchSpec(label="b", steps=[TaskSpec(task_type="signals.impact_analysis")]),
         ],
-        flow_id="flow_test",
         gate=GateSpec(
             mode="all",
             failure_policy="include",
             synthesis=TaskSpec(task_type="synthesis"),
         ),
-        planspace=planspace,
     )
 
     assert gate_id is not None

@@ -24,10 +24,10 @@ import pytest
 
 from _paths import DB_SH
 
+from flow.types.context import FlowEnvelope
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
+from flow.engine.reconciler import build_gate_aggregate_manifest, build_result_manifest
 from flow.service.flow_facade import (
-    build_gate_aggregate_manifest,
-    build_result_manifest,
     reconcile_task_completion,
     submit_chain,
     submit_fanout,
@@ -242,9 +242,8 @@ class TestResultManifestWriting:
         self, db_path: Path, planspace: Path,
     ) -> None:
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [TaskSpec(task_type="staleness.alignment_check")],
-            planspace=planspace,
         )
         tid = ids[0]
         _mark_task_running(db_path, tid)
@@ -269,9 +268,8 @@ class TestResultManifestWriting:
         self, db_path: Path, planspace: Path,
     ) -> None:
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [TaskSpec(task_type="staleness.alignment_check")],
-            planspace=planspace,
         )
         tid = ids[0]
         _mark_task_running(db_path, tid)
@@ -303,9 +301,8 @@ class TestChainContinuation:
     ) -> None:
         """Continuation with chain action creates new tasks in same chain."""
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [TaskSpec(task_type="staleness.alignment_check")],
-            planspace=planspace,
         )
         tid = ids[0]
         task_before = _query_task(db_path, tid)
@@ -352,9 +349,8 @@ class TestChainContinuation:
     ) -> None:
         """Without a continuation file, no new tasks are created."""
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [TaskSpec(task_type="staleness.alignment_check")],
-            planspace=planspace,
         )
         tid = ids[0]
         _mark_task_running(db_path, tid)
@@ -380,9 +376,8 @@ class TestFanoutContinuation:
         self, db_path: Path, planspace: Path,
     ) -> None:
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [TaskSpec(task_type="staleness.alignment_check")],
-            planspace=planspace,
         )
         tid = ids[0]
         task_before = _query_task(db_path, tid)
@@ -438,13 +433,12 @@ class TestFailureCascading:
     ) -> None:
         """3-step chain: fail step 1, steps 2+3 should be cancelled."""
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [
                 TaskSpec(task_type="staleness.alignment_check"),
                 TaskSpec(task_type="signals.impact_analysis"),
                 TaskSpec(task_type="coordination.fix"),
             ],
-            planspace=planspace,
         )
 
         # Mark first task as running then failed
@@ -478,10 +472,9 @@ class TestFailureCascading:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_fail",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_fail", planspace=planspace),
+            branches,
             gate=GateSpec(mode="all", failure_policy="include"),
-            planspace=planspace,
         )
 
         all_tasks = _query_all_tasks(db_path)
@@ -529,10 +522,9 @@ class TestGateFiring:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_gate_fire",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_gate_fire", planspace=planspace),
+            branches,
             gate=GateSpec(mode="all", failure_policy="include"),
-            planspace=planspace,
         )
 
         all_tasks = _query_all_tasks(db_path)
@@ -571,8 +563,8 @@ class TestGateFiring:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_syn",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_syn", planspace=planspace),
+            branches,
             gate=GateSpec(
                 mode="all",
                 failure_policy="include",
@@ -582,7 +574,6 @@ class TestGateFiring:
                     concern_scope="payments",
                 ),
             ),
-            planspace=planspace,
         )
 
         all_tasks = _query_all_tasks(db_path)
@@ -632,10 +623,9 @@ class TestGateFiring:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_early",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_early", planspace=planspace),
+            branches,
             gate=GateSpec(mode="all", failure_policy="include"),
-            planspace=planspace,
         )
 
         all_tasks = _query_all_tasks(db_path)
@@ -673,14 +663,13 @@ class TestFailurePolicyBlock:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_block",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_block", planspace=planspace),
+            branches,
             gate=GateSpec(
                 mode="all",
                 failure_policy="block",
                 synthesis=TaskSpec(task_type="coordination.fix"),
             ),
-            planspace=planspace,
         )
 
         all_tasks = _query_all_tasks(db_path)
@@ -731,14 +720,13 @@ class TestFailurePolicyBlock:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_include",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_include", planspace=planspace),
+            branches,
             gate=GateSpec(
                 mode="all",
                 failure_policy="include",
                 synthesis=TaskSpec(task_type="coordination.fix"),
             ),
-            planspace=planspace,
         )
 
         members = _query_gate_members(db_path, gate_id)
@@ -793,10 +781,9 @@ class TestGateMemberLeafTracking:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_leaf",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_leaf", planspace=planspace),
+            branches,
             gate=GateSpec(mode="all", failure_policy="include"),
-            planspace=planspace,
         )
 
         all_tasks = _query_all_tasks(db_path)
@@ -860,10 +847,9 @@ class TestGateMemberLeafTracking:
             ),
         ]
         gate_id = submit_fanout(
-            db_path, "test-agent", branches,
-            flow_id="flow_nonleaf",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", flow_id="flow_nonleaf", planspace=planspace),
+            branches,
             gate=GateSpec(mode="all", failure_policy="include"),
-            planspace=planspace,
         )
 
         all_tasks = _query_all_tasks(db_path)
@@ -934,9 +920,8 @@ class TestEdgeCases:
         descendants are cancelled, and no new tasks are created.
         """
         ids = submit_chain(
-            db_path, "test-agent",
+            FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [TaskSpec(task_type="staleness.alignment_check")],
-            planspace=planspace,
         )
         tid = ids[0]
         _mark_task_running(db_path, tid)

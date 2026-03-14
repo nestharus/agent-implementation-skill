@@ -3023,17 +3023,9 @@ class TestR59IntentPackHashInvalidation:
         (intent_sec / "problem-alignment.md").write_text("# Rubric\n")
 
         # Compute the real hash from current inputs
-        sections_dir = artifacts / "sections"
+        from orchestrator.path_registry import PathRegistry
         real_hash = _compute_intent_pack_hash(
-            section_path=sec.path,
-            proposal_excerpt=sections_dir / "section-01-proposal-excerpt.md",
-            alignment_excerpt=sections_dir / "section-01-alignment-excerpt.md",
-            problem_frame=sections_dir / "section-01-problem-frame.md",
-            codemap_path=artifacts / "codemap.md",
-            corrections_path=artifacts / "signals" / "codemap-corrections.json",
-            philosophy_path=artifacts / "intent" / "global" / "philosophy.md",
-            todos_path=artifacts / "todos" / "section-01-todos.md",
-            incoming_notes="",
+            PathRegistry(planspace), sec, "",
         )
         (intent_sec / "intent-pack-input-hash.txt").write_text(real_hash)
 

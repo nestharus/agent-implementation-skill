@@ -16,9 +16,9 @@ def _compose_reexplore_text(
     codemap_ref: str,
     corrections_ref: str,
     planspace: Path,
-    output_path: Path,
 ) -> str:
     """Return the re-exploration prompt text."""
+    output_path = PathRegistry(planspace).artifacts / f"reexplore-{section_number}-output.md"
     return f"""# Task: Re-Explore Section {section_number}
 
 ## Summary
@@ -87,7 +87,6 @@ def _build_reexplore_prompt(
     section: Section,
     planspace: Path,
     codespace: Path,
-    output_path: Path,
 ) -> str:
     """Build the re-exploration prompt for a section with no related files."""
     paths = PathRegistry(planspace)
@@ -108,7 +107,6 @@ def _build_reexplore_prompt(
         codemap_ref=codemap_ref,
         corrections_ref=corrections_ref,
         planspace=planspace,
-        output_path=output_path,
     )
 
 
@@ -121,7 +119,7 @@ def _reexplore_section(
     prompt_path = paths.artifacts / f"reexplore-{section.number}-prompt.md"
     output_path = paths.artifacts / f"reexplore-{section.number}-output.md"
 
-    rendered = _build_reexplore_prompt(section, planspace, codespace, output_path)
+    rendered = _build_reexplore_prompt(section, planspace, codespace)
     violations = Services.prompt_guard().validate_dynamic(rendered)
     if violations:
         Services.logger().log(
