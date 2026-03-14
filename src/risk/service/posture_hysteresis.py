@@ -99,11 +99,11 @@ def _matching_history(
     return [
         entry
         for entry in history_entries
-        if _history_signature(entry) == signature
+        if history_signature(entry) == signature
     ]
 
 
-def _history_signature(entry: RiskHistoryEntry) -> str:
+def history_signature(entry: RiskHistoryEntry) -> str:
     return pattern_signature(
         entry.assessment_class,
         entry.dominant_risks,

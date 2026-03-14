@@ -8,8 +8,8 @@ from proposal.repository.excerpts import exists as excerpt_exists
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 from dispatch.prompt.writers import write_section_setup_prompt
-from signals.service.blocker_manager import _update_blocker_rollup
-from implementation.service.section_reexplorer import _write_alignment_surface
+from signals.service.blocker_manager import update_blocker_rollup
+from implementation.service.section_reexplorer import write_alignment_surface
 from orchestrator.types import PauseType, Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from signals.types import SIGNAL_NEEDS_PARENT
@@ -92,7 +92,7 @@ def _emit_missing_frame_blocker(
             ),
         },
     )
-    _update_blocker_rollup(planspace)
+    update_blocker_rollup(planspace)
     Services.communicator().mailbox_send(
         planspace,
         parent,
@@ -121,7 +121,7 @@ def _emit_empty_frame_blocker(
             "why_blocked": "Empty problem frame cannot validate problem understanding",
         },
     )
-    _update_blocker_rollup(planspace)
+    update_blocker_rollup(planspace)
     Services.communicator().mailbox_send(
         planspace,
         parent,
@@ -175,7 +175,7 @@ def _validate_frame_content(
             str(section.global_alignment_path),
             "excerpt extraction from global alignment",
         )
-        _write_alignment_surface(planspace, section)
+        write_alignment_surface(planspace, section)
 
 
 def _write_problem_frame_signal(signal_path: Path, payload: dict) -> None:

@@ -7,8 +7,8 @@ from orchestrator.path_registry import PathRegistry
 from containers import Services
 from dispatch.prompt.writers import write_section_setup_prompt
 from signals.service.blocker_manager import (
-    _append_open_problem,
-    _update_blocker_rollup,
+    append_open_problem,
+    update_blocker_rollup,
 )
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from signals.types import ACTION_CONTINUE, SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE, TRUNCATE_DETAIL
@@ -43,7 +43,7 @@ def _handle_setup_signal(
 ) -> str | None:
     """Handle a setup agent signal. Returns None to abort, 'continue' to retry."""
     if signal in (SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE):
-        _append_open_problem(planspace, section_number, detail, signal)
+        append_open_problem(planspace, section_number, detail, signal)
         Services.communicator().mailbox_send(
             planspace, parent,
             f"open-problem:{section_number}:{signal}:{detail[:TRUNCATE_DETAIL]}",
@@ -51,7 +51,7 @@ def _handle_setup_signal(
     if signal == SIGNAL_OUT_OF_SCOPE:
         paths = PathRegistry(planspace)
         _write_scope_delta(paths, paths.signals_dir(), section_number, detail)
-    _update_blocker_rollup(planspace)
+    update_blocker_rollup(planspace)
     response = Services.pipeline_control().pause_for_parent(
         planspace, parent,
         f"pause:{signal}:{section_number}:{detail}",

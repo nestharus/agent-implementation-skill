@@ -12,8 +12,8 @@ from pathlib import Path
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from signals.service.blocker_manager import (
-    _append_open_problem,
-    _update_blocker_rollup,
+    append_open_problem,
+    update_blocker_rollup,
 )
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from orchestrator.types import PauseType
@@ -198,7 +198,7 @@ def handle_proposal_signals(
         return None
 
     if signal in (SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE):
-        _append_open_problem(planspace, section_number, detail, signal)
+        append_open_problem(planspace, section_number, detail, signal)
         Services.communicator().mailbox_send(
             planspace,
             parent,
@@ -222,7 +222,7 @@ def handle_proposal_signals(
             paths.scope_delta_section(section_number),
             scope_delta,
         )
-    _update_blocker_rollup(planspace)
+    update_blocker_rollup(planspace)
     response = Services.pipeline_control().pause_for_parent(
         planspace,
         parent,

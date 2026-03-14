@@ -1,6 +1,6 @@
 """Integration tests for coordination.py (P2+P4/R19).
 
-P2: Blocker signal detection in _collect_outstanding_problems
+P2: Blocker signal detection in collect_outstanding_problems
 P4: Coordination prompt writes to artifact file (no inline JSON)
 """
 
@@ -8,13 +8,13 @@ import json
 from pathlib import Path
 
 from coordination.problem_types import MisalignedProblem
-from coordination.service.problem_resolver import _collect_outstanding_problems
+from coordination.service.problem_resolver import collect_outstanding_problems
 from coordination.service.planner import write_coordination_plan_prompt
 from orchestrator.types import Section, SectionResult
 
 
 class TestCollectOutstandingProblemsBlockerSignal:
-    """P2/R19: _collect_outstanding_problems detects blocker.json and
+    """P2/R19: collect_outstanding_problems detects blocker.json and
     routes as needs_parent type (not misaligned)."""
 
     def test_blocker_signal_routes_as_needs_parent(
@@ -51,7 +51,7 @@ class TestCollectOutstandingProblemsBlockerSignal:
             ),
         }
 
-        problems = _collect_outstanding_problems(
+        problems = collect_outstanding_problems(
             results, sections_by_num, planspace,
         )
 
@@ -92,7 +92,7 @@ class TestCollectOutstandingProblemsBlockerSignal:
             ),
         }
 
-        problems = _collect_outstanding_problems(
+        problems = collect_outstanding_problems(
             results, sections_by_num, planspace,
         )
 
@@ -123,7 +123,7 @@ class TestCollectOutstandingProblemsBlockerSignal:
             ),
         }
 
-        problems = _collect_outstanding_problems(
+        problems = collect_outstanding_problems(
             results, sections_by_num, planspace,
         )
 
@@ -161,7 +161,7 @@ class TestCollectOutstandingProblemsBlockerSignal:
             ),
         }
 
-        problems = _collect_outstanding_problems(
+        problems = collect_outstanding_problems(
             results, sections_by_num, planspace,
         )
 

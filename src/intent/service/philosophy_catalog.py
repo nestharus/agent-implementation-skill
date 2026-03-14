@@ -116,7 +116,7 @@ def build_philosophy_catalog(
     return candidates
 
 
-def _declared_principle_ids(philosophy_text: str) -> set[str]:
+def declared_principle_ids(philosophy_text: str) -> set[str]:
     """Extract principle IDs only from ### headings inside ## Principles."""
     ids: set[str] = set()
     in_principles = False

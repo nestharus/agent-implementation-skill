@@ -909,6 +909,14 @@ Functions that accept parameters which could be computed from other parameters a
 - **Risk**: Wide contracts force callers to understand internal path derivation. Adding a new derived path requires updating every caller in the chain.
 - **Status**: DONE — `surface_tool_registry` (8→4 params), `handle_tool_friction` (9→6 params), `validate_tool_registry_after_implementation` (7→5 params) now derive `tool_registry_path`, `tools_available_path`, `friction_signal_path`, and `artifacts` internally from `planspace + section_number` via `PathRegistry`. Private helpers (`_dispatch_registry_repair`, `_handle_bridge_success`, `_dispatch_bridge_agent`, `_dispatch_new_tool_validation`, `_dispatch_post_impl_repair`) also internalized. Caller `_count_pre_impl_tools` simplified to return `int` instead of `tuple[Path, int]`.
 
+### 157. Private functions used as public API — cross-module `_` prefix imports
+- **Category**: Naming / API boundary violation (methodology §2)
+- **Source**: Codebase scan (Cycle 24)
+- **Scale**: 13 functions with `_` prefix imported directly by other modules (not DI wiring in containers.py). Most imported: `_update_blocker_rollup` (9 files), `_write_alignment_surface` (3 files), `_append_open_problem` (3 files), `_collect_outstanding_problems` (3 files). Also: `_reexplore_section`, `_extract_tools`, `_extract_todos_from_files`, `_check_needs_microstrategy`, `_write_traceability_index`, `_declared_principle_ids`, `_registry_for_artifacts`, `_history_signature`, `_detect_recurrence_patterns`.
+- **Files affected**: 30+ source and test files across signals/, coordination/, dispatch/, implementation/, proposal/, intent/, scan/, risk/ systems.
+- **Risk**: `_` prefix convention signals "private, don't import" — but these functions ARE imported. Misleads developers about API stability. `monkeypatch` strings in tests contain the old names, making test maintenance fragile.
+- **Status**: DONE — All 13 functions renamed to remove `_` prefix. All importers, callers, `__all__` exports, and `monkeypatch` attribute strings updated. 30+ files modified.
+
 ### 156. Shared config and validation-related migration issues
 - **Category**: Migration hygiene
 - **Source**: Prior refactoring (Cycle 23)

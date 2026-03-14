@@ -20,7 +20,7 @@ from risk.repository.serialization import load_risk_assessment
 from risk.types import EngagementContext, RiskAssessment, RiskMode, RiskPackage, RiskType
 from scan.service.section_loader import parse_related_files
 from containers import Services
-from implementation.service.section_reexplorer import _reexplore_section
+from implementation.service.section_reexplorer import reexplore_section
 from implementation.engine.section_pipeline import run_section
 from orchestrator.types import ProposalPassResult, Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
@@ -318,7 +318,7 @@ def _reexplore_missing_files(
         f"Section {sec_num}: no related files — dispatching "
         f"re-explorer agent",
     )
-    reexplore_result = _reexplore_section(
+    reexplore_result = reexplore_section(
         section,
         planspace,
         codespace,

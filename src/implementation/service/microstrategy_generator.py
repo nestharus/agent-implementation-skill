@@ -6,7 +6,7 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 from pipeline.template import TASK_SUBMISSION_SEMANTICS
 from dispatch.prompt.writers import agent_mail_instructions
-from implementation.service.microstrategy_decider import _check_needs_microstrategy
+from implementation.service.microstrategy_decider import check_needs_microstrategy
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from orchestrator.types import ControlSignal
 from signals.types import BLOCKING_NEEDS_PARENT
@@ -192,7 +192,7 @@ def run_microstrategy(
     microstrategy_path = paths.microstrategy(section.number)
 
     needs_microstrategy = (
-        _check_needs_microstrategy(
+        check_needs_microstrategy(
             integration_proposal, planspace, section.number, parent,
             codespace=codespace,
             model=Services.policies().resolve(policy, "microstrategy_decider"),

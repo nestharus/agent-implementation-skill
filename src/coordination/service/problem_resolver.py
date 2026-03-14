@@ -251,7 +251,7 @@ def _collect_scope_delta_problems(sections_by_num, paths) -> list[Problem]:
     return problems
 
 
-def _collect_outstanding_problems(
+def collect_outstanding_problems(
     section_results: dict[str, SectionResult],
     sections_by_num: dict[str, Section],
     planspace: Path,
@@ -268,7 +268,7 @@ def _collect_outstanding_problems(
     return problems
 
 
-def _detect_recurrence_patterns(
+def detect_recurrence_patterns(
     planspace: Path,
     problems: list[Problem],
 ) -> RecurrenceReport | None:
@@ -331,6 +331,6 @@ def _detect_recurrence_patterns(
 
 
 __all__ = [
-    "_collect_outstanding_problems",
-    "_detect_recurrence_patterns",
+    "collect_outstanding_problems",
+    "detect_recurrence_patterns",
 ]

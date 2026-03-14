@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from coordination.problem_types import Problem
-from coordination.service.problem_resolver import _collect_outstanding_problems
+from coordination.service.problem_resolver import collect_outstanding_problems
 from coordination.types import CoordinationStatus
 from orchestrator.path_registry import PathRegistry
 from orchestrator.engine.strategic_state_builder import build_strategic_state
@@ -56,7 +56,7 @@ def _assess_initial_state(
     outstanding: list[Problem] = []
 
     if not misaligned:
-        outstanding = _collect_outstanding_problems(
+        outstanding = collect_outstanding_problems(
             section_results, sections_by_num, planspace,
         )
         if outstanding:
@@ -104,7 +104,7 @@ def _report_result(
             )
         return termination_reason
 
-    outstanding = _collect_outstanding_problems(
+    outstanding = collect_outstanding_problems(
         section_results, sections_by_num, planspace,
     )
     if outstanding:
@@ -200,7 +200,7 @@ def run_coordination_loop(
         # Measure progress
         remaining = [r for r in section_results.values() if not r.aligned]
         remaining_outstanding = (
-            _collect_outstanding_problems(
+            collect_outstanding_problems(
                 section_results, sections_by_num, ctx.planspace,
             )
             if not remaining

@@ -32,7 +32,7 @@ def test_run_coordination_loop_completes_when_everything_is_aligned(
 
     monkeypatch.setattr(
         loop,
-        "_collect_outstanding_problems",
+        "collect_outstanding_problems",
         lambda *_args, **_kwargs: [],
     )
     monkeypatch.setattr(
@@ -146,7 +146,7 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
     monkeypatch.setattr(loop, "MIN_COORDINATION_ROUNDS", 1)
     monkeypatch.setattr(
         loop,
-        "_collect_outstanding_problems",
+        "collect_outstanding_problems",
         lambda *_args, **_kwargs: next(calls),
     )
     monkeypatch.setattr(

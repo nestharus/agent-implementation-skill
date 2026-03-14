@@ -69,7 +69,7 @@ def _install_common_patches(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle._write_alignment_surface",
+        "src.proposal.engine.proposal_cycle.write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(

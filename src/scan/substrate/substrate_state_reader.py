@@ -12,13 +12,13 @@ from scan.related.cli_handler import extract_related_files
 VALID_PROJECT_MODES = ("greenfield", "brownfield", "hybrid")
 
 
-def _registry_for_artifacts(artifacts_dir: Path) -> PathRegistry:
+def registry_for_artifacts(artifacts_dir: Path) -> PathRegistry:
     return PathRegistry(artifacts_dir.parent)
 
 
 def read_project_mode(artifacts_dir: Path) -> str | None:
     """Read project mode from scan-stage signals."""
-    registry = _registry_for_artifacts(artifacts_dir)
+    registry = registry_for_artifacts(artifacts_dir)
     json_path = registry.project_mode_json()
     txt_path = registry.project_mode_txt()
 
@@ -74,7 +74,7 @@ def write_status(
     threshold: int = 2,
 ) -> None:
     """Write ``artifacts/substrate/status.json``."""
-    status_dir = _registry_for_artifacts(artifacts_dir).substrate_dir()
+    status_dir = registry_for_artifacts(artifacts_dir).substrate_dir()
     status_dir.mkdir(parents=True, exist_ok=True)
     status = {
         "state": state,

@@ -9,11 +9,11 @@ from pathlib import Path
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from signals.service.blocker_manager import _update_blocker_rollup
+from signals.service.blocker_manager import update_blocker_rollup
 from signals.types import SIGNAL_NEEDS_PARENT
 
 
-def _extract_tools(registry: dict | list) -> list:
+def extract_tools(registry: dict | list) -> list:
     """Normalise registry (list or dict with 'tools' key) to a plain list."""
     return registry if isinstance(registry, list) else registry.get("tools", [])
 
@@ -104,7 +104,7 @@ def _handle_repair_result(
     tools_available_path = paths.tools_available(section_number)
     registry = Services.artifact_io().read_json(tool_registry_path)
     if registry is not None:
-        all_tools = _extract_tools(registry)
+        all_tools = extract_tools(registry)
         Services.logger().log(
             f"Section {section_number}: tool registry "
             f"repaired ({len(all_tools)} tools)"
@@ -139,7 +139,7 @@ def _handle_repair_result(
         PathRegistry(planspace).blocker_signal(section_number),
         blocker,
     )
-    _update_blocker_rollup(planspace)
+    update_blocker_rollup(planspace)
     return 0
 
 
@@ -194,7 +194,7 @@ def surface_tool_registry(
 
     registry = Services.artifact_io().read_json(tool_registry_path)
     if registry is not None:
-        all_tools = _extract_tools(registry)
+        all_tools = extract_tools(registry)
         relevant_count = write_tool_surface(
             all_tools, section_number, tools_available_path,
         )

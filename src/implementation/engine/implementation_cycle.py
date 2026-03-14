@@ -6,7 +6,7 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 from intake.service.assessment_evaluator import write_post_impl_assessment_prompt
 from dispatch.prompt.writers import write_impl_alignment_prompt, write_strategic_impl_prompt
-from implementation.service.traceability_writer import _write_traceability_index
+from implementation.service.traceability_writer import write_traceability_index
 from implementation.service.change_verifier import verify_changed_files
 from implementation.service.trace_map_builder import build_trace_map
 from flow.types.context import FlowEnvelope
@@ -460,7 +460,7 @@ def _finalize(
             "implementation change",
         )
 
-    _write_traceability_index(planspace, section, actually_changed)
+    write_traceability_index(planspace, section, actually_changed)
 
     build_trace_map(
         planspace, codespace, section.number,

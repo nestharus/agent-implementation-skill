@@ -12,7 +12,7 @@ from pydantic import BaseModel, ValidationError
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from signals.service.blocker_manager import _update_blocker_rollup
+from signals.service.blocker_manager import update_blocker_rollup
 from signals.types import SIGNAL_NEEDS_PARENT
 
 
@@ -279,7 +279,7 @@ def _handle_bridge_failure(*, section_number, planspace):
             "why_blocked": f"See failure details: {failure_artifact}",
         },
     )
-    _update_blocker_rollup(planspace)
+    update_blocker_rollup(planspace)
 
 
 def handle_tool_friction(

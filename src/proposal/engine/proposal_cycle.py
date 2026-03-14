@@ -6,7 +6,7 @@ from containers import Services
 from intent.service.intent_triager import load_triage_result
 from orchestrator.path_registry import PathRegistry
 from pipeline.context import DispatchContext
-from implementation.service.section_reexplorer import _write_alignment_surface
+from implementation.service.section_reexplorer import write_alignment_surface
 from proposal.service.cycle_control import (
     check_early_abort,
     check_budget_exceeded,
@@ -137,7 +137,7 @@ def _run_alignment_phase(
             return ACTION_ABORT, None, intent_mode
         if action == ACTION_CONTINUE:
             return ACTION_CONTINUE, reproposal_reason, intent_mode
-        _write_alignment_surface(ctx.planspace, section)
+        write_alignment_surface(ctx.planspace, section)
         return "break", None, intent_mode
 
     intent_mode = handle_misaligned_surfaces(

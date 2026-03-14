@@ -15,8 +15,8 @@ from proposal.service.readiness_resolver import resolve_readiness
 from reconciliation.repository.queue import queue_reconciliation_request
 from containers import Services
 from signals.service.blocker_manager import (
-    _append_open_problem,
-    _update_blocker_rollup,
+    append_open_problem,
+    update_blocker_rollup,
 )
 from orchestrator.types import ProposalPassResult
 from flow.types.routing import Task, submit_task
@@ -93,7 +93,7 @@ def publish_discoveries(
         )
 
     for question in proposal_state.get("research_questions", []):
-        _append_open_problem(
+        append_open_problem(
             planspace,
             section_number,
             str(question),
@@ -297,7 +297,7 @@ def route_blockers(
 
     _route_shared_seams(signal_dir, section_number, proposal_state)
     _route_unresolved_contracts(section_number, proposal_state, planspace)
-    _update_blocker_rollup(planspace)
+    update_blocker_rollup(planspace)
 
 
 def _build_proposal_pass_result(

@@ -37,7 +37,7 @@ def test_validate_problem_frame_blocks_when_retry_still_does_not_create_frame(
 
     monkeypatch.setattr(
         problem_frame_gate,
-        "_update_blocker_rollup",
+        "update_blocker_rollup",
         lambda planspace_arg: blocker_updates.append(planspace_arg),
     )
 

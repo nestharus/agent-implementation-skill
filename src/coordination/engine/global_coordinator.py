@@ -14,8 +14,8 @@ from coordination.service.planner import (
     write_coordination_plan_prompt,
 )
 from coordination.service.problem_resolver import (
-    _collect_outstanding_problems,
-    _detect_recurrence_patterns,
+    collect_outstanding_problems,
+    detect_recurrence_patterns,
 )
 from orchestrator.path_registry import PathRegistry
 from implementation.service.scope_delta_aggregator import (
@@ -49,7 +49,7 @@ def _collect_and_persist_problems(
 
     Returns ``(problems, recurrence)`` or ``None`` if no problems exist.
     """
-    problems = _collect_outstanding_problems(
+    problems = collect_outstanding_problems(
         section_results, sections_by_num, planspace,
     )
 
@@ -62,7 +62,7 @@ def _collect_and_persist_problems(
 
     paths = PathRegistry(planspace)
     policy = Services.policies().load(planspace)
-    recurrence = _detect_recurrence_patterns(planspace, problems)
+    recurrence = detect_recurrence_patterns(planspace, problems)
     if recurrence:
         escalation_file = paths.coordination_model_escalation()
         escalation_file.write_text(
@@ -438,7 +438,7 @@ def _recheck_affected_sections(
     # Check if everything is now aligned
     remaining = [r for r in section_results.values() if not r.aligned]
     if not remaining:
-        outstanding_after = _collect_outstanding_problems(
+        outstanding_after = collect_outstanding_problems(
             section_results, sections_by_num, ctx.planspace,
         )
         if outstanding_after:

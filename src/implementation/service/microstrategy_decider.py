@@ -59,7 +59,7 @@ def _gather_complexity_signals(
     return signals
 
 
-def _extract_todos_from_files(
+def extract_todos_from_files(
     codespace: Path, related_files: list[str],
 ) -> str:
     """Extract TODO/FIXME/HACK blocks from related files.
@@ -163,7 +163,7 @@ def _dispatch_and_read_signal(
     return _read_microstrategy_signal(signal_path)
 
 
-def _check_needs_microstrategy(
+def check_needs_microstrategy(
     proposal_path: Path, planspace: Path, section_number: str,
     parent: str = "", codespace: Path | None = None,
     *,

@@ -16,7 +16,7 @@ from intent.service.intent_pack_generator import (
 )
 from intent.service.intent_triager import run_intent_triage
 from containers import Services
-from signals.service.blocker_manager import _update_blocker_rollup
+from signals.service.blocker_manager import update_blocker_rollup
 from intake.service.governance_packet_builder import build_section_governance_packet
 from orchestrator.types import PauseType, Section
 
@@ -76,7 +76,7 @@ def _step_extract_todos(ctx: PipelineContext) -> str:
     todos_path = paths.todos(ctx.section.number)
     paths.todos_dir().mkdir(parents=True, exist_ok=True)
 
-    todo_entries = _extract_todos_from_files(
+    todo_entries = extract_todos_from_files(
         ctx.codespace, ctx.section.related_files,
     )
     artifact_name = f"section-{ctx.section.number}-todos.md"
@@ -125,7 +125,7 @@ def _step_philosophy(ctx: PipelineContext) -> dict:
                 f"Section {sec}: philosophy bootstrap needs "
                 f"user input — {result['detail']}",
             )
-            _update_blocker_rollup(ctx.planspace)
+            update_blocker_rollup(ctx.planspace)
             Services.pipeline_control().pause_for_parent(
                 ctx.planspace, ctx.parent,
                 f"pause:{PauseType.NEED_DECISION}:global:philosophy bootstrap requires user input",
@@ -259,9 +259,9 @@ def run_intent_bootstrap(
 # -- Helpers ---------------------------------------------------------------
 
 
-def _extract_todos_from_files(codespace: Path, related_files: list[str]) -> str:
+def extract_todos_from_files(codespace: Path, related_files: list[str]) -> str:
     from implementation.service.microstrategy_decider import (
-        _extract_todos_from_files as extract_todos,
+        extract_todos_from_files as extract_todos,
     )
 
     return extract_todos(codespace, related_files)

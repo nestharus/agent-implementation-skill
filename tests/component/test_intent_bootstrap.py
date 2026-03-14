@@ -54,7 +54,7 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
     )
     monkeypatch.setattr(
         bootstrap,
-        "_extract_todos_from_files",
+        "extract_todos_from_files",
         lambda *_args, **_kwargs: "- TODO: preserve invariant\n",
     )
     monkeypatch.setattr(
@@ -125,7 +125,7 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
     )
     monkeypatch.setattr(
         bootstrap,
-        "_extract_todos_from_files",
+        "extract_todos_from_files",
         lambda *_args, **_kwargs: "",
     )
     monkeypatch.setattr(
@@ -146,7 +146,7 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
     blocker_rollups: list[Path] = []
     monkeypatch.setattr(
         bootstrap,
-        "_update_blocker_rollup",
+        "update_blocker_rollup",
         lambda current_planspace: blocker_rollups.append(current_planspace),
     )
 
@@ -186,7 +186,7 @@ def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
     )
     monkeypatch.setattr(
         bootstrap,
-        "_extract_todos_from_files",
+        "extract_todos_from_files",
         lambda *_args, **_kwargs: "",
     )
     monkeypatch.setattr(

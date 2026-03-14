@@ -12,7 +12,7 @@ from flow.types.schema import BranchSpec, TaskSpec
 from orchestrator.path_registry import PathRegistry
 from research.prompt.writers import write_research_ticket_prompt
 from containers import Services
-from signals.service.blocker_manager import _update_blocker_rollup
+from signals.service.blocker_manager import update_blocker_rollup
 from signals.types import SIGNAL_NEEDS_PARENT, SIGNAL_NEED_DECISION
 
 
@@ -131,7 +131,7 @@ def emit_not_researchable_signals(
         )
 
     if items:
-        _update_blocker_rollup(planspace)
+        update_blocker_rollup(planspace)
 
 
 def _build_web_branch(

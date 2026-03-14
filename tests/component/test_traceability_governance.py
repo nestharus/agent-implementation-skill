@@ -5,7 +5,7 @@ from pathlib import Path
 
 from orchestrator.types import Section
 from src.implementation.service.traceability_writer import (
-    _write_traceability_index,
+    write_traceability_index,
     update_trace_governance,
 )
 
@@ -17,7 +17,7 @@ def _section(planspace: Path) -> Section:
     return Section(number="01", path=section_path, related_files=["src/main.py"])
 
 
-def test_write_traceability_index_includes_governance_block(tmp_path: Path) -> None:
+def testwrite_traceability_index_includes_governance_block(tmp_path: Path) -> None:
     planspace = tmp_path / "planspace"
     codespace = tmp_path / "codespace"
     section = _section(planspace)
@@ -41,7 +41,7 @@ def test_write_traceability_index_includes_governance_block(tmp_path: Path) -> N
     governance_packet.parent.mkdir(parents=True, exist_ok=True)
     governance_packet.write_text('{"section": "01"}\n', encoding="utf-8")
 
-    _write_traceability_index(planspace, section, ["src/main.py"])
+    write_traceability_index(planspace, section, ["src/main.py"])
 
     trace = json.loads(
         (artifacts / "trace" / "section-01.json").read_text(encoding="utf-8")

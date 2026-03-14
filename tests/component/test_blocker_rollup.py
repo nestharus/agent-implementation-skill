@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from signals.service.blocker_manager import _update_blocker_rollup
+from signals.service.blocker_manager import update_blocker_rollup
 
 
 def test_blocker_rollup_formats_global_philosophy_heading(
@@ -21,7 +21,7 @@ def test_blocker_rollup_formats_global_philosophy_heading(
         "why_blocked": "Global philosophy is unavailable.",
     }), encoding="utf-8")
 
-    _update_blocker_rollup(planspace)
+    update_blocker_rollup(planspace)
 
     rollup_path = planspace / "artifacts" / "decisions" / "needs-input.md"
     content = rollup_path.read_text(encoding="utf-8")
@@ -46,7 +46,7 @@ def test_blocker_rollup_maps_shared_seams_to_needs_parent_category(
         "rationale": "blocked",
     }), encoding="utf-8")
 
-    _update_blocker_rollup(planspace)
+    update_blocker_rollup(planspace)
 
     rollup_path = planspace / "artifacts" / "decisions" / "needs-input.md"
     content = rollup_path.read_text(encoding="utf-8")
@@ -97,7 +97,7 @@ def test_blocker_rollup_separates_shared_seam_coordination_from_scope_expansion(
         "why_blocked": "Concern does not belong to section 04.",
     }), encoding="utf-8")
 
-    _update_blocker_rollup(planspace)
+    update_blocker_rollup(planspace)
 
     rollup_path = planspace / "artifacts" / "decisions" / "needs-input.md"
     content = rollup_path.read_text(encoding="utf-8")

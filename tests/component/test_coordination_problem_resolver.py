@@ -7,12 +7,12 @@ import json
 from coordination.problem_types import MisalignedProblem, Problem
 from orchestrator.types import Section, SectionResult
 from src.coordination.service.problem_resolver import (
-    _collect_outstanding_problems,
-    _detect_recurrence_patterns,
+    collect_outstanding_problems,
+    detect_recurrence_patterns,
 )
 
 
-def test_collect_outstanding_problems_fail_closes_on_malformed_blocker(
+def testcollect_outstanding_problems_fail_closes_on_malformed_blocker(
     planspace,
 ) -> None:
     section = Section(
@@ -24,7 +24,7 @@ def test_collect_outstanding_problems_fail_closes_on_malformed_blocker(
     blocker_path = planspace / "artifacts" / "signals" / "section-03-blocker.json"
     blocker_path.write_text("{bad json", encoding="utf-8")
 
-    problems = _collect_outstanding_problems(
+    problems = collect_outstanding_problems(
         {
             "03": SectionResult(
                 section_number="03",
@@ -42,7 +42,7 @@ def test_collect_outstanding_problems_fail_closes_on_malformed_blocker(
     assert blocker_path.with_suffix(".malformed.json").exists()
 
 
-def test_collect_outstanding_problems_tracks_notes_and_ack_states(planspace) -> None:
+def testcollect_outstanding_problems_tracks_notes_and_ack_states(planspace) -> None:
     section = Section(
         number="05",
         path=planspace / "artifacts" / "sections" / "section-05.md",
@@ -56,7 +56,7 @@ def test_collect_outstanding_problems_tracks_notes_and_ack_states(planspace) -> 
         encoding="utf-8",
     )
 
-    unaddressed = _collect_outstanding_problems(
+    unaddressed = collect_outstanding_problems(
         {"05": SectionResult(section_number="05", aligned=True)},
         {"05": section},
         planspace,
@@ -82,7 +82,7 @@ def test_collect_outstanding_problems_tracks_notes_and_ack_states(planspace) -> 
         encoding="utf-8",
     )
 
-    rejected = _collect_outstanding_problems(
+    rejected = collect_outstanding_problems(
         {"05": SectionResult(section_number="05", aligned=True)},
         {"05": section},
         planspace,
@@ -93,7 +93,7 @@ def test_collect_outstanding_problems_tracks_notes_and_ack_states(planspace) -> 
     assert "Conflicts with current API contract." in rejected[0].description
 
 
-def test_collect_outstanding_problems_surfaces_root_reframing_scope_deltas(
+def testcollect_outstanding_problems_surfaces_root_reframing_scope_deltas(
     planspace,
 ) -> None:
     section = Section(
@@ -117,7 +117,7 @@ def test_collect_outstanding_problems_surfaces_root_reframing_scope_deltas(
         encoding="utf-8",
     )
 
-    problems = _collect_outstanding_problems(
+    problems = collect_outstanding_problems(
         {"05": SectionResult(section_number="05", aligned=True)},
         {"05": section},
         planspace,
@@ -135,7 +135,7 @@ def test_collect_outstanding_problems_surfaces_root_reframing_scope_deltas(
     assert "requires root reframing" in p.description
 
 
-def test_detect_recurrence_patterns_writes_report_for_active_problems(
+def testdetect_recurrence_patterns_writes_report_for_active_problems(
     planspace,
 ) -> None:
     signals_dir = planspace / "artifacts" / "signals"
@@ -150,7 +150,7 @@ def test_detect_recurrence_patterns_writes_report_for_active_problems(
         MisalignedProblem(section="02", description=""),
     ]
 
-    report = _detect_recurrence_patterns(planspace, problems)
+    report = detect_recurrence_patterns(planspace, problems)
     stored = json.loads(
         (
             planspace / "artifacts" / "coordination" / "recurrence.json"

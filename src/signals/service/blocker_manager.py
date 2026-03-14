@@ -29,7 +29,7 @@ _SHARED_SEAM_PREFIX = (
 )
 _SEAM_HASH_LENGTH = 12
 
-# Signal state → blocker category mapping (used in _update_blocker_rollup)
+# Signal state → blocker category mapping (used in update_blocker_rollup)
 _STATE_TO_CATEGORY: dict[str, str] = {
     "underspecified": BlockerCategory.MISSING_INFO,
     "underspec": BlockerCategory.MISSING_INFO,
@@ -49,7 +49,7 @@ _BTYPE_TO_CATEGORY: dict[str, str] = {
 }
 
 
-def _append_open_problem(
+def append_open_problem(
     planspace: Path, section_number: str,
     problem: str, source: str,
 ) -> None:
@@ -169,7 +169,7 @@ def _collect_readiness_blockers(readiness_dir: Path | None) -> list[dict]:
     return blockers
 
 
-def _update_blocker_rollup(planspace: Path) -> None:
+def update_blocker_rollup(planspace: Path) -> None:
     """Auto-generate a decision-surface rollup from blocker signals.
 
     Scans for UNDERSPECIFIED/NEED_DECISION/DEPENDENCY/OUT_OF_SCOPE/

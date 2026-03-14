@@ -33,7 +33,7 @@ def test_publish_discoveries_writes_scope_delta_and_research_artifact(
     (planspace / "artifacts" / "open-problems").mkdir(parents=True, exist_ok=True)
     appended: list[str] = []
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate._append_open_problem",
+        "src.proposal.engine.readiness_gate.append_open_problem",
         lambda _planspace, _section, detail, _source: appended.append(detail),
     )
 
@@ -69,7 +69,7 @@ def test_route_blockers_writes_signals_and_queues_reconciliation(
         ),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate._update_blocker_rollup",
+        "src.proposal.engine.readiness_gate.update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
 
@@ -110,7 +110,7 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
     prompt_path.write_text("# Prompt\n", encoding="utf-8")
 
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate._update_blocker_rollup",
+        "src.proposal.engine.readiness_gate.update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -235,7 +235,7 @@ def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
     submitted: list[dict] = []
 
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate._update_blocker_rollup",
+        "src.proposal.engine.readiness_gate.update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -299,7 +299,7 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
     submitted: list[dict] = []
 
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate._update_blocker_rollup",
+        "src.proposal.engine.readiness_gate.update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -379,7 +379,7 @@ def test_route_blockers_ignores_empty_blocking_research_questions(
     submitted: list[dict] = []
 
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate._update_blocker_rollup",
+        "src.proposal.engine.readiness_gate.update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -457,7 +457,7 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
         ),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate._append_open_problem",
+        "src.proposal.engine.readiness_gate.append_open_problem",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -465,7 +465,7 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate._update_blocker_rollup",
+        "src.proposal.engine.readiness_gate.update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
 

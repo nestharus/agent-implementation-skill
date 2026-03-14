@@ -27,7 +27,7 @@ from risk.types import (
 from risk.service.package_builder import write_package
 from risk.prompt.writers import write_risk_assessment_prompt, write_optimization_prompt
 from risk.service.response_parser import parse_risk_assessment, parse_risk_plan
-from risk.service.posture_hysteresis import apply_posture_hysteresis, _history_signature
+from risk.service.posture_hysteresis import apply_posture_hysteresis, history_signature
 from risk.service.fallback import fallback_plan, lightweight_fallback_plan
 
 _DEFAULT_RISK_ITERATIONS = 5
@@ -385,7 +385,7 @@ def _apply_history_adjustment(
     matching_entries = [
         entry
         for entry in history_entries
-        if _history_signature(entry) == signature
+        if history_signature(entry) == signature
     ]
     adjustment = compute_history_adjustment(
         history_path,

@@ -121,11 +121,11 @@ def test_extract_excerpts_routes_out_of_scope_then_retries(
     monkeypatch.setattr(Services.dispatch_helpers(), "check_agent_signals", _check)
     capturing_pipeline_control._pause_return = "resume:accept root decision"
     monkeypatch.setattr(
-        "src.proposal.service.excerpt_extractor._append_open_problem",
+        "src.proposal.service.excerpt_extractor.append_open_problem",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.service.excerpt_extractor._update_blocker_rollup",
+        "src.proposal.service.excerpt_extractor.update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
 
@@ -167,11 +167,11 @@ def test_extract_excerpts_returns_none_when_parent_does_not_resume(
     )
     capturing_pipeline_control._pause_return = "stop"
     monkeypatch.setattr(
-        "src.proposal.service.excerpt_extractor._append_open_problem",
+        "src.proposal.service.excerpt_extractor.append_open_problem",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.service.excerpt_extractor._update_blocker_rollup",
+        "src.proposal.service.excerpt_extractor.update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
 

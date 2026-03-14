@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from containers import Services
-from scan.substrate.substrate_state_reader import _registry_for_artifacts
+from scan.substrate.substrate_state_reader import registry_for_artifacts
 
 DEFAULT_SUBSTRATE_MODELS: dict[str, str] = {
     "substrate_shard": "gpt-high",
@@ -19,7 +19,7 @@ DEFAULT_TRIGGER_THRESHOLD = 2
 def read_substrate_model_policy(artifacts_dir: Path) -> dict[str, str]:
     """Read substrate model assignments from ``model-policy.json``."""
     policy = dict(DEFAULT_SUBSTRATE_MODELS)
-    policy_path = _registry_for_artifacts(artifacts_dir).model_policy()
+    policy_path = registry_for_artifacts(artifacts_dir).model_policy()
     if policy_path.is_file():
         data = Services.artifact_io().read_json(policy_path)
         if isinstance(data, dict):
@@ -36,7 +36,7 @@ def read_substrate_model_policy(artifacts_dir: Path) -> dict[str, str]:
 
 def read_trigger_signals(artifacts_dir: Path) -> list[str]:
     """Read signal-driven SIS trigger requests."""
-    signals_dir = _registry_for_artifacts(artifacts_dir).signals_dir()
+    signals_dir = registry_for_artifacts(artifacts_dir).signals_dir()
     if not signals_dir.is_dir():
         return []
 
@@ -61,7 +61,7 @@ def read_trigger_signals(artifacts_dir: Path) -> list[str]:
 
 def read_trigger_threshold(artifacts_dir: Path) -> int:
     """Read the vacuum section threshold from policy config."""
-    policy_path = _registry_for_artifacts(artifacts_dir).model_policy()
+    policy_path = registry_for_artifacts(artifacts_dir).model_policy()
     if policy_path.is_file():
         data = Services.artifact_io().read_json(policy_path)
         if isinstance(data, dict):

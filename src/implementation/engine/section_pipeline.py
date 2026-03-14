@@ -25,7 +25,7 @@ from orchestrator.types import ProposalPassResult, Section
 from intent.service.intent_pack_generator import ensure_global_philosophy, generate_intent_pack
 from intent.service.intent_triager import run_intent_triage
 from reconciliation.engine.cross_section_reconciler import load_reconciliation_result
-from implementation.service.microstrategy_decider import _extract_todos_from_files
+from implementation.service.microstrategy_decider import extract_todos_from_files
 from signals.types import (
     ACTION_ABORT, ACTION_SKIP,
     PASS_MODE_IMPLEMENTATION, PASS_MODE_PROPOSAL,
@@ -116,7 +116,7 @@ def _run_intent_bootstrap_phase(
     intent_bootstrap_module.run_intent_triage = run_intent_triage
     intent_bootstrap_module.ensure_global_philosophy = ensure_global_philosophy
     intent_bootstrap_module.generate_intent_pack = generate_intent_pack
-    intent_bootstrap_module._extract_todos_from_files = _extract_todos_from_files
+    intent_bootstrap_module.extract_todos_from_files = extract_todos_from_files
     intent_bootstrap_module.alignment_changed_pending = Services.pipeline_control().alignment_changed_pending
     return run_intent_bootstrap(
         section,

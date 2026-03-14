@@ -84,7 +84,7 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
     Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
     Services.policies.override(providers.Object(StubPolicies()))
     monkeypatch.setattr(
-        "src.implementation.engine.implementation_cycle._write_traceability_index",
+        "src.implementation.engine.implementation_cycle.write_traceability_index",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -164,7 +164,7 @@ def test_run_implementation_loop_retries_after_alignment_problems(
         lambda *_args, **_kwargs: next(problems),
     )
     monkeypatch.setattr(
-        "src.implementation.engine.implementation_cycle._write_traceability_index",
+        "src.implementation.engine.implementation_cycle.write_traceability_index",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(

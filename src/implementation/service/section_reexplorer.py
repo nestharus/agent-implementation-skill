@@ -110,7 +110,7 @@ def _build_reexplore_prompt(
     )
 
 
-def _reexplore_section(
+def reexplore_section(
     section: Section, planspace: Path, codespace: Path, parent: str,
     model: str,
 ) -> str | None:
@@ -197,7 +197,7 @@ def _collect_surface_entries(
     return entries
 
 
-def _write_alignment_surface(
+def write_alignment_surface(
     planspace: Path, section: Section,
 ) -> None:
     """Write a single file listing all authoritative alignment inputs.

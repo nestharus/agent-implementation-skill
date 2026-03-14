@@ -91,7 +91,7 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle._write_alignment_surface",
+        "src.proposal.engine.proposal_cycle.write_alignment_surface",
         lambda _planspace, _section: alignment_written.append("done"),
     )
 
@@ -164,7 +164,7 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle._write_alignment_surface",
+        "src.proposal.engine.proposal_cycle.write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
 
@@ -242,15 +242,15 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "proposal.service.cycle_control._append_open_problem",
+        "proposal.service.cycle_control.append_open_problem",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "proposal.service.cycle_control._update_blocker_rollup",
+        "proposal.service.cycle_control.update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle._write_alignment_surface",
+        "src.proposal.engine.proposal_cycle.write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
 

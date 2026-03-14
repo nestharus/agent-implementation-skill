@@ -70,7 +70,7 @@ def _optional_artifact(path: Path) -> dict | None:
     return {"path": str(path), "hash": _file_sha256(path)}
 
 
-def _write_traceability_index(
+def write_traceability_index(
     planspace: Path, section: Section,
     modified_files: list[str],
 ) -> None:

@@ -71,7 +71,7 @@ class RecurrenceReport:
     """Recurrence detection report for coordination rounds.
 
     Replaces the loose ``dict[str, Any]`` returned by
-    ``_detect_recurrence_patterns``.
+    ``detect_recurrence_patterns``.
     """
 
     recurring_sections: list[str]

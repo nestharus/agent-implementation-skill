@@ -22,7 +22,7 @@ from intent.service.philosophy_classifier import (
     SOURCE_MODE_USER,
     _invalid_source_map_detail,
 )
-from intent.service.philosophy_catalog import _declared_principle_ids
+from intent.service.philosophy_catalog import declared_principle_ids
 from signals.types import BLOCKING_NEEDS_PARENT
 
 _MAX_STALE_SOURCES_IN_MESSAGE = 5
@@ -115,7 +115,7 @@ def _validate_source_map_content(
     except (OSError, UnicodeDecodeError):
         return ("", None, failure_source_mode)
 
-    principle_ids = _declared_principle_ids(philosophy_text)
+    principle_ids = declared_principle_ids(philosophy_text)
     if not principle_ids:
         return None
 

@@ -9,10 +9,10 @@ from pathlib import Path
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from signals.service.blocker_manager import _update_blocker_rollup
+from signals.service.blocker_manager import update_blocker_rollup
 from signals.types import SIGNAL_NEEDS_PARENT
 
-from dispatch.service.tool_surface_writer import _extract_tools
+from dispatch.service.tool_surface_writer import extract_tools
 
 
 def _build_registrar_prompt(
@@ -168,7 +168,7 @@ def _dispatch_post_impl_repair(
             paths.post_impl_blocker_signal(section_number),
             blocker,
         )
-        _update_blocker_rollup(planspace)
+        update_blocker_rollup(planspace)
 
 
 def validate_tool_registry_after_implementation(
@@ -188,7 +188,7 @@ def validate_tool_registry_after_implementation(
 
     post_registry = Services.artifact_io().read_json(tool_registry_path)
     if post_registry is not None:
-        post_tools = _extract_tools(post_registry)
+        post_tools = extract_tools(post_registry)
         if len(post_tools) > pre_tool_total:
             _dispatch_new_tool_validation(
                 section_number=section_number,

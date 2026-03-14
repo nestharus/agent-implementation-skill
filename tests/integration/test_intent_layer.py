@@ -3180,14 +3180,14 @@ class TestR60ToolOSErrorHandling:
 # ---------------------------------------------------------------------------
 
 class TestR61AlignmentSurfaceIntentArtifacts:
-    """V1/R61: _write_alignment_surface must include intent pack artifacts."""
+    """V1/R61: write_alignment_surface must include intent pack artifacts."""
 
     def test_surface_includes_intent_problem(
         self, planspace: Path, section_01: None,
     ) -> None:
         """Alignment surface must include intent problem.md when present."""
         from implementation.service.section_reexplorer import (
-            _write_alignment_surface,
+            write_alignment_surface,
         )
         from orchestrator.types import Section
 
@@ -3201,7 +3201,7 @@ class TestR61AlignmentSurfaceIntentArtifacts:
         intent_dir.mkdir(parents=True)
         (intent_dir / "problem.md").write_text("# Problem\n")
 
-        _write_alignment_surface(planspace, section)
+        write_alignment_surface(planspace, section)
 
         surface = (
             planspace / "artifacts" / "sections"
@@ -3216,7 +3216,7 @@ class TestR61AlignmentSurfaceIntentArtifacts:
     ) -> None:
         """Alignment surface must include problem-alignment.md when present."""
         from implementation.service.section_reexplorer import (
-            _write_alignment_surface,
+            write_alignment_surface,
         )
         from orchestrator.types import Section
 
@@ -3229,7 +3229,7 @@ class TestR61AlignmentSurfaceIntentArtifacts:
         intent_dir.mkdir(parents=True)
         (intent_dir / "problem-alignment.md").write_text("# Rubric\n")
 
-        _write_alignment_surface(planspace, section)
+        write_alignment_surface(planspace, section)
 
         surface = (
             planspace / "artifacts" / "sections"
@@ -3243,7 +3243,7 @@ class TestR61AlignmentSurfaceIntentArtifacts:
     ) -> None:
         """All four intent artifacts appear in surface when present."""
         from implementation.service.section_reexplorer import (
-            _write_alignment_surface,
+            write_alignment_surface,
         )
         from orchestrator.types import Section
 
@@ -3259,7 +3259,7 @@ class TestR61AlignmentSurfaceIntentArtifacts:
         (intent_dir / "philosophy-excerpt.md").write_text("# E\n")
         (intent_dir / "surface-registry.json").write_text("{}\n")
 
-        _write_alignment_surface(planspace, section)
+        write_alignment_surface(planspace, section)
 
         surface = (
             planspace / "artifacts" / "sections"
@@ -3276,14 +3276,14 @@ class TestR61AlignmentSurfaceIntentArtifacts:
     ) -> None:
         """No intent references when intent artifacts don't exist."""
         from implementation.service.section_reexplorer import (
-            _write_alignment_surface,
+            write_alignment_surface,
         )
         from orchestrator.types import Section
 
         sec_path = planspace / "artifacts" / "sections" / "section-01.md"
         section = Section(number="01", path=sec_path, related_files=[])
 
-        _write_alignment_surface(planspace, section)
+        write_alignment_surface(planspace, section)
 
         surface = (
             planspace / "artifacts" / "sections"

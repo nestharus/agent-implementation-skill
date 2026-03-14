@@ -52,7 +52,7 @@ def test_run_microstrategy_returns_none_when_decider_skips(
     section = _section(planspace)
 
     monkeypatch.setattr(
-        "src.implementation.service.microstrategy_generator._check_needs_microstrategy",
+        "src.implementation.service.microstrategy_generator.check_needs_microstrategy",
         lambda *_args, **_kwargs: False,
     )
 
@@ -76,7 +76,7 @@ def test_run_microstrategy_retries_with_escalation_and_returns_path(
     dispatch_calls: list[str] = []
 
     monkeypatch.setattr(
-        "src.implementation.service.microstrategy_generator._check_needs_microstrategy",
+        "src.implementation.service.microstrategy_generator.check_needs_microstrategy",
         lambda *_args, **_kwargs: True,
     )
 
