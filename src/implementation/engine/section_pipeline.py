@@ -252,7 +252,6 @@ def _validate_tools_post_impl(
     section: Section,
     pre_tool_total: int,
     tool_registry_path: Path,
-    artifacts: Path,
     planspace: Path,
     parent: str,
     codespace: Path,
@@ -263,7 +262,6 @@ def _validate_tools_post_impl(
         section_number=section.number,
         pre_tool_total=pre_tool_total,
         tool_registry_path=tool_registry_path,
-        artifacts=artifacts,
         planspace=planspace,
         parent=parent,
         codespace=codespace,
@@ -273,7 +271,6 @@ def _validate_tools_post_impl(
         section_number=section.number,
         section_path=section.path,
         all_sections=all_sections,
-        artifacts=artifacts,
         tool_registry_path=tool_registry_path,
         friction_signal_path=friction_signal_path,
         planspace=planspace,
@@ -481,7 +478,7 @@ def _run_section_implementation_steps(
 
     # Step 3b-3c: Validate tool registry and handle friction
     _validate_tools_post_impl(
-        section, pre_tool_total, tool_registry_path, artifacts,
+        section, pre_tool_total, tool_registry_path,
         planspace, parent, codespace, all_sections,
     )
 

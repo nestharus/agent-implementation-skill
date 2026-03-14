@@ -261,7 +261,6 @@ def _dispatch_new_tool_validation(
     *,
     section_number: str,
     tool_registry_path: Path,
-    artifacts: Path,
     friction_signal_path: Path,
     planspace: Path,
     parent: str,
@@ -269,6 +268,7 @@ def _dispatch_new_tool_validation(
 ) -> None:
     """Dispatch the tool-registrar agent to validate newly registered tools."""
     paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     policy = Services.policies().load(planspace)
     Services.logger().log(
         f"Section {section_number}: new tools registered — "
@@ -310,13 +310,13 @@ def _dispatch_post_impl_repair(
     *,
     section_number: str,
     tool_registry_path: Path,
-    artifacts: Path,
     planspace: Path,
     parent: str,
     codespace: Path,
 ) -> None:
     """Dispatch repair for a malformed post-implementation registry."""
     paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     policy = Services.policies().load(planspace)
     malformed_path = tool_registry_path.with_suffix(".malformed.json")
     Services.logger().log(
@@ -378,7 +378,6 @@ def validate_tool_registry_after_implementation(
     section_number: str,
     pre_tool_total: int,
     tool_registry_path: Path,
-    artifacts: Path,
     planspace: Path,
     parent: str,
     codespace: Path,
@@ -397,7 +396,6 @@ def validate_tool_registry_after_implementation(
             _dispatch_new_tool_validation(
                 section_number=section_number,
                 tool_registry_path=tool_registry_path,
-                artifacts=artifacts,
                 friction_signal_path=friction_signal_path,
                 planspace=planspace,
                 parent=parent,
@@ -407,7 +405,6 @@ def validate_tool_registry_after_implementation(
         _dispatch_post_impl_repair(
             section_number=section_number,
             tool_registry_path=tool_registry_path,
-            artifacts=artifacts,
             planspace=planspace,
             parent=parent,
             codespace=codespace,
@@ -677,7 +674,6 @@ def handle_tool_friction(
     section_number: str,
     section_path: str | Path,
     all_sections: list[Any] | None,
-    artifacts: Path,
     tool_registry_path: Path,
     friction_signal_path: Path,
     planspace: Path,

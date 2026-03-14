@@ -58,7 +58,6 @@ def mock_scan_dispatch(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     monkeypatch.setattr("scan.scan_dispatcher.dispatch_agent", mock)
     # Also patch at import sites
     monkeypatch.setattr("scan.codemap.codemap_builder.dispatch_agent", mock)
-    monkeypatch.setattr("scan.explore.deep_scanner.dispatch_agent", mock)
     monkeypatch.setattr("scan.explore.section_explorer.dispatch_agent", mock)
     monkeypatch.setattr("scan.service.feedback_collector.dispatch_agent", mock)
     monkeypatch.setattr("scan.explore.tier_ranker.dispatch_agent", mock)

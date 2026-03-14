@@ -147,10 +147,10 @@ def _build_web_branch(
     codespace: Path | None,
     ticket: dict,
     ticket_index: int,
-    ticket_id: str,
-    concern_scope: str,
-    problem_id: str,
 ) -> BranchSpec | None:
+    ticket_id = str(ticket.get("ticket_id", f"T-{ticket_index:02d}"))
+    concern_scope = f"section-{section_number}"
+    problem_id = f"research-{section_number}-{ticket_id}"
     prompt_path = write_research_ticket_prompt(
         section_number,
         planspace,
@@ -178,10 +178,10 @@ def _build_code_branch(
     codespace: Path | None,
     ticket: dict,
     ticket_index: int,
-    ticket_id: str,
-    concern_scope: str,
-    problem_id: str,
 ) -> BranchSpec | None:
+    ticket_id = str(ticket.get("ticket_id", f"T-{ticket_index:02d}"))
+    concern_scope = f"section-{section_number}"
+    problem_id = f"research-{section_number}-{ticket_id}"
     scan_prompt = _write_research_scan_prompt(
         section_number,
         planspace,
@@ -217,10 +217,10 @@ def _build_both_branch(
     codespace: Path | None,
     ticket: dict,
     ticket_index: int,
-    ticket_id: str,
-    concern_scope: str,
-    problem_id: str,
 ) -> BranchSpec | None:
+    ticket_id = str(ticket.get("ticket_id", f"T-{ticket_index:02d}"))
+    concern_scope = f"section-{section_number}"
+    problem_id = f"research-{section_number}-{ticket_id}"
     web_ticket = dict(ticket)
     web_ticket["research_type"] = "web"
     web_ticket["output_path"] = str(
@@ -288,15 +288,9 @@ def _build_branch(
     ticket_index: int,
 ) -> BranchSpec | None:
     """Translate one semantic ticket into a concrete branch spec."""
-    ticket_id = str(ticket.get("ticket_id", f"T-{ticket_index:02d}"))
-    concern_scope = f"section-{section_number}"
-    problem_id = f"research-{section_number}-{ticket_id}"
     research_type = str(ticket.get("research_type", "web"))
 
-    args = (
-        section_number, planspace, codespace, ticket, ticket_index,
-        ticket_id, concern_scope, problem_id,
-    )
+    args = (section_number, planspace, codespace, ticket, ticket_index)
 
     if research_type == "web":
         return _build_web_branch(*args)

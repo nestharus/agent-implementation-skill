@@ -13,7 +13,7 @@ from scan.related.related_file_resolver import list_section_files
 from scan.related.section_iterator import scan_sections as _scan_sections
 
 from scan.codemap.cache import FileCardCache
-from scan.scan_dispatcher import dispatch_agent, read_scan_model_policy
+from scan.scan_dispatcher import read_scan_model_policy
 from scan.service.feedback_collector import collect_and_route_feedback
 _MAX_SCAN_PASSES = 2
 
