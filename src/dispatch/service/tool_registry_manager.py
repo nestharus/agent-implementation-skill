@@ -496,8 +496,10 @@ with JSON:
 
 def _dispatch_bridge_agent(
     *, section_number, section_path, tool_registry_path,
-    paths, policy, planspace, parent, codespace,
+    planspace, parent, codespace,
 ):
+    paths = PathRegistry(planspace)
+    policy = Services.policies().load(planspace)
     bridge_tools_prompt = paths.bridge_tools_prompt(section_number)
     bridge_tools_output = paths.bridge_tools_output(section_number)
     bridge_signal_path = paths.tool_bridge_signal(section_number)
@@ -579,9 +581,11 @@ def _compose_bridge_success_text(
 
 def _handle_bridge_success(
     *, bridge_data, section_number, all_sections, tool_registry_path,
-    pre_bridge_registry_hash, paths, artifacts, planspace, parent,
+    pre_bridge_registry_hash, planspace, parent,
     codespace,
 ):
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     default_proposal_path = paths.tool_bridge_proposal(section_number)
     bridge_proposal = bridge_data.get("proposal_path", str(default_proposal_path))
     inputs_dir = paths.input_refs_dir(section_number)
@@ -641,11 +645,12 @@ def _handle_bridge_success(
         )
 
 
-def _handle_bridge_failure(*, section_number, paths, planspace):
+def _handle_bridge_failure(*, section_number, planspace):
     Services.logger().log(
         f"Section {section_number}: bridge-tools dispatch "
         f"failed after escalation — writing failure artifact"
     )
+    paths = PathRegistry(planspace)
     failure_artifact = paths.bridge_tools_failure_signal(section_number)
     Services.artifact_io().write_json(
         failure_artifact,
@@ -698,7 +703,7 @@ def handle_tool_friction(
 
     result = _dispatch_bridge_agent(
         section_number=section_number, section_path=section_path,
-        tool_registry_path=tool_registry_path, paths=paths, policy=policy,
+        tool_registry_path=tool_registry_path,
         planspace=planspace, parent=parent, codespace=codespace,
     )
     if result[0] is None:
@@ -709,13 +714,13 @@ def handle_tool_friction(
         _handle_bridge_success(
             bridge_data=bridge_data, section_number=section_number,
             all_sections=all_sections, tool_registry_path=tool_registry_path,
-            pre_bridge_registry_hash=pre_bridge_registry_hash, paths=paths,
-            artifacts=artifacts, planspace=planspace,
+            pre_bridge_registry_hash=pre_bridge_registry_hash,
+            planspace=planspace,
             parent=parent, codespace=codespace,
         )
     else:
         _handle_bridge_failure(
-            section_number=section_number, paths=paths, planspace=planspace,
+            section_number=section_number, planspace=planspace,
         )
 
     try:

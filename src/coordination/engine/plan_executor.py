@@ -156,12 +156,12 @@ def _ensure_contract_delta(
     planspace: Path,
     parent: str,
     codespace: Path,
-    paths: PathRegistry,
     group_index: int,
     group_sections: list[str],
     bridge_reason: str,
 ) -> bool:
     """Retry bridge dispatch if contract delta missing. Returns True on success."""
+    paths = PathRegistry(planspace)
     paths.contracts_dir().mkdir(parents=True, exist_ok=True)
     if contract_delta_path.exists():
         return True
@@ -244,7 +244,7 @@ def _run_bridge_for_group(
 
     if not _ensure_contract_delta(
         contract_delta_path, bridge_model, bridge_prompt, bridge_output,
-        planspace, parent, codespace, paths,
+        planspace, parent, codespace,
         group_index, group_sections, bridge_reason,
     ):
         return
