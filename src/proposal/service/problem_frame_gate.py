@@ -50,20 +50,19 @@ def validate_problem_frame(
             return None
 
     if not problem_frame_path.exists():
-        _emit_missing_frame_blocker(paths, planspace, section, parent)
+        _emit_missing_frame_blocker(planspace, section, parent)
         return None
 
     pf_content = problem_frame_path.read_text(encoding="utf-8").strip()
     if not pf_content:
-        _emit_empty_frame_blocker(paths, planspace, section, parent)
+        _emit_empty_frame_blocker(planspace, section, parent)
         return None
 
-    _validate_frame_content(paths, planspace, section, problem_frame_path)
+    _validate_frame_content(planspace, section, problem_frame_path)
     return "ok"
 
 
 def _emit_missing_frame_blocker(
-    paths: PathRegistry,
     planspace: Path,
     section: Section,
     parent: str,
@@ -74,7 +73,7 @@ def _emit_missing_frame_blocker(
         "— emitting needs_parent signal",
     )
     _write_problem_frame_signal(
-        paths.setup_signal(section.number),
+        PathRegistry(planspace).setup_signal(section.number),
         {
             "state": SIGNAL_NEEDS_PARENT,
             "detail": (
@@ -102,7 +101,6 @@ def _emit_missing_frame_blocker(
 
 
 def _emit_empty_frame_blocker(
-    paths: PathRegistry,
     planspace: Path,
     section: Section,
     parent: str,
@@ -110,7 +108,7 @@ def _emit_empty_frame_blocker(
     """Signal that the problem frame exists but is empty."""
     Services.logger().log(f"Section {section.number}: problem frame is empty")
     _write_problem_frame_signal(
-        paths.setup_signal(section.number),
+        PathRegistry(planspace).setup_signal(section.number),
         {
             "state": SIGNAL_NEEDS_PARENT,
             "detail": (
@@ -132,12 +130,12 @@ def _emit_empty_frame_blocker(
 
 
 def _validate_frame_content(
-    paths: PathRegistry,
     planspace: Path,
     section: Section,
     problem_frame_path: Path,
 ) -> None:
     """Hash-check the problem frame, invalidate stale proposals, and track excerpts."""
+    paths = PathRegistry(planspace)
     Services.logger().log(f"Section {section.number}: problem frame present and validated")
     pf_hash_path = paths.problem_frame_hash(section.number)
     pf_hash_path.parent.mkdir(parents=True, exist_ok=True)

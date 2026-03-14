@@ -16,7 +16,7 @@ from signals.types import ACTION_CONTINUE
 
 def _handle_budget_exhaustion(
     section_number: str, planspace: Path, parent: str,
-    paths: PathRegistry, expansion_count: int, expansion_max: int,
+    expansion_count: int, expansion_max: int,
 ) -> str | None:
     """Handle the case where expansion budget is exhausted.
 
@@ -33,7 +33,7 @@ def _handle_budget_exhaustion(
         "cycles": expansion_count,
     }
     Services.artifact_io().write_json(
-        paths.intent_stalled_signal(section_number),
+        PathRegistry(planspace).intent_stalled_signal(section_number),
         stalled_signal,
     )
     response = Services.pipeline_control().pause_for_parent(
@@ -67,7 +67,7 @@ def run_aligned_expansion(
 
     if expansion_count >= expansion_max:
         return _handle_budget_exhaustion(
-            section_number, planspace, parent, paths,
+            section_number, planspace, parent,
             expansion_count, expansion_max,
         )
 

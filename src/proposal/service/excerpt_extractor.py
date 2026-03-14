@@ -39,7 +39,7 @@ def _write_scope_delta(
 
 def _handle_setup_signal(
     signal: str, detail: str, planspace: Path, parent: str,
-    section_number: str, paths: PathRegistry, signal_dir: Path,
+    section_number: str,
 ) -> str | None:
     """Handle a setup agent signal. Returns None to abort, 'continue' to retry."""
     if signal in (SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE):
@@ -49,7 +49,8 @@ def _handle_setup_signal(
             f"open-problem:{section_number}:{signal}:{detail[:TRUNCATE_DETAIL]}",
         )
     if signal == SIGNAL_OUT_OF_SCOPE:
-        _write_scope_delta(paths, signal_dir, section_number, detail)
+        paths = PathRegistry(planspace)
+        _write_scope_delta(paths, paths.signals_dir(), section_number, detail)
     _update_blocker_rollup(planspace)
     response = Services.pipeline_control().pause_for_parent(
         planspace, parent,
@@ -110,7 +111,7 @@ def extract_excerpts(
         if signal:
             result = _handle_setup_signal(
                 signal, detail, planspace, parent,
-                section.number, paths, signal_dir,
+                section.number,
             )
             if result is None:
                 return None

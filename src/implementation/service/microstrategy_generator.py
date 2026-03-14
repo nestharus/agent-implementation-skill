@@ -153,10 +153,10 @@ def _dispatch_and_retry(
 
 def _handle_microstrategy_failure(
     section_number: str,
-    paths: PathRegistry,
     planspace: Path,
     parent: str,
 ) -> None:
+    paths = PathRegistry(planspace)
     Services.logger().log(
         f"Section {section_number}: microstrategy generation "
         f"failed — emitting blocker signal"
@@ -249,5 +249,5 @@ def run_microstrategy(
         )
         return microstrategy_path
 
-    _handle_microstrategy_failure(section.number, paths, planspace, parent)
+    _handle_microstrategy_failure(section.number, planspace, parent)
     return None

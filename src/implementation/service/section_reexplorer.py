@@ -88,9 +88,9 @@ def _build_reexplore_prompt(
     planspace: Path,
     codespace: Path,
     output_path: Path,
-    paths: PathRegistry,
 ) -> str:
     """Build the re-exploration prompt for a section with no related files."""
+    paths = PathRegistry(planspace)
     summary = Services.cross_section().extract_section_summary(section.path)
     codemap_path = paths.codemap()
     codemap_ref = f"3. Codemap: `{codemap_path}`" if codemap_path.exists() else ""
@@ -121,7 +121,7 @@ def _reexplore_section(
     prompt_path = paths.artifacts / f"reexplore-{section.number}-prompt.md"
     output_path = paths.artifacts / f"reexplore-{section.number}-output.md"
 
-    rendered = _build_reexplore_prompt(section, planspace, codespace, output_path, paths)
+    rendered = _build_reexplore_prompt(section, planspace, codespace, output_path)
     violations = Services.prompt_guard().validate_dynamic(rendered)
     if violations:
         Services.logger().log(

@@ -87,8 +87,6 @@ def _run_impact_triage(
 
 def _surface_tools(
     section: Section,
-    paths: PathRegistry,
-    artifacts: Path,
     planspace: Path,
     parent: str,
     codespace: Path,
@@ -97,6 +95,8 @@ def _surface_tools(
 
     Returns the pre-implementation tool count for later validation.
     """
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     tools_available_path = paths.tools_available(section.number)
     tool_registry_path = paths.tool_registry()
     # Compatibility note: stale surface cleanup still occurs in the extracted
@@ -230,7 +230,6 @@ def _run_microstrategy_step(
     planspace: Path,
     codespace: Path,
     parent: str,
-    paths: PathRegistry,
 ) -> bool:
     """Run microstrategy and check for blockers.
 
@@ -242,7 +241,7 @@ def _run_microstrategy_step(
         codespace,
         parent,
     )
-    microstrategy_blocker = paths.microstrategy_blocker_signal(section.number)
+    microstrategy_blocker = PathRegistry(planspace).microstrategy_blocker_signal(section.number)
     if microstrategy_result is None and microstrategy_blocker.exists():
         return False
     return True
@@ -404,7 +403,7 @@ def run_section(
     # Step 0b: Surface section-relevant tools from tool registry
     # Compatibility note: stale surface cleanup still occurs in the extracted
     # helper via tools_available_path.exists() / tools_available_path.unlink().
-    _surface_tools(section, paths, artifacts, planspace, parent, codespace)
+    _surface_tools(section, planspace, parent, codespace)
 
     # Step 1: Section setup — extract excerpts from global documents
     if extract_excerpts(section, planspace, codespace, parent) is None:
@@ -466,7 +465,7 @@ def _run_section_implementation_steps(
     tool_registry_path, pre_tool_total = _count_pre_impl_tools(paths)
 
     # Step 2.5: Generate microstrategy
-    if not _run_microstrategy_step(section, planspace, codespace, parent, paths):
+    if not _run_microstrategy_step(section, planspace, codespace, parent):
         return None
 
     # Step 3: Strategic implementation
