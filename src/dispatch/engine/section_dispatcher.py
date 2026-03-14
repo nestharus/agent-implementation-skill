@@ -161,7 +161,7 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
         )
 
     run_result = agent_executor.run_agent(
-        model, prompt_path, output_path,
+        model, prompt_path,
         agent_file=agent_file, codespace=codespace, timeout=_SECTION_DISPATCH_TIMEOUT_SECONDS,
     )
     return _finalize_dispatch(run_result, output_path, planspace, monitor_handle)

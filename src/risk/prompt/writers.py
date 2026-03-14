@@ -46,7 +46,7 @@ def write_risk_assessment_prompt(
     lines.extend(["## Artifact Paths", "", "Read these artifacts for context:", ""])
     for title, path, kind in artifact_specs:
         if kind == "json":
-            lines.extend(_json_block(title, path, Services.artifact_io().read_json(path)))
+            lines.extend(_json_block(title, path))
         else:
             lines.extend(_artifact_block(title, path, kind))
 
@@ -60,7 +60,7 @@ def write_risk_assessment_prompt(
             )
         )
 
-    lines.extend(_json_block("Risk history", paths.risk_history(), None))
+    lines.extend(_json_block("Risk history", paths.risk_history()))
     lines.extend(_artifact_block("Monitor signals directory", paths.signals_dir(), "dir"))
 
     consequence_paths = sorted(
@@ -83,16 +83,12 @@ def write_risk_assessment_prompt(
 
 
 def write_optimization_prompt(
-    assessment: RiskAssessment,
-    package: RiskPackage,
-    parameters: dict,
     planspace: Path,
     scope: str,
     *,
     lightweight: bool = False,
 ) -> str:
     """Build the prompt for the Tool Agent (Execution Optimizer)."""
-    del assessment, package, parameters
     paths = PathRegistry(planspace)
     lines = [
         "# ROAL Execution Optimization",
@@ -104,9 +100,9 @@ def write_optimization_prompt(
         "Read these artifacts for context:",
         "",
     ]
-    lines.extend(_json_block("Risk parameters", paths.risk_parameters(), Services.artifact_io().read_json(paths.risk_parameters())))
-    lines.extend(_json_block("Tool registry", paths.tool_registry(), Services.artifact_io().read_json(paths.tool_registry())))
-    lines.extend(_json_block("Risk history", paths.risk_history(), None))
+    lines.extend(_json_block("Risk parameters", paths.risk_parameters()))
+    lines.extend(_json_block("Tool registry", paths.tool_registry()))
+    lines.extend(_json_block("Risk history", paths.risk_history()))
     if lightweight:
         lines.extend(
             [
@@ -141,8 +137,7 @@ def _artifact_block(title: str, path: Path, kind: str) -> list[str]:
     return lines
 
 
-def _json_block(title: str, path: Path, payload: object) -> list[str]:
-    del payload
+def _json_block(title: str, path: Path) -> list[str]:
     lines = [f"- {title}: `{path}`"]
     if not path.exists():
         lines[-1] += " (missing)"

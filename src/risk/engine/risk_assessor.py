@@ -203,9 +203,6 @@ def _validate_and_dispatch_optimization(
     """
     paths = PathRegistry(planspace)
     prompt = write_optimization_prompt(
-        assessment=assessment,
-        package=package,
-        parameters=parameters,
         planspace=planspace,
         scope=scope,
     )
@@ -241,9 +238,6 @@ def _validate_and_dispatch_lightweight_optimization(
     """Lightweight variant of optimization dispatch (includes try/except)."""
     paths = PathRegistry(planspace)
     prompt = write_optimization_prompt(
-        assessment=assessment,
-        package=package,
-        parameters=parameters,
         planspace=planspace,
         scope=scope,
         lightweight=True,

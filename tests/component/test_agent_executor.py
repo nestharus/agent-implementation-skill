@@ -38,7 +38,6 @@ def test_run_agent_invokes_agents_binary_with_expected_args(
     result = agent_executor.run_agent(
         "test-model",
         prompt_path,
-        output_path,
         agent_file="test-agent.md",
         codespace=codespace,
         timeout=123,
@@ -88,7 +87,6 @@ def test_run_agent_returns_timeout_result(
     result = agent_executor.run_agent(
         "test-model",
         prompt_path,
-        tmp_path / "output.md",
         agent_file="test-agent.md",
         timeout=45,
     )
@@ -111,6 +109,5 @@ def test_run_agent_requires_existing_agent_file(
         agent_executor.run_agent(
             "test-model",
             tmp_path / "prompt.md",
-            tmp_path / "output.md",
             agent_file="missing-agent.md",
         )

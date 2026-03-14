@@ -22,14 +22,12 @@ class AgentResult:
 def run_agent(
     model: str,
     prompt_path: Path,
-    output_path: Path,
     *,
     agent_file: str,
     codespace: Path | None = None,
     timeout: int = _DEFAULT_AGENT_TIMEOUT_SECONDS,
 ) -> AgentResult:
     """Run the ``agents`` binary and return the raw process result."""
-    del output_path
 
     if not agent_file:
         raise ValueError(

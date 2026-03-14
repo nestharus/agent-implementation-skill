@@ -91,9 +91,6 @@ def test_write_optimization_prompt_includes_assessment_and_parameters(
     _write_artifacts(tmp_path)
 
     prompt = write_optimization_prompt(
-        assessment,
-        package,
-        {"class_thresholds": {"explore": 60, "edit": 45}},
         tmp_path,
         "section-03",
     )
@@ -115,9 +112,6 @@ def test_write_optimization_prompt_marks_lightweight_single_pass_mode(
     _write_artifacts(tmp_path)
 
     prompt = write_optimization_prompt(
-        _assessment(),
-        _package(),
-        {"class_thresholds": {"explore": 60}},
         tmp_path,
         "section-03",
         lightweight=True,
