@@ -7,7 +7,7 @@ from pathlib import Path
 
 from containers import Services
 from reconciliation.engine.cross_section_reconciler import run_reconciliation_loop
-from implementation.engine.section_pipeline import run_section
+from orchestrator.engine.section_pipeline import run_section
 from orchestrator.types import ProposalPassResult, Section
 from signals.types import PASS_MODE_PROPOSAL
 

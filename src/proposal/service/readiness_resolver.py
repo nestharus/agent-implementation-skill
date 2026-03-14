@@ -356,7 +356,6 @@ def resolve_readiness(planspace: Path, section_number: str) -> ReadinessResult:
     }
 
     readiness_dir = paths.readiness_dir()
-    readiness_dir.mkdir(parents=True, exist_ok=True)
     artifact_path = paths.execution_ready(section_number)
     try:
         Services.artifact_io().write_json(artifact_path, serializable)

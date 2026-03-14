@@ -11,7 +11,6 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from orchestrator.path_registry import PathRegistry
-from flow.engine.flow_submitter import new_flow_id, submit_fanout
 from flow.types.context import FlowEnvelope
 from research.engine.orchestrator import ResearchState, load_research_status, validate_research_plan, write_research_status
 from research.engine.research_branch_builder import (
@@ -184,7 +183,7 @@ def _submit_fanout(
     # the token matches what the dispatcher will see.
     post_write_freshness = Services.freshness().compute(planspace, section_number)
 
-    flow_id = new_flow_id()
+    flow_id = Services.flow_ingestion().new_flow_id()
     gate = GateSpec(
         mode="all",
         failure_policy="include",
@@ -196,7 +195,7 @@ def _submit_fanout(
         ),
     )
     origin_refs = [str(paths.research_plan(section_number)), str(plan_output_path)]
-    submit_fanout(
+    Services.flow_ingestion().submit_fanout(
         FlowEnvelope(
             db_path=paths.run_db(),
             submitted_by=f"research-{section_number}",

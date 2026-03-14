@@ -32,8 +32,6 @@ class Decision:
 
 def record_decision(decisions_dir: Path, decision: Decision) -> None:
     """Write both JSON sidecar and prose appendix from a single Decision."""
-    decisions_dir.mkdir(parents=True, exist_ok=True)
-
     if not decision.timestamp:
         decision.timestamp = datetime.now(timezone.utc).isoformat()
 

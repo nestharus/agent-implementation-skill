@@ -9,7 +9,6 @@ from orchestrator.path_registry import PathRegistry
 from coordination.repository.notes import read_incoming_notes
 from proposal.repository.state import load_proposal_state
 from risk.service.engagement import determine_engagement
-from risk.engine.risk_assessor import run_lightweight_risk_check, run_risk_loop
 from risk.service.package_builder import build_package_from_proposal, read_package, refresh_package
 from risk.types import (
     EngagementContext,
@@ -20,7 +19,7 @@ from risk.types import (
 )
 from proposal.service.readiness_resolver import resolve_readiness
 from containers import Services
-from implementation.engine.section_pipeline import run_section
+from orchestrator.engine.section_pipeline import run_section
 from implementation.repository.roal_index import (
     IMPLEMENTATION_ROAL_KINDS,
     refresh_roal_input_index,
@@ -232,7 +231,7 @@ def _maybe_reassess_deferred_steps(
         return None
 
     hints = load_risk_hints(planspace, sec_num)
-    return run_risk_loop(
+    return Services.risk_assessment().run_risk_loop(
         planspace,
         scope,
         "implementation",
@@ -282,7 +281,7 @@ def _run_risk_review(
             risk_mode_hint=hints["risk_mode_hint"],
         )
         if engagement_mode == RiskMode.LIGHT:
-            plan = run_lightweight_risk_check(
+            plan = Services.risk_assessment().run_lightweight_check(
                 planspace,
                 scope,
                 "implementation",
@@ -290,7 +289,7 @@ def _run_risk_review(
                 posture_floor=hints["posture_floor"],
             )
         else:
-            plan = run_risk_loop(
+            plan = Services.risk_assessment().run_risk_loop(
                 planspace,
                 scope,
                 "implementation",
@@ -495,12 +494,7 @@ def _persist_section_hashes(
         sec_num, planspace, sections_by_num,
     )
 
-    baseline_hash_dir = paths.section_inputs_hashes_dir()
-    baseline_hash_dir.mkdir(parents=True, exist_ok=True)
     paths.section_input_hash(sec_num).write_text(cur_hash, encoding="utf-8")
-
-    phase2_hash_dir = paths.phase2_inputs_hashes_dir()
-    phase2_hash_dir.mkdir(parents=True, exist_ok=True)
     paths.phase2_input_hash(sec_num).write_text(cur_hash, encoding="utf-8")
 
 

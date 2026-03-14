@@ -14,6 +14,7 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 from intent.service.philosophy_bootstrap_state import (
+    BOOTSTRAP_FAILED,
     bootstrap_status_path,
     write_bootstrap_signal,
     write_bootstrap_status,
@@ -196,7 +197,7 @@ def validate_philosophy_grounding(
         )
         write_bootstrap_status(
             paths,
-            bootstrap_state="failed",
+            bootstrap_state=BOOTSTRAP_FAILED,
             blocking_state=BLOCKING_NEEDS_PARENT,
             source_mode=SOURCE_MODE_REPO,
             detail=detail,
@@ -225,7 +226,7 @@ def validate_philosophy_grounding(
         )
         write_bootstrap_status(
             paths,
-            bootstrap_state="failed",
+            bootstrap_state=BOOTSTRAP_FAILED,
             blocking_state=BLOCKING_NEEDS_PARENT,
             source_mode=content_failure.source_mode,
             detail=content_failure.detail,

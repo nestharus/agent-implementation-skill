@@ -11,7 +11,7 @@ from pathlib import Path
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.writers import write_integration_proposal_prompt
-from reconciliation.engine.cross_section_reconciler import load_reconciliation_result
+from reconciliation.repository.results import load_result as load_reconciliation_result
 
 
 def resolve_proposal_model(

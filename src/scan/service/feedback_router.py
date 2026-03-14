@@ -81,7 +81,6 @@ def _route_scope_deltas(
 
     paths = PathRegistry(artifacts_dir.parent)
     scope_deltas_dir = paths.scope_deltas_dir()
-    scope_deltas_dir.mkdir(parents=True, exist_ok=True)
 
     for section_file in section_files:
         sec_name = section_file.stem

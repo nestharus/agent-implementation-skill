@@ -21,6 +21,7 @@ from intake.service.governance_packet_builder import build_section_governance_pa
 from orchestrator.types import PauseType, Section
 
 from pipeline import AlignmentGuard, Pipeline, PipelineContext, Step
+from intent.service.philosophy_bootstrap_state import BOOTSTRAP_READY
 from signals.types import BLOCKING_NEEDS_PARENT, BLOCKING_NEED_DECISION, INTENT_MODE_FULL, INTENT_MODE_LIGHTWEIGHT
 
 _SECTION_SUMMARY_TRUNCATION = 500
@@ -74,7 +75,6 @@ def _step_extract_todos(ctx: PipelineContext) -> str:
     """Extract TODO comments from related files and record traceability."""
     paths = ctx.paths
     todos_path = paths.todos(ctx.section.number)
-    paths.todos_dir().mkdir(parents=True, exist_ok=True)
 
     todo_entries = extract_todos_from_files(
         ctx.codespace, ctx.section.related_files,
@@ -117,7 +117,7 @@ def _step_philosophy(ctx: PipelineContext) -> dict:
         ctx.planspace, ctx.codespace, ctx.parent,
     )
 
-    if result["status"] != "ready":
+    if result["status"] != BOOTSTRAP_READY:
         blocking_state = result.get("blocking_state")
         sec = ctx.section.number
         if blocking_state == BLOCKING_NEED_DECISION:

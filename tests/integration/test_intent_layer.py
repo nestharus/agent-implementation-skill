@@ -701,7 +701,7 @@ class TestRunnerIntentIntegration:
 
         mock_dispatch.side_effect = track_calls
 
-        from implementation.engine.section_pipeline import run_section
+        from orchestrator.engine.section_pipeline import run_section
         result = run_section(
             intent_planspace, codespace, section, "parent",
         )
@@ -767,7 +767,7 @@ class TestRunnerIntentIntegration:
 
         mock_dispatch.side_effect = track_calls
 
-        from implementation.engine.section_pipeline import run_section
+        from orchestrator.engine.section_pipeline import run_section
         run_section(intent_planspace, codespace, section, "parent")
 
         # Verify alignment-judge.md was used (not intent-judge.md)
@@ -1164,7 +1164,7 @@ class TestIntentConventions:
 
         mock_dispatch.side_effect = track_calls
 
-        from implementation.engine.section_pipeline import run_section
+        from orchestrator.engine.section_pipeline import run_section
         run_section(intent_planspace, codespace, section, "parent")
 
         # intent-pack-generator must come AFTER TODO extraction
@@ -1178,7 +1178,7 @@ class TestIntentConventions:
         """proposal_max and implementation_max from triage reach cycle budget (V7/R53)."""
         # V1/R75: philosophy is now a gate — mock it as available
         monkeypatch.setattr(
-            "implementation.engine.section_pipeline.ensure_global_philosophy",
+            "orchestrator.engine.section_pipeline.ensure_global_philosophy",
             MagicMock(return_value={
                 "status": "ready",
                 "blocking_state": None,
@@ -1232,7 +1232,7 @@ class TestIntentConventions:
 
         mock_dispatch.side_effect = track_calls
 
-        from implementation.engine.section_pipeline import run_section
+        from orchestrator.engine.section_pipeline import run_section
         run_section(intent_planspace, codespace, section, "parent")
 
         # Read cycle budget and verify triage keys are present
@@ -1249,7 +1249,7 @@ class TestIntentConventions:
         """Malformed cycle budget → renamed + proceeds (V6/R53)."""
         # V1/R75: philosophy is now a gate — mock it as available
         monkeypatch.setattr(
-            "implementation.engine.section_pipeline.ensure_global_philosophy",
+            "orchestrator.engine.section_pipeline.ensure_global_philosophy",
             MagicMock(return_value={
                 "status": "ready",
                 "blocking_state": None,
@@ -1302,7 +1302,7 @@ class TestIntentConventions:
 
         mock_dispatch.side_effect = track_calls
 
-        from implementation.engine.section_pipeline import run_section
+        from orchestrator.engine.section_pipeline import run_section
         # Should not crash
         run_section(intent_planspace, codespace, section, "parent")
 
@@ -1369,7 +1369,7 @@ class TestIntentConventions:
         mock_dispatch.side_effect = track_calls
         section = _make_intent_section(intent_planspace, intent_planspace)
 
-        from implementation.engine.section_pipeline import run_section
+        from orchestrator.engine.section_pipeline import run_section
         run_section(intent_planspace, intent_planspace, section, "parent")
 
         # First model is GLM (triage), second is escalation model

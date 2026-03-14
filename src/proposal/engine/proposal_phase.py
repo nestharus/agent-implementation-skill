@@ -11,7 +11,6 @@ from orchestrator.repository.section_artifacts import write_section_input_artifa
 from implementation.repository.roal_index import refresh_roal_input_index
 from proposal.repository.state import ProposalState, load_proposal_state
 from risk.service.engagement import determine_engagement
-from risk.engine.risk_assessor import run_lightweight_risk_check
 from risk.service.package_builder import build_package_from_proposal
 
 _RAW_RISK_EXPLORATION_THRESHOLD = 60
@@ -21,7 +20,7 @@ from risk.types import EngagementContext, RiskAssessment, RiskMode, RiskPackage,
 from scan.service.section_loader import parse_related_files
 from containers import Services
 from implementation.service.section_reexplorer import reexplore_section
-from implementation.engine.section_pipeline import run_section
+from orchestrator.engine.section_pipeline import run_section
 from orchestrator.types import ProposalPassResult, Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from signals.types import PASS_MODE_PROPOSAL, SIGNAL_NEEDS_PARENT
@@ -217,7 +216,7 @@ def _risk_check_proposal(
         risk_mode = _resolve_triage_engagement(
             paths, sec_num, advisory_package, proposal_state,
         )
-        run_lightweight_risk_check(
+        Services.risk_assessment().run_lightweight_check(
             planspace,
             advisory_scope,
             "proposal",

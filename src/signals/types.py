@@ -28,6 +28,7 @@ ALIGNMENT_INVALID_FRAME = "INVALID_FRAME"
 
 # ── pass mode constants (section pipeline) ───────────────────────────
 
+PASS_MODE_FULL = "full"
 PASS_MODE_PROPOSAL = "proposal"
 PASS_MODE_IMPLEMENTATION = "implementation"
 

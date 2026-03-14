@@ -119,7 +119,6 @@ def _apply_alignment_outcome(
         adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
     )
     main_signal_dir = paths.signals_dir()
-    main_signal_dir.mkdir(parents=True, exist_ok=True)
     signal, detail = Services.dispatch_helpers().check_agent_signals(
         signal_path=main_signal_dir / f"global-align-{sec_num}-signal.json",
     )
@@ -148,7 +147,6 @@ def run_global_alignment_recheck(
     Services.logger().log("Re-checking alignment across all sections...")
 
     phase2_hash_dir = paths.phase2_inputs_hashes_dir()
-    phase2_hash_dir.mkdir(parents=True, exist_ok=True)
 
     for section in sections_by_num.values():
         abort_status = _recheck_section(

@@ -47,7 +47,6 @@ def extract_excerpts(
     policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
     signal_dir = paths.signals_dir()
-    signal_dir.mkdir(parents=True, exist_ok=True)
 
     while (
         not excerpt_exists(planspace, section.number, "proposal")

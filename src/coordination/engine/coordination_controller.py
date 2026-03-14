@@ -115,7 +115,6 @@ def _report_result(
         )
         build_strategic_state(decisions_dir, section_results, planspace)
         rollup_dir = paths.coordination_dir()
-        rollup_dir.mkdir(parents=True, exist_ok=True)
         Services.artifact_io().write_json(
             rollup_dir / "coordination-exhausted.json",
             [

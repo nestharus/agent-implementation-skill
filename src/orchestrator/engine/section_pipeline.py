@@ -28,7 +28,7 @@ from reconciliation.engine.cross_section_reconciler import load_reconciliation_r
 from implementation.service.microstrategy_decider import extract_todos_from_files
 from signals.types import (
     ACTION_ABORT, ACTION_SKIP,
-    PASS_MODE_IMPLEMENTATION, PASS_MODE_PROPOSAL,
+    PASS_MODE_FULL, PASS_MODE_IMPLEMENTATION, PASS_MODE_PROPOSAL,
 )
 
 
@@ -328,7 +328,7 @@ def run_section(
     planspace: Path, codespace: Path, section: Section, parent: str,
     all_sections: list[Section] | None = None,
     *,
-    pass_mode: str = "full",
+    pass_mode: str = PASS_MODE_FULL,
 ) -> list[str] | ProposalPassResult | None:
     """Run a section through the strategic flow.
 

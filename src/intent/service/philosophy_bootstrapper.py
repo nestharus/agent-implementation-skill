@@ -38,6 +38,11 @@ from intent.service.philosophy_grounding import (
     validate_philosophy_grounding,
 )
 from intent.service.philosophy_bootstrap_state import (
+    BOOTSTRAP_DISCOVERING,
+    BOOTSTRAP_DISTILLING,
+    BOOTSTRAP_FAILED,
+    BOOTSTRAP_NEEDS_USER_INPUT,
+    BOOTSTRAP_READY,
     BootstrapResult,
     bootstrap_decisions_path as _bootstrap_decisions_path,
     bootstrap_guidance_path as _bootstrap_guidance_path,
@@ -288,7 +293,7 @@ def _request_user_philosophy(
         )
     return _block_bootstrap(
         paths,
-        bootstrap_state="needs_user_input",
+        bootstrap_state=BOOTSTRAP_NEEDS_USER_INPUT,
         blocking_state=BLOCKING_NEED_DECISION,
         source_mode=source_mode,
         detail=signal_detail or detail,
@@ -340,13 +345,13 @@ def _check_philosophy_freshness(ctx: _BootstrapContext) -> dict[str, Any] | None
         ready_detail = "Operational philosophy already exists."
         _write_bootstrap_status(
             ctx.paths,
-            bootstrap_state="ready",
+            bootstrap_state=BOOTSTRAP_READY,
             blocking_state=None,
             source_mode=SOURCE_MODE_REPO,
             detail=ready_detail,
         )
         return _bootstrap_result(
-            status="ready",
+            status=BOOTSTRAP_READY,
             blocking_state=None,
             philosophy_path=ctx.philosophy_path,
             detail=ready_detail,
@@ -389,13 +394,13 @@ def _check_philosophy_freshness(ctx: _BootstrapContext) -> dict[str, Any] | None
     source_mode = _manifest_source_mode(manifest)
     _write_bootstrap_status(
         ctx.paths,
-        bootstrap_state="ready",
+        bootstrap_state=BOOTSTRAP_READY,
         blocking_state=None,
         source_mode=source_mode,
         detail=ready_detail,
     )
     return _bootstrap_result(
-        status="ready",
+        status=BOOTSTRAP_READY,
         blocking_state=None,
         philosophy_path=ctx.philosophy_path,
         detail=ready_detail,
@@ -445,7 +450,7 @@ def _resolve_source_records(ctx: _BootstrapContext) -> dict[str, Any] | None:
     _clear_bootstrap_signal(ctx.paths)
     _write_bootstrap_status(
         ctx.paths,
-        bootstrap_state="discovering",
+        bootstrap_state=BOOTSTRAP_DISCOVERING,
         blocking_state=None,
         source_mode=ctx.source_mode,
         detail=(
@@ -521,7 +526,7 @@ def _handle_selector_failure(
         extras["preserved_signal"] = preserved
     return _block_bootstrap(
         ctx.paths,
-        bootstrap_state="failed",
+        bootstrap_state=BOOTSTRAP_FAILED,
         blocking_state=BLOCKING_NEEDS_PARENT,
         source_mode=SOURCE_MODE_NONE,
         detail=detail,
@@ -551,7 +556,7 @@ def _run_source_selector(ctx: _BootstrapContext) -> dict[str, Any] | None:
         return _block_bootstrap(
             ctx.paths,
             status="failed",
-            bootstrap_state="failed",
+            bootstrap_state=BOOTSTRAP_FAILED,
             blocking_state=BLOCKING_NEEDS_PARENT,
             source_mode=SOURCE_MODE_NONE,
             detail=(
@@ -696,7 +701,7 @@ def _handle_verifier_failure(
         extras["preserved_signal"] = preserved
     return _block_bootstrap(
         ctx.paths,
-        bootstrap_state="failed",
+        bootstrap_state=BOOTSTRAP_FAILED,
         blocking_state=BLOCKING_NEEDS_PARENT,
         source_mode=SOURCE_MODE_REPO,
         detail=(
@@ -736,7 +741,7 @@ def _run_source_verifier(ctx: _BootstrapContext) -> dict[str, Any] | None:
         return _block_bootstrap(
             ctx.paths,
             status="failed",
-            bootstrap_state="failed",
+            bootstrap_state=BOOTSTRAP_FAILED,
             blocking_state=BLOCKING_NEEDS_PARENT,
             source_mode=SOURCE_MODE_REPO,
             detail=(
@@ -825,7 +830,7 @@ def _validate_selected_sources(ctx: _BootstrapContext) -> dict[str, Any] | None:
         return _block_bootstrap(
             ctx.paths,
             status="failed",
-            bootstrap_state="failed",
+            bootstrap_state=BOOTSTRAP_FAILED,
             blocking_state=BLOCKING_NEEDS_PARENT,
             source_mode=SOURCE_MODE_NONE,
             detail=(
@@ -857,7 +862,7 @@ def _validate_selected_sources(ctx: _BootstrapContext) -> dict[str, Any] | None:
         return _block_bootstrap(
             ctx.paths,
             status="failed",
-            bootstrap_state="failed",
+            bootstrap_state=BOOTSTRAP_FAILED,
             blocking_state=BLOCKING_NEEDS_PARENT,
             source_mode=SOURCE_MODE_NONE,
             detail=(
@@ -885,7 +890,7 @@ def _run_distiller(ctx: _BootstrapContext) -> dict[str, Any] | None:
     _clear_bootstrap_signal(ctx.paths)
     _write_bootstrap_status(
         ctx.paths,
-        bootstrap_state="distilling",
+        bootstrap_state=BOOTSTRAP_DISTILLING,
         blocking_state=None,
         source_mode=ctx.source_mode if ctx.source_mode != SOURCE_MODE_NONE else SOURCE_MODE_REPO,
         detail=(
@@ -909,7 +914,7 @@ def _run_distiller(ctx: _BootstrapContext) -> dict[str, Any] | None:
         return _block_bootstrap(
             ctx.paths,
             status="failed",
-            bootstrap_state="failed",
+            bootstrap_state=BOOTSTRAP_FAILED,
             blocking_state=BLOCKING_NEEDS_PARENT,
             source_mode=SOURCE_MODE_REPO,
             detail=(
@@ -939,7 +944,7 @@ def _run_distiller(ctx: _BootstrapContext) -> dict[str, Any] | None:
 
         if result == ALIGNMENT_CHANGED_PENDING:
             return _bootstrap_result(
-                status="ready",
+                status=BOOTSTRAP_READY,
                 blocking_state=None,
                 philosophy_path=ctx.philosophy_path,
                 detail="Alignment changed while philosophy bootstrap was running.",
@@ -1073,7 +1078,7 @@ def _handle_distiller_failure(
         extras["preserved_signal"] = preserved
     return _block_bootstrap(
         ctx.paths,
-        bootstrap_state="failed",
+        bootstrap_state=BOOTSTRAP_FAILED,
         blocking_state=BLOCKING_NEEDS_PARENT,
         source_mode=SOURCE_MODE_REPO,
         detail=detail,
@@ -1125,13 +1130,13 @@ def _finalize_philosophy(ctx: _BootstrapContext) -> dict[str, Any]:
     ready_detail = "Operational philosophy distilled and validated."
     _write_bootstrap_status(
         ctx.paths,
-        bootstrap_state="ready",
+        bootstrap_state=BOOTSTRAP_READY,
         blocking_state=None,
         source_mode=ctx.source_mode if ctx.source_mode != SOURCE_MODE_NONE else SOURCE_MODE_REPO,
         detail=ready_detail,
     )
     return _bootstrap_result(
-        status="ready",
+        status=BOOTSTRAP_READY,
         blocking_state=None,
         philosophy_path=ctx.philosophy_path,
         detail=ready_detail,
@@ -1150,7 +1155,6 @@ def ensure_global_philosophy(
     policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
     intent_global = paths.intent_global_dir()
-    intent_global.mkdir(parents=True, exist_ok=True)
 
     ctx = _BootstrapContext(
         planspace=planspace,
@@ -1164,7 +1168,7 @@ def ensure_global_philosophy(
 
     _write_bootstrap_status(
         paths,
-        bootstrap_state="discovering",
+        bootstrap_state=BOOTSTRAP_DISCOVERING,
         blocking_state=None,
         source_mode=SOURCE_MODE_NONE,
         detail="Discovering philosophy sources for bootstrap.",

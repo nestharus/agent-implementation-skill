@@ -34,6 +34,12 @@ class BootstrapResult:
 
 # ── constants ─────────────────────────────────────────────────────────
 
+BOOTSTRAP_READY = "ready"
+BOOTSTRAP_FAILED = "failed"
+BOOTSTRAP_DISCOVERING = "discovering"
+BOOTSTRAP_DISTILLING = "distilling"
+BOOTSTRAP_NEEDS_USER_INPUT = "needs_user_input"
+
 BOOTSTRAP_SIGNAL_NAME = "philosophy-bootstrap-signal.json"
 BOOTSTRAP_STATUS_NAME = "philosophy-bootstrap-status.json"
 BOOTSTRAP_GUIDANCE_NAME = "philosophy-bootstrap-guidance.json"

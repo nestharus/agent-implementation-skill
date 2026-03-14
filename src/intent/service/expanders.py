@@ -285,7 +285,6 @@ def adjudicate_recurrence(
     paths = PathRegistry(planspace)
     artifacts = paths.artifacts
     signals_dir = paths.signals_dir()
-    signals_dir.mkdir(parents=True, exist_ok=True)
 
     recurrence_signal = {
         "section": section_number,

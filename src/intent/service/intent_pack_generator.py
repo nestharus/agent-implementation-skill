@@ -315,7 +315,6 @@ def generate_intent_pack(
     paths = PathRegistry(planspace)
     sec = section.number
     intent_sec = paths.intent_section_dir(sec)
-    intent_sec.mkdir(parents=True, exist_ok=True)
 
     problem_path = intent_sec / "problem.md"
     rubric_path = intent_sec / "problem-alignment.md"

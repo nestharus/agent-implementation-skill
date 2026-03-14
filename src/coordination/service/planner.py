@@ -197,7 +197,6 @@ def write_coordination_plan_prompt(
     """Write an Opus prompt to plan coordination strategy for problems."""
     paths = PathRegistry(planspace)
     coord_dir = paths.coordination_dir()
-    coord_dir.mkdir(parents=True, exist_ok=True)
     prompt_path = coord_dir / "coordination-plan-prompt.md"
 
     problems_path = coord_dir / "problems.json"

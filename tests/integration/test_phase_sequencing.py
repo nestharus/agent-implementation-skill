@@ -25,6 +25,7 @@ from implementation.engine.implementation_phase import (
 from proposal.engine.proposal_phase import ProposalPassExit, run_proposal_pass
 from reconciliation.engine.reconciliation_phase import run_reconciliation_phase
 from orchestrator.types import ProposalPassResult, Section, SectionResult
+from signals.types import PASS_MODE_FULL
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +275,7 @@ class TestBlockedSectionsExcludedFromImplementation:
 
         def track_run_section(
             planspace, codespace, section, parent, *,
-            all_sections=None, pass_mode="full",
+            all_sections=None, pass_mode=PASS_MODE_FULL,
         ):
             dispatched_sections.append(section.number)
             return ["src/main.py"]  # modified files
@@ -450,7 +451,7 @@ class TestFullPhaseSequence:
         # --- Phase 1c: Implementation ---
         def mock_run_section(
             planspace, codespace, section, parent, *,
-            all_sections=None, pass_mode="full",
+            all_sections=None, pass_mode=PASS_MODE_FULL,
         ):
             return [f"src/feature_{section.number}.py"]
 
@@ -517,7 +518,7 @@ class TestFullPhaseSequence:
         # Implementation
         def mock_run_section(
             planspace, codespace, section, parent, *,
-            all_sections=None, pass_mode="full",
+            all_sections=None, pass_mode=PASS_MODE_FULL,
         ):
             return [f"src/feature_{section.number}.py"]
 

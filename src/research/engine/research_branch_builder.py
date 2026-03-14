@@ -111,7 +111,6 @@ def emit_not_researchable_signals(
     """Route planner-declared non-researchable items into blocker signals."""
     paths = PathRegistry(planspace)
     signals_dir = paths.signals_dir()
-    signals_dir.mkdir(parents=True, exist_ok=True)
 
     for index, item in enumerate(items):
         question = str(item.get("question", "")).strip()
@@ -221,15 +220,15 @@ def _build_both_branch(
     concern_scope = f"section-{section_number}"
     problem_id = f"research-{section_number}-{ticket_id}"
     web_ticket = dict(ticket)
-    web_ticket["research_type"] = "web"
+    web_ticket["research_type"] = RESEARCH_TYPE_WEB
     web_ticket["output_path"] = str(
         PathRegistry(planspace).research_ticket_result(
             section_number,
             ticket_index,
-            "web",
+            RESEARCH_TYPE_WEB,
         )
     )
-    web_ticket["_phase"] = "web"
+    web_ticket["_phase"] = RESEARCH_TYPE_WEB
     web_prompt = write_research_ticket_prompt(
         section_number,
         planspace,

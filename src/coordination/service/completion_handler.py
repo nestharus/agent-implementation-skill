@@ -114,7 +114,6 @@ def _write_contract_artifacts(
         return
 
     contracts_dir = paths.contracts_dir()
-    contracts_dir.mkdir(parents=True, exist_ok=True)
     modified_set = set(modified_files)
     target_files_map = {
         s.number: set(s.related_files) for s in all_sections

@@ -2,12 +2,6 @@ import logging
 import sys
 from pathlib import Path
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(name)s] %(message)s",
-    stream=sys.stderr,
-)
-
 from intake.service.assessment_evaluator import promote_debt_signals
 from intake.repository.governance_loader import bootstrap_governance_if_missing, build_governance_indexes
 from coordination.engine.coordination_controller import run_coordination_loop
@@ -22,14 +16,18 @@ from scan.service.project_mode import resolve_project_mode, write_mode_contract
 from proposal.engine.proposal_phase import ProposalPassExit, run_proposal_pass
 from reconciliation.engine.reconciliation_phase import ReconciliationPhaseExit, run_reconciliation_phase
 from scan.service.section_loader import load_sections
-
 from flow.service.task_db_client import init_db
-
 from containers import Services
 from pipeline.context import DispatchContext
 from signals.types import TRUNCATE_SUMMARY
 from orchestrator.engine.strategic_state_builder import build_strategic_state
 from orchestrator.types import PipelineAbortError, SectionResult
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(name)s] %(message)s",
+    stream=sys.stderr,
+)
 
 _MAX_BLOCKERS_IN_SUMMARY = 3
 

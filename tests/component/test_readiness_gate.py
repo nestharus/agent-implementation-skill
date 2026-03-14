@@ -116,11 +116,11 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.compute_trigger_hash",
-        lambda questions: "hash-03",
+        "containers.ResearchOrchestratorService.compute_trigger_hash",
+        lambda self, questions: "hash-03",
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.is_research_complete_for_trigger",
+        "containers.ResearchOrchestratorService.is_complete_for_trigger",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
@@ -142,8 +142,8 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
             return "fresh-03"
     Services.freshness.override(providers.Object(_StubFreshness()))
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.write_research_status",
-        lambda section_number, ps, status, **kwargs: status_writes.append(
+        "containers.ResearchOrchestratorService.write_status",
+        lambda self, section_number, ps, status, **kwargs: status_writes.append(
             (section_number, ps, status, kwargs)
         ),
     )
@@ -241,11 +241,11 @@ def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.compute_trigger_hash",
-        lambda questions: "hash-03",
+        "containers.ResearchOrchestratorService.compute_trigger_hash",
+        lambda self, questions: "hash-03",
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.is_research_complete_for_trigger",
+        "containers.ResearchOrchestratorService.is_complete_for_trigger",
         lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
@@ -305,11 +305,11 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.compute_trigger_hash",
-        lambda questions: "hash-03",
+        "containers.ResearchOrchestratorService.compute_trigger_hash",
+        lambda self, questions: "hash-03",
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.is_research_complete_for_trigger",
+        "containers.ResearchOrchestratorService.is_complete_for_trigger",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
@@ -325,8 +325,8 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
     )
     status_writes: list[tuple[str, Path, str, dict]] = []
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.write_research_status",
-        lambda section_number, ps, status, **kwargs: status_writes.append(
+        "containers.ResearchOrchestratorService.write_status",
+        lambda self, section_number, ps, status, **kwargs: status_writes.append(
             (section_number, ps, status, kwargs)
         ),
     )

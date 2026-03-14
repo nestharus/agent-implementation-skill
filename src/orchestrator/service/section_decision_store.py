@@ -25,7 +25,6 @@ def read_decisions(planspace: Path, section_number: str) -> str:
 def persist_decision(planspace: Path, section_number: str, decision_text: str) -> None:
     """Persist a resume payload as a decision for a section."""
     decisions_dir = PathRegistry(planspace).decisions_dir()
-    decisions_dir.mkdir(parents=True, exist_ok=True)
 
     existing = load_decisions(decisions_dir, section=section_number)
     next_num = len(existing) + 1

@@ -1241,3 +1241,83 @@ Functions that accept parameters which could be computed from other parameters a
 
 ### 67. Complex tuple return types instead of result dataclasses
 - **Status**: DONE — all 8 worst offenders (3+ element tuples) replaced with frozen dataclasses.
+
+### ~~162. `section_pipeline.py` is a cross-domain orchestrator misplaced in `implementation/`~~ DONE
+- **Category**: Structural placement / hidden composition layer
+- **Source**: Architectural coupling analysis (R119)
+- **Problem**: `implementation/engine/section_pipeline.py` orchestrates intent → proposal → implementation → reconciliation for a single section. It imports engine modules from 4+ different domain systems (intent, proposal, implementation, reconciliation). Three different phase orchestrators call it. It's doing `orchestrator/`-level work from inside `implementation/`.
+- **Risk**: Cross-domain god-module. 21 outbound couplings to 9+ systems. Cannot reason about section-level workflow without reading an implementation-domain file. Hides the composition structure.
+- **Fix**: Move to `orchestrator/engine/section_pipeline.py` since `orchestrator/` is the declared composition layer.
+- **Status**: DONE — Moved to `orchestrator/engine/section_pipeline.py`. Updated all 3 production callers and 4 test files. Left re-export shim in old location for backwards compatibility.
+
+### ~~163. PathRegistry not in DI container — 249+ ad-hoc instantiations~~ CLOSED
+- **Category**: DI migration gap
+- **Source**: Architectural coupling analysis (R119)
+- **Problem**: `PathRegistry` is instantiated ad-hoc (`PathRegistry(planspace)`) in 249+ locations across the codebase. It's the most-used cross-cutting service but is the only major service NOT in the DI container. Top instantiators: `context_sidecar.py` (11×), `implementation_cycle.py` (8×), `risk_artifacts.py` (7×).
+- **Resolution**: Won't fix — PathRegistry is a pure value object with no side effects, no external dependencies, and no state that needs mocking. It's parameterized by `planspace`, so a DI Factory provider (`Services.path_registry(planspace)`) would be functionally identical to `PathRegistry(planspace)` with extra indirection. Tests already isolate by passing test directories. The 249 instantiation sites are the correct pattern for a planspace-scoped value object.
+
+### ~~164. `ensure_artifacts_tree()` centralizes all domain directory concerns in `orchestrator/`~~ DONE
+- **Category**: Cross-cutting concern coupling
+- **Source**: Architectural coupling analysis (R119)
+- **Problem**: `PathRegistry.ensure_artifacts_tree()` creates 27 directories spanning all 18 domain systems. The orchestrator module must know the directory layout of coordination, reconciliation, intent, risk, governance, research, scan, etc. Additionally, 71 defensive `mkdir` calls are scattered across domain modules duplicating what the tree setup should guarantee.
+- **Risk**: Adding a new domain directory requires editing orchestrator/path_registry.py. Domains can't declare their own directory needs.
+- **Fix**: Each domain package registers its required directories. PathRegistry iterates registrations at startup. Remove defensive mkdir calls that duplicate tree setup.
+- **Status**: DONE — Replaced hardcoded 31-directory list with `@_artifact_dir` decorator pattern. Adding a new directory only requires decorating the accessor method. Removed 13 redundant defensive `mkdir` calls across 11 files. Added 2 previously missing directories (`section_inputs_hashes_dir`, `phase2_inputs_hashes_dir`) to the tree.
+
+### ~~165. `db.sh recv` polling spins up a new Python interpreter every 0.5s~~ DONE
+- **Category**: Performance / technology boundary violation
+- **Source**: External code review (R119)
+- **Problem**: The `recv` command in `db.sh` polls for messages in a bash `while true` loop. Each iteration spawns a new `python3` process to connect to SQLite, run a query, and exit. With a 0.5s poll interval, this creates ~120 Python process spawns per minute per waiting agent. `DatabaseClient.recv()` wraps this with `subprocess.run`, adding another process boundary.
+- **Risk**: CPU thrashing on multi-agent pipelines. Each poll = fork + Python startup + SQLite connect + query + teardown.
+- **Fix**: Rewrite `recv` as a pure Python method on `DatabaseClient` that keeps a single SQLite connection open and polls with `time.sleep()`. No daemon needed — just eliminate the bash-spawns-python-in-a-loop pattern.
+- **Status**: DONE — `DatabaseClient.recv()` rewritten as pure Python with a single persistent SQLite connection, in-process poll loop, and atomic message claiming. Returns `CompletedProcess`-compatible object so `MailboxService.recv` is unchanged. `db.sh recv` still exists for external CLI use but is no longer called from Python.
+
+### ~~166. PEP 8 import order violation in `pipeline_orchestrator.py`~~ DONE
+- **Category**: Style / import hygiene
+- **Source**: External code review (R119)
+- **Problem**: `pipeline_orchestrator.py` runs `logging.basicConfig()` (lines 5-9) between the stdlib imports and the local module imports. PEP 8 says all imports should be at the top before any executable code.
+- **Fix**: Move `logging.basicConfig()` below all imports, or into the `main()` function.
+- **Status**: DONE — Moved `logging.basicConfig()` below all imports.
+
+### ~~167. 16 engine→engine direct imports — steps calling steps~~ DONE
+- **Category**: Architectural coupling / missing composition
+- **Source**: Architectural coupling analysis (R119)
+- **Problem**: 16 instances of engine modules directly importing and calling other engine modules across domain boundaries. Proposal→implementation, implementation→risk, reconciliation→implementation, flow↔research (bidirectional). The "steps calling steps" pattern means workflow composition is implicit in the call chain rather than declared in one place.
+- **Scale**: 73 total cross-domain imports between engine/service modules. 16 engine→engine, 33 engine→service, 23 service→service.
+- **Status**: DONE — Reduced from 16 to 0 non-orchestrator cross-domain engine→engine function imports:
+  - Moved `section_pipeline.py` to `orchestrator/engine/` (#162) — eliminated 10 couplings
+  - Added `RiskAssessmentService` to DI container — `proposal_phase` and `implementation_phase` now call `Services.risk_assessment()` instead of importing `risk.engine.risk_assessor` directly (2 couplings)
+  - Added `ResearchOrchestratorService` to DI container — `flow/engine/reconciler` and `proposal/engine/readiness_gate` now call `Services.research()` instead of importing `research.engine.*` directly (3 couplings)
+  - Added `submit_fanout`/`new_flow_id` to `FlowIngestionService` — `research/engine/research_plan_executor` now calls `Services.flow_ingestion()` instead of importing `flow.engine.flow_submitter` directly (1 coupling)
+  - One remaining cross-domain engine import is `ResearchState` enum (a type, not a function call) — acceptable.
+
+### ~~168. Magic string literals for pass_mode and research_type~~ DONE
+- **Category**: Naming & identity / constants
+- **Source**: Rescan after #167
+- **Problem**: Raw string literals `"web"`, `"code"`, `"both"` used in `research/engine/research_branch_builder.py` and `research/prompt/writers.py` instead of `RESEARCH_TYPE_*` constants from `signals/types.py`. Also `"full"` used as default `pass_mode` in `section_pipeline.py` and tests without a corresponding constant.
+- **Status**: DONE — Added `PASS_MODE_FULL` constant to `signals/types.py`. Replaced all raw string usage with constants in `research_branch_builder.py`, `research/prompt/writers.py`, `section_pipeline.py`, and `test_phase_sequencing.py`.
+
+### ~~169. Magic string bootstrap_state/status values in intent system~~ DONE
+- **Category**: Naming & identity / constants
+- **Source**: Rescan after #168
+- **Problem**: `"ready"`, `"failed"`, `"discovering"`, `"distilling"`, `"needs_user_input"` used as bare strings for bootstrap_state/status across `philosophy_bootstrapper.py` (20+ uses), `intent_initializer.py`, and `philosophy_grounding.py`. Also `"planned"` and `"failed"` passed as bare strings to `Services.research().write_status()` in `readiness_gate.py`.
+- **Status**: DONE — Added `BOOTSTRAP_*` constants to `philosophy_bootstrap_state.py`, added `ResearchState.PLANNED` to the enum, replaced all occurrences. Also removed 3 redundant `mkdir` calls in `readiness_gate.py` and `excerpt_extractor.py` for directories already created by `ensure_artifacts_tree()`.
+
+### ~~170. Redundant mkdir calls in intent services~~ DONE
+- **Category**: Dead code / redundant operations
+- **Source**: Rescan after #169
+- **Problem**: `intent/service/expanders.py` and `intent/service/intent_pack_generator.py` called `mkdir(parents=True, exist_ok=True)` on directories already created by `PathRegistry.ensure_artifacts_tree()` (`signals_dir` and `intent_section_dir`).
+- **Status**: DONE — Removed both redundant mkdir calls. Tests pass.
+
+### ~~171. `load_reconciliation_result` lives in engine, imported cross-domain by proposal service~~ DONE
+- **Category**: Architectural coupling / misplaced module
+- **Source**: Rescan after #169
+- **Problem**: `proposal/service/proposal_prep.py` imports `load_reconciliation_result` from `reconciliation/engine/cross_section_reconciler.py`. This is a data-loading function (reads JSON) that belongs in `reconciliation/repository/`, not `engine/`. The cross-domain engine import violates the boundary that #167 established.
+- **Scale**: Used in 3 places: `proposal_prep.py`, `section_pipeline.py` (orchestrator, OK), and defined in `cross_section_reconciler.py`.
+- **Status**: DONE — Redirected `proposal_prep.py` to import `load_result` from `reconciliation/repository/results.py` instead. The repository function already existed; the engine function was just a thin wrapper.
+
+### ~~172. Redundant mkdir calls in readiness_resolver, pipeline_control, global_alignment_rechecker~~ DONE
+- **Category**: Dead code / redundant operations
+- **Source**: Rescan after #171
+- **Problem**: Three more `mkdir(parents=True, exist_ok=True)` calls on directories already created by `ensure_artifacts_tree()`: `readiness_dir` in `proposal/service/readiness_resolver.py`, `section_inputs_hashes_dir` in `orchestrator/service/pipeline_control.py`, and `phase2_inputs_hashes_dir` in `staleness/service/global_alignment_rechecker.py`.
+- **Status**: DONE — Removed all three redundant mkdir calls.

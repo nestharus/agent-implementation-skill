@@ -3,11 +3,21 @@
 Foundational service (Tier 1). No domain knowledge beyond directory layout.
 Initialized with a planspace Path, provides typed accessors for all known
 artifact locations. Replaces 142+ ad-hoc path constructions.
+
+Directory accessors decorated with ``@_artifact_dir`` are automatically
+included in ``ensure_artifacts_tree()``.  Adding a new directory accessor
+requires only the decorator — no manual list maintenance.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+
+
+def _artifact_dir(fn):
+    """Mark a method as an artifact directory to be created at startup."""
+    fn._is_artifact_dir = True
+    return fn
 
 
 class PathRegistry:
@@ -26,75 +36,55 @@ class PathRegistry:
         return self._artifacts
 
     def ensure_artifacts_tree(self) -> None:
-        """Create all standard artifact directories.
+        """Create all ``@_artifact_dir``-decorated directories.
 
         Call once during pipeline initialization to eliminate the need
         for every downstream function to defensively ``mkdir(parents=True)``.
         """
-        for dir_fn in (
-            self.sections_dir,
-            self.proposals_dir,
-            self.signals_dir,
-            self.notes_dir,
-            self.decisions_dir,
-            self.todos_dir,
-            self.readiness_dir,
-            self.coordination_dir,
-            self.coordination_signals_dir,
-            self.reconciliation_dir,
-            self.reconciliation_requests_dir,
-            self.scope_deltas_dir,
-            self.contracts_dir,
-            self.inputs_dir,
-            self.trace_dir,
-            self.flows_dir,
-            self.qa_intercepts_dir,
-            self.substrate_dir,
-            self.substrate_prompts_dir,
-            self.intent_dir,
-            self.intent_global_dir,
-            self.intent_sections_dir,
-            self.risk_dir,
-            self.governance_dir,
-            self.research_dir,
-            self.research_sections_dir,
-            self.research_global_dir,
-            self.snapshots_dir,
-            self.scan_logs_dir,
-            self.open_problems_dir,
-            self.triage_dir,
-        ):
-            dir_fn().mkdir(parents=True, exist_ok=True)
+        for name in dir(self):
+            method = getattr(type(self), name, None)
+            if callable(method) and getattr(method, "_is_artifact_dir", False):
+                getattr(self, name)().mkdir(parents=True, exist_ok=True)
 
     # --- Directory accessors ---
 
+    @_artifact_dir
     def sections_dir(self) -> Path:
         return self._artifacts / "sections"
 
+    @_artifact_dir
     def proposals_dir(self) -> Path:
         return self._artifacts / "proposals"
 
+    @_artifact_dir
     def signals_dir(self) -> Path:
         return self._artifacts / "signals"
 
+    @_artifact_dir
     def notes_dir(self) -> Path:
         return self._artifacts / "notes"
 
+    @_artifact_dir
     def decisions_dir(self) -> Path:
         return self._artifacts / "decisions"
 
+    @_artifact_dir
     def todos_dir(self) -> Path:
         return self._artifacts / "todos"
 
+    @_artifact_dir
     def readiness_dir(self) -> Path:
         return self._artifacts / "readiness"
 
+    @_artifact_dir
     def coordination_dir(self) -> Path:
         return self._artifacts / "coordination"
 
+    @_artifact_dir
     def reconciliation_dir(self) -> Path:
         return self._artifacts / "reconciliation"
 
+    @_artifact_dir
     def reconciliation_requests_dir(self) -> Path:
         return self._artifacts / "reconciliation-requests"
 
@@ -104,6 +94,7 @@ class PathRegistry:
     def reconciliation_summary(self) -> Path:
         return self.reconciliation_dir() / "reconciliation-summary.json"
 
+    @_artifact_dir
     def scope_deltas_dir(self) -> Path:
         return self._artifacts / "scope-deltas"
 
@@ -116,15 +107,19 @@ class PathRegistry:
     def scope_delta_reconciliation(self, sources: str, title_slug: str) -> Path:
         return self.scope_deltas_dir() / f"reconciliation-{sources}-{title_slug}.json"
 
+    @_artifact_dir
     def contracts_dir(self) -> Path:
         return self._artifacts / "contracts"
 
+    @_artifact_dir
     def inputs_dir(self) -> Path:
         return self._artifacts / "inputs"
 
+    @_artifact_dir
     def trace_dir(self) -> Path:
         return self._artifacts / "trace"
 
+    @_artifact_dir
     def flows_dir(self) -> Path:
         return self._artifacts / "flows"
 
@@ -137,33 +132,43 @@ class PathRegistry:
     def flow_gate_aggregate(self, gate_id: str) -> Path:
         return self.flows_dir() / f"{gate_id}-aggregate.json"
 
+    @_artifact_dir
     def qa_intercepts_dir(self) -> Path:
         return self._artifacts / "qa-intercepts"
 
+    @_artifact_dir
     def substrate_dir(self) -> Path:
         return self._artifacts / "substrate"
 
+    @_artifact_dir
     def substrate_prompts_dir(self) -> Path:
         return self.substrate_dir() / "prompts"
 
+    @_artifact_dir
     def intent_dir(self) -> Path:
         return self._artifacts / "intent"
 
+    @_artifact_dir
     def intent_global_dir(self) -> Path:
         return self.intent_dir() / "global"
 
+    @_artifact_dir
     def intent_sections_dir(self) -> Path:
         return self.intent_dir() / "sections"
 
+    @_artifact_dir
     def risk_dir(self) -> Path:
         return self._artifacts / "risk"
 
+    @_artifact_dir
     def governance_dir(self) -> Path:
         return self._artifacts / "governance"
 
+    @_artifact_dir
     def section_inputs_hashes_dir(self) -> Path:
         return self._artifacts / "section-inputs-hashes"
 
+    @_artifact_dir
     def phase2_inputs_hashes_dir(self) -> Path:
         return self._artifacts / "phase2-inputs-hashes"
 
@@ -310,12 +315,15 @@ class PathRegistry:
 
     # --- Research artifact accessors ---
 
+    @_artifact_dir
     def research_dir(self) -> Path:
         return self._artifacts / "research"
 
+    @_artifact_dir
     def research_sections_dir(self) -> Path:
         return self.research_dir() / "sections"
 
+    @_artifact_dir
     def research_global_dir(self) -> Path:
         return self.research_dir() / "global"
 
@@ -500,6 +508,7 @@ class PathRegistry:
 
     # --- Coordination artifact accessors ---
 
+    @_artifact_dir
     def coordination_signals_dir(self) -> Path:
         return self.coordination_dir() / "signals"
 
@@ -561,21 +570,25 @@ class PathRegistry:
 
     # --- Directory accessors (additional) ---
 
+    @_artifact_dir
     def snapshots_dir(self) -> Path:
         return self._artifacts / "snapshots"
 
     def snapshot_section(self, num: str) -> Path:
         return self.snapshots_dir() / f"section-{num}"
 
+    @_artifact_dir
     def scan_logs_dir(self) -> Path:
         return self._artifacts / "scan-logs"
 
+    @_artifact_dir
     def open_problems_dir(self) -> Path:
         return self._artifacts / "open-problems"
 
     def research_questions_artifact(self, num: str) -> Path:
         return self.open_problems_dir() / f"section-{num}-research-questions.json"
 
+    @_artifact_dir
     def triage_dir(self) -> Path:
         return self._artifacts / "triage"
 

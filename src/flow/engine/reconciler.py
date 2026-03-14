@@ -18,16 +18,7 @@ from flow.engine.flow_submitter import (
 )
 from flow.types.context import FlowEnvelope, TaskStatus
 from flow.types.schema import ChainAction, FanoutAction, parse_flow_signal
-from research.engine.orchestrator import (
-    ResearchState,
-    load_research_status,
-    validate_research_plan,
-    write_research_status,
-)
-from research.engine.research_plan_executor import (
-    execute_research_plan,
-    submit_research_verify,
-)
+from research.engine.orchestrator import ResearchState
 from intake.service.assessment_evaluator import (
     AssessmentVerdict,
     read_post_impl_assessment,
@@ -295,21 +286,21 @@ def _handle_synthesis_completion(
     cycle_id: str,
 ) -> None:
     """Handle research.synthesis task completion — verify or finalize."""
-    plan = validate_research_plan(PathRegistry(planspace).research_plan(section_number))
+    plan = Services.research().validate_plan(PathRegistry(planspace).research_plan(section_number))
     verify_claims = bool(
         isinstance(plan, dict)
         and isinstance(plan.get("flow"), dict)
         and plan["flow"].get("verify_claims")
     )
     if verify_claims:
-        submit_research_verify(
+        Services.research().submit_verify(
             section_number, planspace,
             db_path=db_path,
             declared_by_task_id=int(task["id"]),
             origin_refs=origin_refs + ([output_path] if output_path else []),
         )
     else:
-        write_research_status(
+        Services.research().write_status(
             section_number, planspace, ResearchState.SYNTHESIZED,
             detail="research synthesis complete",
             trigger_hash=trigger_hash, cycle_id=cycle_id,
@@ -339,12 +330,12 @@ def _handle_research_completion(
     if section_number is None:
         return
 
-    status_data = load_research_status(section_number, planspace) or {}
+    status_data = Services.research().load_status(section_number, planspace) or {}
     trigger_hash = str(status_data.get("trigger_hash", ""))
     cycle_id = str(status_data.get("cycle_id", ""))
 
     if status == TaskStatus.FAILED:
-        write_research_status(
+        Services.research().write_status(
             section_number,
             planspace,
             ResearchState.FAILED,
@@ -359,7 +350,7 @@ def _handle_research_completion(
 
     if task_type == "research.plan":
         plan_output = Path(output_path) if output_path else PathRegistry(planspace).research_plan(section_number)
-        execute_research_plan(
+        Services.research().execute_plan(
             section_number,
             planspace,
             codespace,
@@ -375,7 +366,7 @@ def _handle_research_completion(
         return
 
     if task_type == "research.verify":
-        write_research_status(
+        Services.research().write_status(
             section_number, planspace, ResearchState.VERIFIED,
             detail="research verification complete",
             trigger_hash=trigger_hash, cycle_id=cycle_id,

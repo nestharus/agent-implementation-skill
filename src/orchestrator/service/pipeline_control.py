@@ -45,7 +45,6 @@ def requeue_changed_sections(
     """
     paths = PathRegistry(planspace)
     hash_dir = paths.section_inputs_hashes_dir()
-    hash_dir.mkdir(parents=True, exist_ok=True)
     requeued: list[str] = []
     for done_num in list(completed):
         cur = _section_inputs_hash(

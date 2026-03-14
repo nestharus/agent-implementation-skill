@@ -165,8 +165,8 @@ def test_reconcile_task_completion_runs_research_plan_executor(
     called: list[tuple[str, Path | None]] = []
 
     monkeypatch.setattr(
-        "src.flow.engine.reconciler.execute_research_plan",
-        lambda section_number, ps, codespace, plan_output_path: (
+        "containers.ResearchOrchestratorService.execute_plan",
+        lambda self, section_number, ps, codespace, plan_output_path: (
             called.append((section_number, codespace)) or True
         ),
     )

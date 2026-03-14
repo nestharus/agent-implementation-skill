@@ -620,7 +620,7 @@ class TestStaleToolSurfaceRemoval:
     def test_stale_removal_code_exists(self) -> None:
         """Section engine runner removes stale tools-available surface."""
         import inspect
-        from implementation.engine.section_pipeline import run_section
+        from orchestrator.engine.section_pipeline import run_section
         src = inspect.getsource(run_section)
         assert "tools_available_path.unlink()" in src or \
                "tools_available_path.exists()" in src, (

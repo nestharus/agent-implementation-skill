@@ -12,6 +12,7 @@ from orchestrator.path_registry import PathRegistry
 class ResearchState(str, Enum):
     """State of a section's research lifecycle."""
 
+    PLANNED = "planned"
     SYNTHESIZED = "synthesized"
     VERIFIED = "verified"
     FAILED = "failed"

@@ -437,7 +437,6 @@ def build_governance_indexes(codespace: Path, planspace: Path) -> bool:
     failure from true no-governance (PAT-0008 R108).
     """
     paths = PathRegistry(planspace)
-    paths.governance_dir().mkdir(parents=True, exist_ok=True)
 
     parsed, parse_failures = _parse_governance_indexes(codespace)
 

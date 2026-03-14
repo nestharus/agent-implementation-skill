@@ -4,16 +4,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
-from research.engine.orchestrator import (
-    compute_trigger_hash,
-    is_research_complete_for_trigger,
-    write_research_status,
-)
 from research.prompt.writers import write_research_plan_prompt
 from proposal.repository.state import ProposalState, load_proposal_state
 from proposal.service.readiness_resolver import resolve_readiness
 from reconciliation.repository.queue import queue_reconciliation_request
 from containers import Services
+from research.engine.orchestrator import ResearchState
 from signals.service.blocker_manager import (
     append_open_problem,
     update_blocker_rollup,
@@ -73,7 +69,6 @@ def publish_discoveries(
     scope_delta_dir = registry.scope_deltas_dir()
 
     for candidate in proposal_state.new_section_candidates:
-        scope_delta_dir.mkdir(parents=True, exist_ok=True)
         cand_text = str(candidate)
         cand_hash = Services.hasher().content_hash(cand_text)[:_CANDIDATE_HASH_LENGTH]
         delta_id = f"delta-{section_number}-candidate-{cand_hash}"
@@ -102,7 +97,6 @@ def publish_discoveries(
     rq_list = proposal_state.research_questions
     if rq_list:
         open_problems_dir = registry.open_problems_dir()
-        open_problems_dir.mkdir(parents=True, exist_ok=True)
         rq_artifact = {
             "section": section_number,
             "research_questions": [str(q) for q in rq_list],
@@ -125,10 +119,10 @@ def _route_blocking_research(
     questions: list[str],
 ) -> None:
     """Dispatch research or escalate blocking research questions."""
-    trigger_hash = compute_trigger_hash(questions)
+    trigger_hash = Services.research().compute_trigger_hash(questions)
     cycle_id = f"research-{section_number}-{trigger_hash[:_TRIGGER_HASH_LENGTH]}"
 
-    if is_research_complete_for_trigger(section_number, planspace, trigger_hash):
+    if Services.research().is_complete_for_trigger(section_number, planspace, trigger_hash):
         _emit_needs_parent_research_signals(
             signal_dir, section_number, questions,
             needs="Parent/coordination answer — research could not resolve",
@@ -138,7 +132,6 @@ def _route_blocking_research(
         return
 
     research_section_dir = registry.research_section_dir(section_number)
-    research_section_dir.mkdir(parents=True, exist_ok=True)
     trigger_path = registry.research_trigger(section_number)
     trigger = {
         "section": section_number,
@@ -158,8 +151,8 @@ def _route_blocking_research(
             why_blocked="Research prompt generation failed validation and cannot be dispatched safely",
             detail_log="research prompt blocked by validation — emitting NEEDS_PARENT signal",
         )
-        write_research_status(
-            section_number, planspace, "failed",
+        Services.research().write_status(
+            section_number, planspace, ResearchState.FAILED,
             detail="research plan prompt blocked by validation",
             trigger_hash=trigger_hash, cycle_id=cycle_id,
         )
@@ -167,8 +160,8 @@ def _route_blocking_research(
 
     # Write status BEFORE computing freshness so the hash includes
     # research-status.json at both submission and dispatch time.
-    write_research_status(
-        section_number, planspace, "planned",
+    Services.research().write_status(
+        section_number, planspace, ResearchState.PLANNED,
         trigger_hash=trigger_hash, cycle_id=cycle_id,
     )
     freshness = Services.freshness().compute(planspace, section_number)
@@ -281,7 +274,6 @@ def route_blockers(
     """Route proposal blockers to their downstream consumers."""
     registry = PathRegistry(planspace)
     signal_dir = registry.signals_dir()
-    signal_dir.mkdir(parents=True, exist_ok=True)
 
     _route_user_root_questions(signal_dir, section_number, proposal_state)
 

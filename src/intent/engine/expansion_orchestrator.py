@@ -282,7 +282,6 @@ def handle_user_gate(
 
     paths = PathRegistry(planspace)
     signals_dir = paths.signals_dir()
-    signals_dir.mkdir(parents=True, exist_ok=True)
 
     gate_kind = delta_result.get("user_input_kind", "unknown")
     input_path = delta_result.get(

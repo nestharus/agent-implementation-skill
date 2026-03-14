@@ -7,6 +7,7 @@ from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
 from containers import Services
+from signals.types import RESEARCH_TYPE_BOTH, RESEARCH_TYPE_CODE, RESEARCH_TYPE_WEB
 
 
 def _optional_input_lines(
@@ -140,13 +141,13 @@ def _prepare_ticket_spec(
 def _ticket_phase_note(ticket: dict) -> str:
     """Determine the execution phase note for a research ticket."""
     phase = str(ticket.get("_phase", ""))
-    if phase == "web":
+    if phase == RESEARCH_TYPE_WEB:
         return (
             "This is the web stage of a `both` ticket. Gather source-backed findings "
             "for later synthesis with scan evidence."
         )
-    research_type = str(ticket.get("research_type", "web"))
-    if research_type in {"code", "both"}:
+    research_type = str(ticket.get("research_type", RESEARCH_TYPE_WEB))
+    if research_type in {RESEARCH_TYPE_CODE, RESEARCH_TYPE_BOTH}:
         return (
             "Use codemap, codemap corrections, and scan evidence from flow context. "
             "Do not do ad hoc codebase exploration beyond the prepared evidence."

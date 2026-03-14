@@ -725,12 +725,13 @@ def test_reassessment_executes_newly_accepted_frontier_end_to_end(
         )
         return files
 
-    def _reassess(*args, **kwargs) -> RiskPlan:
-        reassessment_packages.append([step.step_id for step in args[3].steps])
+    def _reassess(self, planspace, scope, layer, package, *args, **kwargs) -> RiskPlan:
+        reassessment_packages.append([step.step_id for step in package.steps])
         return reassessed_plan
 
+    monkeypatch.setattr("orchestrator.engine.section_pipeline.run_section", _run_section)
     monkeypatch.setattr("implementation.engine.implementation_phase.run_section", _run_section)
-    monkeypatch.setattr("implementation.engine.implementation_phase.run_risk_loop", _reassess)
+    monkeypatch.setattr("containers.RiskAssessmentService.run_risk_loop", _reassess)
 
     results = run_implementation_pass(
         {"01": ProposalPassResult(section_number="01", execution_ready=True)},
