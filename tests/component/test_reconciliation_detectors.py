@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from src.proposal.repository.state import ProposalState
 from src.reconciliation.service.detectors import (
     aggregate_shared_seams,
     consolidate_new_section_candidates,
@@ -12,14 +13,14 @@ from src.reconciliation.service.detectors import (
 
 def test_detect_anchor_overlaps_normalizes_strings_and_dicts() -> None:
     overlaps = detect_anchor_overlaps({
-        "01": {
-            "resolved_anchors": [{"path": " src/api.py "}],
-            "unresolved_anchors": [],
-        },
-        "02": {
-            "resolved_anchors": [],
-            "unresolved_anchors": ["SRC/API.PY"],
-        },
+        "01": ProposalState(
+            resolved_anchors=[{"path": " src/api.py "}],
+            unresolved_anchors=[],
+        ),
+        "02": ProposalState(
+            resolved_anchors=[],
+            unresolved_anchors=["SRC/API.PY"],
+        ),
     })
 
     assert overlaps == [{
@@ -31,10 +32,10 @@ def test_detect_anchor_overlaps_normalizes_strings_and_dicts() -> None:
 
 def test_detect_contract_conflicts_reports_resolved_vs_unresolved() -> None:
     conflicts = detect_contract_conflicts({
-        "01": {"resolved_contracts": [{"name": "Auth"}]},
-        "02": {"unresolved_contracts": [{"interface": " auth "}], "resolved_contracts": []},
-        "03": {"unresolved_contracts": ["billing"], "resolved_contracts": []},
-        "04": {"unresolved_contracts": ["Billing"], "resolved_contracts": []},
+        "01": ProposalState(resolved_contracts=[{"name": "Auth"}]),
+        "02": ProposalState(unresolved_contracts=[{"interface": " auth "}]),
+        "03": ProposalState(unresolved_contracts=["billing"]),
+        "04": ProposalState(unresolved_contracts=["Billing"]),
     })
 
     assert conflicts == [
@@ -57,17 +58,17 @@ def test_detect_contract_conflicts_reports_resolved_vs_unresolved() -> None:
 
 def test_consolidate_new_section_candidates_returns_exact_matches_and_singletons() -> None:
     consolidated, ungrouped = consolidate_new_section_candidates({
-        "01": {
-            "new_section_candidates": [
+        "01": ProposalState(
+            new_section_candidates=[
                 {"title": "Shared Cache", "description": "cache seams"},
                 {"title": "Metrics"},
             ],
-        },
-        "02": {
-            "new_section_candidates": [
+        ),
+        "02": ProposalState(
+            new_section_candidates=[
                 {"scope": " shared cache ", "description": "same idea"},
             ],
-        },
+        ),
     })
 
     assert consolidated == [{
@@ -94,8 +95,8 @@ def test_consolidate_new_section_candidates_returns_exact_matches_and_singletons
 
 def test_aggregate_shared_seams_marks_multi_section_entries_for_substrate() -> None:
     aggregated, ungrouped = aggregate_shared_seams({
-        "01": {"shared_seam_candidates": ["Shared Auth", "Solo Concern"]},
-        "02": {"shared_seam_candidates": [" shared auth "]},
+        "01": ProposalState(shared_seam_candidates=["Shared Auth", "Solo Concern"]),
+        "02": ProposalState(shared_seam_candidates=[" shared auth "]),
     })
 
     assert aggregated == [

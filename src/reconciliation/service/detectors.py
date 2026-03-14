@@ -1,6 +1,6 @@
 """Pure reconciliation analysis helpers.
 
-These helpers analyze proposal-state dictionaries without performing
+These helpers analyze ProposalState objects without performing
 any I/O or agent dispatch.
 """
 
@@ -9,17 +9,19 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
+from proposal.repository.state import ProposalState
 
-def detect_anchor_overlaps(states: dict[str, dict]) -> list[dict]:
+
+def detect_anchor_overlaps(states: dict[str, ProposalState]) -> list[dict]:
     """Find anchors claimed by multiple sections."""
     anchor_to_sections: dict[str, list[str]] = defaultdict(list)
 
     for sec_num, state in states.items():
-        for anchor in state.get("resolved_anchors", []):
+        for anchor in state.resolved_anchors:
             key = _anchor_key(anchor)
             if key:
                 anchor_to_sections[key].append(sec_num)
-        for anchor in state.get("unresolved_anchors", []):
+        for anchor in state.unresolved_anchors:
             key = _anchor_key(anchor)
             if key:
                 anchor_to_sections[key].append(sec_num)
@@ -35,17 +37,17 @@ def detect_anchor_overlaps(states: dict[str, dict]) -> list[dict]:
     return overlaps
 
 
-def detect_contract_conflicts(states: dict[str, dict]) -> list[dict]:
+def detect_contract_conflicts(states: dict[str, ProposalState]) -> list[dict]:
     """Find contracts referenced by multiple sections with differing expectations."""
     contract_resolved: dict[str, list[str]] = defaultdict(list)
     contract_unresolved: dict[str, list[str]] = defaultdict(list)
 
     for sec_num, state in states.items():
-        for contract in state.get("resolved_contracts", []):
+        for contract in state.resolved_contracts:
             key = _contract_key(contract)
             if key:
                 contract_resolved[key].append(sec_num)
-        for contract in state.get("unresolved_contracts", []):
+        for contract in state.unresolved_contracts:
             key = _contract_key(contract)
             if key:
                 contract_unresolved[key].append(sec_num)
@@ -69,7 +71,7 @@ def detect_contract_conflicts(states: dict[str, dict]) -> list[dict]:
     return conflicts
 
 
-def consolidate_new_section_candidates(states: dict[str, dict]) -> tuple[list[dict], list[dict]]:
+def consolidate_new_section_candidates(states: dict[str, ProposalState]) -> tuple[list[dict], list[dict]]:
     """Group exact-match new-section candidates across sections.
 
     Returns ``(consolidated, ungrouped)`` where ``consolidated`` contains
@@ -78,7 +80,7 @@ def consolidate_new_section_candidates(states: dict[str, dict]) -> tuple[list[di
     """
     all_candidates: list[tuple[str, dict | str]] = []
     for sec_num, state in states.items():
-        for cand in state.get("new_section_candidates", []):
+        for cand in state.new_section_candidates:
             all_candidates.append((sec_num, cand))
 
     if not all_candidates:
@@ -119,7 +121,7 @@ def consolidate_new_section_candidates(states: dict[str, dict]) -> tuple[list[di
     return consolidated, ungrouped
 
 
-def aggregate_shared_seams(states: dict[str, dict]) -> tuple[list[dict], list[dict]]:
+def aggregate_shared_seams(states: dict[str, ProposalState]) -> tuple[list[dict], list[dict]]:
     """Aggregate exact-match shared seam candidates across sections.
 
     Returns ``(aggregated, ungrouped)`` where ``aggregated`` contains the
@@ -129,7 +131,7 @@ def aggregate_shared_seams(states: dict[str, dict]) -> tuple[list[dict], list[di
     seam_to_sections: dict[str, list[str]] = defaultdict(list)
 
     for sec_num, state in states.items():
-        for seam in state.get("shared_seam_candidates", []):
+        for seam in state.shared_seam_candidates:
             key = str(seam).strip().lower()
             if key:
                 seam_to_sections[key].append(sec_num)

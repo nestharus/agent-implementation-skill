@@ -17,7 +17,7 @@ from pathlib import Path
 from orchestrator.path_registry import PathRegistry
 
 from containers import Services
-from proposal.repository.state import load_proposal_state
+from proposal.repository.state import ProposalState, load_proposal_state
 from reconciliation.service.adjudicator import adjudicate_ungrouped_candidates
 from reconciliation.service.detectors import (
     aggregate_shared_seams,
@@ -135,29 +135,28 @@ def _extract_section_numbers(proposal_results: list) -> list[str]:
 def _load_proposal_states(
     run_dir: Path,
     section_numbers: list[str],
-) -> dict[str, dict]:
-    states: dict[str, dict] = {}
+) -> dict[str, ProposalState]:
+    states: dict[str, ProposalState] = {}
     for sec_num in section_numbers:
         state_path = PathRegistry(run_dir).proposal_state(sec_num)
-        states[sec_num] = load_proposal_state(state_path).to_dict()
+        states[sec_num] = load_proposal_state(state_path)
     return states
 
 
 def _merge_recon_requests_into_states(
     recon_requests: list[dict],
-    states: dict[str, dict],
+    states: dict[str, ProposalState],
 ) -> None:
     for req in recon_requests:
         sec = req.get("section", "")
         if sec and sec in states:
             state = states[sec]
             for contract in req.get("unresolved_contracts", []):
-                if contract not in state.get("unresolved_contracts", []):
-                    state.setdefault("unresolved_contracts", []).append(
-                        contract)
+                if contract not in state.unresolved_contracts:
+                    state.unresolved_contracts.append(contract)
             for anchor in req.get("unresolved_anchors", []):
-                if anchor not in state.get("unresolved_anchors", []):
-                    state.setdefault("unresolved_anchors", []).append(anchor)
+                if anchor not in state.unresolved_anchors:
+                    state.unresolved_anchors.append(anchor)
 
 
 @dataclass
@@ -172,7 +171,7 @@ class CrossSectionIssues:
 
 
 def _detect_cross_section_issues(
-    states: dict[str, dict],
+    states: dict[str, ProposalState],
     run_dir: Path,
 ) -> CrossSectionIssues:
     anchor_overlaps = detect_anchor_overlaps(states)
