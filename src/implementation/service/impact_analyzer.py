@@ -166,7 +166,7 @@ def analyze_impacts(
         return impacted_sections
 
     return _dispatch_normalizer(
-        impact_result, artifacts, section_number, normalizer_model,
+        impact_result, section_number, normalizer_model,
         planspace, parent, codespace, sec_num_map,
     )
 
@@ -326,7 +326,6 @@ If no material impacts can be extracted, reply:
 
 def _dispatch_normalizer(
     impact_result: str,
-    artifacts: Path,
     section_number: str,
     normalizer_model: str,
     planspace: Path,
@@ -334,6 +333,7 @@ def _dispatch_normalizer(
     codespace: Path,
     sec_num_map: dict[int, str],
 ) -> list[MaterialImpact]:
+    artifacts = PathRegistry(planspace).artifacts
     Services.logger().log(
         f"Section {section_number}: impact analysis did not produce valid "
         "JSON — dispatching GLM to normalize raw output",
