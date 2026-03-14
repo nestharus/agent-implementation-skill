@@ -150,7 +150,7 @@ def run_global_alignment_recheck(
     phase2_hash_dir = paths.phase2_inputs_hashes_dir()
     phase2_hash_dir.mkdir(parents=True, exist_ok=True)
 
-    for sec_num, section in sections_by_num.items():
+    for section in sections_by_num.values():
         abort_status = _recheck_section(
             section, section_results, sections_by_num,
             planspace, codespace, parent,

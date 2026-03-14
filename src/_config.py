@@ -1,7 +1,5 @@
 """Shared configuration constants for the section-loop agent."""
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 

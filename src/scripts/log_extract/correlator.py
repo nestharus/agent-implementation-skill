@@ -46,7 +46,7 @@ def correlate(
     scored: list[tuple[int, int, int, str, str, list[str]]] = []
 
     for si, sess in enumerate(sessions):
-        for di, disp in enumerate(dispatches):
+        for disp in dispatches:
             score, reasons = _score(disp, sess)
             if score < 0:
                 continue

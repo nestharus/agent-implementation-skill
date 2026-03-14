@@ -171,7 +171,7 @@ def post_section_completion(
 
     files_fingerprint = _compute_files_fingerprint(modified_files, codespace)
 
-    for target_num, reason, contract_risk, note_md in impacted_sections:
+    for target_num, reason, _contract_risk, note_md in impacted_sections:
         note_name = f"from-{sec_num}-to-{target_num}.md"
         note_id = Services.hasher().content_hash(f"{note_name}:{files_fingerprint}")[:_NOTE_HASH_LENGTH]
         note_content = _build_consequence_note(
