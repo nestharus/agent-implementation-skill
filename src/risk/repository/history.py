@@ -8,9 +8,18 @@ from pathlib import Path
 
 from containers import Services
 from risk.repository.serialization import deserialize_history_entry, serialize_history_entry
-from risk.types import AssessmentClass, RiskHistoryEntry, RiskType, clamp_float, clamp_int
+from risk.types import (
+    MAX_RESIDUAL_RISK,
+    AssessmentClass,
+    RiskHistoryEntry,
+    RiskType,
+    clamp_float,
+    clamp_int,
+)
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_OUTCOME_SCORE = 50
 
 SIMILARITY_ADJUSTMENT_SCALE = 0.2
 HISTORY_ADJUSTMENT_BOUND = 10.0
@@ -144,11 +153,11 @@ def _actual_outcome_score(entry: RiskHistoryEntry) -> int:
     outcome = entry.actual_outcome.strip().lower()
     verification = (entry.verification_outcome or "").strip().lower()
 
-    score = _OUTCOME_SCORE.get(outcome, 50)
+    score = _OUTCOME_SCORE.get(outcome, _DEFAULT_OUTCOME_SCORE)
     score += _VERIFICATION_ADJUSTMENT.get(verification, 0)
 
     score += min(len(entry.surfaced_surprises) * _SURPRISE_SCORE_WEIGHT, _SURPRISE_SCORE_CAP)
-    return clamp_int(score, 0, 100)
+    return clamp_int(score, 0, MAX_RESIDUAL_RISK)
 
 
 

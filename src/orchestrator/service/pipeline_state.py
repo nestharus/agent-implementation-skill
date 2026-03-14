@@ -11,6 +11,8 @@ from signals.service.mailbox_service import MailboxService
 from orchestrator.types import ControlSignal
 
 _PAUSE_POLL_TIMEOUT_SECONDS = 5
+_DB_BODY_COLUMN_INDEX = 4
+_DB_MIN_COLUMNS = 5
 
 
 def check_pipeline_state(planspace: Path, *, db_sh: Path) -> str:
@@ -23,8 +25,8 @@ def check_pipeline_state(planspace: Path, *, db_sh: Path) -> str:
     ).strip()
     if line:
         parts = line.split("|")
-        if len(parts) >= 5 and parts[4]:
-            return parts[4]
+        if len(parts) >= _DB_MIN_COLUMNS and parts[_DB_BODY_COLUMN_INDEX]:
+            return parts[_DB_BODY_COLUMN_INDEX]
     return "running"
 
 

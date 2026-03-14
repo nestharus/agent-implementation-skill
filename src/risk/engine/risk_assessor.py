@@ -14,6 +14,7 @@ from risk.repository.serialization import (
 )
 from risk.service.threshold import enforce_thresholds, load_default_parameters, validate_risk_plan
 from risk.types import (
+    MAX_RESIDUAL_RISK,
     PostureProfile,
     RiskAssessment,
     RiskHistoryEntry,
@@ -29,13 +30,16 @@ from risk.service.response_parser import parse_risk_assessment, parse_risk_plan
 from risk.service.posture_hysteresis import apply_posture_hysteresis, _history_signature
 from risk.service.fallback import fallback_plan, lightweight_fallback_plan
 
+_DEFAULT_RISK_ITERATIONS = 5
+_DEFAULT_HISTORY_ADJUSTMENT_BOUND = 10.0
+
 
 def run_risk_loop(
     planspace: Path,
     scope: str,
     layer: str,
     package: RiskPackage,
-    max_iterations: int = 5,
+    max_iterations: int = _DEFAULT_RISK_ITERATIONS,
     posture_floor: PostureProfile | str | None = None,
 ) -> RiskPlan:
     """Run the full ROAL loop for a package."""
@@ -401,12 +405,12 @@ def _apply_history_adjustment(
         primary_step.dominant_risks,
         primary_step.modifiers.blast_radius,
     )
-    bound = _coerce_float(parameters.get("history_adjustment_bound"), 10.0)
+    bound = _coerce_float(parameters.get("history_adjustment_bound"), _DEFAULT_HISTORY_ADJUSTMENT_BOUND)
     bounded_adjustment = clamp_float(adjustment, -bound, bound)
     assessment.package_raw_risk = clamp_int(
         assessment.package_raw_risk + int(round(bounded_adjustment)),
         0,
-        100,
+        MAX_RESIDUAL_RISK,
     )
     if matching_entries:
         assessment.notes.append(

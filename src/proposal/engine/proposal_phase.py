@@ -179,7 +179,7 @@ def _write_advisory_artifacts(
             "produced_by": "proposal_pass",
         })
         high_risk = any(
-            severities.get(risk, 0) >= 3
+            severities.get(risk, 0) >= _RISK_SEVERITY_BLOCKER_THRESHOLD
             for risk in ("brute_force_regression", "silent_drift")
             if risk in dominant_risks
         )

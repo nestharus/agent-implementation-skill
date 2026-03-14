@@ -13,6 +13,8 @@ from coordination.prompt.writers import write_bridge_prompt, write_fix_prompt
 from flow.service.task_request_ingestor import ingest_and_submit
 from orchestrator.types import Section, ControlSignal
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+
+_MAX_PARALLEL_FIX_WORKERS = 4
 from signals.types import SIGNAL_NEEDS_PARENT
 
 _NOTE_FINGERPRINT_LENGTH = 12
@@ -414,7 +416,7 @@ def _dispatch_batch_parallel(
 ) -> list[str]:
     Services.logger().log(f"  coordinator: batch {batch_num} — {len(batch)} groups in parallel")
     modified: list[str] = []
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    with ThreadPoolExecutor(max_workers=_MAX_PARALLEL_FIX_WORKERS) as pool:
         futures = {
             pool.submit(
                 _dispatch_fix_group,

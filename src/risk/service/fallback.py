@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from risk.types import (
+    MAX_RESIDUAL_RISK,
     PostureProfile,
     RiskPackage,
     RiskPlan,
@@ -24,7 +25,7 @@ def fallback_plan(
             decision=StepDecision.REJECT_REOPEN,
             posture=PostureProfile.P4_REOPEN,
             mitigations=[],
-            residual_risk=100,
+            residual_risk=MAX_RESIDUAL_RISK,
             reason=reason,
             route_to="parent",
         )
@@ -56,7 +57,7 @@ def lightweight_fallback_plan(
             decision=StepDecision.REJECT_DEFER,
             posture=PostureProfile.P4_REOPEN,
             mitigations=[],
-            residual_risk=100,
+            residual_risk=MAX_RESIDUAL_RISK,
             reason=reason,
             wait_for=["full-risk-loop"],
         )

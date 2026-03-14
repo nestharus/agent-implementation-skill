@@ -234,7 +234,7 @@ def load_risk_hints(planspace: Path, sec_num: str) -> dict:
             "triage_confidence": "low",
             "risk_mode_hint": "",
             "posture_floor": None,
-            "max_iterations": 5,
+            "max_iterations": _RISK_ITERATIONS_BASE,
         }
 
     triage_confidence = str(

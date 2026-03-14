@@ -12,6 +12,13 @@ from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 _SUMMARY_SNIPPET_TRUNCATION = 500
 
+_DEFAULT_PROPOSAL_MAX = 5
+_DEFAULT_IMPLEMENTATION_MAX = 5
+_DEFAULT_EXPANSION_MAX = 2
+_DEFAULT_MAX_NEW_SURFACES = 8
+_DEFAULT_MAX_NEW_AXES = 6
+_DEFAULT_RISK_BUDGET_HINT = 4
+
 
 def run_intent_triage(
     section_number: str,
@@ -273,16 +280,16 @@ def _full_default(section_number: str) -> dict:
         "intent_mode": "full",
         "confidence": "low",
         "budgets": {
-            "proposal_max": 5,
-            "implementation_max": 5,
-            "intent_expansion_max": 2,
-            "max_new_surfaces_per_cycle": 8,
-            "max_new_axes_total": 6,
+            "proposal_max": _DEFAULT_PROPOSAL_MAX,
+            "implementation_max": _DEFAULT_IMPLEMENTATION_MAX,
+            "intent_expansion_max": _DEFAULT_EXPANSION_MAX,
+            "max_new_surfaces_per_cycle": _DEFAULT_MAX_NEW_SURFACES,
+            "max_new_axes_total": _DEFAULT_MAX_NEW_AXES,
         },
         "reason": "default full (triage unavailable — uncertainty favors strategy)",
         "risk_mode": "full",
         "risk_confidence": "low",
-        "risk_budget_hint": 4,
+        "risk_budget_hint": _DEFAULT_RISK_BUDGET_HINT,
         "posture_floor": None,
     }
 

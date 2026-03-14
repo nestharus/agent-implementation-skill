@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 
+MAX_RESIDUAL_RISK = 100
+
+
 class StepClass(str, Enum):
     EXPLORE = "explore"
     STABILIZE = "stabilize"

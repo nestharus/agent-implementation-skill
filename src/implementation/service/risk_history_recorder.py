@@ -9,6 +9,7 @@ from risk.repository.history import append_history_entry, pattern_signature, rea
 from risk.service.package_builder import read_package
 from risk.repository.serialization import load_risk_assessment
 from risk.types import (
+    MAX_RESIDUAL_RISK,
     PostureProfile,
     RiskHistoryEntry,
     RiskPackage,
@@ -36,7 +37,7 @@ def append_risk_review_failure_history(
                 layer=package.layer,
                 assessment_class=step.assessment_class,
                 posture=PostureProfile.P4_REOPEN,
-                predicted_risk=100,
+                predicted_risk=MAX_RESIDUAL_RISK,
                 actual_outcome="risk_review_failure",
                 surfaced_surprises=[reason],
                 verification_outcome="failed",
@@ -187,7 +188,7 @@ def append_risk_history(
                 predicted_risk=(
                     decision.residual_risk
                     if decision.residual_risk is not None
-                    else 100
+                    else MAX_RESIDUAL_RISK
                 ),
                 actual_outcome=actual_outcome,
                 surfaced_surprises=list(surfaced_surprises),

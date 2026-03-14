@@ -12,6 +12,7 @@ from containers import Services
 
 _MONITOR_WAIT_TIMEOUT = 30
 _MIN_SIGNAL_LOG_FIELDS = 5
+_SIGNAL_BODY_COLUMN_INDEX = 4
 _SIGNAL_LOG_TRUNCATION = 100
 
 
@@ -92,8 +93,8 @@ class MonitorService:
             )
             for signal_line in signal_rows.splitlines():
                 parts = signal_line.split("|")
-                if len(parts) >= _MIN_SIGNAL_LOG_FIELDS and parts[4]:
-                    signal_body = parts[4]
+                if len(parts) >= _MIN_SIGNAL_LOG_FIELDS and parts[_SIGNAL_BODY_COLUMN_INDEX]:
+                    signal_body = parts[_SIGNAL_BODY_COLUMN_INDEX]
                     self._log(f"  SIGNAL from monitor: {signal_body[:_SIGNAL_LOG_TRUNCATION]}")
                     output += "\nLOOP_DETECTED: " + signal_body
                     self._db.log_event(

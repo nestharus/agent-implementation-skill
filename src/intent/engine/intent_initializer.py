@@ -25,6 +25,9 @@ from signals.types import BLOCKING_NEEDS_PARENT, BLOCKING_NEED_DECISION
 
 _SECTION_SUMMARY_TRUNCATION = 500
 
+_DEFAULT_PROPOSAL_MAX = 5
+_DEFAULT_IMPLEMENTATION_MAX = 5
+
 
 # Module-level callback — monkey-patched by runner before use; default
 # routes through the DI container so standalone calls also work.
@@ -189,7 +192,7 @@ def _step_budget(ctx: PipelineContext) -> dict:
             Services.artifact_io().write_json(cycle_budget_path, existing_budget)
 
     cycle_budget_path = paths.cycle_budget(ctx.section.number)
-    cycle_budget = {"proposal_max": 5, "implementation_max": 5}
+    cycle_budget = {"proposal_max": _DEFAULT_PROPOSAL_MAX, "implementation_max": _DEFAULT_IMPLEMENTATION_MAX}
     loaded_budget = Services.artifact_io().read_json(cycle_budget_path)
     if loaded_budget is not None:
         cycle_budget.update(loaded_budget)

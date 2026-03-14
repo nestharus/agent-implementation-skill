@@ -7,6 +7,8 @@ from pathlib import Path
 
 from containers import Services
 
+_SUBSTRATE_AGENT_TIMEOUT_SECONDS = 600
+
 
 def dispatch_substrate_agent(
     model: str,
@@ -41,7 +43,7 @@ def dispatch_substrate_agent(
             cmd,
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=_SUBSTRATE_AGENT_TIMEOUT_SECONDS,
         )
         output_path.write_text(
             result.stdout + result.stderr,
