@@ -52,7 +52,7 @@ def run_risk_loop(
 
     for iteration in range(1, max_iterations + 1):
         assessment = _validate_and_dispatch_assessment(
-            paths, planspace, scope, package,
+            planspace, scope, package,
         )
         if assessment is None:
             return _write_and_return_fallback(
@@ -66,7 +66,7 @@ def run_risk_loop(
         write_risk_artifact(paths.risk_assessment(scope), serialize_assessment(assessment))
 
         plan = _validate_and_dispatch_optimization(
-            paths, planspace, scope, package, parameters, assessment,
+            planspace, scope, package, parameters, assessment,
             retry_hint=(iteration > 1 and last_plan is not None),
         )
         if plan is None:
@@ -111,7 +111,7 @@ def run_lightweight_risk_check(
     write_package(paths, package)
 
     assessment = _validate_and_dispatch_assessment(
-        paths, planspace, scope, package, prefix="light",
+        planspace, scope, package, prefix="light",
     )
     if assessment is None:
         return _write_and_return_fallback(
@@ -126,7 +126,7 @@ def run_lightweight_risk_check(
     write_risk_artifact(paths.risk_assessment(scope), serialize_assessment(assessment))
 
     plan = _validate_and_dispatch_lightweight_optimization(
-        paths, planspace, scope, package, parameters, assessment,
+        planspace, scope, package, parameters, assessment,
     )
     if plan is None:
         return _write_and_return_lightweight_fallback(
@@ -157,7 +157,6 @@ def run_lightweight_risk_check(
 
 
 def _validate_and_dispatch_assessment(
-    paths: PathRegistry,
     planspace: Path,
     scope: str,
     package: RiskPackage,
@@ -169,6 +168,7 @@ def _validate_and_dispatch_assessment(
     Returns ``None`` when the prompt fails validation *or* the response cannot
     be parsed -- the caller decides what fallback to use.
     """
+    paths = PathRegistry(planspace)
     tag = f"{prefix}-" if prefix else ""
     prompt = write_risk_assessment_prompt(package, planspace, scope)
     prompt_path = paths.risk_dir() / f"{scope}-{tag}risk-assessment-prompt.md"
@@ -188,7 +188,6 @@ def _validate_and_dispatch_assessment(
 
 
 def _validate_and_dispatch_optimization(
-    paths: PathRegistry,
     planspace: Path,
     scope: str,
     package: RiskPackage,
@@ -202,6 +201,7 @@ def _validate_and_dispatch_optimization(
     Returns ``None`` when the prompt fails validation *or* the response cannot
     be parsed.
     """
+    paths = PathRegistry(planspace)
     prompt = write_optimization_prompt(
         assessment=assessment,
         package=package,
@@ -232,7 +232,6 @@ def _validate_and_dispatch_optimization(
 
 
 def _validate_and_dispatch_lightweight_optimization(
-    paths: PathRegistry,
     planspace: Path,
     scope: str,
     package: RiskPackage,
@@ -240,6 +239,7 @@ def _validate_and_dispatch_lightweight_optimization(
     assessment: RiskAssessment,
 ) -> RiskPlan | None:
     """Lightweight variant of optimization dispatch (includes try/except)."""
+    paths = PathRegistry(planspace)
     prompt = write_optimization_prompt(
         assessment=assessment,
         package=package,

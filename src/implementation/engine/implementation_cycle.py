@@ -31,9 +31,7 @@ def run_implementation_loop(
     cycle_budget: dict,
 ) -> list[str] | None:
     """Run strategic implementation until aligned, then return changed files."""
-    paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
-    cycle_budget_path = paths.cycle_budget(section.number)
+    cycle_budget_path = PathRegistry(planspace).cycle_budget(section.number)
 
     all_known_paths = list(section.related_files)
     pre_hashes = Services.staleness().snapshot_files(codespace, all_known_paths)
@@ -48,7 +46,7 @@ def run_implementation_loop(
         impl_attempt += 1
 
         budget_action = _check_budget(
-            impl_attempt, cycle_budget, paths, planspace, parent,
+            impl_attempt, cycle_budget, planspace, parent,
             section.number, cycle_budget_path,
         )
         if budget_action == _ABORT:
@@ -57,14 +55,14 @@ def run_implementation_loop(
         _log_attempt(section.number, impl_attempt, impl_problems)
 
         impl_result = _dispatch_implementation(
-            section, planspace, codespace, parent, paths, artifacts,
+            section, planspace, codespace, parent,
             impl_problems,
         )
         if impl_result is None:
             return None
 
         dispatch_action = _handle_post_dispatch(
-            impl_result, section.number, planspace, parent, paths, artifacts,
+            impl_result, section.number, planspace, parent,
             codespace,
         )
         if dispatch_action == _ABORT:
@@ -73,7 +71,7 @@ def run_implementation_loop(
             continue
 
         align_result = _dispatch_alignment_check(
-            section, planspace, codespace, parent, artifacts,
+            section, planspace, codespace, parent,
         )
         if align_result is None:
             return None
@@ -87,12 +85,10 @@ def run_implementation_loop(
 
         problems = _extract_alignment_problems(
             align_result, section.number, planspace, parent, codespace,
-            artifacts,
         )
 
         underspec_action = _handle_underspec_signal(
             align_result, section.number, planspace, parent, codespace,
-            artifacts,
         )
         if underspec_action == _ABORT:
             return None
@@ -149,7 +145,6 @@ def _should_abort(
 def _check_budget(
     impl_attempt: int,
     cycle_budget: dict,
-    paths: PathRegistry,
     planspace: Path,
     parent: str,
     section_number: str,
@@ -163,6 +158,7 @@ def _check_budget(
     if impl_attempt <= cycle_budget["implementation_max"]:
         return _PROCEED
 
+    paths = PathRegistry(planspace)
     Services.logger().log(
         f"Section {section_number}: implementation cycle budget "
         f"exhausted ({cycle_budget['implementation_max']} attempts)"
@@ -241,8 +237,6 @@ def _dispatch_implementation(
     planspace: Path,
     codespace: Path,
     parent: str,
-    paths: PathRegistry,
-    artifacts: Path,
     impl_problems: str | None,
 ) -> str | None:
     """Write the implementation prompt, dispatch to the agent, return result.
@@ -250,6 +244,7 @@ def _dispatch_implementation(
     Returns ``None`` when the caller should ``return None`` (prompt
     blocked, alignment changed, or timeout).
     """
+    artifacts = PathRegistry(planspace).artifacts
     policy = Services.policies().load(planspace)
     impl_prompt = write_strategic_impl_prompt(
         section,
@@ -308,14 +303,14 @@ def _handle_post_dispatch(
     section_number: str,
     planspace: Path,
     parent: str,
-    paths: PathRegistry,
-    artifacts: Path,
     codespace: Path,
 ) -> str:
     """Ingest tasks and check agent signals after implementation dispatch.
 
     Returns ``_ABORT``, ``_CONTINUE``, or ``_PROCEED``.
     """
+    paths = PathRegistry(planspace)
+    artifacts = paths.artifacts
     Services.flow_ingestion().ingest_and_submit(
         planspace,
         db_path=paths.run_db(),
@@ -373,9 +368,9 @@ def _dispatch_alignment_check(
     planspace: Path,
     codespace: Path,
     parent: str,
-    artifacts: Path,
 ) -> str | None:
     """Dispatch the alignment check agent. Return result or None to abort."""
+    artifacts = PathRegistry(planspace).artifacts
     policy = Services.policies().load(planspace)
     Services.logger().log(f"Section {section.number}: implementation alignment check")
     impl_align_prompt = write_impl_alignment_prompt(
@@ -419,9 +414,9 @@ def _extract_alignment_problems(
     planspace: Path,
     parent: str,
     codespace: Path,
-    artifacts: Path,
 ) -> str | None:
     """Extract alignment problems from the alignment check result."""
+    artifacts = PathRegistry(planspace).artifacts
     policy = Services.policies().load(planspace)
     impl_align_output = artifacts / f"impl-align-{section_number}-output.md"
     return Services.section_alignment().extract_problems(
@@ -440,11 +435,10 @@ def _handle_underspec_signal(
     planspace: Path,
     parent: str,
     codespace: Path,
-    artifacts: Path,
 ) -> str:
     """Check for underspec signal after alignment; return loop action."""
     paths = PathRegistry(planspace)
-    impl_align_output = artifacts / f"impl-align-{section_number}-output.md"
+    impl_align_output = paths.artifacts / f"impl-align-{section_number}-output.md"
     signal, detail = Services.dispatch_helpers().check_agent_signals(
         impl_align_result,
         signal_path=paths.signals_dir() / f"impl-align-{section_number}-signal.json",
