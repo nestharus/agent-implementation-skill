@@ -202,7 +202,6 @@ def _build_updater_prompt(
     truly_missing: list[str],
     truly_irrelevant: list[str],
     updater_signal: Path,
-    _paths: PathRegistry,
 ) -> str | None:
     """Build the related-files updater prompt text.
 
@@ -255,7 +254,6 @@ def _dispatch_updater_and_apply(
     section_file: Path,
     model_policy: dict[str, str],
     scan_log_dir: Path,
-    _paths: PathRegistry,
 ) -> None:
     """Dispatch updater agent, escalate on failure, and apply the signal."""
     updater_model = model_policy["feedback_updater"]
@@ -379,7 +377,7 @@ def _apply_feedback(
         updater_signal = _paths.scan_related_files_update_signal(sec_name)
         prompt = _build_updater_prompt(
             sec_name, section_file, codemap_path, corrections_ref,
-            truly_missing, truly_irrelevant, updater_signal, _paths,
+            truly_missing, truly_irrelevant, updater_signal,
         )
         if prompt is None:
             continue
@@ -391,5 +389,4 @@ def _apply_feedback(
         _dispatch_updater_and_apply(
             sec_name, codespace, updater_prompt_path, updater_output,
             updater_signal, section_file, model_policy, scan_log_dir,
-            _paths,
         )
