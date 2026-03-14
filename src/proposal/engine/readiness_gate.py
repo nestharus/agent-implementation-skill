@@ -10,7 +10,7 @@ from research.engine.orchestrator import (
     write_research_status,
 )
 from research.prompt.writers import write_research_plan_prompt
-from proposal.repository.state import load_proposal_state
+from proposal.repository.state import ProposalState, load_proposal_state
 from proposal.service.readiness_resolver import resolve_readiness
 from reconciliation.repository.queue import queue_reconciliation_request
 from containers import Services
@@ -65,14 +65,14 @@ def _emit_needs_parent_research_signals(
 
 def publish_discoveries(
     section_number: str,
-    proposal_state: dict,
+    proposal_state: ProposalState,
     planspace: Path,
 ) -> None:
     """Publish durable discovery artifacts from proposal state."""
     registry = PathRegistry(planspace)
     scope_delta_dir = registry.scope_deltas_dir()
 
-    for candidate in proposal_state.get("new_section_candidates", []):
+    for candidate in proposal_state.new_section_candidates:
         scope_delta_dir.mkdir(parents=True, exist_ok=True)
         cand_text = str(candidate)
         cand_hash = Services.hasher().content_hash(cand_text)[:_CANDIDATE_HASH_LENGTH]
@@ -92,14 +92,14 @@ def publish_discoveries(
             f"new_section_candidate ({cand_hash})"
         )
 
-    for question in proposal_state.get("research_questions", []):
+    for question in proposal_state.research_questions:
         append_open_problem(
             planspace,
             section_number,
             str(question),
             "proposal-state:research_question",
         )
-    rq_list = proposal_state.get("research_questions", [])
+    rq_list = proposal_state.research_questions
     if rq_list:
         open_problems_dir = registry.open_problems_dir()
         open_problems_dir.mkdir(parents=True, exist_ok=True)
@@ -190,10 +190,10 @@ def _route_blocking_research(
 
 
 def _route_user_root_questions(
-    signal_dir: Path, section_number: str, proposal_state: dict,
+    signal_dir: Path, section_number: str, proposal_state: ProposalState,
 ) -> None:
     """Emit NEED_DECISION signals for user-root questions."""
-    for i, question in enumerate(proposal_state.get("user_root_questions", [])):
+    for i, question in enumerate(proposal_state.user_root_questions):
         q_signal = {
             "state": SIGNAL_NEED_DECISION,
             "section": section_number,
@@ -214,10 +214,10 @@ def _route_user_root_questions(
 
 
 def _route_shared_seams(
-    signal_dir: Path, section_number: str, proposal_state: dict,
+    signal_dir: Path, section_number: str, proposal_state: ProposalState,
 ) -> None:
     """Emit substrate triggers and needs_parent signals for shared seams."""
-    for i, seam in enumerate(proposal_state.get("shared_seam_candidates", [])):
+    for i, seam in enumerate(proposal_state.shared_seam_candidates):
         trigger = {
             "section": section_number,
             "seam": str(seam),
@@ -250,14 +250,14 @@ def _route_shared_seams(
 
 
 def _route_unresolved_contracts(
-    section_number: str, proposal_state: dict, planspace: Path,
+    section_number: str, proposal_state: ProposalState, planspace: Path,
 ) -> None:
     """Queue reconciliation for unresolved contracts/anchors."""
     unresolved_contracts = [
-        str(c) for c in proposal_state.get("unresolved_contracts", [])
+        str(c) for c in proposal_state.unresolved_contracts
     ]
     unresolved_anchors = [
-        str(a) for a in proposal_state.get("unresolved_anchors", [])
+        str(a) for a in proposal_state.unresolved_anchors
     ]
     if not unresolved_contracts and not unresolved_anchors:
         return
@@ -274,7 +274,7 @@ def _route_unresolved_contracts(
 
 def route_blockers(
     section_number: str,
-    proposal_state: dict,
+    proposal_state: ProposalState,
     planspace: Path,
     codespace: Path | None = None,
 ) -> None:
@@ -287,7 +287,7 @@ def route_blockers(
 
     blocking_research_questions = [
         str(question)
-        for question in proposal_state.get("blocking_research_questions", [])
+        for question in proposal_state.blocking_research_questions
     ]
     if blocking_research_questions:
         _route_blocking_research(
@@ -303,7 +303,7 @@ def route_blockers(
 def _build_proposal_pass_result(
     section_number: str,
     proposal_state_path: str,
-    proposal_state: dict,
+    proposal_state: ProposalState,
     *,
     execution_ready: bool,
     blockers: list[dict],
@@ -312,8 +312,8 @@ def _build_proposal_pass_result(
     needs_reconciliation = False
     if not execution_ready:
         needs_reconciliation = bool(
-            proposal_state.get("unresolved_contracts")
-            or proposal_state.get("unresolved_anchors"),
+            proposal_state.unresolved_contracts
+            or proposal_state.unresolved_anchors,
         )
     return ProposalPassResult(
         section_number=section_number,

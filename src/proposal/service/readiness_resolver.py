@@ -26,6 +26,7 @@ class GovernanceBlockerState(str, Enum):
         return self.value
 from orchestrator.path_registry import PathRegistry
 from proposal.repository.state import (
+    ProposalState,
     extract_blockers,
     has_blocking_fields,
     load_proposal_state,
@@ -63,9 +64,9 @@ class ReadinessResult:
 logger = logging.getLogger(__name__)
 
 
-def _check_pattern_deviations(state: dict) -> list[dict]:
+def _check_pattern_deviations(state: ProposalState) -> list[dict]:
     """Return blockers for unresolved pattern deviations."""
-    deviations = state.get("pattern_deviations", [])
+    deviations = state.pattern_deviations
     if isinstance(deviations, list) and deviations:
         return [{
             "state": GovernanceBlockerState.DEVIATION,
@@ -80,9 +81,9 @@ def _check_pattern_deviations(state: dict) -> list[dict]:
     return []
 
 
-def _check_governance_questions(state: dict) -> list[dict]:
+def _check_governance_questions(state: ProposalState) -> list[dict]:
     """Return blockers for unresolved governance questions."""
-    questions = state.get("governance_questions", [])
+    questions = state.governance_questions
     if isinstance(questions, list) and questions:
         return [{
             "state": GovernanceBlockerState.QUESTION,
@@ -109,12 +110,12 @@ class GovernanceIds:
 
 
 def _validate_declared_ids_types(
-    state: dict, section_number: str,
+    state: ProposalState, section_number: str,
 ) -> GovernanceIds:
     """Extract and type-check declared governance IDs from *state*."""
-    problem_ids = state.get("problem_ids", [])
-    pattern_ids = state.get("pattern_ids", [])
-    profile_id = state.get("profile_id", "")
+    problem_ids = state.problem_ids
+    pattern_ids = state.pattern_ids
+    profile_id = state.profile_id
     if not isinstance(problem_ids, list):
         logger.warning(
             "Section %s: problem_ids has unexpected type %s, defaulting to []",
@@ -136,14 +137,14 @@ def _validate_declared_ids_types(
     return GovernanceIds(problem_ids, pattern_ids, profile_id)
 
 
-def _check_packet_ambiguity(packet: dict, state: dict) -> list[dict]:
+def _check_packet_ambiguity(packet: dict, state: ProposalState) -> list[dict]:
     """CP-3 (R107): packet ambiguity must be carried in proposal-state."""
     packet_applicability = packet.get("applicability_state", "")
     packet_questions = packet.get("governance_questions", [])
     if not isinstance(packet_questions, list):
         packet_questions = []
     if packet_applicability == "ambiguous_applicability" and packet_questions:
-        state_questions = state.get("governance_questions", [])
+        state_questions = state.governance_questions
         if not isinstance(state_questions, list):
             state_questions = []
         if not state_questions:
@@ -270,7 +271,7 @@ def _check_missing_packet(has_declared_ids: bool, packet: Any) -> list[dict]:
 
 
 def _validate_governance_identity(
-    state: dict,
+    state: ProposalState,
     planspace: Path,
     section_number: str,
 ) -> list[dict]:
@@ -329,7 +330,7 @@ def resolve_readiness(planspace: Path, section_number: str) -> ReadinessResult:
     proposal_state_path = paths.proposal_state(section_number)
     state = load_proposal_state(proposal_state_path)
 
-    ready = state.get("execution_ready") is True and not has_blocking_fields(state)
+    ready = state.execution_ready is True and not has_blocking_fields(state)
     blockers = extract_blockers(state)
 
     # Validate governance identity (PAT-0013)
@@ -340,12 +341,12 @@ def resolve_readiness(planspace: Path, section_number: str) -> ReadinessResult:
         blockers.extend(governance_blockers)
         ready = False
 
-    rationale = state.get("readiness_rationale", "")
+    rationale = state.readiness_rationale
 
     if not ready and not blockers:
         if not proposal_state_path.exists():
             rationale = rationale or "proposal-state artifact missing"
-        elif not state.get("execution_ready"):
+        elif not state.execution_ready:
             rationale = rationale or "execution_ready is false"
 
     serializable: dict = {

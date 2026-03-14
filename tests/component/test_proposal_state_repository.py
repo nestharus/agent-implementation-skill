@@ -5,30 +5,19 @@ from __future__ import annotations
 import json
 
 from src.proposal.repository.state import (
-    _fail_closed_default,
+    ProposalState,
     extract_blockers,
     has_blocking_fields,
     load_proposal_state,
     save_proposal_state,
-    validate_proposal_state,
 )
 
 
-def test_validate_proposal_state_fills_missing_and_invalid_fields() -> None:
-    state = validate_proposal_state({
-        "resolved_anchors": "bad",
-        "execution_ready": "yes",
-        "readiness_rationale": None,
-    })
-
-    assert state["resolved_anchors"] == []
-    assert state["execution_ready"] is False
-    assert state["readiness_rationale"] == ""
-    assert state["unresolved_contracts"] == []
-
-
-def test_load_proposal_state_returns_fail_closed_default_when_missing(tmp_path) -> None:
-    assert load_proposal_state(tmp_path / "missing.json") == _fail_closed_default()
+def test_load_proposal_state_returns_default_when_missing(tmp_path) -> None:
+    result = load_proposal_state(tmp_path / "missing.json")
+    assert isinstance(result, ProposalState)
+    assert result.execution_ready is False
+    assert result.resolved_contracts == []
 
 
 def test_load_proposal_state_renames_non_object_json_and_fails_closed(tmp_path) -> None:
@@ -37,27 +26,38 @@ def test_load_proposal_state_renames_non_object_json_and_fails_closed(tmp_path) 
 
     result = load_proposal_state(path)
 
-    assert result == _fail_closed_default()
+    assert isinstance(result, ProposalState)
+    assert result.execution_ready is False
     assert not path.exists()
     assert (tmp_path / "proposal-state.malformed.json").exists()
 
 
 def test_load_proposal_state_renames_missing_required_keys_and_fails_closed(tmp_path) -> None:
     path = tmp_path / "proposal-state.json"
-    valid = _fail_closed_default()
-    del valid["execution_ready"]
-    path.write_text(json.dumps(valid), encoding="utf-8")
+    incomplete = ProposalState().to_dict()
+    del incomplete["execution_ready"]
+    path.write_text(json.dumps(incomplete), encoding="utf-8")
 
     result = load_proposal_state(path)
 
-    assert result == _fail_closed_default()
+    assert isinstance(result, ProposalState)
+    assert result.execution_ready is False
     assert not path.exists()
     assert (tmp_path / "proposal-state.malformed.json").exists()
 
 
 def test_save_proposal_state_writes_json(tmp_path) -> None:
     path = tmp_path / "nested" / "proposal-state.json"
-    state = _fail_closed_default()
+    state = ProposalState(resolved_contracts=["auth"])
+
+    save_proposal_state(state, path)
+
+    assert json.loads(path.read_text(encoding="utf-8"))["resolved_contracts"] == ["auth"]
+
+
+def test_save_proposal_state_accepts_dict(tmp_path) -> None:
+    path = tmp_path / "nested" / "proposal-state.json"
+    state = ProposalState().to_dict()
     state["resolved_contracts"] = ["auth"]
 
     save_proposal_state(state, path)
@@ -66,9 +66,10 @@ def test_save_proposal_state_writes_json(tmp_path) -> None:
 
 
 def test_blocking_helpers_report_blockers() -> None:
-    state = _fail_closed_default()
-    state["user_root_questions"] = ["Need user decision"]
-    state["shared_seam_candidates"] = ["Shared interface"]
+    state = ProposalState(
+        user_root_questions=["Need user decision"],
+        shared_seam_candidates=["Shared interface"],
+    )
 
     assert has_blocking_fields(state) is True
     assert extract_blockers(state) == [
@@ -81,3 +82,24 @@ def test_blocking_helpers_report_blockers() -> None:
             "description": "Shared interface",
         },
     ]
+
+
+def test_from_dict_ignores_unknown_keys() -> None:
+    state = ProposalState.from_dict({
+        "execution_ready": True,
+        "readiness_rationale": "ready",
+        "unknown_key": "ignored",
+    })
+    assert state.execution_ready is True
+    assert state.readiness_rationale == "ready"
+
+
+def test_to_dict_round_trips() -> None:
+    state = ProposalState(
+        resolved_anchors=["a.store"],
+        execution_ready=True,
+        readiness_rationale="ready",
+    )
+    d = state.to_dict()
+    restored = ProposalState.from_dict(d)
+    assert restored == state

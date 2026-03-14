@@ -9,7 +9,7 @@ from typing import Any
 from orchestrator.path_registry import PathRegistry
 from orchestrator.repository.section_artifacts import write_section_input_artifact
 from implementation.repository.roal_index import refresh_roal_input_index
-from proposal.repository.state import load_proposal_state
+from proposal.repository.state import ProposalState, load_proposal_state
 from risk.service.engagement import determine_engagement
 from risk.engine.risk_assessor import run_lightweight_risk_check
 from risk.service.package_builder import build_package_from_proposal
@@ -115,7 +115,7 @@ def _resolve_triage_engagement(
     paths: PathRegistry,
     sec_num: str,
     advisory_package: RiskPackage,
-    proposal_state: dict,
+    proposal_state: ProposalState,
 ) -> RiskMode:
     triage_signal = Services.artifact_io().read_json(paths.intent_triage_signal(sec_num))
     triage_confidence = "low"
@@ -128,9 +128,9 @@ def _resolve_triage_engagement(
 
     return determine_engagement(
         step_count=len(advisory_package.steps),
-        file_count=max(len(proposal_state.get("resolved_contracts", [])), 1),
+        file_count=max(len(proposal_state.resolved_contracts), 1),
         ctx=EngagementContext(
-            has_shared_seams=bool(proposal_state.get("shared_seam_candidates")),
+            has_shared_seams=bool(proposal_state.shared_seam_candidates),
         ),
         triage_confidence=triage_confidence,
         risk_mode_hint=risk_mode_hint,

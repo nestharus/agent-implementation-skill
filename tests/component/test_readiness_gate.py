@@ -12,6 +12,7 @@ from src.proposal.engine.readiness_gate import (
     resolve_and_route,
     route_blockers,
 )
+from src.proposal.repository.state import ProposalState
 from src.proposal.service.readiness_resolver import ReadinessResult
 from src.orchestrator.types import Section
 
@@ -39,10 +40,10 @@ def test_publish_discoveries_writes_scope_delta_and_research_artifact(
 
     publish_discoveries(
         "03",
-        {
-            "new_section_candidates": ["Create retry worker"],
-            "research_questions": ["Need API quota behavior"],
-        },
+        ProposalState(
+            new_section_candidates=["Create retry worker"],
+            research_questions=["Need API quota behavior"],
+        ),
         planspace,
     )
 
@@ -75,12 +76,12 @@ def test_route_blockers_writes_signals_and_queues_reconciliation(
 
     route_blockers(
         "03",
-        {
-            "user_root_questions": ["Choose retry policy"],
-            "shared_seam_candidates": ["shared client cache"],
-            "unresolved_contracts": ["CacheProtocol"],
-            "unresolved_anchors": ["client.cache"],
-        },
+        ProposalState(
+            user_root_questions=["Choose retry policy"],
+            shared_seam_candidates=["shared client cache"],
+            unresolved_contracts=["CacheProtocol"],
+            unresolved_anchors=["client.cache"],
+        ),
         planspace,
     )
 
@@ -166,11 +167,11 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
     try:
         route_blockers(
             "03",
-            {
-                "blocking_research_questions": [
+            ProposalState(
+                blocking_research_questions=[
                     "Should the retry ledger be persisted centrally?"
                 ],
-            },
+            ),
             planspace,
         )
 
@@ -256,11 +257,11 @@ def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
 
     route_blockers(
         "03",
-        {
-            "blocking_research_questions": [
+        ProposalState(
+            blocking_research_questions=[
                 "Should the retry ledger be persisted centrally?"
             ],
-        },
+        ),
         planspace,
     )
 
@@ -331,11 +332,11 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
 
     route_blockers(
         "03",
-        {
-            "blocking_research_questions": [
+        ProposalState(
+            blocking_research_questions=[
                 "Should the retry ledger be persisted centrally?"
             ],
-        },
+        ),
         planspace,
     )
 
@@ -392,9 +393,7 @@ def test_route_blockers_ignores_empty_blocking_research_questions(
 
     route_blockers(
         "03",
-        {
-            "blocking_research_questions": [],
-        },
+        ProposalState(blocking_research_questions=[]),
         planspace,
     )
 

@@ -272,7 +272,7 @@ def _run_risk_review(
             step_count=len(package.steps),
             file_count=max(len(section.related_files), 1),
             ctx=EngagementContext(
-                has_shared_seams=bool(proposal_state.get("shared_seam_candidates")),
+                has_shared_seams=bool(proposal_state.shared_seam_candidates),
                 has_consequence_notes=bool(read_incoming_notes(planspace, sec_num)),
                 has_stale_inputs=stale_inputs,
                 has_recent_failures=section.solve_count > 1 or recent_loop_signal,

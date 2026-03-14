@@ -79,9 +79,9 @@ def _record_traceability(
     if state_path.exists():
         ps = load_proposal_state(state_path)
         governance = {
-            "problem_ids": ps.get("problem_ids", []),
-            "pattern_ids": ps.get("pattern_ids", []),
-            "profile_id": ps.get("profile_id", ""),
+            "problem_ids": ps.problem_ids,
+            "pattern_ids": ps.pattern_ids,
+            "profile_id": ps.profile_id,
         }
 
     entry: dict = {

@@ -3,30 +3,43 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from containers import Services
 
 logger = logging.getLogger(__name__)
 
-PROPOSAL_STATE_SCHEMA: dict[str, type] = {
-    "resolved_anchors": list,
-    "unresolved_anchors": list,
-    "resolved_contracts": list,
-    "unresolved_contracts": list,
-    "research_questions": list,
-    "blocking_research_questions": list,
-    "user_root_questions": list,
-    "new_section_candidates": list,
-    "shared_seam_candidates": list,
-    "execution_ready": bool,
-    "readiness_rationale": str,
-    "problem_ids": list,
-    "pattern_ids": list,
-    "profile_id": str,
-    "pattern_deviations": list,
-    "governance_questions": list,
-}
+
+@dataclass
+class ProposalState:
+    """Typed proposal state — replaces raw dict contract."""
+
+    resolved_anchors: list = field(default_factory=list)
+    unresolved_anchors: list = field(default_factory=list)
+    resolved_contracts: list = field(default_factory=list)
+    unresolved_contracts: list = field(default_factory=list)
+    research_questions: list = field(default_factory=list)
+    blocking_research_questions: list = field(default_factory=list)
+    user_root_questions: list = field(default_factory=list)
+    new_section_candidates: list = field(default_factory=list)
+    shared_seam_candidates: list = field(default_factory=list)
+    execution_ready: bool = False
+    readiness_rationale: str = ""
+    problem_ids: list = field(default_factory=list)
+    pattern_ids: list = field(default_factory=list)
+    profile_id: str = ""
+    pattern_deviations: list = field(default_factory=list)
+    governance_questions: list = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {f.name: getattr(self, f.name) for f in fields(self)}
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> ProposalState:
+        known = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in raw.items() if k in known})
+
 
 _BLOCKING_FIELDS: tuple[str, ...] = (
     "unresolved_anchors",
@@ -37,41 +50,10 @@ _BLOCKING_FIELDS: tuple[str, ...] = (
 )
 
 
-def _fail_closed_default() -> dict:
-    """Return a default proposal state with execution_ready = False."""
-    return {
-        "resolved_anchors": [],
-        "unresolved_anchors": [],
-        "resolved_contracts": [],
-        "unresolved_contracts": [],
-        "research_questions": [],
-        "blocking_research_questions": [],
-        "user_root_questions": [],
-        "new_section_candidates": [],
-        "shared_seam_candidates": [],
-        "execution_ready": False,
-        "readiness_rationale": "",
-        "problem_ids": [],
-        "pattern_ids": [],
-        "profile_id": "",
-        "pattern_deviations": [],
-        "governance_questions": [],
-    }
-
-
-def validate_proposal_state(state: dict) -> dict:
-    """Validate and normalize a proposal state dict."""
-    for key, expected_type in PROPOSAL_STATE_SCHEMA.items():
-        if key in state and isinstance(state[key], expected_type):
-            continue
-        state[key] = expected_type()
-    return state
-
-
-def load_proposal_state(path: Path) -> dict:
+def load_proposal_state(path: Path) -> ProposalState:
     """Load and validate a proposal state JSON file."""
     if not path.exists():
-        return _fail_closed_default()
+        return ProposalState()
 
     raw = Services.artifact_io().read_json(path)
     if raw is None:
@@ -79,7 +61,7 @@ def load_proposal_state(path: Path) -> dict:
             "Malformed proposal state at %s — returning fail-closed default",
             path,
         )
-        return _fail_closed_default()
+        return ProposalState()
 
     if not isinstance(raw, dict):
         logger.warning(
@@ -88,9 +70,10 @@ def load_proposal_state(path: Path) -> dict:
             path,
         )
         Services.artifact_io().rename_malformed(path)
-        return _fail_closed_default()
+        return ProposalState()
 
-    for key, expected_type in PROPOSAL_STATE_SCHEMA.items():
+    expected_fields = {f.name: f.type for f in fields(ProposalState)}
+    for key in expected_fields:
         if key not in raw:
             logger.warning(
                 "Proposal state at %s missing required key '%s' "
@@ -99,46 +82,38 @@ def load_proposal_state(path: Path) -> dict:
                 key,
             )
             Services.artifact_io().rename_malformed(path)
-            return _fail_closed_default()
-        if not isinstance(raw[key], expected_type):
-            logger.warning(
-                "Proposal state at %s has wrong type for '%s' "
-                "(expected %s, got %s) — renaming to .malformed.json",
-                path,
-                key,
-                expected_type.__name__,
-                type(raw[key]).__name__,
-            )
-            Services.artifact_io().rename_malformed(path)
-            return _fail_closed_default()
+            return ProposalState()
 
-    return raw
+    return ProposalState.from_dict(raw)
 
 
-def save_proposal_state(state: dict, path: Path) -> None:
-    """Write a proposal state dict to JSON."""
-    Services.artifact_io().write_json(path, state)
+def save_proposal_state(state: ProposalState | dict, path: Path) -> None:
+    """Write a proposal state to JSON."""
+    data = state.to_dict() if isinstance(state, ProposalState) else state
+    Services.artifact_io().write_json(path, data)
 
 
-def has_blocking_fields(state: dict) -> bool:
+def has_blocking_fields(state: ProposalState) -> bool:
     """Return True if any blocking fields contain items."""
-    for key in _BLOCKING_FIELDS:
-        items = state.get(key, [])
-        if isinstance(items, list) and items:
-            return True
-    return False
+    return bool(
+        state.unresolved_anchors
+        or state.unresolved_contracts
+        or state.blocking_research_questions
+        or state.user_root_questions
+        or state.shared_seam_candidates
+    )
 
 
-def extract_blockers(state: dict) -> list[dict]:
+def extract_blockers(state: ProposalState) -> list[dict]:
     """Return a list of blocker dicts with ``type`` and ``description``."""
     blockers: list[dict] = []
-    for key in _BLOCKING_FIELDS:
-        items = state.get(key, [])
+    for field_name in _BLOCKING_FIELDS:
+        items = getattr(state, field_name, [])
         if not isinstance(items, list):
             continue
         for item in items:
             blockers.append({
-                "type": key,
+                "type": field_name,
                 "description": str(item),
             })
     return blockers

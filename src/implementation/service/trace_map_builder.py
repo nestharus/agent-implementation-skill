@@ -40,14 +40,14 @@ def build_trace_map(
             "packet_path": str(paths.governance_packet(section_number)),
             "packet_hash": Services.hasher().file_hash(paths.governance_packet(section_number)),
             "problem_ids": [
-                str(x) for x in ps.get("problem_ids", [])
+                str(x) for x in ps.problem_ids
                 if isinstance(x, str) and x.strip()
             ],
             "pattern_ids": [
-                str(x) for x in ps.get("pattern_ids", [])
+                str(x) for x in ps.pattern_ids
                 if isinstance(x, str) and x.strip()
             ],
-            "profile_id": ps.get("profile_id", "") or "",
+            "profile_id": ps.profile_id or "",
         },
     }
     Services.artifact_io().write_json(trace_map_path, trace_map)

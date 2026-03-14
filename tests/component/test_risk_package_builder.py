@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
+from proposal.repository.state import ProposalState
 from risk.service.package_builder import (
     _materialize_steps,
     _positional_assessment_class,
@@ -211,7 +212,7 @@ def test_materialize_steps_uses_typed_assessment_classes_when_present() -> None:
             "Resolve seam with section 04",
             "Verify final behavior",
         ],
-        proposal_state={},
+        proposal_state=ProposalState(),
         assessment_classes={
             2: "stabilize",
             3: "coordinate",
@@ -233,7 +234,7 @@ def test_materialize_steps_uses_positional_fallback_without_assessment_classes()
             "Apply change",
             "Verify final behavior",
         ],
-        proposal_state={},
+        proposal_state=ProposalState(),
     )
 
     assert [step.assessment_class for step in steps] == [
@@ -250,7 +251,7 @@ def test_materialize_steps_invalid_assessment_class_falls_back_to_positional() -
             "Middle step",
             "Verify final behavior",
         ],
-        proposal_state={},
+        proposal_state=ProposalState(),
         assessment_classes={2: "unknown"},
     )
 

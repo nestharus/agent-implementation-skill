@@ -8,7 +8,7 @@ from pathlib import Path
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
-from proposal.repository.state import load_proposal_state
+from proposal.repository.state import ProposalState, load_proposal_state
 from risk.repository.serialization import (
     load_risk_package,
     serialize_package,
@@ -300,12 +300,12 @@ def _first_content_line(text: str) -> str:
 def _materialize_steps(
     *,
     step_summaries: list[str],
-    proposal_state: dict,
+    proposal_state: ProposalState,
     assessment_classes: dict[int, str] | None = None,
 ) -> list[PackageStep]:
-    mutation_surface = [str(item) for item in proposal_state.get("resolved_contracts", [])]
+    mutation_surface = [str(item) for item in proposal_state.resolved_contracts]
     verification_surface = [
-        str(item) for item in proposal_state.get("resolved_anchors", [])
+        str(item) for item in proposal_state.resolved_anchors
     ]
     total = len(step_summaries)
     steps: list[PackageStep] = []

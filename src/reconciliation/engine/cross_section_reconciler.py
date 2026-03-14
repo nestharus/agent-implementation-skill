@@ -139,7 +139,7 @@ def _load_proposal_states(
     states: dict[str, dict] = {}
     for sec_num in section_numbers:
         state_path = PathRegistry(run_dir).proposal_state(sec_num)
-        states[sec_num] = load_proposal_state(state_path)
+        states[sec_num] = load_proposal_state(state_path).to_dict()
     return states
 
 

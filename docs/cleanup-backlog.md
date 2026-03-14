@@ -302,7 +302,7 @@ Functions that accept parameters which could be computed from other parameters a
   4. `build_prompt_context` -> `dict` with 25+ keys consumed by all prompt writers. Silent KeyError on missing keys.
   5. ~~`read_dispatch_metadata` -> `dict | None | object` three-way return type with sentinel comparison trap.~~ DONE — `DispatchMetaResult` dataclass + `DispatchMetaStatus` enum.
 - **Risk**: Untyped dicts at system boundaries mean contract changes are invisible until runtime. 4 systems depending on `load_proposal_state` dict keys can break silently from a key rename.
-- **Status**: PARTIALLY DONE — `resolve_readiness` now returns `ReadinessResult` dataclass. `dispatch_agent` now returns `DispatchResult` dataclass with `DispatchStatus` enum. `read_dispatch_metadata` now returns `DispatchMetaResult` dataclass with `DispatchMetaStatus` enum. Remaining: `load_proposal_state`, `ensure_global_philosophy`, `build_prompt_context` still return raw dicts.
+- **Status**: PARTIALLY DONE — `resolve_readiness` now returns `ReadinessResult` dataclass. `dispatch_agent` now returns `DispatchResult` dataclass with `DispatchStatus` enum. `read_dispatch_metadata` now returns `DispatchMetaResult` dataclass with `DispatchMetaStatus` enum. `load_proposal_state` now returns `ProposalState` dataclass — 35+ `.get()` access sites migrated across 10 consumer files. Remaining: `ensure_global_philosophy`, `build_prompt_context` still return raw dicts.
 
 ### 100. Stringly-typed protocol tokens — no enums for control flow
 - **Category**: Type safety / silent bug risk

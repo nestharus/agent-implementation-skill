@@ -21,14 +21,14 @@ def _proposal_governance_ids(planspace: Path, section_number: str) -> dict:
     state = load_proposal_state(state_path)
     return {
         "problem_ids": [
-            str(x) for x in state.get("problem_ids", [])
+            str(x) for x in state.problem_ids
             if isinstance(x, str) and x.strip()
         ],
         "pattern_ids": [
-            str(x) for x in state.get("pattern_ids", [])
+            str(x) for x in state.pattern_ids
             if isinstance(x, str) and x.strip()
         ],
-        "profile_id": state.get("profile_id", "") or "",
+        "profile_id": state.profile_id or "",
     }
 
 
