@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
 from flow.service.task_db_client import task_db
 from flow.types.context import TaskStatus
+
+_GATE_FAILURE_POLICY_BLOCK = "block"
 from flow.repository.flow_context_store import (
     FlowReadStatus,
     continuation_relpath,
@@ -25,6 +27,9 @@ from flow.repository.flow_context_store import (
 from flow.engine.flow_submitter import new_chain_id, new_instance_id
 from flow.types.context import FlowTask
 from flow.types.routing import Task, submit_task
+
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 
 def read_origin_refs(planspace: Path, task_id: int) -> list[str]:
@@ -183,6 +188,103 @@ def _fire_synthesis_task(
     )
 
 
+class GateRepository:
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
+
+    def check_and_fire_gate(
+        self,
+        db_path: Path,
+        planspace: Path,
+        gate_id: str,
+        flow_id: str,
+        origin_refs: list[str],
+        build_gate_aggregate_manifest,
+    ) -> None:
+        """Check if all gate members are terminal and fire the gate if so.
+
+        ``build_gate_aggregate_manifest`` is passed as a callable to avoid
+        circular imports between repository and engine layers.
+        """
+        with task_db(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM gates WHERE gate_id = ?", (gate_id,))
+            gate_row = cur.fetchone()
+            if gate_row is None:
+                return
+            gate = dict(gate_row)
+
+            cur.execute(
+                "SELECT * FROM gate_members WHERE gate_id = ? ORDER BY chain_id",
+                (gate_id,),
+            )
+            members = [dict(row) for row in cur.fetchall()]
+
+            terminal_statuses = {TaskStatus.COMPLETE, TaskStatus.FAILED}
+            if not all(
+                member["status"] in terminal_statuses for member in members
+            ):
+                return
+
+            any_failed = any(
+                member["status"] == TaskStatus.FAILED for member in members
+            )
+            if gate["failure_policy"] == _GATE_FAILURE_POLICY_BLOCK and any_failed:
+                conn.execute(
+                    "UPDATE gates SET status='blocked' WHERE gate_id=?",
+                    (gate_id,),
+                )
+                conn.commit()
+                return
+
+            member_entries = [
+                {
+                    "chain_id": member["chain_id"],
+                    "slot_label": member["slot_label"],
+                    "status": member["status"],
+                    "result_manifest_path": member["result_manifest_path"],
+                }
+                for member in members
+            ]
+            aggregate = build_gate_aggregate_manifest(
+                gate_id=gate_id,
+                flow_id=flow_id,
+                mode=gate["mode"],
+                failure_policy=gate["failure_policy"],
+                origin_refs=origin_refs,
+                members=member_entries,
+            )
+
+            agg_relpath = gate_aggregate_relpath(gate_id)
+            self._artifact_io.write_json(
+                PathRegistry(planspace).flow_gate_aggregate(gate_id), aggregate
+            )
+
+            conn.execute(
+                """UPDATE gates
+                   SET status='ready', aggregate_manifest_path=?
+                   WHERE gate_id=?""",
+                (agg_relpath, gate_id),
+            )
+            conn.commit()
+
+            if gate["synthesis_task_type"]:
+                _fire_synthesis_task(
+                    conn, db_path, planspace, gate, gate_id,
+                    flow_id, agg_relpath, origin_refs,
+                )
+
+
+# Backward-compat wrappers
+
+def _get_repository() -> GateRepository:
+    from containers import Services
+    return GateRepository(
+        artifact_io=Services.artifact_io(),
+    )
+
+
 def check_and_fire_gate(
     db_path: Path,
     planspace: Path,
@@ -191,76 +293,7 @@ def check_and_fire_gate(
     origin_refs: list[str],
     build_gate_aggregate_manifest,
 ) -> None:
-    """Check if all gate members are terminal and fire the gate if so.
-
-    ``build_gate_aggregate_manifest`` is passed as a callable to avoid
-    circular imports between repository and engine layers.
-    """
-    with task_db(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM gates WHERE gate_id = ?", (gate_id,))
-        gate_row = cur.fetchone()
-        if gate_row is None:
-            return
-        gate = dict(gate_row)
-
-        cur.execute(
-            "SELECT * FROM gate_members WHERE gate_id = ? ORDER BY chain_id",
-            (gate_id,),
-        )
-        members = [dict(row) for row in cur.fetchall()]
-
-        terminal_statuses = {TaskStatus.COMPLETE, TaskStatus.FAILED}
-        if not all(
-            member["status"] in terminal_statuses for member in members
-        ):
-            return
-
-        any_failed = any(
-            member["status"] == TaskStatus.FAILED for member in members
-        )
-        if gate["failure_policy"] == "block" and any_failed:
-            conn.execute(
-                "UPDATE gates SET status='blocked' WHERE gate_id=?",
-                (gate_id,),
-            )
-            conn.commit()
-            return
-
-        member_entries = [
-            {
-                "chain_id": member["chain_id"],
-                "slot_label": member["slot_label"],
-                "status": member["status"],
-                "result_manifest_path": member["result_manifest_path"],
-            }
-            for member in members
-        ]
-        aggregate = build_gate_aggregate_manifest(
-            gate_id=gate_id,
-            flow_id=flow_id,
-            mode=gate["mode"],
-            failure_policy=gate["failure_policy"],
-            origin_refs=origin_refs,
-            members=member_entries,
-        )
-
-        agg_relpath = gate_aggregate_relpath(gate_id)
-        Services.artifact_io().write_json(
-            PathRegistry(planspace).flow_gate_aggregate(gate_id), aggregate
-        )
-
-        conn.execute(
-            """UPDATE gates
-               SET status='ready', aggregate_manifest_path=?
-               WHERE gate_id=?""",
-            (agg_relpath, gate_id),
-        )
-        conn.commit()
-
-        if gate["synthesis_task_type"]:
-            _fire_synthesis_task(
-                conn, db_path, planspace, gate, gate_id,
-                flow_id, agg_relpath, origin_refs,
-            )
+    return _get_repository().check_and_fire_gate(
+        db_path, planspace, gate_id, flow_id, origin_refs,
+        build_gate_aggregate_manifest,
+    )

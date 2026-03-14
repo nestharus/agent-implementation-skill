@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 
 class FlowReadStatus(str, Enum):
@@ -47,58 +49,85 @@ def gate_aggregate_relpath(gate_id: str) -> str:
     return f"artifacts/flows/{gate_id}-aggregate.json"
 
 
-def read_flow_json(path: Path) -> tuple[str, dict | list | None]:
-    """Read a flow artifact JSON file with fail-closed semantics."""
-    if not path.exists():
-        return (FlowReadStatus.MISSING, None)
+class FlowContextStore:
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
 
-    data = Services.artifact_io().read_json(path)
-    if data is None:
-        print(
-            f"[FLOW][WARN] Malformed JSON in {path} "
-            f"— renaming to .malformed.json",
+    def read_flow_json(self, path: Path) -> tuple[str, dict | list | None]:
+        """Read a flow artifact JSON file with fail-closed semantics."""
+        if not path.exists():
+            return (FlowReadStatus.MISSING, None)
+
+        data = self._artifact_io.read_json(path)
+        if data is None:
+            print(
+                f"[FLOW][WARN] Malformed JSON in {path} "
+                f"— renaming to .malformed.json",
+            )
+            return (FlowReadStatus.MALFORMED, None)
+
+        return (FlowReadStatus.OK, data)
+
+    def build_flow_context(
+        self,
+        planspace: Path,
+        flow_context_path: str | None = None,
+        continuation_path: str | None = None,
+        trigger_gate_id: str | None = None,
+    ) -> FlowContext | None:
+        """Read and return the flow context for a task, enriched for dispatch."""
+        if not flow_context_path:
+            return None
+
+        ctx_file = planspace / flow_context_path
+        status, raw = self.read_flow_json(ctx_file)
+
+        if status == FlowReadStatus.MISSING:
+            raise FlowCorruptionError(
+                f"flow context declared but file missing: {ctx_file}"
+            )
+
+        if status == FlowReadStatus.MALFORMED:
+            raise FlowCorruptionError(
+                f"flow context declared but file corrupt: {ctx_file}"
+            )
+
+        context = flow_context_from_dict(raw)
+
+        gate_id = trigger_gate_id or context.task.trigger_gate_id
+        if gate_id and not context.gate_aggregate_manifest:
+            agg_relpath = gate_aggregate_relpath(gate_id)
+            agg_file = planspace / agg_relpath
+            if agg_file.exists():
+                context.gate_aggregate_manifest = agg_relpath
+
+        if continuation_path and not context.continuation_path:
+            context.continuation_path = continuation_path
+
+        return context
+
+    def write_flow_context(
+        self,
+        planspace: Path,
+        task: FlowTask,
+        origin_refs: list[str],
+        previous_task_id: int | None,
+    ) -> None:
+        """Write a flow context JSON file for a task."""
+        previous_result = None
+        if previous_task_id is not None:
+            previous_result = result_manifest_relpath(previous_task_id)
+
+        context = FlowContext(
+            task=task,
+            origin_refs=origin_refs or [],
+            previous_result_manifest=previous_result,
+            continuation_path=continuation_relpath(task.task_id),
+            result_manifest_path=result_manifest_relpath(task.task_id),
         )
-        return (FlowReadStatus.MALFORMED, None)
 
-    return (FlowReadStatus.OK, data)
-
-
-def build_flow_context(
-    planspace: Path,
-    flow_context_path: str | None = None,
-    continuation_path: str | None = None,
-    trigger_gate_id: str | None = None,
-) -> FlowContext | None:
-    """Read and return the flow context for a task, enriched for dispatch."""
-    if not flow_context_path:
-        return None
-
-    ctx_file = planspace / flow_context_path
-    status, raw = read_flow_json(ctx_file)
-
-    if status == FlowReadStatus.MISSING:
-        raise FlowCorruptionError(
-            f"flow context declared but file missing: {ctx_file}"
-        )
-
-    if status == FlowReadStatus.MALFORMED:
-        raise FlowCorruptionError(
-            f"flow context declared but file corrupt: {ctx_file}"
-        )
-
-    context = flow_context_from_dict(raw)
-
-    gate_id = trigger_gate_id or context.task.trigger_gate_id
-    if gate_id and not context.gate_aggregate_manifest:
-        agg_relpath = gate_aggregate_relpath(gate_id)
-        agg_file = planspace / agg_relpath
-        if agg_file.exists():
-            context.gate_aggregate_manifest = agg_relpath
-
-    if continuation_path and not context.continuation_path:
-        context.continuation_path = continuation_path
-
-    return context
+        context_path = PathRegistry(planspace).flow_context(task.task_id)
+        self._artifact_io.write_json(context_path, flow_context_to_dict(context))
 
 
 def write_dispatch_prompt(
@@ -132,24 +161,34 @@ def write_dispatch_prompt(
     return dispatch_path
 
 
+# Backward-compat wrappers
+
+def _get_store() -> FlowContextStore:
+    from containers import Services
+    return FlowContextStore(
+        artifact_io=Services.artifact_io(),
+    )
+
+
+def read_flow_json(path: Path) -> tuple[str, dict | list | None]:
+    return _get_store().read_flow_json(path)
+
+
+def build_flow_context(
+    planspace: Path,
+    flow_context_path: str | None = None,
+    continuation_path: str | None = None,
+    trigger_gate_id: str | None = None,
+) -> FlowContext | None:
+    return _get_store().build_flow_context(
+        planspace, flow_context_path, continuation_path, trigger_gate_id,
+    )
+
+
 def write_flow_context(
     planspace: Path,
     task: FlowTask,
     origin_refs: list[str],
     previous_task_id: int | None,
 ) -> None:
-    """Write a flow context JSON file for a task."""
-    previous_result = None
-    if previous_task_id is not None:
-        previous_result = result_manifest_relpath(previous_task_id)
-
-    context = FlowContext(
-        task=task,
-        origin_refs=origin_refs or [],
-        previous_result_manifest=previous_result,
-        continuation_path=continuation_relpath(task.task_id),
-        result_manifest_path=result_manifest_relpath(task.task_id),
-    )
-
-    context_path = PathRegistry(planspace).flow_context(task.task_id)
-    Services.artifact_io().write_json(context_path, flow_context_to_dict(context))
+    return _get_store().write_flow_context(planspace, task, origin_refs, previous_task_id)

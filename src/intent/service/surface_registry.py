@@ -1,12 +1,16 @@
 """Surface registry: deduplication, tracking, and diminishing returns."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 from enum import Enum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
 
-from containers import Services
+if TYPE_CHECKING:
+    from containers import ArtifactIOService, HasherService, LogService, SignalReader
 
 
 class SurfaceStatus(str, Enum):
@@ -22,86 +26,158 @@ class SurfaceStatus(str, Enum):
 _FINGERPRINT_LENGTH = 12
 
 
-def load_surface_registry(
-    section_number: str, planspace: Path,
-) -> dict:
-    """Load the persistent surface registry for a section.
+class SurfaceRegistry:
+    """Surface registry: deduplication, tracking, and diminishing returns."""
 
-    Returns the registry dict or an empty default if missing/malformed.
-    """
-    registry_path = (
-        PathRegistry(planspace).intent_section_dir(section_number)
-        / "surface-registry.json"
-    )
-    if not registry_path.exists():
+    def __init__(
+        self,
+        artifact_io: ArtifactIOService,
+        hasher: HasherService,
+        logger: LogService,
+        signals: SignalReader,
+    ) -> None:
+        self._artifact_io = artifact_io
+        self._hasher = hasher
+        self._logger = logger
+        self._signals = signals
+
+    def load_surface_registry(
+        self, section_number: str, planspace: Path,
+    ) -> dict:
+        """Load the persistent surface registry for a section.
+
+        Returns the registry dict or an empty default if missing/malformed.
+        """
+        registry_path = (
+            PathRegistry(planspace).intent_section_dir(section_number)
+            / "surface-registry.json"
+        )
+        if not registry_path.exists():
+            return {"section": section_number, "next_id": 1, "surfaces": []}
+
+        data = self._artifact_io.read_json(registry_path)
+        if isinstance(data, dict) and "surfaces" in data:
+            return data
+        if data is not None:
+            # Schema mismatch: JSON valid but missing required keys (V6/R53)
+            self._logger.log(f"Section {section_number}: surface registry missing 'surfaces' "
+                f"key — preserving and starting fresh")
+            malformed_path = self._artifact_io.rename_malformed(registry_path)
+            if malformed_path is None and registry_path.exists():
+                self._logger.log(f"Section {section_number}: failed to rename schema-"
+                    "mismatched registry")
+        else:
+            self._logger.log(f"Section {section_number}: surface registry malformed "
+                f"— preserving and starting fresh")
+
         return {"section": section_number, "next_id": 1, "surfaces": []}
 
-    data = Services.artifact_io().read_json(registry_path)
-    if isinstance(data, dict) and "surfaces" in data:
+    def save_surface_registry(
+        self, section_number: str, planspace: Path, registry: dict,
+    ) -> None:
+        """Write the surface registry back to disk."""
+        registry_path = (
+            PathRegistry(planspace).intent_section_dir(section_number)
+            / "surface-registry.json"
+        )
+        self._artifact_io.write_json(registry_path, registry)
+
+    def load_intent_surfaces(
+        self, section_number: str, planspace: Path,
+    ) -> dict | None:
+        """Load intent-surfaces-NN.json signal written by intent-judge."""
+        signals_dir = PathRegistry(planspace).signals_dir()
+        surfaces_path = signals_dir / f"intent-surfaces-{section_number}.json"
+        return self._signals.read(surfaces_path)
+
+    def load_implementation_feedback_surfaces(
+        self, section_number: str, planspace: Path,
+    ) -> dict | None:
+        """Load implementation feedback surfaces for a section."""
+        feedback_path = PathRegistry(planspace).impl_feedback_surfaces(section_number)
+        return self._signals.read(feedback_path)
+
+    def load_research_derived_surfaces(
+        self, section_number: str, planspace: Path,
+    ) -> dict | None:
+        """Load research-derived surfaces with corruption preservation."""
+        research_path = PathRegistry(planspace).research_derived_surfaces(section_number)
+        if not research_path.exists():
+            return None
+        data = self._artifact_io.read_json(research_path)
+        if not isinstance(data, dict):
+            if data is not None:
+                self._artifact_io.rename_malformed(research_path)
+            return None
+        if (
+            "problem_surfaces" not in data
+            and "philosophy_surfaces" not in data
+        ):
+            self._artifact_io.rename_malformed(research_path)
+            return None
         return data
-    if data is not None:
-        # Schema mismatch: JSON valid but missing required keys (V6/R53)
-        Services.logger().log(f"Section {section_number}: surface registry missing 'surfaces' "
-            f"key — preserving and starting fresh")
-        malformed_path = Services.artifact_io().rename_malformed(registry_path)
-        if malformed_path is None and registry_path.exists():
-            Services.logger().log(f"Section {section_number}: failed to rename schema-"
-                "mismatched registry")
-    else:
-        Services.logger().log(f"Section {section_number}: surface registry malformed "
-            f"— preserving and starting fresh")
 
-    return {"section": section_number, "next_id": 1, "surfaces": []}
+    def load_combined_intent_surfaces(
+        self, section_number: str, planspace: Path,
+    ) -> dict | None:
+        """Load and merge all surface sources used by proposal/expansion."""
+        surfaces = self.load_intent_surfaces(section_number, planspace)
+        surfaces = merge_surface_payloads(
+            surfaces,
+            self.load_implementation_feedback_surfaces(section_number, planspace),
+        )
+        surfaces = merge_surface_payloads(
+            surfaces,
+            self.load_research_derived_surfaces(section_number, planspace),
+        )
+        return surfaces
+
+    def normalize_surface_ids(
+        self, surfaces: dict, registry: dict, section_number: str,
+    ) -> dict:
+        """Assign stable mechanical IDs to surfaces using registry counter.
+
+        Computes a fingerprint per surface (hash of kind+axis+title+description+evidence)
+        and maps to a stable ID via the registry. Duplicate fingerprints reuse existing IDs.
+        Rewrites the surfaces dict in-place with IDs filled in.
+
+        Returns the updated surfaces dict.
+        """
+        # Build fingerprint→id lookup from existing registry entries
+        fp_to_id: dict[str, str] = {}
+        for entry in registry.get("surfaces", []):
+            fp = entry.get("fingerprint", "")
+            if fp:
+                fp_to_id[fp] = entry["id"]
+
+        next_id = registry.get("next_id", 1)
+
+        for kind_key, prefix in (
+            ("problem_surfaces", "P"),
+            ("philosophy_surfaces", "F"),
+        ):
+            for surface in surfaces.get(kind_key, []):
+                # Compute fingerprint from content fields
+                fp_input = "|".join(
+                    str(surface.get(f, "")).strip()
+                    for f in ("kind", "axis_id", "title", "description", "evidence")
+                )
+                fp = self._hasher.content_hash(fp_input)[:_FINGERPRINT_LENGTH]
+                surface["_fingerprint"] = fp
+
+                if fp in fp_to_id:
+                    surface["id"] = fp_to_id[fp]
+                else:
+                    new_id = f"{prefix}-{section_number}-{next_id:04d}"
+                    surface["id"] = new_id
+                    fp_to_id[fp] = new_id
+                    next_id += 1
+
+        registry["next_id"] = next_id
+        return surfaces
 
 
-def save_surface_registry(
-    section_number: str, planspace: Path, registry: dict,
-) -> None:
-    """Write the surface registry back to disk."""
-    registry_path = (
-        PathRegistry(planspace).intent_section_dir(section_number)
-        / "surface-registry.json"
-    )
-    Services.artifact_io().write_json(registry_path, registry)
-
-
-def load_intent_surfaces(
-    section_number: str, planspace: Path,
-) -> dict | None:
-    """Load intent-surfaces-NN.json signal written by intent-judge."""
-    signals_dir = PathRegistry(planspace).signals_dir()
-    surfaces_path = signals_dir / f"intent-surfaces-{section_number}.json"
-    return Services.signals().read(surfaces_path)
-
-
-def load_implementation_feedback_surfaces(
-    section_number: str, planspace: Path,
-) -> dict | None:
-    """Load implementation feedback surfaces for a section."""
-    feedback_path = PathRegistry(planspace).impl_feedback_surfaces(section_number)
-    return Services.signals().read(feedback_path)
-
-
-def load_research_derived_surfaces(
-    section_number: str, planspace: Path,
-) -> dict | None:
-    """Load research-derived surfaces with corruption preservation."""
-    research_path = PathRegistry(planspace).research_derived_surfaces(section_number)
-    if not research_path.exists():
-        return None
-    data = Services.artifact_io().read_json(research_path)
-    if not isinstance(data, dict):
-        if data is not None:
-            Services.artifact_io().rename_malformed(research_path)
-        return None
-    if (
-        "problem_surfaces" not in data
-        and "philosophy_surfaces" not in data
-    ):
-        Services.artifact_io().rename_malformed(research_path)
-        return None
-    return data
-
+# -- Pure functions (no Services usage) ------------------------------------
 
 def merge_surface_payloads(
     surfaces: dict | None, additional_surfaces: dict | None,
@@ -117,67 +193,6 @@ def merge_surface_payloads(
         new = list(additional_surfaces.get(kind, []))
         surfaces[kind] = existing + new
 
-    return surfaces
-
-
-def load_combined_intent_surfaces(
-    section_number: str, planspace: Path,
-) -> dict | None:
-    """Load and merge all surface sources used by proposal/expansion."""
-    surfaces = load_intent_surfaces(section_number, planspace)
-    surfaces = merge_surface_payloads(
-        surfaces,
-        load_implementation_feedback_surfaces(section_number, planspace),
-    )
-    surfaces = merge_surface_payloads(
-        surfaces,
-        load_research_derived_surfaces(section_number, planspace),
-    )
-    return surfaces
-
-
-def normalize_surface_ids(
-    surfaces: dict, registry: dict, section_number: str,
-) -> dict:
-    """Assign stable mechanical IDs to surfaces using registry counter.
-
-    Computes a fingerprint per surface (hash of kind+axis+title+description+evidence)
-    and maps to a stable ID via the registry. Duplicate fingerprints reuse existing IDs.
-    Rewrites the surfaces dict in-place with IDs filled in.
-
-    Returns the updated surfaces dict.
-    """
-    # Build fingerprint→id lookup from existing registry entries
-    fp_to_id: dict[str, str] = {}
-    for entry in registry.get("surfaces", []):
-        fp = entry.get("fingerprint", "")
-        if fp:
-            fp_to_id[fp] = entry["id"]
-
-    next_id = registry.get("next_id", 1)
-
-    for kind_key, prefix in (
-        ("problem_surfaces", "P"),
-        ("philosophy_surfaces", "F"),
-    ):
-        for surface in surfaces.get(kind_key, []):
-            # Compute fingerprint from content fields
-            fp_input = "|".join(
-                str(surface.get(f, "")).strip()
-                for f in ("kind", "axis_id", "title", "description", "evidence")
-            )
-            fp = Services.hasher().content_hash(fp_input)[:_FINGERPRINT_LENGTH]
-            surface["_fingerprint"] = fp
-
-            if fp in fp_to_id:
-                surface["id"] = fp_to_id[fp]
-            else:
-                new_id = f"{prefix}-{section_number}-{next_id:04d}"
-                surface["id"] = new_id
-                fp_to_id[fp] = new_id
-                next_id += 1
-
-    registry["next_id"] = next_id
     return surfaces
 
 
@@ -278,3 +293,66 @@ def find_discarded_recurrences(
         for sid in duplicate_ids
         if sid in discarded_lookup
     ]
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
+
+def _get_surface_registry() -> SurfaceRegistry:
+    from containers import Services
+    return SurfaceRegistry(
+        artifact_io=Services.artifact_io(),
+        hasher=Services.hasher(),
+        logger=Services.logger(),
+        signals=Services.signals(),
+    )
+
+
+def load_surface_registry(
+    section_number: str, planspace: Path,
+) -> dict:
+    """Load the persistent surface registry for a section."""
+    return _get_surface_registry().load_surface_registry(section_number, planspace)
+
+
+def save_surface_registry(
+    section_number: str, planspace: Path, registry: dict,
+) -> None:
+    """Write the surface registry back to disk."""
+    _get_surface_registry().save_surface_registry(section_number, planspace, registry)
+
+
+def load_intent_surfaces(
+    section_number: str, planspace: Path,
+) -> dict | None:
+    """Load intent-surfaces-NN.json signal written by intent-judge."""
+    return _get_surface_registry().load_intent_surfaces(section_number, planspace)
+
+
+def load_implementation_feedback_surfaces(
+    section_number: str, planspace: Path,
+) -> dict | None:
+    """Load implementation feedback surfaces for a section."""
+    return _get_surface_registry().load_implementation_feedback_surfaces(section_number, planspace)
+
+
+def load_research_derived_surfaces(
+    section_number: str, planspace: Path,
+) -> dict | None:
+    """Load research-derived surfaces with corruption preservation."""
+    return _get_surface_registry().load_research_derived_surfaces(section_number, planspace)
+
+
+def load_combined_intent_surfaces(
+    section_number: str, planspace: Path,
+) -> dict | None:
+    """Load and merge all surface sources used by proposal/expansion."""
+    return _get_surface_registry().load_combined_intent_surfaces(section_number, planspace)
+
+
+def normalize_surface_ids(
+    surfaces: dict, registry: dict, section_number: str,
+) -> dict:
+    """Assign stable mechanical IDs to surfaces using registry counter."""
+    return _get_surface_registry().normalize_surface_ids(surfaces, registry, section_number)

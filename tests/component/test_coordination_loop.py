@@ -51,7 +51,7 @@ def test_run_coordination_loop_completes_when_everything_is_aligned(
     status = run_coordination_loop(
         {"01": SectionResult(section_number="01", aligned=True)},
         {"01": section},
-        DispatchContext(planspace=planspace, codespace=planspace, parent="parent"),
+        DispatchContext(planspace=planspace, codespace=planspace),
     )
 
     assert status == "complete"
@@ -70,7 +70,7 @@ def test_run_coordination_loop_restarts_when_control_message_arrives(
     status = run_coordination_loop(
         {"01": SectionResult(section_number="01", aligned=False, problems="x")},
         {"01": section},
-        DispatchContext(planspace=planspace, codespace=planspace, parent="parent"),
+        DispatchContext(planspace=planspace, codespace=planspace),
     )
 
     assert status == "restart_phase1"
@@ -81,6 +81,7 @@ def test_run_coordination_loop_stalls_and_reports_remaining_sections(
     monkeypatch: pytest.MonkeyPatch,
     noop_pipeline_control,
     capturing_communicator,
+    noop_change_tracker,
 ) -> None:
     section = _make_section(planspace, "01")
     snapshots: list[int] = []
@@ -90,11 +91,6 @@ def test_run_coordination_loop_stalls_and_reports_remaining_sections(
     monkeypatch.setattr(
         loop,
         "run_global_coordination",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
-        loop,
-        "_check_and_clear_alignment_changed",
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
@@ -113,7 +109,7 @@ def test_run_coordination_loop_stalls_and_reports_remaining_sections(
         status = run_coordination_loop(
             {"01": SectionResult(section_number="01", aligned=False, problems="still broken")},
             {"01": section},
-            DispatchContext(planspace=planspace, codespace=planspace, parent="parent"),
+            DispatchContext(planspace=planspace, codespace=planspace),
         )
     finally:
         Services.policies.reset_override()
@@ -134,6 +130,7 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
     monkeypatch: pytest.MonkeyPatch,
     noop_pipeline_control,
     capturing_communicator,
+    noop_change_tracker,
 ) -> None:
     section = _make_section(planspace, "01")
     snapshots: list[int] = []
@@ -156,11 +153,6 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
     )
     monkeypatch.setattr(
         loop,
-        "_check_and_clear_alignment_changed",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
-        loop,
         "build_strategic_state",
         lambda _decisions_dir, section_results, _planspace: snapshots.append(
             len(section_results),
@@ -170,7 +162,7 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
     status = run_coordination_loop(
         {"01": SectionResult(section_number="01", aligned=True)},
         {"01": section},
-        DispatchContext(planspace=planspace, codespace=planspace, parent="parent"),
+        DispatchContext(planspace=planspace, codespace=planspace),
     )
 
     assert status == "exhausted"
@@ -195,6 +187,7 @@ def test_run_coordination_loop_enters_coordination_for_root_reframing_delta(
     monkeypatch: pytest.MonkeyPatch,
     noop_pipeline_control,
     capturing_communicator,
+    noop_change_tracker,
 ) -> None:
     section = _make_section(planspace, "01")
     section.related_files = ["src/main.py"]
@@ -222,11 +215,6 @@ def test_run_coordination_loop_enters_coordination_for_root_reframing_delta(
     )
     monkeypatch.setattr(
         loop,
-        "_check_and_clear_alignment_changed",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
-        loop,
         "build_strategic_state",
         lambda _decisions_dir, section_results, _planspace: snapshots.append(
             len(section_results),
@@ -236,7 +224,7 @@ def test_run_coordination_loop_enters_coordination_for_root_reframing_delta(
     status = run_coordination_loop(
         {"01": SectionResult(section_number="01", aligned=True)},
         {"01": section},
-        DispatchContext(planspace=planspace, codespace=planspace, parent="parent"),
+        DispatchContext(planspace=planspace, codespace=planspace),
     )
 
     assert status == "complete"

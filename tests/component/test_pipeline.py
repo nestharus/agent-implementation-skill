@@ -18,7 +18,6 @@ def _make_ctx(tmp_path: Path) -> PipelineContext:
         section=section,
         planspace=tmp_path / "planspace",
         codespace=tmp_path / "codespace",
-        parent="parent",
         policy={},
         paths=MagicMock(),
     )
@@ -202,7 +201,6 @@ class TestPipelineContext:
             section=section,
             planspace=planspace,
             codespace=codespace,
-            parent="parent",
             policy={"key": "val"},
             paths=MagicMock(),
         )

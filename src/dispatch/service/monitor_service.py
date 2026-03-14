@@ -5,10 +5,12 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from signals.service.database_client import DatabaseClient
-from containers import Services
+
+if TYPE_CHECKING:
+    from containers import LogService, TaskRouterService
 
 _MONITOR_WAIT_TIMEOUT = 30
 _MIN_SIGNAL_LOG_FIELDS = 5
@@ -33,9 +35,13 @@ class MonitorService:
         self,
         db: DatabaseClient,
         controller_name: str,
+        task_router: TaskRouterService,
+        logger: LogService,
     ) -> None:
         self._db = db
         self._controller_name = controller_name
+        self._task_router = task_router
+        self._logger = logger
 
     def start(self, agent_name: str, prompt_path: Path) -> MonitorHandle:
         """Register the agent mailbox, log dispatch start, and spawn monitor."""
@@ -56,7 +62,7 @@ class MonitorService:
             [
                 "agents",
                 "--agent-file",
-                str(Services.task_router().resolve_agent_path("agent-monitor.md")),
+                str(self._task_router.resolve_agent_path("agent-monitor.md")),
                 "--file",
                 str(prompt_path),
             ],
@@ -112,4 +118,4 @@ class MonitorService:
         return output
 
     def _log(self, message: str) -> None:
-        Services.logger().log(message)
+        self._logger.log(message)

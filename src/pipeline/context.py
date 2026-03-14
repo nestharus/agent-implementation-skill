@@ -5,15 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from orchestrator.path_registry import PathRegistry
 from orchestrator.types import Section
 
+if TYPE_CHECKING:
+    from containers import ModelPolicyService
+
 
 @dataclass(frozen=True)
 class DispatchContext:
-    """Immutable bundle of the planspace/codespace/parent triple.
+    """Immutable bundle of planspace/codespace.
 
     Threads through orchestrator, implementation, proposal,
     coordination, and alignment-checking layers.  Lazy-computes
@@ -22,7 +25,15 @@ class DispatchContext:
 
     planspace: Path
     codespace: Path
-    parent: str
+    _policies: ModelPolicyService | None = field(
+        default=None, repr=False, compare=False, hash=False,
+    )
+
+    def _get_policies(self) -> ModelPolicyService:
+        if self._policies is not None:
+            return self._policies
+        from containers import Services
+        return Services.policies()
 
     @cached_property
     def paths(self) -> PathRegistry:
@@ -30,12 +41,10 @@ class DispatchContext:
 
     @cached_property
     def policy(self) -> dict:
-        from containers import Services
-        return Services.policies().load(self.planspace)
+        return self._get_policies().load(self.planspace)
 
     def resolve_model(self, key: str) -> str:
-        from containers import Services
-        return Services.policies().resolve(self.policy, key)
+        return self._get_policies().resolve(self.policy, key)
 
 
 @dataclass
@@ -43,40 +52,69 @@ class PipelineContext:
     """Carries shared parameters and mutable state through pipeline steps.
 
     Eliminates the need to thread ``planspace``, ``codespace``,
-    ``parent``, ``policy``, and ``paths`` through every function call.
+    ``policy``, and ``paths`` through every function call.
     Steps communicate intermediate results via ``state``.
     """
 
     section: Section
     planspace: Path
     codespace: Path
-    parent: str
     policy: dict
     paths: PathRegistry
     state: dict[str, Any] = field(default_factory=dict)
+
+
+class Context:
+    """Dependency-injected pipeline context builder."""
+
+    def __init__(self, policies: ModelPolicyService) -> None:
+        self._policies = policies
+
+    def build_context(
+        self,
+        section: Section,
+        planspace: Path,
+        codespace: Path,
+        policy: dict | None = None,
+    ) -> PipelineContext:
+        """Build a :class:`PipelineContext` from the standard parameter set.
+
+        If *policy* is ``None``, loads it from *planspace*.
+        """
+        paths = PathRegistry(planspace)
+        if policy is None:
+            policy = self._policies.load(planspace)
+        return PipelineContext(
+            section=section,
+            planspace=planspace,
+            codespace=codespace,
+            policy=policy,
+            paths=paths,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
+
+def _get_context() -> Context:
+    from containers import Services
+    return Context(policies=Services.policies())
 
 
 def build_context(
     section: Section,
     planspace: Path,
     codespace: Path,
-    parent: str,
     policy: dict | None = None,
 ) -> PipelineContext:
     """Build a :class:`PipelineContext` from the standard parameter set.
 
     If *policy* is ``None``, loads it from *planspace*.
     """
-    from containers import Services
-
-    paths = PathRegistry(planspace)
-    if policy is None:
-        policy = Services.policies().load(planspace)
-    return PipelineContext(
+    return _get_context().build_context(
         section=section,
         planspace=planspace,
         codespace=codespace,
-        parent=parent,
         policy=policy,
-        paths=paths,
     )

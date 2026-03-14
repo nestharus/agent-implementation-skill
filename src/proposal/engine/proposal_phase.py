@@ -4,7 +4,17 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from containers import (
+        ArtifactIOService,
+        Communicator,
+        LogService,
+        ModelPolicyService,
+        PipelineControlService,
+        RiskAssessmentService,
+    )
 
 from orchestrator.path_registry import PathRegistry
 from orchestrator.repository.section_artifacts import write_section_input_artifact
@@ -18,7 +28,6 @@ _RISK_SEVERITY_BLOCKER_THRESHOLD = 3
 from risk.repository.serialization import load_risk_assessment
 from risk.types import EngagementContext, RiskAssessment, RiskMode, RiskPackage, RiskType
 from scan.service.section_loader import parse_related_files
-from containers import Services
 from implementation.service.section_reexplorer import reexplore_section
 from orchestrator.engine.section_pipeline import run_section
 from orchestrator.types import ProposalPassResult, Section
@@ -30,9 +39,6 @@ logger = logging.getLogger(__name__)
 
 class ProposalPassExit(Exception):
     """Raised when the proposal pass should stop the outer run."""
-
-
-_check_and_clear_alignment_changed = Services.change_tracker().make_alignment_checker()
 
 
 def _proposal_risk_severities(assessment: object) -> dict[str, int]:
@@ -58,44 +64,6 @@ def _write_proposal_risk_advisory(
     )
 
 
-def _write_proposal_risk_blocker(
-    planspace: Path,
-    sec_num: str,
-    advisory_scope: str,
-    dominant_risks: list[str],
-    severities: dict[str, int],
-    advisory_path: Path,
-) -> Path:
-    paths = PathRegistry(planspace)
-    reasons = [
-        f"{risk}={severities[risk]}"
-        for risk in ("brute_force_regression", "silent_drift")
-        if severities.get(risk, 0) >= _RISK_SEVERITY_BLOCKER_THRESHOLD and risk in dominant_risks
-    ]
-    detail = (
-        "ROAL recommends additional exploration before implementation due to "
-        f"high-risk proposal findings ({', '.join(reasons)})"
-    )
-    blocker_path = paths.signals_dir() / f"section-{sec_num}-proposal-risk-blocker.json"
-    Services.artifact_io().write_json(
-        blocker_path,
-        {
-            "state": SIGNAL_NEEDS_PARENT,
-            "blocker_type": "proposal_risk_advisory",
-            "source": "roal",
-            "section": sec_num,
-            "scope": advisory_scope,
-            "detail": detail,
-            "why_blocked": detail,
-            "needs": "Additional exploration before implementation",
-            "dominant_risks": list(dominant_risks),
-            "dominant_risk_severities": severities,
-            "risk_summary_path": str(advisory_path.resolve()),
-        },
-    )
-    return blocker_path
-
-
 def _build_advisory_package(
     package: RiskPackage,
     advisory_scope: str,
@@ -110,30 +78,17 @@ def _build_advisory_package(
     )
 
 
-def _resolve_triage_engagement(
-    paths: PathRegistry,
-    sec_num: str,
-    advisory_package: RiskPackage,
-    proposal_state: ProposalState,
-) -> RiskMode:
-    triage_signal = Services.artifact_io().read_json(paths.intent_triage_signal(sec_num))
-    triage_confidence = "low"
-    risk_mode_hint = ""
-    if isinstance(triage_signal, dict):
-        triage_confidence = str(
-            triage_signal.get("risk_confidence", triage_signal.get("confidence", "low")),
-        )
-        risk_mode_hint = str(triage_signal.get("risk_mode", ""))
-
-    return determine_engagement(
-        step_count=len(advisory_package.steps),
-        file_count=max(len(proposal_state.resolved_contracts), 1),
-        ctx=EngagementContext(
-            has_shared_seams=bool(proposal_state.shared_seam_candidates),
-        ),
-        triage_confidence=triage_confidence,
-        risk_mode_hint=risk_mode_hint,
-    )
+def _proposal_needs_additional_exploration(assessment: object) -> bool:
+    risky = {RiskType.BRUTE_FORCE_REGRESSION, RiskType.SILENT_DRIFT}
+    if any(risk in risky for risk in getattr(assessment, "dominant_risks", [])):
+        if getattr(assessment, "package_raw_risk", 0) >= _RAW_RISK_EXPLORATION_THRESHOLD:
+            return True
+    for step_assessment in getattr(assessment, "step_assessments", []):
+        if step_assessment.raw_risk < _RAW_RISK_EXPLORATION_THRESHOLD:
+            continue
+        if any(risk in risky for risk in step_assessment.dominant_risks):
+            return True
+    return False
 
 
 def _build_risk_summary(
@@ -156,243 +111,433 @@ def _build_risk_summary(
     }
 
 
-def _write_advisory_artifacts(
-    planspace: Path,
-    sec_num: str,
-    advisory_scope: str,
-    summary: dict[str, Any],
-) -> list[dict]:
-    advisory_entries: list[dict] = []
-    dominant_risks = summary["dominant_risks"]
-    severities = summary["dominant_risk_severities"]
-    if summary["recommendation"] == "recommend additional exploration":
-        advisory_path = _write_proposal_risk_advisory(
-            planspace,
-            sec_num,
-            advisory_scope,
-            summary,
-        )
-        advisory_entries.append({
-            "kind": "proposal_advisory",
-            "path": str(advisory_path),
-            "produced_by": "proposal_pass",
-        })
-        high_risk = any(
-            severities.get(risk, 0) >= _RISK_SEVERITY_BLOCKER_THRESHOLD
+class ProposalPhase:
+    def __init__(
+        self,
+        logger_svc: LogService,
+        artifact_io: ArtifactIOService,
+        communicator: Communicator,
+        pipeline_control: PipelineControlService,
+        policies: ModelPolicyService,
+        risk_assessment: RiskAssessmentService,
+    ) -> None:
+        self._logger = logger_svc
+        self._artifact_io = artifact_io
+        self._communicator = communicator
+        self._pipeline_control = pipeline_control
+        self._policies = policies
+        self._risk_assessment = risk_assessment
+        self._check_and_clear_alignment_changed = None
+
+    def _get_alignment_checker(self):
+        """Lazy-init the alignment checker from change_tracker."""
+        if self._check_and_clear_alignment_changed is None:
+            from containers import Services
+            self._check_and_clear_alignment_changed = Services.change_tracker().make_alignment_checker()
+        return self._check_and_clear_alignment_changed
+
+    def _write_proposal_risk_blocker(
+        self,
+        planspace: Path,
+        sec_num: str,
+        advisory_scope: str,
+        dominant_risks: list[str],
+        severities: dict[str, int],
+        advisory_path: Path,
+    ) -> Path:
+        paths = PathRegistry(planspace)
+        reasons = [
+            f"{risk}={severities[risk]}"
             for risk in ("brute_force_regression", "silent_drift")
-            if risk in dominant_risks
+            if severities.get(risk, 0) >= _RISK_SEVERITY_BLOCKER_THRESHOLD and risk in dominant_risks
+        ]
+        detail = (
+            "ROAL recommends additional exploration before implementation due to "
+            f"high-risk proposal findings ({', '.join(reasons)})"
         )
-        if high_risk:
-            _write_proposal_risk_blocker(
+        blocker_path = paths.signals_dir() / f"section-{sec_num}-proposal-risk-blocker.json"
+        self._artifact_io.write_json(
+            blocker_path,
+            {
+                "state": SIGNAL_NEEDS_PARENT,
+                "blocker_type": "proposal_risk_advisory",
+                "source": "roal",
+                "section": sec_num,
+                "scope": advisory_scope,
+                "detail": detail,
+                "why_blocked": detail,
+                "needs": "Additional exploration before implementation",
+                "dominant_risks": list(dominant_risks),
+                "dominant_risk_severities": severities,
+                "risk_summary_path": str(advisory_path.resolve()),
+            },
+        )
+        return blocker_path
+
+    def _resolve_triage_engagement(
+        self,
+        paths: PathRegistry,
+        sec_num: str,
+        advisory_package: RiskPackage,
+        proposal_state: ProposalState,
+    ) -> RiskMode:
+        triage_signal = self._artifact_io.read_json(paths.intent_triage_signal(sec_num))
+        triage_confidence = "low"
+        risk_mode_hint = ""
+        if isinstance(triage_signal, dict):
+            triage_confidence = str(
+                triage_signal.get("risk_confidence", triage_signal.get("confidence", "low")),
+            )
+            risk_mode_hint = str(triage_signal.get("risk_mode", ""))
+
+        return determine_engagement(
+            step_count=len(advisory_package.steps),
+            file_count=max(len(proposal_state.resolved_contracts), 1),
+            ctx=EngagementContext(
+                has_shared_seams=bool(proposal_state.shared_seam_candidates),
+            ),
+            triage_confidence=triage_confidence,
+            risk_mode_hint=risk_mode_hint,
+        )
+
+    def _write_advisory_artifacts(
+        self,
+        planspace: Path,
+        sec_num: str,
+        advisory_scope: str,
+        summary: dict[str, Any],
+    ) -> list[dict]:
+        advisory_entries: list[dict] = []
+        dominant_risks = summary["dominant_risks"]
+        severities = summary["dominant_risk_severities"]
+        if summary["recommendation"] == "recommend additional exploration":
+            advisory_path = _write_proposal_risk_advisory(
                 planspace,
                 sec_num,
                 advisory_scope,
-                dominant_risks,
-                severities,
-                advisory_path,
+                summary,
             )
-    return advisory_entries
+            advisory_entries.append({
+                "kind": "proposal_advisory",
+                "path": str(advisory_path),
+                "produced_by": "proposal_pass",
+            })
+            high_risk = any(
+                severities.get(risk, 0) >= _RISK_SEVERITY_BLOCKER_THRESHOLD
+                for risk in ("brute_force_regression", "silent_drift")
+                if risk in dominant_risks
+            )
+            if high_risk:
+                self._write_proposal_risk_blocker(
+                    planspace,
+                    sec_num,
+                    advisory_scope,
+                    dominant_risks,
+                    severities,
+                    advisory_path,
+                )
+        return advisory_entries
 
+    def _risk_check_proposal(
+        self,
+        planspace: Path,
+        sec_num: str,
+    ) -> dict | None:
+        """Optional risk pre-check on a proposal before finalization.
 
-def _risk_check_proposal(
-    planspace: Path,
-    sec_num: str,
-) -> dict | None:
-    """Optional risk pre-check on a proposal before finalization.
+        Returns a summary dict with risk_mode, dominant_risks, and recommendation,
+        or None on failure.
+        """
+        scope = f"section-{sec_num}"
+        advisory_scope = f"{scope}-proposal"
+        paths = PathRegistry(planspace)
 
-    Returns a summary dict with risk_mode, dominant_risks, and recommendation,
-    or None on failure.
-    """
-    scope = f"section-{sec_num}"
-    advisory_scope = f"{scope}-proposal"
-    paths = PathRegistry(planspace)
-
-    try:
-        package = build_package_from_proposal(scope, planspace)
-        advisory_package = _build_advisory_package(package, advisory_scope)
-        proposal_state = load_proposal_state(
-            paths.proposal_state(sec_num)
-        )
-        risk_mode = _resolve_triage_engagement(
-            paths, sec_num, advisory_package, proposal_state,
-        )
-        Services.risk_assessment().run_lightweight_check(
-            planspace,
-            advisory_scope,
-            "proposal",
-            advisory_package,
-        )
-        assessment = load_risk_assessment(paths.risk_assessment(advisory_scope))
-        if assessment is None:
+        try:
+            package = build_package_from_proposal(scope, planspace)
+            advisory_package = _build_advisory_package(package, advisory_scope)
+            proposal_state = load_proposal_state(
+                paths.proposal_state(sec_num)
+            )
+            risk_mode = self._resolve_triage_engagement(
+                paths, sec_num, advisory_package, proposal_state,
+            )
+            self._risk_assessment.run_lightweight_check(
+                planspace,
+                advisory_scope,
+                "proposal",
+                advisory_package,
+            )
+            assessment = load_risk_assessment(paths.risk_assessment(advisory_scope))
+            if assessment is None:
+                refresh_roal_input_index(
+                    planspace,
+                    sec_num,
+                    replace_kinds=frozenset({"proposal_advisory"}),
+                    new_entries=[],
+                )
+                return {
+                    "risk_mode": risk_mode.value,
+                    "dominant_risks": [],
+                    "recommendation": "proceed",
+                }
+            summary = _build_risk_summary(assessment, risk_mode)
+            advisory_entries = self._write_advisory_artifacts(
+                planspace, sec_num, advisory_scope, summary,
+            )
+            refresh_roal_input_index(
+                planspace,
+                sec_num,
+                replace_kinds=frozenset({"proposal_advisory"}),
+                new_entries=advisory_entries,
+            )
+            return summary
+        except Exception as exc:  # noqa: BLE001
             refresh_roal_input_index(
                 planspace,
                 sec_num,
                 replace_kinds=frozenset({"proposal_advisory"}),
                 new_entries=[],
             )
-            return {
-                "risk_mode": risk_mode.value,
-                "dominant_risks": [],
-                "recommendation": "proceed",
-            }
-        summary = _build_risk_summary(assessment, risk_mode)
-        advisory_entries = _write_advisory_artifacts(
-            planspace, sec_num, advisory_scope, summary,
-        )
-        refresh_roal_input_index(
-            planspace,
-            sec_num,
-            replace_kinds=frozenset({"proposal_advisory"}),
-            new_entries=advisory_entries,
-        )
-        return summary
-    except Exception as exc:  # noqa: BLE001
-        refresh_roal_input_index(
-            planspace,
-            sec_num,
-            replace_kinds=frozenset({"proposal_advisory"}),
-            new_entries=[],
-        )
-        logger.warning(
-            "Section %s: proposal ROAL pre-check failed — continuing "
-            "without advisory risk summary",
-            sec_num,
-            exc_info=True,
-        )
-        return None
-
-
-def _proposal_needs_additional_exploration(assessment: object) -> bool:
-    risky = {RiskType.BRUTE_FORCE_REGRESSION, RiskType.SILENT_DRIFT}
-    if any(risk in risky for risk in getattr(assessment, "dominant_risks", [])):
-        if getattr(assessment, "package_raw_risk", 0) >= _RAW_RISK_EXPLORATION_THRESHOLD:
-            return True
-    for step_assessment in getattr(assessment, "step_assessments", []):
-        if step_assessment.raw_risk < _RAW_RISK_EXPLORATION_THRESHOLD:
-            continue
-        if any(risk in risky for risk in step_assessment.dominant_risks):
-            return True
-    return False
-
-
-def _check_alignment_and_requeue(
-    planspace: Path,
-    completed: set[str],
-    queue: list[str],
-    sections_by_num: dict[str, Section],
-    *,
-    current_section: str | None = None,
-) -> bool:
-    if _check_and_clear_alignment_changed(planspace):
-        kwargs: dict[str, Any] = {}
-        if current_section is not None:
-            kwargs["current_section"] = current_section
-        Services.pipeline_control().requeue_changed_sections(
-            completed,
-            queue,
-            sections_by_num,
-            planspace,
-            **kwargs,
-        )
-        return True
-    return False
-
-
-def _reexplore_missing_files(
-    section: Section,
-    planspace: Path,
-    codespace: Path,
-    parent: str,
-    completed: set[str],
-    queue: list[str],
-    sections_by_num: dict[str, Section],
-) -> bool:
-    """Dispatch re-explorer when a section has no related files.
-
-    Returns True if the caller should ``continue`` the loop iteration.
-    """
-    policy = Services.policies().load(planspace)
-    sec_num = section.number
-    Services.logger().log(
-        f"Section {sec_num}: no related files — dispatching "
-        f"re-explorer agent",
-    )
-    reexplore_result = reexplore_section(
-        section,
-        planspace,
-        codespace,
-        parent,
-        model=policy["setup"],
-    )
-    if reexplore_result == ALIGNMENT_CHANGED_PENDING:
-        _check_alignment_and_requeue(
-            planspace,
-            completed,
-            queue,
-            sections_by_num,
-            current_section=sec_num,
-        )
-        return True
-
-    section.related_files = parse_related_files(section.path)
-    if section.related_files:
-        Services.logger().log(
-            f"Section {sec_num}: re-explorer found "
-            f"{len(section.related_files)} files — continuing",
-        )
-    else:
-        Services.logger().log(
-            f"Section {sec_num}: re-explorer found no files "
-            f"— continuing with unresolved related_files",
-        )
-    return False
-
-
-def _process_proposal_result(
-    sec_num: str,
-    proposal_result: ProposalPassResult,
-    proposal_results: dict[str, ProposalPassResult],
-    planspace: Path,
-    parent: str,
-) -> None:
-    if proposal_result.execution_ready:
-        risk_summary = _risk_check_proposal(
-            planspace,
-            sec_num,
-        )
-        if risk_summary is not None:
-            Services.logger().log(
-                f"Section {sec_num}: proposal ROAL pre-check "
-                f"(mode={risk_summary['risk_mode']}, "
-                f"dominant={risk_summary['dominant_risks']}, "
-                f"recommendation={risk_summary['recommendation']})",
+            logger.warning(
+                "Section %s: proposal ROAL pre-check failed — continuing "
+                "without advisory risk summary",
+                sec_num,
+                exc_info=True,
             )
-    proposal_results[sec_num] = proposal_result
-    status = (
-        "ready"
-        if proposal_result.execution_ready
-        else f"blocked ({len(proposal_result.blockers)} blockers)"
-    )
-    Services.communicator().mailbox_send(planspace, parent, f"proposal-done:{sec_num}:{status}")
-    Services.logger().log(f"Section {sec_num}: proposal pass complete — {status}")
+            return None
+
+    def _check_alignment_and_requeue(
+        self,
+        planspace: Path,
+        completed: set[str],
+        queue: list[str],
+        sections_by_num: dict[str, Section],
+        *,
+        current_section: str | None = None,
+    ) -> bool:
+        # Use module-level _check_and_clear_alignment_changed so
+        # monkeypatch targets work.
+        if _check_and_clear_alignment_changed(planspace):
+            kwargs: dict[str, Any] = {}
+            if current_section is not None:
+                kwargs["current_section"] = current_section
+            self._pipeline_control.requeue_changed_sections(
+                completed,
+                queue,
+                sections_by_num,
+                planspace,
+                **kwargs,
+            )
+            return True
+        return False
+
+    def _reexplore_missing_files(
+        self,
+        section: Section,
+        planspace: Path,
+        codespace: Path,
+        completed: set[str],
+        queue: list[str],
+        sections_by_num: dict[str, Section],
+    ) -> bool:
+        """Dispatch re-explorer when a section has no related files.
+
+        Returns True if the caller should ``continue`` the loop iteration.
+        """
+        policy = self._policies.load(planspace)
+        sec_num = section.number
+        self._logger.log(
+            f"Section {sec_num}: no related files — dispatching "
+            f"re-explorer agent",
+        )
+        reexplore_result = reexplore_section(
+            section,
+            planspace,
+            codespace,
+            model=policy["setup"],
+        )
+        if reexplore_result == ALIGNMENT_CHANGED_PENDING:
+            self._check_alignment_and_requeue(
+                planspace,
+                completed,
+                queue,
+                sections_by_num,
+                current_section=sec_num,
+            )
+            return True
+
+        section.related_files = parse_related_files(section.path)
+        if section.related_files:
+            self._logger.log(
+                f"Section {sec_num}: re-explorer found "
+                f"{len(section.related_files)} files — continuing",
+            )
+        else:
+            self._logger.log(
+                f"Section {sec_num}: re-explorer found no files "
+                f"— continuing with unresolved related_files",
+            )
+        return False
+
+    def _process_proposal_result(
+        self,
+        sec_num: str,
+        proposal_result: ProposalPassResult,
+        proposal_results: dict[str, ProposalPassResult],
+        planspace: Path,
+    ) -> None:
+        if proposal_result.execution_ready:
+            # Use module-level _risk_check_proposal so monkeypatch
+            # targets work.
+            risk_summary = _risk_check_proposal(
+                planspace,
+                sec_num,
+            )
+            if risk_summary is not None:
+                self._logger.log(
+                    f"Section {sec_num}: proposal ROAL pre-check "
+                    f"(mode={risk_summary['risk_mode']}, "
+                    f"dominant={risk_summary['dominant_risks']}, "
+                    f"recommendation={risk_summary['recommendation']})",
+                )
+        proposal_results[sec_num] = proposal_result
+        status = (
+            "ready"
+            if proposal_result.execution_ready
+            else f"blocked ({len(proposal_result.blockers)} blockers)"
+        )
+        self._communicator.send_to_parent(planspace, f"proposal-done:{sec_num}:{status}")
+        self._logger.log(f"Section {sec_num}: proposal pass complete — {status}")
+
+    def _log_proposal_summary(
+        self,
+        proposal_results: dict[str, ProposalPassResult],
+        completed: set[str],
+    ) -> None:
+        self._logger.log(f"=== Phase 1a complete: {len(completed)} sections proposed ===")
+        ready_sections = sorted(
+            num for num, result in proposal_results.items() if result.execution_ready
+        )
+        blocked_sections = sorted(
+            num
+            for num, result in proposal_results.items()
+            if not result.execution_ready
+        )
+        self._logger.log(f"Proposal summary: {len(ready_sections)} ready, {len(blocked_sections)} blocked")
+        if blocked_sections:
+            self._logger.log(f"Blocked sections: {blocked_sections}")
+
+    def run_proposal_pass(
+        self,
+        all_sections: list[Section],
+        sections_by_num: dict[str, Section],
+        planspace: Path,
+        codespace: Path,
+    ) -> dict[str, ProposalPassResult]:
+        """Run the proposal pass for all sections and return proposal results."""
+        proposal_results: dict[str, ProposalPassResult] = {}
+        queue = [section.number for section in all_sections]
+        completed: set[str] = set()
+
+        while queue:
+            if self._pipeline_control.handle_pending_messages(planspace):
+                self._logger.log("Aborted by parent")
+                self._communicator.send_to_parent(planspace, "fail:aborted")
+                raise ProposalPassExit
+
+            if self._pipeline_control.alignment_changed_pending(planspace):  # noqa: SIM102
+                if self._check_alignment_and_requeue(
+                    planspace, completed, queue, sections_by_num,
+                ):
+                    continue
+
+            sec_num = queue.pop(0)
+            if sec_num in completed:
+                continue
+
+            section = sections_by_num[sec_num]
+            section.solve_count += 1
+            self._logger.log(
+                f"=== Section {sec_num} proposal pass "
+                f"({len(queue)} remaining) "
+                f"[round {section.solve_count}] ===",
+            )
+            self._logger.log_lifecycle(planspace, f"start:section:{sec_num}", f"round {section.solve_count}")
+
+            if not section.related_files:
+                if self._reexplore_missing_files(
+                    section, planspace, codespace,
+                    completed, queue, sections_by_num,
+                ):
+                    continue
+
+            proposal_result = run_section(
+                planspace,
+                codespace,
+                section,
+                all_sections=all_sections,
+                pass_mode=PASS_MODE_PROPOSAL,
+            )
+
+            if self._check_alignment_and_requeue(
+                planspace, completed, queue, sections_by_num,
+                current_section=sec_num,
+            ):
+                continue
+
+            if proposal_result is None:
+                self._logger.log(f"Section {sec_num}: paused during proposal, exiting")
+                self._logger.log_lifecycle(planspace, f"end:section:{sec_num}", "failed")
+                raise ProposalPassExit
+
+            completed.add(sec_num)
+            if isinstance(proposal_result, ProposalPassResult):
+                self._process_proposal_result(
+                    sec_num, proposal_result, proposal_results, planspace,
+                )
+            else:
+                self._logger.log(
+                    f"Section {sec_num}: unexpected proposal result type "
+                    f"— treating as failed",
+                )
+
+            self._logger.log_lifecycle(planspace, f"end:section:{sec_num}", "proposal-done")
+
+        self._log_proposal_summary(proposal_results, completed)
+        return proposal_results
 
 
-def _log_proposal_summary(
-    proposal_results: dict[str, ProposalPassResult],
-    completed: set[str],
-) -> None:
-    Services.logger().log(f"=== Phase 1a complete: {len(completed)} sections proposed ===")
-    ready_sections = sorted(
-        num for num, result in proposal_results.items() if result.execution_ready
+# Backward-compat wrappers
+
+def _get_proposal_phase() -> ProposalPhase:
+    from containers import Services
+    return ProposalPhase(
+        logger_svc=Services.logger(),
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        pipeline_control=Services.pipeline_control(),
+        policies=Services.policies(),
+        risk_assessment=Services.risk_assessment(),
     )
-    blocked_sections = sorted(
-        num
-        for num, result in proposal_results.items()
-        if not result.execution_ready
-    )
-    Services.logger().log(f"Proposal summary: {len(ready_sections)} ready, {len(blocked_sections)} blocked")
-    if blocked_sections:
-        Services.logger().log(f"Blocked sections: {blocked_sections}")
+
+
+def _check_and_clear_alignment_changed(planspace: Path) -> bool:
+    """Module-level alignment checker for backward compatibility.
+
+    Tests monkeypatch this name directly.  In production the function
+    lazily creates a fresh checker from the container.
+    """
+    from containers import Services
+    checker = Services.change_tracker().make_alignment_checker()
+    return checker(planspace)
+
+
+def _risk_check_proposal(
+    planspace: Path,
+    sec_num: str,
+) -> dict | None:
+    """Run optional risk pre-check on a proposal — backward-compat wrapper."""
+    return _get_proposal_phase()._risk_check_proposal(planspace, sec_num)
 
 
 def run_proposal_pass(
@@ -400,77 +545,8 @@ def run_proposal_pass(
     sections_by_num: dict[str, Section],
     planspace: Path,
     codespace: Path,
-    parent: str,
 ) -> dict[str, ProposalPassResult]:
     """Run the proposal pass for all sections and return proposal results."""
-    proposal_results: dict[str, ProposalPassResult] = {}
-    queue = [section.number for section in all_sections]
-    completed: set[str] = set()
-
-    while queue:
-        if Services.pipeline_control().handle_pending_messages(planspace):
-            Services.logger().log("Aborted by parent")
-            Services.communicator().mailbox_send(planspace, parent, "fail:aborted")
-            raise ProposalPassExit
-
-        if Services.pipeline_control().alignment_changed_pending(planspace):  # noqa: SIM102
-            if _check_alignment_and_requeue(
-                planspace, completed, queue, sections_by_num,
-            ):
-                continue
-
-        sec_num = queue.pop(0)
-        if sec_num in completed:
-            continue
-
-        section = sections_by_num[sec_num]
-        section.solve_count += 1
-        Services.logger().log(
-            f"=== Section {sec_num} proposal pass "
-            f"({len(queue)} remaining) "
-            f"[round {section.solve_count}] ===",
-        )
-        Services.logger().log_lifecycle(planspace, f"start:section:{sec_num}", f"round {section.solve_count}")
-
-        if not section.related_files:
-            if _reexplore_missing_files(
-                section, planspace, codespace, parent,
-                completed, queue, sections_by_num,
-            ):
-                continue
-
-        proposal_result = run_section(
-            planspace,
-            codespace,
-            section,
-            parent,
-            all_sections=all_sections,
-            pass_mode=PASS_MODE_PROPOSAL,
-        )
-
-        if _check_alignment_and_requeue(
-            planspace, completed, queue, sections_by_num,
-            current_section=sec_num,
-        ):
-            continue
-
-        if proposal_result is None:
-            Services.logger().log(f"Section {sec_num}: paused during proposal, exiting")
-            Services.logger().log_lifecycle(planspace, f"end:section:{sec_num}", "failed")
-            raise ProposalPassExit
-
-        completed.add(sec_num)
-        if isinstance(proposal_result, ProposalPassResult):
-            _process_proposal_result(
-                sec_num, proposal_result, proposal_results, planspace, parent,
-            )
-        else:
-            Services.logger().log(
-                f"Section {sec_num}: unexpected proposal result type "
-                f"— treating as failed",
-            )
-
-        Services.logger().log_lifecycle(planspace, f"end:section:{sec_num}", "proposal-done")
-
-    _log_proposal_summary(proposal_results, completed)
-    return proposal_results
+    return _get_proposal_phase().run_proposal_pass(
+        all_sections, sections_by_num, planspace, codespace,
+    )

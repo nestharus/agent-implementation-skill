@@ -624,6 +624,12 @@ class PathRegistry:
     def strategic_state(self) -> Path:
         return self._artifacts / "strategic-state.json"
 
+    def proposal_results(self) -> Path:
+        return self._artifacts / "proposal-results.json"
+
+    def section_results(self) -> Path:
+        return self._artifacts / "section-results.json"
+
     def parameters(self) -> Path:
         return self._artifacts / "parameters.json"
 

@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
 from orchestrator.types import PauseType
-from containers import Services
+
+if TYPE_CHECKING:
+    from containers import ArtifactIOService, LogService, PipelineControlService
 
 
 @dataclass(frozen=True)
@@ -19,88 +22,142 @@ class ProjectMode:
     reason: str = ""
 
 
-def _read_project_mode_signal(
-    mode_json_path: Path,
-    mode_txt_path: Path,
-    *,
-    post_resume: bool,
-) -> ProjectMode:
-    if mode_json_path.exists():
-        mode_data = Services.artifact_io().read_json(mode_json_path)
-        if mode_data is not None:
+class ProjectModeResolver:
+    """Project mode resolution for the section loop.
+
+    All cross-cutting services are received via constructor injection.
+    """
+
+    def __init__(
+        self,
+        artifact_io: ArtifactIOService,
+        logger: LogService,
+        pipeline_control: PipelineControlService,
+    ) -> None:
+        self._artifact_io = artifact_io
+        self._logger = logger
+        self._pipeline_control = pipeline_control
+
+    def _read_project_mode_signal(
+        self,
+        mode_json_path: Path,
+        mode_txt_path: Path,
+        *,
+        post_resume: bool,
+    ) -> ProjectMode:
+        if mode_json_path.exists():
+            mode_data = self._artifact_io.read_json(mode_json_path)
+            if mode_data is not None:
+                return ProjectMode(
+                    mode=str(mode_data.get("mode", "unknown")),
+                    evidence_files=list(mode_data.get("constraints", [])),
+                    reason="JSON signal (post-resume)" if post_resume else "JSON signal",
+                )
+
+            self._logger.log(
+                "project-mode.json malformed"
+                + (" after resume" if post_resume else "")
+                + " — preserved as .malformed.json, trying text fallback",
+            )
+            if mode_txt_path.exists():
+                return ProjectMode(
+                    mode=mode_txt_path.read_text(encoding="utf-8").strip(),
+                    reason=("text (post-resume)"
+                            if post_resume else "text (JSON malformed)"),
+                )
             return ProjectMode(
-                mode=str(mode_data.get("mode", "unknown")),
-                evidence_files=list(mode_data.get("constraints", [])),
-                reason="JSON signal (post-resume)" if post_resume else "JSON signal",
+                mode="unknown",
+                reason="default (post-resume)" if post_resume else "default",
             )
 
-        Services.logger().log(
-            "project-mode.json malformed"
-            + (" after resume" if post_resume else "")
-            + " — preserved as .malformed.json, trying text fallback",
-        )
         if mode_txt_path.exists():
             return ProjectMode(
                 mode=mode_txt_path.read_text(encoding="utf-8").strip(),
-                reason=("text (post-resume)"
-                        if post_resume else "text (JSON malformed)"),
+                reason="text (post-resume)" if post_resume else "text",
             )
+
         return ProjectMode(
             mode="unknown",
             reason="default (post-resume)" if post_resume else "default",
         )
 
-    if mode_txt_path.exists():
-        return ProjectMode(
-            mode=mode_txt_path.read_text(encoding="utf-8").strip(),
-            reason="text (post-resume)" if post_resume else "text",
-        )
+    def resolve_project_mode(self, planspace: Path) -> tuple[str, list[str]]:
+        """Resolve the current project mode, pausing fail-closed when needed."""
+        paths = PathRegistry(planspace)
+        mode_json_path = paths.project_mode_json()
+        mode_txt_path = paths.project_mode_txt()
 
-    return ProjectMode(
-        mode="unknown",
-        reason="default (post-resume)" if post_resume else "default",
-    )
-
-
-def resolve_project_mode(planspace: Path, parent: str) -> tuple[str, list[str]]:
-    """Resolve the current project mode, pausing fail-closed when needed."""
-    paths = PathRegistry(planspace)
-    mode_json_path = paths.project_mode_json()
-    mode_txt_path = paths.project_mode_txt()
-
-    pm = _read_project_mode_signal(
-        mode_json_path,
-        mode_txt_path,
-        post_resume=False,
-    )
-
-    if pm.reason == "default":
-        if mode_json_path.exists():
-            Services.logger().log("No text fallback — pausing for parent (fail-closed)")
-            Services.pipeline_control().pause_for_parent(
-                planspace,
-                parent,
-                f"pause:{PauseType.NEEDS_PARENT}:project-mode-malformed — "
-                "JSON parse failed and no text fallback exists",
-            )
-        else:
-            Services.logger().log("No project-mode signal found — pausing for parent "
-                "(fail-closed)")
-            Services.pipeline_control().pause_for_parent(
-                planspace,
-                parent,
-                f"pause:{PauseType.NEEDS_PARENT}:project-mode-missing — "
-                "scan stage did not write project-mode signal",
-            )
-
-        pm = _read_project_mode_signal(
+        pm = self._read_project_mode_signal(
             mode_json_path,
             mode_txt_path,
-            post_resume=True,
+            post_resume=False,
         )
 
-    Services.logger().log(f"Project mode: {pm.mode} (from {pm.reason})")
-    return pm.mode, pm.evidence_files
+        if pm.reason == "default":
+            if mode_json_path.exists():
+                self._logger.log("No text fallback — pausing for parent (fail-closed)")
+                self._pipeline_control.pause_for_parent(
+                    planspace,
+                    f"pause:{PauseType.NEEDS_PARENT}:project-mode-malformed — "
+                    "JSON parse failed and no text fallback exists",
+                )
+            else:
+                self._logger.log("No project-mode signal found — pausing for parent "
+                    "(fail-closed)")
+                self._pipeline_control.pause_for_parent(
+                    planspace,
+                    f"pause:{PauseType.NEEDS_PARENT}:project-mode-missing — "
+                    "scan stage did not write project-mode signal",
+                )
+
+            pm = self._read_project_mode_signal(
+                mode_json_path,
+                mode_txt_path,
+                post_resume=True,
+            )
+
+        self._logger.log(f"Project mode: {pm.mode} (from {pm.reason})")
+        return pm.mode, pm.evidence_files
+
+    def write_mode_contract(
+        self,
+        planspace: Path,
+        mode: str,
+        constraints: list[str],
+    ) -> None:
+        """Write the formalized project-mode contract artifact."""
+        paths = PathRegistry(planspace)
+        self._artifact_io.write_json(
+            paths.mode_contract(),
+            {
+                "mode": mode,
+                "constraints": constraints,
+                "expected_outputs": [
+                    "integration proposals",
+                    "code changes",
+                    "alignment checks",
+                ],
+            },
+        )
+
+
+# ------------------------------------------------------------------
+# Backward-compat free function wrappers
+# ------------------------------------------------------------------
+
+
+def _default_resolver() -> ProjectModeResolver:
+    from containers import Services
+    return ProjectModeResolver(
+        artifact_io=Services.artifact_io(),
+        logger=Services.logger(),
+        pipeline_control=Services.pipeline_control(),
+    )
+
+
+def resolve_project_mode(planspace: Path) -> tuple[str, list[str]]:
+    """Resolve the current project mode, pausing fail-closed when needed."""
+    return _default_resolver().resolve_project_mode(planspace)
 
 
 def write_mode_contract(
@@ -109,16 +166,4 @@ def write_mode_contract(
     constraints: list[str],
 ) -> None:
     """Write the formalized project-mode contract artifact."""
-    paths = PathRegistry(planspace)
-    Services.artifact_io().write_json(
-        paths.mode_contract(),
-        {
-            "mode": mode,
-            "constraints": constraints,
-            "expected_outputs": [
-                "integration proposals",
-                "code changes",
-                "alignment checks",
-            ],
-        },
-    )
+    _default_resolver().write_mode_contract(planspace, mode, constraints)

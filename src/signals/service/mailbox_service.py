@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from signals.service.database_client import DatabaseClient
-from signals.types import TRUNCATE_SUMMARY
+from signals.types import MAILBOX_COMPLETE, TRUNCATE_SUMMARY
+
+if TYPE_CHECKING:
+    from containers import LogService
 
 _SUMMARY_PREFIXES = (
     "summary:",
@@ -29,8 +33,8 @@ def summary_tag(message: str) -> str:
         return f"{parts[0]}:{parts[1]}"
     if message.startswith("pause:") and len(parts) >= 3:
         return f"{parts[1]}:{parts[2]}"
-    if message == "complete":
-        return "complete"
+    if message == MAILBOX_COMPLETE:
+        return MAILBOX_COMPLETE
     return parts[0]
 
 
@@ -41,9 +45,11 @@ class MailboxService:
         self,
         db: DatabaseClient,
         agent_name: str,
+        logger: LogService | None = None,
     ) -> None:
         self._db = db
         self._agent_name = agent_name
+        self._logger = logger
 
     @classmethod
     def for_planspace(
@@ -52,10 +58,19 @@ class MailboxService:
         *,
         db_sh: Path,
         agent_name: str,
+        logger: LogService | None = None,
     ) -> MailboxService:
-        """Create a mailbox wired to the run database for *planspace*."""
+        """Create a mailbox wired to the run database for *planspace*.
+
+        When *logger* is not supplied the service-locator is used as a
+        backward-compat fallback so callers outside the signals package
+        keep working without changes.
+        """
+        if logger is None:
+            from containers import Services
+            logger = Services.logger()
         db = DatabaseClient.for_planspace(planspace, db_sh)
-        return cls(db, agent_name)
+        return cls(db, agent_name, logger=logger)
 
     def send(self, target: str, message: str) -> None:
         """Send a message and emit summary events for monitored prefixes."""
@@ -102,5 +117,5 @@ class MailboxService:
         self._db.unregister(self._agent_name, check=False)
 
     def _log(self, message: str) -> None:
-        from containers import Services
-        Services.logger().log(message)
+        if self._logger is not None:
+            self._logger.log(message)

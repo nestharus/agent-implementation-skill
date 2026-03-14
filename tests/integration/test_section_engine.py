@@ -80,7 +80,7 @@ class TestProblemFrameMissing:
         section = _make_section(planspace, codespace)
         mock_dispatch.return_value = ""
 
-        result = run_section(planspace, codespace, section, "parent")
+        result = run_section(planspace, codespace, section)
 
         assert result is None
 
@@ -90,7 +90,7 @@ class TestProblemFrameMissing:
         section = _make_section(planspace, codespace)
         mock_dispatch.return_value = ""
 
-        run_section(planspace, codespace, section, "parent")
+        run_section(planspace, codespace, section)
 
         signal_path = (planspace / "artifacts" / "signals"
                        / "setup-01-signal.json")
@@ -105,7 +105,7 @@ class TestProblemFrameMissing:
         section = _make_section(planspace, codespace)
         mock_dispatch.return_value = ""
 
-        run_section(planspace, codespace, section, "parent")
+        run_section(planspace, codespace, section)
 
         rollup_path = (planspace / "artifacts" / "decisions"
                        / "needs-input.md")
@@ -120,7 +120,7 @@ class TestProblemFrameMissing:
         section = _make_section(planspace, codespace)
         mock_dispatch.return_value = ""
 
-        run_section(planspace, codespace, section, "parent")
+        run_section(planspace, codespace, section)
 
         # The retry dispatch should use agent_file="setup-excerpter.md"
         retry_calls = [
@@ -165,7 +165,7 @@ class TestProblemFrameMissing:
         # Do NOT pre-create integration proposal — let the proposal loop
         # fail fast at "proposal not written" (returns None).
 
-        result = run_section(planspace, codespace, section, "parent")
+        result = run_section(planspace, codespace, section)
 
         # The gate should have passed — no needs_parent signal about
         # problem frame being missing
@@ -191,7 +191,7 @@ class TestProblemFrameEmpty:
                    / "section-01-problem-frame.md")
         pf_path.write_text("")
 
-        result = run_section(planspace, codespace, section, "parent")
+        result = run_section(planspace, codespace, section)
         assert result is None
 
     def test_empty_frame_writes_signal(
@@ -203,7 +203,7 @@ class TestProblemFrameEmpty:
                    / "section-01-problem-frame.md")
         pf_path.write_text("   \n  \n  ")  # whitespace-only = empty
 
-        run_section(planspace, codespace, section, "parent")
+        run_section(planspace, codespace, section)
 
         signal_path = (planspace / "artifacts" / "signals"
                        / "setup-01-signal.json")
@@ -231,7 +231,7 @@ class TestProblemFrameEmpty:
         )
         mock_dispatch.return_value = ""
 
-        result = run_section(planspace, codespace, section, "parent")
+        result = run_section(planspace, codespace, section)
 
         # result is None because proposal loop fails, but the non-empty
         # gate should NOT have fired

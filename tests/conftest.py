@@ -206,6 +206,9 @@ class NoOpCommunicator(Communicator):
     def mailbox_send(self, planspace, target, message):
         pass
 
+    def send_to_parent(self, planspace, message):
+        pass
+
     def log_artifact(self, planspace, artifact_name):
         pass
 
@@ -225,6 +228,10 @@ class CapturingCommunicator(Communicator):
     def mailbox_send(self, planspace, target, message):
         self.messages.append(message)
         self.mailbox_calls.append((planspace, target, message))
+
+    def send_to_parent(self, planspace, message):
+        self.messages.append(message)
+        self.mailbox_calls.append((planspace, "parent", message))
 
     def log_artifact(self, planspace, artifact_name):
         self.artifact_events.append(artifact_name)
@@ -258,10 +265,10 @@ def capturing_communicator():
 class NoOpPipelineControl(PipelineControlService):
     """Test double that provides safe defaults for pipeline control."""
 
-    def pause_for_parent(self, planspace, parent, message) -> str:
+    def pause_for_parent(self, planspace, message) -> str:
         return "resume"
 
-    def poll_control_messages(self, planspace, parent, current_section=None) -> str | None:
+    def poll_control_messages(self, planspace, current_section=None) -> str | None:
         return None
 
     def handle_pending_messages(self, planspace) -> bool:
@@ -270,7 +277,7 @@ class NoOpPipelineControl(PipelineControlService):
     def alignment_changed_pending(self, planspace) -> bool:
         return False
 
-    def wait_if_paused(self, planspace, parent) -> None:
+    def wait_if_paused(self, planspace) -> None:
         pass
 
     def requeue_changed_sections(
@@ -304,16 +311,16 @@ class CapturingPipelineControl(PipelineControlService):
         self._section_inputs_hash_return: str = "hash-stub"
         self._coordination_recheck_hash_return: str = "hash-stub"
 
-    def pause_for_parent(self, planspace, parent, message) -> str:
-        self.pause_calls.append((planspace, parent, message))
+    def pause_for_parent(self, planspace, message) -> str:
+        self.pause_calls.append((planspace, message))
         if self._pause_side_effect:
-            return self._pause_side_effect(planspace, parent, message)
+            return self._pause_side_effect(planspace, message)
         return self._pause_return
 
-    def poll_control_messages(self, planspace, parent, current_section=None) -> str | None:
-        self.poll_calls.append((planspace, parent, current_section))
+    def poll_control_messages(self, planspace, current_section=None) -> str | None:
+        self.poll_calls.append((planspace, current_section))
         if self._poll_side_effect:
-            return self._poll_side_effect(planspace, parent, current_section)
+            return self._poll_side_effect(planspace, current_section)
         return self._poll_return
 
     def handle_pending_messages(self, planspace) -> bool:
@@ -327,7 +334,7 @@ class CapturingPipelineControl(PipelineControlService):
             return self._alignment_changed_side_effect(planspace)
         return self._alignment_changed_return
 
-    def wait_if_paused(self, planspace, parent) -> None:
+    def wait_if_paused(self, planspace) -> None:
         pass
 
     def requeue_changed_sections(
@@ -389,13 +396,13 @@ class NoOpSectionAlignment(SectionAlignmentService):
     """Test double for section alignment operations."""
 
     def extract_problems(self, result, output_path=None, planspace=None,
-                         parent=None, codespace=None, *, adjudicator_model: str) -> str | None:
+                         codespace=None, *, adjudicator_model: str) -> str | None:
         return None
 
     def collect_modified_files(self, planspace, section, codespace) -> list[str]:
         return []
 
-    def run_alignment_check(self, section, planspace, codespace, parent,
+    def run_alignment_check(self, section, planspace, codespace,
                             output_prefix="align", max_retries=2, *, model: str):
         return None
 
@@ -403,7 +410,7 @@ class NoOpSectionAlignment(SectionAlignmentService):
         return None
 
     def run_global_recheck(self, sections_by_num, section_results,
-                           planspace, codespace, parent) -> str:
+                           planspace, codespace) -> str:
         return "aligned"
 
 

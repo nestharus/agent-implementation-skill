@@ -160,7 +160,6 @@ class TestProposalResultsValidForReconciliation:
             all_sections,
             planspace,
             codespace,
-            "parent",
         )
 
         # No conflicts → section stays ready
@@ -197,7 +196,6 @@ class TestProposalResultsValidForReconciliation:
             all_sections,
             planspace,
             codespace,
-            "parent",
         )
 
         assert "01" in result.new_section_numbers
@@ -233,7 +231,6 @@ class TestProposalPassExitSignal:
                 sections_by_num,
                 planspace,
                 codespace,
-                "parent",
             )
 
 
@@ -274,8 +271,8 @@ class TestBlockedSectionsExcludedFromImplementation:
         dispatched_sections: list[str] = []
 
         def track_run_section(
-            planspace, codespace, section, parent, *,
-            all_sections=None, pass_mode=PASS_MODE_FULL,
+            planspace, codespace, section,
+            all_sections=None, *, pass_mode=PASS_MODE_FULL,
         ):
             dispatched_sections.append(section.number)
             return ["src/main.py"]  # modified files
@@ -292,7 +289,6 @@ class TestBlockedSectionsExcludedFromImplementation:
                 sections_by_num,
                 planspace,
                 codespace,
-                "parent",
             )
 
         # Only section 01 should have been dispatched
@@ -348,7 +344,6 @@ class TestBlockedSectionsExcludedFromImplementation:
                 all_sections,
                 planspace,
                 codespace,
-                "parent",
             )
 
         # Both sections had the same unresolved_contracts — reconciliation
@@ -397,7 +392,6 @@ class TestImplementationPassRestartOnAlignmentChange:
                     sections_by_num,
                     planspace,
                     codespace,
-                    "parent",
                 )
 
 
@@ -437,7 +431,6 @@ class TestFullPhaseSequence:
             all_sections,
             planspace,
             codespace,
-            "parent",
         )
 
         assert sorted(reconciliation.new_section_numbers) == ["01", "02"]
@@ -450,8 +443,8 @@ class TestFullPhaseSequence:
 
         # --- Phase 1c: Implementation ---
         def mock_run_section(
-            planspace, codespace, section, parent, *,
-            all_sections=None, pass_mode=PASS_MODE_FULL,
+            planspace, codespace, section,
+            all_sections=None, *, pass_mode=PASS_MODE_FULL,
         ):
             return [f"src/feature_{section.number}.py"]
 
@@ -467,7 +460,6 @@ class TestFullPhaseSequence:
                 sections_by_num,
                 planspace,
                 codespace,
-                "parent",
             )
 
         # Both sections should have aligned results
@@ -509,7 +501,6 @@ class TestFullPhaseSequence:
             all_sections,
             planspace,
             codespace,
-            "parent",
         )
 
         assert "01" in reconciliation.new_section_numbers
@@ -517,8 +508,8 @@ class TestFullPhaseSequence:
 
         # Implementation
         def mock_run_section(
-            planspace, codespace, section, parent, *,
-            all_sections=None, pass_mode=PASS_MODE_FULL,
+            planspace, codespace, section,
+            all_sections=None, *, pass_mode=PASS_MODE_FULL,
         ):
             return [f"src/feature_{section.number}.py"]
 
@@ -534,7 +525,6 @@ class TestFullPhaseSequence:
                 sections_by_num,
                 planspace,
                 codespace,
-                "parent",
             )
 
         # Only section 01 should have a result — section 02 was blocked
@@ -572,7 +562,6 @@ class TestFullPhaseSequence:
                 sections_by_num,
                 planspace,
                 codespace,
-                "parent",
             )
 
         # No result for section 01 — implementation returned None
@@ -600,7 +589,6 @@ class TestFullPhaseSequence:
             all_sections,
             planspace,
             codespace,
-            "parent",
         )
 
         # Check that reconciliation wrote the result artifact
@@ -635,7 +623,6 @@ class TestFullPhaseSequence:
             all_sections,
             planspace,
             codespace,
-            "parent",
         )
 
         summary_path = (

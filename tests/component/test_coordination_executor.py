@@ -10,6 +10,7 @@ from coordination.types import BridgeDirective, ProblemGroup
 from src.coordination.engine import plan_executor as executor
 from src.coordination.engine.plan_executor import (
     CoordinationExecutionExit,
+    PlanExecutor,
     execute_coordination_plan,
     read_execution_modified_files,
 )
@@ -45,9 +46,9 @@ def test_execute_coordination_plan_runs_fix_groups_and_persists_modified_files(
     }
 
     monkeypatch.setattr(
-        executor,
+        PlanExecutor,
         "_dispatch_fix_group",
-        lambda group, group_index, *args, **kwargs: (group_index, [group[0].files[0]]),
+        lambda self, group, group_index, *args, **kwargs: (group_index, [group[0].files[0]]),
     )
 
     affected_sections = execute_coordination_plan(
@@ -60,7 +61,7 @@ def test_execute_coordination_plan_runs_fix_groups_and_persists_modified_files(
             ),
         ],
         sections_by_num,
-        DispatchContext(planspace=planspace, codespace=tmp_path / "codespace", parent="parent"),
+        DispatchContext(planspace=planspace, codespace=tmp_path / "codespace"),
     )
 
     assert affected_sections == ["01", "02"]
@@ -101,9 +102,9 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
         return "ok"
 
     monkeypatch.setattr(
-        executor,
+        PlanExecutor,
         "_dispatch_fix_group",
-        lambda group, group_index, *args, **kwargs: (group_index, ["src/a.py"]),
+        lambda self, group, group_index, *args, **kwargs: (group_index, ["src/a.py"]),
     )
     from src.containers import Services
     monkeypatch.setattr(
@@ -124,7 +125,7 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
                 ),
             ],
             sections_by_num,
-            DispatchContext(planspace=planspace, codespace=tmp_path / "codespace", parent="parent"),
+            DispatchContext(planspace=planspace, codespace=tmp_path / "codespace"),
         )
 
     assert affected_sections == ["01", "02"]
@@ -148,9 +149,9 @@ def test_execute_coordination_plan_raises_on_fix_group_sentinel(
     }
 
     monkeypatch.setattr(
-        executor,
+        PlanExecutor,
         "_dispatch_fix_group",
-        lambda *args, **kwargs: (0, None),
+        lambda self, *args, **kwargs: (0, None),
     )
 
     with pytest.raises(CoordinationExecutionExit):
@@ -161,5 +162,5 @@ def test_execute_coordination_plan_raises_on_fix_group_sentinel(
                 ),
             ],
             sections_by_num,
-            DispatchContext(planspace=planspace, codespace=tmp_path / "codespace", parent="parent"),
+            DispatchContext(planspace=planspace, codespace=tmp_path / "codespace"),
         )

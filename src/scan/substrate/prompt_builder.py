@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
-from containers import Services
+
+if TYPE_CHECKING:
+    from containers import PromptGuard
 
 
 def _compose_shard_text(
@@ -41,59 +44,6 @@ Write your shard JSON to: `{output_path}`
 Create parent directories as needed. Follow the schema from your
 agent definition exactly.
 """
-
-
-def write_shard_prompt(
-    section_num: str,
-    section_path: Path,
-    planspace: Path,
-    codespace: Path,
-) -> Path:
-    """Write the dispatch prompt for the shard explorer agent."""
-    registry = PathRegistry(planspace)
-    prompts_dir = registry.substrate_prompts_dir()
-
-    output_path = registry.substrate_dir() / "shards" / f"shard-{section_num}.json"
-    codemap_path = registry.codemap()
-    codemap_corrections_path = registry.corrections()
-    proposal_excerpt = registry.proposal_excerpt(section_num)
-    alignment_excerpt = registry.alignment_excerpt(section_num)
-    problem_frame = registry.problem_frame(section_num)
-    intent_problem = registry.intent_section_dir(section_num) / "problem.md"
-    intent_rubric = (
-        registry.intent_section_dir(section_num) / "problem-alignment.md"
-    )
-
-    refs: list[str] = []
-    refs.append(f"- **Section spec**: `{section_path}`")
-    if proposal_excerpt.exists():
-        refs.append(f"- **Proposal excerpt**: `{proposal_excerpt}`")
-    if alignment_excerpt.exists():
-        refs.append(f"- **Alignment excerpt**: `{alignment_excerpt}`")
-    if problem_frame.exists():
-        refs.append(f"- **Problem frame**: `{problem_frame}`")
-    if codemap_path.exists():
-        refs.append(f"- **Codemap**: `{codemap_path}`")
-    if codemap_corrections_path.exists():
-        refs.append(f"- **Codemap corrections**: `{codemap_corrections_path}`")
-    if intent_problem.exists():
-        refs.append(f"- **Intent problem**: `{intent_problem}`")
-    if intent_rubric.exists():
-        refs.append(f"- **Intent rubric**: `{intent_rubric}`")
-    refs.append(
-        f"- **All section specs** (for cross-reference): "
-        f"`{registry.sections_dir()}` directory"
-    )
-
-    refs_block = "\n".join(refs)
-
-    prompt_path = prompts_dir / f"shard-{section_num}.md"
-    Services.prompt_guard().write_validated(
-        _compose_shard_text(section_num, refs_block, codespace, output_path),
-        prompt_path,
-    )
-
-    return prompt_path
 
 
 def _compose_pruner_text(
@@ -136,50 +86,6 @@ agent definition exactly.
 """
 
 
-def write_pruner_prompt(
-    planspace: Path,
-    codespace: Path,
-    target_sections: list[str],
-) -> Path:
-    """Write the dispatch prompt for the pruner agent."""
-    registry = PathRegistry(planspace)
-    prompts_dir = registry.substrate_prompts_dir()
-
-    shards_dir = registry.substrate_dir() / "shards"
-    substrate_dir = registry.substrate_dir()
-    codemap_path = registry.codemap()
-    codemap_corrections_path = registry.corrections()
-    proposal_path = registry.global_proposal()
-    alignment_path = registry.global_alignment()
-    philosophy_path = registry.philosophy()
-
-    sections_list = ", ".join(target_sections)
-
-    refs: list[str] = []
-    refs.append(f"- **All shards**: `{shards_dir}/shard-*.json`")
-    refs.append(f"- **Section specs**: `{registry.sections_dir()}` directory")
-    if proposal_path.exists():
-        refs.append(f"- **Global proposal**: `{proposal_path}`")
-    if alignment_path.exists():
-        refs.append(f"- **Global alignment**: `{alignment_path}`")
-    if codemap_path.exists():
-        refs.append(f"- **Codemap**: `{codemap_path}`")
-    if codemap_corrections_path.exists():
-        refs.append(f"- **Codemap corrections**: `{codemap_corrections_path}`")
-    if philosophy_path.exists():
-        refs.append(f"- **Philosophy**: `{philosophy_path}`")
-
-    refs_block = "\n".join(refs)
-
-    prompt_path = prompts_dir / "pruner.md"
-    Services.prompt_guard().write_validated(
-        _compose_pruner_text(sections_list, refs_block, codespace, substrate_dir),
-        prompt_path,
-    )
-
-    return prompt_path
-
-
 def _compose_seeder_text(
     refs_block: str,
     codespace: Path,
@@ -218,39 +124,187 @@ agent definition exactly.
 """
 
 
+class PromptBuilder:
+    """Prompt builders for the three substrate agents.
+
+    All cross-cutting services are received via constructor injection.
+    """
+
+    def __init__(self, prompt_guard: PromptGuard) -> None:
+        self._prompt_guard = prompt_guard
+
+    def write_shard_prompt(
+        self,
+        section_num: str,
+        section_path: Path,
+        planspace: Path,
+        codespace: Path,
+    ) -> Path:
+        """Write the dispatch prompt for the shard explorer agent."""
+        registry = PathRegistry(planspace)
+        prompts_dir = registry.substrate_prompts_dir()
+
+        output_path = registry.substrate_dir() / "shards" / f"shard-{section_num}.json"
+        codemap_path = registry.codemap()
+        codemap_corrections_path = registry.corrections()
+        proposal_excerpt = registry.proposal_excerpt(section_num)
+        alignment_excerpt = registry.alignment_excerpt(section_num)
+        problem_frame = registry.problem_frame(section_num)
+        intent_problem = registry.intent_section_dir(section_num) / "problem.md"
+        intent_rubric = (
+            registry.intent_section_dir(section_num) / "problem-alignment.md"
+        )
+
+        refs: list[str] = []
+        refs.append(f"- **Section spec**: `{section_path}`")
+        if proposal_excerpt.exists():
+            refs.append(f"- **Proposal excerpt**: `{proposal_excerpt}`")
+        if alignment_excerpt.exists():
+            refs.append(f"- **Alignment excerpt**: `{alignment_excerpt}`")
+        if problem_frame.exists():
+            refs.append(f"- **Problem frame**: `{problem_frame}`")
+        if codemap_path.exists():
+            refs.append(f"- **Codemap**: `{codemap_path}`")
+        if codemap_corrections_path.exists():
+            refs.append(f"- **Codemap corrections**: `{codemap_corrections_path}`")
+        if intent_problem.exists():
+            refs.append(f"- **Intent problem**: `{intent_problem}`")
+        if intent_rubric.exists():
+            refs.append(f"- **Intent rubric**: `{intent_rubric}`")
+        refs.append(
+            f"- **All section specs** (for cross-reference): "
+            f"`{registry.sections_dir()}` directory"
+        )
+
+        refs_block = "\n".join(refs)
+
+        prompt_path = prompts_dir / f"shard-{section_num}.md"
+        self._prompt_guard.write_validated(
+            _compose_shard_text(section_num, refs_block, codespace, output_path),
+            prompt_path,
+        )
+
+        return prompt_path
+
+    def write_pruner_prompt(
+        self,
+        planspace: Path,
+        codespace: Path,
+        target_sections: list[str],
+    ) -> Path:
+        """Write the dispatch prompt for the pruner agent."""
+        registry = PathRegistry(planspace)
+        prompts_dir = registry.substrate_prompts_dir()
+
+        shards_dir = registry.substrate_dir() / "shards"
+        substrate_dir = registry.substrate_dir()
+        codemap_path = registry.codemap()
+        codemap_corrections_path = registry.corrections()
+        proposal_path = registry.global_proposal()
+        alignment_path = registry.global_alignment()
+        philosophy_path = registry.philosophy()
+
+        sections_list = ", ".join(target_sections)
+
+        refs: list[str] = []
+        refs.append(f"- **All shards**: `{shards_dir}/shard-*.json`")
+        refs.append(f"- **Section specs**: `{registry.sections_dir()}` directory")
+        if proposal_path.exists():
+            refs.append(f"- **Global proposal**: `{proposal_path}`")
+        if alignment_path.exists():
+            refs.append(f"- **Global alignment**: `{alignment_path}`")
+        if codemap_path.exists():
+            refs.append(f"- **Codemap**: `{codemap_path}`")
+        if codemap_corrections_path.exists():
+            refs.append(f"- **Codemap corrections**: `{codemap_corrections_path}`")
+        if philosophy_path.exists():
+            refs.append(f"- **Philosophy**: `{philosophy_path}`")
+
+        refs_block = "\n".join(refs)
+
+        prompt_path = prompts_dir / "pruner.md"
+        self._prompt_guard.write_validated(
+            _compose_pruner_text(sections_list, refs_block, codespace, substrate_dir),
+            prompt_path,
+        )
+
+        return prompt_path
+
+    def write_seeder_prompt(
+        self,
+        planspace: Path,
+        codespace: Path,
+    ) -> Path:
+        """Write the dispatch prompt for the seeder agent."""
+        registry = PathRegistry(planspace)
+        prompts_dir = registry.substrate_prompts_dir()
+
+        substrate_dir = registry.substrate_dir()
+        seed_plan_path = substrate_dir / "seed-plan.json"
+        substrate_md_path = substrate_dir / "substrate.md"
+        codemap_path = registry.codemap()
+        codemap_corrections_path = registry.corrections()
+
+        refs: list[str] = []
+        refs.append(f"- **Seed plan**: `{seed_plan_path}`")
+        refs.append(f"- **Substrate document**: `{substrate_md_path}`")
+        if codemap_path.exists():
+            refs.append(f"- **Codemap**: `{codemap_path}`")
+        if codemap_corrections_path.exists():
+            refs.append(f"- **Codemap corrections**: `{codemap_corrections_path}`")
+
+        refs_block = "\n".join(refs)
+
+        prompt_path = prompts_dir / "seeder.md"
+        self._prompt_guard.write_validated(
+            _compose_seeder_text(
+                refs_block, codespace, registry, substrate_md_path, substrate_dir,
+            ),
+            prompt_path,
+        )
+
+        return prompt_path
+
+
+# ------------------------------------------------------------------
+# Backward-compat free function wrappers
+# ------------------------------------------------------------------
+
+
+def _default_builder() -> PromptBuilder:
+    from containers import Services
+    return PromptBuilder(prompt_guard=Services.prompt_guard())
+
+
+def write_shard_prompt(
+    section_num: str,
+    section_path: Path,
+    planspace: Path,
+    codespace: Path,
+) -> Path:
+    """Write the dispatch prompt for the shard explorer agent."""
+    return _default_builder().write_shard_prompt(
+        section_num, section_path, planspace, codespace,
+    )
+
+
+def write_pruner_prompt(
+    planspace: Path,
+    codespace: Path,
+    target_sections: list[str],
+) -> Path:
+    """Write the dispatch prompt for the pruner agent."""
+    return _default_builder().write_pruner_prompt(
+        planspace, codespace, target_sections,
+    )
+
+
 def write_seeder_prompt(
     planspace: Path,
     codespace: Path,
 ) -> Path:
     """Write the dispatch prompt for the seeder agent."""
-    registry = PathRegistry(planspace)
-    prompts_dir = registry.substrate_prompts_dir()
-
-    substrate_dir = registry.substrate_dir()
-    seed_plan_path = substrate_dir / "seed-plan.json"
-    substrate_md_path = substrate_dir / "substrate.md"
-    codemap_path = registry.codemap()
-    codemap_corrections_path = registry.corrections()
-
-    refs: list[str] = []
-    refs.append(f"- **Seed plan**: `{seed_plan_path}`")
-    refs.append(f"- **Substrate document**: `{substrate_md_path}`")
-    if codemap_path.exists():
-        refs.append(f"- **Codemap**: `{codemap_path}`")
-    if codemap_corrections_path.exists():
-        refs.append(f"- **Codemap corrections**: `{codemap_corrections_path}`")
-
-    refs_block = "\n".join(refs)
-
-    prompt_path = prompts_dir / "seeder.md"
-    Services.prompt_guard().write_validated(
-        _compose_seeder_text(
-            refs_block, codespace, registry, substrate_md_path, substrate_dir,
-        ),
-        prompt_path,
-    )
-
-    return prompt_path
+    return _default_builder().write_seeder_prompt(planspace, codespace)
 
 
 __all__ = [

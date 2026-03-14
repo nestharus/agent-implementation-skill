@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from containers import Services
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
+
 from orchestrator.path_registry import PathRegistry
-from orchestrator.repository.decisions import load_decisions
+from orchestrator.repository.decisions import (
+    DECISION_SCOPE_GLOBAL,
+    DECISION_STATUS_DECIDED,
+    load_decisions,
+)
 from risk.repository.serialization import (
     load_risk_assessment,
     load_risk_plan,
@@ -39,87 +45,149 @@ class _SectionTally:
     blocked_by_risk: list[str] = field(default_factory=list)
 
 
-def build_strategic_state(
-    decisions_dir: Path,
-    section_results: dict[str, Any],
-    planspace: Path,
-) -> dict[str, Any]:
-    """Derive the current strategic-state snapshot."""
-    decision_warnings: list[str] = []
-    decisions = load_decisions(decisions_dir, warnings=decision_warnings)
+class StrategicStateBuilder:
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
 
-    research_questions = _load_research_questions(planspace)
+    def build_strategic_state(
+        self,
+        decisions_dir: Path,
+        section_results: dict[str, Any],
+        planspace: Path,
+    ) -> dict[str, Any]:
+        """Derive the current strategic-state snapshot."""
+        decision_warnings: list[str] = []
+        decisions = load_decisions(decisions_dir, warnings=decision_warnings)
 
-    tally = _classify_sections(section_results, planspace)
-    _append_child_problems(decisions, tally.open_problems)
+        research_questions = self._load_research_questions(planspace)
 
-    key_decision_ids = [
-        decision.id for decision in decisions if decision.status == "decided"
-    ]
-    coordination_rounds = sum(
-        1 for decision in decisions if decision.scope == "global"
-    )
+        tally = self._classify_sections(section_results, planspace)
+        _append_child_problems(decisions, tally.open_problems)
 
-    snapshot: dict[str, Any] = {
-        "completed_sections": sorted(tally.completed),
-        "in_progress": tally.in_progress,
-        "blocked": tally.blocked,
-        "open_problems": tally.open_problems,
-        "research_questions": research_questions,
-        "key_decisions": key_decision_ids,
-        "coordination_rounds": coordination_rounds,
-        "risk_posture": tally.risk_posture,
-        "dominant_risks_by_section": tally.dominant_risks_by_section,
-        "blocked_by_risk": tally.blocked_by_risk,
-        "next_action": _derive_next_action(
-            tally.completed,
-            tally.in_progress,
-            tally.blocked,
-            tally.open_problems,
-        ),
-    }
-    if decision_warnings:
-        snapshot["warnings"] = decision_warnings
+        key_decision_ids = [
+            decision.id for decision in decisions if decision.status == DECISION_STATUS_DECIDED
+        ]
+        coordination_rounds = sum(
+            1 for decision in decisions if decision.scope == DECISION_SCOPE_GLOBAL
+        )
 
-    state_path = PathRegistry(planspace).strategic_state()
-    Services.artifact_io().write_json(state_path, snapshot)
-    return snapshot
+        snapshot: dict[str, Any] = {
+            "completed_sections": sorted(tally.completed),
+            "in_progress": tally.in_progress,
+            "blocked": tally.blocked,
+            "open_problems": tally.open_problems,
+            "research_questions": research_questions,
+            "key_decisions": key_decision_ids,
+            "coordination_rounds": coordination_rounds,
+            "risk_posture": tally.risk_posture,
+            "dominant_risks_by_section": tally.dominant_risks_by_section,
+            "blocked_by_risk": tally.blocked_by_risk,
+            "next_action": _derive_next_action(
+                tally.completed,
+                tally.in_progress,
+                tally.blocked,
+                tally.open_problems,
+            ),
+        }
+        if decision_warnings:
+            snapshot["warnings"] = decision_warnings
+
+        state_path = PathRegistry(planspace).strategic_state()
+        self._artifact_io.write_json(state_path, snapshot)
+        return snapshot
+
+    def _classify_sections(
+        self,
+        section_results: dict[str, Any],
+        planspace: Path,
+    ) -> _SectionTally:
+        """Walk *section_results* and bucket each section."""
+        tally = _SectionTally()
+
+        for sec_num, result in sorted(section_results.items()):
+            if isinstance(result, dict):
+                aligned = result.get("aligned", False)
+                problems = result.get("problems")
+            else:
+                aligned = getattr(result, "aligned", False)
+                problems = getattr(result, "problems", None)
+
+            _accumulate_risk(planspace, sec_num, tally)
+
+            if aligned:
+                tally.completed.append(sec_num)
+                continue
+
+            if self._check_blocker(planspace, sec_num, tally):
+                continue
+
+            if tally.in_progress is None:
+                tally.in_progress = sec_num
+            tally.open_problems.append({
+                "id": f"p-{sec_num}",
+                "scope": f"section-{sec_num}",
+                "summary": (str(problems)[:TRUNCATE_DETAIL] if problems else "unresolved"),
+            })
+
+        return tally
+
+    def _check_blocker(
+        self,
+        planspace: Path,
+        sec_num: str,
+        tally: _SectionTally,
+    ) -> bool:
+        """Return ``True`` (and update *tally*) when *sec_num* is blocked."""
+        blocker_path = PathRegistry(planspace).blocker_signal(sec_num)
+        if not blocker_path.exists():
+            return False
+        blocker = self._artifact_io.read_json(blocker_path)
+        if blocker is None:
+            tally.blocked[sec_num] = {
+                "problem_id": "",
+                "reason": "blocker signal malformed",
+            }
+            return True
+        if blocker.get("state") == SIGNAL_NEEDS_PARENT:
+            tally.blocked[sec_num] = {
+                "problem_id": blocker.get("problem_id", ""),
+                "reason": blocker.get("detail", "")[:TRUNCATE_DETAIL],
+            }
+            return True
+        return False
+
+    def _load_research_questions(self, planspace: Path) -> list[dict[str, Any]]:
+        open_problems_dir = PathRegistry(planspace).open_problems_dir()
+        if not open_problems_dir.exists():
+            return []
+
+        aggregated: list[dict[str, Any]] = []
+        for artifact_path in sorted(
+            open_problems_dir.glob("section-*-research-questions.json")
+        ):
+            artifact = self._artifact_io.read_json(artifact_path)
+            if not isinstance(artifact, dict):
+                continue
+
+            section = str(artifact.get("section", "")).strip()
+            source = str(artifact.get("source", "")).strip()
+            raw_questions = artifact.get("research_questions", [])
+            if not isinstance(raw_questions, list):
+                continue
+
+            questions = [str(question) for question in raw_questions]
+            if not questions:
+                continue
+
+            aggregated.append({
+                "section": section,
+                "research_questions": questions,
+                "source": source,
+            })
+        return aggregated
 
 
-def _classify_sections(
-    section_results: dict[str, Any],
-    planspace: Path,
-) -> _SectionTally:
-    """Walk *section_results* and bucket each section."""
-    tally = _SectionTally()
-
-    for sec_num, result in sorted(section_results.items()):
-        if isinstance(result, dict):
-            aligned = result.get("aligned", False)
-            problems = result.get("problems")
-        else:
-            aligned = getattr(result, "aligned", False)
-            problems = getattr(result, "problems", None)
-
-        _accumulate_risk(planspace, sec_num, tally)
-
-        if aligned:
-            tally.completed.append(sec_num)
-            continue
-
-        if _check_blocker(planspace, sec_num, tally):
-            continue
-
-        if tally.in_progress is None:
-            tally.in_progress = sec_num
-        tally.open_problems.append({
-            "id": f"p-{sec_num}",
-            "scope": f"section-{sec_num}",
-            "summary": (str(problems)[:TRUNCATE_DETAIL] if problems else "unresolved"),
-        })
-
-    return tally
-
+# Pure functions — no Services usage
 
 def _accumulate_risk(
     planspace: Path,
@@ -136,31 +204,6 @@ def _accumulate_risk(
         tally.blocked_by_risk.append(sec_num)
 
 
-def _check_blocker(
-    planspace: Path,
-    sec_num: str,
-    tally: _SectionTally,
-) -> bool:
-    """Return ``True`` (and update *tally*) when *sec_num* is blocked."""
-    blocker_path = PathRegistry(planspace).blocker_signal(sec_num)
-    if not blocker_path.exists():
-        return False
-    blocker = Services.artifact_io().read_json(blocker_path)
-    if blocker is None:
-        tally.blocked[sec_num] = {
-            "problem_id": "",
-            "reason": "blocker signal malformed",
-        }
-        return True
-    if blocker.get("state") == SIGNAL_NEEDS_PARENT:
-        tally.blocked[sec_num] = {
-            "problem_id": blocker.get("problem_id", ""),
-            "reason": blocker.get("detail", "")[:TRUNCATE_DETAIL],
-        }
-        return True
-    return False
-
-
 def _append_child_problems(
     decisions: list[Any],
     open_problems: list[dict[str, str]],
@@ -173,7 +216,7 @@ def _append_child_problems(
                     "id": child,
                     "scope": (
                         f"section-{decision.section}"
-                        if decision.section else "global"
+                        if decision.section else DECISION_SCOPE_GLOBAL
                     ),
                     "summary": f"child problem from {decision.id}",
                 })
@@ -229,34 +272,18 @@ def _read_risk_summary(
     return RiskSummary(posture=posture, mitigations=dominant_risks, has_plan=blocked_by_risk)
 
 
-def _load_research_questions(planspace: Path) -> list[dict[str, Any]]:
-    open_problems_dir = PathRegistry(planspace).open_problems_dir()
-    if not open_problems_dir.exists():
-        return []
+# Backward-compat wrappers
 
-    aggregated: list[dict[str, Any]] = []
-    for artifact_path in sorted(
-        open_problems_dir.glob("section-*-research-questions.json")
-    ):
-        artifact = Services.artifact_io().read_json(artifact_path)
-        if not isinstance(artifact, dict):
-            continue
-
-        section = str(artifact.get("section", "")).strip()
-        source = str(artifact.get("source", "")).strip()
-        raw_questions = artifact.get("research_questions", [])
-        if not isinstance(raw_questions, list):
-            continue
-
-        questions = [str(question) for question in raw_questions]
-        if not questions:
-            continue
-
-        aggregated.append({
-            "section": section,
-            "research_questions": questions,
-            "source": source,
-        })
-    return aggregated
+def _get_builder() -> StrategicStateBuilder:
+    from containers import Services
+    return StrategicStateBuilder(
+        artifact_io=Services.artifact_io(),
+    )
 
 
+def build_strategic_state(
+    decisions_dir: Path,
+    section_results: dict[str, Any],
+    planspace: Path,
+) -> dict[str, Any]:
+    return _get_builder().build_strategic_state(decisions_dir, section_results, planspace)

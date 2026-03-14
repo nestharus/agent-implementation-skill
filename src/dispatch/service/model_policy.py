@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Iterator, Mapping, cast
+from typing import TYPE_CHECKING, Any, Iterator, Mapping, cast
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
+
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 
 # ---------------------------------------------------------------------------
@@ -116,41 +118,47 @@ class ModelPolicy(Mapping[str, Any]):
             return default
 
 
-def load_model_policy(planspace: Path) -> ModelPolicy:
-    """Read ``artifacts/model-policy.json`` with current defaults."""
-    policy_path = PathRegistry(planspace).model_policy()
-    defaults = ModelPolicy()
+class ModelPolicyLoader:
+    """Loads and manages model policy with injected dependencies."""
 
-    if not policy_path.exists():
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
+
+    def load_model_policy(self, planspace: Path) -> ModelPolicy:
+        """Read ``artifacts/model-policy.json`` with current defaults."""
+        policy_path = PathRegistry(planspace).model_policy()
+        defaults = ModelPolicy()
+
+        if not policy_path.exists():
+            return defaults
+
+        data = self._artifact_io.read_json(policy_path)
+        if isinstance(data, dict):
+            merged = defaults.__dict__.copy()
+            extras = {}
+
+            for key, value in data.items():
+                if key == "escalation_triggers":
+                    merged[key] = {
+                        **defaults.escalation_triggers,
+                        **value,
+                    }
+                elif key in _FIELD_NAMES:
+                    merged[key] = value
+                else:
+                    extras[key] = value
+
+            merged["extras"] = extras
+            return ModelPolicy(**merged)
+
+        print(
+            "  WARNING: model-policy.json exists but is invalid — "
+            "renaming to .malformed.json",
+            flush=True,
+        )
+        if data is not None:
+            self._artifact_io.rename_malformed(policy_path)
         return defaults
-
-    data = Services.artifact_io().read_json(policy_path)
-    if isinstance(data, dict):
-        merged = defaults.__dict__.copy()
-        extras = {}
-
-        for key, value in data.items():
-            if key == "escalation_triggers":
-                merged[key] = {
-                    **defaults.escalation_triggers,
-                    **value,
-                }
-            elif key in _FIELD_NAMES:
-                merged[key] = value
-            else:
-                extras[key] = value
-
-        merged["extras"] = extras
-        return ModelPolicy(**merged)
-
-    print(
-        "  WARNING: model-policy.json exists but is invalid — "
-        "renaming to .malformed.json",
-        flush=True,
-    )
-    if data is not None:
-        Services.artifact_io().rename_malformed(policy_path)
-    return defaults
 
 
 _DEFAULTS = ModelPolicy()
@@ -173,3 +181,17 @@ def resolve(policy: Mapping[str, Any], key: str) -> str:
     if val is not None:
         return cast(str, val)
     return cast(str, getattr(_DEFAULTS, key))
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
+
+def _get_loader() -> ModelPolicyLoader:
+    from containers import Services
+    return ModelPolicyLoader(artifact_io=Services.artifact_io())
+
+
+def load_model_policy(planspace: Path) -> ModelPolicy:
+    """Read ``artifacts/model-policy.json`` with current defaults."""
+    return _get_loader().load_model_policy(planspace)

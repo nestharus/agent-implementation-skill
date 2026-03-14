@@ -3,12 +3,23 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
 from risk.repository.history import read_history
 from risk.types import PostureProfile
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+
+if TYPE_CHECKING:
+    from containers import (
+        AgentDispatcher,
+        Communicator,
+        LogService,
+        ModelPolicyService,
+        PromptGuard,
+        SignalReader,
+        TaskRouterService,
+    )
 
 _SUMMARY_SNIPPET_TRUNCATION = 500
 
@@ -20,84 +31,174 @@ _DEFAULT_MAX_NEW_AXES = 6
 _DEFAULT_RISK_BUDGET_HINT = 4
 
 
-def run_intent_triage(
-    section_number: str,
-    planspace: Path,
-    codespace: Path,
-    parent: str,
-    *,
-    related_files_count: int = 0,
-    incoming_notes_count: int = 0,
-    solve_count: int = 0,
-    section_summary: str = "",
-) -> dict:
-    """Dispatch intent-triager (GLM) and return the triage result.
+class IntentTriager:
+    """Intent triage service."""
 
-    Returns a dict with at least ``intent_mode`` and ``budgets``.
-    Falls back to full on failure.
-    """
-    policy = Services.policies().load(planspace)
-    paths = PathRegistry(planspace)
+    def __init__(
+        self,
+        communicator: Communicator,
+        dispatcher: AgentDispatcher,
+        logger: LogService,
+        policies: ModelPolicyService,
+        prompt_guard: PromptGuard,
+        signals: SignalReader,
+        task_router: TaskRouterService,
+    ) -> None:
+        self._communicator = communicator
+        self._dispatcher = dispatcher
+        self._logger = logger
+        self._policies = policies
+        self._prompt_guard = prompt_guard
+        self._signals = signals
+        self._task_router = task_router
 
-    triage_signal_path = paths.intent_triage_signal(section_number)
-    triage_prompt_path = paths.intent_triage_prompt(section_number)
-    triage_output_path = paths.intent_triage_output(section_number)
+    def run_intent_triage(
+        self,
+        section_number: str,
+        planspace: Path,
+        codespace: Path,
+        *,
+        related_files_count: int = 0,
+        incoming_notes_count: int = 0,
+        solve_count: int = 0,
+        section_summary: str = "",
+    ) -> dict:
+        """Dispatch intent-triager (GLM) and return the triage result.
 
-    risk_kw = dict(
-        related_files_count=related_files_count,
-        incoming_notes_count=incoming_notes_count,
-        solve_count=solve_count,
-    )
+        Returns a dict with at least ``intent_mode`` and ``budgets``.
+        Falls back to full on failure.
+        """
+        policy = self._policies.load(planspace)
+        paths = PathRegistry(planspace)
 
-    triage_prompt_text = _build_triage_prompt(
-        section_number, paths, triage_signal_path,
-        related_files_count, incoming_notes_count, solve_count, section_summary,
-    )
+        triage_signal_path = paths.intent_triage_signal(section_number)
+        triage_prompt_path = paths.intent_triage_prompt(section_number)
+        triage_output_path = paths.intent_triage_output(section_number)
 
-    if not Services.prompt_guard().write_validated(triage_prompt_text, triage_prompt_path):
-        return _augment_risk_hints(
-            _full_default(section_number), section_number, planspace, **risk_kw,
+        risk_kw = dict(
+            related_files_count=related_files_count,
+            incoming_notes_count=incoming_notes_count,
+            solve_count=solve_count,
         )
-    Services.communicator().log_artifact(planspace, f"prompt:intent-triage-{section_number}")
 
-    result = _dispatch_triage(
-        policy, triage_prompt_path, triage_output_path,
-        planspace, parent, codespace, section_number,
-    )
-
-    if result == ALIGNMENT_CHANGED_PENDING:
-        return _augment_risk_hints(
-            _full_default(section_number), section_number, planspace, **risk_kw,
+        triage_prompt_text = _build_triage_prompt(
+            section_number, paths, triage_signal_path,
+            related_files_count, incoming_notes_count, solve_count, section_summary,
         )
 
-    triage = Services.signals().read(
-        triage_signal_path, expected_fields=["intent_mode"],
-    )
-    if triage:
-        escalated = _try_escalation(
-            triage, section_number, planspace, parent, codespace,
-        )
-        if escalated is not None:
+        if not self._prompt_guard.write_validated(triage_prompt_text, triage_prompt_path):
             return _augment_risk_hints(
-                escalated, section_number, planspace, **risk_kw,
+                _full_default(section_number), section_number, planspace, **risk_kw,
+            )
+        self._communicator.log_artifact(planspace, f"prompt:intent-triage-{section_number}")
+
+        result = self._dispatch_triage(
+            policy, triage_prompt_path, triage_output_path,
+            planspace, codespace, section_number,
+        )
+
+        if result == ALIGNMENT_CHANGED_PENDING:
+            return _augment_risk_hints(
+                _full_default(section_number), section_number, planspace, **risk_kw,
             )
 
-        Services.logger().log(
-            f"Section {section_number}: intent triage → "
-            f"{triage.get('intent_mode', 'unknown')}",
+        triage = self._signals.read(
+            triage_signal_path, expected_fields=["intent_mode"],
+        )
+        if triage:
+            escalated = self._try_escalation(
+                triage, section_number, planspace, codespace,
+            )
+            if escalated is not None:
+                return _augment_risk_hints(
+                    escalated, section_number, planspace, **risk_kw,
+                )
+
+            self._logger.log(
+                f"Section {section_number}: intent triage → "
+                f"{triage.get('intent_mode', 'unknown')}",
+            )
+            return _augment_risk_hints(
+                triage, section_number, planspace, **risk_kw,
+            )
+
+        self._logger.log(
+            f"Section {section_number}: intent triage signal missing or "
+            f"malformed — defaulting to full (uncertainty → more strategy)",
         )
         return _augment_risk_hints(
-            triage, section_number, planspace, **risk_kw,
+            _full_default(section_number), section_number, planspace, **risk_kw,
         )
 
-    Services.logger().log(
-        f"Section {section_number}: intent triage signal missing or "
-        f"malformed — defaulting to full (uncertainty → more strategy)",
-    )
-    return _augment_risk_hints(
-        _full_default(section_number), section_number, planspace, **risk_kw,
-    )
+    def _dispatch_triage(
+        self,
+        policy, triage_prompt_path, triage_output_path,
+        planspace, codespace, section_number,
+    ):
+        return self._dispatcher.dispatch(
+            self._policies.resolve(policy, "intent_triage"),
+            triage_prompt_path,
+            triage_output_path,
+            planspace,
+            codespace=codespace,
+            section_number=section_number,
+            agent_file=self._task_router.agent_for("intent.triage"),
+        )
 
+    def _try_escalation(
+        self,
+        triage, section_number, planspace, codespace,
+    ):
+        if not triage.get("escalate"):
+            return None
+
+        paths = PathRegistry(planspace)
+        triage_prompt_path = paths.intent_triage_prompt(section_number)
+        triage_output_path = paths.intent_triage_output(section_number)
+        triage_signal_path = paths.intent_triage_signal(section_number)
+        policy = self._policies.load(planspace)
+        self._logger.log(
+            f"Section {section_number}: triage flagged escalation — "
+            f"re-dispatching with stronger model",
+        )
+        escalation_model = self._policies.resolve(policy, "intent_triage_escalation")
+        self._dispatcher.dispatch(
+            escalation_model,
+            triage_prompt_path,
+            triage_output_path,
+            planspace,
+            codespace=codespace,
+            section_number=section_number,
+            agent_file=self._task_router.agent_for("intent.triage"),
+        )
+        escalated = self._signals.read(
+            triage_signal_path, expected_fields=["intent_mode"],
+        )
+        if escalated:
+            self._logger.log(
+                f"Section {section_number}: escalated triage → "
+                f"{escalated.get('intent_mode', 'unknown')}",
+            )
+            return escalated
+        return None
+
+    def load_triage_result(
+        self,
+        section_number: str,
+        planspace: Path,
+    ) -> dict | None:
+        """Load a previously-written triage result from signal file."""
+        triage_signal_path = PathRegistry(planspace).intent_triage_signal(section_number)
+        triage = self._signals.read(
+            triage_signal_path,
+            expected_fields=["intent_mode"],
+        )
+        if triage is None:
+            return None
+        return _augment_risk_hints(triage, section_number, planspace)
+
+
+# -- Pure functions (no Services usage) ------------------------------------
 
 def _gather_triage_refs(paths, section_number):
     triage_refs = []
@@ -205,75 +306,6 @@ def _build_triage_prompt(
     )
 
 
-def _dispatch_triage(
-    policy, triage_prompt_path, triage_output_path,
-    planspace, parent, codespace, section_number,
-):
-    return Services.dispatcher().dispatch(
-        Services.policies().resolve(policy, "intent_triage"),
-        triage_prompt_path,
-        triage_output_path,
-        planspace,
-        parent,
-        codespace=codespace,
-        section_number=section_number,
-        agent_file=Services.task_router().agent_for("intent.triage"),
-    )
-
-
-def _try_escalation(
-    triage, section_number, planspace, parent, codespace,
-):
-    if not triage.get("escalate"):
-        return None
-
-    paths = PathRegistry(planspace)
-    triage_prompt_path = paths.intent_triage_prompt(section_number)
-    triage_output_path = paths.intent_triage_output(section_number)
-    triage_signal_path = paths.intent_triage_signal(section_number)
-    policy = Services.policies().load(planspace)
-    Services.logger().log(
-        f"Section {section_number}: triage flagged escalation — "
-        f"re-dispatching with stronger model",
-    )
-    escalation_model = Services.policies().resolve(policy, "intent_triage_escalation")
-    Services.dispatcher().dispatch(
-        escalation_model,
-        triage_prompt_path,
-        triage_output_path,
-        planspace,
-        parent,
-        codespace=codespace,
-        section_number=section_number,
-        agent_file=Services.task_router().agent_for("intent.triage"),
-    )
-    escalated = Services.signals().read(
-        triage_signal_path, expected_fields=["intent_mode"],
-    )
-    if escalated:
-        Services.logger().log(
-            f"Section {section_number}: escalated triage → "
-            f"{escalated.get('intent_mode', 'unknown')}",
-        )
-        return escalated
-    return None
-
-
-def load_triage_result(
-    section_number: str,
-    planspace: Path,
-) -> dict | None:
-    """Load a previously-written triage result from signal file."""
-    triage_signal_path = PathRegistry(planspace).intent_triage_signal(section_number)
-    triage = Services.signals().read(
-        triage_signal_path,
-        expected_fields=["intent_mode"],
-    )
-    if triage is None:
-        return None
-    return _augment_risk_hints(triage, section_number, planspace)
-
-
 def _full_default(section_number: str) -> dict:
     """Default to full mode on triage failure."""
     return {
@@ -337,3 +369,48 @@ def _derive_posture_floor(section_number: str, planspace: Path) -> str | None:
     ):
         return PostureProfile.P2_STANDARD.value
     return None
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
+
+def _get_intent_triager() -> IntentTriager:
+    from containers import Services
+    return IntentTriager(
+        communicator=Services.communicator(),
+        dispatcher=Services.dispatcher(),
+        logger=Services.logger(),
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        signals=Services.signals(),
+        task_router=Services.task_router(),
+    )
+
+
+def run_intent_triage(
+    section_number: str,
+    planspace: Path,
+    codespace: Path,
+    *,
+    related_files_count: int = 0,
+    incoming_notes_count: int = 0,
+    solve_count: int = 0,
+    section_summary: str = "",
+) -> dict:
+    """Dispatch intent-triager (GLM) and return the triage result."""
+    return _get_intent_triager().run_intent_triage(
+        section_number, planspace, codespace,
+        related_files_count=related_files_count,
+        incoming_notes_count=incoming_notes_count,
+        solve_count=solve_count,
+        section_summary=section_summary,
+    )
+
+
+def load_triage_result(
+    section_number: str,
+    planspace: Path,
+) -> dict | None:
+    """Load a previously-written triage result from signal file."""
+    return _get_intent_triager().load_triage_result(section_number, planspace)

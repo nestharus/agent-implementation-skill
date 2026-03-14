@@ -7,9 +7,12 @@ the coordination loop stops making progress.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
+
+if TYPE_CHECKING:
+    from containers import Communicator, LogService, ModelPolicyService
 
 
 STALL_TERMINATION_THRESHOLD = 3
@@ -25,14 +28,19 @@ class StallDetector:
     def __init__(
         self,
         planspace: Path,
-        parent: str,
+        *,
+        logger: LogService,
+        policies: ModelPolicyService,
+        communicator: Communicator,
     ) -> None:
         self._planspace = planspace
-        self._parent = parent
         self._paths = PathRegistry(planspace)
+        self._logger = logger
+        self._policies = policies
+        self._communicator = communicator
         self._stall_count = 0
         self._prev_unresolved: int | None = None
-        policy = Services.policies().load(planspace)
+        policy = self._policies.load(planspace)
         self._escalation_threshold = policy.get(
             "escalation_triggers", {},
         ).get("stall_count", 2)
@@ -68,20 +76,19 @@ class StallDetector:
 
     def _escalate(self, round_num: int) -> None:
         """Write model-escalation signal and notify parent."""
-        Services.logger().log(
+        self._logger.log(
             f"Coordination churning ({self._stall_count} rounds without "
             "improvement) — escalating model",
         )
-        policy = Services.policies().load(self._planspace)
+        policy = self._policies.load(self._planspace)
         escalation_file = self._paths.coordination_model_escalation()
         escalation_file.parent.mkdir(parents=True, exist_ok=True)
         escalation_file.write_text(
-            Services.policies().resolve(policy, "escalation_model"),
+            self._policies.resolve(policy, "escalation_model"),
             encoding="utf-8",
         )
-        Services.communicator().mailbox_send(
+        self._communicator.send_to_parent(
             self._planspace,
-            self._parent,
             f"escalation:coordination:round-{round_num}:"
             f"stall_count={self._stall_count}",
         )

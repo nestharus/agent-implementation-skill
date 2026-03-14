@@ -65,7 +65,6 @@ def test_run_proposal_pass_reexplores_then_records_result(
         {"01": section},
         planspace,
         tmp_path / "codespace",
-        "parent",
     )
 
     assert results["01"].execution_ready is True
@@ -92,7 +91,6 @@ def test_run_proposal_pass_raises_on_abort(
             {"01": section},
             planspace,
             tmp_path / "codespace",
-            "parent",
         )
 
     assert capturing_communicator.messages == ["fail:aborted"]

@@ -2,13 +2,39 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from orchestrator.service.section_decision_store import (
     persist_decision as _persist_decision,
 )
-from containers import Services
+
+if TYPE_CHECKING:
+    from containers import Communicator
+
+
+class DecisionRecorder:
+    """Cross-section decision persistence with observability logging."""
+
+    def __init__(self, communicator: Communicator) -> None:
+        self._communicator = communicator
+
+    def persist_decision(self, planspace, section_number: str, payload: str) -> None:
+        """Persist a decision and log the resulting artifact for observability."""
+        _persist_decision(planspace, section_number, payload)
+        self._communicator.log_artifact(planspace, f"decision:section-{section_number}")
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
+
+def _get_decision_recorder() -> DecisionRecorder:
+    from containers import Services
+    return DecisionRecorder(
+        communicator=Services.communicator(),
+    )
 
 
 def persist_decision(planspace, section_number: str, payload: str) -> None:
     """Persist a decision and log the resulting artifact for observability."""
-    _persist_decision(planspace, section_number, payload)
-    Services.communicator().log_artifact(planspace, f"decision:section-{section_number}")
+    return _get_decision_recorder().persist_decision(planspace, section_number, payload)

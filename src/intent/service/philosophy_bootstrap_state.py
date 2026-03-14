@@ -9,10 +9,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
+
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,51 +81,109 @@ def user_source_path(paths: PathRegistry) -> Path:
     return paths.intent_global_dir() / USER_SOURCE_NAME
 
 
-# ── signal / status writers ───────────────────────────────────────────
+class PhilosophyBootstrapState:
+    """Signal / status writers for the philosophy bootstrap pipeline."""
 
-def clear_bootstrap_signal(paths: PathRegistry) -> None:
-    bootstrap_signal_path(paths).unlink(missing_ok=True)
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
+
+    # ── signal / status writers ───────────────────────────────────────
+
+    def clear_bootstrap_signal(self, paths: PathRegistry) -> None:
+        bootstrap_signal_path(paths).unlink(missing_ok=True)
+
+    def write_bootstrap_status(
+        self,
+        paths: PathRegistry,
+        *,
+        bootstrap_state: str,
+        blocking_state: str | None,
+        source_mode: str,
+        detail: str,
+    ) -> None:
+        signal_path = bootstrap_signal_path(paths)
+        self._artifact_io.write_json(bootstrap_status_path(paths), {
+            "bootstrap_state": bootstrap_state,
+            "blocking_state": blocking_state,
+            "source_mode": source_mode,
+            "detail": detail,
+            "active_signal": str(signal_path) if signal_path.exists() else None,
+            "updated_at": _timestamp_now(),
+        })
+
+    def write_bootstrap_signal(
+        self,
+        paths: PathRegistry,
+        *,
+        state: str,
+        detail: str,
+        needs: str,
+        why_blocked: str,
+        extras: dict[str, Any] | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "section": "global",
+            "state": state,
+            "detail": detail,
+            "needs": needs,
+            "why_blocked": why_blocked,
+        }
+        if extras:
+            payload.update(extras)
+        self._artifact_io.write_json(bootstrap_signal_path(paths), payload)
+
+    def block_bootstrap(
+        self,
+        paths: PathRegistry,
+        *,
+        bootstrap_state: str,
+        blocking_state: str,
+        source_mode: str,
+        detail: str,
+        needs: str,
+        why_blocked: str,
+        philosophy_path: Path | None = None,
+        extras: dict[str, Any] | None = None,
+    ) -> BootstrapResult:
+        self.write_bootstrap_signal(
+            paths,
+            state=blocking_state,
+            detail=detail,
+            needs=needs,
+            why_blocked=why_blocked,
+            extras=extras,
+        )
+        self.write_bootstrap_status(
+            paths,
+            bootstrap_state=bootstrap_state,
+            blocking_state=blocking_state,
+            source_mode=source_mode,
+            detail=detail,
+        )
+        return bootstrap_result(
+            status=bootstrap_state,
+            blocking_state=blocking_state,
+            philosophy_path=philosophy_path,
+            detail=detail,
+        )
+
+    def write_bootstrap_diagnostics(
+        self,
+        paths: PathRegistry,
+        *,
+        stage: str,
+        attempts: list[dict[str, Any]],
+        final_outcome: str,
+    ) -> None:
+        self._artifact_io.write_json(bootstrap_diagnostics_path(paths), {
+            "stage": stage,
+            "attempts": attempts,
+            "final_outcome": final_outcome,
+            "updated_at": _timestamp_now(),
+        })
 
 
-def write_bootstrap_status(
-    paths: PathRegistry,
-    *,
-    bootstrap_state: str,
-    blocking_state: str | None,
-    source_mode: str,
-    detail: str,
-) -> None:
-    signal_path = bootstrap_signal_path(paths)
-    Services.artifact_io().write_json(bootstrap_status_path(paths), {
-        "bootstrap_state": bootstrap_state,
-        "blocking_state": blocking_state,
-        "source_mode": source_mode,
-        "detail": detail,
-        "active_signal": str(signal_path) if signal_path.exists() else None,
-        "updated_at": _timestamp_now(),
-    })
-
-
-def write_bootstrap_signal(
-    paths: PathRegistry,
-    *,
-    state: str,
-    detail: str,
-    needs: str,
-    why_blocked: str,
-    extras: dict[str, Any] | None = None,
-) -> None:
-    payload: dict[str, Any] = {
-        "section": "global",
-        "state": state,
-        "detail": detail,
-        "needs": needs,
-        "why_blocked": why_blocked,
-    }
-    if extras:
-        payload.update(extras)
-    Services.artifact_io().write_json(bootstrap_signal_path(paths), payload)
-
+# -- Pure helpers (no Services usage) --------------------------------------
 
 def bootstrap_result(
     *,
@@ -140,6 +200,55 @@ def bootstrap_result(
     )
 
 
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
+
+def _get_bootstrap_state() -> PhilosophyBootstrapState:
+    from containers import Services
+    return PhilosophyBootstrapState(artifact_io=Services.artifact_io())
+
+
+def clear_bootstrap_signal(paths: PathRegistry) -> None:
+    _get_bootstrap_state().clear_bootstrap_signal(paths)
+
+
+def write_bootstrap_status(
+    paths: PathRegistry,
+    *,
+    bootstrap_state: str,
+    blocking_state: str | None,
+    source_mode: str,
+    detail: str,
+) -> None:
+    _get_bootstrap_state().write_bootstrap_status(
+        paths,
+        bootstrap_state=bootstrap_state,
+        blocking_state=blocking_state,
+        source_mode=source_mode,
+        detail=detail,
+    )
+
+
+def write_bootstrap_signal(
+    paths: PathRegistry,
+    *,
+    state: str,
+    detail: str,
+    needs: str,
+    why_blocked: str,
+    extras: dict[str, Any] | None = None,
+) -> None:
+    _get_bootstrap_state().write_bootstrap_signal(
+        paths,
+        state=state,
+        detail=detail,
+        needs=needs,
+        why_blocked=why_blocked,
+        extras=extras,
+    )
+
+
 def block_bootstrap(
     paths: PathRegistry,
     *,
@@ -152,26 +261,16 @@ def block_bootstrap(
     philosophy_path: Path | None = None,
     extras: dict[str, Any] | None = None,
 ) -> BootstrapResult:
-    write_bootstrap_signal(
-        paths,
-        state=blocking_state,
-        detail=detail,
-        needs=needs,
-        why_blocked=why_blocked,
-        extras=extras,
-    )
-    write_bootstrap_status(
+    return _get_bootstrap_state().block_bootstrap(
         paths,
         bootstrap_state=bootstrap_state,
         blocking_state=blocking_state,
         source_mode=source_mode,
         detail=detail,
-    )
-    return bootstrap_result(
-        status=bootstrap_state,
-        blocking_state=blocking_state,
+        needs=needs,
+        why_blocked=why_blocked,
         philosophy_path=philosophy_path,
-        detail=detail,
+        extras=extras,
     )
 
 
@@ -182,9 +281,9 @@ def write_bootstrap_diagnostics(
     attempts: list[dict[str, Any]],
     final_outcome: str,
 ) -> None:
-    Services.artifact_io().write_json(bootstrap_diagnostics_path(paths), {
-        "stage": stage,
-        "attempts": attempts,
-        "final_outcome": final_outcome,
-        "updated_at": _timestamp_now(),
-    })
+    _get_bootstrap_state().write_bootstrap_diagnostics(
+        paths,
+        stage=stage,
+        attempts=attempts,
+        final_outcome=final_outcome,
+    )

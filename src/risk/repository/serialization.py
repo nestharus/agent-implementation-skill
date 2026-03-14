@@ -6,9 +6,7 @@ from dataclasses import asdict, is_dataclass
 from enum import Enum
 import logging
 from pathlib import Path
-from typing import Any, Callable, TypeVar, cast
-
-from containers import Services
+from typing import TYPE_CHECKING, Any, Callable, TypeVar, cast
 
 from risk.types import (
     AssessmentClass,
@@ -28,6 +26,9 @@ from risk.types import (
     StepMitigation,
     UnderstandingInventory,
 )
+
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 logger = logging.getLogger(__name__)
 _ArtifactT = TypeVar("_ArtifactT")
@@ -124,43 +125,74 @@ def deserialize_history_entry(data: dict[str, Any]) -> RiskHistoryEntry:
     )
 
 
+class RiskSerializer:
+    """Handles risk artifact I/O via injected artifact_io dependency."""
+
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
+
+    def write_risk_artifact(self, path: Path, data: dict[str, Any]) -> None:
+        self._artifact_io.write_json(path, data)
+
+    def load_risk_artifact(self, path: Path) -> dict[str, Any] | None:
+        data = self._artifact_io.read_json(path)
+        if isinstance(data, dict):
+            return data
+        return None
+
+    def load_risk_package(self, path: Path) -> RiskPackage | None:
+        return self._load_risk_artifact(path, deserialize_package, "risk package")
+
+    def load_risk_assessment(self, path: Path) -> RiskAssessment | None:
+        return self._load_risk_artifact(path, deserialize_assessment, "risk assessment")
+
+    def load_risk_plan(self, path: Path) -> RiskPlan | None:
+        return self._load_risk_artifact(path, deserialize_plan, "risk plan")
+
+    def _load_risk_artifact(
+        self,
+        path: Path,
+        loader: Callable[[dict[str, Any]], _ArtifactT],
+        artifact_name: str,
+    ) -> _ArtifactT | None:
+        data = self._artifact_io.read_json(path)
+        if data is None:
+            return None
+        try:
+            return loader(cast(dict[str, Any], data))
+        except (KeyError, TypeError, ValueError) as exc:
+            self._artifact_io.rename_malformed(path)
+            logger.warning("Malformed %s at %s: %s", artifact_name, path, exc)
+            return None
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat free-function wrappers
+# ---------------------------------------------------------------------------
+
+def _get_serializer() -> RiskSerializer:
+    from containers import Services
+    return RiskSerializer(artifact_io=Services.artifact_io())
+
+
 def write_risk_artifact(path: Path, data: dict[str, Any]) -> None:
-    Services.artifact_io().write_json(path, data)
+    _get_serializer().write_risk_artifact(path, data)
 
 
 def load_risk_artifact(path: Path) -> dict[str, Any] | None:
-    data = Services.artifact_io().read_json(path)
-    if isinstance(data, dict):
-        return data
-    return None
+    return _get_serializer().load_risk_artifact(path)
 
 
 def load_risk_package(path: Path) -> RiskPackage | None:
-    return _load_risk_artifact(path, deserialize_package, "risk package")
+    return _get_serializer().load_risk_package(path)
 
 
 def load_risk_assessment(path: Path) -> RiskAssessment | None:
-    return _load_risk_artifact(path, deserialize_assessment, "risk assessment")
+    return _get_serializer().load_risk_assessment(path)
 
 
 def load_risk_plan(path: Path) -> RiskPlan | None:
-    return _load_risk_artifact(path, deserialize_plan, "risk plan")
-
-
-def _load_risk_artifact(
-    path: Path,
-    loader: Callable[[dict[str, Any]], _ArtifactT],
-    artifact_name: str,
-) -> _ArtifactT | None:
-    data = Services.artifact_io().read_json(path)
-    if data is None:
-        return None
-    try:
-        return loader(cast(dict[str, Any], data))
-    except (KeyError, TypeError, ValueError) as exc:
-        Services.artifact_io().rename_malformed(path)
-        logger.warning("Malformed %s at %s: %s", artifact_name, path, exc)
-        return None
+    return _get_serializer().load_risk_plan(path)
 
 
 def _serialize_dataclass(value: Any) -> dict[str, Any]:

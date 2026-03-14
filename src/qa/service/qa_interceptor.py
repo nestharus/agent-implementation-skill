@@ -20,10 +20,19 @@ import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
 from qa.helpers.qa_verdict import parse_qa_verdict
+
+if TYPE_CHECKING:
+    from containers import (
+        AgentDispatcher,
+        ArtifactIOService,
+        ModelPolicyService,
+        PromptGuard,
+        TaskRouterService,
+    )
 
 
 logger = logging.getLogger(__name__)
@@ -53,66 +62,229 @@ _INFRA_SUBMITTERS: dict[str, str] = {
 _PAYLOAD_TRUNCATION = 5000
 
 
-def read_qa_parameters(planspace: Path) -> dict:
-    """Read QA parameters from ``artifacts/parameters.json``.
+class QaInterceptor:
+    """Evaluates tasks against agent contracts before dispatch.
 
-    Returns a dict with at minimum ``{"qa_mode": False}``.
-    Falls back to defaults if the file is absent or malformed.
-    Malformed files are renamed to ``.malformed.json`` (same pattern
-    as ``read_model_policy`` in ``section_loop/dispatch.py``).
+    All cross-cutting services are received via constructor injection.
     """
-    params_path = PathRegistry(planspace).parameters()
-    defaults: dict = {"qa_mode": False}
 
-    if not params_path.exists():
-        return defaults
+    def __init__(
+        self,
+        artifact_io: ArtifactIOService,
+        task_router: TaskRouterService,
+        policies: ModelPolicyService,
+        dispatcher: AgentDispatcher,
+        prompt_guard: PromptGuard,
+    ) -> None:
+        self._artifact_io = artifact_io
+        self._task_router = task_router
+        self._policies = policies
+        self._dispatcher = dispatcher
+        self._prompt_guard = prompt_guard
 
-    data = Services.artifact_io().read_json(params_path)
-    if data is None:
-        print(
-            f"[qa-interceptor] WARNING: Malformed parameters.json at "
-            f"{params_path} — renaming to .malformed.json",
-            flush=True,
-        )
-        return defaults
+    def read_qa_parameters(self, planspace: Path) -> dict:
+        """Read QA parameters from ``artifacts/parameters.json``.
 
-    if not isinstance(data, dict):
-        print(
-            f"[qa-interceptor] WARNING: parameters.json is not a JSON "
-            f"object — renaming to .malformed.json",
-            flush=True,
-        )
-        Services.artifact_io().rename_malformed(params_path)
-        return defaults
+        Returns a dict with at minimum ``{"qa_mode": False}``.
+        Falls back to defaults if the file is absent or malformed.
+        """
+        params_path = PathRegistry(planspace).parameters()
+        defaults: dict = {"qa_mode": False}
 
-    # Merge with defaults so qa_mode always exists.
-    return {**defaults, **data}
+        if not params_path.exists():
+            return defaults
 
+        data = self._artifact_io.read_json(params_path)
+        if data is None:
+            print(
+                f"[qa-interceptor] WARNING: Malformed parameters.json at "
+                f"{params_path} — renaming to .malformed.json",
+                flush=True,
+            )
+            return defaults
 
-def _resolve_submitter_contract(submitter: str) -> str:
-    """Resolve the submitter identity to a contract string.
+        if not isinstance(data, dict):
+            print(
+                f"[qa-interceptor] WARNING: parameters.json is not a JSON "
+                f"object — renaming to .malformed.json",
+                flush=True,
+            )
+            self._artifact_io.rename_malformed(params_path)
+            return defaults
 
-    Tries ``agents/{submitter}.md``, then falls back to a description
-    string for infrastructure submitters or an unknown-submitter note.
-    """
-    # Try direct agent file lookup.
-    try:
-        agent_path = Services.task_router().resolve_agent_path(f"{submitter}.md")
-        return agent_path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        pass
+        # Merge with defaults so qa_mode always exists.
+        return {**defaults, **data}
 
-    # Infrastructure submitters get a description string.
-    if submitter in _INFRA_SUBMITTERS:
+    def _resolve_submitter_contract(self, submitter: str) -> str:
+        """Resolve the submitter identity to a contract string."""
+        try:
+            agent_path = self._task_router.resolve_agent_path(f"{submitter}.md")
+            return agent_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            pass
+
+        if submitter in _INFRA_SUBMITTERS:
+            return (
+                f"Submitter: {submitter}\n\n"
+                f"Description: {_INFRA_SUBMITTERS[submitter]}"
+            )
+
         return (
             f"Submitter: {submitter}\n\n"
-            f"Description: {_INFRA_SUBMITTERS[submitter]}"
+            f"No agent contract available for this submitter."
         )
 
-    return (
-        f"Submitter: {submitter}\n\n"
-        f"No agent contract available for this submitter."
-    )
+    def _write_rationale(
+        self,
+        planspace: Path,
+        task: dict[str, str],
+        agent_file: str,
+        verdict: str,
+        rationale: str,
+        violations: list[str],
+    ) -> Path:
+        """Write a structured rationale JSON file for a QA intercept."""
+        intercepts_dir = PathRegistry(planspace).qa_intercepts_dir()
+
+        task_id = task.get("id", "unknown")
+        rationale_path = intercepts_dir / f"qa-{task_id}-rationale.json"
+
+        rationale_data = {
+            "task_id": task_id,
+            "task_type": task.get("type", "unknown"),
+            "submitter": task.get("by", "unknown"),
+            "target_agent": agent_file,
+            "verdict": verdict,
+            "rationale": rationale,
+            "violations": violations,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+
+        self._artifact_io.write_json(rationale_path, rationale_data)
+        return rationale_path
+
+    def _dispatch_and_evaluate(
+        self,
+        task: dict[str, str], agent_file: str, planspace: Path,
+        prompt_path: Path, output_path: Path,
+    ) -> InterceptResult:
+        """Dispatch QA agent and evaluate verdict."""
+        policy = self._policies.load(planspace)
+        model = self._policies.resolve(policy, "qa_interceptor")
+        output = self._dispatcher.dispatch(
+            model, prompt_path, output_path,
+            planspace, None,
+            agent_file=self._task_router.agent_for("qa.qa_intercept"),
+        )
+
+        qa_verdict = parse_qa_verdict(output.output)
+
+        if qa_verdict.verdict == "REJECT":
+            rationale_path = self._write_rationale(
+                planspace, task, agent_file,
+                qa_verdict.verdict, qa_verdict.rationale, qa_verdict.violations,
+            )
+            return InterceptResult(intercepted=False, verdict=str(rationale_path), output_path=None)
+
+        if qa_verdict.verdict == "DEGRADED":
+            rationale_path = self._write_rationale(
+                planspace, task, agent_file,
+                qa_verdict.verdict, qa_verdict.rationale, qa_verdict.violations,
+            )
+            return InterceptResult(intercepted=True, verdict=str(rationale_path), output_path="unparseable")
+
+        return InterceptResult(intercepted=True, verdict=None, output_path=None)
+
+    def intercept_dispatch(
+        self,
+        *,
+        agent_file: str,
+        prompt_path: Path,
+        planspace: Path,
+        submitted_by: str = "section-loop",
+    ) -> InterceptResult:
+        """Evaluate a direct dispatch against agent contracts.
+
+        Creates a synthetic task dict and delegates to ``intercept_task()``.
+        """
+        task = {
+            "id": f"dispatch-{int(time.time())}",
+            "type": "direct-dispatch",
+            "by": submitted_by,
+            "payload": str(prompt_path),
+            "priority": "normal",
+            "scope": "unscoped",
+        }
+        return self.intercept_task(task, agent_file, planspace)
+
+    def intercept_task(
+        self,
+        task: dict[str, str],
+        agent_file: str,
+        planspace: Path,
+    ) -> InterceptResult:
+        """Evaluate a task against submitter and target agent contracts.
+
+        Returns an ``InterceptResult``:
+
+        - ``InterceptResult(True, None, None)`` — task genuinely passed QA.
+        - ``InterceptResult(False, "/path/to/rationale.json", None)`` — task rejected.
+        - ``InterceptResult(True, path_or_None, "reason_code")`` — degraded advisory
+          (PAT-0014): QA failed internally, dispatch falls back to baseline.
+
+        Fail-OPEN: any error during QA evaluation (timeout, parse failure,
+        import error, missing files) results in the task passing with a
+        degraded reason_code.  Only an explicit REJECT from the QA agent
+        blocks dispatch.
+        """
+        task_id = task.get("id", "?")
+        submitted_by = task.get("by", "unknown")
+
+        try:
+            try:
+                target_path = self._task_router.resolve_agent_path(agent_file)
+            except FileNotFoundError:
+                target_path = None
+            if target_path is None:
+                print(
+                    f"[qa-interceptor] WARNING: Target agent file not found: "
+                    f"{target_path} — failing open (task {task_id})",
+                    flush=True,
+                )
+                return InterceptResult(intercepted=True, verdict=None, output_path="target_unavailable")
+            target_contract = target_path.read_text(encoding="utf-8")
+
+            submitter_contract = self._resolve_submitter_contract(submitted_by)
+            payload_content = _read_payload_content(task, planspace)
+
+            qa_prompt_text = _build_qa_prompt(
+                task, target_contract, submitter_contract, payload_content,
+            )
+
+            intercepts_dir = PathRegistry(planspace).qa_intercepts_dir()
+            prompt_path = intercepts_dir / f"qa-{task_id}-prompt.md"
+            prompt_path.write_text(qa_prompt_text, encoding="utf-8")
+
+            safety_violations = self._prompt_guard.validate_dynamic(payload_content)
+            if safety_violations:
+                print(
+                    f"[qa-interceptor] Prompt safety violation in payload "
+                    f"for task {task_id}: {safety_violations} — "
+                    f"failing open (PAT-0014 degraded)",
+                    flush=True,
+                )
+                return InterceptResult(intercepted=True, verdict=None, output_path="safety_blocked")
+
+            output_path = intercepts_dir / f"qa-{task_id}-output.md"
+            return self._dispatch_and_evaluate(task, agent_file, planspace, prompt_path, output_path)
+
+        except Exception:  # noqa: BLE001 — fail-open: QA errors must not block dispatch
+            logger.error(
+                "QA evaluation failed for task %s — failing open (degraded)",
+                task_id,
+                exc_info=True,
+            )
+            return InterceptResult(intercepted=True, verdict=None, output_path="dispatch_error")
 
 
 def _build_qa_prompt(
@@ -179,62 +351,6 @@ REJECT example:
     return render_template("qa-intercept", dynamic_body)
 
 
-def _write_rationale(
-    planspace: Path,
-    task: dict[str, str],
-    agent_file: str,
-    verdict: str,
-    rationale: str,
-    violations: list[str],
-) -> Path:
-    """Write a structured rationale JSON file for a QA intercept.
-
-    Returns the path to the written file.
-    """
-    intercepts_dir = PathRegistry(planspace).qa_intercepts_dir()
-
-    task_id = task.get("id", "unknown")
-    rationale_path = intercepts_dir / f"qa-{task_id}-rationale.json"
-
-    rationale_data = {
-        "task_id": task_id,
-        "task_type": task.get("type", "unknown"),
-        "submitter": task.get("by", "unknown"),
-        "target_agent": agent_file,
-        "verdict": verdict,
-        "rationale": rationale,
-        "violations": violations,
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    }
-
-    Services.artifact_io().write_json(rationale_path, rationale_data)
-    return rationale_path
-
-
-def intercept_dispatch(
-    *,
-    agent_file: str,
-    prompt_path: Path,
-    planspace: Path,
-    submitted_by: str = "section-loop",
-) -> InterceptResult:
-    """Evaluate a direct dispatch against agent contracts.
-
-    Creates a synthetic task dict and delegates to ``intercept_task()``.
-    Used by ``dispatch.engine.section_dispatcher.dispatch_agent()`` to intercept
-    dispatches that bypass the task queue.
-    """
-    task = {
-        "id": f"dispatch-{int(time.time())}",
-        "type": "direct-dispatch",
-        "by": submitted_by,
-        "payload": str(prompt_path),
-        "priority": "normal",
-        "scope": "unscoped",
-    }
-    return intercept_task(task, agent_file, planspace)
-
-
 def _read_payload_content(
     task: dict[str, str], planspace: Path,
 ) -> str:
@@ -248,104 +364,3 @@ def _read_payload_content(
     if pp.exists():
         return pp.read_text(encoding="utf-8")
     return ""
-
-
-def _dispatch_and_evaluate(
-    task: dict[str, str], agent_file: str, planspace: Path,
-    prompt_path: Path, output_path: Path,
-) -> InterceptResult:
-    """Dispatch QA agent and evaluate verdict."""
-    policy = Services.policies().load(planspace)
-    model = Services.policies().resolve(policy, "qa_interceptor")
-    output = Services.dispatcher().dispatch(
-        model, prompt_path, output_path,
-        planspace, None,
-        agent_file=Services.task_router().agent_for("qa.qa_intercept"),
-    )
-
-    qa_verdict = parse_qa_verdict(output.output)
-
-    if qa_verdict.verdict == "REJECT":
-        rationale_path = _write_rationale(
-            planspace, task, agent_file,
-            qa_verdict.verdict, qa_verdict.rationale, qa_verdict.violations,
-        )
-        return InterceptResult(intercepted=False, verdict=str(rationale_path), output_path=None)
-
-    if qa_verdict.verdict == "DEGRADED":
-        rationale_path = _write_rationale(
-            planspace, task, agent_file,
-            qa_verdict.verdict, qa_verdict.rationale, qa_verdict.violations,
-        )
-        return InterceptResult(intercepted=True, verdict=str(rationale_path), output_path="unparseable")
-
-    return InterceptResult(intercepted=True, verdict=None, output_path=None)
-
-
-def intercept_task(
-    task: dict[str, str],
-    agent_file: str,
-    planspace: Path,
-) -> InterceptResult:
-    """Evaluate a task against submitter and target agent contracts.
-
-    Returns an ``InterceptResult``:
-
-    - ``InterceptResult(True, None, None)`` — task genuinely passed QA.
-    - ``InterceptResult(False, "/path/to/rationale.json", None)`` — task rejected.
-    - ``InterceptResult(True, path_or_None, "reason_code")`` — degraded advisory
-      (PAT-0014): QA failed internally, dispatch falls back to baseline.
-
-    Fail-OPEN: any error during QA evaluation (timeout, parse failure,
-    import error, missing files) results in the task passing with a
-    degraded reason_code.  Only an explicit REJECT from the QA agent
-    blocks dispatch.
-    """
-    task_id = task.get("id", "?")
-    submitted_by = task.get("by", "unknown")
-
-    try:
-        try:
-            target_path = Services.task_router().resolve_agent_path(agent_file)
-        except FileNotFoundError:
-            target_path = None
-        if target_path is None:
-            print(
-                f"[qa-interceptor] WARNING: Target agent file not found: "
-                f"{target_path} — failing open (task {task_id})",
-                flush=True,
-            )
-            return InterceptResult(intercepted=True, verdict=None, output_path="target_unavailable")
-        target_contract = target_path.read_text(encoding="utf-8")
-
-        submitter_contract = _resolve_submitter_contract(submitted_by)
-        payload_content = _read_payload_content(task, planspace)
-
-        qa_prompt_text = _build_qa_prompt(
-            task, target_contract, submitter_contract, payload_content,
-        )
-
-        intercepts_dir = PathRegistry(planspace).qa_intercepts_dir()
-        prompt_path = intercepts_dir / f"qa-{task_id}-prompt.md"
-        prompt_path.write_text(qa_prompt_text, encoding="utf-8")
-
-        safety_violations = Services.prompt_guard().validate_dynamic(payload_content)
-        if safety_violations:
-            print(
-                f"[qa-interceptor] Prompt safety violation in payload "
-                f"for task {task_id}: {safety_violations} — "
-                f"failing open (PAT-0014 degraded)",
-                flush=True,
-            )
-            return InterceptResult(intercepted=True, verdict=None, output_path="safety_blocked")
-
-        output_path = intercepts_dir / f"qa-{task_id}-output.md"
-        return _dispatch_and_evaluate(task, agent_file, planspace, prompt_path, output_path)
-
-    except Exception:  # noqa: BLE001 — fail-open: QA errors must not block dispatch
-        logger.error(
-            "QA evaluation failed for task %s — failing open (degraded)",
-            task_id,
-            exc_info=True,
-        )
-        return InterceptResult(intercepted=True, verdict=None, output_path="dispatch_error")

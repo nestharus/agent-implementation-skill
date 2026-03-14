@@ -6,12 +6,15 @@ from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
 
+EXCERPT_PROPOSAL = "proposal"
+EXCERPT_ALIGNMENT = "alignment"
+
 
 def _excerpt_path(planspace: Path, section: str, excerpt_type: str) -> Path:
     paths = PathRegistry(planspace)
-    if excerpt_type == "proposal":
+    if excerpt_type == EXCERPT_PROPOSAL:
         return paths.proposal_excerpt(section)
-    if excerpt_type == "alignment":
+    if excerpt_type == EXCERPT_ALIGNMENT:
         return paths.alignment_excerpt(section)
     raise ValueError(f"Unknown excerpt type: {excerpt_type}")
 

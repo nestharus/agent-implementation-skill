@@ -274,7 +274,7 @@ class TestIntentTriage:
 
         from intent.service.intent_triager import run_intent_triage
         result = run_intent_triage(
-            "01", intent_planspace, intent_planspace, "parent",
+            "01", intent_planspace, intent_planspace,
             related_files_count=6,
         )
         assert result["intent_mode"] == "full"
@@ -288,7 +288,7 @@ class TestIntentTriage:
 
         from intent.service.intent_triager import run_intent_triage
         result = run_intent_triage(
-            "01", intent_planspace, intent_planspace, "parent",
+            "01", intent_planspace, intent_planspace,
         )
         assert result["intent_mode"] == "full"
 
@@ -367,7 +367,7 @@ class TestIntentBootstrap:
 
         from intent.service.intent_pack_generator import ensure_global_philosophy
         result = ensure_global_philosophy(
-            intent_planspace, intent_planspace, "parent",
+            intent_planspace, intent_planspace,
         )
         assert result["status"] == "ready"
         assert result["philosophy_path"] == philosophy_path
@@ -386,7 +386,7 @@ class TestIntentBootstrap:
 
         from intent.service.intent_pack_generator import ensure_global_philosophy
         ensure_global_philosophy(
-            intent_planspace, intent_planspace, "parent",
+            intent_planspace, intent_planspace,
         )
         assert mock_dispatch.call_count == 0
 
@@ -400,7 +400,7 @@ class TestIntentBootstrap:
 
         from intent.service.intent_pack_generator import generate_intent_pack
         intent_dir = generate_intent_pack(
-            section, intent_planspace, codespace, "parent",
+            section, intent_planspace, codespace,
         )
         registry_path = intent_dir / "surface-registry.json"
         assert registry_path.exists()
@@ -422,7 +422,7 @@ class TestExpansionCycle:
         """No surfaces signal → no expansion, no restart."""
         from intent.service.expansion_facade import run_expansion_cycle
         result = run_expansion_cycle(
-            "01", intent_planspace, intent_planspace, "parent",
+            "01", intent_planspace, intent_planspace,
         )
         assert result["restart_required"] is False
         assert result["expansion_applied"] is False
@@ -484,7 +484,7 @@ class TestExpansionCycle:
 
         from intent.service.expansion_facade import run_expansion_cycle
         result = run_expansion_cycle(
-            "01", intent_planspace, intent_planspace, "parent",
+            "01", intent_planspace, intent_planspace,
         )
         assert result["restart_required"] is True
         assert result["expansion_applied"] is True
@@ -568,7 +568,7 @@ class TestExpansionCycle:
 
         from intent.service.expansion_facade import run_expansion_cycle
         result = run_expansion_cycle(
-            "01", intent_planspace, intent_planspace, "parent",
+            "01", intent_planspace, intent_planspace,
         )
         assert result["expansion_applied"] is False
         assert result["surfaces_found"] == 0
@@ -590,6 +590,7 @@ class TestRunnerIntentIntegration:
     def test_full_mode_uses_intent_judge(
         self, intent_planspace: Path, codespace: Path,
         mock_dispatch: MagicMock,
+        noop_communicator, noop_pipeline_control,
     ) -> None:
         """In full mode, alignment uses intent-judge.md not alignment-judge.md."""
         # Provide philosophy source for fail-closed check (P7/R52)
@@ -703,7 +704,7 @@ class TestRunnerIntentIntegration:
 
         from orchestrator.engine.section_pipeline import run_section
         result = run_section(
-            intent_planspace, codespace, section, "parent",
+            intent_planspace, codespace, section,
         )
 
         # Verify intent-judge.md was used (not alignment-judge.md)
@@ -719,6 +720,7 @@ class TestRunnerIntentIntegration:
     def test_lightweight_mode_uses_alignment_judge(
         self, intent_planspace: Path, codespace: Path,
         mock_dispatch: MagicMock,
+        noop_communicator, noop_pipeline_control,
     ) -> None:
         """In lightweight mode, alignment uses alignment-judge.md."""
         section = _make_intent_section(intent_planspace, codespace)
@@ -768,7 +770,7 @@ class TestRunnerIntentIntegration:
         mock_dispatch.side_effect = track_calls
 
         from orchestrator.engine.section_pipeline import run_section
-        run_section(intent_planspace, codespace, section, "parent")
+        run_section(intent_planspace, codespace, section)
 
         # Verify alignment-judge.md was used (not intent-judge.md)
         intent_judge_calls = [
@@ -944,7 +946,7 @@ class TestIntentConventions:
         from intent.service.intent_pack_generator import ensure_global_philosophy
         # No constraints.md, philosophy.md etc. in planspace
         result = ensure_global_philosophy(
-            intent_planspace, intent_planspace, "parent",
+            intent_planspace, intent_planspace,
         )
         assert result["status"] == "needs_user_input"
         # Distiller should NOT have been called
@@ -1165,7 +1167,7 @@ class TestIntentConventions:
         mock_dispatch.side_effect = track_calls
 
         from orchestrator.engine.section_pipeline import run_section
-        run_section(intent_planspace, codespace, section, "parent")
+        run_section(intent_planspace, codespace, section)
 
         # intent-pack-generator must come AFTER TODO extraction
         # (which happens before any agent dispatch in full mode)
@@ -1233,7 +1235,7 @@ class TestIntentConventions:
         mock_dispatch.side_effect = track_calls
 
         from orchestrator.engine.section_pipeline import run_section
-        run_section(intent_planspace, codespace, section, "parent")
+        run_section(intent_planspace, codespace, section)
 
         # Read cycle budget and verify triage keys are present
         updated = json.loads(budget_path.read_text(encoding="utf-8"))
@@ -1304,7 +1306,7 @@ class TestIntentConventions:
 
         from orchestrator.engine.section_pipeline import run_section
         # Should not crash
-        run_section(intent_planspace, codespace, section, "parent")
+        run_section(intent_planspace, codespace, section)
 
         # Malformed file should be renamed
         assert budget_path.with_suffix(".malformed.json").exists()
@@ -1370,7 +1372,7 @@ class TestIntentConventions:
         section = _make_intent_section(intent_planspace, intent_planspace)
 
         from orchestrator.engine.section_pipeline import run_section
-        run_section(intent_planspace, intent_planspace, section, "parent")
+        run_section(intent_planspace, intent_planspace, section)
 
         # First model is GLM (triage), second is escalation model
         assert len(call_models) >= 2
@@ -1482,7 +1484,7 @@ class TestR55IntentPackCorrections:
         )
         mock_dispatch.return_value = ""
 
-        generate_intent_pack(sec, planspace, codespace, "test-parent")
+        generate_intent_pack(sec, planspace, codespace)
 
         # The prompt should reference corrections
         prompt_path = artifacts / "intent-pack-01-prompt.md"
@@ -1535,7 +1537,7 @@ class TestR55BudgetEnforcementFunctional:
         mock_dispatch.return_value = ""
 
         run_expansion_cycle(
-            "01", planspace, codespace, "test-parent",
+            "01", planspace, codespace,
             budgets={"max_new_surfaces_per_cycle": 3},
         )
 
@@ -1612,7 +1614,7 @@ class TestR56QueueSemantics:
         mock_dispatch.return_value = ""
 
         result = run_expansion_cycle(
-            "01", planspace, codespace, "test-parent",
+            "01", planspace, codespace,
             budgets={"max_new_surfaces_per_cycle": 8},
         )
 
@@ -1705,7 +1707,7 @@ class TestR56AgentSelectedSources:
         mock_dispatch.side_effect = selector_empty
 
         from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace, "parent")
+        result = ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "needs_user_input", (
             "Empty selection must fail-closed with a blocker result")
 
@@ -1724,7 +1726,7 @@ class TestR56AgentSelectedSources:
         mock_dispatch.side_effect = selector_missing
 
         from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace, "parent")
+        result = ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "failed"
         assert result["blocking_state"] == "NEEDS_PARENT"
         assert models == ["gpt-high", "gpt-high", "claude-opus"]
@@ -1767,7 +1769,7 @@ class TestR56AgentSelectedSources:
         mock_dispatch.side_effect = selector_states
 
         from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace, "parent")
+        result = ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "needs_user_input"
 
         diagnostics = planspace / "artifacts" / "intent" / "global" / \
@@ -1818,7 +1820,7 @@ class TestR56AgentSelectedSources:
         mock_dispatch.side_effect = verifier_missing
 
         from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace, "parent")
+        result = ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "failed"
         assert result["blocking_state"] == "NEEDS_PARENT"
         assert verifier_models == ["claude-opus", "claude-opus", "claude-opus"]
@@ -1903,7 +1905,7 @@ class TestR56AgentSelectedSources:
         mock_dispatch.side_effect = verifier_authoritative
 
         from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace, "parent")
+        result = ensure_global_philosophy(planspace, codespace)
 
         assert result["status"] == "ready"
         assert verifier_seen_paths == [
@@ -1990,7 +1992,7 @@ class TestR56AxisBudgetEnforcement:
         mock_dispatch.side_effect = write_delta
 
         run_expansion_cycle(
-            "01", planspace, codespace, "test-parent",
+            "01", planspace, codespace,
             budgets={"max_new_axes_total": 6},
         )
 
@@ -2049,7 +2051,7 @@ class TestR56AxisBudgetEnforcement:
         mock_dispatch.side_effect = write_delta
 
         result = run_expansion_cycle(
-            "01", planspace, codespace, "test-parent",
+            "01", planspace, codespace,
             budgets={"max_new_axes_total": 6},
         )
 
@@ -2185,11 +2187,11 @@ class TestR57GateTypeSpecificMessaging:
 
         capturing_pipeline_control._pause_return = "resume:accept"
 
-        handle_user_gate("01", planspace, "test-parent", delta_result)
+        handle_user_gate("01", planspace, delta_result)
 
         # Check the pause message does NOT say philosophy
         assert len(capturing_pipeline_control.pause_calls) >= 1
-        pause_msg = capturing_pipeline_control.pause_calls[0][2]
+        pause_msg = capturing_pipeline_control.pause_calls[0][1]
         assert "Philosophy" not in pause_msg, (
             "Axis budget gate must not mention 'Philosophy'")
         assert "budget" in pause_msg.lower(), (
@@ -2225,10 +2227,10 @@ class TestR57GateTypeSpecificMessaging:
 
         capturing_pipeline_control._pause_return = "resume:accept"
 
-        handle_user_gate("01", planspace, "test-parent", delta_result)
+        handle_user_gate("01", planspace, delta_result)
 
         assert len(capturing_pipeline_control.pause_calls) >= 1
-        pause_msg = capturing_pipeline_control.pause_calls[0][2]
+        pause_msg = capturing_pipeline_control.pause_calls[0][1]
         assert "Philosophy" in pause_msg
 
 
@@ -2579,7 +2581,7 @@ class TestR59PhilosophyGroundingValidation:
         mock_dispatch.side_effect = side_effect
 
         from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace, "parent")
+        result = ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "failed", (
             "Missing source map must cause grounding failure")
         assert distiller_calls == 2, (
@@ -2637,7 +2639,7 @@ class TestR59PhilosophyGroundingValidation:
         mock_dispatch.side_effect = side_effect
 
         from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace, "parent")
+        result = ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "failed"
 
         malformed = intent_global / "philosophy-source-map.malformed.json"
@@ -2693,7 +2695,7 @@ class TestR59PhilosophyGroundingValidation:
         mock_dispatch.side_effect = side_effect
 
         from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace, "parent")
+        result = ensure_global_philosophy(planspace, codespace)
 
         assert result["status"] == "needs_user_input"
         assert result["blocking_state"] == "NEED_DECISION"
@@ -2750,7 +2752,7 @@ class TestR59PhilosophyGroundingValidation:
         mock_dispatch.side_effect = side_effect
 
         from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace, "parent")
+        result = ensure_global_philosophy(planspace, codespace)
 
         assert result["status"] == "ready"
         assert dispatches == ["philosophy-distiller.md"]
@@ -2819,7 +2821,7 @@ class TestR59PhilosophyGroundingValidation:
         mock_dispatch.side_effect = side_effect
 
         from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace, "parent")
+        result = ensure_global_philosophy(planspace, codespace)
 
         assert result["status"] == "needs_user_input"
         assert result["blocking_state"] == "NEED_DECISION"
@@ -2890,7 +2892,7 @@ class TestR59PhilosophyGroundingValidation:
         mock_dispatch.side_effect = side_effect
 
         from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace, "parent")
+        result = ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "failed", (
             "Unmapped principles must cause grounding failure")
 
@@ -2957,7 +2959,7 @@ class TestR59PhilosophyGroundingValidation:
         mock_dispatch.side_effect = side_effect
 
         from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace, "parent")
+        result = ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "ready", (
             "Fully grounded philosophy must succeed")
         status_path = artifacts / "intent" / "global" / \
@@ -3002,7 +3004,7 @@ class TestR59IntentPackHashInvalidation:
 
         mock_dispatch.side_effect = side_effect
 
-        generate_intent_pack(sec, planspace, codespace, "parent")
+        generate_intent_pack(sec, planspace, codespace)
         assert len(dispatch_called) > 0, (
             "Must dispatch agent when input hash differs (regenerate)")
 
@@ -3038,7 +3040,7 @@ class TestR59IntentPackHashInvalidation:
 
         mock_dispatch.side_effect = side_effect
 
-        generate_intent_pack(sec, planspace, codespace, "parent")
+        generate_intent_pack(sec, planspace, codespace)
         assert len(dispatch_called) == 0, (
             "Must NOT dispatch when input hash matches (skip)")
 
@@ -3060,7 +3062,7 @@ class TestR59IntentPackHashInvalidation:
 
         mock_dispatch.side_effect = side_effect
 
-        generate_intent_pack(sec, planspace, codespace, "parent")
+        generate_intent_pack(sec, planspace, codespace)
 
         hash_file = intent_sec / "intent-pack-input-hash.txt"
         assert hash_file.exists(), (

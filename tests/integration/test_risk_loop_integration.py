@@ -738,7 +738,6 @@ def test_reassessment_executes_newly_accepted_frontier_end_to_end(
         {"01": section},
         planspace,
         codespace,
-        "parent",
     )
 
     deferred_payload = read_json(

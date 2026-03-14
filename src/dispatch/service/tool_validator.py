@@ -6,13 +6,23 @@ Public API: ``validate_tool_registry_after_implementation()``.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
 from signals.service.blocker_manager import update_blocker_rollup
 from signals.types import SIGNAL_NEEDS_PARENT
 
 from dispatch.service.tool_surface_writer import extract_tools
+
+if TYPE_CHECKING:
+    from containers import (
+        AgentDispatcher,
+        ArtifactIOService,
+        LogService,
+        ModelPolicyService,
+        PromptGuard,
+        TaskRouterService,
+    )
 
 
 def _build_registrar_prompt(
@@ -55,43 +65,6 @@ def _build_registrar_prompt(
     )
 
 
-def _dispatch_new_tool_validation(
-    *,
-    section_number: str,
-    planspace: Path,
-    parent: str,
-    codespace: Path,
-) -> None:
-    """Dispatch the tool-registrar agent to validate newly registered tools."""
-    paths = PathRegistry(planspace)
-    tool_registry_path = paths.tool_registry()
-    friction_signal_path = paths.tool_friction_signal(section_number)
-    artifacts = paths.artifacts
-    policy = Services.policies().load(planspace)
-    Services.logger().log(
-        f"Section {section_number}: new tools registered — "
-        f"dispatching tool-registrar for validation"
-    )
-    registrar_prompt = artifacts / f"tool-registrar-{section_number}-prompt.md"
-    prompt_text = _build_registrar_prompt(
-        section_number, tool_registry_path,
-        paths.tool_digest(), friction_signal_path,
-    )
-    Services.prompt_guard().write_validated(prompt_text, registrar_prompt)
-    registrar_output = artifacts / f"tool-registrar-{section_number}-output.md"
-    Services.dispatcher().dispatch(
-        Services.policies().resolve(policy, "tool_registrar"),
-        registrar_prompt,
-        registrar_output,
-        planspace,
-        parent,
-        f"tool-registrar-{section_number}",
-        codespace=codespace,
-        agent_file=Services.task_router().agent_for("dispatch.tool_registry_repair"),
-        section_number=section_number,
-    )
-
-
 def _compose_repair_text(section_number: str, malformed_path: Path, tool_registry_path: Path) -> str:
     """Build the prompt text for post-implementation registry repair."""
     return (
@@ -104,71 +77,173 @@ def _compose_repair_text(section_number: str, malformed_path: Path, tool_registr
     )
 
 
-def _dispatch_post_impl_repair(
-    *,
-    section_number: str,
-    planspace: Path,
-    parent: str,
-    codespace: Path,
-) -> None:
-    """Dispatch repair for a malformed post-implementation registry."""
-    paths = PathRegistry(planspace)
-    tool_registry_path = paths.tool_registry()
-    artifacts = paths.artifacts
-    policy = Services.policies().load(planspace)
-    malformed_path = tool_registry_path.with_suffix(".malformed.json")
-    Services.logger().log(
-        f"Section {section_number}: post-impl registry "
-        f"malformed — dispatching repair "
-        f"(original preserved as {malformed_path.name})"
-    )
-    repair_prompt = (
-        artifacts / f"tool-registry-post-repair-{section_number}-prompt.md"
-    )
-    repair_output = (
-        artifacts / f"tool-registry-post-repair-{section_number}-output.md"
-    )
-    Services.prompt_guard().write_validated(
-        _compose_repair_text(section_number, malformed_path, tool_registry_path),
-        repair_prompt,
-    )
-    Services.dispatcher().dispatch(
-        Services.policies().resolve(policy, "tool_registrar"),
-        repair_prompt,
-        repair_output,
-        planspace,
-        parent,
-        codespace=codespace,
-        section_number=section_number,
-        agent_file=Services.task_router().agent_for("dispatch.tool_registry_repair"),
-    )
-    if Services.artifact_io().read_json(tool_registry_path) is not None:
-        Services.logger().log(
-            f"Section {section_number}: post-impl tool registry repaired"
+class ToolValidator:
+    """Post-implementation tool registry validation and repair."""
+
+    def __init__(
+        self,
+        artifact_io: ArtifactIOService,
+        logger: LogService,
+        policies: ModelPolicyService,
+        prompt_guard: PromptGuard,
+        dispatcher: AgentDispatcher,
+        task_router: TaskRouterService,
+    ) -> None:
+        self._artifact_io = artifact_io
+        self._logger = logger
+        self._policies = policies
+        self._prompt_guard = prompt_guard
+        self._dispatcher = dispatcher
+        self._task_router = task_router
+
+    def _dispatch_new_tool_validation(
+        self,
+        *,
+        section_number: str,
+        planspace: Path,
+        codespace: Path,
+    ) -> None:
+        """Dispatch the tool-registrar agent to validate newly registered tools."""
+        paths = PathRegistry(planspace)
+        tool_registry_path = paths.tool_registry()
+        friction_signal_path = paths.tool_friction_signal(section_number)
+        artifacts = paths.artifacts
+        policy = self._policies.load(planspace)
+        self._logger.log(
+            f"Section {section_number}: new tools registered — "
+            f"dispatching tool-registrar for validation"
         )
-    else:
-        Services.logger().log(
-            f"Section {section_number}: post-impl tool "
-            f"registry repair failed — writing blocker"
+        registrar_prompt = artifacts / f"tool-registrar-{section_number}-prompt.md"
+        prompt_text = _build_registrar_prompt(
+            section_number, tool_registry_path,
+            paths.tool_digest(), friction_signal_path,
         )
-        blocker = {
-            "state": SIGNAL_NEEDS_PARENT,
-            "detail": (
-                "Tool registry malformed after "
-                "implementation; repair agent could "
-                "not fix it."
-            ),
-            "needs": "Valid tool-registry.json",
-            "why_blocked": (
-                "Malformed registry affects subsequent "
-                "sections' tool surfacing."
-            ),
-        }
-        Services.artifact_io().write_json(
-            paths.post_impl_blocker_signal(section_number),
-            blocker,
+        self._prompt_guard.write_validated(prompt_text, registrar_prompt)
+        registrar_output = artifacts / f"tool-registrar-{section_number}-output.md"
+        self._dispatcher.dispatch(
+            self._policies.resolve(policy, "tool_registrar"),
+            registrar_prompt,
+            registrar_output,
+            planspace,
+            agent_name=f"tool-registrar-{section_number}",
+            codespace=codespace,
+            agent_file=self._task_router.agent_for("dispatch.tool_registry_repair"),
+            section_number=section_number,
         )
-        update_blocker_rollup(planspace)
+
+    def _dispatch_post_impl_repair(
+        self,
+        *,
+        section_number: str,
+        planspace: Path,
+        codespace: Path,
+    ) -> None:
+        """Dispatch repair for a malformed post-implementation registry."""
+        paths = PathRegistry(planspace)
+        tool_registry_path = paths.tool_registry()
+        artifacts = paths.artifacts
+        policy = self._policies.load(planspace)
+        malformed_path = tool_registry_path.with_suffix(".malformed.json")
+        self._logger.log(
+            f"Section {section_number}: post-impl registry "
+            f"malformed — dispatching repair "
+            f"(original preserved as {malformed_path.name})"
+        )
+        repair_prompt = (
+            artifacts / f"tool-registry-post-repair-{section_number}-prompt.md"
+        )
+        repair_output = (
+            artifacts / f"tool-registry-post-repair-{section_number}-output.md"
+        )
+        self._prompt_guard.write_validated(
+            _compose_repair_text(section_number, malformed_path, tool_registry_path),
+            repair_prompt,
+        )
+        self._dispatcher.dispatch(
+            self._policies.resolve(policy, "tool_registrar"),
+            repair_prompt,
+            repair_output,
+            planspace,
+            codespace=codespace,
+            section_number=section_number,
+            agent_file=self._task_router.agent_for("dispatch.tool_registry_repair"),
+        )
+        if self._artifact_io.read_json(tool_registry_path) is not None:
+            self._logger.log(
+                f"Section {section_number}: post-impl tool registry repaired"
+            )
+        else:
+            self._logger.log(
+                f"Section {section_number}: post-impl tool "
+                f"registry repair failed — writing blocker"
+            )
+            blocker = {
+                "state": SIGNAL_NEEDS_PARENT,
+                "detail": (
+                    "Tool registry malformed after "
+                    "implementation; repair agent could "
+                    "not fix it."
+                ),
+                "needs": "Valid tool-registry.json",
+                "why_blocked": (
+                    "Malformed registry affects subsequent "
+                    "sections' tool surfacing."
+                ),
+            }
+            self._artifact_io.write_json(
+                paths.post_impl_blocker_signal(section_number),
+                blocker,
+            )
+            update_blocker_rollup(planspace)
+
+    def validate_tool_registry_after_implementation(
+        self,
+        *,
+        section_number: str,
+        pre_tool_total: int,
+        planspace: Path,
+        codespace: Path,
+    ) -> Path:
+        """Validate the tool registry after implementation and return the friction path."""
+        paths = PathRegistry(planspace)
+        tool_registry_path = paths.tool_registry()
+        friction_signal_path = paths.tool_friction_signal(section_number)
+        if not tool_registry_path.exists():
+            return friction_signal_path
+
+        post_registry = self._artifact_io.read_json(tool_registry_path)
+        if post_registry is not None:
+            post_tools = extract_tools(post_registry)
+            if len(post_tools) > pre_tool_total:
+                self._dispatch_new_tool_validation(
+                    section_number=section_number,
+                    planspace=planspace,
+                    codespace=codespace,
+                )
+        else:
+            self._dispatch_post_impl_repair(
+                section_number=section_number,
+                planspace=planspace,
+                codespace=codespace,
+            )
+
+        return friction_signal_path
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
+
+def _get_validator() -> ToolValidator:
+    from containers import Services
+    return ToolValidator(
+        artifact_io=Services.artifact_io(),
+        logger=Services.logger(),
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        dispatcher=Services.dispatcher(),
+        task_router=Services.task_router(),
+    )
 
 
 def validate_tool_registry_after_implementation(
@@ -176,32 +251,12 @@ def validate_tool_registry_after_implementation(
     section_number: str,
     pre_tool_total: int,
     planspace: Path,
-    parent: str,
     codespace: Path,
 ) -> Path:
     """Validate the tool registry after implementation and return the friction path."""
-    paths = PathRegistry(planspace)
-    tool_registry_path = paths.tool_registry()
-    friction_signal_path = paths.tool_friction_signal(section_number)
-    if not tool_registry_path.exists():
-        return friction_signal_path
-
-    post_registry = Services.artifact_io().read_json(tool_registry_path)
-    if post_registry is not None:
-        post_tools = extract_tools(post_registry)
-        if len(post_tools) > pre_tool_total:
-            _dispatch_new_tool_validation(
-                section_number=section_number,
-                planspace=planspace,
-                parent=parent,
-                codespace=codespace,
-            )
-    else:
-        _dispatch_post_impl_repair(
-            section_number=section_number,
-            planspace=planspace,
-            parent=parent,
-            codespace=codespace,
-        )
-
-    return friction_signal_path
+    return _get_validator().validate_tool_registry_after_implementation(
+        section_number=section_number,
+        pre_tool_total=pre_tool_total,
+        planspace=planspace,
+        codespace=codespace,
+    )

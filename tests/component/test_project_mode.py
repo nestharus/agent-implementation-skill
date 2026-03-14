@@ -10,7 +10,7 @@ def test_resolve_project_mode_prefers_json_signal(planspace) -> None:
         encoding="utf-8",
     )
 
-    mode, constraints = resolve_project_mode(planspace, "parent")
+    mode, constraints = resolve_project_mode(planspace)
 
     assert mode == "greenfield"
     assert constraints == ["seed needed"]
@@ -24,7 +24,7 @@ def test_resolve_project_mode_uses_text_fallback_for_malformed_json(
     text_path = planspace / "artifacts" / "project-mode.txt"
     text_path.write_text("brownfield\n", encoding="utf-8")
 
-    mode, constraints = resolve_project_mode(planspace, "parent")
+    mode, constraints = resolve_project_mode(planspace)
 
     assert mode == "brownfield"
     assert constraints == []
@@ -34,7 +34,7 @@ def test_resolve_project_mode_uses_text_fallback_for_malformed_json(
 def test_resolve_project_mode_pauses_and_rereads_after_resume(
     planspace, capturing_pipeline_control,
 ) -> None:
-    def _pause_side_effect(planspace_arg, parent, message):
+    def _pause_side_effect(planspace_arg, message):
         (planspace_arg / "artifacts" / "signals" / "project-mode.json").write_text(
             json.dumps({"mode": "brownfield", "constraints": ["keep api"]}),
             encoding="utf-8",
@@ -43,14 +43,13 @@ def test_resolve_project_mode_pauses_and_rereads_after_resume(
 
     capturing_pipeline_control._pause_side_effect = _pause_side_effect
 
-    mode, constraints = resolve_project_mode(planspace, "parent")
+    mode, constraints = resolve_project_mode(planspace)
 
     assert mode == "brownfield"
     assert constraints == ["keep api"]
     assert capturing_pipeline_control.pause_calls == [
         (
             planspace,
-            "parent",
             "pause:needs_parent:project-mode-missing — "
             "scan stage did not write project-mode signal",
         ),

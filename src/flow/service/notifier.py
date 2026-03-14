@@ -3,12 +3,61 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
 from flow.service.task_db_client import log_event, send_message, task_db
 
+if TYPE_CHECKING:
+    from containers import LogService
+
 DISPATCHER_NAME = "task-dispatcher"
+
+
+class Notifier:
+    def __init__(self, logger: LogService) -> None:
+        self._logger = logger
+
+    def record_qa_intercept(
+        self,
+        planspace: Path,
+        task_id: str,
+        rejection_reason: str | None,
+        *,
+        db_path: str | Path | None = None,
+        reason_code: str | None = None,
+    ) -> None:
+        """Record a QA intercept event for observability.
+
+        PAT-0014: degraded advisory outcomes are logged distinctly from
+        genuine approval.  When *reason_code* is set and *rejection_reason*
+        is None, the verdict is ``degraded`` (not ``passed``).
+        """
+        resolved_db_path = (
+            str(db_path) if db_path is not None else str(PathRegistry(planspace).run_db())
+        )
+        if rejection_reason:
+            verdict = "rejected"
+        elif reason_code:
+            verdict = "degraded"
+        else:
+            verdict = "passed"
+        body = f"qa:{verdict}:{task_id}"
+        if rejection_reason:
+            body += f":{rejection_reason}"
+        elif reason_code:
+            body += f":{reason_code}"
+        try:
+            log_event(
+                resolved_db_path, "lifecycle",
+                tag=f"qa-intercept:{task_id}",
+                body=body, agent=DISPATCHER_NAME,
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Non-critical — logging failure must not block dispatch.
+            self._logger.log(
+                f"QA intercept logging failed ({exc}) — failing open",
+            )
 
 
 def notify_task_result(
@@ -48,6 +97,15 @@ def record_task_routing(
         conn.commit()
 
 
+# Backward-compat wrappers
+
+def _get_notifier() -> Notifier:
+    from containers import Services
+    return Notifier(
+        logger=Services.logger(),
+    )
+
+
 def record_qa_intercept(
     planspace: Path,
     task_id: str,
@@ -56,34 +114,7 @@ def record_qa_intercept(
     db_path: str | Path | None = None,
     reason_code: str | None = None,
 ) -> None:
-    """Record a QA intercept event for observability.
-
-    PAT-0014: degraded advisory outcomes are logged distinctly from
-    genuine approval.  When *reason_code* is set and *rejection_reason*
-    is None, the verdict is ``degraded`` (not ``passed``).
-    """
-    resolved_db_path = (
-        str(db_path) if db_path is not None else str(PathRegistry(planspace).run_db())
+    return _get_notifier().record_qa_intercept(
+        planspace, task_id, rejection_reason,
+        db_path=db_path, reason_code=reason_code,
     )
-    if rejection_reason:
-        verdict = "rejected"
-    elif reason_code:
-        verdict = "degraded"
-    else:
-        verdict = "passed"
-    body = f"qa:{verdict}:{task_id}"
-    if rejection_reason:
-        body += f":{rejection_reason}"
-    elif reason_code:
-        body += f":{reason_code}"
-    try:
-        log_event(
-            resolved_db_path, "lifecycle",
-            tag=f"qa-intercept:{task_id}",
-            body=body, agent=DISPATCHER_NAME,
-        )
-    except Exception as exc:  # noqa: BLE001
-        # Non-critical — logging failure must not block dispatch.
-        Services.logger().log(
-            f"QA intercept logging failed ({exc}) — failing open",
-        )

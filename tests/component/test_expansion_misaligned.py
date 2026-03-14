@@ -127,7 +127,7 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
         )
         result = run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
+            DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -183,7 +183,7 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
         )
         result = run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
+            DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -246,7 +246,7 @@ def test_misaligned_definition_gap_expansion_respects_budget(
         )
         result = run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
+            DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )

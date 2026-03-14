@@ -7,11 +7,13 @@ only needs to add prompt-specific keys.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
-
-from containers import Services
 from orchestrator.types import Section
+
+if TYPE_CHECKING:
+    from containers import ArtifactIOService, CrossSectionService
 
 
 def _build_decisions_context(paths: PathRegistry, sec: str) -> dict:
@@ -196,66 +198,6 @@ def _build_intent_context(paths: PathRegistry, sec: str) -> dict:
     }
 
 
-def _build_input_refs_context(paths: PathRegistry, sec: str) -> dict:
-    """Build additional inputs and risk inputs blocks from coordination."""
-    inputs_dir = paths.input_refs_dir(sec)
-    additional_inputs_block = ""
-    risk_inputs_block = ""
-
-    if not inputs_dir.exists():
-        return {
-            "risk_inputs_block": risk_inputs_block,
-            "additional_inputs_block": additional_inputs_block,
-        }
-
-    roal_paths, risk_inputs_block = _build_roal_block(inputs_dir, sec)
-    additional_inputs_block = _build_ref_files_block(inputs_dir, roal_paths)
-
-    return {
-        "risk_inputs_block": risk_inputs_block,
-        "additional_inputs_block": additional_inputs_block,
-    }
-
-
-def _build_roal_block(inputs_dir: Path, sec: str) -> tuple[set[str], str]:
-    """Parse the ROAL input index and build a risk inputs block.
-
-    Returns the set of resolved ROAL paths (for deduplication) and the
-    formatted risk inputs block string.
-    """
-    roal_index_path = inputs_dir / f"section-{sec}-roal-input-index.json"
-    roal_index = Services.artifact_io().read_json(roal_index_path)
-    roal_paths: set[str] = set()
-    risk_lines: list[str] = []
-    if isinstance(roal_index, list):
-        for entry in roal_index:
-            if not isinstance(entry, dict):
-                continue
-            path_value = str(entry.get("path", "")).strip()
-            if not path_value:
-                continue
-            referenced_path = Path(path_value)
-            if not referenced_path.exists():
-                continue
-            roal_paths.add(str(referenced_path.resolve()))
-            kind = str(entry.get("kind", "unknown")).strip() or "unknown"
-            risk_lines.append(f"   - `{referenced_path}` ({kind})")
-
-    risk_inputs_block = ""
-    if risk_lines:
-        risk_inputs_block = (
-            "\n\n## Risk Inputs (from ROAL)\n\n"
-            "These artifacts were produced by the "
-            "Risk-Optimization Adaptive Loop.\n"
-            "The accepted frontier is your current local execution "
-            "authority.\n"
-            "Deferred steps are NOT in scope. Reopened steps are "
-            "NOT locally solvable.\n"
-            + "\n".join(risk_lines)
-        )
-    return roal_paths, risk_inputs_block
-
-
 def _build_ref_files_block(inputs_dir: Path, roal_paths: set[str]) -> str:
     """Build the additional inputs block from .ref files, excluding ROAL."""
     ref_files = sorted(inputs_dir.glob("*.ref"))
@@ -318,37 +260,131 @@ def _build_governance_and_files_context(
     }
 
 
+class ContextBuilder:
+    """Builds shared prompt context using injected services."""
+
+    def __init__(
+        self,
+        artifact_io: ArtifactIOService,
+        cross_section: CrossSectionService,
+    ) -> None:
+        self._artifact_io = artifact_io
+        self._cross_section = cross_section
+
+    def _build_roal_block(self, inputs_dir: Path, sec: str) -> tuple[set[str], str]:
+        """Parse the ROAL input index and build a risk inputs block.
+
+        Returns the set of resolved ROAL paths (for deduplication) and the
+        formatted risk inputs block string.
+        """
+        roal_index_path = inputs_dir / f"section-{sec}-roal-input-index.json"
+        roal_index = self._artifact_io.read_json(roal_index_path)
+        roal_paths: set[str] = set()
+        risk_lines: list[str] = []
+        if isinstance(roal_index, list):
+            for entry in roal_index:
+                if not isinstance(entry, dict):
+                    continue
+                path_value = str(entry.get("path", "")).strip()
+                if not path_value:
+                    continue
+                referenced_path = Path(path_value)
+                if not referenced_path.exists():
+                    continue
+                roal_paths.add(str(referenced_path.resolve()))
+                kind = str(entry.get("kind", "unknown")).strip() or "unknown"
+                risk_lines.append(f"   - `{referenced_path}` ({kind})")
+
+        risk_inputs_block = ""
+        if risk_lines:
+            risk_inputs_block = (
+                "\n\n## Risk Inputs (from ROAL)\n\n"
+                "These artifacts were produced by the "
+                "Risk-Optimization Adaptive Loop.\n"
+                "The accepted frontier is your current local execution "
+                "authority.\n"
+                "Deferred steps are NOT in scope. Reopened steps are "
+                "NOT locally solvable.\n"
+                + "\n".join(risk_lines)
+            )
+        return roal_paths, risk_inputs_block
+
+    def _build_input_refs_context(self, paths: PathRegistry, sec: str) -> dict:
+        """Build additional inputs and risk inputs blocks from coordination."""
+        inputs_dir = paths.input_refs_dir(sec)
+        additional_inputs_block = ""
+        risk_inputs_block = ""
+
+        if not inputs_dir.exists():
+            return {
+                "risk_inputs_block": risk_inputs_block,
+                "additional_inputs_block": additional_inputs_block,
+            }
+
+        roal_paths, risk_inputs_block = self._build_roal_block(inputs_dir, sec)
+        additional_inputs_block = _build_ref_files_block(inputs_dir, roal_paths)
+
+        return {
+            "risk_inputs_block": risk_inputs_block,
+            "additional_inputs_block": additional_inputs_block,
+        }
+
+    def build_prompt_context(
+        self,
+        section: Section,
+        planspace: Path,
+        codespace: Path,
+        **overrides: object,
+    ) -> dict:
+        """Build the shared context dict used by all prompt templates.
+
+        Every optional reference defaults to "" so templates degrade gracefully
+        when artifacts are absent.
+        """
+        paths = PathRegistry(planspace)
+        sec = section.number
+        summary = self._cross_section.extract_section_summary(section.path)
+
+        ctx: dict = {
+            "section_number": sec,
+            "section_path": section.path,
+            "codespace": codespace,
+            "planspace": planspace,
+            "artifacts": paths.artifacts,
+            "summary": summary,
+        }
+
+        ctx.update(_build_decisions_context(paths, sec))
+        ctx.update(_build_strategic_context(paths))
+        ctx.update(_build_tools_and_todos_context(paths, sec))
+        ctx.update(_build_alignment_context(paths, sec))
+        ctx.update(_build_substrate_context(paths))
+        ctx.update(_build_intent_context(paths, sec))
+        ctx.update(self._build_input_refs_context(paths, sec))
+        ctx.update(_build_governance_and_files_context(paths, sec, section, codespace))
+        ctx.update(overrides)
+        return ctx
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
+
+def _get_builder() -> ContextBuilder:
+    from containers import Services
+    return ContextBuilder(
+        artifact_io=Services.artifact_io(),
+        cross_section=Services.cross_section(),
+    )
+
+
 def build_prompt_context(
     section: Section,
     planspace: Path,
     codespace: Path,
     **overrides: object,
 ) -> dict:
-    """Build the shared context dict used by all prompt templates.
-
-    Every optional reference defaults to "" so templates degrade gracefully
-    when artifacts are absent.
-    """
-    paths = PathRegistry(planspace)
-    sec = section.number
-    summary = Services.cross_section().extract_section_summary(section.path)
-
-    ctx: dict = {
-        "section_number": sec,
-        "section_path": section.path,
-        "codespace": codespace,
-        "planspace": planspace,
-        "artifacts": paths.artifacts,
-        "summary": summary,
-    }
-
-    ctx.update(_build_decisions_context(paths, sec))
-    ctx.update(_build_strategic_context(paths))
-    ctx.update(_build_tools_and_todos_context(paths, sec))
-    ctx.update(_build_alignment_context(paths, sec))
-    ctx.update(_build_substrate_context(paths))
-    ctx.update(_build_intent_context(paths, sec))
-    ctx.update(_build_input_refs_context(paths, sec))
-    ctx.update(_build_governance_and_files_context(paths, sec, section, codespace))
-    ctx.update(overrides)
-    return ctx
+    """Build the shared context dict used by all prompt templates."""
+    return _get_builder().build_prompt_context(
+        section, planspace, codespace, **overrides,
+    )

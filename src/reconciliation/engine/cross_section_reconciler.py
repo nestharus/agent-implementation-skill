@@ -10,13 +10,15 @@ scope-delta and substrate-trigger artifacts.
 Entry point: ``run_reconciliation_loop(run_dir, proposal_results)``.
 """
 
+from __future__ import annotations
+
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
 
-from containers import Services
 from proposal.repository.state import ProposalState, load_proposal_state
 from reconciliation.service.adjudicator import adjudicate_ungrouped_candidates
 from reconciliation.service.detectors import (
@@ -32,6 +34,9 @@ from reconciliation.repository.results import (
     write_substrate_trigger,
 )
 from reconciliation.repository.queue import load_reconciliation_requests
+
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 logger = logging.getLogger(__name__)
 
@@ -253,6 +258,112 @@ def _build_summary(
 # Public API
 # ---------------------------------------------------------------------------
 
+class CrossSectionReconciler:
+    """Orchestrates cross-section reconciliation after the proposal pass."""
+
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
+
+    def load_reconciliation_result(
+        self,
+        planspace: Path,
+        section_number: str,
+    ) -> dict | None:
+        """Load a section's reconciliation result if it exists.
+
+        Parameters
+        ----------
+        planspace:
+            The planspace root directory containing ``artifacts/``.
+        section_number:
+            Zero-padded section number (e.g. ``"03"``).
+
+        Returns
+        -------
+        dict | None
+            The reconciliation result dict, or ``None`` if no result file
+            exists or the file is malformed.
+        """
+        return load_result(planspace, section_number)
+
+    def run_reconciliation_loop(
+        self,
+        run_dir: Path,
+        proposal_results: list,
+    ) -> dict:
+        """Run universal cross-section reconciliation.
+
+        Called once after Phase 1a (proposal pass) completes for all
+        sections and before Phase 1c (implementation pass) begins.
+
+        Parameters
+        ----------
+        run_dir:
+            The planspace root directory containing ``artifacts/``.
+        proposal_results:
+            List of ``ProposalPassResult`` instances (or dicts with at least
+            a ``section_number`` key) from the proposal pass.
+
+        Returns
+        -------
+        dict
+            Summary with keys ``sections_affected``, ``new_sections_proposed``,
+            ``substrate_needed``, ``conflicts_found``.
+        """
+        section_numbers = _extract_section_numbers(proposal_results)
+        states = _load_proposal_states(run_dir, section_numbers)
+
+        recon_requests = load_reconciliation_requests(run_dir)
+        logger.info(
+            "Reconciliation: loaded %d proposal states, %d reconciliation "
+            "requests",
+            len(states), len(recon_requests),
+        )
+        _merge_recon_requests_into_states(recon_requests, states)
+
+        issues = _detect_cross_section_issues(states, run_dir)
+
+        affected_sections = _collect_affected_sections(
+            issues.anchor_overlaps, issues.contract_conflicts,
+            issues.consolidated_sections, issues.substrate_seams,
+        )
+
+        for sec_num in section_numbers:
+            result = _build_section_result(
+                sec_num, issues.anchor_overlaps, issues.contract_conflicts,
+                issues.consolidated_sections, issues.substrate_seams,
+                affected_sections,
+            )
+            write_result(run_dir, sec_num, result)
+
+        for consolidated in issues.consolidated_sections:
+            write_scope_delta(run_dir, consolidated)
+
+        for seam in issues.substrate_seams:
+            write_substrate_trigger(run_dir, seam)
+
+        summary = _build_summary(
+            affected_sections, issues.consolidated_sections, issues.substrate_seams,
+            issues.anchor_overlaps, issues.contract_conflicts, issues.shared_seams,
+        )
+        logger.info("Reconciliation summary: %s", summary)
+
+        self._artifact_io.write_json(
+            PathRegistry(run_dir).reconciliation_summary(), summary,
+        )
+
+        return summary
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
+
+def _get_cross_section_reconciler() -> CrossSectionReconciler:
+    from containers import Services
+    return CrossSectionReconciler(artifact_io=Services.artifact_io())
+
+
 def load_reconciliation_result(
     planspace: Path,
     section_number: str,
@@ -272,8 +383,9 @@ def load_reconciliation_result(
         The reconciliation result dict, or ``None`` if no result file
         exists or the file is malformed.
     """
-    return load_result(planspace, section_number)
-
+    return _get_cross_section_reconciler().load_reconciliation_result(
+        planspace, section_number,
+    )
 
 
 def run_reconciliation_loop(
@@ -299,46 +411,6 @@ def run_reconciliation_loop(
         Summary with keys ``sections_affected``, ``new_sections_proposed``,
         ``substrate_needed``, ``conflicts_found``.
     """
-    section_numbers = _extract_section_numbers(proposal_results)
-    states = _load_proposal_states(run_dir, section_numbers)
-
-    recon_requests = load_reconciliation_requests(run_dir)
-    logger.info(
-        "Reconciliation: loaded %d proposal states, %d reconciliation "
-        "requests",
-        len(states), len(recon_requests),
+    return _get_cross_section_reconciler().run_reconciliation_loop(
+        run_dir, proposal_results,
     )
-    _merge_recon_requests_into_states(recon_requests, states)
-
-    issues = _detect_cross_section_issues(states, run_dir)
-
-    affected_sections = _collect_affected_sections(
-        issues.anchor_overlaps, issues.contract_conflicts,
-        issues.consolidated_sections, issues.substrate_seams,
-    )
-
-    for sec_num in section_numbers:
-        result = _build_section_result(
-            sec_num, issues.anchor_overlaps, issues.contract_conflicts,
-            issues.consolidated_sections, issues.substrate_seams,
-            affected_sections,
-        )
-        write_result(run_dir, sec_num, result)
-
-    for consolidated in issues.consolidated_sections:
-        write_scope_delta(run_dir, consolidated)
-
-    for seam in issues.substrate_seams:
-        write_substrate_trigger(run_dir, seam)
-
-    summary = _build_summary(
-        affected_sections, issues.consolidated_sections, issues.substrate_seams,
-        issues.anchor_overlaps, issues.contract_conflicts, issues.shared_seams,
-    )
-    logger.info("Reconciliation summary: %s", summary)
-
-    Services.artifact_io().write_json(
-        PathRegistry(run_dir).reconciliation_summary(), summary,
-    )
-
-    return summary

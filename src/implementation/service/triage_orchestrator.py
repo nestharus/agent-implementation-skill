@@ -4,16 +4,28 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
 from orchestrator.types import Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from signals.types import ACTION_ABORT, ACTION_CONTINUE, ACTION_SKIP
 
+if TYPE_CHECKING:
+    from containers import (
+        AgentDispatcher,
+        ArtifactIOService,
+        Communicator,
+        LogService,
+        ModelPolicyService,
+        PromptGuard,
+        SectionAlignmentService,
+        TaskRouterService,
+    )
+
 
 # ---------------------------------------------------------------------------
-# Private helpers
+# Pure helpers (no Services usage)
 # ---------------------------------------------------------------------------
 
 def _build_triage_prompt(
@@ -89,140 +101,187 @@ Valid actions: "accepted" (resolved/no-op), "rejected" (disagree with note),
 """
 
 
-def _parse_triage_response(
-    triage_signal_path: Path,
-    incoming_notes: str,
-    paths: PathRegistry,
-    section: Section,
-) -> str:
-    """Read triage signal, merge acks, and decide whether rework is needed.
+class TriageOrchestrator:
+    """Impact triage service for section-loop runner.
 
-    Returns ``"skip"`` when notes are fully acknowledged and no rework is
-    flagged, ``"continue"`` otherwise.
+    All cross-cutting services are received via constructor injection.
     """
-    triage = Services.artifact_io().read_json(triage_signal_path)
-    if triage is None:
-        return ACTION_CONTINUE
 
-    if triage.get("needs_replan", True) or triage.get("needs_code_change", True):
-        return ACTION_CONTINUE
+    def __init__(
+        self,
+        artifact_io: ArtifactIOService,
+        communicator: Communicator,
+        dispatcher: AgentDispatcher,
+        logger: LogService,
+        policies: ModelPolicyService,
+        prompt_guard: PromptGuard,
+        section_alignment: SectionAlignmentService,
+        task_router: TaskRouterService,
+    ) -> None:
+        self._artifact_io = artifact_io
+        self._communicator = communicator
+        self._dispatcher = dispatcher
+        self._logger = logger
+        self._policies = policies
+        self._prompt_guard = prompt_guard
+        self._section_alignment = section_alignment
+        self._task_router = task_router
 
-    # Merge new acknowledgments into the persisted ack file.
-    triage_acks = triage.get("acknowledge", [])
-    ack_path = paths.note_ack_signal(section.number)
-    existing_acks: dict = Services.artifact_io().read_json_or_default(
-        ack_path, {"acknowledged": []},
-    )
-    existing_ids = {
-        entry.get("note_id")
-        for entry in existing_acks.get("acknowledged", [])
-    }
-    for ack in triage_acks:
-        note_id = ack.get("note_id")
-        if note_id and note_id not in existing_ids:
-            existing_acks.setdefault("acknowledged", []).append(ack)
-            existing_ids.add(note_id)
-    Services.artifact_io().write_json(ack_path, existing_acks)
+    def _parse_triage_response(
+        self,
+        triage_signal_path: Path,
+        incoming_notes: str,
+        paths: PathRegistry,
+        section: Section,
+    ) -> str:
+        """Read triage signal, merge acks, and decide whether rework is needed.
 
-    # Validate that every incoming note was acknowledged.
-    incoming_note_ids = set(
-        re.findall(r"\*\*Note ID\*\*:\s*`([^`]+)`", incoming_notes),
-    )
-    acked_ids = {ack.get("note_id") for ack in triage_acks} | existing_ids
-    if incoming_note_ids and not incoming_note_ids.issubset(acked_ids):
-        Services.logger().log(
-            f"Section {section.number}: triage did not acknowledge all notes "
-            "— full processing",
+        Returns ``"skip"`` when notes are fully acknowledged and no rework is
+        flagged, ``"continue"`` otherwise.
+        """
+        triage = self._artifact_io.read_json(triage_signal_path)
+        if triage is None:
+            return ACTION_CONTINUE
+
+        if triage.get("needs_replan", True) or triage.get("needs_code_change", True):
+            return ACTION_CONTINUE
+
+        # Merge new acknowledgments into the persisted ack file.
+        triage_acks = triage.get("acknowledge", [])
+        ack_path = paths.note_ack_signal(section.number)
+        existing_acks: dict = self._artifact_io.read_json_or_default(
+            ack_path, {"acknowledged": []},
         )
-        return ACTION_CONTINUE
+        existing_ids = {
+            entry.get("note_id")
+            for entry in existing_acks.get("acknowledged", [])
+        }
+        for ack in triage_acks:
+            note_id = ack.get("note_id")
+            if note_id and note_id not in existing_ids:
+                existing_acks.setdefault("acknowledged", []).append(ack)
+                existing_ids.add(note_id)
+        self._artifact_io.write_json(ack_path, existing_acks)
 
-    return ACTION_SKIP
-
-
-def _run_triage_alignment(
-    section: Section,
-    planspace: Path,
-    codespace: Path,
-    parent: str,
-    policy: object,
-) -> tuple[str, list[str] | None]:
-    """Run a short-circuit alignment check after triage approves skip."""
-    Services.logger().log(
-        f"Section {section.number}: triage says no rework needed — "
-        "skipping to alignment check",
-    )
-    verify_result = Services.section_alignment().run_alignment_check(
-        section,
-        planspace,
-        codespace,
-        parent,
-        output_prefix="triage-align",
-        model=Services.policies().resolve(policy, "alignment"),
-    )
-    if verify_result == ALIGNMENT_CHANGED_PENDING:
-        return (ACTION_ABORT, None)
-    if verify_result:
-        verdict = Services.section_alignment().parse_alignment_verdict(verify_result)
-        if (
-            verdict is not None
-            and verdict.get("aligned") is True
-            and verdict.get("frame_ok", True) is True
-        ):
-            Services.logger().log(
-                f"Section {section.number}: triage + alignment confirms no "
-                "rework needed",
+        # Validate that every incoming note was acknowledged.
+        incoming_note_ids = set(
+            re.findall(r"\*\*Note ID\*\*:\s*`([^`]+)`", incoming_notes),
+        )
+        acked_ids = {ack.get("note_id") for ack in triage_acks} | existing_ids
+        if incoming_note_ids and not incoming_note_ids.issubset(acked_ids):
+            self._logger.log(
+                f"Section {section.number}: triage did not acknowledge all notes "
+                "— full processing",
             )
-            reported = Services.section_alignment().collect_modified_files(
-                planspace, section, codespace,
-            )
-            return (ACTION_SKIP, reported if reported else [])
+            return ACTION_CONTINUE
 
-    return (ACTION_CONTINUE, None)
+        return ACTION_SKIP
+
+    def _run_triage_alignment(
+        self,
+        section: Section,
+        planspace: Path,
+        codespace: Path,
+        policy: object,
+    ) -> tuple[str, list[str] | None]:
+        """Run a short-circuit alignment check after triage approves skip."""
+        self._logger.log(
+            f"Section {section.number}: triage says no rework needed — "
+            "skipping to alignment check",
+        )
+        verify_result = self._section_alignment.run_alignment_check(
+            section,
+            planspace,
+            codespace,
+            output_prefix="triage-align",
+            model=self._policies.resolve(policy, "alignment"),
+        )
+        if verify_result == ALIGNMENT_CHANGED_PENDING:
+            return (ACTION_ABORT, None)
+        if verify_result:
+            verdict = self._section_alignment.parse_alignment_verdict(verify_result)
+            if (
+                verdict is not None
+                and verdict.get("aligned") is True
+                and verdict.get("frame_ok", True) is True
+            ):
+                self._logger.log(
+                    f"Section {section.number}: triage + alignment confirms no "
+                    "rework needed",
+                )
+                reported = self._section_alignment.collect_modified_files(
+                    planspace, section, codespace,
+                )
+                return (ACTION_SKIP, reported if reported else [])
+
+        return (ACTION_CONTINUE, None)
+
+    def run_impact_triage(
+        self,
+        section: Section,
+        planspace: Path,
+        codespace: Path,
+        incoming_notes: str | None,
+    ) -> tuple[str, list[str] | None]:
+        """Classify note impact and optionally short-circuit to alignment."""
+        if not incoming_notes or section.solve_count < 1:
+            return (ACTION_CONTINUE, None)
+
+        policy = self._policies.load(planspace)
+        paths = PathRegistry(planspace)
+        triage_dir = paths.triage_dir()
+        triage_prompt_path = triage_dir / f"triage-{section.number}-prompt.md"
+        triage_output_path = triage_dir / f"triage-{section.number}-output.md"
+        triage_signal_path = paths.triage_signal(section.number)
+
+        triage_notes_path = triage_dir / f"triage-{section.number}-incoming-notes.md"
+        triage_notes_path.write_text(incoming_notes, encoding="utf-8")
+
+        prompt_text = _build_triage_prompt(section, paths, triage_notes_path, triage_signal_path)
+        if not self._prompt_guard.write_validated(prompt_text, triage_prompt_path):
+            return (ACTION_CONTINUE, None)
+        self._communicator.log_artifact(planspace, f"prompt:triage-{section.number}")
+
+        self._dispatcher.dispatch(
+            self._policies.resolve(policy, "triage"),
+            triage_prompt_path,
+            triage_output_path,
+            planspace,
+            codespace=codespace,
+            section_number=section.number,
+            agent_file=self._task_router.agent_for("coordination.consequence_triage"),
+        )
+
+        decision = self._parse_triage_response(triage_signal_path, incoming_notes, paths, section)
+        if decision == ACTION_CONTINUE:
+            return (ACTION_CONTINUE, None)
+
+        return self._run_triage_alignment(section, planspace, codespace, policy)
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# Backward-compat free function wrapper
 # ---------------------------------------------------------------------------
+
 
 def run_impact_triage(
     section: Section,
     planspace: Path,
     codespace: Path,
-    parent: str,
     incoming_notes: str | None,
 ) -> tuple[str, list[str] | None]:
     """Classify note impact and optionally short-circuit to alignment."""
-    if not incoming_notes or section.solve_count < 1:
-        return (ACTION_CONTINUE, None)
-
-    policy = Services.policies().load(planspace)
-    paths = PathRegistry(planspace)
-    triage_dir = paths.triage_dir()
-    triage_prompt_path = triage_dir / f"triage-{section.number}-prompt.md"
-    triage_output_path = triage_dir / f"triage-{section.number}-output.md"
-    triage_signal_path = paths.triage_signal(section.number)
-
-    triage_notes_path = triage_dir / f"triage-{section.number}-incoming-notes.md"
-    triage_notes_path.write_text(incoming_notes, encoding="utf-8")
-
-    prompt_text = _build_triage_prompt(section, paths, triage_notes_path, triage_signal_path)
-    if not Services.prompt_guard().write_validated(prompt_text, triage_prompt_path):
-        return (ACTION_CONTINUE, None)
-    Services.communicator().log_artifact(planspace, f"prompt:triage-{section.number}")
-
-    Services.dispatcher().dispatch(
-        Services.policies().resolve(policy, "triage"),
-        triage_prompt_path,
-        triage_output_path,
-        planspace,
-        parent,
-        codespace=codespace,
-        section_number=section.number,
-        agent_file=Services.task_router().agent_for("coordination.consequence_triage"),
+    from containers import Services
+    orchestrator = TriageOrchestrator(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        dispatcher=Services.dispatcher(),
+        logger=Services.logger(),
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        section_alignment=Services.section_alignment(),
+        task_router=Services.task_router(),
     )
-
-    decision = _parse_triage_response(triage_signal_path, incoming_notes, paths, section)
-    if decision == ACTION_CONTINUE:
-        return (ACTION_CONTINUE, None)
-
-    return _run_triage_alignment(section, planspace, codespace, parent, policy)
+    return orchestrator.run_impact_triage(
+        section, planspace, codespace, incoming_notes,
+    )

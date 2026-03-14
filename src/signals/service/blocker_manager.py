@@ -2,11 +2,20 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from signals.repository.artifact_io import read_json, rename_malformed
-from containers import Services
 from orchestrator.path_registry import PathRegistry
-from signals.types import SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE, SIGNAL_NEED_DECISION
+from signals.types import (
+    SIGNAL_DEPENDENCY,
+    SIGNAL_NEED_DECISION,
+    SIGNAL_NEEDS_PARENT,
+    SIGNAL_OUT_OF_SCOPE,
+    SIGNAL_UNDERSPEC,
+)
+
+if TYPE_CHECKING:
+    from containers import HasherService
 
 
 class BlockerCategory(str, Enum):
@@ -32,12 +41,12 @@ _SEAM_HASH_LENGTH = 12
 # Signal state → blocker category mapping (used in update_blocker_rollup)
 _STATE_TO_CATEGORY: dict[str, str] = {
     "underspecified": BlockerCategory.MISSING_INFO,
-    "underspec": BlockerCategory.MISSING_INFO,
+    SIGNAL_UNDERSPEC: BlockerCategory.MISSING_INFO,
     SIGNAL_NEED_DECISION: BlockerCategory.DECISION_REQUIRED,
     SIGNAL_OUT_OF_SCOPE: BlockerCategory.SCOPE_EXPANSION,
     "out-of-scope": BlockerCategory.SCOPE_EXPANSION,
     SIGNAL_NEEDS_PARENT: BlockerCategory.NEEDS_PARENT,
-    "dependency": BlockerCategory.DEPENDENCY,
+    SIGNAL_DEPENDENCY: BlockerCategory.DEPENDENCY,
 }
 
 # Proposal-state blocker type → category mapping
@@ -48,6 +57,8 @@ _BTYPE_TO_CATEGORY: dict[str, str] = {
     "shared_seam_candidates": BlockerCategory.NEEDS_PARENT,
 }
 
+
+# ── Pure functions (no Services dependency) ───────────────────────────
 
 def append_open_problem(
     planspace: Path, section_number: str,
@@ -74,30 +85,6 @@ def append_open_problem(
         # Add new section at the end
         content = content.rstrip() + f"\n\n## Open Problems\n{entry}"
     sec_file.write_text(content, encoding="utf-8")
-
-
-def _dedupe_rollup_blockers(blockers: list[dict]) -> list[dict]:
-    """Collapse duplicated shared-seam blockers across signal/readiness inputs."""
-    deduped: list[dict] = []
-    seen_keys: set[str] = set()
-
-    for blocker in blockers:
-        source = str(blocker.get("source", ""))
-        if source == "proposal-state:shared_seam_candidates":
-            detail = str(blocker.get("detail", "")).strip()
-            if detail.lower().startswith(_SHARED_SEAM_PREFIX):
-                detail = detail[len(_SHARED_SEAM_PREFIX):].strip()
-            normalized = " ".join(detail.lower().split())
-            seam_key = Services.hasher().content_hash(
-                f"{blocker.get('section', 'unknown')}::{normalized}"
-            )[:_SEAM_HASH_LENGTH]
-            dedupe_key = f"shared-seam::{seam_key}"
-            if dedupe_key in seen_keys:
-                continue
-            seen_keys.add(dedupe_key)
-        deduped.append(blocker)
-
-    return deduped
 
 
 def _collect_signal_blockers(signals_dir: Path) -> list[dict]:
@@ -169,63 +156,110 @@ def _collect_readiness_blockers(readiness_dir: Path | None) -> list[dict]:
     return blockers
 
 
+# ── Class with injected dependencies ──────────────────────────────────
+
+class BlockerManager:
+    """Manages blocker rollup generation with injected hashing service."""
+
+    def __init__(self, hasher: HasherService) -> None:
+        self._hasher = hasher
+
+    def _dedupe_rollup_blockers(self, blockers: list[dict]) -> list[dict]:
+        """Collapse duplicated shared-seam blockers across signal/readiness inputs."""
+        deduped: list[dict] = []
+        seen_keys: set[str] = set()
+
+        for blocker in blockers:
+            source = str(blocker.get("source", ""))
+            if source == "proposal-state:shared_seam_candidates":
+                detail = str(blocker.get("detail", "")).strip()
+                if detail.lower().startswith(_SHARED_SEAM_PREFIX):
+                    detail = detail[len(_SHARED_SEAM_PREFIX):].strip()
+                normalized = " ".join(detail.lower().split())
+                seam_key = self._hasher.content_hash(
+                    f"{blocker.get('section', 'unknown')}::{normalized}"
+                )[:_SEAM_HASH_LENGTH]
+                dedupe_key = f"shared-seam::{seam_key}"
+                if dedupe_key in seen_keys:
+                    continue
+                seen_keys.add(dedupe_key)
+            deduped.append(blocker)
+
+        return deduped
+
+    def update_blocker_rollup(self, planspace: Path) -> None:
+        """Auto-generate a decision-surface rollup from blocker signals.
+
+        Scans for UNDERSPECIFIED/NEED_DECISION/DEPENDENCY/OUT_OF_SCOPE/
+        NEEDS_PARENT signals across sections and writes a consolidated
+        needs-input.md for the parent. Blockers are grouped by category:
+        missing_info, decision_required, dependency, scope_expansion,
+        needs_parent.
+        """
+        paths = PathRegistry(planspace)
+        blockers = _collect_signal_blockers(paths.signals_dir())
+        blockers.extend(_collect_readiness_blockers(paths.readiness_dir()))
+
+        blockers = self._dedupe_rollup_blockers(blockers)
+
+        if not blockers:
+            return
+
+        decisions_dir = paths.decisions_dir()
+        rollup_path = decisions_dir / "needs-input.md"
+
+        # Group blockers by category
+        from collections import defaultdict
+        groups: dict[str, list[dict]] = defaultdict(list, {
+            cat: [] for cat in BlockerCategory
+        })
+        for b in blockers:
+            groups[b["category"]].append(b)
+
+        category_titles = {
+            BlockerCategory.MISSING_INFO: "Missing Information (UNDERSPECIFIED)",
+            BlockerCategory.DECISION_REQUIRED: "Decisions Required (NEED_DECISION)",
+            BlockerCategory.DEPENDENCY: "Dependencies (DEPENDENCY)",
+            BlockerCategory.SCOPE_EXPANSION: "Scope Expansion (OUT_OF_SCOPE)",
+            BlockerCategory.NEEDS_PARENT: "Parent Coordination / Decision Required (NEEDS_PARENT)",
+            BlockerCategory.MALFORMED_SIGNAL: "Malformed Signal Files (parse error)",
+            BlockerCategory.GOVERNANCE: "Governance (GOVERNANCE)",
+        }
+
+        lines = ["# Blocker Rollup (auto-generated)\n",
+                 f"**{len(blockers)} sections need input:**\n"]
+        for cat_key in BlockerCategory:
+            cat_blockers = groups[cat_key]
+            if not cat_blockers:
+                continue
+            lines.append(f"# {category_titles[cat_key]}\n")
+            for b in cat_blockers:
+                if str(b["section"]).lower() == "global":
+                    heading = "## Global — philosophy bootstrap"
+                else:
+                    heading = f"## Section {b['section']} — {b['state']}"
+                lines.append(heading)
+                lines.append(f"- **Detail**: {b['detail']}")
+                if b["why_blocked"]:
+                    lines.append(f"- **Why blocked**: {b['why_blocked']}")
+                if b["needs"]:
+                    lines.append(f"- **Needs**: {b['needs']}")
+                lines.append(f"- **Signal file**: `{b['signal_file']}`")
+                lines.append("")
+        rollup_path.write_text("\n".join(lines), encoding="utf-8")
+
+
+# ── Backward-compat wrappers (called by containers.py / other modules) ──
+
+def _dedupe_rollup_blockers(blockers: list[dict]) -> list[dict]:
+    """Collapse duplicated shared-seam blockers across signal/readiness inputs."""
+    from containers import Services
+    manager = BlockerManager(hasher=Services.hasher())
+    return manager._dedupe_rollup_blockers(blockers)
+
+
 def update_blocker_rollup(planspace: Path) -> None:
-    """Auto-generate a decision-surface rollup from blocker signals.
-
-    Scans for UNDERSPECIFIED/NEED_DECISION/DEPENDENCY/OUT_OF_SCOPE/
-    NEEDS_PARENT signals across sections and writes a consolidated
-    needs-input.md for the parent. Blockers are grouped by category:
-    missing_info, decision_required, dependency, scope_expansion,
-    needs_parent.
-    """
-    paths = PathRegistry(planspace)
-    blockers = _collect_signal_blockers(paths.signals_dir())
-    blockers.extend(_collect_readiness_blockers(paths.readiness_dir()))
-
-    blockers = _dedupe_rollup_blockers(blockers)
-
-    if not blockers:
-        return
-
-    decisions_dir = paths.decisions_dir()
-    rollup_path = decisions_dir / "needs-input.md"
-
-    # Group blockers by category
-    from collections import defaultdict
-    groups: dict[str, list[dict]] = defaultdict(list, {
-        cat: [] for cat in BlockerCategory
-    })
-    for b in blockers:
-        groups[b["category"]].append(b)
-
-    category_titles = {
-        BlockerCategory.MISSING_INFO: "Missing Information (UNDERSPECIFIED)",
-        BlockerCategory.DECISION_REQUIRED: "Decisions Required (NEED_DECISION)",
-        BlockerCategory.DEPENDENCY: "Dependencies (DEPENDENCY)",
-        BlockerCategory.SCOPE_EXPANSION: "Scope Expansion (OUT_OF_SCOPE)",
-        BlockerCategory.NEEDS_PARENT: "Parent Coordination / Decision Required (NEEDS_PARENT)",
-        BlockerCategory.MALFORMED_SIGNAL: "Malformed Signal Files (parse error)",
-        BlockerCategory.GOVERNANCE: "Governance (GOVERNANCE)",
-    }
-
-    lines = ["# Blocker Rollup (auto-generated)\n",
-             f"**{len(blockers)} sections need input:**\n"]
-    for cat_key in BlockerCategory:
-        cat_blockers = groups[cat_key]
-        if not cat_blockers:
-            continue
-        lines.append(f"# {category_titles[cat_key]}\n")
-        for b in cat_blockers:
-            if str(b["section"]).lower() == "global":
-                heading = "## Global — philosophy bootstrap"
-            else:
-                heading = f"## Section {b['section']} — {b['state']}"
-            lines.append(heading)
-            lines.append(f"- **Detail**: {b['detail']}")
-            if b["why_blocked"]:
-                lines.append(f"- **Why blocked**: {b['why_blocked']}")
-            if b["needs"]:
-                lines.append(f"- **Needs**: {b['needs']}")
-            lines.append(f"- **Signal file**: `{b['signal_file']}`")
-            lines.append("")
-    rollup_path.write_text("\n".join(lines), encoding="utf-8")
+    """Auto-generate a decision-surface rollup from blocker signals."""
+    from containers import Services
+    manager = BlockerManager(hasher=Services.hasher())
+    manager.update_blocker_rollup(planspace)

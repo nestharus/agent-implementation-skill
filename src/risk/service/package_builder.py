@@ -5,16 +5,15 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
 from proposal.repository.state import ProposalState, load_proposal_state
-from risk.repository.serialization import (
-    load_risk_package,
-    serialize_package,
-    write_risk_artifact,
-)
+from risk.repository.serialization import serialize_package
 from risk.types import AssessmentClass, DecisionClass, PackageStep, RiskPackage, StepClass
+
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 _MICROSTRATEGY_LINE_RE = re.compile(r"^(?:[-*+]|\d+\.)\s+(.+)$")
 _MICROSTRATEGY_HEADING_RE = re.compile(r"^#{1,6}\s+(.+)$")
@@ -42,58 +41,96 @@ def build_package(
     )
 
 
+class PackageBuilder:
+    """Builds risk packages via injected artifact_io dependency."""
+
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
+
+    def build_package_from_proposal(
+        self,
+        scope: str,
+        planspace: Path,
+    ) -> RiskPackage:
+        """Build a package from proposal-state and microstrategy artifacts."""
+        paths = PathRegistry(planspace)
+        section_number = scope_number(scope)
+        proposal_excerpt_path = paths.proposal_excerpt(section_number)
+        microstrategy_path = paths.microstrategy(section_number)
+        problem_frame_path = paths.problem_frame(section_number)
+        proposal_state_path = paths.proposal_state(section_number)
+        readiness_path = paths.execution_ready(section_number)
+
+        proposal_excerpt = read_text(proposal_excerpt_path)
+        problem_frame = read_text(problem_frame_path)
+        microstrategy = read_text(microstrategy_path)
+        proposal_state = load_proposal_state(proposal_state_path)
+        readiness = self._artifact_io.read_json(readiness_path)
+
+        microstrategy_steps = (
+            _extract_microstrategy_steps(microstrategy) if microstrategy else []
+        )
+        step_summaries = [
+            _microstrategy_summary(step)
+            for step in microstrategy_steps
+            if _microstrategy_summary(step)
+        ]
+        assessment_classes = {}
+        if microstrategy_steps:
+            for i, step in enumerate(microstrategy_steps, start=1):
+                if isinstance(step, dict) and "assessment_class" in step:
+                    assessment_classes[i] = step["assessment_class"]
+
+        if not step_summaries:
+            step_summaries = _default_step_summaries(
+                proposal_excerpt=proposal_excerpt,
+                problem_frame=problem_frame,
+                readiness=readiness if isinstance(readiness, dict) else None,
+            )
+
+        steps = _materialize_steps(
+            step_summaries=step_summaries,
+            proposal_state=proposal_state,
+            assessment_classes=assessment_classes or None,
+        )
+        return build_package(
+            scope=scope,
+            layer="implementation",
+            problem_id=f"{scope}:proposal",
+            source="proposal",
+            steps=steps,
+        )
+
+    def write_package(self, paths: PathRegistry, package: RiskPackage) -> Path:
+        """Persist a package to the risk directory."""
+        from risk.repository.serialization import RiskSerializer
+        path = paths.risk_package(package.scope)
+        serializer = RiskSerializer(artifact_io=self._artifact_io)
+        serializer.write_risk_artifact(path, serialize_package(package))
+        return path
+
+    def read_package(self, paths: PathRegistry, scope: str) -> RiskPackage | None:
+        """Read an existing package from the risk directory."""
+        from risk.repository.serialization import RiskSerializer
+        serializer = RiskSerializer(artifact_io=self._artifact_io)
+        return serializer.load_risk_package(paths.risk_package(scope))
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat free-function wrappers
+# ---------------------------------------------------------------------------
+
+def _get_builder() -> PackageBuilder:
+    from containers import Services
+    return PackageBuilder(artifact_io=Services.artifact_io())
+
+
 def build_package_from_proposal(
     scope: str,
     planspace: Path,
 ) -> RiskPackage:
     """Build a package from proposal-state and microstrategy artifacts."""
-    paths = PathRegistry(planspace)
-    section_number = scope_number(scope)
-    proposal_excerpt_path = paths.proposal_excerpt(section_number)
-    microstrategy_path = paths.microstrategy(section_number)
-    problem_frame_path = paths.problem_frame(section_number)
-    proposal_state_path = paths.proposal_state(section_number)
-    readiness_path = paths.execution_ready(section_number)
-
-    proposal_excerpt = read_text(proposal_excerpt_path)
-    problem_frame = read_text(problem_frame_path)
-    microstrategy = read_text(microstrategy_path)
-    proposal_state = load_proposal_state(proposal_state_path)
-    readiness = Services.artifact_io().read_json(readiness_path)
-
-    microstrategy_steps = (
-        _extract_microstrategy_steps(microstrategy) if microstrategy else []
-    )
-    step_summaries = [
-        _microstrategy_summary(step)
-        for step in microstrategy_steps
-        if _microstrategy_summary(step)
-    ]
-    assessment_classes = {}
-    if microstrategy_steps:
-        for i, step in enumerate(microstrategy_steps, start=1):
-            if isinstance(step, dict) and "assessment_class" in step:
-                assessment_classes[i] = step["assessment_class"]
-
-    if not step_summaries:
-        step_summaries = _default_step_summaries(
-            proposal_excerpt=proposal_excerpt,
-            problem_frame=problem_frame,
-            readiness=readiness if isinstance(readiness, dict) else None,
-        )
-
-    steps = _materialize_steps(
-        step_summaries=step_summaries,
-        proposal_state=proposal_state,
-        assessment_classes=assessment_classes or None,
-    )
-    return build_package(
-        scope=scope,
-        layer="implementation",
-        problem_id=f"{scope}:proposal",
-        source="proposal",
-        steps=steps,
-    )
+    return _get_builder().build_package_from_proposal(scope, planspace)
 
 
 def refresh_package(
@@ -140,14 +177,12 @@ def refresh_package(
 
 def write_package(paths: PathRegistry, package: RiskPackage) -> Path:
     """Persist a package to the risk directory."""
-    path = paths.risk_package(package.scope)
-    write_risk_artifact(path, serialize_package(package))
-    return path
+    return _get_builder().write_package(paths, package)
 
 
 def read_package(paths: PathRegistry, scope: str) -> RiskPackage | None:
     """Read an existing package from the risk directory."""
-    return load_risk_package(paths.risk_package(scope))
+    return _get_builder().read_package(paths, scope)
 
 
 def _package_id(scope: str, layer: str) -> str:

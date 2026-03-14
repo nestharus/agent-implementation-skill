@@ -124,7 +124,7 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
     try:
         result = run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
+            DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -189,7 +189,7 @@ def test_run_expansion_cycle_merges_research_surfaces_into_pending_payload(
     )
 
     try:
-        result = run_expansion_cycle("01", planspace, codespace, "parent")
+        result = run_expansion_cycle("01", planspace, codespace)
 
         pending_payload = json.loads(
             (

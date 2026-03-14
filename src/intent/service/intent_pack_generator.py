@@ -1,10 +1,11 @@
 """Intent bootstrap: ensure philosophy and per-section intent packs exist."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
-from containers import Services
 from intent.service.philosophy_bootstrap_state import BootstrapResult
 from intent.service.philosophy_bootstrapper import (
     ensure_global_philosophy as _ensure_global_philosophy,
@@ -22,7 +23,20 @@ from orchestrator.path_registry import PathRegistry
 from orchestrator.types import Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
+if TYPE_CHECKING:
+    from containers import (
+        ArtifactIOService,
+        AgentDispatcher,
+        Communicator,
+        HasherService,
+        LogService,
+        ModelPolicyService,
+        PromptGuard,
+        TaskRouterService,
+    )
 
+
+# -- Pure helpers (no Services usage) --------------------------------------
 
 def _walk_md_bounded(
     root: Path,
@@ -58,76 +72,14 @@ def _build_philosophy_catalog(
     )
 
 
-
-def _compute_intent_pack_hash(
-    paths: PathRegistry,
-    section: Section,
-    incoming_notes: str,
-) -> str:
-    """Compute a combined hash over all intent pack input files.
-
-    Used for V3/R59 hash-based invalidation — regenerate pack when
-    any upstream input changes.
-    """
-    sec = section.number
-    parts = [
-        _sha256_file(section.path),
-        _sha256_file(paths.proposal_excerpt(sec)),
-        _sha256_file(paths.alignment_excerpt(sec)),
-        _sha256_file(paths.problem_frame(sec)),
-        _sha256_file(paths.codemap()),
-        _sha256_file(paths.corrections()),
-        _sha256_file(paths.philosophy()),
-        _sha256_file(paths.todos(sec)),
-        Services.hasher().content_hash(incoming_notes),
-    ]
-    combined = ":".join(parts)
-    return Services.hasher().content_hash(combined)
-
-
 def ensure_global_philosophy(
     planspace: Path,
     codespace: Path,
-    parent: str,
 ) -> BootstrapResult:
     return _ensure_global_philosophy(
         planspace,
         codespace,
-        parent,
     )
-
-
-def _check_pack_freshness(
-    problem_path: Path,
-    rubric_path: Path,
-    input_hash: str,
-    hash_file: Path,
-    sec: str,
-) -> bool | None:
-    """Check if the intent pack needs regeneration.
-
-    Returns ``True`` if the pack is fresh (skip), ``False`` if stale
-    (regenerate), or ``None`` if the pack doesn't exist yet.
-    """
-    prev_hash = ""
-    if hash_file.exists():
-        prev_hash = hash_file.read_text(encoding="utf-8").strip()
-
-    both_exist = (
-        problem_path.exists() and problem_path.stat().st_size > 0
-        and rubric_path.exists() and rubric_path.stat().st_size > 0
-    )
-    if both_exist and input_hash == prev_hash and prev_hash:
-        Services.logger().log(
-            f"Section {sec}: intent pack exists, inputs unchanged "
-            "— skipping generation"
-        )
-        return True
-    if both_exist:
-        Services.logger().log(f"Section {sec}: intent pack inputs changed — regenerating")
-        return False
-    Services.logger().log(f"Section {sec}: generating intent pack")
-    return None
 
 
 @dataclass(frozen=True)
@@ -299,66 +251,195 @@ def _build_intent_pack_prompt(
     )
 
 
+class IntentPackGenerator:
+    """Generate per-section intent packs (problem.md + rubric)."""
+
+    def __init__(
+        self,
+        artifact_io: ArtifactIOService,
+        communicator: Communicator,
+        dispatcher: AgentDispatcher,
+        hasher: HasherService,
+        logger: LogService,
+        policies: ModelPolicyService,
+        prompt_guard: PromptGuard,
+        task_router: TaskRouterService,
+    ) -> None:
+        self._artifact_io = artifact_io
+        self._communicator = communicator
+        self._dispatcher = dispatcher
+        self._hasher = hasher
+        self._logger = logger
+        self._policies = policies
+        self._prompt_guard = prompt_guard
+        self._task_router = task_router
+
+    def _compute_intent_pack_hash(
+        self,
+        paths: PathRegistry,
+        section: Section,
+        incoming_notes: str,
+    ) -> str:
+        """Compute a combined hash over all intent pack input files."""
+        sec = section.number
+        parts = [
+            _sha256_file(section.path),
+            _sha256_file(paths.proposal_excerpt(sec)),
+            _sha256_file(paths.alignment_excerpt(sec)),
+            _sha256_file(paths.problem_frame(sec)),
+            _sha256_file(paths.codemap()),
+            _sha256_file(paths.corrections()),
+            _sha256_file(paths.philosophy()),
+            _sha256_file(paths.todos(sec)),
+            self._hasher.content_hash(incoming_notes),
+        ]
+        combined = ":".join(parts)
+        return self._hasher.content_hash(combined)
+
+    def _check_pack_freshness(
+        self,
+        problem_path: Path,
+        rubric_path: Path,
+        input_hash: str,
+        hash_file: Path,
+        sec: str,
+    ) -> bool | None:
+        """Check if the intent pack needs regeneration."""
+        prev_hash = ""
+        if hash_file.exists():
+            prev_hash = hash_file.read_text(encoding="utf-8").strip()
+
+        both_exist = (
+            problem_path.exists() and problem_path.stat().st_size > 0
+            and rubric_path.exists() and rubric_path.stat().st_size > 0
+        )
+        if both_exist and input_hash == prev_hash and prev_hash:
+            self._logger.log(
+                f"Section {sec}: intent pack exists, inputs unchanged "
+                "— skipping generation"
+            )
+            return True
+        if both_exist:
+            self._logger.log(f"Section {sec}: intent pack inputs changed — regenerating")
+            return False
+        self._logger.log(f"Section {sec}: generating intent pack")
+        return None
+
+    def generate_intent_pack(
+        self,
+        section: Section,
+        planspace: Path,
+        codespace: Path,
+        *,
+        incoming_notes: str = "",
+    ) -> Path:
+        """Generate the per-section intent pack (problem.md + rubric).
+
+        Returns the path to the section's intent directory.
+        """
+        policy = self._policies.load(planspace)
+        paths = PathRegistry(planspace)
+        sec = section.number
+        intent_sec = paths.intent_section_dir(sec)
+
+        problem_path = intent_sec / "problem.md"
+        rubric_path = intent_sec / "problem-alignment.md"
+
+        input_hash = self._compute_intent_pack_hash(paths, section, incoming_notes)
+        hash_file = intent_sec / "intent-pack-input-hash.txt"
+
+        freshness = self._check_pack_freshness(problem_path, rubric_path, input_hash, hash_file, sec)
+        if freshness is True:
+            return intent_sec
+
+        inputs = _build_inputs_block(
+            section.path, paths, sec, codespace, section.related_files, incoming_notes,
+        )
+        prompt_text = _build_intent_pack_prompt(
+            sec, inputs.inputs_block, inputs.file_list, inputs.notes_block,
+            problem_path, rubric_path, intent_sec,
+        )
+
+        prompt_path = paths.artifacts / f"intent-pack-{sec}-prompt.md"
+        output_path = paths.artifacts / f"intent-pack-{sec}-output.md"
+        if not self._prompt_guard.write_validated(prompt_text, prompt_path):
+            return None
+        self._communicator.log_artifact(planspace, f"prompt:intent-pack-{sec}")
+
+        result = self._dispatcher.dispatch(
+            self._policies.resolve(policy, "intent_pack"),
+            prompt_path, output_path, planspace,
+            codespace=codespace, section_number=sec,
+            agent_file=self._task_router.agent_for("intent.pack_generator"),
+        )
+        if result == ALIGNMENT_CHANGED_PENDING:
+            return intent_sec
+
+        registry_path = intent_sec / "surface-registry.json"
+        if not registry_path.exists():
+            self._artifact_io.write_json(
+                registry_path, {"section": sec, "next_id": 1, "surfaces": []},
+            )
+
+        if problem_path.exists() and rubric_path.exists():
+            self._logger.log(f"Section {sec}: intent pack generated")
+            hash_file.write_text(input_hash, encoding="utf-8")
+        else:
+            self._logger.log(f"Section {sec}: intent pack generation incomplete")
+
+        return intent_sec
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
+
+def _get_intent_pack_generator() -> IntentPackGenerator:
+    from containers import Services
+    return IntentPackGenerator(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        dispatcher=Services.dispatcher(),
+        hasher=Services.hasher(),
+        logger=Services.logger(),
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+    )
+
+
+def _compute_intent_pack_hash(
+    paths: PathRegistry,
+    section: Section,
+    incoming_notes: str,
+) -> str:
+    """Compute a combined hash over all intent pack input files."""
+    return _get_intent_pack_generator()._compute_intent_pack_hash(
+        paths, section, incoming_notes,
+    )
+
+
+def _check_pack_freshness(
+    problem_path: Path,
+    rubric_path: Path,
+    input_hash: str,
+    hash_file: Path,
+    sec: str,
+) -> bool | None:
+    return _get_intent_pack_generator()._check_pack_freshness(
+        problem_path, rubric_path, input_hash, hash_file, sec,
+    )
+
+
 def generate_intent_pack(
     section: Section,
     planspace: Path,
     codespace: Path,
-    parent: str,
     *,
     incoming_notes: str = "",
 ) -> Path:
-    """Generate the per-section intent pack (problem.md + rubric).
-
-    Returns the path to the section's intent directory.
-    """
-    policy = Services.policies().load(planspace)
-    paths = PathRegistry(planspace)
-    sec = section.number
-    intent_sec = paths.intent_section_dir(sec)
-
-    problem_path = intent_sec / "problem.md"
-    rubric_path = intent_sec / "problem-alignment.md"
-
-    input_hash = _compute_intent_pack_hash(paths, section, incoming_notes)
-    hash_file = intent_sec / "intent-pack-input-hash.txt"
-
-    freshness = _check_pack_freshness(problem_path, rubric_path, input_hash, hash_file, sec)
-    if freshness is True:
-        return intent_sec
-
-    inputs = _build_inputs_block(
-        section.path, paths, sec, codespace, section.related_files, incoming_notes,
+    """Generate the per-section intent pack (problem.md + rubric)."""
+    return _get_intent_pack_generator().generate_intent_pack(
+        section, planspace, codespace,
+        incoming_notes=incoming_notes,
     )
-    prompt_text = _build_intent_pack_prompt(
-        sec, inputs.inputs_block, inputs.file_list, inputs.notes_block,
-        problem_path, rubric_path, intent_sec,
-    )
-
-    prompt_path = paths.artifacts / f"intent-pack-{sec}-prompt.md"
-    output_path = paths.artifacts / f"intent-pack-{sec}-output.md"
-    if not Services.prompt_guard().write_validated(prompt_text, prompt_path):
-        return None
-    Services.communicator().log_artifact(planspace, f"prompt:intent-pack-{sec}")
-
-    result = Services.dispatcher().dispatch(
-        Services.policies().resolve(policy, "intent_pack"),
-        prompt_path, output_path, planspace, parent,
-        codespace=codespace, section_number=sec,
-        agent_file=Services.task_router().agent_for("intent.pack_generator"),
-    )
-    if result == ALIGNMENT_CHANGED_PENDING:
-        return intent_sec
-
-    registry_path = intent_sec / "surface-registry.json"
-    if not registry_path.exists():
-        Services.artifact_io().write_json(
-            registry_path, {"section": sec, "next_id": 1, "surfaces": []},
-        )
-
-    if problem_path.exists() and rubric_path.exists():
-        Services.logger().log(f"Section {sec}: intent pack generated")
-        hash_file.write_text(input_hash, encoding="utf-8")
-    else:
-        Services.logger().log(f"Section {sec}: intent pack generation incomplete")
-
-    return intent_sec

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
 from pipeline.template import load_template, render
+
+if TYPE_CHECKING:
+    from containers import ConfigService
 
 
 def signal_instructions(signal_path: Path) -> str:
@@ -15,23 +18,30 @@ def signal_instructions(signal_path: Path) -> str:
     return render(template, {"signal_path": signal_path})
 
 
-def agent_mail_instructions(
-    planspace: Path,
-    agent_name: str,
-    monitor_name: str,
-) -> str:
-    """Return narration-via-mailbox instructions for an agent."""
-    run_db = PathRegistry(planspace).run_db()
-    mailbox_cmd = (
-        f'bash "{Services.config().db_sh}" send "{run_db}" '
-        f"{agent_name} --from {agent_name}"
-    )
-    template = load_template("dispatch/mail-instructions.md")
-    return render(template, {
-        "agent_name": agent_name,
-        "monitor_name": monitor_name,
-        "mailbox_cmd": mailbox_cmd,
-    })
+class PromptFormatters:
+    """Prompt formatting helpers that require service dependencies."""
+
+    def __init__(self, config: ConfigService) -> None:
+        self._config = config
+
+    def agent_mail_instructions(
+        self,
+        planspace: Path,
+        agent_name: str,
+        monitor_name: str,
+    ) -> str:
+        """Return narration-via-mailbox instructions for an agent."""
+        run_db = PathRegistry(planspace).run_db()
+        mailbox_cmd = (
+            f'bash "{self._config.db_sh}" send "{run_db}" '
+            f"{agent_name} --from {agent_name}"
+        )
+        template = load_template("dispatch/mail-instructions.md")
+        return render(template, {
+            "agent_name": agent_name,
+            "monitor_name": monitor_name,
+            "mailbox_cmd": mailbox_cmd,
+        })
 
 
 def format_existing_file_listing(
@@ -58,4 +68,24 @@ def scoped_context_block(sidecar_path: Path | str | None) -> str:
         f"\n## Scoped Context\n"
         f"Agent context sidecar with resolved inputs: "
         f"`{sidecar_path}`\n"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
+
+def _get_formatters() -> PromptFormatters:
+    from containers import Services
+    return PromptFormatters(config=Services.config())
+
+
+def agent_mail_instructions(
+    planspace: Path,
+    agent_name: str,
+    monitor_name: str,
+) -> str:
+    """Return narration-via-mailbox instructions for an agent."""
+    return _get_formatters().agent_mail_instructions(
+        planspace, agent_name, monitor_name,
     )

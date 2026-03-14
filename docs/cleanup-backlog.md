@@ -236,6 +236,35 @@ Functions that accept parameters which could be computed from other parameters a
 
 ## OPEN
 
+### ~~177. Rescan Cycle 28 — dead imports, dead constant, redundant mkdirs, magic strings~~ DONE
+- **Category**: Multi-category rescan and cleanup
+- **Source**: Full rescan (Cycle 28)
+- **Dead code removed**:
+  - `Any` unused import in `intent/service/intent_pack_generator.py`
+  - `INTENT_MODE_CACHED` dead constant in `signals/types.py` (zero references)
+- **Redundant mkdir calls removed** (4 sites):
+  - `scan/explore/tier_ranker.py` (2 sites: `signals_dir.mkdir` in `_escalate_ranking_failure` and `_validate_generated_tier`)
+  - `flow/engine/task_dispatcher.py` (`artifacts_dir.mkdir` — root artifacts guaranteed by `ensure_artifacts_tree()`)
+  - `research/engine/orchestrator.py` (`research_dir.mkdir` — `research_section_dir()` is `@_artifact_dir`)
+  - `staleness/service/section_alignment_checker.py` (`paths.artifacts.mkdir` — root artifacts guaranteed)
+- **Magic string constants extracted** (20+ sites across 15 files):
+  - `SIGNAL_UNDERSPEC`, `SIGNAL_DEPENDENCY`, `SIGNAL_LOOP_DETECTED` added to `signals/types.py` — replaced raw strings in `output_adjudicator.py`, `implementation_cycle.py`, `alignment_handler.py`, `signal_reader.py`, `blocker_manager.py`
+  - `ACTION_BREAK` added to `signals/types.py` — replaced `"break"` in `proposal_cycle.py`, `expansion_handler.py`, `surface_handler.py`
+  - `MAILBOX_COMPLETE` added to `signals/types.py` — replaced in `mailbox_service.py`
+  - `EXCERPT_PROPOSAL`, `EXCERPT_ALIGNMENT` added to `proposal/repository/excerpts.py` — replaced in `excerpt_extractor.py`, `problem_frame_gate.py`
+  - `DECISION_STATUS_DECIDED`, `DECISION_SCOPE_GLOBAL` added to `orchestrator/repository/decisions.py` — replaced in `strategic_state_builder.py`, `decisions.py`
+  - `_PIPELINE_STATE_PAUSED` added to `orchestrator/service/pipeline_state.py`
+  - `_ACTION_KIND_CHAIN`, `_ACTION_KIND_FANOUT` added to `flow/types/schema.py`
+  - `_GATE_FAILURE_POLICY_BLOCK` added to `flow/repository/gate_repository.py`
+- **Dismissed** (not actionable):
+  - `"no_action"` in `tool_bridge.py` — already type-safe via `Literal["bridged", "no_action", "needs_parent"]`
+  - `"default"` in `project_mode.py` — single-use internal comparison on reason field
+  - `"ok"` in `related_file_resolver.py` — backward-compat alias for `RelatedFileStatus.CURRENT`
+  - `"skip"` in `engagement.py` — legacy normalization comment
+  - `"json"`, `"dir"`, `"text"` in `risk/prompt/writers.py` — prompt artifact kind labels, internal to one function
+  - `.startswith()` prefixes (`"governance_"`, `"valid_"`, `"P-"`, `"F-"`) — structural prefixes, not protocol tokens
+- **Status**: DONE — all 1583 tests pass
+
 ### ~~93. Long parameter lists — procedural style bypasses encapsulation~~ CLOSED
 - **Category**: God functions / missing abstraction
 - **Source**: External code review (R118), coupling analysis (R118)
@@ -1321,3 +1350,22 @@ Functions that accept parameters which could be computed from other parameters a
 - **Source**: Rescan after #171
 - **Problem**: Three more `mkdir(parents=True, exist_ok=True)` calls on directories already created by `ensure_artifacts_tree()`: `readiness_dir` in `proposal/service/readiness_resolver.py`, `section_inputs_hashes_dir` in `orchestrator/service/pipeline_control.py`, and `phase2_inputs_hashes_dir` in `staleness/service/global_alignment_rechecker.py`.
 - **Status**: DONE — Removed all three redundant mkdir calls.
+
+### ~~173. Service Locator anti-pattern — `Services.*()` used as global accessor instead of constructor injection~~ DONE
+- **Category**: Architectural / DI
+- **Source**: External review + design discussion
+- **Problem**: `Services.logger().log(...)`, `Services.artifact_io().read_json(...)` etc. are called as global accessors inside free functions throughout the codebase. This is the Service Locator anti-pattern — functions reach into a global container at call time instead of receiving dependencies through constructors. Makes testing harder (must override globals rather than pass mocks) and hides dependencies.
+- **Design direction**: Convert orchestrator modules to classes that receive services via constructor injection. The DI container wires dependencies at construction time, not at call time. `dependency_injector` supports this via `providers.Factory` with `inject` decorators.
+- **Scale**: Every module that calls `Services.*()` — ~50+ files.
+
+### ~~174. Main pipeline loop uses in-memory dicts instead of persistent repositories~~ DONE
+- **Category**: Architectural / crash recovery / state management
+- **Resolution**: Created `orchestrator/repository/cycle_state.py` with `CycleState` class — a filesystem-backed store for `proposal_results` and `section_results`. Every mutation flushes to JSON files (`proposal-results.json`, `section-results.json` in artifacts). `pipeline_orchestrator._run_loop()` now creates a `CycleState` at startup, clears it at each cycle start, and flushes after each phase. Reconciliation's in-place mutations are flushed explicitly. On crash, the orchestrator can resume from persisted state. All 1583 tests pass.
+
+### ~~175. Replace `parent` parameter threading with event/subscriber model~~ DONE
+- **Category**: Architectural / communication model
+- **Resolution**: Removed `parent: str` from ~167 function signatures across all packages. The `parent` queue name is now stored once at startup via `set_parent()` on `Communicator`, `PipelineControl`, and `SectionCommunicator`. All call sites use `send_to_parent(planspace, message)` / `pause_for_parent(planspace, signal)` — no function needs to know or pass the parent name. `DispatchContext` and `PipelineContext` no longer carry `parent`. All 1583 tests pass.
+
+### ~~176. Collapse three-layer DI indirection — containers.py wrapper classes call free functions that create real classes~~ DONE
+- **Category**: Dead code / indirection
+- **Resolution**: Container wrapper classes now instantiate real classes directly (e.g., `PipelineControlService` creates `PipelineControl` with constructor-injected deps from `Services.*()`, bypassing backward-compat free functions). Deleted dead backward-compat wrappers in `pipeline_control.py` (7 functions) and `section_communicator.py` (1 function). Retained wrappers still used by production/test code (`alignment_changed_pending`, `send_to_parent`, etc.). All 1583 tests pass.

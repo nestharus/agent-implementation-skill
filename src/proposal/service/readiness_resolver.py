@@ -6,9 +6,10 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from containers import Services
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 
 class GovernanceBlockerState(str, Enum):
@@ -270,101 +271,132 @@ def _check_missing_packet(has_declared_ids: bool, packet: Any) -> list[dict]:
     return []
 
 
+class ReadinessResolver:
+    def __init__(
+        self,
+        artifact_io: ArtifactIOService,
+    ) -> None:
+        self._artifact_io = artifact_io
+
+    def _validate_governance_identity(
+        self,
+        state: ProposalState,
+        planspace: Path,
+        section_number: str,
+    ) -> list[dict]:
+        """Validate governance identity fields against the governance packet.
+
+        *planspace* is the root planspace directory.  PathRegistry is used for
+        all artifact path construction (PAT-0003).
+
+        Returns a list of governance blockers (empty if valid).
+        """
+        blockers: list[dict] = []
+
+        blockers.extend(_check_pattern_deviations(state))
+        blockers.extend(_check_governance_questions(state))
+
+        # Load governance packet for validation
+        paths = PathRegistry(planspace)
+        packet_path = paths.governance_packet(section_number)
+        packet = self._artifact_io.read_json(packet_path)
+
+        gov_ids = _validate_declared_ids_types(state, section_number)
+        has_declared_ids = gov_ids.has_declared_ids()
+
+        if isinstance(packet, dict):
+            blockers.extend(_check_packet_ambiguity(packet, state))
+            blockers.extend(_check_empty_identity(packet, has_declared_ids))
+
+            governing_profile = packet.get("governing_profile", "")
+            if not isinstance(governing_profile, str):
+                governing_profile = ""
+            blockers.extend(_check_profile_mismatch(gov_ids.profile_id, governing_profile))
+
+            packet_problems = packet.get("candidate_problems", [])
+            packet_patterns = packet.get("candidate_patterns", [])
+            if not isinstance(packet_problems, list):
+                packet_problems = []
+            if not isinstance(packet_patterns, list):
+                packet_patterns = []
+            blockers.extend(_check_packet_membership(
+                gov_ids.problem_ids, gov_ids.pattern_ids,
+                packet_problems, packet_patterns,
+            ))
+        else:
+            blockers.extend(_check_missing_packet(has_declared_ids, packet))
+
+        return blockers
+
+    def resolve_readiness(self, planspace: Path, section_number: str) -> ReadinessResult:
+        """Resolve whether *section_number* is ready for implementation.
+
+        *planspace* is the root planspace directory (NOT the artifacts subdirectory).
+        PathRegistry is used for all artifact path construction (PAT-0003).
+        """
+        paths = PathRegistry(planspace)
+        proposal_state_path = paths.proposal_state(section_number)
+        state = load_proposal_state(proposal_state_path)
+
+        ready = state.execution_ready is True and not has_blocking_fields(state)
+        blockers = extract_blockers(state)
+
+        # Validate governance identity (PAT-0013)
+        governance_blockers = self._validate_governance_identity(
+            state, planspace, section_number,
+        )
+        if governance_blockers:
+            blockers.extend(governance_blockers)
+            ready = False
+
+        rationale = state.readiness_rationale
+
+        if not ready and not blockers:
+            if not proposal_state_path.exists():
+                rationale = rationale or "proposal-state artifact missing"
+            elif not state.execution_ready:
+                rationale = rationale or "execution_ready is false"
+
+        serializable: dict = {
+            "ready": ready,
+            "blockers": blockers,
+            "rationale": rationale,
+        }
+
+        readiness_dir = paths.readiness_dir()
+        artifact_path = paths.execution_ready(section_number)
+        try:
+            self._artifact_io.write_json(artifact_path, serializable)
+        except OSError:
+            logger.warning("Could not write readiness artifact to %s", artifact_path)
+
+        return ReadinessResult(
+            ready=ready,
+            blockers=blockers,
+            rationale=rationale,
+            artifact_path=artifact_path,
+        )
+
+
+# Backward-compat wrappers
+
+def _get_readiness_resolver() -> ReadinessResolver:
+    from containers import Services
+    return ReadinessResolver(
+        artifact_io=Services.artifact_io(),
+    )
+
+
 def _validate_governance_identity(
     state: ProposalState,
     planspace: Path,
     section_number: str,
 ) -> list[dict]:
-    """Validate governance identity fields against the governance packet.
-
-    *planspace* is the root planspace directory.  PathRegistry is used for
-    all artifact path construction (PAT-0003).
-
-    Returns a list of governance blockers (empty if valid).
-    """
-    blockers: list[dict] = []
-
-    blockers.extend(_check_pattern_deviations(state))
-    blockers.extend(_check_governance_questions(state))
-
-    # Load governance packet for validation
-    paths = PathRegistry(planspace)
-    packet_path = paths.governance_packet(section_number)
-    packet = Services.artifact_io().read_json(packet_path)
-
-    gov_ids = _validate_declared_ids_types(state, section_number)
-    has_declared_ids = gov_ids.has_declared_ids()
-
-    if isinstance(packet, dict):
-        blockers.extend(_check_packet_ambiguity(packet, state))
-        blockers.extend(_check_empty_identity(packet, has_declared_ids))
-
-        governing_profile = packet.get("governing_profile", "")
-        if not isinstance(governing_profile, str):
-            governing_profile = ""
-        blockers.extend(_check_profile_mismatch(gov_ids.profile_id, governing_profile))
-
-        packet_problems = packet.get("candidate_problems", [])
-        packet_patterns = packet.get("candidate_patterns", [])
-        if not isinstance(packet_problems, list):
-            packet_problems = []
-        if not isinstance(packet_patterns, list):
-            packet_patterns = []
-        blockers.extend(_check_packet_membership(
-            gov_ids.problem_ids, gov_ids.pattern_ids,
-            packet_problems, packet_patterns,
-        ))
-    else:
-        blockers.extend(_check_missing_packet(has_declared_ids, packet))
-
-    return blockers
+    return _get_readiness_resolver()._validate_governance_identity(
+        state, planspace, section_number,
+    )
 
 
 def resolve_readiness(planspace: Path, section_number: str) -> ReadinessResult:
-    """Resolve whether *section_number* is ready for implementation.
-
-    *planspace* is the root planspace directory (NOT the artifacts subdirectory).
-    PathRegistry is used for all artifact path construction (PAT-0003).
-    """
-    paths = PathRegistry(planspace)
-    proposal_state_path = paths.proposal_state(section_number)
-    state = load_proposal_state(proposal_state_path)
-
-    ready = state.execution_ready is True and not has_blocking_fields(state)
-    blockers = extract_blockers(state)
-
-    # Validate governance identity (PAT-0013)
-    governance_blockers = _validate_governance_identity(
-        state, planspace, section_number,
-    )
-    if governance_blockers:
-        blockers.extend(governance_blockers)
-        ready = False
-
-    rationale = state.readiness_rationale
-
-    if not ready and not blockers:
-        if not proposal_state_path.exists():
-            rationale = rationale or "proposal-state artifact missing"
-        elif not state.execution_ready:
-            rationale = rationale or "execution_ready is false"
-
-    serializable: dict = {
-        "ready": ready,
-        "blockers": blockers,
-        "rationale": rationale,
-    }
-
-    readiness_dir = paths.readiness_dir()
-    artifact_path = paths.execution_ready(section_number)
-    try:
-        Services.artifact_io().write_json(artifact_path, serializable)
-    except OSError:
-        logger.warning("Could not write readiness artifact to %s", artifact_path)
-
-    return ReadinessResult(
-        ready=ready,
-        blockers=blockers,
-        rationale=rationale,
-        artifact_path=artifact_path,
-    )
+    """Resolve whether *section_number* is ready for implementation."""
+    return _get_readiness_resolver().resolve_readiness(planspace, section_number)

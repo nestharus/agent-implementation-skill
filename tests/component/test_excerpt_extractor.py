@@ -74,7 +74,6 @@ def test_extract_excerpts_returns_ok_when_setup_creates_files(
             section,
             planspace,
             codespace,
-            "parent",
         )
 
         assert result == "ok"
@@ -132,7 +131,6 @@ def test_extract_excerpts_routes_out_of_scope_then_retries(
             section,
             planspace,
             codespace,
-            "parent",
         )
 
         scope_delta_path = (
@@ -178,7 +176,6 @@ def test_extract_excerpts_returns_none_when_parent_does_not_resume(
             section,
             planspace,
             codespace,
-            "parent",
         )
 
         assert result is None

@@ -190,7 +190,6 @@ class TestExtractProblems:
                 "Some non-JSON alignment output",
                 output_path=output_path,
                 planspace=planspace,
-                parent="orchestrator",
                 codespace=codespace,
                 adjudicator_model="glm",
             )
@@ -216,7 +215,6 @@ class TestExtractProblems:
                 "Looks good",
                 output_path=output_path,
                 planspace=planspace,
-                parent="orchestrator",
                 codespace=codespace,
                 adjudicator_model="glm",
             )

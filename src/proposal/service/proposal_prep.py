@@ -7,52 +7,106 @@ and prompt assembly from the main loop orchestration.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
+if TYPE_CHECKING:
+    from containers import DispatchHelperService, LogService, ModelPolicyService
+
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.writers import write_integration_proposal_prompt
 from reconciliation.repository.results import load_result as load_reconciliation_result
 
 
-def resolve_proposal_model(
-    section_number: str,
-    planspace: Path,
-    proposal_attempt: int,
-) -> str:
-    """Select the proposal model, escalating if stall conditions are met."""
-    paths = PathRegistry(planspace)
-    policy = Services.policies().load(planspace)
-    proposal_model = Services.policies().resolve(policy, "proposal")
-    notes_count = 0
-    notes_dir = paths.notes_dir()
-    if notes_dir.exists():
-        notes_count = len(list(notes_dir.glob(f"from-*-to-{section_number}.md")))
-    escalated_from = None
-    triggers = policy.get("escalation_triggers", {})
-    max_attempts = triggers.get("max_attempts_before_escalation", 3)
-    stall_threshold = triggers.get("stall_count", 2)
-    if proposal_attempt >= max_attempts or notes_count >= stall_threshold:
-        escalated_from = proposal_model
-        proposal_model = Services.policies().resolve(policy, "escalation_model")
-        Services.logger().log(
-            f"Section {section_number}: escalating to "
-            f"{proposal_model} (attempt={proposal_attempt}, notes={notes_count})"
-        )
+class ProposalPrep:
+    def __init__(
+        self,
+        logger: LogService,
+        policies: ModelPolicyService,
+        dispatch_helpers: DispatchHelperService,
+    ) -> None:
+        self._logger = logger
+        self._policies = policies
+        self._dispatch_helpers = dispatch_helpers
 
-    reason = (
-        f"attempt={proposal_attempt}, notes={notes_count}"
-        if escalated_from
-        else "first attempt, default model"
-    )
-    Services.dispatch_helpers().write_model_choice_signal(
-        planspace,
-        section_number,
-        "integration-proposal",
-        proposal_model,
-        reason,
-        escalated_from,
-    )
-    return proposal_model
+    def resolve_proposal_model(
+        self,
+        section_number: str,
+        planspace: Path,
+        proposal_attempt: int,
+    ) -> str:
+        """Select the proposal model, escalating if stall conditions are met."""
+        paths = PathRegistry(planspace)
+        policy = self._policies.load(planspace)
+        proposal_model = self._policies.resolve(policy, "proposal")
+        notes_count = 0
+        notes_dir = paths.notes_dir()
+        if notes_dir.exists():
+            notes_count = len(list(notes_dir.glob(f"from-*-to-{section_number}.md")))
+        escalated_from = None
+        triggers = policy.get("escalation_triggers", {})
+        max_attempts = triggers.get("max_attempts_before_escalation", 3)
+        stall_threshold = triggers.get("stall_count", 2)
+        if proposal_attempt >= max_attempts or notes_count >= stall_threshold:
+            escalated_from = proposal_model
+            proposal_model = self._policies.resolve(policy, "escalation_model")
+            self._logger.log(
+                f"Section {section_number}: escalating to "
+                f"{proposal_model} (attempt={proposal_attempt}, notes={notes_count})"
+            )
+
+        reason = (
+            f"attempt={proposal_attempt}, notes={notes_count}"
+            if escalated_from
+            else "first attempt, default model"
+        )
+        self._dispatch_helpers.write_model_choice_signal(
+            planspace,
+            section_number,
+            "integration-proposal",
+            proposal_model,
+            reason,
+            escalated_from,
+        )
+        return proposal_model
+
+    def build_proposal_prompt(
+        self,
+        section,
+        planspace: Path,
+        codespace: Path,
+        proposal_problems: str | None,
+        incoming_notes: str | None,
+    ) -> Path | None:
+        """Write the proposal prompt and append reconciliation context if needed.
+
+        Returns the prompt path, or None if blocked by template safety.
+        """
+        intg_prompt = write_integration_proposal_prompt(
+            section,
+            planspace,
+            codespace,
+            proposal_problems,
+            incoming_notes=incoming_notes,
+        )
+        if intg_prompt is None:
+            self._logger.log(
+                f"Section {section.number}: integration proposal prompt "
+                f"blocked by template safety — skipping dispatch"
+            )
+            return None
+
+        paths = PathRegistry(planspace)
+        recon_result = load_reconciliation_result(planspace, section.number)
+        if recon_result and recon_result.get("affected"):
+            recon_path = paths.reconciliation_result(section.number)
+            with intg_prompt.open("a", encoding="utf-8") as handle:
+                handle.write(_compose_proposal_text(recon_path))
+            self._logger.log(
+                f"Section {section.number}: appended reconciliation "
+                f"context to proposal prompt"
+            )
+
+        return intg_prompt
 
 
 def _compose_proposal_text(recon_path: Path) -> str:
@@ -70,6 +124,28 @@ def _compose_proposal_text(recon_path: Path) -> str:
     )
 
 
+# Backward-compat wrappers
+
+def _get_proposal_prep() -> ProposalPrep:
+    from containers import Services
+    return ProposalPrep(
+        logger=Services.logger(),
+        policies=Services.policies(),
+        dispatch_helpers=Services.dispatch_helpers(),
+    )
+
+
+def resolve_proposal_model(
+    section_number: str,
+    planspace: Path,
+    proposal_attempt: int,
+) -> str:
+    """Select the proposal model, escalating if stall conditions are met."""
+    return _get_proposal_prep().resolve_proposal_model(
+        section_number, planspace, proposal_attempt,
+    )
+
+
 def build_proposal_prompt(
     section,
     planspace: Path,
@@ -77,33 +153,7 @@ def build_proposal_prompt(
     proposal_problems: str | None,
     incoming_notes: str | None,
 ) -> Path | None:
-    """Write the proposal prompt and append reconciliation context if needed.
-
-    Returns the prompt path, or None if blocked by template safety.
-    """
-    intg_prompt = write_integration_proposal_prompt(
-        section,
-        planspace,
-        codespace,
-        proposal_problems,
-        incoming_notes=incoming_notes,
+    """Write the proposal prompt and append reconciliation context if needed."""
+    return _get_proposal_prep().build_proposal_prompt(
+        section, planspace, codespace, proposal_problems, incoming_notes,
     )
-    if intg_prompt is None:
-        Services.logger().log(
-            f"Section {section.number}: integration proposal prompt "
-            f"blocked by template safety — skipping dispatch"
-        )
-        return None
-
-    paths = PathRegistry(planspace)
-    recon_result = load_reconciliation_result(planspace, section.number)
-    if recon_result and recon_result.get("affected"):
-        recon_path = paths.reconciliation_result(section.number)
-        with intg_prompt.open("a", encoding="utf-8") as handle:
-            handle.write(_compose_proposal_text(recon_path))
-        Services.logger().log(
-            f"Section {section.number}: appended reconciliation "
-            f"context to proposal prompt"
-        )
-
-    return intg_prompt

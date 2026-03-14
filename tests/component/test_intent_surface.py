@@ -70,7 +70,6 @@ def test_run_expansion_cycle_returns_no_work_when_no_surfaces(
             "01",
             tmp_path,
             tmp_path / "codespace",
-            "parent",
         )
 
         assert result == {
@@ -92,7 +91,6 @@ def test_handle_user_gate_writes_philosophy_specific_blocker(
     response = expansion_orchestrator.handle_user_gate(
         "01",
         tmp_path,
-        "parent",
         {
             "needs_user_input": True,
             "user_input_kind": "philosophy",
@@ -114,6 +112,5 @@ def test_handle_user_gate_writes_philosophy_specific_blocker(
     assert len(capturing_pipeline_control.pause_calls) == 1
     assert capturing_pipeline_control.pause_calls[0] == (
         tmp_path,
-        "parent",
         "pause:need_decision:01:Philosophy tension requires user direction",
     )

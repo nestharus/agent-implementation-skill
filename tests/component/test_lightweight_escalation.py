@@ -147,7 +147,7 @@ def test_lightweight_aligned_surfaces_force_reproposal_under_full_intent(
     with override_dispatcher_and_guard(_dispatch):
         result = run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
+            DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -211,7 +211,7 @@ def test_lightweight_aligned_surfaces_persist_registry_entries(
     with override_dispatcher_and_guard(_dispatch):
         run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
+            DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -256,7 +256,7 @@ def test_lightweight_empty_surface_payload_does_not_escalate(
     with override_dispatcher_and_guard(_dispatch):
         result = run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
+            DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -317,7 +317,7 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
         )
         result = run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
+            DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -381,7 +381,7 @@ def test_full_mode_surfaces_do_not_emit_lightweight_escalation_signal(
     with override_dispatcher_and_guard(_dispatch):
         result = run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
+            DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )

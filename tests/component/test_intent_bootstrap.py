@@ -84,14 +84,13 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
     monkeypatch.setattr(
         bootstrap,
         "generate_intent_pack",
-        lambda _section, _planspace, _codespace, _parent, *, incoming_notes: intent_pack_calls.append(incoming_notes),
+        lambda _section, _planspace, _codespace, *, incoming_notes: intent_pack_calls.append(incoming_notes),
     )
 
     cycle_budget = run_intent_bootstrap(
         section,
         planspace,
         codespace,
-        "parent",
         "incoming note",
     )
 
@@ -154,7 +153,6 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
         section,
         planspace,
         codespace,
-        "parent",
         None,
     )
 
@@ -162,7 +160,6 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
     assert blocker_rollups == [planspace]
     assert capturing_pipeline_control.pause_calls == [(
         planspace,
-        "parent",
         "pause:need_decision:global:philosophy bootstrap requires user input",
     )]
     assert not (
@@ -217,7 +214,6 @@ def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
         section,
         planspace,
         codespace,
-        "parent",
         None,
     )
 

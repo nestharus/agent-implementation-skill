@@ -33,7 +33,12 @@ def _monitor_service(tmp_path: Path) -> tuple[MonitorService, DatabaseClient, Pa
     db_path = tmp_path / "run.db"
     client = DatabaseClient(DB_SH, db_path)
     client.execute("init")
-    service = MonitorService(client, "section-loop")
+    from containers import Services
+    service = MonitorService(
+        client, "section-loop",
+        task_router=Services.task_router(),
+        logger=Services.logger(),
+    )
     return service, client, db_path
 
 

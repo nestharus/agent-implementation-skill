@@ -469,7 +469,7 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
         lambda *_args, **_kwargs: None,
     )
 
-    result = resolve_and_route(section, planspace, "parent", "proposal")
+    result = resolve_and_route(section, planspace, "proposal")
 
     assert result.ready is False
     assert result.blockers == [

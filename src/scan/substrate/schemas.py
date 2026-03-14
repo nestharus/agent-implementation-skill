@@ -8,8 +8,10 @@ accepted.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 # ---- Shard schema v1 ----
 
@@ -108,30 +110,65 @@ def validate_seed_plan(data: dict) -> list[str]:
     return errors
 
 
-def _read_failclosed(path: Path, validator, label: str) -> dict | None:
-    """Internal helper: read JSON, validate, rename on failure."""
-    data = Services.artifact_io().read_json(path)
-    if data is None:
-        return None
+class Schemas:
+    """Shard and seed-plan JSON reading with fail-closed behavior.
 
-    if not isinstance(data, dict):
-        print(
-            f"[SUBSTRATE][WARN] {label} at {path} is not a JSON "
-            f"object -- renaming to .malformed.json"
-        )
-        Services.artifact_io().rename_malformed(path)
-        return None
+    All cross-cutting services are received via constructor injection.
+    """
 
-    errors = validator(data)
-    if errors:
-        print(
-            f"[SUBSTRATE][WARN] {label} at {path} has validation "
-            f"errors: {'; '.join(errors)} -- renaming to .malformed.json"
-        )
-        Services.artifact_io().rename_malformed(path)
-        return None
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
 
-    return data
+    def _read_failclosed(self, path: Path, validator, label: str) -> dict | None:
+        """Internal helper: read JSON, validate, rename on failure."""
+        data = self._artifact_io.read_json(path)
+        if data is None:
+            return None
+
+        if not isinstance(data, dict):
+            print(
+                f"[SUBSTRATE][WARN] {label} at {path} is not a JSON "
+                f"object -- renaming to .malformed.json"
+            )
+            self._artifact_io.rename_malformed(path)
+            return None
+
+        errors = validator(data)
+        if errors:
+            print(
+                f"[SUBSTRATE][WARN] {label} at {path} has validation "
+                f"errors: {'; '.join(errors)} -- renaming to .malformed.json"
+            )
+            self._artifact_io.rename_malformed(path)
+            return None
+
+        return data
+
+    def read_shard_failclosed(self, path: Path) -> dict | None:
+        """Read and validate shard JSON.
+
+        Renames malformed files to ``.malformed.json``.
+        Returns ``None`` on failure.
+        """
+        return self._read_failclosed(path, validate_shard, "Shard")
+
+    def read_seed_plan_failclosed(self, path: Path) -> dict | None:
+        """Read and validate seed-plan JSON.
+
+        Renames malformed files to ``.malformed.json``.
+        Returns ``None`` on failure.
+        """
+        return self._read_failclosed(path, validate_seed_plan, "Seed-plan")
+
+
+# ------------------------------------------------------------------
+# Backward-compat free function wrappers
+# ------------------------------------------------------------------
+
+
+def _default_schemas() -> Schemas:
+    from containers import Services
+    return Schemas(artifact_io=Services.artifact_io())
 
 
 def read_shard_failclosed(path: Path) -> dict | None:
@@ -140,7 +177,7 @@ def read_shard_failclosed(path: Path) -> dict | None:
     Renames malformed files to ``.malformed.json``.
     Returns ``None`` on failure.
     """
-    return _read_failclosed(path, validate_shard, "Shard")
+    return _default_schemas().read_shard_failclosed(path)
 
 
 def read_seed_plan_failclosed(path: Path) -> dict | None:
@@ -149,4 +186,4 @@ def read_seed_plan_failclosed(path: Path) -> dict | None:
     Renames malformed files to ``.malformed.json``.
     Returns ``None`` on failure.
     """
-    return _read_failclosed(path, validate_seed_plan, "Seed-plan")
+    return _default_schemas().read_seed_plan_failclosed(path)

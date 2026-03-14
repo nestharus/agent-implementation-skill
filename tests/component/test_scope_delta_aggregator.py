@@ -40,7 +40,6 @@ def test_aggregate_scope_deltas_adjudicates_and_records_decisions(
     try:
         decisions = aggregate_scope_deltas(
             planspace,
-            "parent",
         )
 
         assert decisions == [
@@ -93,7 +92,6 @@ def test_aggregate_scope_deltas_retries_then_fails_closed_on_bad_output(
         with pytest.raises(ScopeDeltaAggregationExit):
             aggregate_scope_deltas(
                 planspace,
-                "parent",
             )
 
         # After policy dict removal, models come from Services.policies().load()
@@ -155,7 +153,6 @@ def test_aggregate_scope_deltas_includes_root_reframing_in_prompt_payload(
     try:
         aggregate_scope_deltas(
             planspace,
-            "parent",
         )
     finally:
         Services.dispatcher.reset_override()

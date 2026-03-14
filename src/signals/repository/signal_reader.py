@@ -7,14 +7,23 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from signals.repository.artifact_io import read_json, rename_malformed
-from signals.types import AgentSignal, SignalResult, SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE, SIGNAL_NEED_DECISION
+from signals.types import (
+    AgentSignal,
+    SignalResult,
+    SIGNAL_DEPENDENCY,
+    SIGNAL_LOOP_DETECTED,
+    SIGNAL_NEED_DECISION,
+    SIGNAL_NEEDS_PARENT,
+    SIGNAL_OUT_OF_SCOPE,
+    SIGNAL_UNDERSPEC,
+)
 
 _SIGNAL_STATE_MAP: dict[str, str] = {
-    "underspec": "underspec",
-    "underspecified": "underspec",
+    SIGNAL_UNDERSPEC: SIGNAL_UNDERSPEC,
+    "underspecified": SIGNAL_UNDERSPEC,
     SIGNAL_NEED_DECISION: SIGNAL_NEED_DECISION,
-    "dependency": "dependency",
-    "loop_detected": "loop_detected",
+    SIGNAL_DEPENDENCY: SIGNAL_DEPENDENCY,
+    SIGNAL_LOOP_DETECTED: SIGNAL_LOOP_DETECTED,
     SIGNAL_OUT_OF_SCOPE: SIGNAL_OUT_OF_SCOPE,
     "out-of-scope": SIGNAL_OUT_OF_SCOPE,
     SIGNAL_NEEDS_PARENT: SIGNAL_NEEDS_PARENT,

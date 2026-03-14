@@ -17,6 +17,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from containers import Services
+from qa.service.qa_interceptor import InterceptResult, QaInterceptor
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,20 +30,15 @@ def evaluate_qa_gate(
     *,
     task: dict[str, str] | None = None,
     submitted_by: str = "section-loop",
-) -> "InterceptResult | None":
+) -> InterceptResult | None:
     """Evaluate QA gate.  Returns InterceptResult if QA is enabled, None if disabled or unavailable.
 
     Parameters
     ----------
     planspace:
         Root planspace directory.
-    section_number:
-        Section being dispatched, if any (unused here but reserved for
-        future per-section QA policies).
     agent_file:
         Basename of the agent definition file (e.g. ``"alignment-judge.md"``).
-    model:
-        Model string (unused here but reserved for future model-aware QA).
     prompt_path:
         Path to the prompt being dispatched.
     task:
@@ -57,29 +55,39 @@ def evaluate_qa_gate(
         proceed with dispatch).  An ``InterceptResult`` when QA ran
         (caller inspects ``.intercepted`` to decide pass/reject).
     """
-    from qa.service.qa_interceptor import InterceptResult
-
-    # 1. Read QA parameters — fail open on import/read errors.
+    # 1. Create interceptor from the DI container.
     try:
-        from qa.service.qa_interceptor import read_qa_parameters
-        qa_params = read_qa_parameters(planspace)
+        interceptor = QaInterceptor(
+            artifact_io=Services.artifact_io(),
+            task_router=Services.task_router(),
+            policies=Services.policies(),
+            dispatcher=Services.dispatcher(),
+            prompt_guard=Services.prompt_guard(),
+        )
     except Exception:  # noqa: BLE001 — fail-open: QA errors must not block pipeline
         logger.warning(
-            "QA interceptor import failed, skipping QA gate", exc_info=True,
+            "QA interceptor creation failed, skipping QA gate", exc_info=True,
+        )
+        return None
+
+    # 2. Read QA parameters — fail open on errors.
+    try:
+        qa_params = interceptor.read_qa_parameters(planspace)
+    except Exception:  # noqa: BLE001 — fail-open
+        logger.warning(
+            "QA parameter read failed, skipping QA gate", exc_info=True,
         )
         return None
 
     if not qa_params.get("qa_mode"):
         return None
 
-    # 2. Run the appropriate intercept function.
+    # 3. Run the appropriate intercept function.
     try:
         if task is not None:
-            from qa.service.qa_interceptor import intercept_task
-            return intercept_task(task, agent_file, planspace)
+            return interceptor.intercept_task(task, agent_file, planspace)
         else:
-            from qa.service.qa_interceptor import intercept_dispatch
-            return intercept_dispatch(
+            return interceptor.intercept_dispatch(
                 agent_file=agent_file,
                 prompt_path=prompt_path,
                 planspace=planspace,

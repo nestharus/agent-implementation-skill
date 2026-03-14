@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from scan.substrate.substrate_state_reader import registry_for_artifacts
+
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 DEFAULT_SUBSTRATE_MODELS: dict[str, str] = {
     "substrate_shard": "gpt-high",
@@ -16,62 +19,94 @@ DEFAULT_SUBSTRATE_MODELS: dict[str, str] = {
 DEFAULT_TRIGGER_THRESHOLD = 2
 
 
+class Policy:
+    """Shared configuration readers for substrate discovery.
+
+    All cross-cutting services are received via constructor injection.
+    """
+
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
+
+    def read_substrate_model_policy(self, artifacts_dir: Path) -> dict[str, str]:
+        """Read substrate model assignments from ``model-policy.json``."""
+        policy = dict(DEFAULT_SUBSTRATE_MODELS)
+        policy_path = registry_for_artifacts(artifacts_dir).model_policy()
+        if policy_path.is_file():
+            data = self._artifact_io.read_json(policy_path)
+            if isinstance(data, dict):
+                for key in DEFAULT_SUBSTRATE_MODELS:
+                    if key in data and isinstance(data[key], str):
+                        policy[key] = data[key]
+            else:
+                print(
+                    "[SUBSTRATE][WARN] model-policy.json exists but is "
+                    "invalid -- renaming to .malformed.json"
+                )
+        return policy
+
+    def read_trigger_signals(self, artifacts_dir: Path) -> list[str]:
+        """Read signal-driven SIS trigger requests."""
+        signals_dir = registry_for_artifacts(artifacts_dir).signals_dir()
+        if not signals_dir.is_dir():
+            return []
+
+        triggered: list[str] = []
+        for path in sorted(signals_dir.iterdir()):
+            if not path.name.startswith("substrate-trigger-") or not path.name.endswith(".json"):
+                continue
+
+            data = self._artifact_io.read_json(path)
+            if isinstance(data, dict) and "section" in data:
+                triggered.append(str(data["section"]))
+            elif isinstance(data, dict) and "sections" in data:
+                for section in data["sections"]:
+                    triggered.append(str(section))
+            else:
+                print(
+                    f"[SUBSTRATE][WARN] {path.name} malformed "
+                    f"-- renaming to .malformed.json"
+                )
+        return triggered
+
+    def read_trigger_threshold(self, artifacts_dir: Path) -> int:
+        """Read the vacuum section threshold from policy config."""
+        policy_path = registry_for_artifacts(artifacts_dir).model_policy()
+        if policy_path.is_file():
+            data = self._artifact_io.read_json(policy_path)
+            if isinstance(data, dict):
+                value = data.get("substrate_trigger_min_vacuum_sections")
+                if isinstance(value, int) and value >= 1:
+                    return value
+            else:
+                print(
+                    "[SUBSTRATE][WARN] model-policy.json malformed while "
+                    "reading trigger threshold -- renaming to "
+                    ".malformed.json"
+                )
+        return DEFAULT_TRIGGER_THRESHOLD
+
+
+# ------------------------------------------------------------------
+# Backward-compat free function wrappers
+# ------------------------------------------------------------------
+
+
+def _default_policy() -> Policy:
+    from containers import Services
+    return Policy(artifact_io=Services.artifact_io())
+
+
 def read_substrate_model_policy(artifacts_dir: Path) -> dict[str, str]:
     """Read substrate model assignments from ``model-policy.json``."""
-    policy = dict(DEFAULT_SUBSTRATE_MODELS)
-    policy_path = registry_for_artifacts(artifacts_dir).model_policy()
-    if policy_path.is_file():
-        data = Services.artifact_io().read_json(policy_path)
-        if isinstance(data, dict):
-            for key in DEFAULT_SUBSTRATE_MODELS:
-                if key in data and isinstance(data[key], str):
-                    policy[key] = data[key]
-        else:
-            print(
-                "[SUBSTRATE][WARN] model-policy.json exists but is "
-                "invalid -- renaming to .malformed.json"
-            )
-    return policy
+    return _default_policy().read_substrate_model_policy(artifacts_dir)
 
 
 def read_trigger_signals(artifacts_dir: Path) -> list[str]:
     """Read signal-driven SIS trigger requests."""
-    signals_dir = registry_for_artifacts(artifacts_dir).signals_dir()
-    if not signals_dir.is_dir():
-        return []
-
-    triggered: list[str] = []
-    for path in sorted(signals_dir.iterdir()):
-        if not path.name.startswith("substrate-trigger-") or not path.name.endswith(".json"):
-            continue
-
-        data = Services.artifact_io().read_json(path)
-        if isinstance(data, dict) and "section" in data:
-            triggered.append(str(data["section"]))
-        elif isinstance(data, dict) and "sections" in data:
-            for section in data["sections"]:
-                triggered.append(str(section))
-        else:
-            print(
-                f"[SUBSTRATE][WARN] {path.name} malformed "
-                f"-- renaming to .malformed.json"
-            )
-    return triggered
+    return _default_policy().read_trigger_signals(artifacts_dir)
 
 
 def read_trigger_threshold(artifacts_dir: Path) -> int:
     """Read the vacuum section threshold from policy config."""
-    policy_path = registry_for_artifacts(artifacts_dir).model_policy()
-    if policy_path.is_file():
-        data = Services.artifact_io().read_json(policy_path)
-        if isinstance(data, dict):
-            value = data.get("substrate_trigger_min_vacuum_sections")
-            if isinstance(value, int) and value >= 1:
-                return value
-        else:
-            print(
-                "[SUBSTRATE][WARN] model-policy.json malformed while "
-                "reading trigger threshold -- renaming to "
-                ".malformed.json"
-            )
-    return DEFAULT_TRIGGER_THRESHOLD
+    return _default_policy().read_trigger_threshold(artifacts_dir)

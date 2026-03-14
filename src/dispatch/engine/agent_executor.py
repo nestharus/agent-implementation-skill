@@ -6,8 +6,10 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
+if TYPE_CHECKING:
+    from containers import TaskRouterService
 
 _DEFAULT_AGENT_TIMEOUT_SECONDS = 600
 
@@ -19,6 +21,76 @@ class AgentResult:
     timed_out: bool
 
 
+class AgentExecutor:
+    """Wraps subprocess invocation for the ``agents`` binary."""
+
+    def __init__(self, task_router: TaskRouterService) -> None:
+        self._task_router = task_router
+
+    def run_agent(
+        self,
+        model: str,
+        prompt_path: Path,
+        *,
+        agent_file: str,
+        codespace: Path | None = None,
+        timeout: int = _DEFAULT_AGENT_TIMEOUT_SECONDS,
+    ) -> AgentResult:
+        """Run the ``agents`` binary and return the raw process result."""
+
+        if not agent_file:
+            raise ValueError(
+                "agent_file is required — every dispatch must have "
+                "behavioral constraints"
+            )
+
+        agent_path = self._task_router.resolve_agent_path(agent_file)
+
+        cmd = [
+            "agents",
+            "--model",
+            model,
+            "--file",
+            str(prompt_path),
+            "--agent-file",
+            str(agent_path),
+        ]
+        if codespace:
+            cmd.extend(["--project", str(codespace)])
+
+        # Strip CLAUDECODE so nested agents sessions can launch
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
+        try:
+            result = subprocess.run(  # noqa: S603
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=env,
+            )
+            return AgentResult(
+                output=result.stdout + result.stderr,
+                returncode=result.returncode,
+                timed_out=False,
+            )
+        except subprocess.TimeoutExpired:
+            return AgentResult(
+                output=f"TIMEOUT: Agent exceeded {timeout}s time limit",
+                returncode=-1,
+                timed_out=True,
+            )
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
+
+def _get_executor() -> AgentExecutor:
+    from containers import Services
+    return AgentExecutor(task_router=Services.task_router())
+
+
 def run_agent(
     model: str,
     prompt_path: Path,
@@ -28,46 +100,7 @@ def run_agent(
     timeout: int = _DEFAULT_AGENT_TIMEOUT_SECONDS,
 ) -> AgentResult:
     """Run the ``agents`` binary and return the raw process result."""
-
-    if not agent_file:
-        raise ValueError(
-            "agent_file is required — every dispatch must have "
-            "behavioral constraints"
-        )
-
-    agent_path = Services.task_router().resolve_agent_path(agent_file)
-
-    cmd = [
-        "agents",
-        "--model",
-        model,
-        "--file",
-        str(prompt_path),
-        "--agent-file",
-        str(agent_path),
-    ]
-    if codespace:
-        cmd.extend(["--project", str(codespace)])
-
-    # Strip CLAUDECODE so nested agents sessions can launch
-    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
-
-    try:
-        result = subprocess.run(  # noqa: S603
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=env,
-        )
-        return AgentResult(
-            output=result.stdout + result.stderr,
-            returncode=result.returncode,
-            timed_out=False,
-        )
-    except subprocess.TimeoutExpired:
-        return AgentResult(
-            output=f"TIMEOUT: Agent exceeded {timeout}s time limit",
-            returncode=-1,
-            timed_out=True,
-        )
+    return _get_executor().run_agent(
+        model, prompt_path,
+        agent_file=agent_file, codespace=codespace, timeout=timeout,
+    )

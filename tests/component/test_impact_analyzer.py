@@ -88,7 +88,6 @@ def test_analyze_impacts_parses_material_impacts_from_primary_output(
             ["pkg/api.py"],
             sections,
             codespace,
-            "parent-task",
         )
 
         assert impacts == [("02", "Changed API", True, "Update consumer")]
@@ -141,7 +140,6 @@ def test_analyze_impacts_falls_back_to_normalizer_when_primary_is_invalid(
             ["pkg/service.py"],
             sections,
             codespace,
-            "parent-task",
         )
 
         assert impacts == [("03", "Normalized reason", False, "Normalized note")]

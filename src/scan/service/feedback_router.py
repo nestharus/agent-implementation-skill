@@ -4,22 +4,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
 from signals.types import SIGNAL_OUT_OF_SCOPE
 
-
-def _is_valid_updater_signal(signal_path: Path) -> bool:
-    """Check if an updater signal file contains valid JSON with status."""
-    data = Services.artifact_io().read_json(signal_path)
-    if data is not None:
-        return isinstance(data.get("status"), str)
-    print(
-        f"[FEEDBACK][WARN] Malformed updater signal in validity "
-        f"check: {signal_path}",
-    )
-    return False
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 
 def _validate_feedback_schema(
@@ -70,6 +61,109 @@ def _append_to_log(log_path: Path, message: str) -> None:
         handle.write(message + "\n")
 
 
+class FeedbackRouter:
+    """Shared helpers for scan feedback validation and routing.
+
+    All cross-cutting services are received via constructor injection.
+    """
+
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
+
+    def _is_valid_updater_signal(self, signal_path: Path) -> bool:
+        """Check if an updater signal file contains valid JSON with status."""
+        data = self._artifact_io.read_json(signal_path)
+        if data is not None:
+            return isinstance(data.get("status"), str)
+        print(
+            f"[FEEDBACK][WARN] Malformed updater signal in validity "
+            f"check: {signal_path}",
+        )
+        return False
+
+    def _route_scope_deltas(
+        self,
+        *,
+        section_files: list[Path],
+        artifacts_dir: Path,
+        scan_log_dir: Path,
+    ) -> None:
+        """Route out-of-scope findings into scope-delta artifacts."""
+        print("--- Deep Scan: routing out-of-scope findings ---")
+
+        paths = PathRegistry(artifacts_dir.parent)
+        scope_deltas_dir = paths.scope_deltas_dir()
+
+        for section_file in section_files:
+            sec_name = section_file.stem
+            sec_log_dir = scan_log_dir / sec_name
+            sec_num = _extract_section_number(sec_name)
+
+            all_oos: list[str] = []
+            for fb_file in sorted(sec_log_dir.glob("deep-*-feedback.json")):
+                data = self._artifact_io.read_json(fb_file)
+                if data is None:
+                    print(
+                        f"[SCOPE][WARN] Malformed feedback JSON in "
+                        f"scope-delta routing: {fb_file}",
+                    )
+                    continue
+                for item in data.get(SIGNAL_OUT_OF_SCOPE, []):
+                    if isinstance(item, str) and item.strip():
+                        all_oos.append(item.strip())
+
+            if not all_oos:
+                continue
+
+            delta_path = paths.scope_delta_section(sec_num)
+
+            if delta_path.is_file():
+                existing = self._artifact_io.read_json(delta_path)
+                if existing is not None:
+                    if existing.get("adjudicated"):
+                        print(
+                            f"[SCOPE] section-{sec_num}: scope delta "
+                            "already adjudicated — skipping",
+                        )
+                        continue
+                else:
+                    preserved = self._artifact_io.rename_malformed(delta_path)
+                    if preserved:
+                        print(
+                            f"[SCOPE][WARN] section-{sec_num}: malformed "
+                            f"scope-delta JSON preserved as "
+                            f"{preserved.name}",
+                        )
+
+            delta = {
+                "delta_id": f"delta-{sec_num}-scan-deep",
+                "section": sec_num,
+                "origin": "scan-deep",
+                "items": all_oos,
+                "adjudicated": False,
+            }
+            self._artifact_io.write_json(delta_path, delta)
+            print(
+                f"[SCOPE] section-{sec_num}: {len(all_oos)} out-of-scope "
+                "items routed to scope-deltas",
+            )
+
+
+# ------------------------------------------------------------------
+# Backward-compat free function wrappers
+# ------------------------------------------------------------------
+
+
+def _default_router() -> FeedbackRouter:
+    from containers import Services
+    return FeedbackRouter(artifact_io=Services.artifact_io())
+
+
+def _is_valid_updater_signal(signal_path: Path) -> bool:
+    """Check if an updater signal file contains valid JSON with status."""
+    return _default_router()._is_valid_updater_signal(signal_path)
+
+
 def _route_scope_deltas(
     *,
     section_files: list[Path],
@@ -77,61 +171,8 @@ def _route_scope_deltas(
     scan_log_dir: Path,
 ) -> None:
     """Route out-of-scope findings into scope-delta artifacts."""
-    print("--- Deep Scan: routing out-of-scope findings ---")
-
-    paths = PathRegistry(artifacts_dir.parent)
-    scope_deltas_dir = paths.scope_deltas_dir()
-
-    for section_file in section_files:
-        sec_name = section_file.stem
-        sec_log_dir = scan_log_dir / sec_name
-        sec_num = _extract_section_number(sec_name)
-
-        all_oos: list[str] = []
-        for fb_file in sorted(sec_log_dir.glob("deep-*-feedback.json")):
-            data = Services.artifact_io().read_json(fb_file)
-            if data is None:
-                print(
-                    f"[SCOPE][WARN] Malformed feedback JSON in "
-                    f"scope-delta routing: {fb_file}",
-                )
-                continue
-            for item in data.get(SIGNAL_OUT_OF_SCOPE, []):
-                if isinstance(item, str) and item.strip():
-                    all_oos.append(item.strip())
-
-        if not all_oos:
-            continue
-
-        delta_path = paths.scope_delta_section(sec_num)
-
-        if delta_path.is_file():
-            existing = Services.artifact_io().read_json(delta_path)
-            if existing is not None:
-                if existing.get("adjudicated"):
-                    print(
-                        f"[SCOPE] section-{sec_num}: scope delta "
-                        "already adjudicated — skipping",
-                    )
-                    continue
-            else:
-                preserved = Services.artifact_io().rename_malformed(delta_path)
-                if preserved:
-                    print(
-                        f"[SCOPE][WARN] section-{sec_num}: malformed "
-                        f"scope-delta JSON preserved as "
-                        f"{preserved.name}",
-                    )
-
-        delta = {
-            "delta_id": f"delta-{sec_num}-scan-deep",
-            "section": sec_num,
-            "origin": "scan-deep",
-            "items": all_oos,
-            "adjudicated": False,
-        }
-        Services.artifact_io().write_json(delta_path, delta)
-        print(
-            f"[SCOPE] section-{sec_num}: {len(all_oos)} out-of-scope "
-            "items routed to scope-deltas",
-        )
+    _default_router()._route_scope_deltas(
+        section_files=section_files,
+        artifacts_dir=artifacts_dir,
+        scan_log_dir=scan_log_dir,
+    )

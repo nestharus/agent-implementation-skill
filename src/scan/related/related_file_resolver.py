@@ -6,9 +6,10 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from containers import Services
+if TYPE_CHECKING:
+    from containers import ArtifactIOService, HasherService, PromptGuard, TaskRouterService
 
 
 class RelatedFileStatus(str, Enum):
@@ -38,64 +39,6 @@ def list_section_files(sections_dir: Path) -> list[Path]:
     return sorted(files)
 
 
-def apply_related_files_update(section_file: Path, signal_file: Path) -> bool:
-    """Apply additions/removals from a related-files update signal."""
-    if not signal_file.exists():
-        return False
-
-    signal = Services.artifact_io().read_json(signal_file)
-    if signal is None:
-        print(
-            f"[RELATED FILES][WARN] Malformed update signal: "
-            f"{signal_file}",
-        )
-        return False
-
-    if signal.get("status") != RelatedFileStatus.STALE:
-        return False
-
-    from scan.related.cli_handler import block_insert_position, find_entry_span
-
-    section = section_file.read_text()
-    removals = signal.get("removals", [])
-    additions = signal.get("additions", [])
-
-    if not removals and not additions:
-        return False
-
-    for rm_path in removals:
-        span = find_entry_span(section, rm_path)
-        if span is None:
-            continue
-        entry_start, entry_end = span
-        before = section[:entry_start].rstrip("\n") + "\n"
-        after = section[entry_end:]
-        section = before + after
-
-    for add_path in additions:
-        if find_entry_span(section, add_path) is not None:
-            continue
-        insert_pos = block_insert_position(section)
-        if insert_pos is None:
-            continue
-        entry = (
-            f"\n\n### {add_path}\n"
-            "Added by validation — confirm relevance during deep scan."
-        )
-        section = section[:insert_pos] + entry + section[insert_pos:]
-
-    section_file.write_text(section)
-    n_rm = len(removals)
-    n_add = len(additions)
-    print(f"applied: {n_rm} removals, {n_add} additions")
-    return True
-
-
-def _sha256_file(path: Path) -> str:
-    """Return hex sha256 of file contents, or empty string on error."""
-    return Services.hasher().file_hash(path)
-
-
 def _path_exists_in_codespace(codespace: Path, rel_path: str) -> bool:
     root = codespace.resolve()
     candidate = (codespace / rel_path).resolve(strict=False)
@@ -122,210 +65,392 @@ def _missing_existing_related_files(
             missing.append(path)
     return missing
 
-def _normalize_validation_signal(
-    signal_file: Path,
-    *,
-    codespace: Path,
-    missing_existing: list[str],
-    allow_applied: bool = False,
-) -> dict[str, Any] | None:
-    if not signal_file.is_file():
-        return None
 
-    data = Services.artifact_io().read_json(signal_file)
-    if not isinstance(data, dict):
-        return None
+class RelatedFileResolver:
+    """Related-files discovery and validation.
 
-    status = str(data.get("status", "")).strip().lower()
-    if status == "ok":  # backward-compat alias
-        status = RelatedFileStatus.CURRENT
+    All cross-cutting services are received via constructor injection.
+    """
 
-    if status == RelatedFileStatus.CURRENT:
-        additions = data.get("additions", [])
-        removals = data.get("removals", [])
-        if additions not in (None, []) or removals not in (None, []):
+    def __init__(
+        self,
+        artifact_io: ArtifactIOService,
+        hasher: HasherService,
+        prompt_guard: PromptGuard,
+        task_router: TaskRouterService,
+    ) -> None:
+        self._artifact_io = artifact_io
+        self._hasher = hasher
+        self._prompt_guard = prompt_guard
+        self._task_router = task_router
+
+    def apply_related_files_update(self, section_file: Path, signal_file: Path) -> bool:
+        """Apply additions/removals from a related-files update signal."""
+        if not signal_file.exists():
+            return False
+
+        signal = self._artifact_io.read_json(signal_file)
+        if signal is None:
+            print(
+                f"[RELATED FILES][WARN] Malformed update signal: "
+                f"{signal_file}",
+            )
+            return False
+
+        if signal.get("status") != RelatedFileStatus.STALE:
+            return False
+
+        from scan.related.cli_handler import block_insert_position, find_entry_span
+
+        section = section_file.read_text()
+        removals = signal.get("removals", [])
+        additions = signal.get("additions", [])
+
+        if not removals and not additions:
+            return False
+
+        for rm_path in removals:
+            span = find_entry_span(section, rm_path)
+            if span is None:
+                continue
+            entry_start, entry_end = span
+            before = section[:entry_start].rstrip("\n") + "\n"
+            after = section[entry_end:]
+            section = before + after
+
+        for add_path in additions:
+            if find_entry_span(section, add_path) is not None:
+                continue
+            insert_pos = block_insert_position(section)
+            if insert_pos is None:
+                continue
+            entry = (
+                f"\n\n### {add_path}\n"
+                "Added by validation — confirm relevance during deep scan."
+            )
+            section = section[:insert_pos] + entry + section[insert_pos:]
+
+        section_file.write_text(section)
+        n_rm = len(removals)
+        n_add = len(additions)
+        print(f"applied: {n_rm} removals, {n_add} additions")
+        return True
+
+    def _sha256_file(self, path: Path) -> str:
+        """Return hex sha256 of file contents, or empty string on error."""
+        return self._hasher.file_hash(path)
+
+    def _normalize_validation_signal(
+        self,
+        signal_file: Path,
+        *,
+        codespace: Path,
+        missing_existing: list[str],
+        allow_applied: bool = False,
+    ) -> dict[str, Any] | None:
+        if not signal_file.is_file():
             return None
-        if missing_existing:
+
+        data = self._artifact_io.read_json(signal_file)
+        if not isinstance(data, dict):
             return None
-        return {
-            "status": RelatedFileStatus.CURRENT,
-            "additions": [],
-            "removals": [],
-            "reason": str(data.get("reason", "")).strip(),
-        }
 
-    if allow_applied and status == RelatedFileStatus.APPLIED:
-        return {
-            "status": RelatedFileStatus.APPLIED,
-            "additions": [],
-            "removals": [],
-            "reason": str(data.get("reason", "")).strip(),
-        }
+        status = str(data.get("status", "")).strip().lower()
+        if status == "ok":  # backward-compat alias
+            status = RelatedFileStatus.CURRENT
 
-    if status != RelatedFileStatus.STALE:
-        return None
+        if status == RelatedFileStatus.CURRENT:
+            additions = data.get("additions", [])
+            removals = data.get("removals", [])
+            if additions not in (None, []) or removals not in (None, []):
+                return None
+            if missing_existing:
+                return None
+            return {
+                "status": RelatedFileStatus.CURRENT,
+                "additions": [],
+                "removals": [],
+                "reason": str(data.get("reason", "")).strip(),
+            }
 
-    additions_raw = data.get("additions", [])
-    removals_raw = data.get("removals", [])
-    if not isinstance(additions_raw, list) or not isinstance(removals_raw, list):
-        return None
+        if allow_applied and status == RelatedFileStatus.APPLIED:
+            return {
+                "status": RelatedFileStatus.APPLIED,
+                "additions": [],
+                "removals": [],
+                "reason": str(data.get("reason", "")).strip(),
+            }
 
-    additions = sorted({
-        item.strip()
-        for item in additions_raw
-        if isinstance(item, str) and item.strip()
-    })
-    removals = sorted(
-        set(
+        if status != RelatedFileStatus.STALE:
+            return None
+
+        additions_raw = data.get("additions", [])
+        removals_raw = data.get("removals", [])
+        if not isinstance(additions_raw, list) or not isinstance(removals_raw, list):
+            return None
+
+        additions = sorted({
             item.strip()
-            for item in removals_raw
+            for item in additions_raw
             if isinstance(item, str) and item.strip()
-        ) | set(missing_existing)
-    )
-
-    if not additions and not removals:
-        return None
-
-    if any(not _path_exists_in_codespace(codespace, path) for path in additions):
-        return None
-
-    return {
-        "status": RelatedFileStatus.STALE,
-        "additions": additions,
-        "removals": removals,
-        "reason": str(data.get("reason", "")).strip(),
-    }
-
-
-def _build_validation_prompt(
-    *,
-    section_name: str,
-    section_file: Path,
-    codemap_path: Path,
-    corrections_file: Path,
-    signal_file: Path,
-    missing_existing: list[str],
-) -> str | None:
-    corrections_ref = ""
-    if corrections_file.is_file():
-        corrections_ref = (
-            f"3. Codemap corrections (authoritative fixes): "
-            f"`{corrections_file}`"
+        })
+        removals = sorted(
+            set(
+                item.strip()
+                for item in removals_raw
+                if isinstance(item, str) and item.strip()
+            ) | set(missing_existing)
         )
 
-    if missing_existing:
-        items = "\n".join(f"- {path}" for path in missing_existing)
-        missing_existing_section = (
-            "## Deterministic Missing Existing Entries\n"
-            "These currently listed Related Files entries do not exist in the "
-            "codespace:\n"
-            f"{items}\n\n"
-            "Treat each missing path as positive evidence that the current list "
-            "is stale.\n"
-        )
-    else:
-        missing_existing_section = (
-            "## Deterministic Missing Existing Entries\n"
-            "All currently listed Related Files entries currently exist.\n"
-        )
+        if not additions and not removals:
+            return None
 
-    prompt = load_scan_template("validate_related_files.md").format(
-        section_file=section_file,
-        codemap_path=codemap_path,
-        corrections_ref=corrections_ref,
-        update_signal=signal_file,
-        missing_existing_section=missing_existing_section,
-    )
-    violations = Services.prompt_guard().validate_dynamic(prompt)
-    if violations:
-        print(
-            f"[EXPLORE] {section_name}: validate prompt blocked — "
-            f"safety violations: {violations}",
-        )
-        return None
-    return prompt
+        if any(not _path_exists_in_codespace(codespace, path) for path in additions):
+            return None
 
+        return {
+            "status": RelatedFileStatus.STALE,
+            "additions": additions,
+            "removals": removals,
+            "reason": str(data.get("reason", "")).strip(),
+        }
 
-def _apply_and_finalize(
-    *,
-    result,
-    section_name: str,
-    section_file: Path,
-    signal_file: Path,
-    ctx: ScanContext,
-    missing_existing: list[str],
-    validation_hashes: tuple[str, str, str],
-) -> None:
-    codemap_hash, corrections_hash, combined_hash = validation_hashes
-    section_log = ctx.scan_log_dir / section_name
-    validate_prompt = section_log / "validate-prompt.md"
-    validate_output = section_log / "validate-output.md"
-    codemap_hash_file = section_log / "codemap-hash.txt"
-    normalized = _normalize_validation_signal(
-        signal_file,
-        codespace=ctx.codespace,
-        missing_existing=missing_existing,
-    )
+    def _build_validation_prompt(
+        self,
+        *,
+        section_name: str,
+        section_file: Path,
+        codemap_path: Path,
+        corrections_file: Path,
+        signal_file: Path,
+        missing_existing: list[str],
+    ) -> str | None:
+        corrections_ref = ""
+        if corrections_file.is_file():
+            corrections_ref = (
+                f"3. Codemap corrections (authoritative fixes): "
+                f"`{corrections_file}`"
+            )
 
-    escalation_model = ctx.model_policy.get("exploration", ctx.model_policy["validation"])
-    if (
-        result.returncode == 0
-        and normalized is None
-        and escalation_model != ctx.model_policy["validation"]
-    ):
-        print(
-            f"[EXPLORE] {section_name}: validator produced no valid signal — "
-            f"escalating to {escalation_model}",
+        if missing_existing:
+            items = "\n".join(f"- {path}" for path in missing_existing)
+            missing_existing_section = (
+                "## Deterministic Missing Existing Entries\n"
+                "These currently listed Related Files entries do not exist in the "
+                "codespace:\n"
+                f"{items}\n\n"
+                "Treat each missing path as positive evidence that the current list "
+                "is stale.\n"
+            )
+        else:
+            missing_existing_section = (
+                "## Deterministic Missing Existing Entries\n"
+                "All currently listed Related Files entries currently exist.\n"
+            )
+
+        prompt = load_scan_template("validate_related_files.md").format(
+            section_file=section_file,
+            codemap_path=codemap_path,
+            corrections_ref=corrections_ref,
+            update_signal=signal_file,
+            missing_existing_section=missing_existing_section,
         )
-        signal_file.unlink(missing_ok=True)
-        result = dispatch_agent(
-            model=escalation_model,
-            project=ctx.codespace,
-            prompt_file=validate_prompt,
-            agent_file=Services.task_router().agent_for("scan.adjudicate"),
-            stdout_file=validate_output,
-        )
-        normalized = _normalize_validation_signal(
+        violations = self._prompt_guard.validate_dynamic(prompt)
+        if violations:
+            print(
+                f"[EXPLORE] {section_name}: validate prompt blocked — "
+                f"safety violations: {violations}",
+            )
+            return None
+        return prompt
+
+    def _apply_and_finalize(
+        self,
+        *,
+        result,
+        section_name: str,
+        section_file: Path,
+        signal_file: Path,
+        ctx: ScanContext,
+        missing_existing: list[str],
+        validation_hashes: tuple[str, str, str],
+    ) -> None:
+        codemap_hash, corrections_hash, combined_hash = validation_hashes
+        section_log = ctx.scan_log_dir / section_name
+        validate_prompt = section_log / "validate-prompt.md"
+        validate_output = section_log / "validate-output.md"
+        codemap_hash_file = section_log / "codemap-hash.txt"
+        normalized = self._normalize_validation_signal(
             signal_file,
             codespace=ctx.codespace,
             missing_existing=missing_existing,
         )
 
-    if result.returncode != 0:
-        print(
-            f"[EXPLORE] {section_name}: validation failed "
-            "— keeping existing list",
-        )
-        return
-
-    if normalized is None:
-        print(
-            f"[EXPLORE][WARN] {section_name}: validation exited 0 but produced "
-            "no valid related-files signal — forcing revalidation on next run",
-        )
-        return
-
-    Services.artifact_io().write_json(signal_file, normalized)
-
-    status = normalized["status"]
-    if status == RelatedFileStatus.STALE:
-        print(f"[EXPLORE] {section_name}: applying related-files updates")
-        if not apply_related_files_update(section_file, signal_file):
+        escalation_model = ctx.model_policy.get("exploration", ctx.model_policy["validation"])
+        if (
+            result.returncode == 0
+            and normalized is None
+            and escalation_model != ctx.model_policy["validation"]
+        ):
             print(
-                f"[EXPLORE] {section_name}: auto-apply failed — "
-                "forcing revalidation on next run",
+                f"[EXPLORE] {section_name}: validator produced no valid signal — "
+                f"escalating to {escalation_model}",
+            )
+            signal_file.unlink(missing_ok=True)
+            result = dispatch_agent(
+                model=escalation_model,
+                project=ctx.codespace,
+                prompt_file=validate_prompt,
+                agent_file=self._task_router.agent_for("scan.adjudicate"),
+                stdout_file=validate_output,
+            )
+            normalized = self._normalize_validation_signal(
+                signal_file,
+                codespace=ctx.codespace,
+                missing_existing=missing_existing,
+            )
+
+        if result.returncode != 0:
+            print(
+                f"[EXPLORE] {section_name}: validation failed "
+                "— keeping existing list",
             )
             return
-        normalized["status"] = RelatedFileStatus.APPLIED
-        Services.artifact_io().write_json(signal_file, normalized)
 
-        section_text_updated = section_file.read_text() if section_file.is_file() else ""
-        section_hash = Services.hasher().content_hash(strip_scan_summaries(section_text_updated))
+        if normalized is None:
+            print(
+                f"[EXPLORE][WARN] {section_name}: validation exited 0 but produced "
+                "no valid related-files signal — forcing revalidation on next run",
+            )
+            return
+
+        self._artifact_io.write_json(signal_file, normalized)
+
+        status = normalized["status"]
+        if status == RelatedFileStatus.STALE:
+            print(f"[EXPLORE] {section_name}: applying related-files updates")
+            if not self.apply_related_files_update(section_file, signal_file):
+                print(
+                    f"[EXPLORE] {section_name}: auto-apply failed — "
+                    "forcing revalidation on next run",
+                )
+                return
+            normalized["status"] = RelatedFileStatus.APPLIED
+            self._artifact_io.write_json(signal_file, normalized)
+
+            section_text_updated = section_file.read_text() if section_file.is_file() else ""
+            section_hash = self._hasher.content_hash(strip_scan_summaries(section_text_updated))
+            combined = f"{codemap_hash}:{corrections_hash}:{section_hash}"
+            combined_hash = self._hasher.content_hash(combined)
+
+        print(f"[EXPLORE] {section_name}: validation complete")
+        codemap_hash_file.write_text(combined_hash)
+
+    def _compute_validation_hashes(
+        self,
+        section_file: Path, codemap_path: Path, corrections_file: Path,
+    ) -> ValidationHashes:
+        """Compute content hashes for validation freshness check."""
+        codemap_hash = self._sha256_file(codemap_path) if codemap_path.is_file() else ""
+        corrections_hash = (
+            self._sha256_file(corrections_file) if corrections_file.is_file() else ""
+        )
+        section_text_raw = section_file.read_text() if section_file.is_file() else ""
+        section_hash = self._hasher.content_hash(strip_scan_summaries(section_text_raw))
         combined = f"{codemap_hash}:{corrections_hash}:{section_hash}"
-        combined_hash = Services.hasher().content_hash(combined)
+        combined_hash = self._hasher.content_hash(combined)
+        return ValidationHashes(
+            codemap_hash=codemap_hash,
+            corrections_hash=corrections_hash,
+            section_text_raw=section_text_raw,
+            combined_hash=combined_hash,
+        )
 
-    print(f"[EXPLORE] {section_name}: validation complete")
-    codemap_hash_file.write_text(combined_hash)
+    def validate_existing_related_files(
+        self,
+        *,
+        section_file: Path,
+        section_name: str,
+        ctx: ScanContext,
+        artifacts_dir: Path,
+    ) -> None:
+        """Check if codemap OR section changed; if so, dispatch validation."""
+        section_log = ctx.scan_log_dir / section_name
+        section_log.mkdir(parents=True, exist_ok=True)
+        codemap_hash_file = section_log / "codemap-hash.txt"
+
+        hashes = self._compute_validation_hashes(
+            section_file, ctx.codemap_path, ctx.corrections_path,
+        )
+
+        signal_file = PathRegistry(
+            artifacts_dir.parent
+        ).scan_related_files_update_signal(section_name)
+        missing_existing = _missing_existing_related_files(hashes.section_text_raw, ctx.codespace)
+
+        prev_hash = ""
+        if codemap_hash_file.is_file():
+            prev_hash = codemap_hash_file.read_text().strip()
+
+        cached_signal = self._normalize_validation_signal(
+            signal_file,
+            codespace=ctx.codespace,
+            missing_existing=missing_existing,
+            allow_applied=True,
+        )
+
+        if hashes.combined_hash == prev_hash and prev_hash and cached_signal is not None:
+            print(
+                f"[EXPLORE] {section_name}: Related Files exist, "
+                "codemap+section unchanged — skipping",
+            )
+            return
+
+        if hashes.combined_hash == prev_hash and prev_hash:
+            print(
+                f"[EXPLORE][WARN] {section_name}: cached related-files hash has "
+                "no reusable validation signal — revalidating",
+            )
+
+        print(
+            f"[EXPLORE] {section_name}: validating Related Files "
+            "against updated codemap/section",
+        )
+
+        validate_prompt = section_log / "validate-prompt.md"
+        validate_output = section_log / "validate-output.md"
+
+        prompt = self._build_validation_prompt(
+            section_name=section_name,
+            section_file=section_file,
+            codemap_path=ctx.codemap_path,
+            corrections_file=ctx.corrections_path,
+            signal_file=signal_file,
+            missing_existing=missing_existing,
+        )
+        if prompt is None:
+            return
+        validate_prompt.write_text(prompt)
+
+        signal_file.unlink(missing_ok=True)
+
+        result = dispatch_agent(
+            model=ctx.model_policy["validation"],
+            project=ctx.codespace,
+            prompt_file=validate_prompt,
+            agent_file=self._task_router.agent_for("scan.adjudicate"),
+            stdout_file=validate_output,
+        )
+
+        self._apply_and_finalize(
+            result=result,
+            section_name=section_name,
+            section_file=section_file,
+            signal_file=signal_file,
+            ctx=ctx,
+            missing_existing=missing_existing,
+            validation_hashes=(hashes.codemap_hash, hashes.corrections_hash, hashes.combined_hash),
+        )
 
 
 @dataclass(frozen=True)
@@ -338,24 +463,24 @@ class ValidationHashes:
     combined_hash: str
 
 
-def _compute_validation_hashes(
-    section_file: Path, codemap_path: Path, corrections_file: Path,
-) -> ValidationHashes:
-    """Compute content hashes for validation freshness check."""
-    codemap_hash = _sha256_file(codemap_path) if codemap_path.is_file() else ""
-    corrections_hash = (
-        _sha256_file(corrections_file) if corrections_file.is_file() else ""
+# ------------------------------------------------------------------
+# Backward-compat free function wrappers
+# ------------------------------------------------------------------
+
+
+def _default_resolver() -> RelatedFileResolver:
+    from containers import Services
+    return RelatedFileResolver(
+        artifact_io=Services.artifact_io(),
+        hasher=Services.hasher(),
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
     )
-    section_text_raw = section_file.read_text() if section_file.is_file() else ""
-    section_hash = Services.hasher().content_hash(strip_scan_summaries(section_text_raw))
-    combined = f"{codemap_hash}:{corrections_hash}:{section_hash}"
-    combined_hash = Services.hasher().content_hash(combined)
-    return ValidationHashes(
-        codemap_hash=codemap_hash,
-        corrections_hash=corrections_hash,
-        section_text_raw=section_text_raw,
-        combined_hash=combined_hash,
-    )
+
+
+def apply_related_files_update(section_file: Path, signal_file: Path) -> bool:
+    """Apply additions/removals from a related-files update signal."""
+    return _default_resolver().apply_related_files_update(section_file, signal_file)
 
 
 def validate_existing_related_files(
@@ -366,81 +491,11 @@ def validate_existing_related_files(
     artifacts_dir: Path,
 ) -> None:
     """Check if codemap OR section changed; if so, dispatch validation."""
-    section_log = ctx.scan_log_dir / section_name
-    section_log.mkdir(parents=True, exist_ok=True)
-    codemap_hash_file = section_log / "codemap-hash.txt"
-
-    hashes = _compute_validation_hashes(
-        section_file, ctx.codemap_path, ctx.corrections_path,
-    )
-
-    signal_file = PathRegistry(
-        artifacts_dir.parent
-    ).scan_related_files_update_signal(section_name)
-    missing_existing = _missing_existing_related_files(hashes.section_text_raw, ctx.codespace)
-
-    prev_hash = ""
-    if codemap_hash_file.is_file():
-        prev_hash = codemap_hash_file.read_text().strip()
-
-    cached_signal = _normalize_validation_signal(
-        signal_file,
-        codespace=ctx.codespace,
-        missing_existing=missing_existing,
-        allow_applied=True,
-    )
-
-    if hashes.combined_hash == prev_hash and prev_hash and cached_signal is not None:
-        print(
-            f"[EXPLORE] {section_name}: Related Files exist, "
-            "codemap+section unchanged — skipping",
-        )
-        return
-
-    if hashes.combined_hash == prev_hash and prev_hash:
-        print(
-            f"[EXPLORE][WARN] {section_name}: cached related-files hash has "
-            "no reusable validation signal — revalidating",
-        )
-
-    print(
-        f"[EXPLORE] {section_name}: validating Related Files "
-        "against updated codemap/section",
-    )
-
-    validate_prompt = section_log / "validate-prompt.md"
-    validate_output = section_log / "validate-output.md"
-
-    prompt = _build_validation_prompt(
-        section_name=section_name,
+    _default_resolver().validate_existing_related_files(
         section_file=section_file,
-        codemap_path=ctx.codemap_path,
-        corrections_file=ctx.corrections_path,
-        signal_file=signal_file,
-        missing_existing=missing_existing,
-    )
-    if prompt is None:
-        return
-    validate_prompt.write_text(prompt)
-
-    signal_file.unlink(missing_ok=True)
-
-    result = dispatch_agent(
-        model=ctx.model_policy["validation"],
-        project=ctx.codespace,
-        prompt_file=validate_prompt,
-        agent_file=Services.task_router().agent_for("scan.adjudicate"),
-        stdout_file=validate_output,
-    )
-
-    _apply_and_finalize(
-        result=result,
         section_name=section_name,
-        section_file=section_file,
-        signal_file=signal_file,
         ctx=ctx,
-        missing_existing=missing_existing,
-        validation_hashes=(hashes.codemap_hash, hashes.corrections_hash, hashes.combined_hash),
+        artifacts_dir=artifacts_dir,
     )
 
 

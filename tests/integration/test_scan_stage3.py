@@ -543,8 +543,8 @@ class TestBridgeDirectiveTypeSafety:
     def test_bool_bridge_coerced_to_dict(self) -> None:
         """Bridge directive as bool is coerced to dict in parser."""
         import inspect
-        from coordination.service.planner import _normalize_bridge_directives
-        src = inspect.getsource(_normalize_bridge_directives)
+        from coordination.service.planner import Planner
+        src = inspect.getsource(Planner._normalize_bridge_directives)
         assert "isinstance(bridge, bool)" in src, (
             "Parser must handle bool bridge directives"
         )
@@ -618,10 +618,10 @@ class TestStaleToolSurfaceRemoval:
     """V6 (R29): Stale tool surface is removed when no tools are relevant."""
 
     def test_stale_removal_code_exists(self) -> None:
-        """Section engine runner removes stale tools-available surface."""
+        """Tool surface writer removes stale tools-available surface."""
         import inspect
-        from orchestrator.engine.section_pipeline import run_section
-        src = inspect.getsource(run_section)
+        from dispatch.service.tool_surface_writer import write_tool_surface
+        src = inspect.getsource(write_tool_surface)
         assert "tools_available_path.unlink()" in src or \
                "tools_available_path.exists()" in src, (
             "Runner must handle stale tool surface removal"

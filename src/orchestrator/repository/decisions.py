@@ -5,9 +5,14 @@ from __future__ import annotations
 import dataclasses
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from containers import Services
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
+
+
+DECISION_STATUS_DECIDED = "decided"
+DECISION_SCOPE_GLOBAL = "global"
 
 
 @dataclasses.dataclass
@@ -30,81 +35,87 @@ class Decision:
     timestamp: str = ""
 
 
-def record_decision(decisions_dir: Path, decision: Decision) -> None:
-    """Write both JSON sidecar and prose appendix from a single Decision."""
-    if not decision.timestamp:
-        decision.timestamp = datetime.now(timezone.utc).isoformat()
+class Decisions:
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
 
-    stem = f"section-{decision.section}" if decision.section else "global"
-    json_path = decisions_dir / f"{stem}.json"
-    existed = json_path.exists()
-    loaded = Services.artifact_io().read_json(json_path)
-    if loaded is None:
-        if existed:
-            print(
-                f"[DECISIONS][WARN] Malformed decision JSON at {json_path} "
-                f"— renaming to .malformed.json"
-            )
-        existing: list[dict[str, Any]] = []
-    else:
-        existing = loaded
-    existing.append(dataclasses.asdict(decision))
-    Services.artifact_io().write_json(json_path, existing)
+    def record_decision(self, decisions_dir: Path, decision: Decision) -> None:
+        """Write both JSON sidecar and prose appendix from a single Decision."""
+        if not decision.timestamp:
+            decision.timestamp = datetime.now(timezone.utc).isoformat()
 
-    md_path = decisions_dir / f"{stem}.md"
-    with md_path.open("a", encoding="utf-8") as handle:
-        handle.write(_format_prose_entry(decision))
+        stem = f"section-{decision.section}" if decision.section else DECISION_SCOPE_GLOBAL
+        json_path = decisions_dir / f"{stem}.json"
+        existed = json_path.exists()
+        loaded = self._artifact_io.read_json(json_path)
+        if loaded is None:
+            if existed:
+                print(
+                    f"[DECISIONS][WARN] Malformed decision JSON at {json_path} "
+                    f"— renaming to .malformed.json"
+                )
+            existing: list[dict[str, Any]] = []
+        else:
+            existing = loaded
+        existing.append(dataclasses.asdict(decision))
+        self._artifact_io.write_json(json_path, existing)
 
+        md_path = decisions_dir / f"{stem}.md"
+        with md_path.open("a", encoding="utf-8") as handle:
+            handle.write(_format_prose_entry(decision))
 
-def load_decisions(
-    decisions_dir: Path,
-    section: str | None = None,
-    warnings: list[str] | None = None,
-) -> list[Decision]:
-    """Load decisions from JSON sidecars."""
-    if not decisions_dir.exists():
-        return []
+    def load_decisions(
+        self,
+        decisions_dir: Path,
+        section: str | None = None,
+        warnings: list[str] | None = None,
+    ) -> list[Decision]:
+        """Load decisions from JSON sidecars."""
+        if not decisions_dir.exists():
+            return []
 
-    results: list[Decision] = []
-    paths = (
-        [decisions_dir / f"section-{section}.json"]
-        if section is not None
-        else sorted(decisions_dir.glob("*.json"))
-    )
+        results: list[Decision] = []
+        paths = (
+            [decisions_dir / f"section-{section}.json"]
+            if section is not None
+            else sorted(decisions_dir.glob("*.json"))
+        )
 
-    for json_path in paths:
-        if not json_path.exists():
-            continue
-        raw = Services.artifact_io().read_json(json_path)
-        if raw is None:
-            msg = (
-                f"Malformed decision JSON at {json_path} "
-                f"— renaming to .malformed.json"
-            )
-            print(f"[DECISIONS][WARN] {msg}")
-            if warnings is not None:
-                warnings.append(msg)
-            continue
-        if not isinstance(raw, list):
-            msg = (
-                f"Decision JSON at {json_path} is not a list "
-                f"— renaming to .malformed.json"
-            )
-            print(f"[DECISIONS][WARN] {msg}")
-            if warnings is not None:
-                warnings.append(msg)
-            Services.artifact_io().rename_malformed(json_path)
-            continue
-        for entry in raw:
-            if not isinstance(entry, dict):
+        for json_path in paths:
+            if not json_path.exists():
                 continue
-            try:
-                results.append(_decision_from_entry(entry))
-            except (TypeError, KeyError):
+            raw = self._artifact_io.read_json(json_path)
+            if raw is None:
+                msg = (
+                    f"Malformed decision JSON at {json_path} "
+                    f"— renaming to .malformed.json"
+                )
+                print(f"[DECISIONS][WARN] {msg}")
+                if warnings is not None:
+                    warnings.append(msg)
                 continue
+            if not isinstance(raw, list):
+                msg = (
+                    f"Decision JSON at {json_path} is not a list "
+                    f"— renaming to .malformed.json"
+                )
+                print(f"[DECISIONS][WARN] {msg}")
+                if warnings is not None:
+                    warnings.append(msg)
+                self._artifact_io.rename_malformed(json_path)
+                continue
+            for entry in raw:
+                if not isinstance(entry, dict):
+                    continue
+                try:
+                    results.append(_decision_from_entry(entry))
+                except (TypeError, KeyError):
+                    continue
 
-    return results
+        return results
 
+
+# Pure functions — no Services usage
 
 def _decision_from_entry(entry: dict[str, Any]) -> Decision:
     return Decision(
@@ -165,3 +176,24 @@ def _format_prose_entry(decision: Decision) -> str:
         f"{next_line}\n"
         f"- **Timestamp**: {decision.timestamp}\n"
     )
+
+
+# Backward-compat wrappers
+
+def _get_decisions() -> Decisions:
+    from containers import Services
+    return Decisions(
+        artifact_io=Services.artifact_io(),
+    )
+
+
+def record_decision(decisions_dir: Path, decision: Decision) -> None:
+    return _get_decisions().record_decision(decisions_dir, decision)
+
+
+def load_decisions(
+    decisions_dir: Path,
+    section: str | None = None,
+    warnings: list[str] | None = None,
+) -> list[Decision]:
+    return _get_decisions().load_decisions(decisions_dir, section=section, warnings=warnings)

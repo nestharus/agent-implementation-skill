@@ -205,7 +205,7 @@ class TestAdjudicatePromptIntegration:
             from dispatch.service.output_adjudicator import adjudicate_agent_output
 
             adjudicate_agent_output(
-                output_path, planspace, "test-parent",
+                output_path, planspace,
                 model="glm",
             )
 

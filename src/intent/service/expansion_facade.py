@@ -11,7 +11,6 @@ def run_expansion_cycle(
     section_number: str,
     planspace: Path,
     codespace: Path,
-    parent: str,
     *,
     budgets: dict | None = None,
 ) -> dict:
@@ -19,7 +18,6 @@ def run_expansion_cycle(
         section_number,
         planspace,
         codespace,
-        parent,
         budgets=budgets,
     )
 
@@ -27,12 +25,10 @@ def run_expansion_cycle(
 def handle_user_gate(
     section_number: str,
     planspace: Path,
-    parent: str,
     delta_result: dict,
 ) -> str | None:
     return _intent_surface.handle_user_gate(
         section_number,
         planspace,
-        parent,
         delta_result,
     )

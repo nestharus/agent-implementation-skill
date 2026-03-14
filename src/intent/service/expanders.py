@@ -3,17 +3,31 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
 from intent.service.philosophy_bootstrapper import validate_philosophy_grounding
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+
+if TYPE_CHECKING:
+    from containers import (
+        ArtifactIOService,
+        AgentDispatcher,
+        Communicator,
+        LogService,
+        ModelPolicyService,
+        PromptGuard,
+        SignalReader,
+        TaskRouterService,
+    )
 
 # When remaining axis budget falls below this, prompt the expander to prefer
 # expanding existing axes over creating new ones.
 _AXIS_BUDGET_CONSERVE_THRESHOLD = 6
 _DEFAULT_AXIS_BUDGET = 6
 
+
+# -- Pure prompt composers (no Services usage) -----------------------------
 
 def _compose_problem_expander_text(
     section_number: str,
@@ -116,130 +130,6 @@ Validate each philosophy surface and classify it:
 """
 
 
-def run_problem_expander(
-    section_number: str,
-    planspace: Path,
-    codespace: Path,
-    parent: str,
-    *,
-    pending_surfaces_path: Path | None = None,
-    remaining_axis_budget: int = _DEFAULT_AXIS_BUDGET,
-) -> dict | None:
-    """Dispatch problem-expander and return its delta."""
-    policy = Services.policies().load(planspace)
-    paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
-    intent_sec = paths.intent_section_dir(section_number)
-
-    surfaces_path = (
-        pending_surfaces_path
-        if pending_surfaces_path is not None
-        else paths.intent_surfaces_signal(section_number)
-    )
-    problem_path = intent_sec / "problem.md"
-    rubric_path = intent_sec / "problem-alignment.md"
-    delta_path = paths.intent_delta_signal(section_number)
-
-    prompt_path = artifacts / f"problem-expand-{section_number}-prompt.md"
-    output_path = artifacts / f"problem-expand-{section_number}-output.md"
-
-    axis_budget_note = ""
-    if remaining_axis_budget < _AXIS_BUDGET_CONSERVE_THRESHOLD:
-        axis_budget_note = (
-            f"\n**Axis budget**: {remaining_axis_budget} new axes remaining. "
-            f"Prefer expanding existing axes over adding new ones when "
-            f"possible.\n"
-        )
-
-    expand_prompt_text = _compose_problem_expander_text(
-        section_number, surfaces_path, problem_path, rubric_path,
-        axis_budget_note, delta_path,
-    )
-    if not Services.prompt_guard().write_validated(expand_prompt_text, prompt_path):
-        return None
-    Services.communicator().log_artifact(planspace, f"prompt:problem-expand-{section_number}")
-
-    result = Services.dispatcher().dispatch(
-        Services.policies().resolve(policy,"intent_problem_expander"),
-        prompt_path,
-        output_path,
-        planspace,
-        parent,
-        codespace=codespace,
-        section_number=section_number,
-        agent_file=Services.task_router().agent_for("intent.problem_expander"),
-    )
-
-    if result == ALIGNMENT_CHANGED_PENDING:
-        return None
-
-    return Services.signals().read(delta_path)
-
-
-def run_philosophy_expander(
-    section_number: str,
-    planspace: Path,
-    codespace: Path,
-    parent: str,
-    *,
-    pending_surfaces_path: Path | None = None,
-) -> dict | None:
-    """Dispatch philosophy-expander and return its delta."""
-    policy = Services.policies().load(planspace)
-    paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
-    intent_global = paths.intent_global_dir()
-
-    surfaces_path = (
-        pending_surfaces_path
-        if pending_surfaces_path is not None
-        else paths.intent_surfaces_signal(section_number)
-    )
-    philosophy_path = intent_global / "philosophy.md"
-    source_map_path = intent_global / "philosophy-source-map.json"
-    decisions_path = paths.philosophy_decisions()
-    delta_path = paths.intent_delta_signal(section_number)
-
-    prompt_path = artifacts / f"philosophy-expand-{section_number}-prompt.md"
-    output_path = artifacts / f"philosophy-expand-{section_number}-output.md"
-
-    phil_expand_text = _compose_philosophy_expander_text(
-        section_number, surfaces_path, philosophy_path, source_map_path,
-        decisions_path, delta_path,
-    )
-    if not Services.prompt_guard().write_validated(phil_expand_text, prompt_path):
-        return None
-    Services.communicator().log_artifact(planspace, f"prompt:philosophy-expand-{section_number}")
-
-    result = Services.dispatcher().dispatch(
-        Services.policies().resolve(policy,"intent_philosophy_expander"),
-        prompt_path,
-        output_path,
-        planspace,
-        parent,
-        codespace=codespace,
-        section_number=section_number,
-        agent_file=Services.task_router().agent_for("intent.philosophy_expander"),
-    )
-
-    if result == ALIGNMENT_CHANGED_PENDING:
-        return None
-
-    delta = Services.signals().read(delta_path)
-    if delta and delta.get("applied", {}).get("philosophy_updated"):
-        grounding_ok = validate_philosophy_grounding(
-            philosophy_path,
-            source_map_path,
-            artifacts,
-        )
-        if not grounding_ok:
-            Services.logger().log(f"Section {section_number}: philosophy expansion broke "
-                f"grounding — expansion accepted but grounding warning "
-                f"emitted (fail-closed)")
-
-    return delta
-
-
 def _compose_recurrence_adjudication_text(
     section_number: str,
     ids_list: str,
@@ -273,71 +163,273 @@ Write a JSON signal to: `{adjudication_path}`
 """
 
 
+class Expanders:
+    """Intent surface expander and adjudicator dispatchers."""
+
+    def __init__(
+        self,
+        artifact_io: ArtifactIOService,
+        communicator: Communicator,
+        dispatcher: AgentDispatcher,
+        logger: LogService,
+        policies: ModelPolicyService,
+        prompt_guard: PromptGuard,
+        signals: SignalReader,
+        task_router: TaskRouterService,
+    ) -> None:
+        self._artifact_io = artifact_io
+        self._communicator = communicator
+        self._dispatcher = dispatcher
+        self._logger = logger
+        self._policies = policies
+        self._prompt_guard = prompt_guard
+        self._signals = signals
+        self._task_router = task_router
+
+    def run_problem_expander(
+        self,
+        section_number: str,
+        planspace: Path,
+        codespace: Path,
+        *,
+        pending_surfaces_path: Path | None = None,
+        remaining_axis_budget: int = _DEFAULT_AXIS_BUDGET,
+    ) -> dict | None:
+        """Dispatch problem-expander and return its delta."""
+        policy = self._policies.load(planspace)
+        paths = PathRegistry(planspace)
+        artifacts = paths.artifacts
+        intent_sec = paths.intent_section_dir(section_number)
+
+        surfaces_path = (
+            pending_surfaces_path
+            if pending_surfaces_path is not None
+            else paths.intent_surfaces_signal(section_number)
+        )
+        problem_path = intent_sec / "problem.md"
+        rubric_path = intent_sec / "problem-alignment.md"
+        delta_path = paths.intent_delta_signal(section_number)
+
+        prompt_path = artifacts / f"problem-expand-{section_number}-prompt.md"
+        output_path = artifacts / f"problem-expand-{section_number}-output.md"
+
+        axis_budget_note = ""
+        if remaining_axis_budget < _AXIS_BUDGET_CONSERVE_THRESHOLD:
+            axis_budget_note = (
+                f"\n**Axis budget**: {remaining_axis_budget} new axes remaining. "
+                f"Prefer expanding existing axes over adding new ones when "
+                f"possible.\n"
+            )
+
+        expand_prompt_text = _compose_problem_expander_text(
+            section_number, surfaces_path, problem_path, rubric_path,
+            axis_budget_note, delta_path,
+        )
+        if not self._prompt_guard.write_validated(expand_prompt_text, prompt_path):
+            return None
+        self._communicator.log_artifact(planspace, f"prompt:problem-expand-{section_number}")
+
+        result = self._dispatcher.dispatch(
+            self._policies.resolve(policy,"intent_problem_expander"),
+            prompt_path,
+            output_path,
+            planspace,
+            codespace=codespace,
+            section_number=section_number,
+            agent_file=self._task_router.agent_for("intent.problem_expander"),
+        )
+
+        if result == ALIGNMENT_CHANGED_PENDING:
+            return None
+
+        return self._signals.read(delta_path)
+
+    def run_philosophy_expander(
+        self,
+        section_number: str,
+        planspace: Path,
+        codespace: Path,
+        *,
+        pending_surfaces_path: Path | None = None,
+    ) -> dict | None:
+        """Dispatch philosophy-expander and return its delta."""
+        policy = self._policies.load(planspace)
+        paths = PathRegistry(planspace)
+        artifacts = paths.artifacts
+        intent_global = paths.intent_global_dir()
+
+        surfaces_path = (
+            pending_surfaces_path
+            if pending_surfaces_path is not None
+            else paths.intent_surfaces_signal(section_number)
+        )
+        philosophy_path = intent_global / "philosophy.md"
+        source_map_path = intent_global / "philosophy-source-map.json"
+        decisions_path = paths.philosophy_decisions()
+        delta_path = paths.intent_delta_signal(section_number)
+
+        prompt_path = artifacts / f"philosophy-expand-{section_number}-prompt.md"
+        output_path = artifacts / f"philosophy-expand-{section_number}-output.md"
+
+        phil_expand_text = _compose_philosophy_expander_text(
+            section_number, surfaces_path, philosophy_path, source_map_path,
+            decisions_path, delta_path,
+        )
+        if not self._prompt_guard.write_validated(phil_expand_text, prompt_path):
+            return None
+        self._communicator.log_artifact(planspace, f"prompt:philosophy-expand-{section_number}")
+
+        result = self._dispatcher.dispatch(
+            self._policies.resolve(policy,"intent_philosophy_expander"),
+            prompt_path,
+            output_path,
+            planspace,
+            codespace=codespace,
+            section_number=section_number,
+            agent_file=self._task_router.agent_for("intent.philosophy_expander"),
+        )
+
+        if result == ALIGNMENT_CHANGED_PENDING:
+            return None
+
+        delta = self._signals.read(delta_path)
+        if delta and delta.get("applied", {}).get("philosophy_updated"):
+            grounding_ok = validate_philosophy_grounding(
+                philosophy_path,
+                source_map_path,
+                artifacts,
+            )
+            if not grounding_ok:
+                self._logger.log(f"Section {section_number}: philosophy expansion broke "
+                    f"grounding — expansion accepted but grounding warning "
+                    f"emitted (fail-closed)")
+
+        return delta
+
+    def adjudicate_recurrence(
+        self,
+        section_number: str,
+        planspace: Path,
+        codespace: Path,
+        recurrences: list[dict],
+    ) -> list[str]:
+        """Dispatch adjudicator to decide on discarded surfaces that resurfaced."""
+        policy = self._policies.load(planspace)
+        paths = PathRegistry(planspace)
+        artifacts = paths.artifacts
+        signals_dir = paths.signals_dir()
+
+        recurrence_signal = {
+            "section": section_number,
+            "discarded_resurfaced": [
+                {
+                    "id": recurrence["id"],
+                    "kind": recurrence.get("kind", "unknown"),
+                    "notes": recurrence.get("notes", ""),
+                    "description": recurrence.get("description", ""),
+                    "evidence": recurrence.get("evidence", ""),
+                    "last_seen": recurrence.get("last_seen", {}),
+                }
+                for recurrence in recurrences
+            ],
+        }
+        recurrence_path = (
+            signals_dir / f"intent-surface-recurrence-{section_number}.json"
+        )
+        self._artifact_io.write_json(recurrence_path, recurrence_signal)
+
+        adjudication_path = (
+            signals_dir / f"intent-recurrence-adjudication-{section_number}.json"
+        )
+        prompt_path = artifacts / f"recurrence-adjudicate-{section_number}-prompt.md"
+        output_path = artifacts / f"recurrence-adjudicate-{section_number}-output.md"
+
+        ids_list = ", ".join(recurrence["id"] for recurrence in recurrences)
+        recurrence_prompt_text = _compose_recurrence_adjudication_text(
+            section_number, ids_list, recurrence_path, adjudication_path,
+        )
+        if not self._prompt_guard.write_validated(recurrence_prompt_text, prompt_path):
+            return []
+        self._communicator.log_artifact(planspace, f"prompt:recurrence-adjudicate-{section_number}")
+
+        self._dispatcher.dispatch(
+            self._policies.resolve(policy,"intent_recurrence_adjudicator"),
+            prompt_path,
+            output_path,
+            planspace,
+            codespace=codespace,
+            section_number=section_number,
+            agent_file=self._task_router.agent_for("intent.recurrence_adjudicator"),
+        )
+
+        result = self._signals.read(adjudication_path)
+        if result:
+            reopen = result.get("reopen_ids", [])
+            if reopen:
+                self._logger.log(f"Section {section_number}: adjudicator reopened "
+                    f"{len(reopen)} surface(s): {reopen}")
+            return reopen
+
+        self._logger.log(f"Section {section_number}: recurrence adjudication signal "
+            f"missing — keeping surfaces discarded (fail-closed)")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
+
+def _get_expanders() -> Expanders:
+    from containers import Services
+    return Expanders(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        dispatcher=Services.dispatcher(),
+        logger=Services.logger(),
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        signals=Services.signals(),
+        task_router=Services.task_router(),
+    )
+
+
+def run_problem_expander(
+    section_number: str,
+    planspace: Path,
+    codespace: Path,
+    *,
+    pending_surfaces_path: Path | None = None,
+    remaining_axis_budget: int = _DEFAULT_AXIS_BUDGET,
+) -> dict | None:
+    """Dispatch problem-expander and return its delta."""
+    return _get_expanders().run_problem_expander(
+        section_number, planspace, codespace,
+        pending_surfaces_path=pending_surfaces_path,
+        remaining_axis_budget=remaining_axis_budget,
+    )
+
+
+def run_philosophy_expander(
+    section_number: str,
+    planspace: Path,
+    codespace: Path,
+    *,
+    pending_surfaces_path: Path | None = None,
+) -> dict | None:
+    """Dispatch philosophy-expander and return its delta."""
+    return _get_expanders().run_philosophy_expander(
+        section_number, planspace, codespace,
+        pending_surfaces_path=pending_surfaces_path,
+    )
+
+
 def adjudicate_recurrence(
     section_number: str,
     planspace: Path,
     codespace: Path,
-    parent: str,
     recurrences: list[dict],
 ) -> list[str]:
     """Dispatch adjudicator to decide on discarded surfaces that resurfaced."""
-    policy = Services.policies().load(planspace)
-    paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
-    signals_dir = paths.signals_dir()
-
-    recurrence_signal = {
-        "section": section_number,
-        "discarded_resurfaced": [
-            {
-                "id": recurrence["id"],
-                "kind": recurrence.get("kind", "unknown"),
-                "notes": recurrence.get("notes", ""),
-                "description": recurrence.get("description", ""),
-                "evidence": recurrence.get("evidence", ""),
-                "last_seen": recurrence.get("last_seen", {}),
-            }
-            for recurrence in recurrences
-        ],
-    }
-    recurrence_path = (
-        signals_dir / f"intent-surface-recurrence-{section_number}.json"
+    return _get_expanders().adjudicate_recurrence(
+        section_number, planspace, codespace, recurrences,
     )
-    Services.artifact_io().write_json(recurrence_path, recurrence_signal)
-
-    adjudication_path = (
-        signals_dir / f"intent-recurrence-adjudication-{section_number}.json"
-    )
-    prompt_path = artifacts / f"recurrence-adjudicate-{section_number}-prompt.md"
-    output_path = artifacts / f"recurrence-adjudicate-{section_number}-output.md"
-
-    ids_list = ", ".join(recurrence["id"] for recurrence in recurrences)
-    recurrence_prompt_text = _compose_recurrence_adjudication_text(
-        section_number, ids_list, recurrence_path, adjudication_path,
-    )
-    if not Services.prompt_guard().write_validated(recurrence_prompt_text, prompt_path):
-        return []
-    Services.communicator().log_artifact(planspace, f"prompt:recurrence-adjudicate-{section_number}")
-
-    Services.dispatcher().dispatch(
-        Services.policies().resolve(policy,"intent_recurrence_adjudicator"),
-        prompt_path,
-        output_path,
-        planspace,
-        parent,
-        codespace=codespace,
-        section_number=section_number,
-        agent_file=Services.task_router().agent_for("intent.recurrence_adjudicator"),
-    )
-
-    result = Services.signals().read(adjudication_path)
-    if result:
-        reopen = result.get("reopen_ids", [])
-        if reopen:
-            Services.logger().log(f"Section {section_number}: adjudicator reopened "
-                f"{len(reopen)} surface(s): {reopen}")
-        return reopen
-
-    Services.logger().log(f"Section {section_number}: recurrence adjudication signal "
-        f"missing — keeping surfaces discarded (fail-closed)")
-    return []

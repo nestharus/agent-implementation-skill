@@ -4,12 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from reconciliation.engine.cross_section_reconciler import run_reconciliation_loop
 from orchestrator.engine.section_pipeline import run_section
 from orchestrator.types import ProposalPassResult, Section
+from signals.service.section_communicator import send_to_parent
 from signals.types import PASS_MODE_PROPOSAL
+
+if TYPE_CHECKING:
+    from containers import (
+        ChangeTrackerService,
+        LogService,
+        PipelineControlService,
+    )
 
 
 @dataclass(frozen=True)
@@ -37,83 +45,179 @@ def _partition_sections(
     return ready, blocked
 
 
-def _apply_reconciliation_blocks(
-    proposal_results: dict[str, ProposalPassResult],
-    recon_summary: dict,
-) -> set[str]:
-    reconciliation_blocked: set[str] = set()
-    for sec_num in recon_summary.get("sections_affected", []):
-        if sec_num in proposal_results:
-            proposal_result = proposal_results[sec_num]
-            if proposal_result.execution_ready:
-                proposal_result.execution_ready = False
-                proposal_result.needs_reconciliation = True
-                proposal_result.blockers.append({
-                    "type": "reconciliation",
-                    "description": (
-                        "Section affected by cross-section reconciliation — "
-                        f"{recon_summary['conflicts_found']} conflict(s) found"
-                    ),
-                })
-                reconciliation_blocked.add(sec_num)
-                Services.logger().log(f"Section {sec_num}: blocked by reconciliation")
-    return reconciliation_blocked
+class ReconciliationPhase:
+    """Orchestrates reconciliation blocking and re-proposal passes."""
 
-
-def _run_reproposal_loop(
-    reproposal_sections: list[str],
-    proposal_results: dict[str, ProposalPassResult],
-    sections_by_num: dict[str, Section],
-    all_sections: list[Section],
-    planspace: Path,
-    codespace: Path,
-    parent: str,
-) -> bool:
-    for sec_num in reproposal_sections:
-        if Services.pipeline_control().handle_pending_messages(planspace):
-            Services.logger().log("Aborted by parent during re-proposal pass")
-            Services.communicator().mailbox_send(planspace, parent, "fail:aborted")
-            raise ReconciliationPhaseExit
-
-        if Services.pipeline_control().check_alignment_and_return(
-            planspace, _check_and_clear_alignment_changed,
-        ):
-            Services.logger().log("Alignment changed during re-proposal pass — restarting from Phase 1")
-            return True
-
-        section = sections_by_num[sec_num]
-        Services.logger().log(f"=== Section {sec_num} re-proposal pass (reconciliation-affected) ===")
-
-        reproposal_result = run_section(
-            planspace,
-            codespace,
-            section,
-            parent,
-            all_sections=all_sections,
-            pass_mode=PASS_MODE_PROPOSAL,
+    def __init__(
+        self,
+        logger: LogService,
+        pipeline_control: PipelineControlService,
+        change_tracker: ChangeTrackerService,
+    ) -> None:
+        self._logger = logger
+        self._pipeline_control = pipeline_control
+        self._change_tracker = change_tracker
+        self._check_and_clear_alignment_changed = (
+            self._change_tracker.make_alignment_checker()
         )
 
-        if Services.pipeline_control().check_alignment_and_return(
-            planspace, _check_and_clear_alignment_changed,
-        ):
-            Services.logger().log("Alignment changed during re-proposal — restarting from Phase 1")
-            return True
+    def _apply_reconciliation_blocks(
+        self,
+        proposal_results: dict[str, ProposalPassResult],
+        recon_summary: dict,
+    ) -> set[str]:
+        reconciliation_blocked: set[str] = set()
+        for sec_num in recon_summary.get("sections_affected", []):
+            if sec_num in proposal_results:
+                proposal_result = proposal_results[sec_num]
+                if proposal_result.execution_ready:
+                    proposal_result.execution_ready = False
+                    proposal_result.needs_reconciliation = True
+                    proposal_result.blockers.append({
+                        "type": "reconciliation",
+                        "description": (
+                            "Section affected by cross-section reconciliation — "
+                            f"{recon_summary['conflicts_found']} conflict(s) found"
+                        ),
+                    })
+                    reconciliation_blocked.add(sec_num)
+                    self._logger.log(f"Section {sec_num}: blocked by reconciliation")
+        return reconciliation_blocked
 
-        if reproposal_result is None:
-            Services.logger().log(f"Section {sec_num}: paused during re-proposal")
-            continue
+    def _run_reproposal_loop(
+        self,
+        reproposal_sections: list[str],
+        proposal_results: dict[str, ProposalPassResult],
+        sections_by_num: dict[str, Section],
+        all_sections: list[Section],
+        planspace: Path,
+        codespace: Path,
+    ) -> bool:
+        for sec_num in reproposal_sections:
+            if self._pipeline_control.handle_pending_messages(planspace):
+                self._logger.log("Aborted by parent during re-proposal pass")
+                send_to_parent(planspace, "fail:aborted")
+                raise ReconciliationPhaseExit
 
-        if isinstance(reproposal_result, ProposalPassResult):
-            proposal_results[sec_num] = reproposal_result
-            status = (
-                "ready"
-                if reproposal_result.execution_ready
-                else f"still blocked ({len(reproposal_result.blockers)} blockers)"
+            if self._pipeline_control.check_alignment_and_return(
+                planspace, _check_and_clear_alignment_changed,
+            ):
+                self._logger.log("Alignment changed during re-proposal pass — restarting from Phase 1")
+                return True
+
+            section = sections_by_num[sec_num]
+            self._logger.log(f"=== Section {sec_num} re-proposal pass (reconciliation-affected) ===")
+
+            reproposal_result = run_section(
+                planspace,
+                codespace,
+                section,
+                all_sections=all_sections,
+                pass_mode=PASS_MODE_PROPOSAL,
             )
-            Services.logger().log(f"Section {sec_num}: re-proposal complete — {status}")
-            Services.communicator().mailbox_send(planspace, parent, f"reproposal-done:{sec_num}:{status}")
 
-    return False
+            if self._pipeline_control.check_alignment_and_return(
+                planspace, _check_and_clear_alignment_changed,
+            ):
+                self._logger.log("Alignment changed during re-proposal — restarting from Phase 1")
+                return True
+
+            if reproposal_result is None:
+                self._logger.log(f"Section {sec_num}: paused during re-proposal")
+                continue
+
+            if isinstance(reproposal_result, ProposalPassResult):
+                proposal_results[sec_num] = reproposal_result
+                status = (
+                    "ready"
+                    if reproposal_result.execution_ready
+                    else f"still blocked ({len(reproposal_result.blockers)} blockers)"
+                )
+                self._logger.log(f"Section {sec_num}: re-proposal complete — {status}")
+                send_to_parent(planspace, f"reproposal-done:{sec_num}:{status}")
+
+        return False
+
+    def run_reconciliation_phase(
+        self,
+        proposal_results: dict[str, ProposalPassResult],
+        sections_by_num: dict[str, Section],
+        all_sections: list[Section],
+        planspace: Path,
+        codespace: Path,
+    ) -> ReconciliationResult:
+        """Run reconciliation blocking and any required re-proposal passes."""
+
+        ready_sections, blocked_sections = _partition_sections(proposal_results)
+
+        recon_summary = run_reconciliation_loop(
+            planspace,
+            list(proposal_results.values()),
+        )
+        self._logger.log(
+            f"Phase 1b reconciliation: {recon_summary['conflicts_found']} conflicts, "
+            f"{recon_summary['new_sections_proposed']} new-section proposals, "
+            f"substrate_needed={recon_summary['substrate_needed']}, "
+            f"affected sections={recon_summary['sections_affected']}",
+        )
+
+        reconciliation_blocked = self._apply_reconciliation_blocks(proposal_results, recon_summary)
+
+        ready_sections, blocked_sections = _partition_sections(proposal_results)
+        if reconciliation_blocked:
+            self._logger.log(
+                f"Reconciliation blocked {len(reconciliation_blocked)} additional "
+                f"sections: {sorted(reconciliation_blocked)}",
+            )
+            self._logger.log(
+                f"Updated proposal summary: {len(ready_sections)} ready, "
+                f"{len(blocked_sections)} blocked",
+            )
+
+        reproposal_sections = sorted(reconciliation_blocked)
+        restart_phase1 = False
+        if reproposal_sections:
+            self._logger.log(
+                f"=== Phase 1b.2: re-proposal pass for {len(reproposal_sections)} "
+                "reconciliation-affected sections ===",
+            )
+
+            restart_phase1 = self._run_reproposal_loop(
+                reproposal_sections,
+                proposal_results,
+                sections_by_num,
+                all_sections,
+                planspace,
+                codespace,
+            )
+
+        if reproposal_sections:
+            ready_sections, blocked_sections = _partition_sections(proposal_results)
+            self._logger.log(
+                f"Post-reproposal summary: {len(ready_sections)} ready, "
+                f"{len(blocked_sections)} blocked",
+            )
+            if blocked_sections:
+                self._logger.log(f"Still blocked after re-proposal: {blocked_sections}")
+
+        return ReconciliationResult(
+            new_section_numbers=ready_sections,
+            removed_section_numbers=blocked_sections,
+            alignment_changed=restart_phase1,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
+
+def _get_reconciliation_phase() -> ReconciliationPhase:
+    from containers import Services
+    return ReconciliationPhase(
+        logger=Services.logger(),
+        pipeline_control=Services.pipeline_control(),
+        change_tracker=Services.change_tracker(),
+    )
 
 
 def run_reconciliation_phase(
@@ -122,68 +226,23 @@ def run_reconciliation_phase(
     all_sections: list[Section],
     planspace: Path,
     codespace: Path,
-    parent: str,
 ) -> ReconciliationResult:
     """Run reconciliation blocking and any required re-proposal passes."""
-
-    ready_sections, blocked_sections = _partition_sections(proposal_results)
-
-    recon_summary = run_reconciliation_loop(
+    return _get_reconciliation_phase().run_reconciliation_phase(
+        proposal_results,
+        sections_by_num,
+        all_sections,
         planspace,
-        list(proposal_results.values()),
-    )
-    Services.logger().log(
-        f"Phase 1b reconciliation: {recon_summary['conflicts_found']} conflicts, "
-        f"{recon_summary['new_sections_proposed']} new-section proposals, "
-        f"substrate_needed={recon_summary['substrate_needed']}, "
-        f"affected sections={recon_summary['sections_affected']}",
-    )
-
-    reconciliation_blocked = _apply_reconciliation_blocks(proposal_results, recon_summary)
-
-    ready_sections, blocked_sections = _partition_sections(proposal_results)
-    if reconciliation_blocked:
-        Services.logger().log(
-            f"Reconciliation blocked {len(reconciliation_blocked)} additional "
-            f"sections: {sorted(reconciliation_blocked)}",
-        )
-        Services.logger().log(
-            f"Updated proposal summary: {len(ready_sections)} ready, "
-            f"{len(blocked_sections)} blocked",
-        )
-
-    reproposal_sections = sorted(reconciliation_blocked)
-    restart_phase1 = False
-    if reproposal_sections:
-        Services.logger().log(
-            f"=== Phase 1b.2: re-proposal pass for {len(reproposal_sections)} "
-            "reconciliation-affected sections ===",
-        )
-
-        restart_phase1 = _run_reproposal_loop(
-            reproposal_sections,
-            proposal_results,
-            sections_by_num,
-            all_sections,
-            planspace,
-            codespace,
-            parent,
-        )
-
-    if reproposal_sections:
-        ready_sections, blocked_sections = _partition_sections(proposal_results)
-        Services.logger().log(
-            f"Post-reproposal summary: {len(ready_sections)} ready, "
-            f"{len(blocked_sections)} blocked",
-        )
-        if blocked_sections:
-            Services.logger().log(f"Still blocked after re-proposal: {blocked_sections}")
-
-    return ReconciliationResult(
-        new_section_numbers=ready_sections,
-        removed_section_numbers=blocked_sections,
-        alignment_changed=restart_phase1,
+        codespace,
     )
 
 
-_check_and_clear_alignment_changed = Services.change_tracker().make_alignment_checker()
+def _check_and_clear_alignment_changed(planspace: Path) -> bool:
+    """Module-level alignment checker for backward compatibility.
+
+    Tests monkeypatch this name directly.  In production the function
+    lazily creates a fresh checker from the container.
+    """
+    from containers import Services
+    checker = Services.change_tracker().make_alignment_checker()
+    return checker(planspace)

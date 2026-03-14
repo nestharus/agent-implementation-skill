@@ -94,7 +94,6 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
             section,
             planspace,
             codespace,
-            "parent",
             {"proposal_max": 3, "implementation_max": 3},
         )
 
@@ -174,7 +173,6 @@ def test_run_implementation_loop_retries_after_alignment_problems(
             section,
             planspace,
             codespace,
-            "parent",
             {"proposal_max": 3, "implementation_max": 3},
         )
 

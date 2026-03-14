@@ -20,6 +20,9 @@ from pathlib import Path
 from taskrouter import ensure_discovered, registry as _task_registry
 
 
+_ACTION_KIND_CHAIN = "chain"
+_ACTION_KIND_FANOUT = "fanout"
+
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
@@ -35,7 +38,7 @@ class TaskSpec:
 
 @dataclass
 class ChainAction:
-    kind: str = "chain"  # literal "chain"
+    kind: str = _ACTION_KIND_CHAIN  # literal "chain"
     steps: list[TaskSpec] = field(default_factory=list)
 
 
@@ -56,7 +59,7 @@ class BranchSpec:
 
 @dataclass
 class FanoutAction:
-    kind: str = "fanout"  # literal "fanout"
+    kind: str = _ACTION_KIND_FANOUT  # literal "fanout"
     branches: list[BranchSpec] = field(default_factory=list)
     gate: GateSpec | None = None
 
@@ -111,13 +114,13 @@ def _dict_to_branch_spec(d: dict) -> BranchSpec:
 def _parse_action(d: dict) -> ChainAction | FanoutAction | None:
     """Parse a single action dict into a typed action, or None on error."""
     kind = d.get("kind", "")
-    if kind == "chain":
+    if kind == _ACTION_KIND_CHAIN:
         steps = []
         for s in d.get("steps", []):
             if isinstance(s, dict):
                 steps.append(_dict_to_task_spec(s))
         return ChainAction(kind="chain", steps=steps)
-    if kind == "fanout":
+    if kind == _ACTION_KIND_FANOUT:
         branches = []
         for b in d.get("branches", []):
             if isinstance(b, dict):

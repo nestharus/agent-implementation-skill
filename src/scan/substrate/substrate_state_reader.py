@@ -4,45 +4,19 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
 from scan.related.cli_handler import extract_related_files
+
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 VALID_PROJECT_MODES = ("greenfield", "brownfield", "hybrid")
 
 
 def registry_for_artifacts(artifacts_dir: Path) -> PathRegistry:
     return PathRegistry(artifacts_dir.parent)
-
-
-def read_project_mode(artifacts_dir: Path) -> str | None:
-    """Read project mode from scan-stage signals."""
-    registry = registry_for_artifacts(artifacts_dir)
-    json_path = registry.project_mode_json()
-    txt_path = registry.project_mode_txt()
-
-    if json_path.is_file():
-        data = Services.artifact_io().read_json(json_path)
-        if isinstance(data, dict):
-            mode = data.get("mode", "").strip().lower()
-            if mode in VALID_PROJECT_MODES:
-                return mode
-        else:
-            print(
-                "[SUBSTRATE][WARN] project-mode.json malformed "
-                "-- preserved as .malformed.json, "
-                "trying text fallback"
-            )
-
-    if txt_path.is_file():
-        mode = txt_path.read_text(encoding="utf-8").strip().lower()
-        if mode in VALID_PROJECT_MODES:
-            return mode
-
-    return None
-
-
 
 
 def section_number(path: Path) -> str:
@@ -64,6 +38,79 @@ def count_existing_related(section_path: Path, codespace: Path) -> int:
     return count
 
 
+class SubstrateStateReader:
+    """Substrate discovery state reading and writing.
+
+    All cross-cutting services are received via constructor injection.
+    """
+
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
+
+    def read_project_mode(self, artifacts_dir: Path) -> str | None:
+        """Read project mode from scan-stage signals."""
+        registry = registry_for_artifacts(artifacts_dir)
+        json_path = registry.project_mode_json()
+        txt_path = registry.project_mode_txt()
+
+        if json_path.is_file():
+            data = self._artifact_io.read_json(json_path)
+            if isinstance(data, dict):
+                mode = data.get("mode", "").strip().lower()
+                if mode in VALID_PROJECT_MODES:
+                    return mode
+            else:
+                print(
+                    "[SUBSTRATE][WARN] project-mode.json malformed "
+                    "-- preserved as .malformed.json, "
+                    "trying text fallback"
+                )
+
+        if txt_path.is_file():
+            mode = txt_path.read_text(encoding="utf-8").strip().lower()
+            if mode in VALID_PROJECT_MODES:
+                return mode
+
+        return None
+
+    def write_status(
+        self,
+        artifacts_dir: Path,
+        state: str,
+        project_mode: str,
+        total_sections: int,
+        vacuum_sections: list[str],
+        notes: str,
+        threshold: int = 2,
+    ) -> None:
+        """Write ``artifacts/substrate/status.json``."""
+        status_dir = registry_for_artifacts(artifacts_dir).substrate_dir()
+        status = {
+            "state": state,
+            "project_mode": project_mode,
+            "total_sections": total_sections,
+            "vacuum_sections": [int(section) for section in vacuum_sections],
+            "threshold": threshold,
+            "notes": notes,
+        }
+        self._artifact_io.write_json(status_dir / "status.json", status)
+
+
+# ------------------------------------------------------------------
+# Backward-compat free function wrappers
+# ------------------------------------------------------------------
+
+
+def _default_reader() -> SubstrateStateReader:
+    from containers import Services
+    return SubstrateStateReader(artifact_io=Services.artifact_io())
+
+
+def read_project_mode(artifacts_dir: Path) -> str | None:
+    """Read project mode from scan-stage signals."""
+    return _default_reader().read_project_mode(artifacts_dir)
+
+
 def write_status(
     artifacts_dir: Path,
     state: str,
@@ -74,13 +121,7 @@ def write_status(
     threshold: int = 2,
 ) -> None:
     """Write ``artifacts/substrate/status.json``."""
-    status_dir = registry_for_artifacts(artifacts_dir).substrate_dir()
-    status = {
-        "state": state,
-        "project_mode": project_mode,
-        "total_sections": total_sections,
-        "vacuum_sections": [int(section) for section in vacuum_sections],
-        "threshold": threshold,
-        "notes": notes,
-    }
-    Services.artifact_io().write_json(status_dir / "status.json", status)
+    _default_reader().write_status(
+        artifacts_dir, state, project_mode,
+        total_sections, vacuum_sections, notes, threshold,
+    )

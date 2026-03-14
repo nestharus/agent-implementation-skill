@@ -93,7 +93,7 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
     try:
         result = run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
+            DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -166,7 +166,7 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
     try:
         result = run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
+            DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -252,7 +252,7 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
     try:
         result = run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
+            DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )

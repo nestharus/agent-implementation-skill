@@ -4,28 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
+
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 _PROBLEM_FRAME_TRUNCATION = 2000
 _MIN_TERM_LENGTH = 2
 _MAX_KEYWORDS_IN_BASIS = 3
 _MAX_BASIS_PARTS = 5
-
-
-def _list_index(path: Path) -> list[dict]:
-    data = Services.artifact_io().read_json(path)
-    if isinstance(data, list):
-        return [entry for entry in data if isinstance(entry, dict)]
-    return []
-
-
-def _dict_index(path: Path) -> dict:
-    data = Services.artifact_io().read_json(path)
-    if isinstance(data, dict):
-        return data
-    return {"default": "", "overrides": {}}
 
 
 def _resolve_governing_profile(
@@ -138,64 +127,6 @@ class _GovernanceInputs:
     combined_summary: str
     synthesis_ids: set[str]
     index_parse_failures: list[str] = field(default_factory=list)
-
-
-def _load_governance_inputs(
-    paths: PathRegistry,
-    section_number: str,
-    section_summary: str,
-) -> _GovernanceInputs:
-    """Load all indexes, problem frame, synthesis cues, and combined summary."""
-    # Load synthesis cues for additional matching signal (PAT-0011 R109)
-    synthesis_cues_path = paths.governance_synthesis_cues()
-    synthesis_cues = Services.artifact_io().read_json(synthesis_cues_path)
-    if not isinstance(synthesis_cues, dict):
-        synthesis_cues = {}
-
-    # Load problem-frame text as additional summary signal
-    problem_frame_text = ""
-    problem_frame_path = paths.problem_frame(section_number)
-    if problem_frame_path.exists():
-        try:
-            problem_frame_text = problem_frame_path.read_text(encoding="utf-8")[:_PROBLEM_FRAME_TRUNCATION]
-        except OSError:
-            pass
-    combined_summary = f"{section_summary} {problem_frame_text}".strip()
-
-    all_problems = _list_index(paths.governance_problem_index())
-    all_patterns = _list_index(paths.governance_pattern_index())
-    all_profiles = _list_index(paths.governance_profile_index())
-    region_profile_map = _dict_index(paths.governance_region_profile_map())
-
-    # Check for authoritative parse failures (PAT-0008 R108)
-    index_status_path = paths.governance_index_status()
-    index_parse_failures: list[str] = []
-    index_status = Services.artifact_io().read_json(index_status_path)
-    if isinstance(index_status, dict):
-        index_parse_failures = index_status.get("parse_failures", [])
-        if not isinstance(index_parse_failures, list):
-            index_parse_failures = []
-
-    # Collect synthesis-cue IDs that match the section summary terms
-    # PAT-0011 (R109): synthesis cues must be consumed when available
-    synthesis_ids: set[str] = set()
-    if synthesis_cues and combined_summary:
-        summary_terms = _normalize_terms(combined_summary)
-        for region_name, ref_ids in synthesis_cues.items():
-            region_terms = _normalize_terms(region_name)
-            if summary_terms & region_terms:
-                synthesis_ids.update(ref_ids)
-
-    return _GovernanceInputs(
-        paths=paths,
-        all_problems=all_problems,
-        all_patterns=all_patterns,
-        all_profiles=all_profiles,
-        region_profile_map=region_profile_map,
-        combined_summary=combined_summary,
-        synthesis_ids=synthesis_ids,
-        index_parse_failures=index_parse_failures,
-    )
 
 
 def _boost_candidates_by_synthesis(
@@ -316,79 +247,179 @@ def _determine_applicability_state(
     return "matched"
 
 
+class GovernancePacketBuilder:
+    """Builds governance packets for section-scoped advisory context.
+
+    All cross-cutting services are received via constructor injection.
+    """
+
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
+
+    def _list_index(self, path: Path) -> list[dict]:
+        data = self._artifact_io.read_json(path)
+        if isinstance(data, list):
+            return [entry for entry in data if isinstance(entry, dict)]
+        return []
+
+    def _dict_index(self, path: Path) -> dict:
+        data = self._artifact_io.read_json(path)
+        if isinstance(data, dict):
+            return data
+        return {"default": "", "overrides": {}}
+
+    def _load_governance_inputs(
+        self,
+        paths: PathRegistry,
+        section_number: str,
+        section_summary: str,
+    ) -> _GovernanceInputs:
+        """Load all indexes, problem frame, synthesis cues, and combined summary."""
+        # Load synthesis cues for additional matching signal (PAT-0011 R109)
+        synthesis_cues_path = paths.governance_synthesis_cues()
+        synthesis_cues = self._artifact_io.read_json(synthesis_cues_path)
+        if not isinstance(synthesis_cues, dict):
+            synthesis_cues = {}
+
+        # Load problem-frame text as additional summary signal
+        problem_frame_text = ""
+        problem_frame_path = paths.problem_frame(section_number)
+        if problem_frame_path.exists():
+            try:
+                problem_frame_text = problem_frame_path.read_text(encoding="utf-8")[:_PROBLEM_FRAME_TRUNCATION]
+            except OSError:
+                pass
+        combined_summary = f"{section_summary} {problem_frame_text}".strip()
+
+        all_problems = self._list_index(paths.governance_problem_index())
+        all_patterns = self._list_index(paths.governance_pattern_index())
+        all_profiles = self._list_index(paths.governance_profile_index())
+        region_profile_map = self._dict_index(paths.governance_region_profile_map())
+
+        # Check for authoritative parse failures (PAT-0008 R108)
+        index_status_path = paths.governance_index_status()
+        index_parse_failures: list[str] = []
+        index_status = self._artifact_io.read_json(index_status_path)
+        if isinstance(index_status, dict):
+            index_parse_failures = index_status.get("parse_failures", [])
+            if not isinstance(index_parse_failures, list):
+                index_parse_failures = []
+
+        # Collect synthesis-cue IDs that match the section summary terms
+        # PAT-0011 (R109): synthesis cues must be consumed when available
+        synthesis_ids: set[str] = set()
+        if synthesis_cues and combined_summary:
+            summary_terms = _normalize_terms(combined_summary)
+            for region_name, ref_ids in synthesis_cues.items():
+                region_terms = _normalize_terms(region_name)
+                if summary_terms & region_terms:
+                    synthesis_ids.update(ref_ids)
+
+        return _GovernanceInputs(
+            paths=paths,
+            all_problems=all_problems,
+            all_patterns=all_patterns,
+            all_profiles=all_profiles,
+            region_profile_map=region_profile_map,
+            combined_summary=combined_summary,
+            synthesis_ids=synthesis_ids,
+            index_parse_failures=index_parse_failures,
+        )
+
+    def build_section_governance_packet(
+        self,
+        section_number: str,
+        planspace: Path,
+        section_summary: str = "",
+    ) -> Path | None:
+        """Build a governance packet for a section.
+
+        The packet contains candidate governance items scoped to the section.
+        Full archive references are available via archive_refs for agents that
+        need the complete picture.
+        """
+
+        paths = PathRegistry(planspace)
+        packet_path = paths.governance_packet(section_number)
+        inputs = self._load_governance_inputs(paths, section_number, section_summary)
+
+        # Candidate filtering: section-scoped matching
+        candidate_problems, problem_basis = _filter_by_regions(
+            inputs.all_problems, section_number, "problem_id", inputs.combined_summary,
+        )
+        candidate_patterns, pattern_basis = _filter_by_regions(
+            inputs.all_patterns, section_number, "pattern_id", inputs.combined_summary,
+        )
+
+        # Boost candidates via synthesis cues (bounded: no full archive)
+        if inputs.synthesis_ids:
+            problem_basis, pattern_basis = _boost_candidates_by_synthesis(
+                candidate_problems, candidate_patterns,
+                inputs.all_problems, inputs.all_patterns,
+                inputs.synthesis_ids, problem_basis, pattern_basis,
+            )
+
+        governing_profile = _resolve_governing_profile(
+            section_number, inputs.region_profile_map,
+        )
+        # Narrow profile scope: include only governing profile or bounded candidates
+        bounded_profiles = [
+            p for p in inputs.all_profiles
+            if isinstance(p, dict) and p.get("profile_id") == governing_profile
+        ] if governing_profile else inputs.all_profiles
+
+        governance_questions = _build_governance_questions(
+            section_number, problem_basis, pattern_basis,
+            candidate_problems, candidate_patterns,
+            inputs.all_problems, inputs.all_patterns, inputs.index_parse_failures,
+        )
+        applicability_state = _determine_applicability_state(
+            candidate_problems, candidate_patterns, governing_profile,
+            inputs.all_problems, inputs.all_patterns,
+            governance_questions, inputs.index_parse_failures,
+        )
+        packet = {
+            "section": section_number,
+            "candidate_problems": candidate_problems,
+            "candidate_patterns": candidate_patterns,
+            "profiles": bounded_profiles,
+            "region_profile_map": inputs.region_profile_map,
+            "archive_refs": {
+                "problem_index": str(paths.governance_problem_index()),
+                "pattern_index": str(paths.governance_pattern_index()),
+                "profile_index": str(paths.governance_profile_index()),
+            },
+            "applicability_basis": {
+                "problems": problem_basis,
+                "patterns": pattern_basis,
+            },
+            "applicability_state": applicability_state,
+            "governance_questions": governance_questions,
+            "governing_profile": governing_profile,
+        }
+
+        try:
+            self._artifact_io.write_json(packet_path, packet)
+        except OSError:
+            return None
+        return packet_path
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers — used by tests and callers until they are
+# converted to receive GovernancePacketBuilder via constructor injection.
+# ---------------------------------------------------------------------------
+
+def _get_builder() -> GovernancePacketBuilder:
+    from containers import Services
+    return GovernancePacketBuilder(artifact_io=Services.artifact_io())
+
+
 def build_section_governance_packet(
     section_number: str,
     planspace: Path,
     section_summary: str = "",
 ) -> Path | None:
-    """Build a governance packet for a section.
-
-    The packet contains candidate governance items scoped to the section.
-    Full archive references are available via archive_refs for agents that
-    need the complete picture.
-    """
-
-    paths = PathRegistry(planspace)
-    packet_path = paths.governance_packet(section_number)
-    inputs = _load_governance_inputs(paths, section_number, section_summary)
-
-    # Candidate filtering: section-scoped matching
-    candidate_problems, problem_basis = _filter_by_regions(
-        inputs.all_problems, section_number, "problem_id", inputs.combined_summary,
+    return _get_builder().build_section_governance_packet(
+        section_number, planspace, section_summary,
     )
-    candidate_patterns, pattern_basis = _filter_by_regions(
-        inputs.all_patterns, section_number, "pattern_id", inputs.combined_summary,
-    )
-
-    # Boost candidates via synthesis cues (bounded: no full archive)
-    if inputs.synthesis_ids:
-        problem_basis, pattern_basis = _boost_candidates_by_synthesis(
-            candidate_problems, candidate_patterns,
-            inputs.all_problems, inputs.all_patterns,
-            inputs.synthesis_ids, problem_basis, pattern_basis,
-        )
-
-    governing_profile = _resolve_governing_profile(
-        section_number, inputs.region_profile_map,
-    )
-    # Narrow profile scope: include only governing profile or bounded candidates
-    bounded_profiles = [
-        p for p in inputs.all_profiles
-        if isinstance(p, dict) and p.get("profile_id") == governing_profile
-    ] if governing_profile else inputs.all_profiles
-
-    governance_questions = _build_governance_questions(
-        section_number, problem_basis, pattern_basis,
-        candidate_problems, candidate_patterns,
-        inputs.all_problems, inputs.all_patterns, inputs.index_parse_failures,
-    )
-    applicability_state = _determine_applicability_state(
-        candidate_problems, candidate_patterns, governing_profile,
-        inputs.all_problems, inputs.all_patterns,
-        governance_questions, inputs.index_parse_failures,
-    )
-    packet = {
-        "section": section_number,
-        "candidate_problems": candidate_problems,
-        "candidate_patterns": candidate_patterns,
-        "profiles": bounded_profiles,
-        "region_profile_map": inputs.region_profile_map,
-        "archive_refs": {
-            "problem_index": str(paths.governance_problem_index()),
-            "pattern_index": str(paths.governance_pattern_index()),
-            "profile_index": str(paths.governance_profile_index()),
-        },
-        "applicability_basis": {
-            "problems": problem_basis,
-            "patterns": pattern_basis,
-        },
-        "applicability_state": applicability_state,
-        "governance_questions": governance_questions,
-        "governing_profile": governing_profile,
-    }
-
-    try:
-        Services.artifact_io().write_json(packet_path, packet)
-    except OSError:
-        return None
-    return packet_path

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
+
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 IMPLEMENTATION_ROAL_KINDS = frozenset({
     "accepted_frontier",
@@ -18,18 +21,6 @@ _ROAL_INDEX_KINDS = frozenset({
     "reopen",
     "proposal_advisory",
 })
-
-
-def read_roal_input_index(
-    planspace: Path,
-    sec_num: str,
-) -> list[dict]:
-    paths = PathRegistry(planspace)
-    index_path = paths.input_refs_dir(sec_num) / f"section-{sec_num}-roal-input-index.json"
-    payload = Services.artifact_io().read_json(index_path)
-    if not isinstance(payload, list):
-        return []
-    return [entry for entry in payload if isinstance(entry, dict)]
 
 
 def normalize_roal_entries(entries: list[dict]) -> list[dict]:
@@ -55,53 +46,124 @@ def normalize_roal_entries(entries: list[dict]) -> list[dict]:
     return normalized
 
 
+class RoalIndex:
+    """ROAL input-index CRUD operations for implementation sections.
+
+    All cross-cutting services are received via constructor injection.
+    """
+
+    def __init__(
+        self,
+        artifact_io: ArtifactIOService,
+    ) -> None:
+        self._artifact_io = artifact_io
+
+    def read_roal_input_index(
+        self,
+        planspace: Path,
+        sec_num: str,
+    ) -> list[dict]:
+        paths = PathRegistry(planspace)
+        index_path = paths.input_refs_dir(sec_num) / f"section-{sec_num}-roal-input-index.json"
+        payload = self._artifact_io.read_json(index_path)
+        if not isinstance(payload, list):
+            return []
+        return [entry for entry in payload if isinstance(entry, dict)]
+
+    def write_roal_input_index(
+        self,
+        planspace: Path,
+        sec_num: str,
+        entries: list[dict],
+    ) -> Path:
+        """Write a typed ROAL input index for a section."""
+        paths = PathRegistry(planspace)
+        input_dir = paths.input_refs_dir(sec_num)
+        index_path = input_dir / f"section-{sec_num}-roal-input-index.json"
+        normalized_entries = normalize_roal_entries(entries)
+        indexed_paths = {
+            str(Path(entry["path"]).resolve())
+            for entry in normalized_entries
+        }
+
+        if input_dir.exists():
+            for ref_path in sorted(input_dir.glob("*.ref")):
+                try:
+                    referenced = ref_path.read_text(encoding="utf-8").strip()
+                except OSError:
+                    continue
+                if not referenced:
+                    continue
+                target_path = Path(referenced)
+                resolved = str(target_path.resolve())
+                if (
+                    target_path.parent == input_dir
+                    and "-risk-" in target_path.name
+                    and resolved not in indexed_paths
+                ):
+                    ref_path.unlink(missing_ok=True)
+            for artifact_path in sorted(input_dir.iterdir()):
+                if (
+                    not artifact_path.is_file()
+                    or artifact_path == index_path
+                    or artifact_path.suffix == ".ref"
+                ):
+                    continue
+                if (
+                    artifact_path.parent == input_dir
+                    and "-risk-" in artifact_path.name
+                    and str(artifact_path.resolve()) not in indexed_paths
+                ):
+                    artifact_path.unlink(missing_ok=True)
+
+        self._artifact_io.write_json(index_path, normalized_entries)
+        return index_path
+
+    def refresh_roal_input_index(
+        self,
+        planspace: Path,
+        sec_num: str,
+        *,
+        replace_kinds: frozenset[str],
+        new_entries: list[dict],
+    ) -> Path:
+        preserved = [
+            entry
+            for entry in self.read_roal_input_index(planspace, sec_num)
+            if str(entry.get("kind", "")).strip() not in replace_kinds
+        ]
+        return self.write_roal_input_index(
+            planspace,
+            sec_num,
+            preserved + new_entries,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat free function wrappers
+# ---------------------------------------------------------------------------
+
+
+def read_roal_input_index(
+    planspace: Path,
+    sec_num: str,
+) -> list[dict]:
+    from containers import Services
+    return RoalIndex(artifact_io=Services.artifact_io()).read_roal_input_index(
+        planspace, sec_num,
+    )
+
+
 def write_roal_input_index(
     planspace: Path,
     sec_num: str,
     entries: list[dict],
 ) -> Path:
     """Write a typed ROAL input index for a section."""
-    paths = PathRegistry(planspace)
-    input_dir = paths.input_refs_dir(sec_num)
-    index_path = input_dir / f"section-{sec_num}-roal-input-index.json"
-    normalized_entries = normalize_roal_entries(entries)
-    indexed_paths = {
-        str(Path(entry["path"]).resolve())
-        for entry in normalized_entries
-    }
-
-    if input_dir.exists():
-        for ref_path in sorted(input_dir.glob("*.ref")):
-            try:
-                referenced = ref_path.read_text(encoding="utf-8").strip()
-            except OSError:
-                continue
-            if not referenced:
-                continue
-            target_path = Path(referenced)
-            resolved = str(target_path.resolve())
-            if (
-                target_path.parent == input_dir
-                and "-risk-" in target_path.name
-                and resolved not in indexed_paths
-            ):
-                ref_path.unlink(missing_ok=True)
-        for artifact_path in sorted(input_dir.iterdir()):
-            if (
-                not artifact_path.is_file()
-                or artifact_path == index_path
-                or artifact_path.suffix == ".ref"
-            ):
-                continue
-            if (
-                artifact_path.parent == input_dir
-                and "-risk-" in artifact_path.name
-                and str(artifact_path.resolve()) not in indexed_paths
-            ):
-                artifact_path.unlink(missing_ok=True)
-
-    Services.artifact_io().write_json(index_path, normalized_entries)
-    return index_path
+    from containers import Services
+    return RoalIndex(artifact_io=Services.artifact_io()).write_roal_input_index(
+        planspace, sec_num, entries,
+    )
 
 
 def refresh_roal_input_index(
@@ -111,13 +173,9 @@ def refresh_roal_input_index(
     replace_kinds: frozenset[str],
     new_entries: list[dict],
 ) -> Path:
-    preserved = [
-        entry
-        for entry in read_roal_input_index(planspace, sec_num)
-        if str(entry.get("kind", "")).strip() not in replace_kinds
-    ]
-    return write_roal_input_index(
-        planspace,
-        sec_num,
-        preserved + new_entries,
+    from containers import Services
+    return RoalIndex(artifact_io=Services.artifact_io()).refresh_roal_input_index(
+        planspace, sec_num,
+        replace_kinds=replace_kinds,
+        new_entries=new_entries,
     )

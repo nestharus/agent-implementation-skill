@@ -5,8 +5,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field, fields
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 logger = logging.getLogger(__name__)
 
@@ -50,47 +52,53 @@ _BLOCKING_FIELDS: tuple[str, ...] = (
 )
 
 
-def load_proposal_state(path: Path) -> ProposalState:
-    """Load and validate a proposal state JSON file."""
-    if not path.exists():
-        return ProposalState()
+class State:
+    def __init__(
+        self,
+        artifact_io: ArtifactIOService,
+    ) -> None:
+        self._artifact_io = artifact_io
 
-    raw = Services.artifact_io().read_json(path)
-    if raw is None:
-        logger.warning(
-            "Malformed proposal state at %s — returning fail-closed default",
-            path,
-        )
-        return ProposalState()
-
-    if not isinstance(raw, dict):
-        logger.warning(
-            "Proposal state at %s is not a dict — renaming to "
-            ".malformed.json",
-            path,
-        )
-        Services.artifact_io().rename_malformed(path)
-        return ProposalState()
-
-    expected_fields = {f.name: f.type for f in fields(ProposalState)}
-    for key in expected_fields:
-        if key not in raw:
-            logger.warning(
-                "Proposal state at %s missing required key '%s' "
-                "— renaming to .malformed.json",
-                path,
-                key,
-            )
-            Services.artifact_io().rename_malformed(path)
+    def load_proposal_state(self, path: Path) -> ProposalState:
+        """Load and validate a proposal state JSON file."""
+        if not path.exists():
             return ProposalState()
 
-    return ProposalState.from_dict(raw)
+        raw = self._artifact_io.read_json(path)
+        if raw is None:
+            logger.warning(
+                "Malformed proposal state at %s — returning fail-closed default",
+                path,
+            )
+            return ProposalState()
 
+        if not isinstance(raw, dict):
+            logger.warning(
+                "Proposal state at %s is not a dict — renaming to "
+                ".malformed.json",
+                path,
+            )
+            self._artifact_io.rename_malformed(path)
+            return ProposalState()
 
-def save_proposal_state(state: ProposalState | dict, path: Path) -> None:
-    """Write a proposal state to JSON."""
-    data = state.to_dict() if isinstance(state, ProposalState) else state
-    Services.artifact_io().write_json(path, data)
+        expected_fields = {f.name: f.type for f in fields(ProposalState)}
+        for key in expected_fields:
+            if key not in raw:
+                logger.warning(
+                    "Proposal state at %s missing required key '%s' "
+                    "— renaming to .malformed.json",
+                    path,
+                    key,
+                )
+                self._artifact_io.rename_malformed(path)
+                return ProposalState()
+
+        return ProposalState.from_dict(raw)
+
+    def save_proposal_state(self, state: ProposalState | dict, path: Path) -> None:
+        """Write a proposal state to JSON."""
+        data = state.to_dict() if isinstance(state, ProposalState) else state
+        self._artifact_io.write_json(path, data)
 
 
 def has_blocking_fields(state: ProposalState) -> bool:
@@ -117,3 +125,22 @@ def extract_blockers(state: ProposalState) -> list[dict]:
                 "description": str(item),
             })
     return blockers
+
+
+# Backward-compat wrappers
+
+def _get_state() -> State:
+    from containers import Services
+    return State(
+        artifact_io=Services.artifact_io(),
+    )
+
+
+def load_proposal_state(path: Path) -> ProposalState:
+    """Load and validate a proposal state JSON file."""
+    return _get_state().load_proposal_state(path)
+
+
+def save_proposal_state(state: ProposalState | dict, path: Path) -> None:
+    """Write a proposal state to JSON."""
+    _get_state().save_proposal_state(state, path)

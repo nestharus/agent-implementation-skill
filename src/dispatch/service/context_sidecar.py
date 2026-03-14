@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
+
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 
 def _parse_inline_yaml_list(text: str) -> list[str]:
@@ -70,24 +73,98 @@ VALID_CATEGORIES = frozenset({
 })
 
 
-def _resolve_section_spec(planspace: Path, section: str | None) -> str:
-    if not section:
-        return ""
-    return Services.artifact_io().read_if_exists(PathRegistry(planspace).section_spec(section))
+class ContextSidecar:
+    """Agent-scoped context resolution and sidecar materialization."""
+
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
+
+    def _resolve_section_spec(self, planspace: Path, section: str | None) -> str:
+        if not section:
+            return ""
+        return self._artifact_io.read_if_exists(PathRegistry(planspace).section_spec(section))
+
+    def _resolve_decision_history(self, planspace: Path, section: str | None) -> str:
+        paths = PathRegistry(planspace)
+        if section:
+            json_path = paths.decision_json(section)
+        else:
+            json_path = paths.global_decision_json()
+        return self._artifact_io.read_if_exists(json_path)
+
+    def _resolve_strategic_state(self, planspace: Path, _section: str | None) -> str:
+        return self._artifact_io.read_if_exists(PathRegistry(planspace).strategic_state())
+
+    def _resolve_coordination_state(self, planspace: Path, _section: str | None) -> str:
+        return self._artifact_io.read_if_exists(
+            PathRegistry(planspace).coordination_problems()
+        )
+
+    def _resolve_model_policy(self, planspace: Path, _section: str | None) -> str:
+        return self._artifact_io.read_if_exists(PathRegistry(planspace).model_policy())
+
+    def _resolve_governance(self, planspace: Path, section: str | None) -> str:
+        if not section:
+            return ""
+        return self._artifact_io.read_if_exists(PathRegistry(planspace).governance_packet(section))
+
+    def resolve_context(
+        self,
+        agent_file: str,
+        planspace: Path,
+        section: str | None = None,
+    ) -> dict[str, str]:
+        """Resolve an agent's declared context categories to content strings."""
+        categories = parse_context_field(agent_file)
+        if not categories:
+            return {}
+
+        resolvers = {
+            "section_spec": self._resolve_section_spec,
+            "decision_history": self._resolve_decision_history,
+            "strategic_state": self._resolve_strategic_state,
+            "codemap": _resolve_codemap,
+            "related_files": _resolve_related_files,
+            "coordination_state": self._resolve_coordination_state,
+            "allowed_tasks": _resolve_allowed_tasks,
+            "section_output": _resolve_section_output,
+            "model_policy": self._resolve_model_policy,
+            "flow_context": _resolve_flow_context,
+            "governance": self._resolve_governance,
+        }
+
+        result: dict[str, str] = {}
+        for category in categories:
+            if category not in VALID_CATEGORIES:
+                continue
+            resolver = resolvers.get(category)
+            if resolver is not None:
+                result[category] = resolver(planspace, section)
+
+        return result
+
+    def materialize_context_sidecar(
+        self,
+        agent_file_path: str,
+        planspace: Path,
+        section: str | None = None,
+    ) -> Path | None:
+        """Resolve and write the scoped-context sidecar JSON."""
+        agent_context = self.resolve_context(agent_file_path, planspace, section=section)
+        if not agent_context:
+            return None
+        ctx_path = PathRegistry(planspace).context_sidecar(Path(agent_file_path).stem)
+        ctx_path.parent.mkdir(parents=True, exist_ok=True)
+        ctx_path.write_text(
+            json.dumps(agent_context, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return ctx_path
 
 
-def _resolve_decision_history(planspace: Path, section: str | None) -> str:
-    paths = PathRegistry(planspace)
-    if section:
-        json_path = paths.decision_json(section)
-    else:
-        json_path = paths.global_decision_json()
-    return Services.artifact_io().read_if_exists(json_path)
-
-
-def _resolve_strategic_state(planspace: Path, _section: str | None) -> str:
-    return Services.artifact_io().read_if_exists(PathRegistry(planspace).strategic_state())
-
+# ---------------------------------------------------------------------------
+# Pure resolvers (no Services usage)
+# ---------------------------------------------------------------------------
 
 def _resolve_codemap(planspace: Path, _section: str | None) -> str:
     paths = PathRegistry(planspace)
@@ -129,12 +206,6 @@ def _resolve_related_files(planspace: Path, section: str | None) -> str:
     return ""
 
 
-def _resolve_coordination_state(planspace: Path, _section: str | None) -> str:
-    return Services.artifact_io().read_if_exists(
-        PathRegistry(planspace).coordination_problems()
-    )
-
-
 def _resolve_allowed_tasks(_planspace: Path, _section: str | None) -> str:
     from taskrouter import ensure_discovered, registry as _reg
 
@@ -156,10 +227,6 @@ def _resolve_section_output(planspace: Path, section: str | None) -> str:
     return ""
 
 
-def _resolve_model_policy(planspace: Path, _section: str | None) -> str:
-    return Services.artifact_io().read_if_exists(PathRegistry(planspace).model_policy())
-
-
 def _resolve_flow_context(planspace: Path, _section: str | None) -> str:
     flows_dir = PathRegistry(planspace).flows_dir()
     if not flows_dir.is_dir():
@@ -170,25 +237,13 @@ def _resolve_flow_context(planspace: Path, _section: str | None) -> str:
     return ""
 
 
-def _resolve_governance(planspace: Path, section: str | None) -> str:
-    if not section:
-        return ""
-    return Services.artifact_io().read_if_exists(PathRegistry(planspace).governance_packet(section))
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
 
-
-_RESOLVERS = {
-    "section_spec": _resolve_section_spec,
-    "decision_history": _resolve_decision_history,
-    "strategic_state": _resolve_strategic_state,
-    "codemap": _resolve_codemap,
-    "related_files": _resolve_related_files,
-    "coordination_state": _resolve_coordination_state,
-    "allowed_tasks": _resolve_allowed_tasks,
-    "section_output": _resolve_section_output,
-    "model_policy": _resolve_model_policy,
-    "flow_context": _resolve_flow_context,
-    "governance": _resolve_governance,
-}
+def _get_sidecar() -> ContextSidecar:
+    from containers import Services
+    return ContextSidecar(artifact_io=Services.artifact_io())
 
 
 def resolve_context(
@@ -197,19 +252,7 @@ def resolve_context(
     section: str | None = None,
 ) -> dict[str, str]:
     """Resolve an agent's declared context categories to content strings."""
-    categories = parse_context_field(agent_file)
-    if not categories:
-        return {}
-
-    result: dict[str, str] = {}
-    for category in categories:
-        if category not in VALID_CATEGORIES:
-            continue
-        resolver = _RESOLVERS.get(category)
-        if resolver is not None:
-            result[category] = resolver(planspace, section)
-
-    return result
+    return _get_sidecar().resolve_context(agent_file, planspace, section)
 
 
 def materialize_context_sidecar(
@@ -218,13 +261,6 @@ def materialize_context_sidecar(
     section: str | None = None,
 ) -> Path | None:
     """Resolve and write the scoped-context sidecar JSON."""
-    agent_context = resolve_context(agent_file_path, planspace, section=section)
-    if not agent_context:
-        return None
-    ctx_path = PathRegistry(planspace).context_sidecar(Path(agent_file_path).stem)
-    ctx_path.parent.mkdir(parents=True, exist_ok=True)
-    ctx_path.write_text(
-        json.dumps(agent_context, indent=2) + "\n",
-        encoding="utf-8",
+    return _get_sidecar().materialize_context_sidecar(
+        agent_file_path, planspace, section,
     )
-    return ctx_path

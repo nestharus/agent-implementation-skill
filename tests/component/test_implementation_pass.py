@@ -232,7 +232,6 @@ def test_run_implementation_pass_records_results_and_hashes(
         {"01": section},
         planspace,
         codespace,
-        "parent",
     )
 
     assert results["01"].modified_files == ["src/app.py"]
@@ -280,7 +279,6 @@ def test_run_implementation_pass_writes_accepted_steps_artifact(
         {"01": section},
         planspace,
         codespace,
-        "parent",
     )
 
     accepted_path = (
@@ -350,7 +348,6 @@ def test_run_implementation_pass_writes_deferred_steps_artifact(
         {"01": section},
         planspace,
         codespace,
-        "parent",
     )
 
     deferred = read_json(
@@ -425,7 +422,6 @@ def test_run_implementation_pass_writes_reopen_blocker_and_skips(
         {"01": section},
         planspace,
         codespace,
-        "parent",
     )
 
     blocker = read_json(planspace / "artifacts" / "signals" / "section-01-blocker.json")
@@ -479,7 +475,6 @@ def test_run_implementation_pass_fail_closed_on_roal_failure(
         {"01": section},
         planspace,
         codespace,
-        "parent",
     )
 
     assert results == {}
@@ -500,7 +495,6 @@ def test_run_implementation_pass_skip_mode_proceeds_without_risk_artifacts(
         {"01": section},
         planspace,
         codespace,
-        "parent",
     )
 
     assert results["01"].modified_files == ["src/app.py"]
@@ -523,7 +517,6 @@ def test_run_implementation_pass_restarts_on_alignment_change(
             {"01": section},
             planspace,
             codespace,
-            "parent",
         )
 
 def testappend_risk_history_records_enriched_outcomes(planspace: Path) -> None:
@@ -649,7 +642,6 @@ def test_run_implementation_pass_dispatches_reassessed_frontier_slice(
         {"01": section},
         planspace,
         codespace,
-        "parent",
     )
 
     assert reassess_calls == ["reassess"]
@@ -752,7 +744,6 @@ def test_run_implementation_pass_bounds_frontier_iterations(
         {"01": section},
         planspace,
         codespace,
-        "parent",
     )
 
     assert reassess_count == 3
@@ -818,7 +809,6 @@ def test_run_implementation_pass_stops_when_reassessment_accepts_nothing(
         {"01": section},
         planspace,
         codespace,
-        "parent",
     )
 
     assert run_calls == [["src/app.py"]]
@@ -870,7 +860,6 @@ def test_run_implementation_pass_stops_on_reopen_outcome(
         {"01": section},
         planspace,
         codespace,
-        "parent",
     )
 
     assert run_calls == [["src/step-1.py"], ["src/step-2.py"]]
@@ -932,7 +921,6 @@ def test_run_implementation_pass_marks_frontier_failure_in_section_result(
         {"01": section},
         planspace,
         codespace,
-        "parent",
     )
 
     assert history_calls == [
@@ -983,7 +971,6 @@ def test_run_implementation_pass_restarts_on_alignment_change_during_frontier_ex
             {"01": section},
             planspace,
             codespace,
-            "parent",
         )
 
     assert run_calls == [["src/step-1.py"], ["src/step-2.py"]]
@@ -1001,7 +988,6 @@ def test_run_implementation_pass_exits_when_parent_aborts(
             {"01": section},
             planspace,
             codespace,
-            "parent",
         )
 
     assert capturing_communicator.messages == ["fail:aborted"]
@@ -1042,7 +1028,6 @@ def test_run_implementation_pass_invokes_roal_when_section_is_ready(
         {"01": section},
         planspace,
         codespace,
-        "parent",
     )
 
     assert results["01"].modified_files == ["src/app.py"]

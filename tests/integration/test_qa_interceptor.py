@@ -20,6 +20,7 @@ import pytest
 from _paths import DB_SH, WORKFLOW_HOME
 from src.orchestrator.path_registry import PathRegistry
 from conftest import override_dispatcher_and_guard
+from containers import Services
 
 # ---------------------------------------------------------------------------
 # Helpers — same pattern as test_dispatch_meta_fail_closed.py
@@ -55,6 +56,18 @@ def _submit_task(db_path: str, task_type: str = "test-task") -> str:
     return result.stdout.strip().split(":")[1]
 
 
+def _make_interceptor():
+    """Create a QaInterceptor wired from the current container state."""
+    from qa.service.qa_interceptor import QaInterceptor
+    return QaInterceptor(
+        artifact_io=Services.artifact_io(),
+        task_router=Services.task_router(),
+        policies=Services.policies(),
+        dispatcher=Services.dispatcher(),
+        prompt_guard=Services.prompt_guard(),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Unit tests: read_qa_parameters
 # ---------------------------------------------------------------------------
@@ -64,19 +77,16 @@ class TestReadQaParameters:
 
     def test_returns_default_when_file_absent(self, tmp_path: Path) -> None:
         """No parameters.json -> qa_mode False."""
-        from qa.service.qa_interceptor import read_qa_parameters
-
         ps = tmp_path / "planspace"
         ps.mkdir()
         PathRegistry(ps).ensure_artifacts_tree()
 
-        result = read_qa_parameters(ps)
+        interceptor = _make_interceptor()
+        result = interceptor.read_qa_parameters(ps)
         assert result == {"qa_mode": False}
 
     def test_returns_parsed_dict_when_valid(self, tmp_path: Path) -> None:
         """Valid parameters.json returns parsed content."""
-        from qa.service.qa_interceptor import read_qa_parameters
-
         ps = tmp_path / "planspace"
         ps.mkdir()
         PathRegistry(ps).ensure_artifacts_tree()
@@ -86,14 +96,13 @@ class TestReadQaParameters:
             encoding="utf-8",
         )
 
-        result = read_qa_parameters(ps)
+        interceptor = _make_interceptor()
+        result = interceptor.read_qa_parameters(ps)
         assert result["qa_mode"] is True
         assert result["extra"] == "value"
 
     def test_renames_malformed_to_dotmalformed(self, tmp_path: Path) -> None:
         """Malformed JSON is renamed and defaults returned."""
-        from qa.service.qa_interceptor import read_qa_parameters
-
         ps = tmp_path / "planspace"
         ps.mkdir()
         PathRegistry(ps).ensure_artifacts_tree()
@@ -101,15 +110,14 @@ class TestReadQaParameters:
         params_path = artifacts / "parameters.json"
         params_path.write_text("{not valid json", encoding="utf-8")
 
-        result = read_qa_parameters(ps)
+        interceptor = _make_interceptor()
+        result = interceptor.read_qa_parameters(ps)
         assert result == {"qa_mode": False}
         assert not params_path.exists()
         assert (artifacts / "parameters.malformed.json").exists()
 
     def test_renames_non_dict_to_dotmalformed(self, tmp_path: Path) -> None:
         """Non-dict JSON (e.g., array) is treated as malformed."""
-        from qa.service.qa_interceptor import read_qa_parameters
-
         ps = tmp_path / "planspace"
         ps.mkdir()
         PathRegistry(ps).ensure_artifacts_tree()
@@ -117,7 +125,8 @@ class TestReadQaParameters:
         params_path = artifacts / "parameters.json"
         params_path.write_text("[1, 2, 3]", encoding="utf-8")
 
-        result = read_qa_parameters(ps)
+        interceptor = _make_interceptor()
+        result = interceptor.read_qa_parameters(ps)
         assert result == {"qa_mode": False}
         assert not params_path.exists()
 
@@ -125,8 +134,6 @@ class TestReadQaParameters:
         self, tmp_path: Path,
     ) -> None:
         """Valid JSON without qa_mode key gets default False."""
-        from qa.service.qa_interceptor import read_qa_parameters
-
         ps = tmp_path / "planspace"
         ps.mkdir()
         PathRegistry(ps).ensure_artifacts_tree()
@@ -136,7 +143,8 @@ class TestReadQaParameters:
             encoding="utf-8",
         )
 
-        result = read_qa_parameters(ps)
+        interceptor = _make_interceptor()
+        result = interceptor.read_qa_parameters(ps)
         assert result["qa_mode"] is False
         assert result["other_param"] == 42
 
@@ -211,12 +219,10 @@ class TestParseVerdict:
 # ---------------------------------------------------------------------------
 
 class TestInterceptTask:
-    """Tests for the intercept_task function with mocked agent dispatch."""
+    """Tests for the intercept_task method with mocked agent dispatch."""
 
     def test_pass_returns_true_none_none(self, tmp_path: Path) -> None:
         """PASS verdict returns (True, None, None)."""
-        from qa.service.qa_interceptor import intercept_task
-
         ps = _setup_planspace(tmp_path)
 
         # Verify agent resolution works.
@@ -239,7 +245,8 @@ class TestInterceptTask:
         })
 
         with override_dispatcher_and_guard(lambda *a, **kw: mock_output):
-            result = intercept_task(
+            interceptor = _make_interceptor()
+            result = interceptor.intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
@@ -249,8 +256,6 @@ class TestInterceptTask:
 
     def test_dispatch_uses_model_policy_key(self, tmp_path: Path) -> None:
         """QA dispatch resolves its model through model-policy.json."""
-        from qa.service.qa_interceptor import intercept_task
-
         ps = _setup_planspace(tmp_path)
         artifacts = ps / "artifacts"
         (artifacts / "model-policy.json").write_text(
@@ -280,7 +285,8 @@ class TestInterceptTask:
             return mock_output
 
         with override_dispatcher_and_guard(capture_dispatch):
-            result = intercept_task(
+            interceptor = _make_interceptor()
+            result = interceptor.intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
@@ -292,8 +298,6 @@ class TestInterceptTask:
         self, tmp_path: Path,
     ) -> None:
         """REJECT verdict returns (False, rationale_path) and writes file."""
-        from qa.service.qa_interceptor import intercept_task
-
         ps = _setup_planspace(tmp_path)
 
         task = {
@@ -313,7 +317,8 @@ class TestInterceptTask:
         })
 
         with override_dispatcher_and_guard(lambda *a, **kw: mock_output):
-            result = intercept_task(
+            interceptor = _make_interceptor()
+            result = interceptor.intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
@@ -330,8 +335,6 @@ class TestInterceptTask:
 
     def test_dispatch_error_fails_open_with_degraded(self, tmp_path: Path) -> None:
         """Exception during dispatch -> passes with degraded reason_code."""
-        from qa.service.qa_interceptor import intercept_task
-
         ps = _setup_planspace(tmp_path)
 
         task = {
@@ -348,7 +351,8 @@ class TestInterceptTask:
             raise RuntimeError("agent crashed")
 
         with override_dispatcher_and_guard(raise_error):
-            result = intercept_task(
+            interceptor = _make_interceptor()
+            result = interceptor.intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
@@ -358,8 +362,6 @@ class TestInterceptTask:
 
     def test_garbage_output_fails_open_with_degraded(self, tmp_path: Path) -> None:
         """Unparseable QA output -> passes with degraded reason_code."""
-        from qa.service.qa_interceptor import intercept_task
-
         ps = _setup_planspace(tmp_path)
 
         task = {
@@ -373,7 +375,8 @@ class TestInterceptTask:
         )
 
         with override_dispatcher_and_guard(lambda *a, **kw: "This is not JSON at all"):
-            result = intercept_task(
+            interceptor = _make_interceptor()
+            result = interceptor.intercept_task(
                 task, "alignment-judge.md", ps,
             )
 
@@ -383,8 +386,6 @@ class TestInterceptTask:
 
     def test_missing_target_agent_fails_open_with_degraded(self, tmp_path: Path) -> None:
         """Missing target agent file -> passes with degraded reason_code."""
-        from qa.service.qa_interceptor import intercept_task
-
         ps = _setup_planspace(tmp_path)
 
         task = {
@@ -405,7 +406,8 @@ class TestInterceptTask:
             return ""
 
         with override_dispatcher_and_guard(tracking_dispatch):
-            result = intercept_task(
+            interceptor = _make_interceptor()
+            result = interceptor.intercept_task(
                 task, "nonexistent-agent-xyz.md", ps,
             )
 
@@ -417,8 +419,6 @@ class TestInterceptTask:
 
     def test_prompt_written_to_qa_intercepts(self, tmp_path: Path) -> None:
         """QA prompt file is written to artifacts/qa-intercepts/."""
-        from qa.service.qa_interceptor import intercept_task
-
         ps = _setup_planspace(tmp_path)
 
         task = {
@@ -433,7 +433,8 @@ class TestInterceptTask:
 
         mock_output = '{"verdict": "PASS", "rationale": "OK"}'
         with override_dispatcher_and_guard(lambda *a, **kw: mock_output):
-            intercept_task(task, "alignment-judge.md", ps)
+            interceptor = _make_interceptor()
+            interceptor.intercept_task(task, "alignment-judge.md", ps)
 
         prompt_path = ps / "artifacts" / "qa-intercepts" / "qa-104-prompt.md"
         assert prompt_path.exists()
@@ -728,15 +729,14 @@ class TestInterceptDispatch:
         self, tmp_path: Path,
     ) -> None:
         """intercept_dispatch creates a task dict and delegates to intercept_task."""
-        from qa.service.qa_interceptor import intercept_dispatch
-
         ps = _setup_planspace(tmp_path)
         prompt = ps / "artifacts" / "test-prompt.md"
         prompt.write_text("# Test prompt\n", encoding="utf-8")
 
         mock_output = '{"verdict": "PASS", "rationale": "OK"}'
         with override_dispatcher_and_guard(lambda *a, **kw: mock_output):
-            result = intercept_dispatch(
+            interceptor = _make_interceptor()
+            result = interceptor.intercept_dispatch(
                 agent_file="alignment-judge.md",
                 prompt_path=prompt,
                 planspace=ps,
@@ -750,8 +750,6 @@ class TestInterceptDispatch:
         self, tmp_path: Path,
     ) -> None:
         """intercept_dispatch returns (False, path, None) on REJECT."""
-        from qa.service.qa_interceptor import intercept_dispatch
-
         ps = _setup_planspace(tmp_path)
         prompt = ps / "artifacts" / "test-prompt.md"
         prompt.write_text("# Test prompt\n", encoding="utf-8")
@@ -762,7 +760,8 @@ class TestInterceptDispatch:
             "violations": ["scope"],
         })
         with override_dispatcher_and_guard(lambda *a, **kw: mock_output):
-            result = intercept_dispatch(
+            interceptor = _make_interceptor()
+            result = interceptor.intercept_dispatch(
                 agent_file="alignment-judge.md",
                 prompt_path=prompt,
                 planspace=ps,
@@ -776,8 +775,6 @@ class TestInterceptDispatch:
         self, tmp_path: Path,
     ) -> None:
         """Missing agent file fails open with target_unavailable reason."""
-        from qa.service.qa_interceptor import intercept_dispatch
-
         ps = _setup_planspace(tmp_path)
         prompt = ps / "artifacts" / "test-prompt.md"
         prompt.write_text("# Test\n", encoding="utf-8")
@@ -790,7 +787,8 @@ class TestInterceptDispatch:
             return ""
 
         with override_dispatcher_and_guard(tracking_dispatch):
-            result = intercept_dispatch(
+            interceptor = _make_interceptor()
+            result = interceptor.intercept_dispatch(
                 agent_file="nonexistent-agent-xyz.md",
                 prompt_path=prompt,
                 planspace=ps,

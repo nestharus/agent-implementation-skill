@@ -53,7 +53,6 @@ def test_poll_control_messages_replays_non_control_messages(tmp_path: Path) -> N
 
     result = poll_control_messages(
         planspace,
-        "parent",
         db_sh=DB_SH,
         agent_name="section-loop",
     )
@@ -74,7 +73,6 @@ def test_poll_control_messages_sets_alignment_flag_and_invalidates_excerpts(
 
     result = poll_control_messages(
         planspace,
-        "parent",
         db_sh=DB_SH,
         agent_name="section-loop",
     )
@@ -97,7 +95,7 @@ def test_handle_pending_messages_returns_true_for_abort(tmp_path: Path) -> None:
     ) is True
 
 
-def test_poll_control_messages_exits_on_abort(tmp_path: Path) -> None:
+def test_poll_control_messages_exits_on_abort(tmp_path: Path, noop_communicator) -> None:
     planspace, client = _db(tmp_path)
     parent = _mailbox(client, "parent")
     _mailbox(client, "section-loop")
@@ -106,7 +104,6 @@ def test_poll_control_messages_exits_on_abort(tmp_path: Path) -> None:
     with pytest.raises(PipelineAbortError):
         poll_control_messages(
             planspace,
-            "parent",
             current_section="03",
             db_sh=DB_SH,
             agent_name="section-loop",

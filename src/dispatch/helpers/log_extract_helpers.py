@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
-from containers import Services
+if TYPE_CHECKING:
+    from containers import HasherService
 
 _SECTION_RE = re.compile(r"(?:section[-_]?)(\d{2})\b|[-_:](\d{2})(?:[-_.:,\s]|$)")
 
@@ -52,10 +54,16 @@ def parse_timestamp(value: str | int | float) -> tuple[str, int]:
     return _fmt(dt), ms
 
 
-def prompt_signature(text: str) -> str:
-    """Stable hash of prompt text for correlation matching."""
-    normalized = " ".join(text.split())[:_PROMPT_SIGNATURE_TRUNCATION]
-    return Services.hasher().content_hash(normalized)
+class LogExtractHelpers:
+    """Helpers that require service dependencies."""
+
+    def __init__(self, hasher: HasherService) -> None:
+        self._hasher = hasher
+
+    def prompt_signature(self, text: str) -> str:
+        """Stable hash of prompt text for correlation matching."""
+        normalized = " ".join(text.split())[:_PROMPT_SIGNATURE_TRUNCATION]
+        return self._hasher.content_hash(normalized)
 
 
 def infer_section(*texts: str) -> str:
@@ -79,3 +87,17 @@ def summarize_text(text: str, limit: int = _DEFAULT_SUMMARIZE_LIMIT) -> str:
 
 def _fmt(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat wrappers
+# ---------------------------------------------------------------------------
+
+def _get_helpers() -> LogExtractHelpers:
+    from containers import Services
+    return LogExtractHelpers(hasher=Services.hasher())
+
+
+def prompt_signature(text: str) -> str:
+    """Stable hash of prompt text for correlation matching."""
+    return _get_helpers().prompt_signature(text)

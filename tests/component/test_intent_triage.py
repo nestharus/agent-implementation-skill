@@ -127,7 +127,7 @@ def test_run_intent_triage_returns_signal_from_agent(
     Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
 
     try:
-        result = run_intent_triage("01", planspace, codespace, "parent")
+        result = run_intent_triage("01", planspace, codespace)
 
         assert result["intent_mode"] == "lightweight"
         assert result["risk_mode"] == "light"
@@ -175,7 +175,7 @@ def test_triage_prompt_does_not_advertise_skip(
     Services.signals.override(providers.Object(_MockSignals()))
 
     try:
-        run_intent_triage("01", planspace, codespace, "parent")
+        run_intent_triage("01", planspace, codespace)
 
         assert len(written_prompts) == 1
         prompt = written_prompts[0]

@@ -49,7 +49,6 @@ def test_run_global_alignment_recheck_skips_unchanged_aligned_sections(
         section_results,
         planspace,
         codespace,
-        "parent",
     )
 
     assert status == "all_aligned"
@@ -88,7 +87,6 @@ def test_run_global_alignment_recheck_marks_invalid_frame_and_preserves_files(
         section_results,
         planspace,
         codespace,
-        "parent",
     )
 
     assert status == "has_problems"
@@ -114,7 +112,6 @@ def test_run_global_alignment_recheck_restarts_when_control_message_arrives(
         {},
         planspace,
         codespace,
-        "parent",
     )
 
     assert status == "restart_phase1"

@@ -1,11 +1,23 @@
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
-
 from pipeline.template import TASK_SUBMISSION_SEMANTICS
 from orchestrator.types import Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+
+if TYPE_CHECKING:
+    from containers import (
+        AgentDispatcher,
+        Communicator,
+        CrossSectionService,
+        FlowIngestionService,
+        LogService,
+        PromptGuard,
+        TaskRouterService,
+    )
 
 
 def _compose_reexplore_text(
@@ -83,72 +95,6 @@ the JSON, not unstructured text.
 """
 
 
-def _build_reexplore_prompt(
-    section: Section,
-    planspace: Path,
-    codespace: Path,
-) -> str:
-    """Build the re-exploration prompt for a section with no related files."""
-    paths = PathRegistry(planspace)
-    summary = Services.cross_section().extract_section_summary(section.path)
-    codemap_path = paths.codemap()
-    codemap_ref = f"3. Codemap: `{codemap_path}`" if codemap_path.exists() else ""
-    corrections_path = paths.corrections()
-    corrections_ref = (
-        f"4. Codemap corrections (authoritative fixes): `{corrections_path}`"
-        if corrections_path.exists()
-        else ""
-    )
-    return _compose_reexplore_text(
-        section_number=section.number,
-        section_path=section.path,
-        summary=summary,
-        codespace=codespace,
-        codemap_ref=codemap_ref,
-        corrections_ref=corrections_ref,
-        planspace=planspace,
-    )
-
-
-def reexplore_section(
-    section: Section, planspace: Path, codespace: Path, parent: str,
-    model: str,
-) -> str | None:
-    """Dispatch a re-explorer when a section has no related files."""
-    paths = PathRegistry(planspace)
-    prompt_path = paths.artifacts / f"reexplore-{section.number}-prompt.md"
-    output_path = paths.artifacts / f"reexplore-{section.number}-output.md"
-
-    rendered = _build_reexplore_prompt(section, planspace, codespace)
-    violations = Services.prompt_guard().validate_dynamic(rendered)
-    if violations:
-        Services.logger().log(
-            f"  ERROR: prompt {prompt_path.name} blocked — template "
-            f"violations: {violations}"
-        )
-        return None
-    prompt_path.write_text(rendered, encoding="utf-8")
-    Services.communicator().log_artifact(planspace, f"prompt:reexplore-{section.number}")
-
-    result = Services.dispatcher().dispatch(
-        model, prompt_path, output_path,
-        planspace, parent, f"reexplore-{section.number}",
-        codespace=codespace, section_number=section.number,
-        agent_file=Services.task_router().agent_for("implementation.reexplore"),
-    )
-
-    if result != ALIGNMENT_CHANGED_PENDING:
-        Services.flow_ingestion().ingest_and_submit(
-            planspace,
-            submitted_by=f"reexplore-{section.number}",
-            signal_path=paths.signals_dir()
-            / f"task-requests-reexplore-{section.number}.json",
-            origin_refs=[str(output_path)],
-        )
-
-    return result
-
-
 def _collect_surface_entries(
     paths: PathRegistry, sec: str,
 ) -> list[tuple[str, Path]]:
@@ -218,3 +164,117 @@ def write_alignment_surface(
         lines.append(f"- **{label}**: `{path}`")
     lines.append("")  # trailing newline
     surface_path.write_text("\n".join(lines), encoding="utf-8")
+
+
+class SectionReexplorer:
+    """Dispatch a re-explorer when a section has no related files.
+
+    All cross-cutting services are received via constructor injection.
+    """
+
+    def __init__(
+        self,
+        communicator: Communicator,
+        cross_section: CrossSectionService,
+        dispatcher: AgentDispatcher,
+        flow_ingestion: FlowIngestionService,
+        logger: LogService,
+        prompt_guard: PromptGuard,
+        task_router: TaskRouterService,
+    ) -> None:
+        self._communicator = communicator
+        self._cross_section = cross_section
+        self._dispatcher = dispatcher
+        self._flow_ingestion = flow_ingestion
+        self._logger = logger
+        self._prompt_guard = prompt_guard
+        self._task_router = task_router
+
+    def _build_reexplore_prompt(
+        self,
+        section: Section,
+        planspace: Path,
+        codespace: Path,
+    ) -> str:
+        """Build the re-exploration prompt for a section with no related files."""
+        paths = PathRegistry(planspace)
+        summary = self._cross_section.extract_section_summary(section.path)
+        codemap_path = paths.codemap()
+        codemap_ref = f"3. Codemap: `{codemap_path}`" if codemap_path.exists() else ""
+        corrections_path = paths.corrections()
+        corrections_ref = (
+            f"4. Codemap corrections (authoritative fixes): `{corrections_path}`"
+            if corrections_path.exists()
+            else ""
+        )
+        return _compose_reexplore_text(
+            section_number=section.number,
+            section_path=section.path,
+            summary=summary,
+            codespace=codespace,
+            codemap_ref=codemap_ref,
+            corrections_ref=corrections_ref,
+            planspace=planspace,
+        )
+
+    def reexplore_section(
+        self,
+        section: Section, planspace: Path, codespace: Path,
+        model: str,
+    ) -> str | None:
+        """Dispatch a re-explorer when a section has no related files."""
+        paths = PathRegistry(planspace)
+        prompt_path = paths.artifacts / f"reexplore-{section.number}-prompt.md"
+        output_path = paths.artifacts / f"reexplore-{section.number}-output.md"
+
+        rendered = self._build_reexplore_prompt(section, planspace, codespace)
+        violations = self._prompt_guard.validate_dynamic(rendered)
+        if violations:
+            self._logger.log(
+                f"  ERROR: prompt {prompt_path.name} blocked — template "
+                f"violations: {violations}"
+            )
+            return None
+        prompt_path.write_text(rendered, encoding="utf-8")
+        self._communicator.log_artifact(planspace, f"prompt:reexplore-{section.number}")
+
+        result = self._dispatcher.dispatch(
+            model, prompt_path, output_path,
+            planspace, agent_name=f"reexplore-{section.number}",
+            codespace=codespace, section_number=section.number,
+            agent_file=self._task_router.agent_for("implementation.reexplore"),
+        )
+
+        if result != ALIGNMENT_CHANGED_PENDING:
+            self._flow_ingestion.ingest_and_submit(
+                planspace,
+                submitted_by=f"reexplore-{section.number}",
+                signal_path=paths.signals_dir()
+                / f"task-requests-reexplore-{section.number}.json",
+                origin_refs=[str(output_path)],
+            )
+
+        return result
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat free function wrappers
+# ---------------------------------------------------------------------------
+
+
+def reexplore_section(
+    section: Section, planspace: Path, codespace: Path,
+    model: str,
+) -> str | None:
+    """Dispatch a re-explorer when a section has no related files."""
+    from containers import Services
+    explorer = SectionReexplorer(
+        communicator=Services.communicator(),
+        cross_section=Services.cross_section(),
+        dispatcher=Services.dispatcher(),
+        flow_ingestion=Services.flow_ingestion(),
+        logger=Services.logger(),
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+    )
+    return explorer.reexplore_section(section, planspace, codespace, model)

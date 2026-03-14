@@ -4,10 +4,88 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
+if TYPE_CHECKING:
+    from containers import TaskRouterService
 
 _SUBSTRATE_AGENT_TIMEOUT_SECONDS = 600
+
+
+class SubstrateDispatcher:
+    """Substrate-specific agent dispatch wrapper.
+
+    All cross-cutting services are received via constructor injection.
+    """
+
+    def __init__(self, task_router: TaskRouterService) -> None:
+        self._task_router = task_router
+
+    def dispatch_substrate_agent(
+        self,
+        model: str,
+        prompt_path: Path,
+        output_path: Path,
+        codespace: Path | None = None,
+        *,
+        agent_file: str,
+    ) -> bool:
+        """Run an agent via the ``agents`` binary and capture output."""
+        if not agent_file:
+            raise ValueError(
+                "agent_file is required — every dispatch must have "
+                "behavioral constraints"
+            )
+
+        agent_path = self._task_router.resolve_agent_path(agent_file)
+
+        cmd = [
+            "agents",
+            "--model", model,
+            "--file", str(prompt_path),
+            "--agent-file", str(agent_path),
+        ]
+        if codespace:
+            cmd.extend(["--project", str(codespace)])
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            result = subprocess.run(  # noqa: S603
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=_SUBSTRATE_AGENT_TIMEOUT_SECONDS,
+            )
+            output_path.write_text(
+                result.stdout + result.stderr,
+                encoding="utf-8",
+            )
+            if result.returncode != 0:
+                print(
+                    f"[SUBSTRATE][WARN] Agent returned "
+                    f"{result.returncode} for {prompt_path.name}"
+                )
+            return result.returncode == 0
+        except subprocess.TimeoutExpired:
+            output_path.write_text(
+                "TIMEOUT: Agent exceeded 600s time limit\n",
+                encoding="utf-8",
+            )
+            print(
+                f"[SUBSTRATE][WARN] Agent timed out for {prompt_path.name}"
+            )
+            return False
+
+
+# ------------------------------------------------------------------
+# Backward-compat free function wrapper
+# ------------------------------------------------------------------
+
+
+def _default_dispatcher() -> SubstrateDispatcher:
+    from containers import Services
+    return SubstrateDispatcher(task_router=Services.task_router())
 
 
 def dispatch_substrate_agent(
@@ -19,48 +97,6 @@ def dispatch_substrate_agent(
     agent_file: str,
 ) -> bool:
     """Run an agent via the ``agents`` binary and capture output."""
-    if not agent_file:
-        raise ValueError(
-            "agent_file is required — every dispatch must have "
-            "behavioral constraints"
-        )
-
-    agent_path = Services.task_router().resolve_agent_path(agent_file)
-
-    cmd = [
-        "agents",
-        "--model", model,
-        "--file", str(prompt_path),
-        "--agent-file", str(agent_path),
-    ]
-    if codespace:
-        cmd.extend(["--project", str(codespace)])
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        result = subprocess.run(  # noqa: S603
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=_SUBSTRATE_AGENT_TIMEOUT_SECONDS,
-        )
-        output_path.write_text(
-            result.stdout + result.stderr,
-            encoding="utf-8",
-        )
-        if result.returncode != 0:
-            print(
-                f"[SUBSTRATE][WARN] Agent returned "
-                f"{result.returncode} for {prompt_path.name}"
-            )
-        return result.returncode == 0
-    except subprocess.TimeoutExpired:
-        output_path.write_text(
-            "TIMEOUT: Agent exceeded 600s time limit\n",
-            encoding="utf-8",
-        )
-        print(
-            f"[SUBSTRATE][WARN] Agent timed out for {prompt_path.name}"
-        )
-        return False
+    return _default_dispatcher().dispatch_substrate_agent(
+        model, prompt_path, output_path, codespace, agent_file=agent_file,
+    )

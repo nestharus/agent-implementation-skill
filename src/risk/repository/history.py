@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from containers import Services
 from risk.repository.serialization import deserialize_history_entry, serialize_history_entry
 from risk.types import (
     HISTORY_ADJUSTMENT_BOUND,
@@ -17,6 +17,9 @@ from risk.types import (
     clamp_float,
     clamp_int,
 )
+
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 logger = logging.getLogger(__name__)
 
@@ -81,26 +84,76 @@ def _parse_history_line(
         return None
 
 
+class RiskHistory:
+    """Handles risk history I/O via injected artifact_io dependency."""
+
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
+
+    def read_history(self, history_path: Path) -> list[RiskHistoryEntry]:
+        """Read all history entries."""
+        if not history_path.exists():
+            return []
+
+        try:
+            entries: list[RiskHistoryEntry] = []
+            with history_path.open("r", encoding="utf-8") as handle:
+                for line_number, line in enumerate(handle, start=1):
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+                    entry = _parse_history_line(stripped, history_path, line_number)
+                    if entry is not None:
+                        entries.append(entry)
+            return entries
+        except OSError as exc:
+            logger.warning("Malformed risk history at %s: %s", history_path, exc)
+            self._artifact_io.rename_malformed(history_path)
+            return []
+
+    def compute_history_adjustment(
+        self,
+        history_path: Path,
+        assessment_class: AssessmentClass,
+        dominant_risks: list[RiskType],
+        blast_radius_band: int,
+    ) -> float:
+        """Compute a bounded risk adjustment from similar historical outcomes."""
+        history = self.read_history(history_path)
+        if not history:
+            return 0.0
+
+        requested_risks = set(dominant_risks)
+        deltas = [
+            _actual_outcome_score(entry) - entry.predicted_risk
+            for entry in history
+            if entry.assessment_class == assessment_class
+            and entry.blast_radius_band == blast_radius_band
+            and _has_overlap(requested_risks, set(entry.dominant_risks))
+        ]
+        if not deltas:
+            return 0.0
+
+        average_delta = sum(deltas) / len(deltas)
+        return clamp_float(
+            average_delta * SIMILARITY_ADJUSTMENT_SCALE,
+            -HISTORY_ADJUSTMENT_BOUND,
+            HISTORY_ADJUSTMENT_BOUND,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat free-function wrappers
+# ---------------------------------------------------------------------------
+
+def _get_risk_history() -> RiskHistory:
+    from containers import Services
+    return RiskHistory(artifact_io=Services.artifact_io())
+
+
 def read_history(history_path: Path) -> list[RiskHistoryEntry]:
     """Read all history entries."""
-    if not history_path.exists():
-        return []
-
-    try:
-        entries: list[RiskHistoryEntry] = []
-        with history_path.open("r", encoding="utf-8") as handle:
-            for line_number, line in enumerate(handle, start=1):
-                stripped = line.strip()
-                if not stripped:
-                    continue
-                entry = _parse_history_line(stripped, history_path, line_number)
-                if entry is not None:
-                    entries.append(entry)
-        return entries
-    except OSError as exc:
-        logger.warning("Malformed risk history at %s: %s", history_path, exc)
-        Services.artifact_io().rename_malformed(history_path)
-        return []
+    return _get_risk_history().read_history(history_path)
 
 
 def compute_history_adjustment(
@@ -110,26 +163,8 @@ def compute_history_adjustment(
     blast_radius_band: int,
 ) -> float:
     """Compute a bounded risk adjustment from similar historical outcomes."""
-    history = read_history(history_path)
-    if not history:
-        return 0.0
-
-    requested_risks = set(dominant_risks)
-    deltas = [
-        _actual_outcome_score(entry) - entry.predicted_risk
-        for entry in history
-        if entry.assessment_class == assessment_class
-        and entry.blast_radius_band == blast_radius_band
-        and _has_overlap(requested_risks, set(entry.dominant_risks))
-    ]
-    if not deltas:
-        return 0.0
-
-    average_delta = sum(deltas) / len(deltas)
-    return clamp_float(
-        average_delta * SIMILARITY_ADJUSTMENT_SCALE,
-        -HISTORY_ADJUSTMENT_BOUND,
-        HISTORY_ADJUSTMENT_BOUND,
+    return _get_risk_history().compute_history_adjustment(
+        history_path, assessment_class, dominant_risks, blast_radius_band,
     )
 
 

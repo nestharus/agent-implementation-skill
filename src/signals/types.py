@@ -13,6 +13,9 @@ from pydantic import BaseModel, ConfigDict
 SIGNAL_NEEDS_PARENT = "needs_parent"
 SIGNAL_NEED_DECISION = "need_decision"
 SIGNAL_OUT_OF_SCOPE = "out_of_scope"
+SIGNAL_UNDERSPEC = "underspec"
+SIGNAL_DEPENDENCY = "dependency"
+SIGNAL_LOOP_DETECTED = "loop_detected"
 BLOCKING_NEEDS_PARENT = "NEEDS_PARENT"
 BLOCKING_NEED_DECISION = "NEED_DECISION"
 
@@ -21,6 +24,7 @@ BLOCKING_NEED_DECISION = "NEED_DECISION"
 ACTION_CONTINUE = "continue"
 ACTION_ABORT = "abort"
 ACTION_SKIP = "skip"
+ACTION_BREAK = "break"
 
 # ── alignment result constants ───────────────────────────────────────
 
@@ -36,17 +40,16 @@ PASS_MODE_IMPLEMENTATION = "implementation"
 
 INTENT_MODE_FULL = "full"
 INTENT_MODE_LIGHTWEIGHT = "lightweight"
-INTENT_MODE_CACHED = "cached"
-
 # ── research type constants ──────────────────────────────────────────
 
 RESEARCH_TYPE_WEB = "web"
 RESEARCH_TYPE_CODE = "code"
 RESEARCH_TYPE_BOTH = "both"
 
-# ── mailbox protocol prefix ──────────────────────────────────────────
+# ── mailbox protocol constants ────────────────────────────────────────
 
 RESUME_PREFIX = "resume"
+MAILBOX_COMPLETE = "complete"
 
 # ── display truncation limits ────────────────────────────────────────
 

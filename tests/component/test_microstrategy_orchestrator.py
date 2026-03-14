@@ -55,7 +55,6 @@ def test_run_microstrategy_returns_none_when_decider_skips(
         section,
         planspace,
         codespace,
-        "parent",
     )
 
     assert result is None
@@ -90,7 +89,6 @@ def test_run_microstrategy_retries_with_escalation_and_returns_path(
             section,
             planspace,
             codespace,
-            "parent",
         )
 
         assert result == micro_path
