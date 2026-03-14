@@ -27,7 +27,6 @@ from reconciliation.service.detectors import (
 )
 from reconciliation.repository.results import (
     load_result,
-    was_section_affected as repository_was_section_affected,
     write_result,
     write_scope_delta,
     write_substrate_trigger,
@@ -276,22 +275,6 @@ def load_reconciliation_result(
     """
     return load_result(planspace, section_number)
 
-
-def was_section_affected(run_dir: Path, section_number: str) -> bool:
-    """Check whether reconciliation marked a section as affected.
-
-    Convenience wrapper around :func:`load_reconciliation_result` that
-    returns ``True`` when a reconciliation result artifact exists for
-    *section_number* and its ``affected`` field is truthy.
-
-    Parameters
-    ----------
-    run_dir:
-        The planspace root directory containing ``artifacts/``.
-    section_number:
-        Zero-padded section number (e.g. ``"03"``).
-    """
-    return repository_was_section_affected(run_dir, section_number)
 
 
 def run_reconciliation_loop(
