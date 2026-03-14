@@ -313,7 +313,6 @@ def _handle_post_dispatch(
     artifacts = paths.artifacts
     Services.flow_ingestion().ingest_and_submit(
         planspace,
-        db_path=paths.run_db(),
         submitted_by=f"implementation-{section_number}",
         signal_path=paths.task_request_signal("impl", section_number),
         origin_refs=[str(artifacts / f"impl-{section_number}-output.md")],

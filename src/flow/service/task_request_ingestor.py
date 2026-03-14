@@ -118,10 +118,10 @@ def _submit_fanout_action(
 
 def ingest_and_submit(
     planspace: Path,
-    db_path: Path,
     submitted_by: str,
     signal_path: Path,
     *,
+    db_path: Path | None = None,
     flow_id: str | None = None,
     chain_id: str | None = None,
     declared_by_task_id: int | None = None,
@@ -141,6 +141,9 @@ def ingest_and_submit(
 
     Returns list of submitted task IDs.
     """
+    if db_path is None:
+        from orchestrator.path_registry import PathRegistry
+        db_path = PathRegistry(planspace).run_db()
     decl = _parse_signal_file(signal_path)
     if decl is None:
         return []

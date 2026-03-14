@@ -355,9 +355,9 @@ class CrossSectionService:
 class FlowIngestionService:
     """Flow task submission and ingestion."""
 
-    def ingest_and_submit(self, planspace, db_path, submitted_by, signal_path, **kwargs):
+    def ingest_and_submit(self, planspace, submitted_by, signal_path, *, db_path=None, **kwargs):
         from flow.service.task_request_ingestor import ingest_and_submit
-        return ingest_and_submit(planspace, db_path, submitted_by, signal_path, **kwargs)
+        return ingest_and_submit(planspace, submitted_by, signal_path, db_path=db_path, **kwargs)
 
     def submit_chain(self, db_path, submitted_by, steps, **kwargs):
         from flow.engine.flow_submitter import submit_chain

@@ -148,7 +148,6 @@ def dispatch_proposal(
 
     Services.flow_ingestion().ingest_and_submit(
         planspace,
-        db_path=paths.run_db(),
         submitted_by=f"proposal-{section_number}",
         signal_path=paths.task_request_signal("proposal", section_number),
         origin_refs=[str(integration_proposal)],

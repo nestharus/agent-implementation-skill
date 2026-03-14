@@ -126,7 +126,7 @@ def _dispatch_and_retry(
 
     paths = PathRegistry(planspace)
     Services.flow_ingestion().ingest_and_submit(
-        planspace, db_path=planspace / "run.db",
+        planspace,
         submitted_by=f"microstrategy-{section_number}",
         signal_path=paths.task_request_signal("micro", section_number),
         origin_refs=[str(microstrategy_path)],

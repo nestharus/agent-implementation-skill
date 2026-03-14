@@ -104,7 +104,7 @@ class TestSignalFileEdgeCases:
     ) -> None:
         sig = planspace / "artifacts" / "signals" / "nonexistent.json"
         result = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig, db_path=db_path,
         )
         assert result == []
 
@@ -114,7 +114,7 @@ class TestSignalFileEdgeCases:
         sig = planspace / "artifacts" / "signals" / "empty.json"
         sig.write_text("")
         result = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig, db_path=db_path,
         )
         assert result == []
         assert not sig.exists()  # cleaned up
@@ -125,7 +125,7 @@ class TestSignalFileEdgeCases:
         sig = planspace / "artifacts" / "signals" / "broken.json"
         sig.write_text("{not valid json at all")
         result = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig, db_path=db_path,
         )
         assert result == []
         # Original file should be renamed to .malformed.json
@@ -150,7 +150,7 @@ class TestLegacyV1SingleTask:
             "concern_scope": "auth",
         }))
         ids = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig, db_path=db_path,
         )
         assert len(ids) == 1
         task = _query_task(db_path, ids[0])
@@ -166,7 +166,7 @@ class TestLegacyV1SingleTask:
         sig.write_text(json.dumps({
             "task_type": "staleness.alignment_check",
         }))
-        ingest_and_submit(planspace, db_path, "test-agent", sig)
+        ingest_and_submit(planspace, "test-agent", sig, db_path=db_path)
         assert not sig.exists()
 
     def test_flow_context_written(
@@ -177,7 +177,7 @@ class TestLegacyV1SingleTask:
             "task_type": "staleness.alignment_check",
         }))
         ids = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig, db_path=db_path,
         )
         ctx_path = (
             planspace / "artifacts" / "flows"
@@ -197,7 +197,8 @@ class TestLegacyV1SingleTask:
             "task_type": "staleness.alignment_check",
         }))
         ids = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig,
+            db_path=db_path,
             flow_id="flow_custom",
             chain_id="chain_custom",
             origin_refs=["ref-1", "ref-2"],
@@ -227,7 +228,7 @@ class TestLegacyV1SingleTask:
             "problem_id": "P-42",
         }))
         ids = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig, db_path=db_path,
         )
         task = _query_task(db_path, ids[0])
         assert task["task_type"] == "signals.impact_analysis"
@@ -254,7 +255,7 @@ class TestLegacyV1Multi:
         ]
         sig.write_text("\n".join(lines))
         ids = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig, db_path=db_path,
         )
         assert len(ids) == 2
         tasks = _query_all_tasks(db_path)
@@ -270,7 +271,7 @@ class TestLegacyV1Multi:
             {"task_type": "signals.impact_analysis"},
         ]))
         ids = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig, db_path=db_path,
         )
         assert len(ids) == 2
 
@@ -284,7 +285,7 @@ class TestLegacyV1Multi:
             {"task_type": "signals.impact_analysis"},
         ]))
         ids = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig, db_path=db_path,
         )
         t0 = _query_task(db_path, ids[0])
         t1 = _query_task(db_path, ids[1])
@@ -318,7 +319,7 @@ class TestV2Chain:
             ],
         }))
         ids = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig, db_path=db_path,
         )
         assert len(ids) == 2
         t0 = _query_task(db_path, ids[0])
@@ -341,7 +342,8 @@ class TestV2Chain:
             ],
         }))
         ids = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig,
+            db_path=db_path,
             flow_id="flow_v2",
             origin_refs=["from-proposal"],
         )
@@ -386,7 +388,7 @@ class TestV2Fanout:
         # submit_fanout), so ingest_and_submit returns empty list for
         # fanout-only declarations.
         ids = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig, db_path=db_path,
         )
         # Fanout tasks are in the DB, not in the returned list
         assert ids == []
@@ -428,7 +430,7 @@ class TestV2Fanout:
             ],
         }))
         ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig, db_path=db_path,
         )
 
         gates = _query_gates(db_path)
@@ -471,7 +473,7 @@ class TestV2Mixed:
             ],
         }))
         ids = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig, db_path=db_path,
         )
         # Chain returns 1 task_id
         assert len(ids) == 1
@@ -504,7 +506,7 @@ class TestV2Invalid:
             ],
         }))
         ids = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig, db_path=db_path,
         )
         assert ids == []
         # Should be renamed to .malformed.json
@@ -528,7 +530,8 @@ class TestDeclaredByTaskId:
             "task_type": "staleness.alignment_check",
         }))
         ids = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig,
+            db_path=db_path,
             declared_by_task_id=42,
         )
         task = _query_task(db_path, ids[0])
@@ -550,7 +553,7 @@ class TestDBPaths:
             "task_type": "staleness.alignment_check",
         }))
         ids = ingest_and_submit(
-            planspace, db_path, "test-agent", sig,
+            planspace, "test-agent", sig, db_path=db_path,
         )
         tid = ids[0]
         task = _query_task(db_path, tid)

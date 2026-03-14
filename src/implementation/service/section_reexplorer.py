@@ -141,7 +141,7 @@ def _reexplore_section(
 
     if result != ALIGNMENT_CHANGED_PENDING:
         Services.flow_ingestion().ingest_and_submit(
-            planspace, db_path=paths.run_db(),
+            planspace,
             submitted_by=f"reexplore-{section.number}",
             signal_path=paths.signals_dir()
             / f"task-requests-reexplore-{section.number}.json",

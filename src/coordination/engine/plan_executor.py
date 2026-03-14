@@ -316,7 +316,6 @@ def _dispatch_fix_group(
 
     ingest_and_submit(
         planspace,
-        db_path=paths.run_db(),
         submitted_by=f"coordination-fix-{group_id}",
         signal_path=paths.coordination_task_request(group_id),
         origin_refs=[str(fix_prompt)],

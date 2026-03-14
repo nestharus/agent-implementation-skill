@@ -272,7 +272,7 @@ class TestLegacySingleTaskCompatibility:
             "task_type": "staleness.alignment_check",
             "concern_scope": "authentication",
         }))
-        ids = ingest_and_submit(planspace, db_path, "section-loop", sig)
+        ids = ingest_and_submit(planspace, "section-loop", sig, db_path=db_path)
         assert len(ids) == 1
         tid = ids[0]
 
@@ -306,7 +306,7 @@ class TestLegacySingleTaskCompatibility:
 
         sig = planspace / "artifacts" / "signals" / "cleanup-test.json"
         sig.write_text(json.dumps({"task_type": "signals.impact_analysis"}))
-        ingest_and_submit(planspace, db_path, "test", sig)
+        ingest_and_submit(planspace, "test", sig, db_path=db_path)
         assert not sig.exists()
 
 
