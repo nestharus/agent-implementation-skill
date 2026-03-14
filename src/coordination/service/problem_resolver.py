@@ -123,12 +123,12 @@ def _classify_note_ack(
 
 
 def _collect_note_problems(
-    section_results, sections_by_num, paths, planspace,
+    section_results, sections_by_num, paths,
 ):
     problems = []
     note_entries: list[dict[str, Any]] = []
     for target_num in sorted(section_results):
-        note_entries.extend(load_incoming_notes(planspace, target_num))
+        note_entries.extend(load_incoming_notes(paths.planspace, target_num))
     for note in sorted(note_entries, key=lambda entry: entry["path"].name):
         note_path = note["path"]
         target_num = note["target"]
@@ -263,7 +263,7 @@ def _collect_outstanding_problems(
         section_results, sections_by_num, paths,
     )
     problems.extend(_collect_note_problems(
-        section_results, sections_by_num, paths, planspace,
+        section_results, sections_by_num, paths,
     ))
     problems.extend(_collect_scope_delta_problems(sections_by_num, paths))
     return problems

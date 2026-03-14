@@ -127,11 +127,11 @@ def _apply_problem_expansion(
 
 
 def _apply_philosophy_expansion(
-    delta, paths, section_number, planspace, codespace, parent,
+    delta, paths, section_number, codespace, parent,
     pending_surfaces_path,
 ):
     philosophy_delta = run_philosophy_expander(
-        section_number, planspace, codespace, parent,
+        section_number, paths.planspace, codespace, parent,
         pending_surfaces_path=pending_surfaces_path,
     )
     if not philosophy_delta:
@@ -154,12 +154,12 @@ def _apply_philosophy_expansion(
 
 
 def _finalize_expansion(
-    registry, delta, axes_added, section_number, planspace, paths, worklist,
+    registry, delta, axes_added, section_number, paths, worklist,
 ):
     mark_surfaces_applied(registry, delta["applied_surface_ids"])
     mark_surfaces_discarded(registry, delta["discarded_surface_ids"])
     registry["axes_added_so_far"] = axes_added + len(delta["new_axes"])
-    save_surface_registry(section_number, planspace, registry)
+    save_surface_registry(section_number, paths.planspace, registry)
 
     delta_path = paths.intent_delta_signal(section_number)
     Services.artifact_io().write_json(delta_path, delta)
@@ -259,12 +259,12 @@ def run_expansion_cycle(
 
     if budgeted_surfaces["philosophy_surfaces"]:
         _apply_philosophy_expansion(
-            delta, paths, section_number, planspace, codespace, parent,
+            delta, paths, section_number, codespace, parent,
             pending_surfaces_path,
         )
 
     return _finalize_expansion(
-        registry, delta, axes_added, section_number, planspace, paths, worklist,
+        registry, delta, axes_added, section_number, paths, worklist,
     )
 
 

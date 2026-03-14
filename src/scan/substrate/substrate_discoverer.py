@@ -184,7 +184,6 @@ def _run_shard_exploration(
     target_paths: dict[str, Path],
     registry: PathRegistry,
     codespace: Path,
-    planspace: Path,
     model_policy: dict,
 ) -> list[str]:
     """Phase A: run shard explorer for each target section.
@@ -203,7 +202,7 @@ def _run_shard_exploration(
         print(f"[SUBSTRATE]   Shard explorer: section-{section_num}")
 
         prompt_path = write_shard_prompt(
-            section_num, section_path, planspace, codespace,
+            section_num, section_path, registry.planspace, codespace,
         )
         output_path = logs_dir / f"shard-{section_num}-output.txt"
 
@@ -452,7 +451,7 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
 
     # Phase A: Shard exploration
     valid_shards = _run_shard_exploration(
-        target_sections, target_paths, registry, codespace, planspace,
+        target_sections, target_paths, registry, codespace,
         model_policy,
     )
     if not valid_shards:
