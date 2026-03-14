@@ -7,6 +7,7 @@ bootstrap pipeline to decide the next action.
 
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -20,9 +21,23 @@ SOURCE_MODE_USER = "user_source"
 SOURCE_MODE_REPO = "repo_sources"
 SOURCE_MODE_NONE = "none"
 
+
 # ── Classification states ────────────────────────────────────────────
-STATE_VALID_NONEMPTY = "valid_nonempty"
-STATE_VALID_EMPTY = "valid_empty"
+class ClassifierState(str, Enum):
+    """Semantic state of a philosophy signal classification."""
+
+    VALID_NONEMPTY = "valid_nonempty"
+    VALID_EMPTY = "valid_empty"
+    MALFORMED_SIGNAL = "malformed_signal"
+    MISSING_SIGNAL = "missing_signal"
+
+    def __str__(self) -> str:  # noqa: D105
+        return self.value
+
+
+# Backward-compatible aliases
+STATE_VALID_NONEMPTY = ClassifierState.VALID_NONEMPTY
+STATE_VALID_EMPTY = ClassifierState.VALID_EMPTY
 
 # ── Minimum byte threshold for user-provided philosophy source ────────
 MIN_USER_SOURCE_BYTES = 100
@@ -51,7 +66,7 @@ def _malformed_signal_result(
         if candidate.exists():
             preserved_path = str(candidate)
     return {
-        "state": "malformed_signal",
+        "state": ClassifierState.MALFORMED_SIGNAL,
         "data": data,
         "preserved": preserved_path,
     }
@@ -70,7 +85,7 @@ def _classify_list_signal_result(
 ) -> dict[str, Any]:
     """Classify a JSON signal artifact into missing/malformed/empty/non-empty."""
     if not signal_path.exists():
-        return {"state": "missing_signal", "data": None}
+        return {"state": ClassifierState.MISSING_SIGNAL, "data": None}
 
     data = Services.artifact_io().read_json(signal_path)
     if data is None:
@@ -184,12 +199,12 @@ def _classify_distiller_result(
 ) -> dict[str, Any]:
     """Classify distiller outputs into missing/malformed/empty/non-empty."""
     if not philosophy_path.exists() or not source_map_path.exists():
-        return {"state": "missing_signal", "data": None}
+        return {"state": ClassifierState.MISSING_SIGNAL, "data": None}
 
     try:
         philosophy_text = philosophy_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
-        return {"state": "malformed_signal", "data": None}
+        return {"state": ClassifierState.MALFORMED_SIGNAL, "data": None}
 
     if not philosophy_text.strip():
         source_map = Services.artifact_io().read_json(source_map_path)
@@ -278,7 +293,7 @@ def _guidance_schema_error(payload: Any) -> str | None:
 
 def _classify_guidance_result(guidance_path: Path) -> dict[str, Any]:
     if not guidance_path.exists():
-        return {"state": "missing_signal", "data": None}
+        return {"state": ClassifierState.MISSING_SIGNAL, "data": None}
     data = Services.artifact_io().read_json(guidance_path)
     if data is None:
         return _malformed_signal_result(guidance_path)

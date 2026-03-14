@@ -2,12 +2,31 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import Path
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 
-_TERMINAL_RESEARCH_STATES = frozenset({"synthesized", "verified", "failed"})
+
+class ResearchState(str, Enum):
+    """State of a section's research lifecycle."""
+
+    SYNTHESIZED = "synthesized"
+    VERIFIED = "verified"
+    FAILED = "failed"
+    TICKETS_SUBMITTED = "tickets_submitted"
+    VERIFYING = "verifying"
+
+    def __str__(self) -> str:  # noqa: D105
+        return self.value
+
+
+_TERMINAL_RESEARCH_STATES = frozenset({
+    ResearchState.SYNTHESIZED,
+    ResearchState.VERIFIED,
+    ResearchState.FAILED,
+})
 
 
 def compute_trigger_hash(questions: list[str]) -> str:

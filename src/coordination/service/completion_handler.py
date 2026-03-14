@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from containers import Services
+from coordination.types import NoteAction
 
 _NOTE_HASH_LENGTH = 12
 
@@ -268,8 +269,8 @@ def read_incoming_notes(
         if isinstance(ack_data, dict):
             for entry in ack_data.get("acknowledged", []):
                 note_id = entry.get("note_id", "")
-                action = entry.get("action", "accepted")
-                if note_id and action in ("accepted", "deferred"):
+                action = entry.get("action", NoteAction.ACCEPTED)
+                if note_id and action in (NoteAction.ACCEPTED, NoteAction.DEFERRED):
                     resolved_ids.add(note_id)
         else:
             malformed_path = ack_path.with_suffix(".malformed.json")

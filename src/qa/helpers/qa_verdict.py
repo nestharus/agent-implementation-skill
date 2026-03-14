@@ -4,13 +4,28 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from enum import Enum
+
+
+class Verdict(str, Enum):
+    """QA verdict outcome.
+
+    Inherits from ``str`` so ``==`` comparisons with plain strings work.
+    """
+
+    PASS = "PASS"
+    REJECT = "REJECT"
+    DEGRADED = "DEGRADED"
+
+    def __str__(self) -> str:  # noqa: D105
+        return self.value
 
 
 @dataclass(frozen=True)
 class QaVerdict:
     """Structured result from QA verdict parsing."""
 
-    verdict: str
+    verdict: Verdict
     rationale: str
     violations: list[str] = field(default_factory=list)
 
@@ -30,10 +45,10 @@ def parse_qa_verdict(output: str) -> QaVerdict:
             verdict = str(data.get("verdict", "")).upper()
             rationale = data.get("rationale", "")
             violations = data.get("violations", [])
-            if verdict in ("PASS", "REJECT"):
-                return QaVerdict(verdict=verdict, rationale=rationale, violations=violations)
-            return QaVerdict(verdict="DEGRADED", rationale=f"Unknown verdict '{verdict}' — failing open")
+            if verdict in (Verdict.PASS, Verdict.REJECT):
+                return QaVerdict(verdict=Verdict(verdict), rationale=rationale, violations=violations)
+            return QaVerdict(verdict=Verdict.DEGRADED, rationale=f"Unknown verdict '{verdict}' — failing open")
     except (json.JSONDecodeError, KeyError, TypeError):
         pass
 
-    return QaVerdict(verdict="DEGRADED", rationale="QA agent output could not be parsed — failing open")
+    return QaVerdict(verdict=Verdict.DEGRADED, rationale="QA agent output could not be parsed — failing open")

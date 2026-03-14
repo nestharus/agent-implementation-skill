@@ -1,7 +1,8 @@
 from pathlib import Path
-from typing import Any
 
 from containers import Services
+from coordination.problem_types import Problem
+from coordination.types import CoordinationStrategy
 from pipeline.context import DispatchContext
 from coordination.engine.plan_executor import (
     CoordinationExecutionExit,
@@ -43,7 +44,7 @@ def _collect_and_persist_problems(
     section_results: dict[str, SectionResult],
     sections_by_num: dict[str, Section],
     planspace: Path,
-) -> tuple[list[dict], dict | None] | None:
+) -> tuple[list[Problem], dict | None] | None:
     """Collect outstanding problems, detect recurrence, persist state.
 
     Returns ``(problems, recurrence)`` or ``None`` if no problems exist.
@@ -57,7 +58,7 @@ def _collect_and_persist_problems(
         return None
 
     Services.logger().log(f"  coordinator: {len(problems)} outstanding problems across "
-        f"{len({p['section'] for p in problems})} sections")
+        f"{len({p.section for p in problems})} sections")
 
     paths = PathRegistry(planspace)
     policy = Services.policies().load(planspace)
@@ -83,7 +84,7 @@ def _collect_and_persist_problems(
 # ---------------------------------------------------------------------------
 
 def _dispatch_and_parse_plan(
-    problems: list[dict],
+    problems: list[Problem],
     planspace: Path,
     parent: str,
     policy: dict,
@@ -127,10 +128,10 @@ def _dispatch_and_parse_plan(
 
 
 def _build_coordination_plan(
-    problems: list[dict],
+    problems: list[Problem],
     planspace: Path,
     parent: str,
-) -> tuple[list[list[dict[str, Any]]], list[str], dict] | None:
+) -> tuple[list[list[Problem]], list[str], dict] | None:
     """Dispatch planner agent, parse plan, build confirmed groups.
 
     Returns ``(confirmed_groups, group_strategies, coord_plan)`` or
@@ -149,12 +150,12 @@ def _build_coordination_plan(
     if coord_plan is None:
         return None
 
-    confirmed_groups: list[list[dict[str, Any]]] = []
+    confirmed_groups: list[list[Problem]] = []
     group_strategies: list[str] = []
     for g in coord_plan["groups"]:
         group_problems = [problems[i] for i in g["problems"]]
         confirmed_groups.append(group_problems)
-        group_strategies.append(g.get("strategy", "sequential"))
+        group_strategies.append(g.get("strategy", CoordinationStrategy.SEQUENTIAL))
         Services.logger().log(f"  coordinator: group {len(confirmed_groups) - 1} — "
             f"{len(group_problems)} problems, "
             f"strategy={group_strategies[-1]}, "
@@ -175,8 +176,8 @@ def _build_coordination_plan(
             "group_id": i,
             "problem_count": len(g),
             "strategy": group_strategies[i],
-            "sections": sorted({p["section"] for p in g}),
-            "files": sorted({f for p in g for f in p.get("files", [])}),
+            "sections": sorted({p.section for p in g}),
+            "files": sorted({f for p in g for f in p.files}),
         })
     Services.artifact_io().write_json(groups_path, groups_data)
     Services.communicator().log_artifact(planspace,"coordination:groups")
@@ -190,7 +191,7 @@ def _build_coordination_plan(
 
 def _execute_plan(
     coord_plan: dict,
-    confirmed_groups: list[list[dict[str, Any]]],
+    confirmed_groups: list[list[Problem]],
     sections_by_num: dict[str, Section],
     ctx: DispatchContext,
 ) -> tuple[list[str], set[str]] | None:
@@ -221,7 +222,7 @@ def _classify_alignment_result(
     signal: str | None,
     detail: str | None,
     section_results: dict[str, SectionResult],
-    problems: list[dict],
+    problems: list[Problem],
     recurrence: dict | None,
     planspace: Path,
 ) -> bool:
@@ -256,7 +257,7 @@ def _classify_alignment_result(
 def _recheck_section_alignment(
     section: Section,
     section_results: dict[str, SectionResult],
-    problems: list[dict],
+    problems: list[Problem],
     recurrence: dict | None,
     ctx: DispatchContext,
 ) -> bool | None:
@@ -344,7 +345,7 @@ def _compose_recurrence_text(
 
 def _record_recurrence_resolution(
     sec_num: str,
-    problems: list[dict],
+    problems: list[Problem],
     recurrence: dict | None,
     planspace: Path,
 ) -> None:
@@ -354,7 +355,7 @@ def _record_recurrence_resolution(
     if sec_num not in [str(s) for s in recurrence.get("recurring_sections", [])]:
         return
     prev_problem = next(
-        (p for p in problems if p["section"] == sec_num),
+        (p for p in problems if p.section == sec_num),
         None,
     )
     if not prev_problem:
@@ -365,9 +366,9 @@ def _record_recurrence_resolution(
     resolution_path.write_text(
         _compose_recurrence_text(
             sec_num,
-            prev_problem.get('description', 'unknown'),
+            prev_problem.description,
             Services.policies().resolve(policy, 'escalation_model'),
-            prev_problem.get("files", []),
+            prev_problem.files,
         ),
         encoding="utf-8",
     )
@@ -380,7 +381,7 @@ def _recheck_affected_sections(
     all_modified: set[str],
     sections_by_num: dict[str, Section],
     section_results: dict[str, SectionResult],
-    problems: list[dict],
+    problems: list[Problem],
     recurrence: dict | None,
     ctx: DispatchContext,
 ) -> bool | None:
@@ -434,7 +435,7 @@ def _recheck_affected_sections(
             section_results, sections_by_num, ctx.planspace,
         )
         if outstanding_after:
-            outstanding_types = [p["type"] for p in outstanding_after]
+            outstanding_types = [p.type for p in outstanding_after]
             Services.logger().log(f"  coordinator: all sections aligned but "
                 f"{len(outstanding_after)} outstanding problems "
                 f"remain (types: {outstanding_types})")

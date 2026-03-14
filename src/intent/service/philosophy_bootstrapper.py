@@ -20,6 +20,7 @@ from intent.service.philosophy_classifier import (
     SOURCE_MODE_NONE,
     SOURCE_MODE_REPO,
     SOURCE_MODE_USER,
+    ClassifierState,
     STATE_VALID_EMPTY,
     STATE_VALID_NONEMPTY,
     _classify_distiller_result,
@@ -507,7 +508,7 @@ def _handle_selector_failure(
         "after retry and escalation. Section execution will be blocked "
         "until bootstrap is repaired."
     )
-    if selected_classification["state"] == "malformed_signal":
+    if selected_classification["state"] == ClassifierState.MALFORMED_SIGNAL:
         detail = (
             "Philosophy source selector wrote a malformed signal after "
             "retry and escalation. Section execution will be blocked "
@@ -923,7 +924,7 @@ def _run_distiller(ctx: _BootstrapContext) -> dict[str, Any] | None:
     Services.communicator().log_artifact(ctx.planspace, "prompt:philosophy-distill")
 
     distiller_model = Services.policies().resolve(ctx.policy, "intent_philosophy")
-    distill_classification: dict[str, Any] = {"state": "missing_signal", "data": None}
+    distill_classification: dict[str, Any] = {"state": ClassifierState.MISSING_SIGNAL, "data": None}
     for attempt in range(1, _MAX_DISTILLER_ATTEMPTS + 1):
         result = Services.dispatcher().dispatch(
             distiller_model,
@@ -1056,7 +1057,7 @@ def _handle_distiller_failure(
         "artifacts despite source files being available. Section "
         "execution will be blocked until philosophy is available."
     )
-    if classification["state"] == "malformed_signal":
+    if classification["state"] == ClassifierState.MALFORMED_SIGNAL:
         detail = (
             "Philosophy distiller produced a malformed source map. "
             "Section execution will be blocked until bootstrap is "

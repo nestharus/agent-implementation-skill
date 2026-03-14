@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from coordination.problem_types import MisalignedProblem, Problem
 from src.coordination.service.planner import (
     _parse_coordination_plan,
     write_coordination_plan_prompt,
@@ -12,9 +13,9 @@ from src.coordination.service.planner import (
 
 def test_parse_coordination_plan_parses_fenced_json_and_coerces_bridge() -> None:
     problems = [
-        {"section": "01"},
-        {"section": "02"},
-        {"section": "03"},
+        Problem(section="01", type="", description=""),
+        Problem(section="02", type="", description=""),
+        Problem(section="03", type="", description=""),
     ]
     agent_output = """Planner response
 
@@ -38,7 +39,7 @@ def test_parse_coordination_plan_parses_fenced_json_and_coerces_bridge() -> None
 
 
 def test_parse_coordination_plan_rejects_duplicate_problem_indices() -> None:
-    problems = [{"section": "01"}, {"section": "02"}]
+    problems = [Problem(section="01", type="", description=""), Problem(section="02", type="", description="")]
     agent_output = """{
       "groups": [
         {"problems": [0, 1]},
@@ -51,7 +52,7 @@ def test_parse_coordination_plan_rejects_duplicate_problem_indices() -> None:
 
 def test_write_coordination_plan_prompt_writes_artifacts_and_refs(planspace) -> None:
     problems = [
-        {"section": "01", "type": "misaligned", "description": "drift", "files": []},
+        MisalignedProblem(section="01", description="drift", files=[]),
     ]
     artifacts = planspace / "artifacts"
     (artifacts / "codemap.md").write_text("# Codemap\n", encoding="utf-8")
@@ -66,7 +67,7 @@ def test_write_coordination_plan_prompt_writes_artifacts_and_refs(planspace) -> 
         (artifacts / "coordination" / "problems.json").read_text(encoding="utf-8"),
     )
 
-    assert stored == problems
+    assert stored == [p.to_dict() for p in problems]
     assert "coordination/problems.json" in prompt
     assert "codemap-corrections.json" in prompt
     assert "recurrence.json" in prompt

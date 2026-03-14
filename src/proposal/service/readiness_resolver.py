@@ -4,10 +4,26 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from containers import Services
+
+
+class GovernanceBlockerState(str, Enum):
+    """State code for governance readiness blockers."""
+
+    DEVIATION = "governance_deviation"
+    QUESTION = "governance_question"
+    AMBIGUITY_UNRESOLVED = "governance_ambiguity_unresolved"
+    IDENTITY_MISSING = "governance_identity_missing"
+    PROFILE_MISMATCH = "governance_profile_mismatch"
+    MEMBERSHIP = "governance_membership"
+    PACKET_MISSING = "governance_packet_missing"
+
+    def __str__(self) -> str:  # noqa: D105
+        return self.value
 from orchestrator.path_registry import PathRegistry
 from proposal.repository.state import (
     extract_blockers,
@@ -52,7 +68,7 @@ def _check_pattern_deviations(state: dict) -> list[dict]:
     deviations = state.get("pattern_deviations", [])
     if isinstance(deviations, list) and deviations:
         return [{
-            "state": "governance_deviation",
+            "state": GovernanceBlockerState.DEVIATION,
             "detail": (
                 f"{len(deviations)} unresolved pattern deviation(s) — "
                 "pattern delta must be accepted before descent"
@@ -69,7 +85,7 @@ def _check_governance_questions(state: dict) -> list[dict]:
     questions = state.get("governance_questions", [])
     if isinstance(questions, list) and questions:
         return [{
-            "state": "governance_question",
+            "state": GovernanceBlockerState.QUESTION,
             "detail": (
                 f"{len(questions)} unresolved governance question(s)"
             ),
@@ -124,7 +140,7 @@ def _check_packet_ambiguity(packet: dict, state: dict) -> list[dict]:
             state_questions = []
         if not state_questions:
             return [{
-                "state": "governance_ambiguity_unresolved",
+                "state": GovernanceBlockerState.AMBIGUITY_UNRESOLVED,
                 "detail": (
                     f"governance packet has {len(packet_questions)} "
                     "ambiguity question(s) but proposal-state does not "
@@ -156,7 +172,7 @@ def _check_empty_identity(packet: dict, has_declared_ids: bool) -> list[dict]:
     )
     if has_governance_candidates and not has_declared_ids:
         return [{
-            "state": "governance_identity_missing",
+            "state": GovernanceBlockerState.IDENTITY_MISSING,
             "detail": (
                 "governance packet provides candidates but proposal "
                 "declares no problem_ids, pattern_ids, or profile_id"
@@ -174,7 +190,7 @@ def _check_profile_mismatch(
     """Return blockers when profile_id does not match the governing profile."""
     if profile_id and governing_profile and profile_id != governing_profile:
         return [{
-            "state": "governance_profile_mismatch",
+            "state": GovernanceBlockerState.PROFILE_MISMATCH,
             "detail": (
                 f"profile_id '{profile_id}' does not match "
                 f"governing_profile '{governing_profile}'"
@@ -220,7 +236,7 @@ def _check_packet_membership(
         if orphan_patterns:
             details.append(f"pattern_ids {orphan_patterns} not in packet")
         return [{
-            "state": "governance_membership",
+            "state": GovernanceBlockerState.MEMBERSHIP,
             "detail": "; ".join(details),
             "needs": "governance ID correction",
             "why_blocked": "PAT-0013: IDs must reference packet records",
@@ -233,7 +249,7 @@ def _check_missing_packet(has_declared_ids: bool, packet: Any) -> list[dict]:
     """PAT-0013 step 6: declared IDs with missing/malformed packet -> block."""
     if has_declared_ids and not isinstance(packet, dict):
         return [{
-            "state": "governance_packet_missing",
+            "state": GovernanceBlockerState.PACKET_MISSING,
             "detail": (
                 "governance IDs declared but governance packet is "
                 "missing or malformed"

@@ -3,7 +3,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
+
+
+class TaskStatus(str, Enum):
+    """Status of a task in the task DB lifecycle."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+    def __str__(self) -> str:
+        return self.value
 
 
 @dataclass(frozen=True)

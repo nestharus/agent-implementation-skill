@@ -1,11 +1,23 @@
 """Surface registry: deduplication, tracking, and diminishing returns."""
 
 from collections.abc import Mapping
+from enum import Enum
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
 
 from containers import Services
+
+
+class SurfaceStatus(str, Enum):
+    """Status of an expansion surface entry."""
+
+    PENDING = "pending"
+    DISCARDED = "discarded"
+
+    def __str__(self) -> str:  # noqa: D105
+        return self.value
+
 
 _FINGERPRINT_LENGTH = 12
 
@@ -183,7 +195,7 @@ def _build_surface_entry(surface: dict, stamp: dict) -> dict:
         "id": surface.get("id", ""),
         "kind": surface.get("kind", "unknown"),
         "axis_id": surface.get("axis_id", ""),
-        "status": "pending",
+        "status": SurfaceStatus.PENDING,
         "fingerprint": surface.get("_fingerprint", ""),
         "first_seen": dict(stamp),
         "last_seen": dict(stamp),
@@ -243,7 +255,7 @@ def mark_surfaces_discarded(
     discarded_set = set(discarded_ids)
     for surface in registry.get("surfaces", []):
         if surface["id"] in discarded_set:
-            surface["status"] = "discarded"
+            surface["status"] = SurfaceStatus.DISCARDED
 
 
 def find_discarded_recurrences(
@@ -259,7 +271,7 @@ def find_discarded_recurrences(
     """
     discarded_lookup = {
         s["id"]: s for s in registry.get("surfaces", [])
-        if s.get("status") == "discarded"
+        if s.get("status") == SurfaceStatus.DISCARDED
     }
     return [
         discarded_lookup[sid]

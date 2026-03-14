@@ -13,7 +13,7 @@ from scan.service.feedback_router import (
     _route_scope_deltas,
     _validate_feedback_schema,
 )
-from scan.related.related_file_resolver import apply_related_files_update
+from scan.related.related_file_resolver import RelatedFileStatus, apply_related_files_update
 from scan.service.template_loader import load_scan_template
 
 from scan.scan_context import ScanContext
@@ -307,13 +307,13 @@ def _dispatch_updater_and_apply(
         return
     status = sig_data.get("status", "")
 
-    if status == "stale":
+    if status == RelatedFileStatus.STALE:
         applied = apply_related_files_update(
             section_file, updater_signal)
         # Acknowledge the signal — update status so it isn't
         # re-applied on subsequent runs.
         try:
-            sig_data["status"] = "applied" if applied else "no_change"
+            sig_data["status"] = RelatedFileStatus.APPLIED if applied else "no_change"
             Services.artifact_io().write_json(updater_signal, sig_data)
         except OSError:
             pass  # Best-effort ack; signal file may be read-only

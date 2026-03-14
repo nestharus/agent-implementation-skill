@@ -13,6 +13,7 @@ from flow.types.context import FlowEnvelope
 from flow.types.schema import TaskSpec
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from proposal.service.cycle_control import check_early_abort
+from orchestrator.types import PauseType
 from signals.types import TRUNCATE_DETAIL
 
 
@@ -20,9 +21,21 @@ from signals.types import TRUNCATE_DETAIL
 # Loop-control sentinels (private to this module)
 # ---------------------------------------------------------------------------
 
-_ABORT = "ABORT"       # return None from loop
-_CONTINUE = "CONTINUE" # continue to next iteration
-_PROCEED = "PROCEED"   # fall through, keep going in current iteration
+from enum import Enum
+
+
+class _LoopAction(str, Enum):
+    ABORT = "ABORT"       # return None from loop
+    CONTINUE = "CONTINUE" # continue to next iteration
+    PROCEED = "PROCEED"   # fall through, keep going in current iteration
+
+    def __str__(self) -> str:  # noqa: D105
+        return self.value
+
+
+_ABORT = _LoopAction.ABORT
+_CONTINUE = _LoopAction.CONTINUE
+_PROCEED = _LoopAction.PROCEED
 
 
 def run_implementation_loop(
@@ -164,7 +177,7 @@ def _check_budget(
     response = Services.pipeline_control().pause_for_parent(
         planspace,
         parent,
-        f"pause:budget_exhausted:{section_number}:implementation loop exceeded "
+        f"pause:{PauseType.BUDGET_EXHAUSTED}:{section_number}:implementation loop exceeded "
         f"{cycle_budget['implementation_max']} attempts",
     )
     if not response.startswith("resume"):

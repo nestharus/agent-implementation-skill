@@ -18,7 +18,7 @@ from intent.service.intent_triager import run_intent_triage
 from containers import Services
 from signals.service.blocker_manager import _update_blocker_rollup
 from intake.service.governance_packet_builder import build_section_governance_packet
-from orchestrator.types import Section
+from orchestrator.types import PauseType, Section
 
 from pipeline import AlignmentGuard, Pipeline, PipelineContext, Step
 from signals.types import BLOCKING_NEEDS_PARENT, BLOCKING_NEED_DECISION
@@ -128,7 +128,7 @@ def _step_philosophy(ctx: PipelineContext) -> dict:
             _update_blocker_rollup(ctx.planspace)
             Services.pipeline_control().pause_for_parent(
                 ctx.planspace, ctx.parent,
-                "pause:need_decision:global:philosophy bootstrap requires user input",
+                f"pause:{PauseType.NEED_DECISION}:global:philosophy bootstrap requires user input",
             )
         elif blocking_state == BLOCKING_NEEDS_PARENT:
             Services.logger().log(

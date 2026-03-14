@@ -290,18 +290,19 @@ class TestDiscovery:
     def test_all_system_routes_discoverable(self) -> None:
         """Importing all system route modules registers every declared route."""
         import importlib
-        from taskrouter.discovery import _SYSTEM_ROUTE_MODULES
+        from taskrouter.discovery import _find_route_modules
 
+        route_modules = _find_route_modules()
         test_registry = TaskRegistry()
 
-        for module_name in _SYSTEM_ROUTE_MODULES:
+        for module_name in route_modules:
             mod = importlib.import_module(module_name)
             if mod.router.namespace not in test_registry.namespaces:
                 test_registry.add_router(mod.router)
 
         # Every declared route module is registered
         expected_namespaces = frozenset(
-            m.split(".")[0] for m in _SYSTEM_ROUTE_MODULES
+            m.split(".")[0] for m in route_modules
         )
         assert test_registry.namespaces == expected_namespaces
         # At least one route per namespace

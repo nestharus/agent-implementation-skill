@@ -7,6 +7,7 @@ P4: Coordination prompt writes to artifact file (no inline JSON)
 import json
 from pathlib import Path
 
+from coordination.problem_types import MisalignedProblem
 from coordination.service.problem_resolver import _collect_outstanding_problems
 from coordination.service.planner import write_coordination_plan_prompt
 from orchestrator.types import Section, SectionResult
@@ -55,10 +56,10 @@ class TestCollectOutstandingProblemsBlockerSignal:
         )
 
         assert len(problems) == 1
-        assert problems[0]["type"] == "needs_parent"
-        assert problems[0]["section"] == "03"
-        assert "Greenfield" in problems[0]["description"]
-        assert problems[0]["needs"] == "Parent must provide seed code."
+        assert problems[0].type == "needs_parent"
+        assert problems[0].section == "03"
+        assert "Greenfield" in problems[0].description
+        assert problems[0].needs == "Parent must provide seed code."
 
     def test_blocker_signal_skips_misaligned_handling(
         self, planspace: Path,
@@ -97,9 +98,9 @@ class TestCollectOutstandingProblemsBlockerSignal:
 
         # Should only have one problem (needs_parent), not also misaligned
         assert len(problems) == 1
-        assert problems[0]["type"] == "needs_parent"
+        assert problems[0].type == "needs_parent"
         # Specifically NOT "misaligned"
-        types = [p["type"] for p in problems]
+        types = [p.type for p in problems]
         assert "misaligned" not in types
 
     def test_no_blocker_signal_falls_through_to_misaligned(
@@ -127,8 +128,8 @@ class TestCollectOutstandingProblemsBlockerSignal:
         )
 
         assert len(problems) == 1
-        assert problems[0]["type"] == "misaligned"
-        assert "Schema migration" in problems[0]["description"]
+        assert problems[0].type == "misaligned"
+        assert "Schema migration" in problems[0].description
 
     def test_blocker_signal_invalid_state_falls_through(
         self, planspace: Path,
@@ -166,7 +167,7 @@ class TestCollectOutstandingProblemsBlockerSignal:
 
         # Should fall through to misaligned handling
         assert len(problems) == 1
-        assert problems[0]["type"] == "misaligned"
+        assert problems[0].type == "misaligned"
 
 
 class TestCoordinationPlanPromptArtifactFile:
@@ -177,10 +178,8 @@ class TestCoordinationPlanPromptArtifactFile:
         self, planspace: Path,
     ) -> None:
         problems = [
-            {"section": "01", "type": "misaligned",
-             "description": "Auth module drift", "files": ["src/auth.py"]},
-            {"section": "02", "type": "misaligned",
-             "description": "DB schema mismatch", "files": ["src/db.py"]},
+            MisalignedProblem(section="01", description="Auth module drift", files=["src/auth.py"]),
+            MisalignedProblem(section="02", description="DB schema mismatch", files=["src/db.py"]),
         ]
 
         write_coordination_plan_prompt(problems, planspace)
@@ -197,8 +196,7 @@ class TestCoordinationPlanPromptArtifactFile:
         self, planspace: Path,
     ) -> None:
         problems = [
-            {"section": "01", "type": "misaligned",
-             "description": "drift", "files": ["f.py"]},
+            MisalignedProblem(section="01", description="drift", files=["f.py"]),
         ]
 
         prompt_path = write_coordination_plan_prompt(problems, planspace)
@@ -211,8 +209,7 @@ class TestCoordinationPlanPromptArtifactFile:
         self, planspace: Path,
     ) -> None:
         problems = [
-            {"section": "01", "type": "misaligned",
-             "description": "Auth module drift", "files": ["src/auth.py"]},
+            MisalignedProblem(section="01", description="Auth module drift", files=["src/auth.py"]),
         ]
 
         prompt_path = write_coordination_plan_prompt(problems, planspace)

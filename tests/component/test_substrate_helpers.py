@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from scan.related.related_file_resolver import list_section_files
 from src.scan.substrate.substrate_state_reader import (
     count_existing_related,
-    list_section_files,
     read_project_mode,
     section_number,
     write_status,

@@ -6,12 +6,24 @@ Public API: ``handle_tool_friction()``.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel, ValidationError
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from signals.service.blocker_manager import _update_blocker_rollup
 from signals.types import SIGNAL_NEEDS_PARENT
+
+
+class BridgeSignal(BaseModel):
+    """Structured signal from the bridge-tools agent."""
+
+    status: Literal["bridged", "no_action", "needs_parent"]
+    proposal_path: str | None = None
+    targets: list[str] = []
+    broadcast: bool = False
+    note_markdown: str = ""
 
 
 def _detect_friction(friction_signal_path: Path) -> bool:
@@ -25,18 +37,24 @@ def _detect_friction(friction_signal_path: Path) -> bool:
 
 def _validate_bridge_signal(
     bridge_signal_path: Path, default_proposal_path: Path,
-) -> tuple[bool, dict | None]:
-    bridge_data = Services.artifact_io().read_json(bridge_signal_path)
-    if bridge_data is None:
-        return False, None
-    if bridge_data.get("status") not in ("bridged", "no_action", SIGNAL_NEEDS_PARENT):
-        return False, bridge_data
-    proposal_path = Path(
-        bridge_data.get("proposal_path", str(default_proposal_path))
-    )
-    if bridge_data["status"] == "no_action" or proposal_path.exists():
-        return True, bridge_data
-    return False, bridge_data
+) -> BridgeSignal | None:
+    """Parse and validate the bridge signal file.
+
+    Returns a ``BridgeSignal`` on success, or ``None`` if missing/invalid.
+    """
+    raw = Services.artifact_io().read_json(bridge_signal_path)
+    if raw is None or not isinstance(raw, dict):
+        return None
+    try:
+        signal = BridgeSignal.model_validate(raw)
+    except ValidationError:
+        return None
+    if signal.status == "no_action":
+        return signal
+    proposal_path = Path(signal.proposal_path or str(default_proposal_path))
+    if proposal_path.exists():
+        return signal
+    return None
 
 
 def _compose_bridge_text(
@@ -90,7 +108,8 @@ with JSON:
 def _dispatch_bridge_agent(
     *, section_number, section_path, tool_registry_path,
     planspace, parent, codespace,
-):
+) -> BridgeSignal | None:
+    """Dispatch bridge-tools agent with retry. Returns signal or None."""
     paths = PathRegistry(planspace)
     policy = Services.policies().load(planspace)
     bridge_tools_prompt = paths.bridge_tools_prompt(section_number)
@@ -108,11 +127,7 @@ def _dispatch_bridge_agent(
         ),
         bridge_tools_prompt,
     ):
-        return None, None, None
-
-    pre_bridge_registry_hash = ""
-    if tool_registry_path.exists():
-        pre_bridge_registry_hash = Services.hasher().file_hash(tool_registry_path)
+        return None
 
     Services.dispatcher().dispatch(
         Services.policies().resolve(policy, "bridge_tools"),
@@ -126,32 +141,27 @@ def _dispatch_bridge_agent(
         section_number=section_number,
     )
 
-    bridge_valid, bridge_data = _validate_bridge_signal(
-        bridge_signal_path, default_proposal_path,
+    signal = _validate_bridge_signal(bridge_signal_path, default_proposal_path)
+    if signal is not None:
+        return signal
+
+    Services.logger().log(
+        f"Section {section_number}: bridge signal missing or "
+        f"invalid — retrying with escalation model"
     )
-
-    if not bridge_valid:
-        Services.logger().log(
-            f"Section {section_number}: bridge signal missing or "
-            f"invalid — retrying with escalation model"
-        )
-        escalation_output = paths.bridge_tools_escalation_output(section_number)
-        Services.dispatcher().dispatch(
-            Services.policies().resolve(policy, "escalation_model"),
-            bridge_tools_prompt,
-            escalation_output,
-            planspace,
-            parent,
-            f"bridge-tools-{section_number}-escalation",
-            codespace=codespace,
-            agent_file=Services.task_router().agent_for("dispatch.bridge_tools"),
-            section_number=section_number,
-        )
-        bridge_valid, bridge_data = _validate_bridge_signal(
-            bridge_signal_path, default_proposal_path,
-        )
-
-    return bridge_valid, bridge_data, pre_bridge_registry_hash
+    escalation_output = paths.bridge_tools_escalation_output(section_number)
+    Services.dispatcher().dispatch(
+        Services.policies().resolve(policy, "escalation_model"),
+        bridge_tools_prompt,
+        escalation_output,
+        planspace,
+        parent,
+        f"bridge-tools-{section_number}-escalation",
+        codespace=codespace,
+        agent_file=Services.task_router().agent_for("dispatch.bridge_tools"),
+        section_number=section_number,
+    )
+    return _validate_bridge_signal(bridge_signal_path, default_proposal_path)
 
 
 def _compose_bridge_success_text(
@@ -173,23 +183,23 @@ def _compose_bridge_success_text(
 
 
 def _handle_bridge_success(
-    *, bridge_data, section_number, all_sections, tool_registry_path,
-    pre_bridge_registry_hash, planspace, parent,
+    *, bridge_data: BridgeSignal, section_number, all_sections,
+    tool_registry_path, pre_bridge_registry_hash, planspace, parent,
     codespace,
 ):
     paths = PathRegistry(planspace)
     artifacts = paths.artifacts
     default_proposal_path = paths.tool_bridge_proposal(section_number)
-    bridge_proposal = bridge_data.get("proposal_path", str(default_proposal_path))
+    bridge_proposal = bridge_data.proposal_path or str(default_proposal_path)
     inputs_dir = paths.input_refs_dir(section_number)
     inputs_dir.mkdir(parents=True, exist_ok=True)
     ref_file = inputs_dir / "tool-bridge.ref"
     ref_file.write_text(str(bridge_proposal), encoding="utf-8")
     Services.logger().log(f"Section {section_number}: bridge proposal registered as input ref")
 
-    targets = bridge_data.get("targets", [])
-    broadcast = bridge_data.get("broadcast", False)
-    note_md = bridge_data.get("note_markdown", "")
+    targets = bridge_data.targets
+    broadcast = bridge_data.broadcast
+    note_md = bridge_data.note_markdown
     if note_md and (targets or broadcast):
         if broadcast and all_sections:
             targets = [section.number for section in all_sections if section.number != section_number]
@@ -290,26 +300,24 @@ def handle_tool_friction(
         f"dispatching bridge-tools agent"
     )
 
-    result = _dispatch_bridge_agent(
+    pre_bridge_registry_hash = Services.hasher().file_hash(tool_registry_path)
+
+    signal = _dispatch_bridge_agent(
         section_number=section_number, section_path=section_path,
         tool_registry_path=tool_registry_path,
         planspace=planspace, parent=parent, codespace=codespace,
     )
-    if result[0] is None:
-        return
-    bridge_valid, bridge_data, pre_bridge_registry_hash = result
-
-    if bridge_valid:
+    if signal is None:
+        _handle_bridge_failure(
+            section_number=section_number, planspace=planspace,
+        )
+    else:
         _handle_bridge_success(
-            bridge_data=bridge_data, section_number=section_number,
+            bridge_data=signal, section_number=section_number,
             all_sections=all_sections, tool_registry_path=tool_registry_path,
             pre_bridge_registry_hash=pre_bridge_registry_hash,
             planspace=planspace,
             parent=parent, codespace=codespace,
-        )
-    else:
-        _handle_bridge_failure(
-            section_number=section_number, planspace=planspace,
         )
 
     try:

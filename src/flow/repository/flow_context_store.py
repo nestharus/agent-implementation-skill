@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import Path
 
 from containers import Services
+
+
+class FlowReadStatus(str, Enum):
+    """Status returned by read_flow_json."""
+
+    OK = "ok"
+    MISSING = "missing"
+    MALFORMED = "malformed"
+
+    def __str__(self) -> str:  # noqa: D105
+        return self.value
 from orchestrator.path_registry import PathRegistry
 from flow.exceptions import FlowCorruptionError
 from flow.types.context import (
@@ -38,7 +50,7 @@ def gate_aggregate_relpath(gate_id: str) -> str:
 def read_flow_json(path: Path) -> tuple[str, dict | list | None]:
     """Read a flow artifact JSON file with fail-closed semantics."""
     if not path.exists():
-        return ("missing", None)
+        return (FlowReadStatus.MISSING, None)
 
     data = Services.artifact_io().read_json(path)
     if data is None:
@@ -46,9 +58,9 @@ def read_flow_json(path: Path) -> tuple[str, dict | list | None]:
             f"[FLOW][WARN] Malformed JSON in {path} "
             f"— renaming to .malformed.json",
         )
-        return ("malformed", None)
+        return (FlowReadStatus.MALFORMED, None)
 
-    return ("ok", data)
+    return (FlowReadStatus.OK, data)
 
 
 def build_flow_context(
@@ -64,12 +76,12 @@ def build_flow_context(
     ctx_file = planspace / flow_context_path
     status, raw = read_flow_json(ctx_file)
 
-    if status == "missing":
+    if status == FlowReadStatus.MISSING:
         raise FlowCorruptionError(
             f"flow context declared but file missing: {ctx_file}"
         )
 
-    if status == "malformed":
+    if status == FlowReadStatus.MALFORMED:
         raise FlowCorruptionError(
             f"flow context declared but file corrupt: {ctx_file}"
         )

@@ -9,6 +9,7 @@ from dependency_injector import providers
 from containers import Services
 from coordination.engine import coordination_controller as loop
 from coordination.engine.coordination_controller import run_coordination_loop
+from coordination.problem_types import UnaddressedNoteProblem
 from orchestrator.types import Section, SectionResult
 from pipeline.context import DispatchContext
 from tests.conftest import StubPolicies
@@ -137,7 +138,7 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
     section = _make_section(planspace, "01")
     snapshots: list[int] = []
     outstanding = [
-        {"type": "unaddressed_note", "section": "01", "description": "note pending"},
+        UnaddressedNoteProblem(section="01", description="note pending"),
     ]
     calls = iter([outstanding, outstanding, outstanding])
 

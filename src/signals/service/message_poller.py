@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 from containers import Services
-from orchestrator.types import ControlSignal
+from orchestrator.types import ControlSignal, PipelineAbortError
 from signals.service.mailbox_service import MailboxService
 
 
@@ -28,15 +27,15 @@ def poll_control_messages(
     messages = mailbox.drain()
     alignment_changed = False
     for msg in messages:
-        if msg.startswith("abort"):
+        if msg.startswith(ControlSignal.ABORT):
             if current_section:
                 mailbox.send(parent, f"fail:{current_section}:aborted")
             else:
                 mailbox.send(parent, "fail:aborted")
             log("Received abort — shutting down")
             mailbox.cleanup()
-            sys.exit(0)
-        if msg.startswith("alignment_changed"):
+            raise PipelineAbortError("abort received")
+        if msg.startswith(ControlSignal.ALIGNMENT_CHANGED):
             log("Alignment changed — invalidating excerpts and setting flag")
             Services.change_tracker().invalidate_excerpts(planspace)
             Services.change_tracker().set_flag(planspace)
@@ -75,9 +74,9 @@ def handle_pending_messages(
         db_sh=db_sh,
         agent_name=agent_name,
     ):
-        if msg.startswith("abort"):
+        if msg.startswith(ControlSignal.ABORT):
             return True
-        if msg.startswith("alignment_changed"):
+        if msg.startswith(ControlSignal.ALIGNMENT_CHANGED):
             log("Alignment changed — invalidating excerpts and setting flag")
             Services.change_tracker().invalidate_excerpts(planspace)
             Services.change_tracker().set_flag(planspace)

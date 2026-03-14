@@ -1,11 +1,27 @@
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import Path
 
 from signals.repository.artifact_io import read_json, rename_malformed
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from signals.types import SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE, SIGNAL_NEED_DECISION
+
+
+class BlockerCategory(str, Enum):
+    """Category for grouping blocker signals in the rollup."""
+
+    MISSING_INFO = "missing_info"
+    DECISION_REQUIRED = "decision_required"
+    DEPENDENCY = "dependency"
+    SCOPE_EXPANSION = "scope_expansion"
+    NEEDS_PARENT = SIGNAL_NEEDS_PARENT
+    MALFORMED_SIGNAL = "malformed_signal"
+    GOVERNANCE = "governance"
+
+    def __str__(self) -> str:  # noqa: D105
+        return self.value
 
 
 _SHARED_SEAM_PREFIX = (
@@ -15,21 +31,21 @@ _SEAM_HASH_LENGTH = 12
 
 # Signal state → blocker category mapping (used in _update_blocker_rollup)
 _STATE_TO_CATEGORY: dict[str, str] = {
-    "underspecified": "missing_info",
-    "underspec": "missing_info",
-    SIGNAL_NEED_DECISION: "decision_required",
-    SIGNAL_OUT_OF_SCOPE: "scope_expansion",
-    "out-of-scope": "scope_expansion",
-    SIGNAL_NEEDS_PARENT: SIGNAL_NEEDS_PARENT,
-    "dependency": "dependency",
+    "underspecified": BlockerCategory.MISSING_INFO,
+    "underspec": BlockerCategory.MISSING_INFO,
+    SIGNAL_NEED_DECISION: BlockerCategory.DECISION_REQUIRED,
+    SIGNAL_OUT_OF_SCOPE: BlockerCategory.SCOPE_EXPANSION,
+    "out-of-scope": BlockerCategory.SCOPE_EXPANSION,
+    SIGNAL_NEEDS_PARENT: BlockerCategory.NEEDS_PARENT,
+    "dependency": BlockerCategory.DEPENDENCY,
 }
 
 # Proposal-state blocker type → category mapping
 _BTYPE_TO_CATEGORY: dict[str, str] = {
-    "user_root_questions": "decision_required",
-    "unresolved_contracts": "dependency",
-    "unresolved_anchors": "dependency",
-    "shared_seam_candidates": SIGNAL_NEEDS_PARENT,
+    "user_root_questions": BlockerCategory.DECISION_REQUIRED,
+    "unresolved_contracts": BlockerCategory.DEPENDENCY,
+    "unresolved_anchors": BlockerCategory.DEPENDENCY,
+    "shared_seam_candidates": BlockerCategory.NEEDS_PARENT,
 }
 
 
@@ -95,7 +111,7 @@ def _collect_signal_blockers(signals_dir: Path) -> list[dict]:
             blockers.append({
                 "signal_file": sig_path.name,
                 "state": "malformed",
-                "category": "malformed_signal",
+                "category": BlockerCategory.MALFORMED_SIGNAL,
                 "section": "unknown",
                 "detail": (
                     f"Signal file {sig_path.name} could not be parsed "
@@ -136,7 +152,7 @@ def _collect_readiness_blockers(readiness_dir: Path | None) -> list[dict]:
             btype = b.get("type") or b.get("state", "unknown")
             category = _BTYPE_TO_CATEGORY.get(btype)
             if category is None:
-                category = "governance" if btype.startswith("governance_") else "missing_info"
+                category = BlockerCategory.GOVERNANCE if btype.startswith("governance_") else BlockerCategory.MISSING_INFO
             blockers.append({
                 "signal_file": rdy_path.name,
                 "state": b.get("state", f"proposal-state:{btype}"),
@@ -178,32 +194,24 @@ def _update_blocker_rollup(planspace: Path) -> None:
     # Group blockers by category
     from collections import defaultdict
     groups: dict[str, list[dict]] = defaultdict(list, {
-        "missing_info": [],
-        "decision_required": [],
-        "dependency": [],
-        "scope_expansion": [],
-        SIGNAL_NEEDS_PARENT: [],
-        "malformed_signal": [],
-        "governance": [],
+        cat: [] for cat in BlockerCategory
     })
     for b in blockers:
         groups[b["category"]].append(b)
 
     category_titles = {
-        "missing_info": "Missing Information (UNDERSPECIFIED)",
-        "decision_required": "Decisions Required (NEED_DECISION)",
-        "dependency": "Dependencies (DEPENDENCY)",
-        "scope_expansion": "Scope Expansion (OUT_OF_SCOPE)",
-        SIGNAL_NEEDS_PARENT: "Parent Coordination / Decision Required (NEEDS_PARENT)",
-        "malformed_signal": "Malformed Signal Files (parse error)",
-        "governance": "Governance (GOVERNANCE)",
+        BlockerCategory.MISSING_INFO: "Missing Information (UNDERSPECIFIED)",
+        BlockerCategory.DECISION_REQUIRED: "Decisions Required (NEED_DECISION)",
+        BlockerCategory.DEPENDENCY: "Dependencies (DEPENDENCY)",
+        BlockerCategory.SCOPE_EXPANSION: "Scope Expansion (OUT_OF_SCOPE)",
+        BlockerCategory.NEEDS_PARENT: "Parent Coordination / Decision Required (NEEDS_PARENT)",
+        BlockerCategory.MALFORMED_SIGNAL: "Malformed Signal Files (parse error)",
+        BlockerCategory.GOVERNANCE: "Governance (GOVERNANCE)",
     }
 
     lines = ["# Blocker Rollup (auto-generated)\n",
              f"**{len(blockers)} sections need input:**\n"]
-    for cat_key in ("missing_info", "decision_required", "dependency",
-                    "scope_expansion", SIGNAL_NEEDS_PARENT,
-                    "malformed_signal", "governance"):
+    for cat_key in BlockerCategory:
         cat_blockers = groups[cat_key]
         if not cat_blockers:
             continue

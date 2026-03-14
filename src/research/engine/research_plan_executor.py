@@ -13,7 +13,7 @@ from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from orchestrator.path_registry import PathRegistry
 from flow.engine.flow_submitter import new_flow_id, submit_fanout
 from flow.types.context import FlowEnvelope
-from research.engine.orchestrator import load_research_status, validate_research_plan, write_research_status
+from research.engine.orchestrator import ResearchState, load_research_status, validate_research_plan, write_research_status
 from research.engine.research_branch_builder import (
     build_branch,
     emit_not_researchable_signals,
@@ -85,7 +85,7 @@ def _fail_status(
 ) -> None:
     """Write a failure status entry."""
     write_research_status(
-        section_number, planspace, "failed",
+        section_number, planspace, ResearchState.FAILED,
         detail=detail, trigger_hash=trigger_hash, cycle_id=cycle_id,
     )
 
@@ -175,7 +175,7 @@ def _submit_fanout(
     # Write status BEFORE computing freshness so the hash includes
     # research-status.json at both submission and dispatch time.
     write_research_status(
-        section_number, planspace, "tickets_submitted",
+        section_number, planspace, ResearchState.TICKETS_SUBMITTED,
         detail=f"submitted {len(branches)} research ticket branches",
         trigger_hash=trigger_hash, cycle_id=cycle_id,
     )
@@ -225,7 +225,7 @@ def submit_research_verify(
         write_research_status(
             section_number,
             planspace,
-            "failed",
+            ResearchState.FAILED,
             detail="failed to write research verification prompt",
             trigger_hash=str(status.get("trigger_hash", "")),
             cycle_id=str(status.get("cycle_id", "")),
@@ -252,7 +252,7 @@ def submit_research_verify(
     write_research_status(
         section_number,
         planspace,
-        "verifying",
+        ResearchState.VERIFYING,
         detail="submitted research verification",
         trigger_hash=str(status.get("trigger_hash", "")),
         cycle_id=str(status.get("cycle_id", "")),

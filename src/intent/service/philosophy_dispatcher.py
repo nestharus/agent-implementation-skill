@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from containers import Services
+from intent.service.philosophy_classifier import ClassifierState
 from pipeline.context import DispatchContext
 
 
@@ -68,7 +69,7 @@ def _dispatch_classified_signal_stage(
     agent_file: str,
 ) -> dict[str, Any]:
     attempts: list[dict[str, Any]] = []
-    classification: dict[str, Any] = {"state": "missing_signal", "data": None}
+    classification: dict[str, Any] = {"state": ClassifierState.MISSING_SIGNAL, "data": None}
 
     for attempt, model in enumerate(models, start=1):
         signal_path.unlink(missing_ok=True)

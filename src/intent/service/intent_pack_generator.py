@@ -6,8 +6,8 @@ from typing import Any
 from containers import Services
 from intent.service.philosophy_bootstrapper import (
     ensure_global_philosophy as _ensure_global_philosophy,
-    sha256_file as _sha256_file_impl,
 )
+from intent.service.philosophy_grounding import sha256_file as _sha256_file
 from intent.service.philosophy_catalog import (
     _DEFAULT_CATALOG_MAX_DEPTH,
     _DEFAULT_CATALOG_MAX_FILES,
@@ -55,9 +55,6 @@ def _build_philosophy_catalog(
         extensions=extensions,
     )
 
-
-def _sha256_file(path: Path) -> str:
-    return _sha256_file_impl(path)
 
 
 def _compute_intent_pack_hash(

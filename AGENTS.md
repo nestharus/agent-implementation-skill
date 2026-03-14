@@ -28,7 +28,7 @@
 
 ## Cleanup Backlog
 
-**`docs/cleanup-backlog.md`** — Tracked structural issues discovered during reorganization. 17 items covering: agent ownership, dispatch concerns, missing types, inlined prompts, redundant WORKFLOW_HOME, old routing table, hardcoded task names. Check this file before starting any cleanup work.
+**`docs/cleanup-backlog.md`** — Tracked structural issues discovered during reorganization. 153 items (most DONE). Methodology §1-16 covers: dead code, naming, god functions, structural placement, type safety gaps, missing domain concepts, architectural layers, system health, coupling, cohesion, concern decomposition, contract surface, DI gaps, optional fields / discriminated unions, magic strings / enums, duplicate code. Check this file before starting any cleanup work.
 
 ---
 

@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from _paths import DB_SH
+from orchestrator.types import PipelineAbortError
 from src.signals.service.database_client import DatabaseClient
 from src.signals.service.mailbox_service import MailboxService
 from src.signals.service.message_poller import (
@@ -100,7 +101,7 @@ def test_poll_control_messages_exits_on_abort(tmp_path: Path) -> None:
     _mailbox(client, "section-loop")
     parent.send("section-loop", "abort")
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(PipelineAbortError):
         poll_control_messages(
             planspace,
             "parent",

@@ -16,9 +16,10 @@ from flow.engine.flow_submitter import (
     submit_chain,
     submit_fanout,
 )
-from flow.types.context import FlowEnvelope
+from flow.types.context import FlowEnvelope, TaskStatus
 from flow.types.schema import ChainAction, FanoutAction, parse_flow_signal
 from research.engine.orchestrator import (
+    ResearchState,
     load_research_status,
     validate_research_plan,
     write_research_status,
@@ -28,6 +29,7 @@ from research.engine.research_plan_executor import (
     submit_research_verify,
 )
 from intake.service.assessment_evaluator import (
+    AssessmentVerdict,
     read_post_impl_assessment,
     record_assessment_governance,
 )
@@ -101,7 +103,7 @@ def _fail_chain_gate(
     cancel_chain_descendants(db_path, chain_id, task_id)
     gate_id = find_gate_for_chain(db_path, chain_id)
     if gate_id:
-        update_gate_member(db_path, gate_id, chain_id, "failed", result_manifest_path)
+        update_gate_member(db_path, gate_id, chain_id, TaskStatus.FAILED, result_manifest_path)
         check_and_fire_gate(db_path, planspace, gate_id, flow_id, origin_refs)
 
 
@@ -182,7 +184,7 @@ def _complete_chain_gate(
         return
     member_leaf = get_gate_member_leaf(db_path, gate_id, chain_id)
     if member_leaf == task_id:
-        update_gate_member(db_path, gate_id, chain_id, "complete", result_manifest_path)
+        update_gate_member(db_path, gate_id, chain_id, TaskStatus.COMPLETE, result_manifest_path)
         check_and_fire_gate(db_path, planspace, gate_id, flow_id, origin_refs)
 
 
@@ -237,7 +239,7 @@ def reconcile_task_completion(
     )
     _handle_post_impl_assessment_completion(task, status, planspace)
 
-    if status == "failed":
+    if status == TaskStatus.FAILED:
         if chain_id:
             _fail_chain_gate(
                 db_path, planspace, chain_id, task_id,
@@ -245,7 +247,7 @@ def reconcile_task_completion(
             )
         return
 
-    if status != "complete":
+    if status != TaskStatus.COMPLETE:
         return
 
     continuation, is_malformed = _load_continuation(planspace, continuation_path)
@@ -308,7 +310,7 @@ def _handle_synthesis_completion(
         )
     else:
         write_research_status(
-            section_number, planspace, "synthesized",
+            section_number, planspace, ResearchState.SYNTHESIZED,
             detail="research synthesis complete",
             trigger_hash=trigger_hash, cycle_id=cycle_id,
         )
@@ -341,18 +343,18 @@ def _handle_research_completion(
     trigger_hash = str(status_data.get("trigger_hash", ""))
     cycle_id = str(status_data.get("cycle_id", ""))
 
-    if status == "failed":
+    if status == TaskStatus.FAILED:
         write_research_status(
             section_number,
             planspace,
-            "failed",
+            ResearchState.FAILED,
             detail=error or f"{task_type} failed",
             trigger_hash=trigger_hash,
             cycle_id=cycle_id,
         )
         return
 
-    if status != "complete":
+    if status != TaskStatus.COMPLETE:
         return
 
     if task_type == "research.plan":
@@ -374,7 +376,7 @@ def _handle_research_completion(
 
     if task_type == "research.verify":
         write_research_status(
-            section_number, planspace, "verified",
+            section_number, planspace, ResearchState.VERIFIED,
             detail="research verification complete",
             trigger_hash=trigger_hash, cycle_id=cycle_id,
         )
@@ -388,7 +390,7 @@ def _handle_post_impl_assessment_completion(
     """Apply post-implementation assessment results on task completion."""
 
     task_type = str(task.get("task_type") or "")
-    if task_type != "implementation.post_assessment" or status != "complete":
+    if task_type != "implementation.post_assessment" or status != TaskStatus.COMPLETE:
         return
 
     section_number = _section_number(task)
@@ -401,10 +403,10 @@ def _handle_post_impl_assessment_completion(
 
     record_assessment_governance(section_number, planspace, assessment)
 
-    verdict = assessment.get("verdict", "accept")
-    if verdict == "accept_with_debt":
+    verdict = assessment.get("verdict", AssessmentVerdict.ACCEPT)
+    if verdict == AssessmentVerdict.ACCEPT_WITH_DEBT:
         _emit_risk_register_signal(section_number, planspace, assessment)
-    elif verdict == "refactor_required":
+    elif verdict == AssessmentVerdict.REFACTOR_REQUIRED:
         _emit_refactor_blocker(section_number, planspace, assessment)
 
 
@@ -422,7 +424,7 @@ def _emit_risk_register_signal(
         "problem_ids": assessment.get("problem_ids_addressed", []),
         "pattern_ids": assessment.get("pattern_ids_followed", []),
         "debt_items": assessment.get("debt_items", []),
-        "verdict": assessment.get("verdict", "accept_with_debt"),
+        "verdict": assessment.get("verdict", AssessmentVerdict.ACCEPT_WITH_DEBT),
     }
     Services.artifact_io().write_json(paths.risk_register_signal(section_number), payload)
 

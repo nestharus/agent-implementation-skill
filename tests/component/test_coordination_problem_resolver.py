@@ -4,26 +4,12 @@ from __future__ import annotations
 
 import json
 
+from coordination.problem_types import MisalignedProblem, Problem
 from orchestrator.types import Section, SectionResult
 from src.coordination.service.problem_resolver import (
     _collect_outstanding_problems,
     _detect_recurrence_patterns,
-    build_file_to_sections,
 )
-
-
-def test_build_file_to_sections_groups_paths_by_section() -> None:
-    sections = [
-        Section(number="01", path=None, related_files=["src/a.py", "src/shared.py"]),
-        Section(number="02", path=None, related_files=["src/shared.py"]),
-    ]
-
-    mapping = build_file_to_sections(sections)
-
-    assert mapping == {
-        "src/a.py": ["01"],
-        "src/shared.py": ["01", "02"],
-    }
 
 
 def test_collect_outstanding_problems_fail_closes_on_malformed_blocker(
@@ -51,8 +37,8 @@ def test_collect_outstanding_problems_fail_closes_on_malformed_blocker(
     )
 
     assert len(problems) == 1
-    assert problems[0]["type"] == "needs_parent"
-    assert problems[0]["needs"] == "Valid blocker signal JSON"
+    assert problems[0].type == "needs_parent"
+    assert problems[0].needs == "Valid blocker signal JSON"
     assert blocker_path.with_suffix(".malformed.json").exists()
 
 
@@ -77,8 +63,8 @@ def test_collect_outstanding_problems_tracks_notes_and_ack_states(planspace) -> 
     )
 
     assert len(unaddressed) == 1
-    assert unaddressed[0]["type"] == "unaddressed_note"
-    assert unaddressed[0]["note_id"] == "note-123"
+    assert unaddressed[0].type == "unaddressed_note"
+    assert unaddressed[0].note_id == "note-123"
 
     ack_path = planspace / "artifacts" / "signals" / "note-ack-05.json"
     ack_path.write_text(
@@ -103,8 +89,8 @@ def test_collect_outstanding_problems_tracks_notes_and_ack_states(planspace) -> 
     )
 
     assert len(rejected) == 1
-    assert rejected[0]["type"] == "consequence_conflict"
-    assert "Conflicts with current API contract." in rejected[0]["description"]
+    assert rejected[0].type == "consequence_conflict"
+    assert "Conflicts with current API contract." in rejected[0].description
 
 
 def test_collect_outstanding_problems_surfaces_root_reframing_scope_deltas(
@@ -137,22 +123,16 @@ def test_collect_outstanding_problems_surfaces_root_reframing_scope_deltas(
         planspace,
     )
 
-    assert problems == [
-        {
-            "section": "05",
-            "type": "root_reframing",
-            "description": (
-                "Pending scope delta delta-root-05 from proposal requires root "
-                "reframing: Shared API reframe. Linked sections: 05."
-            ),
-            "files": ["src/service.py"],
-            "delta_id": "delta-root-05",
-            "title": "Shared API reframe",
-            "source": "proposal",
-            "source_sections": ["05"],
-            "requires_root_reframing": True,
-        },
-    ]
+    assert len(problems) == 1
+    p = problems[0]
+    assert p.type == "root_reframing"
+    assert p.section == "05"
+    assert p.files == ["src/service.py"]
+    assert p.delta_id == "delta-root-05"
+    assert p.title == "Shared API reframe"
+    assert p.source == "proposal"
+    assert p.source_sections == ["05"]
+    assert "requires root reframing" in p.description
 
 
 def test_detect_recurrence_patterns_writes_report_for_active_problems(
@@ -166,8 +146,8 @@ def test_detect_recurrence_patterns_writes_report_for_active_problems(
     bad_signal = signals_dir / "section-09-recurrence.json"
     bad_signal.write_text("{bad json", encoding="utf-8")
     problems = [
-        {"section": "01", "type": "misaligned"},
-        {"section": "02", "type": "misaligned"},
+        MisalignedProblem(section="01", description=""),
+        MisalignedProblem(section="02", description=""),
     ]
 
     report = _detect_recurrence_patterns(planspace, problems)
@@ -177,8 +157,8 @@ def test_detect_recurrence_patterns_writes_report_for_active_problems(
         ).read_text(encoding="utf-8"),
     )
 
-    assert report == stored
-    assert report["recurring_sections"] == ["01"]
-    assert report["recurring_problem_count"] == 1
-    assert report["problem_indices"] == [0]
+    assert report.to_dict() == stored
+    assert report.recurring_sections == ["01"]
+    assert report.recurring_problem_count == 1
+    assert report.problem_indices == [0]
     assert bad_signal.with_suffix(".malformed.json").exists()

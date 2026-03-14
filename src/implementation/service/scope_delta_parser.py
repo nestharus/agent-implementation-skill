@@ -2,11 +2,25 @@ from __future__ import annotations
 
 import json
 import re
+from enum import Enum
 
 from orchestrator.path_registry import PathRegistry
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*\n(.*?)\n```", re.DOTALL)
-_VALID_ACTIONS = {"accept", "reject", "absorb"}
+
+
+class ScopeDeltaAction(str, Enum):
+    """Action for a scope-delta adjudication decision."""
+
+    ACCEPT = "accept"
+    REJECT = "reject"
+    ABSORB = "absorb"
+
+    def __str__(self) -> str:  # noqa: D105
+        return self.value
+
+
+_VALID_ACTIONS = set(ScopeDeltaAction)
 
 
 def parse_scope_delta_adjudication(output_text: str) -> dict | None:
@@ -54,10 +68,10 @@ def parse_scope_delta_adjudication(output_text: str) -> dict | None:
             if decision["action"] not in _VALID_ACTIONS:
                 valid = False
                 break
-            if decision["action"] == "accept" and "new_sections" not in decision:
+            if decision["action"] == ScopeDeltaAction.ACCEPT and "new_sections" not in decision:
                 valid = False
                 break
-            if decision["action"] == "absorb" and (
+            if decision["action"] == ScopeDeltaAction.ABSORB and (
                 "absorb_into_section" not in decision
                 or "scope_addition" not in decision
             ):

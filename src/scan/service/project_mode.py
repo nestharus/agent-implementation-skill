@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
+from orchestrator.types import PauseType
 from containers import Services
 
 
@@ -79,7 +80,7 @@ def resolve_project_mode(planspace: Path, parent: str) -> tuple[str, list[str]]:
             Services.pipeline_control().pause_for_parent(
                 planspace,
                 parent,
-                "pause:needs_parent:project-mode-malformed — "
+                f"pause:{PauseType.NEEDS_PARENT}:project-mode-malformed — "
                 "JSON parse failed and no text fallback exists",
             )
         else:
@@ -88,7 +89,7 @@ def resolve_project_mode(planspace: Path, parent: str) -> tuple[str, list[str]]:
             Services.pipeline_control().pause_for_parent(
                 planspace,
                 parent,
-                "pause:needs_parent:project-mode-missing — "
+                f"pause:{PauseType.NEEDS_PARENT}:project-mode-missing — "
                 "scan stage did not write project-mode signal",
             )
 

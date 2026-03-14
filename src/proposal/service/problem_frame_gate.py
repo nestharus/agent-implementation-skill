@@ -10,7 +10,7 @@ from containers import Services
 from dispatch.prompt.writers import write_section_setup_prompt
 from signals.service.blocker_manager import _update_blocker_rollup
 from implementation.service.section_reexplorer import _write_alignment_surface
-from orchestrator.types import Section
+from orchestrator.types import PauseType, Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from signals.types import SIGNAL_NEEDS_PARENT
 
@@ -96,7 +96,7 @@ def _emit_missing_frame_blocker(
     Services.communicator().mailbox_send(
         planspace,
         parent,
-        f"pause:needs_parent:{section.number}:problem frame missing after retry",
+        f"pause:{PauseType.NEEDS_PARENT}:{section.number}:problem frame missing after retry",
     )
 
 
@@ -125,7 +125,7 @@ def _emit_empty_frame_blocker(
     Services.communicator().mailbox_send(
         planspace,
         parent,
-        f"pause:needs_parent:{section.number}:problem frame empty",
+        f"pause:{PauseType.NEEDS_PARENT}:{section.number}:problem frame empty",
     )
 
 

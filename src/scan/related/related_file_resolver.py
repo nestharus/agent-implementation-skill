@@ -3,10 +3,22 @@
 from __future__ import annotations
 
 import re
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from containers import Services
+
+
+class RelatedFileStatus(str, Enum):
+    """Status of a related-files validation signal."""
+
+    CURRENT = "current"
+    APPLIED = "applied"
+    STALE = "stale"
+
+    def __str__(self) -> str:  # noqa: D105
+        return self.value
 from orchestrator.path_registry import PathRegistry
 from scan.scan_context import ScanContext
 from scan.service.template_loader import load_scan_template
@@ -38,7 +50,7 @@ def apply_related_files_update(section_file: Path, signal_file: Path) -> bool:
         )
         return False
 
-    if signal.get("status") != "stale":
+    if signal.get("status") != RelatedFileStatus.STALE:
         return False
 
     from scan.related.cli_handler import block_insert_position, find_entry_span
@@ -125,9 +137,9 @@ def _normalize_validation_signal(
 
     status = str(data.get("status", "")).strip().lower()
     if status == "ok":  # backward-compat alias
-        status = "current"
+        status = RelatedFileStatus.CURRENT
 
-    if status == "current":
+    if status == RelatedFileStatus.CURRENT:
         additions = data.get("additions", [])
         removals = data.get("removals", [])
         if additions not in (None, []) or removals not in (None, []):
@@ -135,21 +147,21 @@ def _normalize_validation_signal(
         if missing_existing:
             return None
         return {
-            "status": "current",
+            "status": RelatedFileStatus.CURRENT,
             "additions": [],
             "removals": [],
             "reason": str(data.get("reason", "")).strip(),
         }
 
-    if allow_applied and status == "applied":
+    if allow_applied and status == RelatedFileStatus.APPLIED:
         return {
-            "status": "applied",
+            "status": RelatedFileStatus.APPLIED,
             "additions": [],
             "removals": [],
             "reason": str(data.get("reason", "")).strip(),
         }
 
-    if status != "stale":
+    if status != RelatedFileStatus.STALE:
         return None
 
     additions_raw = data.get("additions", [])
@@ -177,7 +189,7 @@ def _normalize_validation_signal(
         return None
 
     return {
-        "status": "stale",
+        "status": RelatedFileStatus.STALE,
         "additions": additions,
         "removals": removals,
         "reason": str(data.get("reason", "")).strip(),
@@ -295,7 +307,7 @@ def _apply_and_finalize(
     Services.artifact_io().write_json(signal_file, normalized)
 
     status = normalized["status"]
-    if status == "stale":
+    if status == RelatedFileStatus.STALE:
         print(f"[EXPLORE] {section_name}: applying related-files updates")
         if not apply_related_files_update(section_file, signal_file):
             print(
@@ -303,7 +315,7 @@ def _apply_and_finalize(
                 "forcing revalidation on next run",
             )
             return
-        normalized["status"] = "applied"
+        normalized["status"] = RelatedFileStatus.APPLIED
         Services.artifact_io().write_json(signal_file, normalized)
 
         section_text_updated = section_file.read_text() if section_file.is_file() else ""

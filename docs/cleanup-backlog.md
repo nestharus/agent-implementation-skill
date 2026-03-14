@@ -156,6 +156,82 @@ Functions that take parameters obtainable from the DI container are exposing unn
 
 **The judgment call**: Not every parameter should come from DI. Domain data (section numbers, payloads, results) belongs in parameters. Infrastructure (loggers, policies, registries) belongs in DI.
 
+**Additional DI patterns to detect:**
+- Hardcoded module/class lists that should be discovered or configured via the container (e.g., route module registries).
+- `importlib.import_module()` calls with hardcoded string lists instead of container-managed registration.
+
+### 14. Optional Fields as Missing Discriminated Unions
+Dataclasses or dicts with many optional/nullable fields are a sign that multiple distinct shapes are being collapsed into one "god type." The type doesn't tell you what shape you have at any given call site.
+
+**Patterns to detect:**
+- Dataclasses with 3+ `Optional[X]` / `X | None` fields where different subsets are populated for different use cases.
+- Dict constructions with type-dependent keys (e.g., some dicts have `note_id` and some don't, all typed as `dict[str, Any]`).
+- `.get("key", default)` chains where different callers access different subsets of keys — the dict is actually 2+ distinct shapes.
+- Functions that check `if obj.field is not None` to determine which "mode" an object is in — the mode should be encoded in the type.
+
+**The fix**: Discriminated unions with narrow frozen dataclasses. Each variant has exactly its fields — no optionals. Cross-cutting fields shared by multiple variants belong on an intermediate base class (aspect-oriented composition), not duplicated across variants or made optional on a god class.
+
+**Scan**: `grep -rn "| None = None" src/` for optional fields. `grep -rn '\.get("' src/` for dict-shape ambiguity. Look for `isinstance` checks or `if x.field is not None` branching.
+
+### 15. Magic Strings That Should Be Enums
+String literals used as protocol tokens, status values, or mode selectors throughout the codebase. These create invisible contracts — a typo silently falls through to else branches with no IDE autocomplete and no exhaustive matching.
+
+**Patterns to detect:**
+- Fixed sets of string values compared with `==` or checked with `in (...)` — these are enum values without the enum.
+- Dict keys like `"status"`, `"state"`, `"mode"`, `"action"`, `"verdict"` whose values are always one of a known set.
+- `.startswith("prefix:")` message parsing — stringly-typed protocol messages that should be structured types.
+- Constants defined as `X = "x"` scattered across files — halfway to an enum but without the exhaustiveness guarantee.
+- `frozenset({"a", "b", "c"})` for membership testing — these ARE enum value sets, just not declared as enums.
+
+**The fix**: `class X(str, Enum)` (like `StepDecision`, `RiskMode`, `PostureProfile` in `risk/types.py`). The `str, Enum` pattern preserves backward-compatible string comparison while adding type safety.
+
+**Scan**: `grep -rn 'frozenset({' src/`, `grep -rn '"status"' src/`, `grep -rn '"state"' src/`, `grep -rn '"action"' src/`, `grep -rn '"verdict"' src/`, `grep -rn '\.startswith("' src/`.
+
+### 16. Duplicate Code Detection
+Identical or near-identical logic duplicated across files. Each copy must be modified in lockstep — missing one creates silently divergent behavior.
+
+**Patterns to detect:**
+- Functions with identical bodies in different modules (copy-paste inheritance).
+- Inline code blocks (5+ lines) that appear in 2+ files with only variable name changes.
+- Construction patterns repeated across files (e.g., building the same object from the same inputs in 3 places).
+- Validation/parsing logic duplicated between a "primary" and "retry/escalation" path.
+
+**The fix**: Extract to a shared function in the appropriate service module. For construction patterns, use factory methods or `@classmethod` constructors on the type itself.
+
+**Scan**: Compare function bodies across files with similar names. `grep -rn "def _validate" src/ | sort` — look for clusters. Check `engine/` dirs for duplicated abort/retry/guard patterns.
+
+### 17. Vague Data Structures
+Generic types (`list[list[X]]`, `tuple[A, B, C]`, `dict[str, Any]`) that hide semantic meaning behind positional or structural conventions. The type annotation reveals nothing about what the data *means* — consumers must rely on docstrings, variable names, or reading the source.
+
+**Patterns to detect:**
+- **Nested lists as unnamed groupings**: `list[list[Problem]]` where each inner list is a "problem group" — but the type doesn't say that. Parallel metadata travels in separate `list[str]` structures (strategies, reasons) indexed by position.
+- **Tuple returns with positional semantics**: `tuple[list[list[Problem]], list[str], dict]` where index 0 = groups, 1 = strategies, 2 = raw plan. Consumers must know the positions by convention.
+- **Loose dict bags**: `dict[str, Any]` used for structured data with known fields (`{"needed": bool, "reason": str}` for bridge directives, `{"recurring_sections": ..., "recurring_problem_count": ...}` for recurrence reports). `.get("key")` chains reveal the shape but the type doesn't.
+- **Positionally coupled parallel lists**: Two or more lists where index `i` of each list carries related data — `groups[i]` matches `strategies[i]` matches `file_sets[i]`. A `zip` without a named container.
+
+**The fix**: Frozen dataclasses. `ProblemGroup(problems, strategy, reason, bridge)` replaces `list[list[Problem]]` + `list[str]`. `BridgeDirective(needed, reason)` replaces `dict`. `RecurrenceReport(recurring_sections, count, max_attempt, indices)` replaces `dict[str, Any]`. The type annotation *is* the documentation.
+
+**Scan**: `grep -rn "list\[list\[" src/`, `grep -rn "-> tuple\[" src/`, `grep -rn "-> dict\[str, Any\]" src/`, `grep -rn "dict\[str, Any\] | None" src/`. Look for parallel list constructions (`x.append(...); y.append(...)` in the same loop).
+
+### 18. Derivable Parameters
+Functions that accept parameters which could be computed from other parameters already in scope. The extra params widen the contract surface and force callers to do derivation work that the callee could handle.
+
+**Patterns to detect:**
+- `tool_registry_path` passed alongside `planspace` — derivable as `PathRegistry(planspace).tool_registry()`.
+- `friction_signal_path` passed alongside `planspace` + `section_number` — derivable via `PathRegistry`.
+- `artifacts: Path` passed alongside `planspace` — always `PathRegistry(planspace).artifacts`.
+- `tools_available_path` passed alongside `planspace` + `section_number` — derivable.
+- Multiple scan functions passing `codemap_path`, `artifacts_dir`, `scan_log_dir` separately when `ScanContext` bundles them.
+
+**The fix**: Derive internally. If a function already has `planspace`, it can compute `PathRegistry(planspace).X()` itself. If derivation is expensive, `DispatchContext` (with `@cached_property paths`) or `ScanContext` (with `from_artifacts()` factory) already exist as bundling patterns. Adopt them more broadly.
+
+**Existing patterns to reuse**:
+- `DispatchContext(planspace, codespace, parent)` — `@cached_property paths: PathRegistry`
+- `ScanContext.from_artifacts()` — bundles scan-specific paths with derivation
+- `PipelineContext` — mutable state threading (less common)
+
+**Scan**: Functions with 8+ params where 2+ are `Path` types and one is `planspace`. Check if the path params are always `PathRegistry(planspace).some_method()` at call sites.
+
 ---
 
 ## OPEN
@@ -234,7 +310,7 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Examples**: `"ALIGNMENT_CHANGED_PENDING"` checked via `==` in 15 locations across 5+ systems. `"TIMEOUT:"` via `.startswith()` in dispatch. `"restart_phase1"`, `"complete"`, `"exhausted"`, `"stalled"`, `"resume"`, `"abort"`, `"fail:"`, `"pause:"`, `"budget-exhausted:"`, `"underspec"` scattered across 20+ files.
 - **Precedent**: `risk/types.py` already uses `str, Enum` for `StepDecision`, `RiskMode`, `PostureProfile`. The protocol layer hasn't adopted the pattern.
 - **Risk**: A typo like `"ALIGNMENT_CHANGE_PENDING"` silently falls through to the else branch. No IDE autocomplete, no compile-time validation, no exhaustive match checking.
-- **Status**: PARTIALLY DONE — `dispatch_agent` return values migrated to `DispatchStatus` enum (`SUCCESS`, `ALIGNMENT_CHANGED`, `QA_REJECTED`, `TIMEOUT`) with backward-compatible `__eq__`/`__str__` shims. Remaining: coordination loop tokens, pipeline control tokens still stringly-typed.
+- **Status**: PARTIALLY DONE — `dispatch_agent` return values migrated to `DispatchStatus` enum. `CoordinationStatus` enum adopted in `pipeline_orchestrator.py` (replaced 3 raw `"restart_phase1"` comparisons). `PauseType` enum adopted across 11 pause constructions. `ControlSignal` enum for abort/alignment_changed. Remaining: mailbox protocol prefixes (`"resume:"`, `"pause:"`, `"fail:"`, `"complete"`) are legitimate wire-format strings, not enum candidates.
 
 ### 101. Implicit nullability chains — None means 3+ different things
 - **Category**: Error handling / semantic ambiguity
@@ -247,7 +323,7 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Category**: Reliability / state corruption
 - **Source**: Additional quality axes research (R118)
 - **Example**: `_dispatch_implementation` TIMEOUT path sends `fail:` message and logs, but ALIGNMENT_CHANGED_PENDING path returns None with no logging and no parent notification. Parent cannot distinguish "alignment changed" from "prompt blocked."
-- **Scale**: 23+ `except Exception` handlers. Many do partial cleanup. `pipeline_state.py:wait_if_paused` calls `sys.exit(0)` on abort after sending fail, but other abort paths return None and skip cleanup.
+- **Scale**: 23+ `except Exception` handlers. Many do partial cleanup. ~~`pipeline_state.py:wait_if_paused` calls `sys.exit(0)` on abort~~ fixed in #108 — now raises `PipelineAbortError`. Other abort paths still return None and skip cleanup.
 - **Risk**: Incomplete error recovery leaves the orchestrator making decisions on stale state. Missed notifications mean parent agents wait indefinitely or proceed with incorrect assumptions.
 
 ### 103. Low-cohesion god modules — unrelated functions sharing a file
@@ -293,11 +369,8 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Also**: `resolve_readiness` depends on `proposal-state.json` existing (returns fail-closed default if not), `build_strategic_state` produces empty risk fields if called before risk assessment, `run_intent_triage` silently absorbs missing artifacts into "(none)" prompt text.
 - **Risk**: Refactoring that reorders calls or adds new code paths can silently corrupt state. The temporal contract exists only in code position, not in the type system.
 
-### 108. Lifecycle management gaps — sys.exit bypasses finally blocks
-- **Category**: Resource leaks / reliability
-- **Source**: Additional quality axes research (R118)
-- **Example**: `pipeline_state.py:pause_for_parent` calls `sys.exit(0)` at line 93 on abort. This is called from `implementation_cycle.py:_handle_signal_pause`, which is called from a chain inside `run_implementation_loop`. The `sys.exit(0)` bypasses the `finally` block in `pipeline_orchestrator.py:main()` that calls `mailbox_cleanup`. The mailbox registration in the coordination database is never removed.
-- **Risk**: Stale mailbox registrations on subsequent runs. `sys.exit` in library code (not `__main__`) is inherently dangerous — it prevents callers from cleaning up.
+### ~~108. Lifecycle management gaps — sys.exit bypasses finally blocks~~ DONE
+- **Resolution**: Replaced all `sys.exit(0)` in library code with `raise PipelineAbortError("abort received")` — `pipeline_state.py` (2 sites) and `message_poller.py` (1 site). Added `PipelineAbortError` to `orchestrator/types.py`. Caught in `pipeline_orchestrator.py:main()` so `finally` block (mailbox cleanup) now executes on abort. Added `ControlSignal.ABORT` enum value, replacing `"abort"` magic strings in `pipeline_state.py` and `message_poller.py`.
 
 ### 109. Overloaded contracts — behavioral modes hidden behind None params
 - **Category**: Contract surface / readability
@@ -327,11 +400,8 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **What**: `_run_problem_expander()`, `_run_philosophy_expander()`, `_adjudicate_recurrence()` — zero callers. Only the two public functions are consumed. 56 lines dead.
 - **Status**: DONE — removed 3 dead wrappers (56 lines).
 
-### 113. Dead imports: 4 unused imports across production files
-- **Category**: Dead code
-- **Source**: Rescan R119
-- **Where**: `dispatch_agent` in `deep_scanner.py`, `apply_related_files_update` in `section_explorer.py`, `Path` in `scope_delta_parser.py`, `_DEFAULT_MODELS` alias in `scan_dispatcher.py`.
-- **Status**: PARTIALLY DONE — removed `Path` from `scope_delta_parser.py`. Other 3 are referenced by integration tests.
+### ~~113. Dead imports: 4 unused imports across production files~~ DONE
+- **Resolution**: All 4 dead imports removed or verified as already cleaned in prior cycles.
 
 ### 114. Dead re-exports in `flow/service/flow_facade.py`: 2 names never imported
 - **Category**: Dead code
@@ -758,6 +828,92 @@ Functions that take parameters obtainable from the DI container are exposing unn
   - Unused import `ACTION_ABORT`/`ACTION_CONTINUE` removed from `alignment_handler.py` (became dead after `handle_pause_response` extraction)
 - **8+ param functions**: 5 at 9 params → 3 at 9 params
 - **Status**: DONE
+
+### 146. Magic strings across 18+ domains should be enums
+- **Category**: Type safety / magic strings (methodology §15)
+- **Source**: Comprehensive string literal scan (Cycle 22)
+- **Scale**: 18+ distinct string domains used as protocol tokens, status values, and mode selectors without enum types. Many have partial constant extraction (#131) but no enum.
+- **Domains identified**:
+  1. ~~**Bridge status**~~ DONE — `"bridged"`, `"no_action"`, `"needs_parent"` typed via `BridgeSignal.status: Literal[...]` (see #148). `"failed"`, `"handled"` are write-only artifact values with no code comparisons — dismissed
+  2. ~~**Coordination strategy**~~ DONE — `CoordinationStrategy(str, Enum)` in `coordination/types.py`
+  3. ~~**Assessment verdicts**~~ DONE — `AssessmentVerdict(str, Enum)` in `assessment_evaluator.py`; consumers in `reconciler.py` migrated
+  4. ~~**QA verdicts**~~ DONE — `Verdict(str, Enum)` in `qa/helpers/qa_verdict.py`; `QaVerdict.verdict` typed as `Verdict`
+  5. ~~**Philosophy classifier states**~~ DONE — `ClassifierState(str, Enum)` in `philosophy_classifier.py`; all raw `"malformed_signal"`/`"missing_signal"` replaced in bootstrapper and dispatcher
+  6. ~~**Scope delta actions**~~ DONE — `ScopeDeltaAction(str, Enum)` in `scope_delta_parser.py`
+  7. ~~**Note ack actions**~~ DONE — `NoteAction(str, Enum)` in `coordination/types.py`; consumers in `problem_resolver.py`, `completion_handler.py` migrated
+  8. ~~**Related file status**~~ DONE — `RelatedFileStatus(str, Enum)` in `related_file_resolver.py`; consumers in `feedback_collector.py` migrated
+  9. ~~**Research states**~~ DONE — `ResearchState(str, Enum)` in `research/engine/orchestrator.py`; consumers in `research_plan_executor.py`, `reconciler.py` migrated
+  10. ~~**Governance blocker states**~~ DONE — `GovernanceBlockerState(str, Enum)` in `readiness_resolver.py`
+  11. ~~**Blocker categories**~~ DONE — `BlockerCategory(str, Enum)` in `blocker_manager.py`; all mapping dicts and rollup code migrated
+  12. ~~**Pause signal types**~~ DONE — `PauseType(str, Enum)` in `orchestrator/types.py`; all 11 hardcoded `"pause:..."` constructions across 8 files migrated to use `PauseType.*`
+  13. ~~**Task/flow status**~~ DONE — `TaskStatus(str, Enum)` in `flow/types/context.py`; consumers in `reconciler.py`, `task_dispatcher.py`, `gate_repository.py` migrated. Mailbox `"complete"` is a coordination protocol message (different domain) — left as-is
+  14. ~~**Implementation loop control**~~ DONE — `_LoopAction(str, Enum)` (private) in `implementation_cycle.py`
+  15. ~~**Flow context status**~~ DONE — `FlowReadStatus(str, Enum)` in `flow_context_store.py`; consumer in `gate_repository.py` migrated
+  16. ~~**Problem types**~~ DONE — type-safe via discriminated union in `coordination/problem_types.py` (see #148)
+  17. **Philosophy signal status**: `"selected"`, `"empty"` — `philosophy_prompts.py` (prompt text only, no code comparisons — dismissed)
+  18. ~~**Surface status**~~ DONE — `SurfaceStatus(str, Enum)` in `surface_registry.py`; consumers in `expansion_orchestrator.py` migrated
+- **Precedent**: `risk/types.py` uses `str, Enum` pattern for `StepDecision`, `RiskMode`, `PostureProfile`. `dispatch/types.py` uses `DispatchStatus` enum. These should be replicated for other domains.
+- **Overlap**: Supersedes remaining work in #100 (stringly-typed protocol tokens). #131 extracted constants but not enums.
+- **Risk**: String comparisons with no exhaustiveness checking. A typo like `"bridgd"` silently falls through. No IDE autocomplete or type-checker support.
+- **Status**: DONE — all 18 domains converted: 15 new `str, Enum` types, 1 discriminated union (#148), 2 dismissed (write-only/prompt-only)
+
+### ~~147. `taskrouter/discovery.py` hardcodes system module list outside DI~~ DONE
+- **Resolution**: Replaced hardcoded `_SYSTEM_ROUTE_MODULES` list with `_find_route_modules()` that auto-discovers `routes.py` files by scanning sibling packages of `taskrouter/`. Adding a new system now requires only creating a `routes.py` file — no list to update.
+
+### ~~148. Raw dict contracts in coordination system — should be discriminated union~~ DONE
+- **Resolution**: Implemented Problem type hierarchy as discriminated union of frozen dataclasses in `coordination/problem_types.py` (7 leaf types with AOP intermediate `NoteProblem` for `note_id` cross-cutting aspect). BridgeSignal pydantic model in `dispatch/service/tool_bridge.py`. `_SKIP_ACCEPTED = object()` sentinel replacing `{"_skip": True}` dict. All 6 consumer files migrated from `p["section"]` to `p.section`. All tests updated.
+
+### 149. Duplicate `list_section_files` — deduplicated
+- **Status**: DONE — removed duplicate from `substrate_state_reader.py`, updated `substrate_discoverer.py` and test to import from canonical location `scan/related/related_file_resolver.py`.
+
+### 150. Dead wrapper `_sha256_file` in `intent_pack_generator.py`
+- **Status**: DONE — removed double-wrapper that delegated to `sha256_file` via `philosophy_bootstrapper.py` re-export. Now imports directly from `philosophy_grounding.py`.
+
+### 151. QA `Verdict` enum
+- **Status**: DONE — created `Verdict(str, Enum)` in `qa/helpers/qa_verdict.py` with `PASS`, `REJECT`, `DEGRADED` values. `QaVerdict.verdict` typed as `Verdict`. Backward-compatible via `str` inheritance.
+
+### 152. Unused `Any` import in `global_coordinator.py`
+- **Status**: DONE — stale import left from Problem type migration. Removed.
+
+### 153. `sys.exit(0)` in `message_poller.py` (missed in #108)
+- **Status**: DONE — replaced with `raise PipelineAbortError("abort received")`. Also replaced `"abort"` and `"alignment_changed"` magic strings with `ControlSignal.ABORT` and `ControlSignal.ALIGNMENT_CHANGED`.
+
+### 154. Vague data structures in coordination pipeline — positionally coupled parallel lists
+- **Category**: Type safety / missing domain concepts (methodology §17)
+- **Source**: Codebase scan (Cycle 23)
+- **Scale**: 7 functions pass `list[list[Problem]]` ("confirmed groups") alongside parallel `list[str]` ("group strategies") with positional coupling. Bridge directives travel as `dict` with `{"needed": bool, "reason": str}` fields. Recurrence reports travel as `dict[str, Any]` with 4 known fields. The tuple return `tuple[list[list[Problem]], list[str], dict]` from `_build_coordination_plan` carries 3 semantically related but unnamed components.
+- **Vague structures identified**:
+  1. `list[list[Problem]]` ("confirmed groups") — 6 function signatures across `global_coordinator.py` and `plan_executor.py`
+  2. `list[str]` ("group strategies") — parallel list traveling with confirmed_groups, indexed positionally
+  3. `dict` ("bridge directive") with `needed`/`reason` fields — accessed via `.get()` in `plan_executor.py:383-391`
+  4. `dict[str, Any]` ("recurrence report") with `recurring_sections`/`recurring_problem_count`/`max_attempt`/`problem_indices` — returned by `_detect_recurrence_patterns`, consumed in `global_coordinator.py` at 4 sites
+  5. `tuple[list[list[Problem]], list[str], dict]` — return type of `_build_coordination_plan`
+  6. `list[list[int]]` ("execution batches") — group indices arranged for parallel execution in `plan_executor.py`
+  7. `dict[str, Any]` ("coord_plan") — raw planner output dict threaded through execution pipeline
+- **Files affected**: `coordination/engine/global_coordinator.py`, `coordination/engine/plan_executor.py`, `coordination/service/problem_resolver.py`, `coordination/service/planner.py`
+- **Risk**: Type annotations hide semantic meaning. `list[list[Problem]]` reveals nothing about groups, strategies, or bridge directives. Consumers rely on variable names and docstrings. Adding a field to a group requires modifying parallel list constructions in lockstep.
+- **Status**: IN PROGRESS — `BridgeDirective`, `RecurrenceReport`, `ProblemGroup` dataclasses added to `coordination/types.py`. `_detect_recurrence_patterns` migrated to return `RecurrenceReport`. Remaining: migrate `global_coordinator.py` to use `ProblemGroup` instead of parallel lists, migrate `plan_executor.py` to accept `list[ProblemGroup]`, update tests.
+
+### 155. Derivable path parameters in tool dispatch functions — 8+ params with PathRegistry derivation
+- **Category**: Parameter coupling / derivable params (methodology §18)
+- **Source**: Codebase scan (Cycle 23)
+- **Scale**: 42 functions with 8+ params found. 14 at exactly 8 verified irreducible (all distinct data values). Key functions with derivable params:
+  1. `handle_tool_friction` (9 params, `tool_bridge.py:283`) — `tool_registry_path` and `friction_signal_path` derivable from `planspace` + `section_number` via `PathRegistry`
+  2. `_handle_bridge_success` (9 params, `tool_bridge.py:185`) — `tool_registry_path` derivable from `planspace`
+  3. `surface_tool_registry` (8 params, `tool_surface_writer.py:179`) — `tool_registry_path`, `tools_available_path`, `artifacts` all derivable from `planspace` + `section_number`
+  4. `_dispatch_registry_repair` (8 params, `tool_surface_writer.py:40`) — same derivable set as `surface_tool_registry`
+  5. `_explore_section` (9 params, `section_explorer.py:72`) — could use existing `ScanContext` pattern
+  6. `run_quick_scan` (9 params, `cli.py:55`) — could bundle into `ScanContext`
+  7. `_run_freshness_check` (10 params, `codemap_builder.py:252`) — could use `ScanContext`
+- **Existing patterns**: `DispatchContext` (cached `paths: PathRegistry`), `ScanContext.from_artifacts()` — both already adopted in parts of the codebase but not consistently.
+- **Risk**: Wide contracts force callers to understand internal path derivation. Adding a new derived path requires updating every caller in the chain.
+- **Status**: OPEN
+
+### 156. Shared config and validation-related migration issues
+- **Category**: Migration hygiene
+- **Source**: Prior refactoring (Cycle 23)
+- **What**: `validate_dynamic_content` → `validate_dynamic` migration missed several call sites. Shared config extraction left some duplicate patterns. All fixed in prior commits.
+- **Status**: DONE — `validate_dynamic_content` renamed to `validate_dynamic` across all call sites, shared config extracted.
 
 ---
 

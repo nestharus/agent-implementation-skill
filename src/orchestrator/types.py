@@ -5,6 +5,14 @@ from enum import Enum
 from pathlib import Path
 
 
+class PipelineAbortError(Exception):
+    """Raised when the pipeline receives an abort signal.
+
+    Replaces ``sys.exit(0)`` so that callers' ``finally`` blocks
+    (e.g. mailbox cleanup) execute properly.
+    """
+
+
 class ControlSignal(str, Enum):
     """Typed tokens returned by pipeline control message polling.
 
@@ -13,6 +21,20 @@ class ControlSignal(str, Enum):
     """
 
     ALIGNMENT_CHANGED = "alignment_changed"
+    ABORT = "abort"
+
+    def __str__(self) -> str:  # noqa: D105
+        return self.value
+
+
+class PauseType(str, Enum):
+    """Type prefix for pause signals sent to the parent."""
+
+    NEED_DECISION = "need_decision"
+    BUDGET_EXHAUSTED = "budget_exhausted"
+    UNDERSPEC = "underspec"
+    NEEDS_PARENT = "needs_parent"
+    INTENT_STALLED = "intent-stalled"
 
     def __str__(self) -> str:  # noqa: D105
         return self.value

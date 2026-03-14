@@ -5,11 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
+from orchestrator.types import PauseType
 from containers import Services
 
 _MAX_SURFACES_PER_CYCLE_DEFAULT = 8
 _MAX_AXES_TOTAL_DEFAULT = 6
 from intent.service.surface_registry import (
+    SurfaceStatus,
     find_discarded_recurrences,
     load_combined_intent_surfaces,
     load_surface_registry,
@@ -85,7 +87,7 @@ def _reopen_recurring_surfaces(
         for surface_id in reopened:
             for entry in registry.get("surfaces", []):
                 if entry["id"] == surface_id:
-                    entry["status"] = "pending"
+                    entry["status"] = SurfaceStatus.PENDING
 
 
 def _apply_problem_expansion(
@@ -214,7 +216,7 @@ def run_expansion_cycle(
 
     worklist = [
         surface for surface in registry.get("surfaces", [])
-        if surface.get("status") == "pending"
+        if surface.get("status") == SurfaceStatus.PENDING
     ]
     if not worklist:
         save_surface_registry(section_number, planspace, registry)
@@ -329,5 +331,5 @@ def handle_user_gate(
     return Services.pipeline_control().pause_for_parent(
         planspace,
         parent,
-        f"pause:need_decision:{section_number}:{message['pause_summary']}",
+        f"pause:{PauseType.NEED_DECISION}:{section_number}:{message['pause_summary']}",
     )

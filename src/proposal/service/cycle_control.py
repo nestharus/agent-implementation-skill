@@ -16,6 +16,7 @@ from signals.service.blocker_manager import (
     _update_blocker_rollup,
 )
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from orchestrator.types import PauseType
 from signals.types import (
     ACTION_ABORT, ACTION_CONTINUE,
     SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE,
@@ -108,7 +109,7 @@ def check_budget_exceeded(
     response = Services.pipeline_control().pause_for_parent(
         planspace,
         parent,
-        f"pause:budget_exhausted:{section_number}:proposal loop exceeded "
+        f"pause:{PauseType.BUDGET_EXHAUSTED}:{section_number}:proposal loop exceeded "
         f"{cycle_budget['proposal_max']} attempts",
     )
     if not response.startswith("resume"):

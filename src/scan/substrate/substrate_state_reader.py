@@ -43,14 +43,6 @@ def read_project_mode(artifacts_dir: Path) -> str | None:
     return None
 
 
-def list_section_files(sections_dir: Path) -> list[Path]:
-    """Return sorted list of ``section-N.md`` files."""
-    files = [
-        path
-        for path in sections_dir.iterdir()
-        if path.is_file() and re.match(r"section-\d+\.md$", path.name)
-    ]
-    return sorted(files)
 
 
 def section_number(path: Path) -> str:

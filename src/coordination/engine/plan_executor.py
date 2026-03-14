@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from containers import Services
+from coordination.problem_types import Problem
 from orchestrator.path_registry import PathRegistry
+from orchestrator.types import PauseType
 from pipeline.context import DispatchContext
 from coordination.prompt.writers import write_bridge_prompt, write_fix_prompt
 from flow.service.task_request_ingestor import ingest_and_submit
@@ -49,10 +51,10 @@ def _try_place_in_batch(
 
 def _build_execution_batches(
     coord_plan: dict[str, Any],
-    confirmed_groups: list[list[dict[str, Any]]],
+    confirmed_groups: list[list[Problem]],
 ) -> list[list[int]]:
     group_file_sets = [
-        set(file_path for problem in group for file_path in problem.get("files", []))
+        set(file_path for problem in group for file_path in problem.files)
         for group in confirmed_groups
     ]
 
@@ -82,16 +84,16 @@ def _build_execution_batches(
 def _write_overlap_stats(
     coord_dir: Path,
     group_index: int,
-    group: list[dict[str, Any]],
+    group: list[Problem],
 ) -> None:
-    group_section_nums = sorted({problem["section"] for problem in group})
+    group_section_nums = sorted({problem.section for problem in group})
     if len(group_section_nums) < 2:
         return
 
     section_file_sets: dict[str, set[str]] = {}
     for problem in group:
-        section_file_sets.setdefault(problem["section"], set()).update(
-            problem.get("files", []),
+        section_file_sets.setdefault(problem.section, set()).update(
+            problem.files,
         )
 
     section_numbers = list(section_file_sets.keys())
@@ -197,7 +199,7 @@ def _ensure_contract_delta(
     blocker_path.write_text(json.dumps(blocker_signal, indent=2), encoding="utf-8")
     Services.communicator().mailbox_send(
         ctx.planspace,
-        f"pause:needs_parent:bridge-{group_index}:contract delta missing after retry",
+        f"pause:{PauseType.NEEDS_PARENT}:bridge-{group_index}:contract delta missing after retry",
         "coordinator",
     )
     return False
@@ -206,11 +208,11 @@ def _ensure_contract_delta(
 def _run_bridge_for_group(
     *,
     group_index: int,
-    group: list[dict[str, Any]],
+    group: list[Problem],
     ctx: DispatchContext,
     bridge_reason: str,
 ) -> None:
-    group_sections = sorted({problem["section"] for problem in group})
+    group_sections = sorted({problem.section for problem in group})
     contract_delta_path = ctx.paths.contracts_dir() / f"contract-delta-group-{group_index}.md"
     notes_dir = ctx.paths.notes_dir()
     bridge_output = ctx.paths.coordination_bridge_output(group_index)
@@ -260,7 +262,7 @@ def _run_bridge_for_group(
 
 
 def _dispatch_fix_group(
-    group: list[dict[str, Any]], group_id: int,
+    group: list[Problem], group_id: int,
     ctx: DispatchContext,
     default_fix_model: str = "",
 ) -> tuple[int, list[str] | None]:
@@ -366,7 +368,7 @@ def read_execution_modified_files(planspace: Path) -> list[str]:
 
 def _run_bridges_and_overlaps_for_batch(
     batch: list[int],
-    confirmed_groups: list[list[dict[str, Any]]],
+    confirmed_groups: list[list[Problem]],
     coord_plan: dict[str, Any],
     coord_dir: Path,
     ctx: DispatchContext,
@@ -395,7 +397,7 @@ def _run_bridges_and_overlaps_for_batch(
 def _dispatch_batch_parallel(
     batch: list[int],
     batch_num: int,
-    confirmed_groups: list[list[dict[str, Any]]],
+    confirmed_groups: list[list[Problem]],
     ctx: DispatchContext,
     fix_model_default: str,
 ) -> list[str]:
@@ -444,7 +446,7 @@ def execute_coordination_plan(
     Services.logger().log(f"  coordinator: {len(batches)} execution batches")
 
     affected_sections: set[str] = {
-        problem["section"]
+        problem.section
         for group in confirmed_groups
         for problem in group
     }

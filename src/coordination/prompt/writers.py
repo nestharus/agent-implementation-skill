@@ -6,8 +6,8 @@ Each function: collect context → render template → validate → write file.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
+from coordination.problem_types import Problem
 from orchestrator.path_registry import PathRegistry
 from pipeline.template import SRC_TEMPLATE_DIR, TASK_SUBMISSION_SEMANTICS, load_template, render
 from containers import Services
@@ -15,7 +15,7 @@ from dispatch.service.context_sidecar import materialize_context_sidecar
 
 
 def write_fix_prompt(
-    group: list[dict[str, Any]], planspace: Path, codespace: Path,
+    group: list[Problem], planspace: Path, codespace: Path,
     group_id: int,
 ) -> Path | None:
     """Write a prompt to fix a group of related problems.
@@ -75,7 +75,7 @@ def write_fix_prompt(
 
 
 def write_bridge_prompt(
-    group: list[dict[str, Any]],
+    group: list[Problem],
     group_index: int,
     group_sections: list[str],
     planspace: Path,
@@ -93,7 +93,7 @@ def write_bridge_prompt(
     proposals_dir = paths.proposals_dir()
 
     group_files = sorted(
-        {fp for p in group for fp in p.get("files", [])},
+        {fp for p in group for fp in p.files},
     )
 
     section_refs = "\n".join(
@@ -149,23 +149,23 @@ def write_bridge_prompt(
 # Formatting helpers
 # ---------------------------------------------------------------------------
 
-def _format_problems(group: list[dict[str, Any]]) -> str:
+def _format_problems(group: list[Problem]) -> str:
     parts = []
     for i, p in enumerate(group):
         desc = (
-            f"### Problem {i + 1} (Section {p['section']}, "
-            f"type: {p['type']})\n"
-            f"{p['description']}"
+            f"### Problem {i + 1} (Section {p.section}, "
+            f"type: {p.type})\n"
+            f"{p.description}"
         )
         parts.append(desc)
     return "\n\n".join(parts)
 
 
-def _format_file_list(group: list[dict[str, Any]], codespace: Path) -> str:
+def _format_file_list(group: list[Problem], codespace: Path) -> str:
     all_files: list[str] = []
     seen: set[str] = set()
     for p in group:
-        for f in p.get("files", []):
+        for f in p.files:
             if f not in seen:
                 all_files.append(f)
                 seen.add(f)
@@ -173,9 +173,9 @@ def _format_file_list(group: list[dict[str, Any]], codespace: Path) -> str:
 
 
 def _format_section_refs(
-    group: list[dict[str, Any]], paths: PathRegistry,
+    group: list[Problem], paths: PathRegistry,
 ) -> tuple[str, str]:
-    section_nums = sorted({p["section"] for p in group})
+    section_nums = sorted({p.section for p in group})
     sec_dir = paths.sections_dir()
     section_specs = "\n".join(
         f"- Section {n} specification:"

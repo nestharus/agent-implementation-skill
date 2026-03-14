@@ -7,24 +7,23 @@ which triggers route registration with the global registry.
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 
 from taskrouter import registry
 
-# All systems that expose task routes.
-_SYSTEM_ROUTE_MODULES: list[str] = [
-    "scan.routes",
-    "staleness.routes",
-    "research.routes",
-    "proposal.routes",
-    "implementation.routes",
-    "coordination.routes",
-    "reconciliation.routes",
-    "dispatch.routes",
-    "qa.routes",
-    "signals.routes",
-    "intent.routes",
-    "risk.routes",
-]
+_SRC_DIR = Path(__file__).resolve().parent.parent
+
+
+def _find_route_modules() -> list[str]:
+    """Scan sibling packages for ``routes.py`` files."""
+    modules: list[str] = []
+    for candidate in sorted(_SRC_DIR.iterdir()):
+        if not candidate.is_dir():
+            continue
+        routes_file = candidate / "routes.py"
+        if routes_file.exists():
+            modules.append(f"{candidate.name}.routes")
+    return modules
 
 
 def discover() -> None:
@@ -36,7 +35,7 @@ def discover() -> None:
 
     Idempotent — safe to call multiple times.
     """
-    for module_name in _SYSTEM_ROUTE_MODULES:
+    for module_name in _find_route_modules():
         mod = importlib.import_module(module_name)
         router = getattr(mod, "router", None)
         if router is not None and router.namespace not in registry.namespaces:

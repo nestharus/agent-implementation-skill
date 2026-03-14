@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 from containers import Services
 from signals.service.database_client import DatabaseClient
 from signals.service.mailbox_service import MailboxService
-from orchestrator.types import ControlSignal
+from orchestrator.types import ControlSignal, PipelineAbortError
 
 _PAUSE_POLL_TIMEOUT_SECONDS = 5
 _DB_BODY_COLUMN_INDEX = 4
@@ -53,11 +52,11 @@ def wait_if_paused(
         msg = mailbox.recv(timeout=_PAUSE_POLL_TIMEOUT_SECONDS)
         if msg == "TIMEOUT":
             continue
-        if msg.startswith("abort"):
+        if msg.startswith(ControlSignal.ABORT):
             log("Received abort while paused — shutting down")
             mailbox.send(parent, "fail:aborted")
             mailbox.cleanup()
-            sys.exit(0)
+            raise PipelineAbortError("abort received")
         if msg.startswith(ControlSignal.ALIGNMENT_CHANGED):
             log("Alignment changed while paused — invalidating excerpts")
             Services.change_tracker().invalidate_excerpts(planspace)
@@ -88,11 +87,11 @@ def pause_for_parent(
     mailbox.send(parent, signal)
     while True:
         msg = mailbox.recv(timeout=0)
-        if msg.startswith("abort"):
+        if msg.startswith(ControlSignal.ABORT):
             log("Received abort — shutting down")
             mailbox.send(parent, "fail:aborted")
             mailbox.cleanup()
-            sys.exit(0)
+            raise PipelineAbortError("abort received")
         if msg.startswith(ControlSignal.ALIGNMENT_CHANGED):
             log("Alignment changed during pause — invalidating excerpts")
             Services.change_tracker().invalidate_excerpts(planspace)

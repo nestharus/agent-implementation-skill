@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from conftest import override_dispatcher_and_guard
+from coordination.problem_types import MisalignedProblem
 from src.coordination.engine import plan_executor as executor
 from src.coordination.engine.plan_executor import (
     CoordinationExecutionExit,
@@ -43,7 +44,7 @@ def test_execute_coordination_plan_runs_fix_groups_and_persists_modified_files(
     monkeypatch.setattr(
         executor,
         "_dispatch_fix_group",
-        lambda group, group_index, *args, **kwargs: (group_index, [group[0]["files"][0]]),
+        lambda group, group_index, *args, **kwargs: (group_index, [group[0].files[0]]),
     )
 
     affected_sections = execute_coordination_plan(
@@ -55,8 +56,8 @@ def test_execute_coordination_plan_runs_fix_groups_and_persists_modified_files(
                 ],
             },
             "confirmed_groups": [
-                [{"section": "01", "files": ["src/a.py"]}],
-                [{"section": "02", "files": ["src/b.py"]}],
+                [MisalignedProblem(section="01", description="", files=["src/a.py"])],
+                [MisalignedProblem(section="02", description="", files=["src/b.py"])],
             ],
         },
         sections_by_num,
@@ -127,8 +128,8 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
                 },
                 "confirmed_groups": [
                     [
-                        {"section": "01", "files": ["src/a.py"]},
-                        {"section": "02", "files": ["src/a.py"]},
+                        MisalignedProblem(section="01", description="", files=["src/a.py"]),
+                        MisalignedProblem(section="02", description="", files=["src/a.py"]),
                     ],
                 ],
             },
@@ -171,7 +172,7 @@ def test_execute_coordination_plan_raises_on_fix_group_sentinel(
                     ],
                 },
                 "confirmed_groups": [
-                    [{"section": "01", "files": ["src/a.py"]}],
+                    [MisalignedProblem(section="01", description="", files=["src/a.py"])],
                 ],
             },
             sections_by_num,

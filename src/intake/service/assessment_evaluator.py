@@ -4,13 +4,27 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from enum import Enum
+
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 # Lazy import to avoid circular dependency:
 # assessment_evaluator -> section_pipeline -> implementation_cycle -> assessment_evaluator
 # update_trace_governance is imported inside promote_debt_signals()
 
-_VALID_VERDICTS = {"accept", "accept_with_debt", "refactor_required"}
+
+class AssessmentVerdict(str, Enum):
+    """Post-implementation governance assessment verdict."""
+
+    ACCEPT = "accept"
+    ACCEPT_WITH_DEBT = "accept_with_debt"
+    REFACTOR_REQUIRED = "refactor_required"
+
+    def __str__(self) -> str:  # noqa: D105
+        return self.value
+
+
+_VALID_VERDICTS = set(AssessmentVerdict)
 _DEBT_KEY_HASH_LENGTH = 16
 
 

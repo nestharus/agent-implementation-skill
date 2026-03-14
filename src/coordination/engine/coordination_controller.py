@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from coordination.problem_types import Problem
 from coordination.service.problem_resolver import _collect_outstanding_problems
 from coordination.types import CoordinationStatus
 from orchestrator.path_registry import PathRegistry
@@ -26,7 +27,7 @@ class AssessmentResult:
     """Structured result from ``_assess_initial_state``."""
 
     misaligned: list[SectionResult] = field(default_factory=list)
-    outstanding: list[dict] = field(default_factory=list)
+    outstanding: list[Problem] = field(default_factory=list)
     early_exit_reason: str | None = None
 
 
@@ -52,14 +53,14 @@ def _assess_initial_state(
     If ``early_exit_reason`` is not None, the caller should return it.
     """
     misaligned = [r for r in section_results.values() if not r.aligned]
-    outstanding: list[dict] = []
+    outstanding: list[Problem] = []
 
     if not misaligned:
         outstanding = _collect_outstanding_problems(
             section_results, sections_by_num, planspace,
         )
         if outstanding:
-            types = [p["type"] for p in outstanding]
+            types = [p.type for p in outstanding]
             Services.logger().log(
                 f"{len(outstanding)} outstanding cross-section problems "
                 f"remain (types: {types}) — cannot declare completion",
@@ -119,9 +120,9 @@ def _report_result(
             rollup_dir / "coordination-exhausted.json",
             [
                 {
-                    "type": p["type"],
-                    "section": p["section"],
-                    "description": p["description"][:TRUNCATE_DETAIL],
+                    "type": p.type,
+                    "section": p.section,
+                    "description": p.description[:TRUNCATE_DETAIL],
                 }
                 for p in outstanding
             ],

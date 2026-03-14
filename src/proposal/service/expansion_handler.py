@@ -11,6 +11,7 @@ from pathlib import Path
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 from intent.service.expansion_facade import handle_user_gate, run_expansion_cycle
+from orchestrator.types import PauseType
 from signals.types import ACTION_CONTINUE
 
 
@@ -38,7 +39,7 @@ def _handle_budget_exhaustion(
     )
     response = Services.pipeline_control().pause_for_parent(
         planspace, parent,
-        f"pause:intent-stalled:{section_number}:"
+        f"pause:{PauseType.INTENT_STALLED}:{section_number}:"
         f"expansion budget exhausted ({expansion_count}/{expansion_max})",
     )
     if not response.startswith("resume"):

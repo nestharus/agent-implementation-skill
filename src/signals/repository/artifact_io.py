@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,10 @@ def write_json(path: Path, data: object, *, indent: int = 2) -> None:
     """
     if hasattr(data, "model_dump"):
         data = data.model_dump()
+    elif is_dataclass(data) and not isinstance(data, type):
+        data = asdict(data)
+    elif isinstance(data, list) and data and is_dataclass(data[0]):
+        data = [asdict(item) for item in data]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(data, indent=indent) + "\n",

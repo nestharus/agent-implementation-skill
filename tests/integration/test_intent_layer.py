@@ -2390,8 +2390,9 @@ class TestR58ToolRegistryCoordinationPreservation:
         tool_reg.write_text("{BROKEN JSON!", encoding="utf-8")
 
         # Call the function — it builds a prompt that includes tool block
-        group = [{"section": "01", "type": "test", "description": "d",
-                  "files": ["a.py"]}]
+        from coordination.problem_types import Problem
+        group = [Problem(section="01", type="test", description="d",
+                  files=["a.py"])]
         sec_dir = planspace / "artifacts" / "sections"
         sec_dir.mkdir(parents=True)
 

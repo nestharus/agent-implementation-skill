@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from coordination.problem_types import Problem
 from orchestrator.path_registry import PathRegistry
 from containers import Services
 from dispatch.helpers.signal_checker import extract_fenced_block
@@ -105,7 +106,7 @@ def _normalize_bridge_directives(plan: dict[str, Any]) -> None:
 
 
 def _parse_coordination_plan(
-    agent_output: str, problems: list[dict[str, Any]],
+    agent_output: str, problems: list[Problem],
 ) -> dict[str, Any] | None:
     """Parse JSON coordination plan from agent output."""
     json_text = _extract_json_from_output(agent_output)
@@ -191,7 +192,7 @@ then run group 1.
 
 
 def write_coordination_plan_prompt(
-    problems: list[dict[str, Any]], planspace: Path,
+    problems: list[Problem], planspace: Path,
 ) -> Path:
     """Write an Opus prompt to plan coordination strategy for problems."""
     paths = PathRegistry(planspace)

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
+from orchestrator.types import PauseType
 from dispatch.prompt.writers import write_integration_alignment_prompt
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from proposal.service.cycle_control import handle_pause_response
@@ -86,6 +87,6 @@ def handle_alignment_signals(
     response = Services.pipeline_control().pause_for_parent(
         planspace,
         parent,
-        f"pause:underspec:{section_number}:{detail}",
+        f"pause:{PauseType.UNDERSPEC}:{section_number}:{detail}",
     )
     return handle_pause_response(planspace, section_number, response)

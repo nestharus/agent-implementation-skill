@@ -46,6 +46,7 @@ from flow.service.flow_facade import (
     reconcile_task_completion,
     write_dispatch_prompt,
 )
+from flow.types.context import TaskStatus
 from taskrouter import ensure_discovered, registry as _task_registry
 
 from containers import Services
@@ -97,11 +98,11 @@ def _fail_task(h: TaskHandle, err, *,
                planspace=None, output_path=None, codespace=None):
     """Mark a task as failed, notify submitter, and optionally reconcile."""
     _db_fail_task(h.db_path, h.task_id, error=err)
-    notify_task_result(h.db_path, h.submitted_by, h.task_id, h.task_type, "failed", err)
+    notify_task_result(h.db_path, h.submitted_by, h.task_id, h.task_type, TaskStatus.FAILED, err)
     if planspace is not None:
         reconcile_task_completion(
             Path(h.db_path), planspace, int(h.task_id),
-            "failed", output_path,
+            TaskStatus.FAILED, output_path,
             error=err, codespace=codespace,
         )
 
@@ -273,12 +274,12 @@ def _finalize_task(h: TaskHandle, planspace,
                    codespace=codespace)
     else:
         _db_complete_task(h.db_path, h.task_id, output_path=str(output_path))
-        notify_task_result(h.db_path, h.submitted_by, h.task_id, h.task_type, "complete",
+        notify_task_result(h.db_path, h.submitted_by, h.task_id, h.task_type, TaskStatus.COMPLETE,
                            str(output_path))
         log(f"Task {h.task_id} complete -> {output_path}")
         reconcile_task_completion(
             Path(h.db_path), planspace, int(h.task_id),
-            "complete", str(output_path), codespace=codespace,
+            TaskStatus.COMPLETE, str(output_path), codespace=codespace,
         )
 
 

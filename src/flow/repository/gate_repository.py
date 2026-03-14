@@ -12,7 +12,9 @@ from pathlib import Path
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from flow.service.task_db_client import task_db
+from flow.types.context import TaskStatus
 from flow.repository.flow_context_store import (
+    FlowReadStatus,
     continuation_relpath,
     flow_context_relpath,
     gate_aggregate_relpath,
@@ -29,7 +31,7 @@ def read_origin_refs(planspace: Path, task_id: int) -> list[str]:
     """Read origin_refs from a task's flow context file."""
     ctx_file = planspace / flow_context_relpath(task_id)
     status, data = read_flow_json(ctx_file)
-    if status == "ok" and isinstance(data, dict):
+    if status == FlowReadStatus.OK and isinstance(data, dict):
         return data.get("origin_refs", [])
     return []
 
@@ -209,14 +211,14 @@ def check_and_fire_gate(
         )
         members = [dict(row) for row in cur.fetchall()]
 
-        terminal_statuses = {"complete", "failed"}
+        terminal_statuses = {TaskStatus.COMPLETE, TaskStatus.FAILED}
         if not all(
             member["status"] in terminal_statuses for member in members
         ):
             return
 
         any_failed = any(
-            member["status"] == "failed" for member in members
+            member["status"] == TaskStatus.FAILED for member in members
         )
         if gate["failure_policy"] == "block" and any_failed:
             conn.execute(

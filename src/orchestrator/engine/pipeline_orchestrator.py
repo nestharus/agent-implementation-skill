@@ -11,6 +11,7 @@ logging.basicConfig(
 from intake.service.assessment_evaluator import promote_debt_signals
 from intake.repository.governance_loader import bootstrap_governance_if_missing, build_governance_indexes
 from coordination.engine.coordination_controller import run_coordination_loop
+from coordination.types import CoordinationStatus
 from implementation.engine.implementation_phase import (
     ImplementationPassExit,
     ImplementationPassRestart,
@@ -29,7 +30,7 @@ from containers import Services
 from pipeline.context import DispatchContext
 from signals.types import TRUNCATE_SUMMARY
 from orchestrator.engine.strategic_state_builder import build_strategic_state
-from orchestrator.types import SectionResult
+from orchestrator.types import PipelineAbortError, SectionResult
 
 _MAX_BLOCKERS_IN_SUMMARY = 3
 
@@ -80,6 +81,8 @@ def main() -> None:
     try:
         _run_loop(ctx, sections_dir,
                   args.global_proposal, args.global_alignment)
+    except PipelineAbortError:
+        Services.logger().log("Pipeline aborted")
     finally:
         Services.communicator().mailbox_cleanup(args.planspace)
         Services.logger().log("Mailbox cleaned up")
@@ -108,11 +111,8 @@ def _run_phase2(
     sections_by_num: dict,
     section_results: dict[str, SectionResult],
     ctx: DispatchContext,
-) -> str:
-    """Run Phase 2: strategic state, global recheck, and coordination.
-
-    Returns 'restart_phase1', 'done', or a coordination status.
-    """
+) -> CoordinationStatus | str:
+    """Run Phase 2: strategic state, global recheck, and coordination."""
     build_strategic_state(PathRegistry(ctx.planspace).decisions_dir(), section_results, ctx.planspace)
 
     promoted = promote_debt_signals(ctx.planspace)
@@ -122,13 +122,13 @@ def _run_phase2(
     phase2_status = Services.section_alignment().run_global_recheck(
         sections_by_num, section_results, ctx.planspace, ctx.codespace, ctx.parent,
     )
-    if phase2_status == "restart_phase1":
-        return "restart_phase1"
+    if phase2_status == CoordinationStatus.RESTART_PHASE1:
+        return CoordinationStatus.RESTART_PHASE1
 
     coordination_status = run_coordination_loop(
         section_results, sections_by_num, ctx,
     )
-    return coordination_status or "done"
+    return coordination_status or CoordinationStatus.COMPLETE
 
 
 def _run_loop(ctx: DispatchContext,
@@ -191,7 +191,7 @@ def _run_loop(ctx: DispatchContext,
         status = _run_phase2(
             sections_by_num, section_results, ctx,
         )
-        if status == "restart_phase1":
+        if status == CoordinationStatus.RESTART_PHASE1:
             continue
         return
 
