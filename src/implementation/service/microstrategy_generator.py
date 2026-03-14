@@ -97,7 +97,6 @@ v2 format reference. {TASK_SUBMISSION_SEMANTICS}
 
 def _dispatch_and_retry(
     section_number: str,
-    policy: dict,
     micro_prompt_path: Path,
     artifacts: Path,
     planspace: Path,
@@ -107,6 +106,7 @@ def _dispatch_and_retry(
     microstrategy_path: Path,
 ) -> str | None:
     """Dispatch microstrategy generation with escalation retry. Returns sentinel or None."""
+    policy = Services.policies().load(planspace)
     ctrl = Services.pipeline_control().poll_control_messages(
         planspace, parent, current_section=section_number,
     )
@@ -230,7 +230,7 @@ def run_microstrategy(
     Services.communicator().log_artifact(planspace, f"prompt:microstrategy-{section.number}")
 
     sentinel = _dispatch_and_retry(
-        section.number, policy, micro_prompt_path, paths.artifacts,
+        section.number, micro_prompt_path, paths.artifacts,
         planspace, parent, agent_name, codespace, microstrategy_path,
     )
     if sentinel:

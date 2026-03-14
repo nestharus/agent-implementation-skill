@@ -42,13 +42,13 @@ def _dispatch_registry_repair(
     planspace: Path,
     parent: str,
     codespace: Path,
-    policy: object,
 ) -> bool:
     """Clean up stale surface and dispatch a repair agent for a malformed registry.
 
     Returns True if the repair dispatch was issued, False if prompt
     validation prevented it.
     """
+    policy = Services.policies().load(planspace)
     if tools_available_path.exists():
         tools_available_path.unlink()
         Services.logger().log(
@@ -206,7 +206,6 @@ def surface_tool_registry(
         planspace=planspace,
         parent=parent,
         codespace=codespace,
-        policy=policy,
     )
     if not dispatched:
         return 0
@@ -264,13 +263,13 @@ def _dispatch_new_tool_validation(
     tool_registry_path: Path,
     artifacts: Path,
     friction_signal_path: Path,
-    paths: Any,
-    policy: Any,
     planspace: Path,
     parent: str,
     codespace: Path,
 ) -> None:
     """Dispatch the tool-registrar agent to validate newly registered tools."""
+    paths = PathRegistry(planspace)
+    policy = Services.policies().load(planspace)
     Services.logger().log(
         f"Section {section_number}: new tools registered — "
         f"dispatching tool-registrar for validation"
@@ -312,13 +311,13 @@ def _dispatch_post_impl_repair(
     section_number: str,
     tool_registry_path: Path,
     artifacts: Path,
-    paths: Any,
-    policy: Any,
     planspace: Path,
     parent: str,
     codespace: Path,
 ) -> None:
     """Dispatch repair for a malformed post-implementation registry."""
+    paths = PathRegistry(planspace)
+    policy = Services.policies().load(planspace)
     malformed_path = tool_registry_path.with_suffix(".malformed.json")
     Services.logger().log(
         f"Section {section_number}: post-impl registry "
@@ -400,8 +399,6 @@ def validate_tool_registry_after_implementation(
                 tool_registry_path=tool_registry_path,
                 artifacts=artifacts,
                 friction_signal_path=friction_signal_path,
-                paths=paths,
-                policy=policy,
                 planspace=planspace,
                 parent=parent,
                 codespace=codespace,
@@ -411,8 +408,6 @@ def validate_tool_registry_after_implementation(
             section_number=section_number,
             tool_registry_path=tool_registry_path,
             artifacts=artifacts,
-            paths=paths,
-            policy=policy,
             planspace=planspace,
             parent=parent,
             codespace=codespace,

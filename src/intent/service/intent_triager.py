@@ -69,7 +69,7 @@ def run_intent_triage(
     )
     if triage:
         escalated = _try_escalation(
-            triage, section_number, policy, triage_prompt_path,
+            triage, section_number, triage_prompt_path,
             triage_output_path, triage_signal_path, planspace, parent, codespace,
         )
         if escalated is not None:
@@ -217,12 +217,13 @@ def _dispatch_triage(
 
 
 def _try_escalation(
-    triage, section_number, policy, triage_prompt_path,
+    triage, section_number, triage_prompt_path,
     triage_output_path, triage_signal_path, planspace, parent, codespace,
 ):
     if not triage.get("escalate"):
         return None
 
+    policy = Services.policies().load(planspace)
     Services.logger().log(
         f"Section {section_number}: triage flagged escalation — "
         f"re-dispatching with stronger model",

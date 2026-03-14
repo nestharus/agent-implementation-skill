@@ -309,12 +309,12 @@ def _reexplore_missing_files(
     completed: set[str],
     queue: list[str],
     sections_by_num: dict[str, Section],
-    policy: dict[str, Any],
 ) -> bool:
     """Dispatch re-explorer when a section has no related files.
 
     Returns True if the caller should ``continue`` the loop iteration.
     """
+    policy = Services.policies().load(planspace)
     sec_num = section.number
     Services.logger().log(
         f"Section {sec_num}: no related files — dispatching "
@@ -440,7 +440,7 @@ def run_proposal_pass(
         if not section.related_files:
             if _reexplore_missing_files(
                 section, planspace, codespace, parent,
-                completed, queue, sections_by_num, policy,
+                completed, queue, sections_by_num,
             ):
                 continue
 
