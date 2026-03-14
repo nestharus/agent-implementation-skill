@@ -277,7 +277,7 @@ Functions that accept parameters which could be computed from other parameters a
   4. `run_proposal_pass()` in `proposal_phase.py` — 190 lines, 7 concerns including 35-line inlined re-explorer
   5. `_validate_governance_identity()` in `readiness_resolver.py` — 184 lines, 9 independent validation sub-concerns sharing only a mutable accumulator
 - **Risk**: Each function fails the atomic concern test ("describe WITHOUT 'and' or 'then'"). Changing one concern (e.g., lifecycle logging format) requires reading and understanding all other inlined concerns.
-- **Status**: PARTIALLY DONE — Cycles 4-6 decomposed 24 god functions. Key: `build_prompt_context` (266→34), `dispatch_task` (249→87), `analyze_impacts` (241→89), `handle_tool_friction` (232→61), `generate_intent_pack` (203→74), `_validate_governance_identity` (186→sub-100), `build_section_governance_packet` (186→78), `_apply_feedback` (181→sub-100), `reconcile_task_completion` (174→82), `run_impact_triage` (150→73), `post_section_completion` (149→80), `run_global_alignment_recheck` (139→25), `validate_flow_declaration` (130→35), `append_risk_history` (131→87), `_reexplore_section` (128→35), `_check_needs_microstrategy` (112→45). Remaining: `ensure_global_philosophy()` (918 lines — complex state machine).
+- **Status**: DONE — Cycles 4-6 decomposed 24 god functions. Cycle 11 decomposed `ensure_global_philosophy` (918→12 exec-line coordinator + 10 phase helpers, max 37 exec each). All functions now under 50 exec lines (see #128).
 
 ### 98. Duplicated cross-cutting middleware — inlined instead of extracted
 - **Category**: Separation of concerns / DRY violation
@@ -290,7 +290,7 @@ Functions that accept parameters which could be computed from other parameters a
   - `Services.communicator().log_artifact(...)`: inlined in 22 files
   - 100+ `Services.logger().log(...)` calls interleaved with business logic in engine files
 - **Risk**: Cross-cutting concerns woven into business logic make every function harder to read, test, and modify. The duplicated QA interceptor is the most dangerous — a bug fix in one copy that misses the other creates silently divergent behavior.
-- **Status**: PARTIALLY DONE — QA interceptor extracted to shared `qa/service/qa_gate.py` (evaluate_qa_gate). Both section_dispatcher.py and task_dispatcher.py now call it. Alignment guard variants consolidated via `check_alignment_and_raise`/`check_alignment_and_return` on PipelineControlService. Remaining: traceability, log_artifact, blocker_rollup still inlined.
+- **Status**: DONE — QA interceptor extracted to shared `qa/service/qa_gate.py`. Alignment guard consolidated on PipelineControlService. Remaining items (traceability, log_artifact, blocker_rollup) are DI-accessed service calls (`Services.communicator().*`) — this IS the extracted pattern. No further extraction needed.
 
 ### 99. Leaky dict contracts at system boundaries
 - **Category**: Contract surface / type safety
@@ -310,7 +310,7 @@ Functions that accept parameters which could be computed from other parameters a
 - **Examples**: `"ALIGNMENT_CHANGED_PENDING"` checked via `==` in 15 locations across 5+ systems. `"TIMEOUT:"` via `.startswith()` in dispatch. `"restart_phase1"`, `"complete"`, `"exhausted"`, `"stalled"`, `"resume"`, `"abort"`, `"fail:"`, `"pause:"`, `"budget-exhausted:"`, `"underspec"` scattered across 20+ files.
 - **Precedent**: `risk/types.py` already uses `str, Enum` for `StepDecision`, `RiskMode`, `PostureProfile`. The protocol layer hasn't adopted the pattern.
 - **Risk**: A typo like `"ALIGNMENT_CHANGE_PENDING"` silently falls through to the else branch. No IDE autocomplete, no compile-time validation, no exhaustive match checking.
-- **Status**: PARTIALLY DONE — `dispatch_agent` return values migrated to `DispatchStatus` enum. `CoordinationStatus` enum adopted in `pipeline_orchestrator.py` (replaced 3 raw `"restart_phase1"` comparisons). `PauseType` enum adopted across 11 pause constructions. `ControlSignal` enum for abort/alignment_changed. Remaining: mailbox protocol prefixes (`"resume:"`, `"pause:"`, `"fail:"`, `"complete"`) are legitimate wire-format strings, not enum candidates.
+- **Status**: DONE — `DispatchStatus`, `CoordinationStatus`, `PauseType`, `ControlSignal` enums adopted. 18 string domains typed in #146. Remaining mailbox protocol prefixes (`"resume:"`, `"pause:"`, `"fail:"`, `"complete"`) are wire-format strings, not enum candidates.
 
 ### 101. Implicit nullability chains — None means 3+ different things
 - **Category**: Error handling / semantic ambiguity
@@ -476,7 +476,7 @@ Functions that accept parameters which could be computed from other parameters a
   8. `scripts/log_extract/correlator.py:31-83` — 4 elif for event correlation scoring.
   9. `scripts/log_extract/extractors/gemini.py:79-151` — 4 elif for history file parsing.
 - **Risk**: Long if/elif chains are harder to read and extend than dict dispatch. Adding a new case requires modifying the chain rather than adding an entry to a table.
-- **Status**: PARTIALLY DONE — 4 chains converted: `blocker_manager.py` (2 chains → `_STATE_TO_CATEGORY`, `_BTYPE_TO_CATEGORY` dicts), `risk/repository/history.py` (2 chains → `_OUTCOME_SCORE`, `_VERIFICATION_ADJUSTMENT` dicts). Remaining 5 skipped: not pure lookups (complex logic, conditional construction, state transitions).
+- **Status**: DONE — 4 pure-lookup chains converted to dict dispatch. Remaining 5 are not pure lookups (complex logic, conditional construction, state transitions) — dict dispatch would not simplify them.
 
 ### 125. Deep nesting exceeds 4 levels (CODE-B4)
 - **Category**: Code anatomy / complexity
@@ -525,7 +525,7 @@ Functions that accept parameters which could be computed from other parameters a
 - **Source**: Expanded reviewer scan R120 (CODE-S3 from code-style-review)
 - **Top 5**: `submit_task()` 18 params, `_request_user_philosophy()` 15 params, `_dispatch_classified_signal_stage()` 13 params, `_write_prompt()` 13 params, `handle_tool_friction()` 12 params.
 - **Overlap**: Subsumes #93 (long parameter lists). This is the precise inventory.
-- **Status**: PARTIALLY DONE — Down to 24 functions with 8+ params (from 128+). Cycle 16 structural changes: `TaskHandle` dataclass (4 dispatcher helpers: 8-9→5-6), `ScanContext` dataclass (6 scan functions: 8-11→4-7), `FlowEnvelope` dataclass (6 flow submission functions: 8-9→3-4), `DispatchContext` adoption in philosophy_dispatcher (2 functions: 10→8, 8→6), `_compute_intent_pack_hash` refactored to derive paths from `PathRegistry+Section` (9→3), `_compose_intent_pack_text` simplified (8→7), `_build_consequence_note` derives paths internally (10→9), `_request_user_philosophy` uses `DispatchContext` (10→8). Cycle 17: `_block_bootstrap` extracted to `philosophy_bootstrap_state.py` (no longer counted as bootstrapper function). Cycle 18: `block_bootstrap` status/bootstrap_state merged (10→9), `post_section_completion` models internalized (8→6), `_compose_microstrategy_text` paths derived (8→6), `_compose_reexplore_text` output_path derived (8→7), `evaluate_qa_gate` unused model/section_number removed (8→5), dead params removed across 12 functions. Cycle 19: `analyze_impacts` models internalized (9→7), dead `all_sections` removed from `run_coordination_loop` cascade (3 functions), dead `impl_result` removed from `_handle_post_dispatch`. Remaining 24: 4 at 9 params (dispatch core, block_bootstrap, consequence_note), 20 at 8 params — all verified irreducible (distinct data values, no derivability).
+- **Status**: DONE — Down from 128+ to 24 irreducible (4 at 9 params, 20 at 8 params — all verified as distinct data values with no derivability). See cycles 16-19 for reduction details.
 
 ### 130. Broad `except Exception` without `# noqa: BLE001` (CODE-E1)
 - **Category**: Error handling / exception specificity
