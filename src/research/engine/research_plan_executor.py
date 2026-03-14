@@ -316,7 +316,7 @@ def execute_research_plan(
     trigger_hash = str(status.get("trigger_hash", ""))
     cycle_id = str(status.get("cycle_id", ""))
 
-    plan = _validate_plan(paths, section_number, trigger_hash, cycle_id, planspace)
+    plan = _validate_plan(section_number, trigger_hash, cycle_id, planspace)
     if plan is None:
         return False
 
@@ -370,14 +370,13 @@ def _fail_status(
 
 
 def _validate_plan(
-    paths: PathRegistry,
     section_number: str,
     trigger_hash: str,
     cycle_id: str,
     planspace: Path,
 ) -> dict | None:
     """Validate the research plan, writing a failure status if invalid."""
-    plan = validate_research_plan(paths.research_plan(section_number))
+    plan = validate_research_plan(PathRegistry(planspace).research_plan(section_number))
     if plan is None:
         _fail_status(section_number, planspace, trigger_hash, cycle_id,
                      "research-plan.json missing or malformed")

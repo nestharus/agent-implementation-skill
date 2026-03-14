@@ -42,7 +42,6 @@ def _collect_and_persist_problems(
     section_results: dict[str, SectionResult],
     sections_by_num: dict[str, Section],
     planspace: Path,
-    paths: PathRegistry,
 ) -> tuple[list[dict], dict | None] | None:
     """Collect outstanding problems, detect recurrence, persist state.
 
@@ -59,6 +58,7 @@ def _collect_and_persist_problems(
     Services.logger().log(f"  coordinator: {len(problems)} outstanding problems across "
         f"{len({p['section'] for p in problems})} sections")
 
+    paths = PathRegistry(planspace)
     policy = Services.policies().load(planspace)
     recurrence = _detect_recurrence_patterns(planspace, problems)
     if recurrence:
@@ -85,11 +85,10 @@ def _dispatch_and_parse_plan(
     problems: list[dict],
     planspace: Path,
     parent: str,
-    paths: PathRegistry,
     policy: dict,
 ) -> dict | None:
     """Dispatch planner agent with retry, return parsed plan or None."""
-    coord_dir = paths.coordination_dir()
+    coord_dir = PathRegistry(planspace).coordination_dir()
     plan_prompt = write_coordination_plan_prompt(problems, planspace)
     plan_output = coord_dir / "coordination-plan-output.md"
     Services.logger().log("  coordinator: dispatching coordination-planner agent")
@@ -130,7 +129,6 @@ def _build_coordination_plan(
     problems: list[dict],
     planspace: Path,
     parent: str,
-    paths: PathRegistry,
 ) -> tuple[list[list[dict[str, Any]]], list[str], dict] | None:
     """Dispatch planner agent, parse plan, build confirmed groups.
 
@@ -143,8 +141,9 @@ def _build_coordination_plan(
     if ctrl == ControlSignal.ALIGNMENT_CHANGED:
         return None
 
+    coord_dir = PathRegistry(planspace).coordination_dir()
     coord_plan = _dispatch_and_parse_plan(
-        problems, planspace, parent, paths, policy,
+        problems, planspace, parent, policy,
     )
     if coord_plan is None:
         return None
@@ -484,7 +483,7 @@ def run_global_coordination(
 
     # Phase 1: Collect problems + detect recurrence
     collected = _collect_and_persist_problems(
-        section_results, sections_by_num, planspace, paths,
+        section_results, sections_by_num, planspace,
     )
     if collected is None:
         return True
@@ -498,7 +497,7 @@ def run_global_coordination(
 
     # Phase 2: Build coordination plan via planner agent
     plan_result = _build_coordination_plan(
-        problems, planspace, parent, paths,
+        problems, planspace, parent,
     )
     if plan_result is None:
         return False

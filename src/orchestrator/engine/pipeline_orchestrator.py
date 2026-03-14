@@ -108,13 +108,12 @@ def _run_phase2(
     planspace: Path,
     codespace: Path,
     parent: str,
-    paths: PathRegistry,
 ) -> str:
     """Run Phase 2: strategic state, global recheck, and coordination.
 
     Returns 'restart_phase1', 'done', or a coordination status.
     """
-    build_strategic_state(paths.decisions_dir(), section_results, planspace)
+    build_strategic_state(PathRegistry(planspace).decisions_dir(), section_results, planspace)
 
     promoted = promote_debt_signals(planspace)
     if promoted:
@@ -193,7 +192,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
 
         status = _run_phase2(
             all_sections, sections_by_num, section_results,
-            planspace, codespace, parent, paths,
+            planspace, codespace, parent,
         )
         if status == "restart_phase1":
             continue
