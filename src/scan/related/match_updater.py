@@ -8,6 +8,7 @@ from pathlib import Path
 from containers import Services
 
 SUMMARY_BEGIN = "<!-- scan-summary:begin -->"
+_MAX_SUMMARY_LINES = 3
 SUMMARY_END = "<!-- scan-summary:end -->"
 
 
@@ -42,7 +43,7 @@ def update_match(
     if not isinstance(lines, list) or not lines:
         return True
 
-    lines = [str(line) for line in lines if isinstance(line, str) and line.strip()][:3]
+    lines = [str(line) for line in lines if isinstance(line, str) and line.strip()][:_MAX_SUMMARY_LINES]
     if not lines:
         return True
 

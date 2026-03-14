@@ -244,11 +244,12 @@ def _deserialize_risk_vector(data: dict[str, Any]) -> RiskVector:
 
 
 def _deserialize_risk_modifiers(data: dict[str, Any]) -> RiskModifiers:
+    defaults = RiskModifiers()
     return RiskModifiers(
-        blast_radius=data.get("blast_radius", 0),
-        reversibility=data.get("reversibility", 4),
-        observability=data.get("observability", 4),
-        confidence=data.get("confidence", 0.5),
+        blast_radius=data.get("blast_radius", defaults.blast_radius),
+        reversibility=data.get("reversibility", defaults.reversibility),
+        observability=data.get("observability", defaults.observability),
+        confidence=data.get("confidence", defaults.confidence),
     )
 
 
