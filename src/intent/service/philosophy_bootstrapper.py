@@ -204,7 +204,6 @@ def _write_bootstrap_diagnostics(
 def _collect_bootstrap_context_artifacts(
     planspace: Path,
     codespace: Path,
-    paths: PathRegistry,
 ) -> list[tuple[str, Path]]:
     context: list[tuple[str, Path]] = []
     seen: set[Path] = set()
@@ -218,6 +217,7 @@ def _collect_bootstrap_context_artifacts(
         seen.add(resolved)
         context.append((label, candidate))
 
+    paths = PathRegistry(planspace)
     for readme_root, label_prefix in (
         (codespace, "repo_readme"),
         (planspace, "planspace_readme"),
@@ -299,13 +299,12 @@ def _run_bootstrap_prompter(
     planspace: Path,
     codespace: Path,
     parent: str,
-    paths: PathRegistry,
 ) -> dict[str, Any] | None:
+    paths = PathRegistry(planspace)
     policy = Services.policies().load(planspace)
     context_artifacts = _collect_bootstrap_context_artifacts(
         planspace,
         codespace,
-        paths,
     )
     if not context_artifacts:
         Services.logger().log("Intent bootstrap: no project-shaping artifacts available for "
@@ -446,7 +445,6 @@ def _request_user_philosophy(
         planspace,
         codespace,
         parent,
-        paths,
     )
     user_source = _write_user_source_template(paths)
     decisions_path = _write_bootstrap_decisions(
