@@ -10,6 +10,12 @@ import os
 import re
 from pathlib import Path
 
+_PREVIEW_START_LINES = 15
+_PREVIEW_CONTEXT_BEFORE = 7
+_PREVIEW_CONTEXT_AFTER = 8
+_CODESPACE_QUOTA_NUMERATOR = 4
+_CODESPACE_QUOTA_DENOMINATOR = 5
+
 
 def walk_md_bounded(
     root: Path,
@@ -53,7 +59,7 @@ def build_philosophy_catalog(
     extensions: frozenset[str] = frozenset({".md"}),
 ) -> list[dict]:
     """Build a mechanical catalog of candidate philosophy source files."""
-    codespace_quota = max(max_files * 4 // 5, 1)
+    codespace_quota = max(max_files * _CODESPACE_QUOTA_NUMERATOR // _CODESPACE_QUOTA_DENOMINATOR, 1)
     planspace_quota = max(max_files - codespace_quota, 1)
 
     candidates: list[dict] = []
@@ -91,8 +97,8 @@ def build_philosophy_catalog(
             candidates.append({
                 "path": str(found_file),
                 "size_kb": round(size / 1024, 1),
-                "preview_start": "\n".join(lines[:15]),
-                "preview_middle": "\n".join(lines[max(0, mid - 7):mid + 8]),
+                "preview_start": "\n".join(lines[:_PREVIEW_START_LINES]),
+                "preview_middle": "\n".join(lines[max(0, mid - _PREVIEW_CONTEXT_BEFORE):mid + _PREVIEW_CONTEXT_AFTER]),
                 "headings": [
                     line.lstrip("#").strip()
                     for line in lines

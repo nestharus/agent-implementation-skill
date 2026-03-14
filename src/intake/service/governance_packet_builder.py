@@ -9,6 +9,9 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 
 _PROBLEM_FRAME_TRUNCATION = 2000
+_MIN_TERM_LENGTH = 2
+_MAX_KEYWORDS_IN_BASIS = 3
+_MAX_BASIS_PARTS = 5
 
 
 def _list_index(path: Path) -> list[dict]:
@@ -52,7 +55,7 @@ def _normalize_terms(text: str) -> set[str]:
     terms: set[str] = set()
     for word in words:
         cleaned = word.strip(".,;:()[]{}\"'`")
-        if len(cleaned) > 2:
+        if len(cleaned) > _MIN_TERM_LENGTH:
             terms.add(cleaned)
     return terms
 
@@ -105,17 +108,17 @@ def _filter_by_regions(
             if overlap:
                 matched.append(record)
                 rec_id = record.get(id_key, "unknown")
-                basis_parts.append(f"{rec_id}:keyword({','.join(sorted(overlap)[:3])})")
+                basis_parts.append(f"{rec_id}:keyword({','.join(sorted(overlap)[:_MAX_KEYWORDS_IN_BASIS])})")
 
     # Include ambiguous records in results but mark basis explicitly
     all_matched = matched + ambiguous
     if all_matched:
         if ambiguous and not matched:
-            basis = f"ambiguous_only:{';'.join(basis_parts[:5])}"
+            basis = f"ambiguous_only:{';'.join(basis_parts[:_MAX_BASIS_PARTS])}"
         elif ambiguous:
-            basis = f"region_match+ambiguous({';'.join(basis_parts[:5])})"
+            basis = f"region_match+ambiguous({';'.join(basis_parts[:_MAX_BASIS_PARTS])})"
         else:
-            basis = "region_match" if not basis_parts else f"region_match+keyword({';'.join(basis_parts[:5])})"
+            basis = "region_match" if not basis_parts else f"region_match+keyword({';'.join(basis_parts[:_MAX_BASIS_PARTS])})"
         return all_matched, basis
 
     # No-match: return empty candidates with explicit governance questions

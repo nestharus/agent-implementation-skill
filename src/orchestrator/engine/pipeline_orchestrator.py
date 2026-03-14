@@ -30,6 +30,8 @@ from signals.types import TRUNCATE_SUMMARY
 from orchestrator.engine.strategic_state_builder import build_strategic_state
 from orchestrator.types import SectionResult
 
+_MAX_BLOCKERS_IN_SUMMARY = 3
+
 
 _check_and_clear_alignment_changed = Services.change_tracker().make_alignment_checker()
 
@@ -90,7 +92,7 @@ def _record_blocked_sections(
         pr = proposal_results[sec_num]
         blocker_summary = "; ".join(
             b.get("description", "unknown")[:TRUNCATE_SUMMARY]
-            for b in pr.blockers[:3]
+            for b in pr.blockers[:_MAX_BLOCKERS_IN_SUMMARY]
         ) or "execution not ready"
         section_results.setdefault(sec_num, SectionResult(
             section_number=sec_num,

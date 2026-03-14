@@ -37,6 +37,13 @@ from intent.service.philosophy_dispatcher import (
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from signals.types import BLOCKING_NEEDS_PARENT, BLOCKING_NEED_DECISION, SIGNAL_NEEDS_PARENT, SIGNAL_NEED_DECISION
 
+_MAX_SECTION_SPECS = 12
+_MAX_PROPOSALS = 6
+_MAX_DECISIONS = 6
+_MAX_NOTES = 6
+_MAX_FILE_EXTENSION_LENGTH = 6
+_MAX_DISTILLER_ATTEMPTS = 2
+
 # ── constants ─────────────────────────────────────────────────────────
 
 BOOTSTRAP_SIGNAL_NAME = "philosophy-bootstrap-signal.json"
@@ -221,19 +228,19 @@ def _collect_bootstrap_context_artifacts(
     add("codemap", paths.codemap())
 
     sections_dir = paths.sections_dir()
-    for section_spec in sorted(sections_dir.glob("section-*.md"))[:12]:
+    for section_spec in sorted(sections_dir.glob("section-*.md"))[:_MAX_SECTION_SPECS]:
         add("section_spec", section_spec)
 
     proposals_dir = paths.proposals_dir()
-    for proposal in sorted(proposals_dir.glob("section-*-integration-proposal.md"))[:6]:
+    for proposal in sorted(proposals_dir.glob("section-*-integration-proposal.md"))[:_MAX_PROPOSALS]:
         add("proposal", proposal)
 
     decisions_dir = paths.decisions_dir()
-    for decision in sorted(decisions_dir.glob("*.md"))[:6]:
+    for decision in sorted(decisions_dir.glob("*.md"))[:_MAX_DECISIONS]:
         add("decision", decision)
 
     notes_dir = paths.notes_dir()
-    for note in sorted(notes_dir.glob("*.md"))[:6]:
+    for note in sorted(notes_dir.glob("*.md"))[:_MAX_NOTES]:
         add("note", note)
 
     return context
@@ -1051,7 +1058,7 @@ def _run_extension_pass(ctx: _BootstrapContext) -> dict[str, Any] | None:
     extra = frozenset(
         e for e in raw_exts
         if isinstance(e, str) and e.startswith(".")
-        and len(e) <= 6 and "/" not in e and "\\" not in e
+        and len(e) <= _MAX_FILE_EXTENSION_LENGTH and "/" not in e and "\\" not in e
     )
     if not extra:
         return None
@@ -1458,7 +1465,7 @@ def _run_distiller(ctx: _BootstrapContext) -> dict[str, Any] | None:
 
     distiller_model = Services.policies().resolve(ctx.policy, "intent_philosophy")
     distill_classification: dict[str, Any] = {"state": "missing_signal", "data": None}
-    for attempt in (1, 2):
+    for attempt in range(1, _MAX_DISTILLER_ATTEMPTS + 1):
         result = Services.dispatcher().dispatch(
             distiller_model,
             prompt_path,

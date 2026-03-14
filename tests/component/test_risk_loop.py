@@ -10,7 +10,6 @@ from dependency_injector import providers
 from conftest import make_dispatcher
 from containers import PromptGuard, Services
 from risk.engine import risk_assessor as risk_loop
-from risk.prompt import writers as risk_prompt_writers
 from risk.repository.history import append_history_entry
 from risk.engine.risk_assessor import (
     run_lightweight_risk_check,
@@ -128,29 +127,6 @@ def test_write_optimization_prompt_marks_lightweight_single_pass_mode(
     assert "single-pass lightweight risk check" in prompt
     assert "No iteration, repeated reassessment, or horizon refinement is available." in prompt
     assert "standard structured risk plan JSON" in prompt
-
-
-def test_prompt_builders_do_not_use_inline_json_blocks(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    _write_artifacts(tmp_path)
-    monkeypatch.setattr(
-        risk_prompt_writers,
-        "_inline_json_block",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("_inline_json_block should not be used by prompt builders")
-        ),
-    )
-
-    write_risk_assessment_prompt(_package(), tmp_path, "section-03")
-    write_optimization_prompt(
-        _assessment(),
-        _package(),
-        {"class_thresholds": {"explore": 60}},
-        tmp_path,
-        "section-03",
-    )
 
 
 def test_collect_roal_evidence_includes_reassessment_artifacts(tmp_path: Path) -> None:

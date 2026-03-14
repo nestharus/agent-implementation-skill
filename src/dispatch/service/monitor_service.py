@@ -10,6 +10,10 @@ from typing import Any
 from signals.service.database_client import DatabaseClient
 from containers import Services
 
+_MONITOR_WAIT_TIMEOUT = 30
+_MIN_SIGNAL_LOG_FIELDS = 5
+_SIGNAL_LOG_TRUNCATION = 100
+
 
 @dataclass
 class MonitorHandle:
@@ -75,7 +79,7 @@ class MonitorService:
             check=False,
         )
         try:
-            handle.process.wait(timeout=30)
+            handle.process.wait(timeout=_MONITOR_WAIT_TIMEOUT)
         except subprocess.TimeoutExpired:
             handle.process.terminate()
 
@@ -88,9 +92,9 @@ class MonitorService:
             )
             for signal_line in signal_rows.splitlines():
                 parts = signal_line.split("|")
-                if len(parts) >= 5 and parts[4]:
+                if len(parts) >= _MIN_SIGNAL_LOG_FIELDS and parts[4]:
                     signal_body = parts[4]
-                    self._log(f"  SIGNAL from monitor: {signal_body[:100]}")
+                    self._log(f"  SIGNAL from monitor: {signal_body[:_SIGNAL_LOG_TRUNCATION]}")
                     output += "\nLOOP_DETECTED: " + signal_body
                     self._db.log_event(
                         "signal",

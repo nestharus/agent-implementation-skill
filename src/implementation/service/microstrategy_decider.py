@@ -3,6 +3,9 @@ from pathlib import Path
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 
+_TODO_CONTEXT_BEFORE = 3
+_TODO_CONTEXT_AFTER = 4
+
 
 
 def _gather_complexity_signals(
@@ -78,8 +81,8 @@ def _extract_todos_from_files(
             stripped = line.strip()
             if any(marker in stripped.upper()
                    for marker in ("TODO", "FIXME", "HACK", "XXX")):
-                start = max(0, i - 3)
-                end = min(len(lines), i + 4)
+                start = max(0, i - _TODO_CONTEXT_BEFORE)
+                end = min(len(lines), i + _TODO_CONTEXT_AFTER)
                 context = "\n".join(
                     f"  {j + 1}: {lines[j]}" for j in range(start, end)
                 )

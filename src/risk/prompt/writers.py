@@ -6,7 +6,6 @@ for the Risk Agent and Execution Optimizer.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from containers import Services
@@ -154,17 +153,6 @@ def _json_block(title: str, path: Path, payload: object) -> list[str]:
     except OSError:
         lines[-1] += " (unreadable)"
     return lines
-
-
-def _inline_json_block(title: str, payload: object) -> list[str]:
-    return [
-        f"## {title}",
-        "",
-        "```json",
-        json.dumps(payload, indent=2),
-        "```",
-        "",
-    ]
 
 
 def _path_list_block(title: str, paths: list[Path]) -> list[str]:
