@@ -71,7 +71,7 @@ def _persist_surfaces(section_number: str, planspace: Path, surfaces: dict) -> d
 
 
 def _write_intent_escalation_signal(
-    paths: PathRegistry,
+    planspace: Path,
     section_number: str,
     reason: str,
     surface_count: int,
@@ -82,6 +82,7 @@ def _write_intent_escalation_signal(
         "reason": reason,
         "surface_count": surface_count,
     }
+    paths = PathRegistry(planspace)
     Services.artifact_io().write_json(
         paths.intent_escalation_signal(section_number),
         escalation_signal,
@@ -97,7 +98,6 @@ def handle_aligned_surfaces(
     planspace: Path,
     codespace: Path,
     parent: str,
-    paths: PathRegistry,
     intent_mode: str,
     intent_budgets: dict,
     expansion_counts: dict[str, int],
@@ -120,7 +120,7 @@ def handle_aligned_surfaces(
                 "full intent"
             )
             _write_intent_escalation_signal(
-                paths,
+                planspace,
                 section_number,
                 "structured_surfaces_on_lightweight",
                 surface_count,
@@ -162,7 +162,6 @@ def handle_misaligned_surfaces(
     planspace: Path,
     codespace: Path,
     parent: str,
-    paths: PathRegistry,
     intent_mode: str,
     intent_budgets: dict,
     expansion_counts: dict[str, int],
@@ -194,7 +193,7 @@ def handle_misaligned_surfaces(
             "misaligned pass — upgrading to full"
         )
         _write_intent_escalation_signal(
-            paths,
+            planspace,
             section_number,
             "structured_surfaces_on_lightweight_misaligned",
             misaligned_surface_count,

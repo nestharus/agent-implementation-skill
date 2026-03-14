@@ -52,7 +52,6 @@ def check_budget_exceeded(
     parent: str,
     proposal_attempt: int,
     cycle_budget: dict,
-    paths: PathRegistry,
     cycle_budget_path: Path,
 ) -> bool | None:
     """Handle proposal cycle budget exhaustion.
@@ -77,7 +76,7 @@ def check_budget_exceeded(
         "escalate": True,
     }
     budget_signal_path = (
-        paths.signals_dir()
+        PathRegistry(planspace).signals_dir()
         / f"section-{section_number}-proposal-budget-exhausted.json"
     )
     Services.artifact_io().write_json(budget_signal_path, budget_signal)
@@ -107,13 +106,13 @@ def dispatch_proposal(
     parent: str,
     proposal_model: str,
     intg_prompt: Path,
-    paths: PathRegistry,
     integration_proposal: Path,
 ) -> str | None:
     """Dispatch the proposal agent, handle timeout, send summary, and ingest.
 
     Returns the dispatch result string, or None if the caller should abort.
     """
+    paths = PathRegistry(planspace)
     intg_output = paths.artifacts / f"intg-proposal-{section_number}-output.md"
     intg_agent = f"intg-proposal-{section_number}"
     intg_result = Services.dispatcher().dispatch(
@@ -164,7 +163,6 @@ def handle_proposal_signals(
     parent: str,
     codespace: Path,
     intg_result: str,
-    paths: PathRegistry,
 ) -> str | None:
     """Check agent signals after proposal dispatch.
 
@@ -173,6 +171,7 @@ def handle_proposal_signals(
         "abort" — caller should return None
         None — no signal, proceed normally
     """
+    paths = PathRegistry(planspace)
     intg_output = paths.artifacts / f"intg-proposal-{section_number}-output.md"
     paths.signals_dir().mkdir(parents=True, exist_ok=True)
     signal, detail = Services.dispatch_helpers().check_agent_signals(

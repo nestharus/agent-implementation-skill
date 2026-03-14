@@ -411,39 +411,3 @@ def _coerce_package_step(value: object) -> PackageStep | None:
         return None
 
 
-def build_decision_package(
-    scope: str,
-    decision_area: str,
-    problem_id: str,
-    source: str,
-    options: list[dict],
-) -> RiskPackage:
-    """Create a ROAL package for design decision evaluation."""
-    steps = []
-    for option in options:
-        decision_class_str = option.get("decision_class", "component")
-        try:
-            decision_class = DecisionClass(decision_class_str)
-        except ValueError:
-            decision_class = DecisionClass.COMPONENT
-        steps.append(
-            PackageStep(
-                step_id=option.get("option_id", f"option-{len(steps)+1}"),
-                assessment_class=decision_class,
-                summary=option.get("summary", ""),
-                prerequisites=list(option.get("prerequisites", [])),
-                expected_outputs=["option-evaluation"],
-                expected_resolutions=["decision narrowed"],
-                mutation_surface=list(option.get("mutation_surface", [])),
-                verification_surface=list(option.get("verification_surface", [])),
-                reversibility=option.get("reversibility", "medium"),
-            )
-        )
-    return RiskPackage(
-        package_id=f"pkg-design-{decision_area}",
-        layer="design",
-        scope=scope,
-        origin_problem_id=problem_id,
-        origin_source=source,
-        steps=steps,
-    )

@@ -101,7 +101,6 @@ def _run_alignment_phase(
     planspace: Path,
     codespace: Path,
     parent: str,
-    paths,
     align_result: str,
     align_output: Path,
     intent_mode: str,
@@ -127,7 +126,7 @@ def _run_alignment_phase(
 
     align_signal = handle_alignment_signals(
         section.number, planspace, parent, codespace,
-        align_result, align_output, paths,
+        align_result, align_output,
     )
     if align_signal == ACTION_ABORT:
         return ACTION_ABORT, None, intent_mode
@@ -136,7 +135,7 @@ def _run_alignment_phase(
 
     if problems is None:
         action, intent_mode, reproposal_reason = handle_aligned_surfaces(
-            section.number, planspace, codespace, parent, paths,
+            section.number, planspace, codespace, parent,
             intent_mode, intent_budgets, expansion_counts,
         )
         if action == ACTION_ABORT:
@@ -147,7 +146,7 @@ def _run_alignment_phase(
         return "break", None, intent_mode
 
     intent_mode = handle_misaligned_surfaces(
-        section.number, planspace, codespace, parent, paths,
+        section.number, planspace, codespace, parent,
         intent_mode, intent_budgets, expansion_counts,
     )
     return ACTION_CONTINUE, problems, intent_mode
@@ -156,7 +155,7 @@ def _run_alignment_phase(
 def _dispatch_and_validate_proposal(
     section, planspace: Path, codespace: Path, parent: str,
     proposal_problems: str | None, incoming_notes: str | None,
-    proposal_attempt: int, paths, integration_proposal: Path,
+    proposal_attempt: int, integration_proposal: Path,
 ) -> tuple[str, str | None]:
     """Dispatch a proposal attempt and validate the result.
 
@@ -164,24 +163,24 @@ def _dispatch_and_validate_proposal(
     or 'proceed'.
     """
     proposal_model = resolve_proposal_model(
-        section.number, planspace, proposal_attempt, paths,
+        section.number, planspace, proposal_attempt,
     )
     intg_prompt = build_proposal_prompt(
         section, planspace, codespace,
-        proposal_problems, incoming_notes, paths,
+        proposal_problems, incoming_notes,
     )
     if intg_prompt is None:
         return ACTION_ABORT, None
 
     intg_result = dispatch_proposal(
         section.number, planspace, codespace, parent,
-        proposal_model, intg_prompt, paths, integration_proposal,
+        proposal_model, intg_prompt, integration_proposal,
     )
     if intg_result is None:
         return ACTION_ABORT, None
 
     signal_action = handle_proposal_signals(
-        section.number, planspace, parent, codespace, intg_result, paths,
+        section.number, planspace, parent, codespace, intg_result,
     )
     if signal_action == ACTION_ABORT:
         return ACTION_ABORT, None
@@ -225,7 +224,7 @@ def run_proposal_loop(
         # --- budget enforcement ---
         budget_result = check_budget_exceeded(
             section.number, planspace, parent,
-            proposal_attempt, cycle_budget, paths, cycle_budget_path,
+            proposal_attempt, cycle_budget, cycle_budget_path,
         )
         if budget_result is True:
             return None
@@ -240,7 +239,7 @@ def run_proposal_loop(
         dispatch_action, intg_result = _dispatch_and_validate_proposal(
             section, planspace, codespace, parent,
             proposal_problems, incoming_notes, proposal_attempt,
-            paths, integration_proposal,
+            integration_proposal,
         )
         if dispatch_action == ACTION_ABORT:
             return None
@@ -249,14 +248,14 @@ def run_proposal_loop(
 
         # --- alignment check ---
         align_check = run_alignment_check(
-            section, planspace, codespace, parent, paths,
+            section, planspace, codespace, parent,
         )
         if align_check is None:
             return None
         align_result, align_output = align_check
 
         action, problems, intent_mode = _run_alignment_phase(
-            section, planspace, codespace, parent, paths,
+            section, planspace, codespace, parent,
             align_result, align_output,
             intent_mode, intent_budgets, expansion_counts,
         )

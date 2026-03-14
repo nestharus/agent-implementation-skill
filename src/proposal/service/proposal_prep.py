@@ -18,9 +18,9 @@ def resolve_proposal_model(
     section_number: str,
     planspace: Path,
     proposal_attempt: int,
-    paths: PathRegistry,
 ) -> str:
     """Select the proposal model, escalating if stall conditions are met."""
+    paths = PathRegistry(planspace)
     policy = Services.policies().load(planspace)
     proposal_model = Services.policies().resolve(policy, "proposal")
     notes_count = 0
@@ -76,7 +76,6 @@ def build_proposal_prompt(
     codespace: Path,
     proposal_problems: str | None,
     incoming_notes: str | None,
-    paths: PathRegistry,
 ) -> Path | None:
     """Write the proposal prompt and append reconciliation context if needed.
 
@@ -96,6 +95,7 @@ def build_proposal_prompt(
         )
         return None
 
+    paths = PathRegistry(planspace)
     recon_result = load_reconciliation_result(planspace, section.number)
     if recon_result and recon_result.get("affected"):
         recon_path = paths.reconciliation_result(section.number)

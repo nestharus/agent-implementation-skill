@@ -42,10 +42,10 @@ def _recheck_section(
     planspace: Path,
     codespace: Path,
     parent: str,
-    paths: PathRegistry,
-    policy: dict,
 ) -> str | None:
     """Recheck a single section's alignment. Returns a CoordinationStatus to abort, or None to continue."""
+    paths = PathRegistry(planspace)
+    policy = Services.policies().load(planspace)
     cur_hash = Services.pipeline_control().section_inputs_hash(
         sec_num, planspace, codespace, sections_by_num,
     )
@@ -96,8 +96,8 @@ def _recheck_section(
         return None
 
     _apply_alignment_outcome(
-        align_result, sec_num, paths, planspace, parent, codespace,
-        policy, section_results,
+        align_result, sec_num, planspace, parent, codespace,
+        section_results,
     )
     return None
 
@@ -105,14 +105,14 @@ def _recheck_section(
 def _apply_alignment_outcome(
     align_result,
     sec_num: str,
-    paths: PathRegistry,
     planspace: Path,
     parent: str,
     codespace: Path,
-    policy: dict,
     section_results: dict[str, SectionResult],
 ) -> None:
     """Extract problems and signals from alignment output, update results."""
+    paths = PathRegistry(planspace)
+    policy = Services.policies().load(planspace)
     global_align_output = paths.artifacts / f"global-align-{sec_num}-output.md"
     problems = _extract_problems(
         align_result, output_path=global_align_output,
@@ -158,7 +158,7 @@ def run_global_alignment_recheck(
     for sec_num, section in sections_by_num.items():
         abort_status = _recheck_section(
             sec_num, section, section_results, sections_by_num,
-            planspace, codespace, parent, paths, policy,
+            planspace, codespace, parent,
         )
         if abort_status is not None:
             return abort_status

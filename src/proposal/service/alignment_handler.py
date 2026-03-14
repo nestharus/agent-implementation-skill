@@ -20,12 +20,12 @@ def run_alignment_check(
     planspace: Path,
     codespace: Path,
     parent: str,
-    paths: PathRegistry,
 ) -> tuple[str, Path] | None:
     """Dispatch the alignment judge and return (result, output_path).
 
     Returns None if the caller should abort (ALIGNMENT_CHANGED_PENDING).
     """
+    paths = PathRegistry(planspace)
     policy = Services.policies().load(planspace)
     section_number = section.number
     artifacts = paths.artifacts
@@ -71,7 +71,6 @@ def handle_alignment_signals(
     codespace: Path,
     align_result: str,
     align_output: Path,
-    paths: PathRegistry,
 ) -> str | None:
     """Check alignment-judge signals for underspec.
 
@@ -80,6 +79,7 @@ def handle_alignment_signals(
         "abort" — caller should return None
         None — no underspec signal, proceed normally
     """
+    paths = PathRegistry(planspace)
     signal, detail = Services.dispatch_helpers().check_agent_signals(
         align_result,
         signal_path=paths.signals_dir() / f"proposal-align-{section_number}-signal.json",

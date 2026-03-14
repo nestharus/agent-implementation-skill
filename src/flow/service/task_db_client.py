@@ -250,9 +250,8 @@ _NEXT_TASK_FIELDS = [
 def next_task(db_path: str | Path) -> dict[str, str] | None:
     """Find the next runnable task (pending with dependencies met).
 
-    Returns a dict with task fields matching the ``parse_task_output``
-    schema (``id``, ``type``, ``by``, ``prio``, etc.), or ``None``
-    when no runnable tasks exist.
+    Returns a dict with task fields (``id``, ``type``, ``by``, ``prio``,
+    etc.), or ``None`` when no runnable tasks exist.
     """
     with task_db(db_path) as conn:
         cur = conn.execute(

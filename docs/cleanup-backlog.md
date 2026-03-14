@@ -175,7 +175,7 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Prior triage**: #24 assessed as "db.sh stays." #29 migrated boilerplate to `task_db()`. Re-opened: `db.sh` is still invoked via subprocess for init and some operations despite Python having native `sqlite3`.
 - **Risk**: Shell overhead, escaping surface, opaque error handling, breaks DI boundary (can't mock/test the DB init path).
 - **Scale**: 6 `subprocess.run([...DB_SH...])` lifecycle-logging calls inlined in `implementation_phase.py` and `proposal_phase.py`. These are middleware concerns (lifecycle events) mixed with business logic (risk evaluation, proposal dispatch).
-- **Status**: PARTIALLY DONE — 6 lifecycle-logging subprocess calls replaced with `Services.logger().log_lifecycle()` container method. `db.sh init` in `pipeline_orchestrator.py` replaced with pure Python `init_db()` in `task_db_client.py`. Remaining: `db_cmd()` wrapper used by `task_dispatcher.py` (5 calls: next-task, claim-task, complete-task, fail-task) and `notifier.py` (1 call: send). These are operational commands requiring `db.sh` SQL logic migration.
+- **Status**: DONE — All `db.sh` subprocess calls migrated to pure Python: 6 lifecycle-logging calls → `Services.logger().log_lifecycle()`, `db.sh init` → `init_db()`, 5 `db_cmd()` calls in `task_dispatcher.py` → `claim_task`/`complete_task`/`fail_task`/`next_task`, 1 `db_cmd()` call in `notifier.py` → `send_message`, 1 `subprocess.run` in `notifier.py` → `log_event`. The `db_cmd()` wrapper and `db.sh` still exist for external scripts (qa-harness.sh) and `DatabaseClient` usage in other modules.
 
 ### 95. Service Locator pattern — global `Services.*` calls instead of constructor injection
 - **Category**: DI architecture / testability
@@ -365,7 +365,7 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Category**: Separation of concerns
 - **Source**: Rescan R119
 - **Worst**: `intent_pack_generator.py:209` (76 lines), `philosophy_bootstrapper.py:775` (68 lines), `assessment_evaluator.py:33` (62 lines), `section_reexplorer.py:46` (62 lines). Template system exists but is used inconsistently.
-- **Status**: PARTIALLY DONE — Cycle 8 extracted 22+ inlined prompts into dedicated `_compose_*_text()` builder functions across `intent_pack_generator.py`, `intent_triager.py`, `assessment_evaluator.py`, `section_reexplorer.py`, `planner.py`, `impact_analyzer.py`, `expanders.py`, `triage_orchestrator.py`, `microstrategy_generator.py`, `scope_delta_aggregator.py`, `tool_registry_manager.py`, `output_adjudicator.py`, `proposal_prep.py`, `substrate prompt_builder.py`, and more. 4 remain in `philosophy_bootstrapper.py` (deferred).
+- **Status**: DONE — Cycle 8 extracted 22+ inlined prompts into dedicated `_compose_*_text()` builder functions across 15+ files. Cycle 12: extracted final 3 inlined prompts from `philosophy_bootstrapper.py` (bootstrap guidance 41 lines, source selector 68 lines, source verifier 40 lines). The 4th prompt (`_build_distiller_prompt`) was already a dedicated builder function.
 
 ### 120. `build_prompt_context()` is a 266-line god function
 - **Category**: God function
@@ -521,9 +521,7 @@ Functions that take parameters obtainable from the DI container are exposing unn
   - `analyzer.py`: `_PATH_TOKEN_MAX_LENGTH` (80) / `_SOURCE_HASH_LENGTH` (10)
   - `intent_initializer.py`: `_SECTION_SUMMARY_TRUNCATION` (500)
   - `intent_triager.py`: `_SUMMARY_SNIPPET_TRUNCATION` (500)
-- **Deferred**:
-  - Display-only truncations (`[:120]`, `[:200]`, `[:80]` in log/summary strings) — low value
-  - `task_dispatcher.py:221` `freshness_token[:8]` — display only in error message
+- **Display truncation constants** (5 constants across 11 files): `TRUNCATE_DETAIL` (200), `TRUNCATE_SUMMARY` (80), `TRUNCATE_MEDIUM` (120), `TRUNCATE_REASON` (150), `TRUNCATE_TOKEN` (8) — 15 magic-number slice limits replaced.
 - **Status**: DONE
 
 ### 135. Cycle 11 — full rescan, deduplication, reviewer category sweep
