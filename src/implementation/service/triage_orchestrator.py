@@ -156,7 +156,6 @@ def _run_triage_alignment(
         planspace,
         codespace,
         parent,
-        section.number,
         output_prefix="triage-align",
         model=Services.policies().resolve(policy, "alignment"),
         adjudicator_model=Services.policies().resolve(policy, "adjudicator"),

@@ -43,6 +43,8 @@ _MAX_DECISIONS = 6
 _MAX_NOTES = 6
 _MAX_FILE_EXTENSION_LENGTH = 6
 _MAX_DISTILLER_ATTEMPTS = 2
+_MAX_README_FILES_PER_DIR = 2
+_MAX_STALE_SOURCES_IN_MESSAGE = 5
 
 # ── constants ─────────────────────────────────────────────────────────
 
@@ -220,7 +222,7 @@ def _collect_bootstrap_context_artifacts(
         (codespace, "repo_readme"),
         (planspace, "planspace_readme"),
     ):
-        for candidate in sorted(readme_root.glob("[Rr][Ee][Aa][Dd][Mm][Ee]*.md"))[:2]:
+        for candidate in sorted(readme_root.glob("[Rr][Ee][Aa][Dd][Mm][Ee]*.md"))[:_MAX_README_FILES_PER_DIR]:
             add(label_prefix, candidate)
 
     add("project_mode", paths.project_mode_txt())
@@ -601,7 +603,7 @@ def _validate_source_map_content(
     if stale_sources:
         return (
             f"Source map references {len(stale_sources)} file(s) "
-            f"that no longer exist on disk: {stale_sources[:5]}. "
+            f"that no longer exist on disk: {stale_sources[:_MAX_STALE_SOURCES_IN_MESSAGE]}. "
             "Philosophy must be re-distilled from current sources.",
             {"stale_source_files": stale_sources},
             failure_source_mode,

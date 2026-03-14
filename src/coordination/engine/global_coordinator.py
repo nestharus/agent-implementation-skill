@@ -283,7 +283,7 @@ def _recheck_section_alignment(
             f"from other sections")
 
     align_result = Services.section_alignment().run_alignment_check(
-        section, planspace, codespace, parent, sec_num,
+        section, planspace, codespace, parent,
         output_prefix="coord-align",
         model=Services.policies().resolve(policy, "alignment"),
         adjudicator_model=Services.policies().resolve(policy, "adjudicator"),

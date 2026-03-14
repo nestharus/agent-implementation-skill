@@ -423,12 +423,12 @@ class SectionAlignmentService:
         return collect_modified_files(planspace, section, codespace)
 
     def run_alignment_check(
-        self, section, planspace, codespace, parent, sec_num,
+        self, section, planspace, codespace, parent,
         output_prefix="align", max_retries=2, *, model: str, adjudicator_model: str,
     ):
         from staleness.service.section_alignment_checker import _run_alignment_check_with_retries
         return _run_alignment_check_with_retries(
-            section, planspace, codespace, parent, sec_num,
+            section, planspace, codespace, parent,
             output_prefix, max_retries,
             model=model, adjudicator_model=adjudicator_model,
         )

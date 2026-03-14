@@ -7,7 +7,6 @@ from containers import Services
 from intent.service.philosophy_bootstrapper import (
     ensure_global_philosophy as _ensure_global_philosophy,
     sha256_file as _sha256_file_impl,
-    validate_philosophy_grounding as _validate_grounding,
 )
 from intent.service.philosophy_catalog import (
     _DEFAULT_CATALOG_MAX_DEPTH,
@@ -54,18 +53,6 @@ def _build_philosophy_catalog(
         max_size_kb=max_size_kb,
         max_depth=max_depth,
         extensions=extensions,
-    )
-
-
-def _validate_philosophy_grounding(
-    philosophy_path: Path,
-    source_map_path: Path,
-    artifacts: Path,
-) -> bool:
-    return _validate_grounding(
-        philosophy_path,
-        source_map_path,
-        artifacts,
     )
 
 

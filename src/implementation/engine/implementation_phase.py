@@ -330,7 +330,6 @@ def _execute_frontier_slice(
     planspace: Path,
     codespace: Path,
     section: Section,
-    sec_num: str,
     parent: str,
     sections_by_num: dict[str, Section],
     current_risk_plan: RiskPlan,
@@ -346,6 +345,7 @@ def _execute_frontier_slice(
 
     Raises ImplementationPassRestart on alignment change.
     """
+    sec_num = section.number
     manifest_path = write_modified_file_manifest(
         planspace,
         sec_num,
@@ -430,7 +430,6 @@ def _run_frontier_iterations(
     planspace: Path,
     codespace: Path,
     section: Section,
-    sec_num: str,
     parent: str,
     sections_by_num: dict[str, Section],
     risk_plan: RiskPlan,
@@ -453,7 +452,6 @@ def _run_frontier_iterations(
                 planspace,
                 codespace,
                 section,
-                sec_num,
                 parent,
                 sections_by_num,
                 current_risk_plan,
@@ -595,7 +593,7 @@ def _implement_section(
     if risk_plan is not None:
         append_risk_history(planspace, sec_num, risk_plan, all_modified_files)
         _, final_problem, _ = _run_frontier_iterations(
-            planspace, codespace, section, sec_num, parent,
+            planspace, codespace, section, parent,
             sections_by_num, risk_plan, all_modified_files,
         )
 

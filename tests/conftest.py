@@ -381,7 +381,7 @@ class NoOpSectionAlignment(SectionAlignmentService):
     def collect_modified_files(self, planspace, section, codespace) -> list[str]:
         return []
 
-    def run_alignment_check(self, section, planspace, codespace, parent, sec_num,
+    def run_alignment_check(self, section, planspace, codespace, parent,
                             output_prefix="align", max_retries=2, *, model: str,
                             adjudicator_model: str):
         return None

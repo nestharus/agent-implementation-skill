@@ -74,7 +74,7 @@ def _recheck_section(
         Services.logger().log(f"Section {sec_num}: has incoming notes for global alignment check")
 
     align_result = _run_alignment_check_with_retries(
-        section, planspace, codespace, parent, sec_num,
+        section, planspace, codespace, parent,
         output_prefix="global-align",
         model=Services.policies().resolve(policy, "alignment"),
         adjudicator_model=Services.policies().resolve(policy, "adjudicator"),

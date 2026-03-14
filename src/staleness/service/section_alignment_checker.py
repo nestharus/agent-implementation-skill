@@ -129,7 +129,6 @@ def _extract_problems(
 
 def _run_alignment_check_with_retries(
     section: Section, planspace: Path, codespace: Path, parent: str,
-    sec_num: str,
     output_prefix: str = "align",
     max_retries: int = 2,
     *,
@@ -144,6 +143,7 @@ def _run_alignment_check_with_retries(
     """
     from dispatch.prompt.writers import write_impl_alignment_prompt
 
+    sec_num = section.number
     paths = PathRegistry(planspace)
     for attempt in range(1, max_retries + 2):  # 1 initial + max_retries
         ctrl = Services.pipeline_control().poll_control_messages(
