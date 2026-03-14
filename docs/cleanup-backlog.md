@@ -452,7 +452,7 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Source**: Expanded reviewer scan R120 (CODE-S3 from code-style-review)
 - **Top 5**: `submit_task()` 18 params, `_request_user_philosophy()` 15 params, `_dispatch_classified_signal_stage()` 13 params, `_write_prompt()` 13 params, `handle_tool_friction()` 12 params.
 - **Overlap**: Subsumes #93 (long parameter lists). This is the precise inventory.
-- **Status**: PARTIALLY DONE — Down to 51 functions with 8+ params (from 128+). Systematic elimination of redundant `paths: PathRegistry` (derivable from `planspace`), `policy: dict` (derivable via `Services.policies().load(planspace)`), `artifacts` (derivable from `planspace`), `coord_dir` (derivable from `planspace`), `sec_num` (derivable from `section.number`), and dead params across ~44 functions in Cycles 12-15. Remaining 51 are mostly at 8-9 params with no derivable redundancy — params are genuinely distinct data (DB insertion columns, dispatch configs, prompt data). Top remaining: `submit_task` (17, all keyword-only DB columns), `_apply_and_finalize` (11), `_block_bootstrap` (10).
+- **Status**: PARTIALLY DONE — Down to 49 functions with 8+ params (from 128+). Systematic elimination of redundant `paths: PathRegistry` (derivable from `planspace`), `policy: dict` (derivable via `Services.policies().load(planspace)`), `artifacts` (derivable from `planspace`), `coord_dir` (derivable from `planspace`), `sec_num` (derivable from `section.number`), and dead params across ~80 functions in Cycles 12-16. Remaining 49 are mostly at 8-9 params with no derivable redundancy — params are genuinely distinct data (DB insertion columns, dispatch configs, prompt data, hash inputs). Top remaining: `submit_task` (17, all keyword-only DB columns), `_apply_and_finalize` (11), `_block_bootstrap` (10).
 
 ### 130. Broad `except Exception` without `# noqa: BLE001` (CODE-E1)
 - **Category**: Error handling / exception specificity
@@ -614,6 +614,21 @@ Functions that take parameters obtainable from the DI container are exposing unn
   - Derivable path params: `_try_escalation` (8→5) — prompt/output/signal paths derivable from planspace+section_number
 - **Remaining 8+ param functions**: 51 (down from 60)
 - **AST verification**: 1 function at 51 exec lines (CLI `run()` — acceptable for entry point), 0 real nesting depth >4 violations
+- **Status**: DONE
+
+### 139. Cycle 16 — deep redundant parameter sweep, dead code
+- **Category**: Multi-category rescan and cleanup
+- **Dead code removed**:
+  - Dead `corrections_file` param in `_explore_section` (never used, re-derived internally)
+  - Dead `apply_related_files_update` import in `section_explorer.py`
+  - Dead `adjudicator_model` param in `_run_alignment_check_with_retries` + container wrapper chain (5 call sites)
+- **Parameter reduction** (~35 functions across 6 patterns):
+  - `adjudicator_model` dead in alignment check chain: `_run_alignment_check_with_retries`, `run_alignment_check` container, 3 callers
+  - `sec_num` derivable from `section.number`: `_recheck_section` (8→7), `_run_risk_review` (3→2), `_prepare_risk_plan` (3→2), `_implement_section` (7→5)
+  - `paths` derivable from `planspace`: `_persist_section_hashes` (5→4), `_validate_and_dispatch_assessment` (5→4), `_validate_and_dispatch_optimization` (8→7), `_validate_and_dispatch_lightweight_optimization` (7→6), `_check_budget` (7→6), `_dispatch_implementation` (7→5), `_handle_post_dispatch` (7→5), `_dispatch_alignment_check` (5→4), `_extract_alignment_problems` (6→5), `_handle_underspec_signal` (6→5), `_surface_tools` (6→4), `_run_microstrategy_step` (5→4), `_handle_microstrategy_failure` (4→3), `_build_reexplore_prompt` (5→4), `_emit_missing_frame_blocker` (4→3), `_emit_empty_frame_blocker` (4→3), `_validate_frame_content` (4→3), `_handle_budget_exhaustion` (6→5), `_handle_setup_signal` (7→5), `_collect_and_persist_problems` (4→3), `_dispatch_and_parse_plan` (5→4), `_build_coordination_plan` (4→3), `_validate_plan` (5→4), `_run_phase2` (7→6), `_collect_bootstrap_context_artifacts` (3→2), `_run_bootstrap_prompter` (4→3)
+  - Context builder protocol simplified: 5 inner `_build_context` functions (4→3 params each)
+  - Fixed latent `NameError` for `coord_dir` in `_build_coordination_plan`
+- **Remaining 8+ param functions**: 49 (down from 51)
 - **Status**: DONE
 
 ---
