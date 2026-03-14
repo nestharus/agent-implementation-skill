@@ -8,6 +8,7 @@ from dependency_injector import providers
 
 from conftest import NoOpFlow, NoOpSectionAlignment, make_dispatcher
 from containers import CrossSectionService, Services
+from pipeline.context import DispatchContext
 from src.proposal.engine.proposal_cycle import run_proposal_loop
 from src.orchestrator.types import Section
 
@@ -97,9 +98,7 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
     try:
         result = run_proposal_loop(
             section,
-            planspace,
-            codespace,
-            "parent",
+            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -172,9 +171,7 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
     try:
         result = run_proposal_loop(
             section,
-            planspace,
-            codespace,
-            "parent",
+            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -260,9 +257,7 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
     try:
         result = run_proposal_loop(
             section,
-            planspace,
-            codespace,
-            "parent",
+            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )

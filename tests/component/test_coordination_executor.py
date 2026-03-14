@@ -12,6 +12,7 @@ from src.coordination.engine.plan_executor import (
     read_execution_modified_files,
 )
 from orchestrator.types import Section
+from pipeline.context import DispatchContext
 
 
 def _planspace(tmp_path: Path) -> Path:
@@ -59,9 +60,7 @@ def test_execute_coordination_plan_runs_fix_groups_and_persists_modified_files(
             ],
         },
         sections_by_num,
-        planspace,
-        tmp_path / "codespace",
-        "parent",
+        DispatchContext(planspace=planspace, codespace=tmp_path / "codespace", parent="parent"),
     )
 
     assert affected_sections == ["01", "02"]
@@ -134,9 +133,7 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
                 ],
             },
             sections_by_num,
-            planspace,
-            tmp_path / "codespace",
-            "parent",
+            DispatchContext(planspace=planspace, codespace=tmp_path / "codespace", parent="parent"),
         )
 
     assert affected_sections == ["01", "02"]
@@ -178,7 +175,5 @@ def test_execute_coordination_plan_raises_on_fix_group_sentinel(
                 ],
             },
             sections_by_num,
-            planspace,
-            tmp_path / "codespace",
-            "parent",
+            DispatchContext(planspace=planspace, codespace=tmp_path / "codespace", parent="parent"),
         )

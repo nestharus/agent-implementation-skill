@@ -6,6 +6,7 @@ import pytest
 
 from conftest import override_dispatcher_and_guard
 from containers import Services
+from pipeline.context import DispatchContext
 from src.proposal.engine.proposal_cycle import run_proposal_loop
 from src.orchestrator.types import Section
 
@@ -131,9 +132,7 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
         )
         result = run_proposal_loop(
             section,
-            planspace,
-            codespace,
-            "parent",
+            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -189,9 +188,7 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
         )
         result = run_proposal_loop(
             section,
-            planspace,
-            codespace,
-            "parent",
+            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -254,9 +251,7 @@ def test_misaligned_definition_gap_expansion_respects_budget(
         )
         result = run_proposal_loop(
             section,
-            planspace,
-            codespace,
-            "parent",
+            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )

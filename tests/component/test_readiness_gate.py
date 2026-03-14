@@ -147,13 +147,16 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
     )
     monkeypatch.setattr(
         "src.proposal.engine.readiness_gate.submit_task",
-        lambda db_path, submitted_by, task_type, **kwargs: (
+        lambda db_path, task: (
             submitted.append(
                 {
                     "db_path": db_path,
-                    "submitted_by": submitted_by,
-                    "task_type": task_type,
-                    **kwargs,
+                    "submitted_by": task.submitted_by,
+                    "task_type": task.task_type,
+                    "concern_scope": task.concern_scope,
+                    "payload_path": task.payload_path,
+                    "problem_id": task.problem_id,
+                    "freshness_token": task.freshness_token,
                 }
             )
             or 41
@@ -245,15 +248,8 @@ def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
     )
     monkeypatch.setattr(
         "src.proposal.engine.readiness_gate.submit_task",
-        lambda db_path, submitted_by, task_type, **kwargs: (
-            submitted.append(
-                {
-                    "db_path": db_path,
-                    "submitted_by": submitted_by,
-                    "task_type": task_type,
-                    **kwargs,
-                }
-            )
+        lambda db_path, task: (
+            submitted.append(task)
             or 42
         ),
     )
@@ -320,15 +316,8 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
     )
     monkeypatch.setattr(
         "src.proposal.engine.readiness_gate.submit_task",
-        lambda db_path, submitted_by, task_type, **kwargs: (
-            submitted.append(
-                {
-                    "db_path": db_path,
-                    "submitted_by": submitted_by,
-                    "task_type": task_type,
-                    **kwargs,
-                }
-            )
+        lambda db_path, task: (
+            submitted.append(task)
             or 44
         ),
     )
@@ -395,15 +384,8 @@ def test_route_blockers_ignores_empty_blocking_research_questions(
     )
     monkeypatch.setattr(
         "src.proposal.engine.readiness_gate.submit_task",
-        lambda db_path, submitted_by, task_type, **kwargs: (
-            submitted.append(
-                {
-                    "db_path": db_path,
-                    "submitted_by": submitted_by,
-                    "task_type": task_type,
-                    **kwargs,
-                }
-            )
+        lambda db_path, task: (
+            submitted.append(task)
             or 43
         ),
     )

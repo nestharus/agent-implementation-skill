@@ -15,7 +15,7 @@ from flow.repository.flow_context_store import (
 )
 from flow.service.task_db_client import task_db
 from flow.types.context import FlowTask
-from flow.types.routing import submit_task
+from flow.types.routing import Task, submit_task
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from containers import Services
 
@@ -75,21 +75,15 @@ def submit_chain(
         depends_on = previous_task_id
         tid = submit_task(
             db_path,
-            submitted_by,
-            step.task_type,
-            problem_id=step.problem_id or None,
-            concern_scope=step.concern_scope or None,
-            payload_path=step.payload_path or None,
-            priority=step.priority,
-            depends_on=depends_on,
-            instance_id=instance_id,
-            flow_id=flow_id,
-            chain_id=chain_id,
-            declared_by_task_id=declared_by_task_id,
-            flow_context_path=None,
-            continuation_path=None,
-            result_manifest_path=None,
-            freshness_token=freshness_token,
+            Task.from_spec(
+                step, submitted_by,
+                depends_on=depends_on,
+                instance_id=instance_id,
+                flow_id=flow_id,
+                chain_id=chain_id,
+                declared_by_task_id=declared_by_task_id,
+                freshness_token=freshness_token,
+            ),
         )
 
         ctx_path = flow_context_relpath(tid)

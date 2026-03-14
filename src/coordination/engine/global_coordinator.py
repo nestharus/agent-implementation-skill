@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any
 
 from containers import Services
+from pipeline.context import DispatchContext
 from coordination.engine.plan_executor import (
     CoordinationExecutionExit,
     execute_coordination_plan,
@@ -191,9 +192,7 @@ def _execute_plan(
     coord_plan: dict,
     confirmed_groups: list[list[dict[str, Any]]],
     sections_by_num: dict[str, Section],
-    planspace: Path,
-    codespace: Path,
-    parent: str,
+    ctx: DispatchContext,
 ) -> tuple[list[str], set[str]] | None:
     """Execute coordination plan. Returns (affected_sections, all_modified) or None."""
     try:
@@ -203,13 +202,11 @@ def _execute_plan(
                 "confirmed_groups": confirmed_groups,
             },
             sections_by_num,
-            planspace,
-            codespace,
-            parent,
+            ctx,
         )
     except CoordinationExecutionExit:
         return None
-    all_modified = read_execution_modified_files(planspace)
+    all_modified = read_execution_modified_files(ctx.planspace)
     return affected_sections, all_modified
 
 
@@ -261,9 +258,7 @@ def _recheck_section_alignment(
     section_results: dict[str, SectionResult],
     problems: list[dict],
     recurrence: dict | None,
-    planspace: Path,
-    codespace: Path,
-    parent: str,
+    ctx: DispatchContext,
 ) -> bool | None:
     """Re-run alignment check on one section after coordination fixes.
 
@@ -271,18 +266,16 @@ def _recheck_section_alignment(
     or ``None`` if alignment changed (caller should abort).
     """
     sec_num = section.number
-    paths = PathRegistry(planspace)
-    policy = Services.policies().load(planspace)
 
-    notes = read_incoming_notes(section, planspace, codespace)
+    notes = read_incoming_notes(section, ctx.planspace, ctx.codespace)
     if notes:
         Services.logger().log(f"  coordinator: section {sec_num} has incoming notes "
             f"from other sections")
 
     align_result = Services.section_alignment().run_alignment_check(
-        section, planspace, codespace, parent,
+        section, ctx.planspace, ctx.codespace, ctx.parent,
         output_prefix="coord-align",
-        model=Services.policies().resolve(policy, "alignment"),
+        model=ctx.resolve_model("alignment"),
     )
     if align_result == ALIGNMENT_CHANGED_PENDING:
         return None
@@ -290,7 +283,7 @@ def _recheck_section_alignment(
         Services.logger().log(f"  coordinator: section {sec_num} invalid alignment "
             f"frame — requires parent intervention")
         Services.communicator().mailbox_send(
-            planspace, parent,
+            ctx.planspace, ctx.parent,
             f"fail:invalid_alignment_frame:{sec_num}",
         )
         section_results[sec_num] = SectionResult(
@@ -310,21 +303,21 @@ def _recheck_section_alignment(
         )
         return False
 
-    coord_align_output = paths.coordination_align_output(sec_num)
+    coord_align_output = ctx.paths.coordination_align_output(sec_num)
     align_problems = Services.section_alignment().extract_problems(
         align_result, output_path=coord_align_output,
-        planspace=planspace, parent=parent, codespace=codespace,
-        adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
+        planspace=ctx.planspace, parent=ctx.parent, codespace=ctx.codespace,
+        adjudicator_model=ctx.resolve_model("adjudicator"),
     )
-    coord_signal_dir = paths.coordination_signals_dir()
+    coord_signal_dir = ctx.paths.coordination_signals_dir()
     coord_signal_dir.mkdir(parents=True, exist_ok=True)
     signal, detail = Services.dispatch_helpers().check_agent_signals(
-        signal_path=paths.coordination_align_signal(sec_num),
+        signal_path=ctx.paths.coordination_align_signal(sec_num),
     )
 
     return _classify_alignment_result(
         sec_num, align_problems, signal, detail,
-        section_results, problems, recurrence, planspace,
+        section_results, problems, recurrence, ctx.planspace,
     )
 
 
@@ -389,16 +382,14 @@ def _recheck_affected_sections(
     section_results: dict[str, SectionResult],
     problems: list[dict],
     recurrence: dict | None,
-    planspace: Path,
-    codespace: Path,
-    parent: str,
+    ctx: DispatchContext,
 ) -> bool | None:
     """Re-check alignment for all affected sections.
 
     Returns ``True`` if all aligned, ``False`` if some remain,
     or ``None`` if alignment changed (caller should return False).
     """
-    coord_dir = PathRegistry(planspace).coordination_dir()
+    coord_dir = ctx.paths.coordination_dir()
     inputs_hash_dir = coord_dir / "inputs-hashes"
     inputs_hash_dir.mkdir(parents=True, exist_ok=True)
 
@@ -411,7 +402,7 @@ def _recheck_affected_sections(
             continue
 
         current_hash = Services.pipeline_control().coordination_recheck_hash(
-            sec_num, planspace, codespace, sections_by_num,
+            sec_num, ctx.planspace, ctx.codespace, sections_by_num,
             list(all_modified),
         )
         prev_hash_file = inputs_hash_dir / f"section-{sec_num}.hash"
@@ -423,14 +414,15 @@ def _recheck_affected_sections(
                 continue
         prev_hash_file.write_text(current_hash, encoding="utf-8")
 
-        ctrl = Services.pipeline_control().poll_control_messages(planspace, parent, sec_num)
+        ctrl = Services.pipeline_control().poll_control_messages(
+            ctx.planspace, ctx.parent, sec_num,
+        )
         if ctrl == ControlSignal.ALIGNMENT_CHANGED:
             Services.logger().log("  coordinator: alignment changed — aborting re-checks")
             return None
 
         result = _recheck_section_alignment(
-            section, section_results, problems, recurrence,
-            planspace, codespace, parent,
+            section, section_results, problems, recurrence, ctx,
         )
         if result is None:
             return None
@@ -439,7 +431,7 @@ def _recheck_affected_sections(
     remaining = [r for r in section_results.values() if not r.aligned]
     if not remaining:
         outstanding_after = _collect_outstanding_problems(
-            section_results, sections_by_num, planspace,
+            section_results, sections_by_num, ctx.planspace,
         )
         if outstanding_after:
             outstanding_types = [p["type"] for p in outstanding_after]
@@ -462,9 +454,7 @@ def run_global_coordination(
     sections: list[Section],
     section_results: dict[str, SectionResult],
     sections_by_num: dict[str, Section],
-    planspace: Path,
-    codespace: Path,
-    parent: str,
+    ctx: DispatchContext,
 ) -> bool:
     """Run the global problem coordinator.
 
@@ -474,13 +464,12 @@ def run_global_coordination(
 
     Returns True if all sections are ALIGNED (or no problems remain).
     """
-    paths = PathRegistry(planspace)
-    coord_dir = paths.coordination_dir()
+    coord_dir = ctx.paths.coordination_dir()
     coord_dir.mkdir(parents=True, exist_ok=True)
 
     # Phase 1: Collect problems + detect recurrence
     collected = _collect_and_persist_problems(
-        section_results, sections_by_num, planspace,
+        section_results, sections_by_num, ctx.planspace,
     )
     if collected is None:
         return True
@@ -488,24 +477,22 @@ def run_global_coordination(
 
     # Phase 1b: Aggregate scope deltas
     try:
-        aggregate_scope_deltas(planspace, parent)
+        aggregate_scope_deltas(ctx.planspace, ctx.parent)
     except ScopeDeltaAggregationExit:
         return False
 
     # Phase 2: Build coordination plan via planner agent
     plan_result = _build_coordination_plan(
-        problems, planspace, parent,
+        problems, ctx.planspace, ctx.parent,
     )
     if plan_result is None:
         return False
     confirmed_groups, _group_strategies, coord_plan = plan_result
 
     # Phase 3: Execute the coordination plan
-    # Bridge directive type-safety: execute_coordination_plan defensively
-    # checks isinstance(bridge_directive, dict) before reading bridge fields.
+    # isinstance(bridge_directive, dict) check is in plan_executor
     exec_result = _execute_plan(
-        coord_plan, confirmed_groups, sections_by_num,
-        planspace, codespace, parent,
+        coord_plan, confirmed_groups, sections_by_num, ctx,
     )
     if exec_result is None:
         return False
@@ -514,8 +501,7 @@ def run_global_coordination(
     # Phase 4: Re-check alignment on affected sections
     recheck = _recheck_affected_sections(
         affected_sections, all_modified, sections_by_num,
-        section_results, problems, recurrence,
-        planspace, codespace, parent,
+        section_results, problems, recurrence, ctx,
     )
     if recheck is None:
         return False

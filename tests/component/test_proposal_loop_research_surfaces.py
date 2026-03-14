@@ -8,6 +8,7 @@ from dependency_injector import providers
 
 from conftest import NoOpFlow, NoOpSectionAlignment, StubPolicies, make_dispatcher
 from containers import CrossSectionService, Services
+from pipeline.context import DispatchContext
 from src.proposal.engine.proposal_cycle import run_proposal_loop
 from src.intent.service.expansion_facade import run_expansion_cycle
 from src.orchestrator.types import Section
@@ -123,9 +124,7 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
     try:
         result = run_proposal_loop(
             section,
-            planspace,
-            codespace,
-            "parent",
+            DispatchContext(planspace=planspace, codespace=codespace, parent="parent"),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )

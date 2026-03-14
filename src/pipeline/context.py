@@ -3,11 +3,39 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 from typing import Any
 
 from orchestrator.path_registry import PathRegistry
 from orchestrator.types import Section
+
+
+@dataclass(frozen=True)
+class DispatchContext:
+    """Immutable bundle of the planspace/codespace/parent triple.
+
+    Threads through orchestrator, implementation, proposal,
+    coordination, and alignment-checking layers.  Lazy-computes
+    ``paths`` and ``policy`` on first access.
+    """
+
+    planspace: Path
+    codespace: Path
+    parent: str
+
+    @cached_property
+    def paths(self) -> PathRegistry:
+        return PathRegistry(self.planspace)
+
+    @cached_property
+    def policy(self) -> dict:
+        from containers import Services
+        return Services.policies().load(self.planspace)
+
+    def resolve_model(self, key: str) -> str:
+        from containers import Services
+        return Services.policies().resolve(self.policy, key)
 
 
 @dataclass

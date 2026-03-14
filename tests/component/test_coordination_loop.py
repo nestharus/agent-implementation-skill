@@ -10,6 +10,7 @@ from containers import Services
 from coordination.engine import coordination_controller as loop
 from coordination.engine.coordination_controller import run_coordination_loop
 from orchestrator.types import Section, SectionResult
+from pipeline.context import DispatchContext
 from tests.conftest import StubPolicies
 
 
@@ -50,9 +51,7 @@ def test_run_coordination_loop_completes_when_everything_is_aligned(
         [section],
         {"01": SectionResult(section_number="01", aligned=True)},
         {"01": section},
-        planspace,
-        planspace,
-        "parent",
+        DispatchContext(planspace=planspace, codespace=planspace, parent="parent"),
     )
 
     assert status == "complete"
@@ -72,9 +71,7 @@ def test_run_coordination_loop_restarts_when_control_message_arrives(
         [section],
         {"01": SectionResult(section_number="01", aligned=False, problems="x")},
         {"01": section},
-        planspace,
-        planspace,
-        "parent",
+        DispatchContext(planspace=planspace, codespace=planspace, parent="parent"),
     )
 
     assert status == "restart_phase1"
@@ -118,9 +115,7 @@ def test_run_coordination_loop_stalls_and_reports_remaining_sections(
             [section],
             {"01": SectionResult(section_number="01", aligned=False, problems="still broken")},
             {"01": section},
-            planspace,
-            planspace,
-            "parent",
+            DispatchContext(planspace=planspace, codespace=planspace, parent="parent"),
         )
     finally:
         Services.policies.reset_override()
@@ -178,9 +173,7 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
         [section],
         {"01": SectionResult(section_number="01", aligned=True)},
         {"01": section},
-        planspace,
-        planspace,
-        "parent",
+        DispatchContext(planspace=planspace, codespace=planspace, parent="parent"),
     )
 
     assert status == "exhausted"
@@ -247,9 +240,7 @@ def test_run_coordination_loop_enters_coordination_for_root_reframing_delta(
         [section],
         {"01": SectionResult(section_number="01", aligned=True)},
         {"01": section},
-        planspace,
-        planspace,
-        "parent",
+        DispatchContext(planspace=planspace, codespace=planspace, parent="parent"),
     )
 
     assert status == "complete"

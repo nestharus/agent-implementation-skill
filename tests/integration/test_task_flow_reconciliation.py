@@ -913,9 +913,9 @@ class TestEdgeCases:
         self, db_path: Path, planspace: Path,
     ) -> None:
         """A task without flow/chain IDs reconciles safely (writes manifest only)."""
-        from flow.types.routing import submit_task as _submit
+        from flow.types.routing import Task, submit_task as _submit
 
-        tid = _submit(db_path, "test", "staleness.alignment_check")
+        tid = _submit(db_path, Task(task_type="staleness.alignment_check", submitted_by="test"))
         _mark_task_running(db_path, tid)
         _mark_task_complete(db_path, tid)
 

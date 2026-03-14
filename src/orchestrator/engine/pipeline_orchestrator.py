@@ -26,6 +26,7 @@ from _config import AGENT_NAME
 from flow.service.task_db_client import init_db
 
 from containers import Services
+from pipeline.context import DispatchContext
 from signals.types import TRUNCATE_SUMMARY
 from orchestrator.engine.strategic_state_builder import build_strategic_state
 from orchestrator.types import SectionResult
@@ -74,8 +75,10 @@ def main() -> None:
     Services.communicator().mailbox_register(args.planspace)
     Services.logger().log(f"Registered: {AGENT_NAME} (parent: {args.parent})")
 
+    ctx = DispatchContext(planspace=args.planspace, codespace=args.codespace, parent=args.parent)
+
     try:
-        _run_loop(args.planspace, args.codespace, args.parent, sections_dir,
+        _run_loop(ctx, sections_dir,
                   args.global_proposal, args.global_alignment)
     finally:
         Services.communicator().mailbox_cleanup(args.planspace)
@@ -105,40 +108,37 @@ def _run_phase2(
     all_sections: list,
     sections_by_num: dict,
     section_results: dict[str, SectionResult],
-    planspace: Path,
-    codespace: Path,
-    parent: str,
+    ctx: DispatchContext,
 ) -> str:
     """Run Phase 2: strategic state, global recheck, and coordination.
 
     Returns 'restart_phase1', 'done', or a coordination status.
     """
-    build_strategic_state(PathRegistry(planspace).decisions_dir(), section_results, planspace)
+    build_strategic_state(PathRegistry(ctx.planspace).decisions_dir(), section_results, ctx.planspace)
 
-    promoted = promote_debt_signals(planspace)
+    promoted = promote_debt_signals(ctx.planspace)
     if promoted:
         Services.logger().log(f"Stabilization: promoted {len(promoted)} debt entries to staging")
 
     phase2_status = Services.section_alignment().run_global_recheck(
-        sections_by_num, section_results, planspace, codespace, parent,
+        sections_by_num, section_results, ctx.planspace, ctx.codespace, ctx.parent,
     )
     if phase2_status == "restart_phase1":
         return "restart_phase1"
 
     coordination_status = run_coordination_loop(
-        all_sections, section_results, sections_by_num,
-        planspace, codespace, parent,
+        all_sections, section_results, sections_by_num, ctx,
     )
     return coordination_status or "done"
 
 
-def _run_loop(planspace: Path, codespace: Path, parent: str,
+def _run_loop(ctx: DispatchContext,
               sections_dir: Path, global_proposal: Path,
               global_alignment: Path) -> None:
-    bootstrap_governance_if_missing(codespace)
-    build_governance_indexes(codespace, planspace)
-    project_mode, mode_constraints = resolve_project_mode(planspace, parent)
-    write_mode_contract(planspace, project_mode, mode_constraints)
+    bootstrap_governance_if_missing(ctx.codespace)
+    build_governance_indexes(ctx.codespace, ctx.planspace)
+    project_mode, mode_constraints = resolve_project_mode(ctx.planspace, ctx.parent)
+    write_mode_contract(ctx.planspace, project_mode, mode_constraints)
 
     all_sections = load_sections(sections_dir)
     for sec in all_sections:
@@ -151,7 +151,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
         section_results: dict[str, SectionResult] = {}
         try:
             proposal_results = run_proposal_pass(
-                all_sections, sections_by_num, planspace, codespace, parent,
+                all_sections, sections_by_num, ctx.planspace, ctx.codespace, ctx.parent,
             )
         except ProposalPassExit:
             return
@@ -159,7 +159,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
         try:
             reconciliation = run_reconciliation_phase(
                 proposal_results, sections_by_num, all_sections,
-                planspace, codespace, parent,
+                ctx.planspace, ctx.codespace, ctx.parent,
             )
         except ReconciliationPhaseExit:
             return
@@ -172,7 +172,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             section_results.update(
                 run_implementation_pass(
                     proposal_results, sections_by_num,
-                    planspace, codespace, parent,
+                    ctx.planspace, ctx.codespace, ctx.parent,
                 ),
             )
         except ImplementationPassRestart:
@@ -190,8 +190,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
             f"implemented, {len(blocked_sections)} blocked ===")
 
         status = _run_phase2(
-            all_sections, sections_by_num, section_results,
-            planspace, codespace, parent,
+            all_sections, sections_by_num, section_results, ctx,
         )
         if status == "restart_phase1":
             continue

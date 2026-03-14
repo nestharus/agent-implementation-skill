@@ -7,6 +7,7 @@ from proposal.service.problem_frame_gate import validate_problem_frame
 from containers import Services
 from orchestrator.path_registry import PathRegistry
 from implementation.service.microstrategy_generator import run_microstrategy
+from pipeline.context import DispatchContext
 from proposal.engine.proposal_cycle import run_proposal_loop
 from proposal.service.readiness_resolver import resolve_readiness
 from proposal.service.excerpt_extractor import extract_excerpts
@@ -415,7 +416,8 @@ def run_section(
 
     # Step 2: Proposal loop
     if run_proposal_loop(
-        section, planspace, codespace, parent,
+        section,
+        DispatchContext(planspace=planspace, codespace=codespace, parent=parent),
         cycle_budget, incoming_notes,
     ) is None:
         return None

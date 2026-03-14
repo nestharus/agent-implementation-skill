@@ -19,7 +19,7 @@ from signals.service.blocker_manager import (
     _update_blocker_rollup,
 )
 from orchestrator.types import ProposalPassResult
-from flow.types.routing import submit_task
+from flow.types.routing import Task, submit_task
 from signals.types import PASS_MODE_PROPOSAL, SIGNAL_NEEDS_PARENT, SIGNAL_NEED_DECISION
 
 _CANDIDATE_HASH_LENGTH = 8
@@ -174,12 +174,14 @@ def _route_blocking_research(
     freshness = Services.freshness().compute(planspace, section_number)
     task_id = submit_task(
         registry.run_db(),
-        f"readiness-{section_number}",
-        "research.plan",
-        concern_scope=f"section-{section_number}",
-        payload_path=str(prompt_path),
-        problem_id=f"research-{section_number}",
-        freshness_token=freshness,
+        Task(
+            task_type="research.plan",
+            submitted_by=f"readiness-{section_number}",
+            concern_scope=f"section-{section_number}",
+            payload_path=str(prompt_path),
+            problem_id=f"research-{section_number}",
+            freshness_token=freshness,
+        ),
     )
     Services.logger().log(
         f"Section {section_number}: dispatched research_plan "
