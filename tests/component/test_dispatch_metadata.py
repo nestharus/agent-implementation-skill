@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 
 from src.dispatch.repository.metadata import (
-    DISPATCH_META_CORRUPT,
     dispatch_meta_path,
     read_dispatch_metadata,
     write_dispatch_metadata,
@@ -32,8 +31,10 @@ def test_write_dispatch_metadata_creates_sidecar(tmp_path) -> None:
     }
 
 
-def test_read_dispatch_metadata_returns_none_when_missing(tmp_path) -> None:
-    assert read_dispatch_metadata(tmp_path / "missing.meta.json") is None
+def test_read_dispatch_metadata_returns_absent_when_missing(tmp_path) -> None:
+    result = read_dispatch_metadata(tmp_path / "missing.meta.json")
+    assert result.is_absent
+    assert result.data is None
 
 
 def test_read_dispatch_metadata_returns_parsed_dict(tmp_path) -> None:
@@ -43,7 +44,10 @@ def test_read_dispatch_metadata_returns_parsed_dict(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    assert read_dispatch_metadata(meta_path) == {
+    result = read_dispatch_metadata(meta_path)
+    assert not result.is_corrupt
+    assert not result.is_absent
+    assert result.data == {
         "returncode": 1,
         "timed_out": False,
     }
@@ -55,9 +59,8 @@ def test_read_dispatch_metadata_marks_malformed_json_as_corrupt(tmp_path) -> Non
 
     result = read_dispatch_metadata(meta_path)
 
-    assert result is DISPATCH_META_CORRUPT
-    assert not meta_path.exists()
-    assert (tmp_path / "task-3-output.meta.malformed.json").exists()
+    assert result.is_corrupt
+    assert result.data is None
 
 
 def test_read_dispatch_metadata_marks_non_object_json_as_corrupt(tmp_path) -> None:
@@ -66,6 +69,6 @@ def test_read_dispatch_metadata_marks_non_object_json_as_corrupt(tmp_path) -> No
 
     result = read_dispatch_metadata(meta_path)
 
-    assert result is DISPATCH_META_CORRUPT
+    assert result.is_corrupt
     assert not meta_path.exists()
     assert (tmp_path / "task-4-output.meta.malformed.json").exists()

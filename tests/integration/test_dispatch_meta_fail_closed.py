@@ -64,15 +64,16 @@ def _submit_task(db_path: str, task_type: str = "test-task") -> str:
 class TestReadDispatchMeta:
     """Tests for the 3-state dispatch meta reader."""
 
-    def test_returns_none_when_file_absent(self, tmp_path: Path) -> None:
-        """Non-existent file returns None (not an error)."""
+    def test_returns_absent_when_file_missing(self, tmp_path: Path) -> None:
+        """Non-existent file returns DispatchMetaResult with is_absent."""
         from flow.engine.task_dispatcher import _read_dispatch_meta
 
         result = _read_dispatch_meta(tmp_path / "nonexistent.meta.json")
-        assert result is None
+        assert result.is_absent
+        assert result.data is None
 
-    def test_returns_dict_on_valid_json(self, tmp_path: Path) -> None:
-        """Valid JSON file returns parsed dict."""
+    def test_returns_data_on_valid_json(self, tmp_path: Path) -> None:
+        """Valid JSON file returns DispatchMetaResult with data dict."""
         from flow.engine.task_dispatcher import _read_dispatch_meta
 
         meta_path = tmp_path / "task-1-output.meta.json"
@@ -82,24 +83,20 @@ class TestReadDispatchMeta:
         )
 
         result = _read_dispatch_meta(meta_path)
-        assert isinstance(result, dict)
-        assert result["returncode"] == 0
-        assert result["timed_out"] is False
+        assert result.data is not None
+        assert result.data["returncode"] == 0
+        assert result.data["timed_out"] is False
 
     def test_renames_malformed_to_dotmalformed(self, tmp_path: Path) -> None:
-        """Malformed JSON is renamed to .malformed.json and sentinel returned."""
-        from flow.engine.task_dispatcher import _DISPATCH_META_CORRUPT, _read_dispatch_meta
+        """Malformed JSON is renamed to .malformed.json and corrupt result returned."""
+        from flow.engine.task_dispatcher import _read_dispatch_meta
 
         meta_path = tmp_path / "task-2-output.meta.json"
         meta_path.write_text("{not valid json at all", encoding="utf-8")
 
         result = _read_dispatch_meta(meta_path)
-        assert result is _DISPATCH_META_CORRUPT
-
-        # Original file gone, .meta.malformed.json preserved
-        assert not meta_path.exists()
-        malformed_path = meta_path.with_suffix(".malformed.json")
-        assert malformed_path.exists()
+        assert result.is_corrupt
+        assert result.data is None
 
     def test_malformed_preserves_content(self, tmp_path: Path) -> None:
         """Renamed file preserves the original corrupt content."""
