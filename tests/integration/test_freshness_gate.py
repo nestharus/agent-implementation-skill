@@ -133,16 +133,11 @@ def _dispatch_and_capture(
     # Track fail-task calls
     from flow.engine import task_dispatcher as task_dispatcher
 
-    original_db_cmd = task_dispatcher.db_cmd
     fail_errors: list[str] = []
 
-    def tracking_db_cmd(dp, command, *a):
-        if command == "fail-task":
-            # Extract --error value
-            for i, arg in enumerate(a):
-                if arg == "--error" and i + 1 < len(a):
-                    fail_errors.append(a[i + 1])
-        return original_db_cmd(dp, command, *a)
+    def tracking_fail_task(db, tid, error=None):
+        if error:
+            fail_errors.append(error)
 
     from containers import Services
 
@@ -150,7 +145,9 @@ def _dispatch_and_capture(
         override_dispatcher_and_guard(fake_dispatch),
         patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
         patch.object(task_dispatcher, "reconcile_task_completion"),
-        patch.object(task_dispatcher, "db_cmd", side_effect=tracking_db_cmd),
+        patch("flow.engine.task_dispatcher._db_claim_task"),
+        patch("flow.engine.task_dispatcher._db_complete_task"),
+        patch("flow.engine.task_dispatcher._db_fail_task", side_effect=tracking_fail_task),
     ):
         # Use real freshness service — this file tests the freshness gate
         Services.freshness.reset_override()

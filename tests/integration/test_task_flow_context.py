@@ -368,7 +368,8 @@ class TestDispatcherFlowIntegration:
 
         with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.task_dispatcher.db_cmd") as mock_db, \
+             patch("flow.engine.task_dispatcher._db_claim_task"), \
+             patch("flow.engine.task_dispatcher._db_complete_task") as mock_db, \
              patch("flow.engine.task_dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 
@@ -418,7 +419,8 @@ class TestDispatcherFlowIntegration:
 
         with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.task_dispatcher.db_cmd") as mock_db, \
+             patch("flow.engine.task_dispatcher._db_claim_task"), \
+             patch("flow.engine.task_dispatcher._db_complete_task") as mock_db, \
              patch("flow.engine.task_dispatcher.notify_task_result"):
             mock_resolve.return_value = ("impact-analyzer.md", "glm")
 
@@ -468,7 +470,8 @@ class TestDispatcherFlowIntegration:
 
         with override_dispatcher_and_guard(lambda *a, **kw: "done"), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.task_dispatcher.db_cmd"), \
+             patch("flow.engine.task_dispatcher._db_claim_task"), \
+             patch("flow.engine.task_dispatcher._db_complete_task"), \
              patch("flow.engine.task_dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 

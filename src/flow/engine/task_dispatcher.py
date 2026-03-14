@@ -28,13 +28,17 @@ from pathlib import Path
 
 from dispatch.repository.metadata import DISPATCH_META_CORRUPT, read_dispatch_metadata
 from orchestrator.path_registry import PathRegistry
-from flow.service.task_db_client import db_cmd
+from flow.service.task_db_client import (
+    claim_task as _db_claim_task,
+    complete_task as _db_complete_task,
+    fail_task as _db_fail_task,
+    next_task as _db_next_task,
+)
 from flow.service.notifier import (
     notify_task_result,
     record_qa_intercept,
     record_task_routing,
 )
-from flow.helpers.task_parser import parse_task_output
 from flow.exceptions import FlowCorruptionError
 from flow.service.flow_facade import (
     build_flow_context,
@@ -54,15 +58,6 @@ logger = logging.getLogger(__name__)
 # dict (valid parse).
 _DISPATCH_META_CORRUPT = DISPATCH_META_CORRUPT
 
-
-
-def parse_next_task(output: str) -> dict[str, str] | None:
-    """Parse the pipe-separated output of next-task into a dict.
-
-    Returns None if no runnable tasks.
-    Output format: id=N | type=T | by=B | prio=P [| problem=X] [| ...]
-    """
-    return parse_task_output(output)
 
 
 def _read_dispatch_meta(meta_path: Path) -> dict | None | object:
@@ -90,7 +85,7 @@ def _read_dispatch_meta(meta_path: Path) -> dict | None | object:
 def _fail_task(db_path, task_id, task_type, submitted_by, err, *,
                planspace=None, output_path=None, codespace=None):
     """Mark a task as failed, notify submitter, and optionally reconcile."""
-    db_cmd(db_path, "fail-task", task_id, "--error", err)
+    _db_fail_task(db_path, task_id, error=err)
     notify_task_result(db_path, submitted_by, task_id, task_type, "failed", err)
     if planspace is not None:
         reconcile_task_completion(
@@ -269,7 +264,7 @@ def _finalize_task(db_path, planspace, task_id, task_type, submitted_by,
                    planspace=planspace, output_path=str(output_path),
                    codespace=codespace)
     else:
-        db_cmd(db_path, "complete-task", task_id, "--output", str(output_path))
+        _db_complete_task(db_path, task_id, output_path=str(output_path))
         notify_task_result(db_path, submitted_by, task_id, task_type, "complete",
                            str(output_path))
         log(f"Task {task_id} complete -> {output_path}")
@@ -297,13 +292,13 @@ def dispatch_task(
         agent_file, model = _task_registry.resolve(task_type, model_policy)
     except ValueError as e:
         log(f"ERROR: Cannot resolve task {task_id}: {e}")
-        db_cmd(db_path, "claim-task", DISPATCHER_NAME, task_id)
+        _db_claim_task(db_path, DISPATCHER_NAME, task_id)
         _fail_task(db_path, task_id, task_type, submitted_by, str(e))
         return
 
     # Claim the task.
     try:
-        db_cmd(db_path, "claim-task", DISPATCHER_NAME, task_id)
+        _db_claim_task(db_path, DISPATCHER_NAME, task_id)
     except RuntimeError as e:
         log(f"WARNING: Could not claim task {task_id}: {e}")
         return
@@ -389,8 +384,7 @@ def main() -> None:
             # PAT-0005: refresh policy per dispatch cycle (not startup-only)
             model_policy = Services.policies().load(planspace)
 
-            output = db_cmd(db_path, "next-task")
-            task = parse_next_task(output)
+            task = _db_next_task(db_path)
 
             if task:
                 dispatch_task(

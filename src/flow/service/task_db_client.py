@@ -169,3 +169,146 @@ def task_db(db_path: str | Path) -> Generator[sqlite3.Connection]:
         yield conn
     finally:
         conn.close()
+
+
+# ------------------------------------------------------------------
+# Pure-Python task operations (replace db.sh subprocess calls)
+# ------------------------------------------------------------------
+
+def claim_task(db_path: str | Path, dispatcher: str, task_id: str | int) -> None:
+    """Claim a pending task for execution.
+
+    Raises ``RuntimeError`` if the task is not pending or not found.
+    """
+    with task_db(db_path) as conn:
+        cur = conn.execute(
+            "UPDATE tasks SET status='running', claimed_by=?, "
+            "claimed_at=datetime('now') WHERE id=? AND status='pending'",
+            (dispatcher, int(task_id)),
+        )
+        if cur.rowcount == 0:
+            raise RuntimeError(
+                f"task not claimable (not pending or not found): {task_id}"
+            )
+        conn.commit()
+
+
+def complete_task(
+    db_path: str | Path, task_id: str | int, output_path: str | None = None,
+) -> None:
+    """Mark a running task as complete.
+
+    Raises ``RuntimeError`` if the task is not running or not found.
+    """
+    with task_db(db_path) as conn:
+        cur = conn.execute(
+            "UPDATE tasks SET status='complete', output_path=?, "
+            "completed_at=datetime('now') WHERE id=? AND status='running'",
+            (output_path, int(task_id)),
+        )
+        if cur.rowcount == 0:
+            raise RuntimeError(
+                f"task not completable (not running or not found): {task_id}"
+            )
+        conn.commit()
+
+
+def fail_task(
+    db_path: str | Path, task_id: str | int, error: str | None = None,
+) -> None:
+    """Mark a running task as failed.
+
+    Raises ``RuntimeError`` if the task is not running or not found.
+    """
+    with task_db(db_path) as conn:
+        cur = conn.execute(
+            "UPDATE tasks SET status='failed', error=?, "
+            "completed_at=datetime('now') WHERE id=? AND status='running'",
+            (error, int(task_id)),
+        )
+        if cur.rowcount == 0:
+            raise RuntimeError(
+                f"task not failable (not running or not found): {task_id}"
+            )
+        conn.commit()
+
+
+_NEXT_TASK_FIELDS = [
+    ("id", "id"), ("task_type", "type"), ("submitted_by", "by"),
+    ("priority", "prio"), ("problem_id", "problem"),
+    ("concern_scope", "scope"), ("payload_path", "payload"),
+    ("depends_on", "depends_on"), ("instance_id", "instance"),
+    ("flow_id", "flow"), ("chain_id", "chain"),
+    ("declared_by_task_id", "declared_by_task"),
+    ("trigger_gate_id", "trigger_gate"),
+    ("flow_context_path", "flow_context"),
+    ("continuation_path", "continuation"),
+    ("freshness_token", "freshness"),
+]
+
+
+def next_task(db_path: str | Path) -> dict[str, str] | None:
+    """Find the next runnable task (pending with dependencies met).
+
+    Returns a dict with task fields matching the ``parse_task_output``
+    schema (``id``, ``type``, ``by``, ``prio``, etc.), or ``None``
+    when no runnable tasks exist.
+    """
+    with task_db(db_path) as conn:
+        cur = conn.execute(
+            "SELECT id, task_type, problem_id, concern_scope, payload_path, "
+            "priority, depends_on, submitted_by, instance_id, flow_id, "
+            "chain_id, declared_by_task_id, trigger_gate_id, "
+            "flow_context_path, continuation_path, freshness_token "
+            "FROM tasks WHERE status='pending' ORDER BY "
+            "CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 "
+            "WHEN 'low' THEN 2 ELSE 3 END, id ASC",
+        )
+        for row in cur:
+            (tid, ttype, pid, scope, payload, prio, deps, by,
+             inst, flow, chain, declared_by, trig_gate, flow_ctx,
+             cont, freshness) = row
+            if deps:
+                dep_row = conn.execute(
+                    "SELECT status FROM tasks WHERE id=?", (int(deps),),
+                ).fetchone()
+                if not dep_row or dep_row[0] != "complete":
+                    continue
+            result: dict[str, str] = {}
+            values = (tid, ttype, by, prio, pid, scope, payload, deps,
+                      inst, flow, chain, declared_by, trig_gate,
+                      flow_ctx, cont, freshness)
+            for (_, key), val in zip(_NEXT_TASK_FIELDS, values):
+                if val is not None and val != "":
+                    result[key] = str(val)
+            return result
+    return None
+
+
+def send_message(
+    db_path: str | Path, target: str, body: str, *, sender: str = "",
+) -> None:
+    """Send a mailbox message (equivalent to ``db.sh send``)."""
+    with task_db(db_path) as conn:
+        cur = conn.execute("INSERT INTO id_seq DEFAULT VALUES")
+        nid = cur.lastrowid
+        conn.execute(
+            "INSERT INTO messages(id, sender, target, body) VALUES(?, ?, ?, ?)",
+            (nid, sender, target, body),
+        )
+        conn.commit()
+
+
+def log_event(
+    db_path: str | Path, kind: str, tag: str = "",
+    body: str = "", *, agent: str = "",
+) -> None:
+    """Record a lifecycle event (equivalent to ``db.sh log``)."""
+    with task_db(db_path) as conn:
+        cur = conn.execute("INSERT INTO id_seq DEFAULT VALUES")
+        nid = cur.lastrowid
+        conn.execute(
+            "INSERT INTO events(id, kind, tag, body, agent) VALUES(?, ?, ?, ?, ?)",
+            (nid, kind, tag, body, agent),
+        )
+        conn.commit()

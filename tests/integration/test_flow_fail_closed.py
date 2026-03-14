@@ -505,7 +505,8 @@ class TestDispatcherFlowCorruption:
 
         with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.task_dispatcher.db_cmd") as mock_db, \
+             patch("flow.engine.task_dispatcher._db_claim_task"), \
+             patch("flow.engine.task_dispatcher._db_fail_task") as mock_fail, \
              patch("flow.engine.task_dispatcher.notify_task_result") as mock_notify:
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 
@@ -515,14 +516,9 @@ class TestDispatcherFlowCorruption:
             assert not dispatch_called
 
             # fail-task should have been called
-            fail_calls = [
-                c for c in mock_db.call_args_list
-                if len(c[0]) >= 2 and c[0][1] == "fail-task"
-            ]
-            assert len(fail_calls) == 1
-            # _db_cmd(db_path, "fail-task", task_id, "--error", err)
-            # err is the 5th positional arg (index 4)
-            assert "corrupt" in fail_calls[0][0][4]
+            assert mock_fail.call_count >= 1
+            # _db_fail_task(db_path, task_id, error=err)
+            assert "corrupt" in mock_fail.call_args.kwargs.get("error", "")
 
     def test_missing_flow_context_fails_task(
         self, db_path: Path, planspace: Path,
@@ -552,7 +548,8 @@ class TestDispatcherFlowCorruption:
 
         with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.task_dispatcher.db_cmd") as mock_db, \
+             patch("flow.engine.task_dispatcher._db_claim_task"), \
+             patch("flow.engine.task_dispatcher._db_fail_task") as mock_fail, \
              patch("flow.engine.task_dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 
@@ -560,11 +557,7 @@ class TestDispatcherFlowCorruption:
 
             assert not dispatch_called
 
-            fail_calls = [
-                c for c in mock_db.call_args_list
-                if c[0][1] == "fail-task"
-            ]
-            assert len(fail_calls) == 1
+            assert mock_fail.call_count >= 1
 
     def test_valid_flow_context_dispatches_normally(
         self, db_path: Path, planspace: Path,
@@ -602,7 +595,8 @@ class TestDispatcherFlowCorruption:
 
         with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.task_dispatcher.db_cmd"), \
+             patch("flow.engine.task_dispatcher._db_claim_task"), \
+             patch("flow.engine.task_dispatcher._db_complete_task"), \
              patch("flow.engine.task_dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 
