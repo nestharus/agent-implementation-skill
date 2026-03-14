@@ -15,6 +15,15 @@ from containers import Services
 # ── Valid source types (shared with bootstrap) ────────────────────────
 VALID_SOURCE_TYPES = frozenset({"repo_source", "user_source"})
 
+# ── Source modes ──────────────────────────────────────────────────────
+SOURCE_MODE_USER = "user_source"
+SOURCE_MODE_REPO = "repo_sources"
+SOURCE_MODE_NONE = "none"
+
+# ── Classification states ────────────────────────────────────────────
+STATE_VALID_NONEMPTY = "valid_nonempty"
+STATE_VALID_EMPTY = "valid_empty"
+
 # ── Minimum byte threshold for user-provided philosophy source ────────
 MIN_USER_SOURCE_BYTES = 100
 
@@ -121,8 +130,8 @@ def _classify_list_signal_result(
             )
 
     if not items:
-        return {"state": "valid_empty", "data": data}
-    return {"state": "valid_nonempty", "data": data}
+        return {"state": STATE_VALID_EMPTY, "data": data}
+    return {"state": STATE_VALID_NONEMPTY, "data": data}
 
 
 # ── specialised classifiers ───────────────────────────────────────────
@@ -199,7 +208,7 @@ def _classify_distiller_result(
                 preserve_existing=True,
             )
         return {
-            "state": "valid_empty",
+            "state": STATE_VALID_EMPTY,
             "data": {
                 "philosophy_path": str(philosophy_path),
                 "source_map_path": str(source_map_path),
@@ -229,7 +238,7 @@ def _classify_distiller_result(
             preserve_existing=True,
         )
     return {
-        "state": "valid_nonempty",
+        "state": STATE_VALID_NONEMPTY,
         "data": {
             "philosophy_path": str(philosophy_path),
             "source_map_path": str(source_map_path),
@@ -280,7 +289,7 @@ def _classify_guidance_result(guidance_path: Path) -> dict[str, Any]:
             data={"schema_error": schema_error, "guidance": data},
             preserve_existing=True,
         )
-    return {"state": "valid_nonempty", "data": data}
+    return {"state": STATE_VALID_NONEMPTY, "data": data}
 
 
 def _user_source_is_substantive(user_source: Path) -> bool:
@@ -293,14 +302,14 @@ def _user_source_is_substantive(user_source: Path) -> bool:
 
 def _manifest_source_mode(manifest: dict[str, Any] | None) -> str:
     if not isinstance(manifest, dict):
-        return "repo_sources"
+        return SOURCE_MODE_REPO
     source_types = {
         entry.get("source_type", "repo_source")
         for entry in manifest.get("sources", [])
         if isinstance(entry, dict)
     }
-    if source_types == {"user_source"}:
-        return "user_source"
+    if source_types == {SOURCE_MODE_USER}:
+        return SOURCE_MODE_USER
     if not source_types:
-        return "repo_sources"
-    return "repo_sources"
+        return SOURCE_MODE_REPO
+    return SOURCE_MODE_REPO
