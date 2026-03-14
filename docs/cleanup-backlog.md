@@ -567,6 +567,37 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **AST verification**: 0 functions >50 exec lines, 0 real nesting depth >4 violations (1 false positive: flat elif chain in AST).
 - **Status**: DONE
 
+### 137. Cycle 14 — comprehensive magic number extraction, parameter reduction, dead code
+- **Category**: Multi-category rescan and cleanup
+- **Dead code removed**:
+  - `_validate_philosophy_grounding()` wrapper in `intent_pack_generator.py` — private, zero callers. Dead `_validate_grounding` import also removed.
+- **Magic numbers extracted** (30+ constants across 20+ files):
+  - `MAX_RESIDUAL_RISK` (100) shared constant in `risk/types.py` — used by `fallback.py`, `risk_assessor.py`, `risk_history_recorder.py`, `history.py`
+  - Budget defaults: `_DEFAULT_PROPOSAL_MAX`, `_DEFAULT_IMPLEMENTATION_MAX`, `_DEFAULT_EXPANSION_MAX`, `_DEFAULT_MAX_NEW_SURFACES`, `_DEFAULT_MAX_NEW_AXES`, `_DEFAULT_RISK_BUDGET_HINT` in `intent_triager.py`
+  - `_DEFAULT_PROPOSAL_MAX`, `_DEFAULT_IMPLEMENTATION_MAX` in `intent_initializer.py`
+  - `_DEFAULT_RISK_ITERATIONS`, `_DEFAULT_HISTORY_ADJUSTMENT_BOUND` in `risk_assessor.py`
+  - `_MAX_PARALLEL_FIX_WORKERS` in `plan_executor.py`
+  - `_SUBSTRATE_AGENT_TIMEOUT_SECONDS` in `substrate_dispatcher.py`
+  - `_DB_BODY_COLUMN_INDEX`, `_DB_MIN_COLUMNS` in `pipeline_state.py`
+  - `_SIGNAL_BODY_COLUMN_INDEX` in `monitor_service.py`
+  - `_DEFAULT_OUTCOME_SCORE` in `history.py`
+  - `_DEFAULT_CATALOG_MAX_FILES/_MAX_SIZE_KB/_MAX_DEPTH` in `philosophy_catalog.py`
+  - `_DEFAULT_AXIS_BUDGET` in `expanders.py`
+  - `_DEFAULT_SUMMARY_MAX_LENGTH` in `signal_checker.py`
+  - `_DEFAULT_SUMMARIZE_LIMIT`, `_ELLIPSIS_LENGTH` in `log_extract_helpers.py`
+  - `_DEFAULT_POLL_INTERVAL_SECONDS` in `task_dispatcher.py`
+  - `_MAX_SUMMARY_LINES` in `match_updater.py`
+  - `_MAX_README_FILES_PER_DIR`, `_MAX_STALE_SOURCES_IN_MESSAGE` in `philosophy_bootstrapper.py`
+  - `RiskModifiers` deserializer now references dataclass defaults instead of duplicating literals
+  - Used existing `_RISK_SEVERITY_BLOCKER_THRESHOLD` instead of raw `3` in `proposal_phase.py`
+  - Used existing `_RISK_ITERATIONS_BASE` instead of raw `5` in `risk_artifact_writer.py`
+- **Parameter reduction** (8 functions, 3 patterns):
+  - `_submit_fanout`: removed `paths: PathRegistry` (8→7)
+  - `sec_num` derivable from `section.number`: `_execute_frontier_slice` (9→8), `_run_frontier_iterations` (8→7), `_run_alignment_check_with_retries` (9→8), `run_alignment_check` wrapper (10→9)
+  - `artifacts` derivable from `planspace`: `_dispatch_normalizer` (8→7), `_dispatch_and_retry` (8→7)
+- **Remaining 8+ param functions**: 60 (down from 64)
+- **Status**: DONE
+
 ---
 
 ## NOT A BUG
