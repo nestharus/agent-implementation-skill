@@ -7,6 +7,7 @@ from enum import Enum
 
 
 MAX_RESIDUAL_RISK = 100
+HISTORY_ADJUSTMENT_BOUND = 10.0
 
 
 class StepClass(str, Enum):

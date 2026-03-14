@@ -10,5 +10,4 @@ WORKFLOW_HOME = Path(
     ),
 )
 DB_SH = WORKFLOW_HOME / "scripts" / "db.sh"
-DB_PATH = Path("run.db")
 AGENT_NAME = "section-loop"

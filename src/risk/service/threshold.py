@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from risk.types import AssessmentClass, DecisionClass, RiskPlan, StepAssessment, StepClass, StepDecision, StepMitigation
+from risk.types import (
+    HISTORY_ADJUSTMENT_BOUND,
+    AssessmentClass,
+    DecisionClass,
+    RiskPlan,
+    StepAssessment,
+    StepClass,
+    StepDecision,
+    StepMitigation,
+)
 
 
 def _validate_accept_decision(
@@ -207,7 +216,7 @@ def load_default_parameters() -> dict:
         "class_thresholds": class_thresholds,
         "cooldown_iterations": 2,
         "relaxation_required_successes": 3,
-        "history_adjustment_bound": 10.0,
+        "history_adjustment_bound": HISTORY_ADJUSTMENT_BOUND,
     }
 
 

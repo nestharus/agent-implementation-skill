@@ -6,7 +6,6 @@ import json
 import subprocess
 from pathlib import Path
 
-from _config import DB_PATH
 from _paths import DB_SH
 from src.signals.service.section_communicator import (
     AGENT_NAME,
@@ -20,7 +19,6 @@ from src.signals.service.section_communicator import (
 
 def test_exported_constants_remain_stable() -> None:
     assert AGENT_NAME == "section-loop"
-    assert DB_PATH == Path("run.db")
 
 
 def test_log_prints_prefixed_message(capsys) -> None:

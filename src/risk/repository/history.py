@@ -9,6 +9,7 @@ from pathlib import Path
 from containers import Services
 from risk.repository.serialization import deserialize_history_entry, serialize_history_entry
 from risk.types import (
+    HISTORY_ADJUSTMENT_BOUND,
     MAX_RESIDUAL_RISK,
     AssessmentClass,
     RiskHistoryEntry,
@@ -22,7 +23,6 @@ logger = logging.getLogger(__name__)
 _DEFAULT_OUTCOME_SCORE = 50
 
 SIMILARITY_ADJUSTMENT_SCALE = 0.2
-HISTORY_ADJUSTMENT_BOUND = 10.0
 
 # Per-surprise score contribution in _actual_outcome_score
 _SURPRISE_SCORE_WEIGHT = 5

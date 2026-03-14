@@ -949,9 +949,10 @@ def _run_distiller(ctx: _BootstrapContext) -> dict[str, Any] | None:
         )
         if distill_classification["state"] == STATE_VALID_NONEMPTY:
             break
-        if attempt < 2:
+        if attempt < _MAX_DISTILLER_ATTEMPTS:
             Services.logger().log("Intent bootstrap: distiller produced "
-                f"{distill_classification['state']} on attempt {attempt}/2 "
+                f"{distill_classification['state']} on attempt "
+                f"{attempt}/{_MAX_DISTILLER_ATTEMPTS} "
                 f"— retrying with {distiller_model}")
 
     if distill_classification["state"] == STATE_VALID_NONEMPTY:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from risk.types import (
+    HISTORY_ADJUSTMENT_BOUND,
     AssessmentClass,
     DecisionClass,
     PostureProfile,
@@ -223,7 +224,6 @@ BLAST_RADIUS_FACTOR = 4.0
 REVERSIBILITY_FACTOR = 5.0
 OBSERVABILITY_FACTOR = 4.0
 CONFIDENCE_PULL_FACTOR = 0.35
-HISTORY_ADJUSTMENT_BOUND = 10.0
 
 
 def compute_raw_risk(
