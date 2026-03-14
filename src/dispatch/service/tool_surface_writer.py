@@ -40,9 +40,6 @@ def _log_surface_result(
 def _dispatch_registry_repair(
     *,
     section_number: str,
-    tool_registry_path: Path,
-    tools_available_path: Path,
-    artifacts: Path,
     planspace: Path,
     parent: str,
     codespace: Path,
@@ -52,6 +49,10 @@ def _dispatch_registry_repair(
     Returns True if the repair dispatch was issued, False if prompt
     validation prevented it.
     """
+    paths = PathRegistry(planspace)
+    tool_registry_path = paths.tool_registry()
+    tools_available_path = paths.tools_available(section_number)
+    artifacts = paths.artifacts
     policy = Services.policies().load(planspace)
     if tools_available_path.exists():
         tools_available_path.unlink()
@@ -92,14 +93,15 @@ def _dispatch_registry_repair(
 def _handle_repair_result(
     *,
     section_number: str,
-    tool_registry_path: Path,
-    tools_available_path: Path,
     planspace: Path,
 ) -> int:
     """After a repair dispatch, re-read the registry, surface tools, or write a blocker.
 
     Returns the total tool count (0 if repair failed).
     """
+    paths = PathRegistry(planspace)
+    tool_registry_path = paths.tool_registry()
+    tools_available_path = paths.tools_available(section_number)
     registry = Services.artifact_io().read_json(tool_registry_path)
     if registry is not None:
         all_tools = _extract_tools(registry)
@@ -179,16 +181,16 @@ def write_tool_surface(
 def surface_tool_registry(
     *,
     section_number: str,
-    tool_registry_path: Path,
-    tools_available_path: Path,
-    artifacts: Path,
     planspace: Path,
     parent: str,
     codespace: Path,
 ) -> int:
     """Load the tool registry, repair if needed, and write the tool surface."""
+    paths = PathRegistry(planspace)
+    tool_registry_path = paths.tool_registry()
     if not tool_registry_path.exists():
         return 0
+    tools_available_path = paths.tools_available(section_number)
 
     registry = Services.artifact_io().read_json(tool_registry_path)
     if registry is not None:
@@ -203,9 +205,6 @@ def surface_tool_registry(
 
     dispatched = _dispatch_registry_repair(
         section_number=section_number,
-        tool_registry_path=tool_registry_path,
-        tools_available_path=tools_available_path,
-        artifacts=artifacts,
         planspace=planspace,
         parent=parent,
         codespace=codespace,
@@ -214,7 +213,5 @@ def surface_tool_registry(
         return 0
     return _handle_repair_result(
         section_number=section_number,
-        tool_registry_path=tool_registry_path,
-        tools_available_path=tools_available_path,
         planspace=planspace,
     )

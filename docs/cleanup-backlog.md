@@ -907,7 +907,7 @@ Functions that accept parameters which could be computed from other parameters a
   7. `_run_freshness_check` (10 params, `codemap_builder.py:252`) — could use `ScanContext`
 - **Existing patterns**: `DispatchContext` (cached `paths: PathRegistry`), `ScanContext.from_artifacts()` — both already adopted in parts of the codebase but not consistently.
 - **Risk**: Wide contracts force callers to understand internal path derivation. Adding a new derived path requires updating every caller in the chain.
-- **Status**: OPEN
+- **Status**: DONE — `surface_tool_registry` (8→4 params), `handle_tool_friction` (9→6 params), `validate_tool_registry_after_implementation` (7→5 params) now derive `tool_registry_path`, `tools_available_path`, `friction_signal_path`, and `artifacts` internally from `planspace + section_number` via `PathRegistry`. Private helpers (`_dispatch_registry_repair`, `_handle_bridge_success`, `_dispatch_bridge_agent`, `_dispatch_new_tool_validation`, `_dispatch_post_impl_repair`) also internalized. Caller `_count_pre_impl_tools` simplified to return `int` instead of `tuple[Path, int]`.
 
 ### 156. Shared config and validation-related migration issues
 - **Category**: Migration hygiene

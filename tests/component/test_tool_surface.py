@@ -69,9 +69,6 @@ def test_surface_tool_registry_repairs_malformed_registry(tmp_path) -> None:
     try:
         total = surface_tool_registry(
             section_number="03",
-            tool_registry_path=tool_registry_path,
-            tools_available_path=tools_available_path,
-            artifacts=artifacts,
             planspace=planspace,
             parent="parent",
             codespace=tmp_path / "codespace",
@@ -117,7 +114,6 @@ def test_validate_tool_registry_after_implementation_dispatches_validator(tmp_pa
         friction_path = validate_tool_registry_after_implementation(
             section_number="03",
             pre_tool_total=1,
-            tool_registry_path=tool_registry_path,
             planspace=planspace,
             parent="parent",
             codespace=tmp_path / "codespace",
@@ -174,8 +170,6 @@ def test_handle_tool_friction_bridges_and_acknowledges_signal(tmp_path) -> None:
             section_number="03",
             section_path="spec.md",
             all_sections=None,
-            tool_registry_path=tool_registry_path,
-            friction_signal_path=friction_signal_path,
             planspace=planspace,
             parent="parent",
             codespace=tmp_path / "codespace",

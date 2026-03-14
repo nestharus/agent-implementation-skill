@@ -58,14 +58,14 @@ def _build_registrar_prompt(
 def _dispatch_new_tool_validation(
     *,
     section_number: str,
-    tool_registry_path: Path,
-    friction_signal_path: Path,
     planspace: Path,
     parent: str,
     codespace: Path,
 ) -> None:
     """Dispatch the tool-registrar agent to validate newly registered tools."""
     paths = PathRegistry(planspace)
+    tool_registry_path = paths.tool_registry()
+    friction_signal_path = paths.tool_friction_signal(section_number)
     artifacts = paths.artifacts
     policy = Services.policies().load(planspace)
     Services.logger().log(
@@ -107,13 +107,13 @@ def _compose_repair_text(section_number: str, malformed_path: Path, tool_registr
 def _dispatch_post_impl_repair(
     *,
     section_number: str,
-    tool_registry_path: Path,
     planspace: Path,
     parent: str,
     codespace: Path,
 ) -> None:
     """Dispatch repair for a malformed post-implementation registry."""
     paths = PathRegistry(planspace)
+    tool_registry_path = paths.tool_registry()
     artifacts = paths.artifacts
     policy = Services.policies().load(planspace)
     malformed_path = tool_registry_path.with_suffix(".malformed.json")
@@ -175,13 +175,13 @@ def validate_tool_registry_after_implementation(
     *,
     section_number: str,
     pre_tool_total: int,
-    tool_registry_path: Path,
     planspace: Path,
     parent: str,
     codespace: Path,
 ) -> Path:
     """Validate the tool registry after implementation and return the friction path."""
     paths = PathRegistry(planspace)
+    tool_registry_path = paths.tool_registry()
     friction_signal_path = paths.tool_friction_signal(section_number)
     if not tool_registry_path.exists():
         return friction_signal_path
@@ -192,8 +192,6 @@ def validate_tool_registry_after_implementation(
         if len(post_tools) > pre_tool_total:
             _dispatch_new_tool_validation(
                 section_number=section_number,
-                tool_registry_path=tool_registry_path,
-                friction_signal_path=friction_signal_path,
                 planspace=planspace,
                 parent=parent,
                 codespace=codespace,
@@ -201,7 +199,6 @@ def validate_tool_registry_after_implementation(
     else:
         _dispatch_post_impl_repair(
             section_number=section_number,
-            tool_registry_path=tool_registry_path,
             planspace=planspace,
             parent=parent,
             codespace=codespace,

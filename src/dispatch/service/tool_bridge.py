@@ -106,11 +106,12 @@ with JSON:
 
 
 def _dispatch_bridge_agent(
-    *, section_number, section_path, tool_registry_path,
+    *, section_number, section_path,
     planspace, parent, codespace,
 ) -> BridgeSignal | None:
     """Dispatch bridge-tools agent with retry. Returns signal or None."""
     paths = PathRegistry(planspace)
+    tool_registry_path = paths.tool_registry()
     policy = Services.policies().load(planspace)
     bridge_tools_prompt = paths.bridge_tools_prompt(section_number)
     bridge_tools_output = paths.bridge_tools_output(section_number)
@@ -184,10 +185,11 @@ def _compose_bridge_success_text(
 
 def _handle_bridge_success(
     *, bridge_data: BridgeSignal, section_number, all_sections,
-    tool_registry_path, pre_bridge_registry_hash, planspace, parent,
+    pre_bridge_registry_hash, planspace, parent,
     codespace,
 ):
     paths = PathRegistry(planspace)
+    tool_registry_path = paths.tool_registry()
     artifacts = paths.artifacts
     default_proposal_path = paths.tool_bridge_proposal(section_number)
     bridge_proposal = bridge_data.proposal_path or str(default_proposal_path)
@@ -285,13 +287,14 @@ def handle_tool_friction(
     section_number: str,
     section_path: str | Path,
     all_sections: list[Any] | None,
-    tool_registry_path: Path,
-    friction_signal_path: Path,
     planspace: Path,
     parent: str,
     codespace: Path,
 ) -> None:
     """Handle tool-friction signals and dispatch bridge-tools when needed."""
+    paths = PathRegistry(planspace)
+    tool_registry_path = paths.tool_registry()
+    friction_signal_path = paths.tool_friction_signal(section_number)
     if not (_detect_friction(friction_signal_path) and tool_registry_path.exists()):
         return
 
@@ -304,7 +307,6 @@ def handle_tool_friction(
 
     signal = _dispatch_bridge_agent(
         section_number=section_number, section_path=section_path,
-        tool_registry_path=tool_registry_path,
         planspace=planspace, parent=parent, codespace=codespace,
     )
     if signal is None:
@@ -314,7 +316,7 @@ def handle_tool_friction(
     else:
         _handle_bridge_success(
             bridge_data=signal, section_number=section_number,
-            all_sections=all_sections, tool_registry_path=tool_registry_path,
+            all_sections=all_sections,
             pre_bridge_registry_hash=pre_bridge_registry_hash,
             planspace=planspace,
             parent=parent, codespace=codespace,

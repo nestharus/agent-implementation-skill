@@ -94,17 +94,8 @@ def _surface_tools(
 
     Returns the pre-implementation tool count for later validation.
     """
-    paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
-    tools_available_path = paths.tools_available(section.number)
-    tool_registry_path = paths.tool_registry()
-    # Compatibility note: stale surface cleanup still occurs in the extracted
-    # helper via tools_available_path.exists() / tools_available_path.unlink().
     return surface_tool_registry(
         section_number=section.number,
-        tool_registry_path=tool_registry_path,
-        tools_available_path=tools_available_path,
-        artifacts=artifacts,
         planspace=planspace,
         parent=parent,
         codespace=codespace,
@@ -211,16 +202,15 @@ def _load_cycle_budget(paths: PathRegistry, section_number: str) -> dict:
     return cycle_budget
 
 
-def _count_pre_impl_tools(paths: PathRegistry) -> tuple[Path, int]:
-    """Read tool registry and return (registry_path, tool_count)."""
+def _count_pre_impl_tools(paths: PathRegistry) -> int:
+    """Read tool registry and return the tool count."""
     tool_registry_path = paths.tool_registry()
-    pre_tool_total = 0
     registry = Services.artifact_io().read_json(tool_registry_path)
-    if registry is not None:
-        all_tools = (registry if isinstance(registry, list)
-                     else registry.get("tools", []))
-        pre_tool_total = len(all_tools)
-    return tool_registry_path, pre_tool_total
+    if registry is None:
+        return 0
+    all_tools = (registry if isinstance(registry, list)
+                 else registry.get("tools", []))
+    return len(all_tools)
 
 
 def _run_microstrategy_step(
@@ -248,17 +238,15 @@ def _run_microstrategy_step(
 def _validate_tools_post_impl(
     section: Section,
     pre_tool_total: int,
-    tool_registry_path: Path,
     planspace: Path,
     parent: str,
     codespace: Path,
     all_sections: list[Section] | None,
 ) -> None:
     """Validate tool registry after implementation and handle friction."""
-    friction_signal_path = validate_tool_registry_after_implementation(
+    validate_tool_registry_after_implementation(
         section_number=section.number,
         pre_tool_total=pre_tool_total,
-        tool_registry_path=tool_registry_path,
         planspace=planspace,
         parent=parent,
         codespace=codespace,
@@ -268,8 +256,6 @@ def _validate_tools_post_impl(
         section_number=section.number,
         section_path=section.path,
         all_sections=all_sections,
-        tool_registry_path=tool_registry_path,
-        friction_signal_path=friction_signal_path,
         planspace=planspace,
         parent=parent,
         codespace=codespace,
@@ -450,7 +436,7 @@ def _run_section_implementation_steps(
 
     # Load cycle budget and pre-implementation tool count
     cycle_budget = _load_cycle_budget(paths, section.number)
-    tool_registry_path, pre_tool_total = _count_pre_impl_tools(paths)
+    pre_tool_total = _count_pre_impl_tools(paths)
 
     # Step 2.5: Generate microstrategy
     if not _run_microstrategy_step(section, planspace, codespace, parent):
@@ -465,7 +451,7 @@ def _run_section_implementation_steps(
 
     # Step 3b-3c: Validate tool registry and handle friction
     _validate_tools_post_impl(
-        section, pre_tool_total, tool_registry_path,
+        section, pre_tool_total,
         planspace, parent, codespace, all_sections,
     )
 
