@@ -53,8 +53,6 @@ def run_aligned_expansion(
     parent: str,
     intent_budgets: dict,
     expansion_counts: dict[str, int],
-    surfaces: dict,
-    surface_count: int,
 ) -> str | None:
     """Handle intent expansion when the proposal is aligned but surfaces exist.
 

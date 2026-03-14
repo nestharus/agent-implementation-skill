@@ -155,13 +155,14 @@ def _run_alignment_phase(
 def _dispatch_and_validate_proposal(
     section, planspace: Path, codespace: Path, parent: str,
     proposal_problems: str | None, incoming_notes: str | None,
-    proposal_attempt: int, integration_proposal: Path,
+    proposal_attempt: int,
 ) -> tuple[str, str | None]:
     """Dispatch a proposal attempt and validate the result.
 
     Returns (action, intg_result) where action is 'abort', 'continue',
     or 'proceed'.
     """
+    integration_proposal = PathRegistry(planspace).proposal(section.number)
     proposal_model = resolve_proposal_model(
         section.number, planspace, proposal_attempt,
     )
@@ -239,7 +240,6 @@ def run_proposal_loop(
         dispatch_action, intg_result = _dispatch_and_validate_proposal(
             section, planspace, codespace, parent,
             proposal_problems, incoming_notes, proposal_attempt,
-            integration_proposal,
         )
         if dispatch_action == ACTION_ABORT:
             return None

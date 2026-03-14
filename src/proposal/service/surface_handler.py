@@ -135,8 +135,7 @@ def handle_aligned_surfaces(
         if intent_mode == "full":
             action = run_aligned_expansion(
                 section_number, planspace, codespace, parent,
-                intent_budgets, expansion_counts, surfaces,
-                surface_count,
+                intent_budgets, expansion_counts,
             )
             if action is None:
                 return ACTION_ABORT, intent_mode, None
