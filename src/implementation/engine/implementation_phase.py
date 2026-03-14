@@ -25,7 +25,7 @@ from implementation.repository.roal_index import (
     IMPLEMENTATION_ROAL_KINDS,
     refresh_roal_input_index,
 )
-from implementation.service.risk_artifact_writer import (
+from implementation.service.risk_artifacts import (
     blocking_risk_plan,
     has_recent_loop_detected_signal,
     has_stale_freshness_token,

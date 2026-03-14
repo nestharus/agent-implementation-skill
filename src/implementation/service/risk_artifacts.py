@@ -1,4 +1,4 @@
-"""Risk artifact writers and hint loaders for implementation sections."""
+"""Risk artifact readers, writers, and hint loaders for implementation sections."""
 
 from __future__ import annotations
 

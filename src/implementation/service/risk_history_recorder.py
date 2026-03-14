@@ -17,7 +17,7 @@ from risk.types import (
     RiskPlan,
     StepDecision,
 )
-from implementation.service.risk_artifact_writer import unique_strings
+from implementation.service.risk_artifacts import unique_strings
 
 
 @dataclass(frozen=True)

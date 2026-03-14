@@ -332,12 +332,12 @@ Functions that accept parameters which could be computed from other parameters a
 - **Worst offenders**:
   1. `philosophy_bootstrapper.py` — 1183 lines, analyzed in Cycle 19: all functions small (max 37 exec), further decomposition creates circular deps
   2. `tool_registry_manager.py` — DONE, decomposed into `tool_surface_writer.py`, `tool_validator.py`, `tool_bridge.py` (Cycle 20). Original deleted.
-  3. `package_builder.py` — 449 lines, 22 functions mixing package lifecycle, persistence, microstrategy text parsing, step materialization, and generic text utilities.
-  4. `risk_artifact_writer.py` — 269 lines mixing write-side producers with read-side queries (`has_stale_freshness_token`, `has_recent_loop_detected_signal`).
-  5. `pipeline_control.py` — 164 lines, facade re-exporting from 3 modules plus local implementation for `requeue_changed_sections`.
+  3. `package_builder.py` — 414 lines, all functions small (max 40 exec). Microstrategy parsing is a sub-concern of package construction, not a separate module. Acceptable.
+  4. ~~`risk_artifact_writer.py` — 269 lines mixing write-side producers with read-side queries.~~ Renamed to `risk_artifacts.py` — name now reflects mixed read/write responsibility.
+  5. `pipeline_control.py` — 138 lines, facade re-exporting from 3 modules plus `requeue_changed_sections`. Intentional DI boundary pattern — binds `_config` globals so downstream doesn't need to. Acceptable.
   6. `research_plan_executor.py` — DONE, split into `research_branch_builder.py` + executor (Cycle 20).
 - **Risk**: Any change to one topic within a low-cohesion file forces loading and understanding all other unrelated topics. Merge conflicts collide with unrelated code. Test files must cover unrelated concerns together.
-- **Status**: PARTIALLY DONE — 2 of 5 worst offenders decomposed. #1 analyzed as irreducible.
+- **Status**: DONE — 2 decomposed (#2, #6), 1 irreducible (#1), 3 analyzed as acceptable (#3 cohesive, #4 renamed, #5 intentional facade).
 
 ### 104. Policy dict threading — 30+ functions take policy: dict unnecessarily
 - **Category**: DI gap / parameter coupling
