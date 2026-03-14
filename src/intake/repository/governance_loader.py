@@ -335,7 +335,7 @@ def parse_synthesis_cues(codespace: Path) -> dict[str, list[str]]:
     return cues
 
 
-def bootstrap_governance_if_missing(codespace: Path, planspace: Path) -> bool:
+def bootstrap_governance_if_missing(codespace: Path) -> bool:
     """Create minimal governance scaffolding if codespace has none.
 
     For greenfield projects that have no governance docs, this creates

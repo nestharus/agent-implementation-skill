@@ -136,7 +136,7 @@ def _run_loop(planspace: Path, codespace: Path, parent: str,
               sections_dir: Path, global_proposal: Path,
               global_alignment: Path) -> None:
     paths = PathRegistry(planspace)
-    bootstrap_governance_if_missing(codespace, planspace)
+    bootstrap_governance_if_missing(codespace)
     build_governance_indexes(codespace, planspace)
     project_mode, mode_constraints = resolve_project_mode(planspace, parent)
     write_mode_contract(planspace, project_mode, mode_constraints)

@@ -88,7 +88,7 @@ class TestBuildFlowContext:
         self, planspace: Path,
     ) -> None:
         """No flow_context_path means no context to build."""
-        result = build_flow_context(planspace, 1, flow_context_path=None)
+        result = build_flow_context(planspace, flow_context_path=None)
         assert result is None
 
     def test_raises_on_missing_file(
@@ -97,7 +97,7 @@ class TestBuildFlowContext:
         """Missing flow context file raises FlowCorruptionError."""
         with pytest.raises(FlowCorruptionError, match="missing"):
             build_flow_context(
-                planspace, 1,
+                planspace,
                 flow_context_path="artifacts/flows/task-999-context.json",
             )
 
@@ -114,7 +114,7 @@ class TestBuildFlowContext:
         task = _query_task(db_path, tid)
 
         result = build_flow_context(
-            planspace, tid,
+            planspace,
             flow_context_path=task["flow_context_path"],
         )
 
@@ -139,7 +139,7 @@ class TestBuildFlowContext:
         second_task = _query_task(db_path, ids[1])
 
         result = build_flow_context(
-            planspace, ids[1],
+            planspace,
             flow_context_path=second_task["flow_context_path"],
         )
 
@@ -160,7 +160,7 @@ class TestBuildFlowContext:
         task = _query_task(db_path, tid)
 
         result = build_flow_context(
-            planspace, tid,
+            planspace,
             flow_context_path=task["flow_context_path"],
             continuation_path=task["continuation_path"],
         )
@@ -195,7 +195,7 @@ class TestBuildFlowContext:
         }))
 
         result = build_flow_context(
-            planspace, 42,
+            planspace,
             flow_context_path=ctx_relpath,
             trigger_gate_id=gate_id,
         )
@@ -213,7 +213,7 @@ class TestBuildFlowContext:
 
         with pytest.raises(FlowCorruptionError, match="corrupt"):
             build_flow_context(
-                planspace, 99,
+                planspace,
                 flow_context_path=ctx_relpath,
             )
         # Original file should be renamed to .malformed.json
@@ -582,7 +582,7 @@ class TestEndToEndFlowContext:
         # Second task should be able to discover predecessor
         task2 = _query_task(db_path, ids[1])
         ctx = build_flow_context(
-            planspace, ids[1],
+            planspace,
             flow_context_path=task2["flow_context_path"],
             continuation_path=task2["continuation_path"],
         )
@@ -698,7 +698,7 @@ class TestEndToEndFlowContext:
 
         # Build flow context for the synthesis task.
         ctx = build_flow_context(
-            planspace, syn_task["id"],
+            planspace,
             flow_context_path=syn_task["flow_context_path"],
             trigger_gate_id=syn_task["trigger_gate_id"],
         )

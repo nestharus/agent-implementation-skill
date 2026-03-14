@@ -181,7 +181,7 @@ def governance_bootstrap(
     script = (
         "from intake.repository.governance_loader import bootstrap_governance_if_missing, build_governance_indexes; "
         "from pathlib import Path; "
-        f"bootstrap_governance_if_missing(Path({str(codespace)!r}), Path({str(planspace)!r})); "
+        f"bootstrap_governance_if_missing(Path({str(codespace)!r})); "
         f"build_governance_indexes(Path({str(codespace)!r}), Path({str(planspace)!r}))"
     )
     subprocess.run(

@@ -241,7 +241,7 @@ def test_bootstrap_governance_creates_scaffolding_for_greenfield(
     codespace.mkdir()
     planspace.mkdir()
 
-    result = bootstrap_governance_if_missing(codespace, planspace)
+    result = bootstrap_governance_if_missing(codespace)
 
     assert result is True
     assert (codespace / "governance" / "problems" / "index.md").exists()
@@ -270,7 +270,7 @@ def test_bootstrap_governance_skips_when_governance_exists(
         encoding="utf-8",
     )
 
-    result = bootstrap_governance_if_missing(codespace, planspace)
+    result = bootstrap_governance_if_missing(codespace)
 
     assert result is False
     # Existing content is preserved
@@ -288,7 +288,7 @@ def test_bootstrap_then_build_indexes_produces_valid_planspace(
     codespace.mkdir()
     planspace.mkdir()
 
-    bootstrap_governance_if_missing(codespace, planspace)
+    bootstrap_governance_if_missing(codespace)
     result = build_governance_indexes(codespace, planspace)
 
     assert result is True

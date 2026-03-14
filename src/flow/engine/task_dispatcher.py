@@ -172,7 +172,7 @@ def _wrap_flow_context(task, planspace, task_id, task_type, submitted_by,
     trigger_gate_id = task.get("trigger_gate")
     try:
         flow_ctx = build_flow_context(
-            planspace, int(task_id),
+            planspace,
             flow_context_path=flow_context_relpath,
             continuation_path=continuation_relpath,
             trigger_gate_id=trigger_gate_id,

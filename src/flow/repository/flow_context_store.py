@@ -53,7 +53,6 @@ def read_flow_json(path: Path) -> tuple[str, dict | list | None]:
 
 def build_flow_context(
     planspace: Path,
-    task_id: int,
     flow_context_path: str | None = None,
     continuation_path: str | None = None,
     trigger_gate_id: str | None = None,

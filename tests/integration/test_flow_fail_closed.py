@@ -190,13 +190,13 @@ class TestBuildFlowContextFailClosed:
         self, planspace: Path,
     ) -> None:
         """No flow_context_path declared -> None (not an error)."""
-        result = build_flow_context(planspace, 1, flow_context_path=None)
+        result = build_flow_context(planspace, flow_context_path=None)
         assert result is None
 
     def test_returns_none_for_empty_flow_context_path(
         self, planspace: Path,
     ) -> None:
-        result = build_flow_context(planspace, 1, flow_context_path="")
+        result = build_flow_context(planspace, flow_context_path="")
         assert result is None
 
     def test_raises_on_missing_context_file(
@@ -204,7 +204,7 @@ class TestBuildFlowContextFailClosed:
     ) -> None:
         with pytest.raises(FlowCorruptionError, match="missing"):
             build_flow_context(
-                planspace, 1,
+                planspace,
                 flow_context_path="artifacts/flows/task-999-context.json",
             )
 
@@ -217,7 +217,7 @@ class TestBuildFlowContextFailClosed:
 
         with pytest.raises(FlowCorruptionError, match="corrupt"):
             build_flow_context(
-                planspace, 99,
+                planspace,
                 flow_context_path=ctx_relpath,
             )
 
@@ -231,7 +231,7 @@ class TestBuildFlowContextFailClosed:
 
         with pytest.raises(FlowCorruptionError):
             build_flow_context(
-                planspace, 77,
+                planspace,
                 flow_context_path=ctx_relpath,
             )
 
@@ -251,7 +251,7 @@ class TestBuildFlowContextFailClosed:
         task = _query_task(db_path, tid)
 
         result = build_flow_context(
-            planspace, tid,
+            planspace,
             flow_context_path=task["flow_context_path"],
         )
         assert result is not None

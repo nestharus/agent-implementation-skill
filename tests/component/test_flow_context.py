@@ -58,7 +58,6 @@ def test_build_flow_context_raises_on_missing_file(tmp_path) -> None:
     with pytest.raises(FlowCorruptionError, match="missing"):
         build_flow_context(
             tmp_path,
-            11,
             flow_context_path=flow_context_relpath(11),
         )
 
@@ -80,7 +79,6 @@ def test_build_flow_context_enriches_gate_aggregate(tmp_path) -> None:
 
     ctx = build_flow_context(
         planspace,
-        11,
         flow_context_path=flow_context_relpath(11),
         trigger_gate_id=gate_id,
     )

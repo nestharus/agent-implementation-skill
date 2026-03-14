@@ -46,7 +46,6 @@ from signals.types import BLOCKING_NEEDS_PARENT
 
 
 def _check_prerequisites(
-    registry: PathRegistry,
     artifacts_dir: Path,
     sections_dir: Path,
 ) -> tuple[str, list[Path], int] | None:
@@ -433,7 +432,7 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
     sections_dir = registry.sections_dir()
 
     # Steps 1-2: Read project mode and load section specs
-    prereqs = _check_prerequisites(registry, artifacts_dir, sections_dir)
+    prereqs = _check_prerequisites(artifacts_dir, sections_dir)
     if prereqs is None:
         return False
     project_mode, section_files, total_sections = prereqs
