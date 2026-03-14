@@ -917,6 +917,28 @@ Functions that accept parameters which could be computed from other parameters a
 - **Risk**: `_` prefix convention signals "private, don't import" — but these functions ARE imported. Misleads developers about API stability. `monkeypatch` strings in tests contain the old names, making test maintenance fragile.
 - **Status**: DONE — All 13 functions renamed to remove `_` prefix. All importers, callers, `__all__` exports, and `monkeypatch` attribute strings updated. 30+ files modified.
 
+### 158. Multi-element tuple returns — positionally coupled return values
+- **Category**: Type safety / missing domain concepts (methodology §17, §67 regression)
+- **Source**: Codebase scan (Cycle 25)
+- **Scale**: 14 functions return tuples with 3+ elements. Worst offenders:
+  1. `_find_target_sections` (5-tuple) — `substrate_discoverer.py:101`
+  2. `_detect_cross_section_issues` (5-tuple of `list[dict]`) — `cross_section_reconciler.py:163`
+  3. `_compute_validation_hashes` (4-tuple of `str`) — `related_file_resolver.py:330`
+  4. `_resolve_log_paths` (4-tuple of `Path`) — `scan/explore/analyzer.py:38`
+  5. `_scan_session_messages` (4-tuple) — `scripts/log_extract/extractors/opencode.py:233`
+  6. `_evaluate_alignment_and_handle_surfaces` (3-tuple) — `proposal_cycle.py:98`
+  7. `handle_aligned_surfaces` (3-tuple) — `surface_handler.py:98`
+  8. `_build_inputs_block` (3-tuple) — `intent_pack_generator.py:131`
+  9. `_determine_decision_outcome` / `_classify_implementation_outcome` (3-tuple) — `risk_history_recorder.py`
+  10. `_collect_section_scan_feedback` (3-tuple) — `feedback_collector.py:25`
+  11. `_validate_declared_ids_types` (3-tuple) — `readiness_resolver.py:99`
+  12. `_validate_source_map_content` (3-tuple) — `philosophy_grounding.py:78`
+  13. `_check_prerequisites` (3-tuple) — `substrate_discoverer.py:48`
+  14. `_prepare_ticket_spec` (3-tuple of `Path`) — `research/prompt/writers.py:104`
+- **Risk**: Positional coupling — callers must know element order. Adding/removing a field requires updating every unpacking site. `return x, y, z` reveals nothing about what each element means.
+- **Prior work**: #67 fixed 8 worst offenders (Cycle 8). `FrontierSliceResult` fixed 4-tuple in `implementation_phase.py` (this cycle). 14 remain.
+- **Status**: IN PROGRESS — `FrontierSliceResult` dataclass added to `implementation_phase.py`, eliminating worst 4-tuple. 14 remaining functions to fix.
+
 ### 156. Shared config and validation-related migration issues
 - **Category**: Migration hygiene
 - **Source**: Prior refactoring (Cycle 23)

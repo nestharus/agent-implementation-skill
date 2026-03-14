@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
@@ -41,6 +42,16 @@ from implementation.service.risk_history_recorder import (
 )
 from orchestrator.types import ProposalPassResult, Section, SectionResult
 from signals.types import PASS_MODE_IMPLEMENTATION
+
+
+@dataclass(frozen=True)
+class FrontierSliceResult:
+    """Result of a single deferred-frontier reassessment iteration."""
+
+    failed: bool = False
+    problem: str | None = None
+    plan: RiskPlan | None = None
+    should_break: bool = False
 
 _MAX_FRONTIER_ITERATIONS = 3
 
@@ -334,13 +345,8 @@ def _execute_frontier_slice(
     current_risk_plan: RiskPlan,
     all_modified_files: list[str],
     frontier_iterations: int,
-) -> tuple[bool, str | None, RiskPlan | None, bool]:
+) -> FrontierSliceResult:
     """Execute one deferred-frontier reassessment iteration.
-
-    Returns (frontier_failed, final_problem, reassessed_plan, should_break).
-
-    *reassessed_plan* is the new plan when reassessment succeeds,
-    or ``None`` when reassessment was not possible (caller should break).
 
     Raises ImplementationPassRestart on alignment change.
     """
@@ -361,7 +367,7 @@ def _execute_frontier_slice(
         current_risk_plan,
     )
     if reassessed_plan is None:
-        return False, None, None, True
+        return FrontierSliceResult(should_break=True)
 
     Services.logger().log(
         f"Section {sec_num}: reassessed deferred ROAL steps "
@@ -372,7 +378,7 @@ def _execute_frontier_slice(
     _persist_roal_artifacts(planspace, sec_num, reassessed_plan)
 
     if not reassessed_plan.accepted_frontier:
-        return False, None, reassessed_plan, True
+        return FrontierSliceResult(plan=reassessed_plan, should_break=True)
 
     Services.logger().log(
         f"Section {sec_num}: dispatching deferred frontier slice "
@@ -405,7 +411,12 @@ def _execute_frontier_slice(
             None,
             implementation_failed=True,
         )
-        return True, "deferred frontier execution failed", reassessed_plan, True
+        return FrontierSliceResult(
+            failed=True,
+            problem="deferred frontier execution failed",
+            plan=reassessed_plan,
+            should_break=True,
+        )
 
     if deferred_modified:
         all_modified_files.extend(deferred_modified)
@@ -417,12 +428,8 @@ def _execute_frontier_slice(
         list(deferred_modified or []),
     )
 
-    if reassessed_plan.reopen_steps:
-        return False, None, reassessed_plan, True
-    if not reassessed_plan.deferred_steps:
-        return False, None, reassessed_plan, True
-
-    return False, None, reassessed_plan, False
+    should_break = bool(reassessed_plan.reopen_steps) or not reassessed_plan.deferred_steps
+    return FrontierSliceResult(plan=reassessed_plan, should_break=should_break)
 
 
 def _run_frontier_iterations(
@@ -433,10 +440,10 @@ def _run_frontier_iterations(
     sections_by_num: dict[str, Section],
     risk_plan: RiskPlan,
     all_modified_files: list[str],
-) -> tuple[bool, str | None, RiskPlan]:
+) -> str | None:
     """Execute deferred-frontier reassessment iterations for a section.
 
-    Returns (frontier_failed, final_problem, current_risk_plan).
+    Returns a problem description, or ``None`` if all frontier work completed.
 
     Raises ImplementationPassRestart on alignment change.
     """
@@ -446,25 +453,23 @@ def _run_frontier_iterations(
     final_problem: str | None = None
 
     while frontier_iterations < _MAX_FRONTIER_ITERATIONS:
-        slice_failed, slice_problem, reassessed_plan, should_break = (
-            _execute_frontier_slice(
-                planspace,
-                codespace,
-                section,
-                parent,
-                sections_by_num,
-                current_risk_plan,
-                all_modified_files,
-                frontier_iterations + 1,
-            )
+        result = _execute_frontier_slice(
+            planspace,
+            codespace,
+            section,
+            parent,
+            sections_by_num,
+            current_risk_plan,
+            all_modified_files,
+            frontier_iterations + 1,
         )
-        if reassessed_plan is not None:
+        if result.plan is not None:
             frontier_iterations += 1
-            current_risk_plan = reassessed_plan
-        if slice_failed:
+            current_risk_plan = result.plan
+        if result.failed:
             frontier_failed = True
-            final_problem = slice_problem
-        if should_break:
+            final_problem = result.problem
+        if result.should_break:
             break
 
     if not frontier_failed and current_risk_plan is not None:
@@ -476,7 +481,7 @@ def _run_frontier_iterations(
             ),
         )
 
-    return frontier_failed, final_problem, current_risk_plan
+    return final_problem
 
 
 def _persist_section_hashes(
@@ -590,7 +595,7 @@ def _implement_section(
     final_problem: str | None = None
     if risk_plan is not None:
         append_risk_history(planspace, sec_num, risk_plan, all_modified_files)
-        _, final_problem, _ = _run_frontier_iterations(
+        final_problem = _run_frontier_iterations(
             planspace, codespace, section, parent,
             sections_by_num, risk_plan, all_modified_files,
         )

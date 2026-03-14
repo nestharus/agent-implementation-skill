@@ -549,14 +549,12 @@ class TestBridgeDirectiveTypeSafety:
             "Parser must handle bool bridge directives"
         )
 
-    def test_non_dict_bridge_defaults_to_disabled(self) -> None:
-        """Runner defends against non-dict bridge directive."""
-        import inspect
-        from coordination.engine.global_coordinator import run_global_coordination
-        src = inspect.getsource(run_global_coordination)
-        assert "isinstance(bridge_directive, dict)" in src, (
-            "Runner must check bridge_directive is dict"
-        )
+    def test_bridge_directive_is_typed_dataclass(self) -> None:
+        """Bridge directives use typed BridgeDirective, not raw dicts."""
+        from coordination.types import BridgeDirective
+        bd = BridgeDirective()
+        assert bd.needed is False
+        assert bd.reason == ""
 
 
 class TestScanModelPolicy:
