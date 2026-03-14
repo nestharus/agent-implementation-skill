@@ -63,8 +63,8 @@ class TestSectionInputsHash:
 
     def test_deterministic(self, planspace: Path, codespace: Path) -> None:
         sections = self._make_sections_by_num(planspace)
-        h1 = _section_inputs_hash("01", planspace, codespace, sections)
-        h2 = _section_inputs_hash("01", planspace, codespace, sections)
+        h1 = _section_inputs_hash("01", planspace, sections)
+        h2 = _section_inputs_hash("01", planspace, sections)
         assert h1 == h2
         assert len(h1) == 64
 
@@ -74,61 +74,61 @@ class TestSectionInputsHash:
         sections = self._make_sections_by_num(planspace)
         spec = planspace / "artifacts" / "sections" / "section-01.md"
         spec.write_text("original spec")
-        h1 = _section_inputs_hash("01", planspace, codespace, sections)
+        h1 = _section_inputs_hash("01", planspace, sections)
         spec.write_text("modified spec")
-        h2 = _section_inputs_hash("01", planspace, codespace, sections)
+        h2 = _section_inputs_hash("01", planspace, sections)
         assert h1 != h2
 
     def test_changes_when_note_added(
         self, planspace: Path, codespace: Path,
     ) -> None:
         sections = self._make_sections_by_num(planspace)
-        h1 = _section_inputs_hash("01", planspace, codespace, sections)
+        h1 = _section_inputs_hash("01", planspace, sections)
         note = planspace / "artifacts" / "notes" / "from-02-to-01.md"
         note.write_text("consequence note from section 02")
-        h2 = _section_inputs_hash("01", planspace, codespace, sections)
+        h2 = _section_inputs_hash("01", planspace, sections)
         assert h1 != h2
 
     def test_changes_when_proposal_added(
         self, planspace: Path, codespace: Path,
     ) -> None:
         sections = self._make_sections_by_num(planspace)
-        h1 = _section_inputs_hash("01", planspace, codespace, sections)
+        h1 = _section_inputs_hash("01", planspace, sections)
         proposal = (planspace / "artifacts" / "proposals"
                     / "section-01-integration-proposal.md")
         proposal.write_text("integration proposal content")
-        h2 = _section_inputs_hash("01", planspace, codespace, sections)
+        h2 = _section_inputs_hash("01", planspace, sections)
         assert h1 != h2
 
     def test_changes_when_microstrategy_added(
         self, planspace: Path, codespace: Path,
     ) -> None:
         sections = self._make_sections_by_num(planspace)
-        h1 = _section_inputs_hash("01", planspace, codespace, sections)
+        h1 = _section_inputs_hash("01", planspace, sections)
         ms = (planspace / "artifacts" / "proposals"
               / "section-01-microstrategy.md")
         ms.write_text("microstrategy content")
-        h2 = _section_inputs_hash("01", planspace, codespace, sections)
+        h2 = _section_inputs_hash("01", planspace, sections)
         assert h1 != h2
 
     def test_changes_when_todos_added(
         self, planspace: Path, codespace: Path,
     ) -> None:
         sections = self._make_sections_by_num(planspace)
-        h1 = _section_inputs_hash("01", planspace, codespace, sections)
+        h1 = _section_inputs_hash("01", planspace, sections)
         todos = planspace / "artifacts" / "todos" / "section-01-todos.md"
         todos.write_text("TODO: implement auth\n")
-        h2 = _section_inputs_hash("01", planspace, codespace, sections)
+        h2 = _section_inputs_hash("01", planspace, sections)
         assert h1 != h2
 
     def test_changes_when_codemap_added(
         self, planspace: Path, codespace: Path,
     ) -> None:
         sections = self._make_sections_by_num(planspace)
-        h1 = _section_inputs_hash("01", planspace, codespace, sections)
+        h1 = _section_inputs_hash("01", planspace, sections)
         codemap = planspace / "artifacts" / "codemap.md"
         codemap.write_text("# Codemap\nfile listings...")
-        h2 = _section_inputs_hash("01", planspace, codespace, sections)
+        h2 = _section_inputs_hash("01", planspace, sections)
         assert h1 != h2
 
 

@@ -307,14 +307,13 @@ def _run_risk_review(
 def _check_abort_conditions(
     planspace: Path,
     parent: str,
-    impl_completed: set[str],
 ) -> None:
     """Check for abort/restart signals before processing a section.
 
     Raises ImplementationPassExit on parent abort,
     ImplementationPassRestart on alignment change.
     """
-    if Services.pipeline_control().handle_pending_messages(planspace, [], impl_completed):
+    if Services.pipeline_control().handle_pending_messages(planspace):
         Services.logger().log("Aborted by parent during implementation pass")
         Services.communicator().mailbox_send(planspace, parent, "fail:aborted")
         raise ImplementationPassExit
@@ -489,7 +488,7 @@ def _persist_section_hashes(
     """Write baseline and phase2 section-input hashes after implementation."""
     paths = PathRegistry(planspace)
     cur_hash = Services.pipeline_control().section_inputs_hash(
-        sec_num, planspace, codespace, sections_by_num,
+        sec_num, planspace, sections_by_num,
     )
 
     baseline_hash_dir = paths.section_inputs_hashes_dir()
@@ -627,11 +626,10 @@ def run_implementation_pass(
         for sec_num, proposal_result in proposal_results.items()
         if proposal_result.execution_ready
     )
-    impl_completed: set[str] = set()
     section_results: dict[str, SectionResult] = {}
 
     for sec_num in ready_sections:
-        _check_abort_conditions(planspace, parent, impl_completed)
+        _check_abort_conditions(planspace, parent)
 
         result = _implement_section(
             sections_by_num[sec_num],
@@ -641,7 +639,6 @@ def run_implementation_pass(
             parent,
         )
         if result is not None:
-            impl_completed.add(sec_num)
             section_results[sec_num] = result
 
     return section_results

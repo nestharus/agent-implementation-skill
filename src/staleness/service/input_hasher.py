@@ -58,11 +58,9 @@ def _collect_ref_parts(
 def section_inputs_hash(
     sec_num: str,
     planspace: Path,
-    codespace: Path,
     sections_by_num: dict[str, Any],
 ) -> str:
     """Compute a hash of a section's alignment-relevant inputs."""
-    del codespace
 
     hash_parts: list[bytes] = []
     paths = PathRegistry(planspace)
@@ -113,7 +111,7 @@ def coordination_recheck_hash(
     modified_files: list[str],
 ) -> str:
     """Canonical section-input hash plus coordinator-modified files."""
-    base = section_inputs_hash(sec_num, planspace, codespace, sections_by_num)
+    base = section_inputs_hash(sec_num, planspace, sections_by_num)
     hash_parts = [base.encode("utf-8")]
     for mod_f in sorted(modified_files):
         mod_path = codespace / mod_f

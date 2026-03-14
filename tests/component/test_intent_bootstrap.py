@@ -77,8 +77,8 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
     monkeypatch.setattr(
         bootstrap,
         "build_section_governance_packet",
-        lambda sec_num, ps, cs, summary="": governance_calls.append(
-            (sec_num, ps, cs, summary)
+        lambda sec_num, ps, summary="": governance_calls.append(
+            (sec_num, ps, summary)
         ),
     )
     monkeypatch.setattr(
@@ -102,7 +102,7 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
         "max_new_surfaces_per_cycle": 3,
     }
     assert capturing_communicator.traceability_calls
-    assert governance_calls == [("01", planspace, codespace, "Problem frame summary")]
+    assert governance_calls == [("01", planspace, "Problem frame summary")]
     assert intent_pack_calls == ["incoming note"]
     assert (
         planspace / "artifacts" / "todos" / "section-01-todos.md"

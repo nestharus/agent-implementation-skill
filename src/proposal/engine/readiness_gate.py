@@ -274,11 +274,9 @@ def route_blockers(
     section_number: str,
     proposal_state: dict,
     planspace: Path,
-    parent: str,
     codespace: Path | None = None,
 ) -> None:
     """Route proposal blockers to their downstream consumers."""
-    del parent
     registry = PathRegistry(planspace)
     signal_dir = registry.signals_dir()
     signal_dir.mkdir(parents=True, exist_ok=True)
@@ -363,7 +361,6 @@ def resolve_and_route(
             section.number,
             proposal_state,
             planspace,
-            parent,
             codespace=codespace,
         )
 

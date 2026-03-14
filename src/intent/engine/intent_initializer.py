@@ -151,7 +151,6 @@ def _step_governance(ctx: PipelineContext) -> str:
     build_section_governance_packet(
         ctx.section.number,
         ctx.planspace,
-        ctx.codespace,
         pf_content[:_SECTION_SUMMARY_TRUNCATION] if pf_content else "",
     )
     return "ok"

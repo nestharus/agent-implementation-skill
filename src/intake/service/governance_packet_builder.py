@@ -319,7 +319,6 @@ def _determine_applicability_state(
 def build_section_governance_packet(
     section_number: str,
     planspace: Path,
-    codespace: Path,
     section_summary: str = "",
 ) -> Path | None:
     """Build a governance packet for a section.
@@ -328,7 +327,6 @@ def build_section_governance_packet(
     Full archive references are available via archive_refs for agents that
     need the complete picture.
     """
-    del codespace  # codespace docs are parsed into planspace indexes
 
     paths = PathRegistry(planspace)
     packet_path = paths.governance_packet(section_number)

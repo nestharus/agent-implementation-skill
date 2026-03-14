@@ -91,10 +91,8 @@ Be conservative. When uncertain, prefer `accept_with_debt` over silent acceptanc
 def write_post_impl_assessment_prompt(
     section_number: str,
     planspace: Path,
-    codespace: Path,
 ) -> Path | None:
     """Write the post-implementation assessment prompt."""
-    del codespace
 
     paths = PathRegistry(planspace)
     prompt_path = paths.post_impl_assessment_prompt(section_number)

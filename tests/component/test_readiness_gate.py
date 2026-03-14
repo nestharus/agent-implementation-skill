@@ -82,7 +82,6 @@ def test_route_blockers_writes_signals_and_queues_reconciliation(
             "unresolved_anchors": ["client.cache"],
         },
         planspace,
-        "parent",
     )
 
     assert (
@@ -170,7 +169,6 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
                 ],
             },
             planspace,
-            "parent",
         )
 
         trigger_path = (
@@ -268,7 +266,6 @@ def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
             ],
         },
         planspace,
-        "parent",
     )
 
     signal_path = (
@@ -351,7 +348,6 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
             ],
         },
         planspace,
-        "parent",
     )
 
     signal_path = (
@@ -418,7 +414,6 @@ def test_route_blockers_ignores_empty_blocking_research_questions(
             "blocking_research_questions": [],
         },
         planspace,
-        "parent",
     )
 
     assert submitted == []

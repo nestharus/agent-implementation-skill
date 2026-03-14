@@ -250,7 +250,7 @@ class NoOpPipelineControl(PipelineControlService):
     def poll_control_messages(self, planspace, parent, current_section=None) -> str | None:
         return None
 
-    def handle_pending_messages(self, planspace, sections, affected) -> bool:
+    def handle_pending_messages(self, planspace) -> bool:
         return False
 
     def alignment_changed_pending(self, planspace) -> bool:
@@ -260,12 +260,12 @@ class NoOpPipelineControl(PipelineControlService):
         pass
 
     def requeue_changed_sections(
-        self, completed, queue, sections_by_num, planspace, codespace,
+        self, completed, queue, sections_by_num, planspace,
         *, current_section=None,
     ) -> list[str]:
         return []
 
-    def section_inputs_hash(self, section_number, planspace, codespace, *args) -> str:
+    def section_inputs_hash(self, section_number, planspace, *args) -> str:
         return "noop-hash"
 
     def coordination_recheck_hash(self, sec_num, planspace, codespace, *args) -> str:
@@ -302,10 +302,10 @@ class CapturingPipelineControl(PipelineControlService):
             return self._poll_side_effect(planspace, parent, current_section)
         return self._poll_return
 
-    def handle_pending_messages(self, planspace, sections, affected) -> bool:
-        self.pending_calls.append((planspace, sections, affected))
+    def handle_pending_messages(self, planspace) -> bool:
+        self.pending_calls.append((planspace,))
         if self._pending_side_effect:
-            return self._pending_side_effect(planspace, sections, affected)
+            return self._pending_side_effect(planspace)
         return self._pending_return
 
     def alignment_changed_pending(self, planspace) -> bool:
@@ -317,12 +317,12 @@ class CapturingPipelineControl(PipelineControlService):
         pass
 
     def requeue_changed_sections(
-        self, completed, queue, sections_by_num, planspace, codespace,
+        self, completed, queue, sections_by_num, planspace,
         *, current_section=None,
     ) -> list[str]:
         return []
 
-    def section_inputs_hash(self, section_number, planspace, codespace, *args) -> str:
+    def section_inputs_hash(self, section_number, planspace, *args) -> str:
         return self._section_inputs_hash_return
 
     def coordination_recheck_hash(self, sec_num, planspace, codespace, *args) -> str:

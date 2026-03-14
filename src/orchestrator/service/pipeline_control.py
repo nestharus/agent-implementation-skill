@@ -44,7 +44,7 @@ _check_and_clear_alignment_changed = make_alignment_checker(DB_SH, AGENT_NAME)
 def requeue_changed_sections(
     completed: set[str], queue: list[str],
     sections_by_num: dict[str, Any], planspace: Path,
-    codespace: Path, *, current_section: str | None = None,
+    *, current_section: str | None = None,
 ) -> list[str]:
     """Targeted requeue: only requeue completed sections whose inputs changed.
 
@@ -59,7 +59,7 @@ def requeue_changed_sections(
     requeued: list[str] = []
     for done_num in list(completed):
         cur = _section_inputs_hash(
-            done_num, planspace, codespace, sections_by_num)
+            done_num, planspace, sections_by_num)
         prev_file = hash_dir / f"{done_num}.hash"
         prev = (prev_file.read_text(encoding="utf-8").strip()
                 if prev_file.exists() else "")
@@ -137,13 +137,10 @@ def check_for_messages(planspace: Path) -> list[str]:
     )
 
 
-def handle_pending_messages(planspace: Path, queue: list[str],
-                            completed: set[str]) -> bool:
+def handle_pending_messages(planspace: Path) -> bool:
     """Process any pending messages. Returns True if should abort."""
     return handle_messages(
         planspace,
-        queue,
-        completed,
         db_sh=DB_SH,
         agent_name=AGENT_NAME,
     )

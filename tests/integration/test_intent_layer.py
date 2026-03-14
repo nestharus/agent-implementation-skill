@@ -802,14 +802,14 @@ class TestIntentInputsHash:
 
         sections_by_num = {"01": sec}
         hash1 = _section_inputs_hash(
-            "01", intent_planspace, codespace, sections_by_num)
+            "01", intent_planspace, sections_by_num)
 
         # Add philosophy
         phi = (intent_planspace / "artifacts" / "intent" / "global"
                / "philosophy.md")
         phi.write_text("# Philosophy\nP1 Strategy.\n")
         hash2 = _section_inputs_hash(
-            "01", intent_planspace, codespace, sections_by_num)
+            "01", intent_planspace, sections_by_num)
 
         assert hash1 != hash2
 
@@ -828,14 +828,14 @@ class TestIntentInputsHash:
 
         sections_by_num = {"01": sec}
         hash1 = _section_inputs_hash(
-            "01", intent_planspace, codespace, sections_by_num)
+            "01", intent_planspace, sections_by_num)
 
         # Add problem definition
         prob = (intent_planspace / "artifacts" / "intent" / "sections"
                 / "section-01" / "problem.md")
         prob.write_text("# Problem\nAuth refactor.\n")
         hash2 = _section_inputs_hash(
-            "01", intent_planspace, codespace, sections_by_num)
+            "01", intent_planspace, sections_by_num)
 
         assert hash1 != hash2
 
@@ -2135,10 +2135,10 @@ class TestR57RefExpansionWarnings:
             ),
         }
 
-        h1 = _section_inputs_hash("01", planspace, codespace, sections_by_num)
+        h1 = _section_inputs_hash("01", planspace, sections_by_num)
 
         # Hash should be deterministic (same broken ref → same hash)
-        h2 = _section_inputs_hash("01", planspace, codespace, sections_by_num)
+        h2 = _section_inputs_hash("01", planspace, sections_by_num)
         assert h1 == h2, "Hash must be deterministic even with broken refs"
 
     def test_context_builder_warns_on_broken_ref(

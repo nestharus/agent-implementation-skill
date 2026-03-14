@@ -123,7 +123,7 @@ def _should_abort(
     planspace: Path, parent: str, section_number: str,
 ) -> bool:
     """Return True if a pending message or alignment change requires abort."""
-    if Services.pipeline_control().handle_pending_messages(planspace, [], set()):
+    if Services.pipeline_control().handle_pending_messages(planspace):
         Services.communicator().mailbox_send(planspace, parent, f"fail:{section_number}:aborted")
         return True
 
@@ -474,7 +474,7 @@ def _finalize(
         planspace, codespace, section.number,
         actually_changed, list(section.related_files),
     )
-    _dispatch_post_impl_assessment(section.number, planspace, codespace)
+    _dispatch_post_impl_assessment(section.number, planspace)
 
     return actually_changed
 
@@ -482,14 +482,12 @@ def _finalize(
 def _dispatch_post_impl_assessment(
     section_number: str,
     planspace: Path,
-    codespace: Path,
 ) -> None:
     """Queue a post-implementation governance assessment for a section."""
     paths = PathRegistry(planspace)
     prompt_path = write_post_impl_assessment_prompt(
         section_number,
         planspace,
-        codespace,
     )
     if prompt_path is None:
         Services.logger().log(

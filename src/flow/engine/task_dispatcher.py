@@ -143,7 +143,7 @@ def _run_qa_gate(planspace, task_id, task_type, submitted_by, db_path,
 
     log(f"QA intercept: evaluating task {task_id} ({task_type})")
     record_qa_intercept(
-        planspace, task_id, task_type,
+        planspace, task_id,
         None if intercept.intercepted else intercept.verdict,
         db_path=db_path, reason_code=intercept.output_path,
     )
@@ -304,7 +304,7 @@ def dispatch_task(
         log(f"WARNING: Could not claim task {task_id}: {e}")
         return
 
-    record_task_routing(planspace, task_id, task_type, agent_file, model, db_path=db_path)
+    record_task_routing(planspace, task_id, agent_file, model, db_path=db_path)
     log(f"Dispatching task {task_id}: {task_type} -> {agent_file} ({model})")
 
     artifacts_dir = registry.artifacts

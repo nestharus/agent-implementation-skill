@@ -32,7 +32,7 @@ def check_early_abort(
 
     Returns True if the loop should abort (caller returns None).
     """
-    if Services.pipeline_control().handle_pending_messages(planspace, [], set()):
+    if Services.pipeline_control().handle_pending_messages(planspace):
         Services.communicator().mailbox_send(planspace, parent, f"fail:{section_number}:aborted")
         return True
 

@@ -16,9 +16,8 @@ _DEFAULT_SUMMARIZE_LIMIT = 160
 _ELLIPSIS_LENGTH = 3
 
 
-def parse_timestamp(value: str | int | float, *, assume_tz: str = "UTC") -> tuple[str, int]:
+def parse_timestamp(value: str | int | float) -> tuple[str, int]:
     """Normalize a timestamp to ``(iso_str, epoch_ms)``."""
-    del assume_tz
     if isinstance(value, (int, float)):
         if value > _EPOCH_MS_MAGNITUDE_THRESHOLD:
             ms = int(value)

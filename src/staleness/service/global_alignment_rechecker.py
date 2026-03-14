@@ -47,7 +47,7 @@ def _recheck_section(
     paths = PathRegistry(planspace)
     policy = Services.policies().load(planspace)
     cur_hash = Services.pipeline_control().section_inputs_hash(
-        sec_num, planspace, codespace, sections_by_num,
+        sec_num, planspace, sections_by_num,
     )
     prev_hash_file = paths.phase2_input_hash(sec_num)
     prev_hash = (

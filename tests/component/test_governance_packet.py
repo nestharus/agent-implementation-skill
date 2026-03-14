@@ -46,7 +46,7 @@ def test_build_section_governance_packet_uses_indexes_and_default_profile(
     # Pass a section summary that keyword-matches "governance" in the
     # problem's regions, so _filter_by_regions() can match
     packet_path = build_section_governance_packet(
-        "01", planspace, codespace,
+        "01", planspace,
         section_summary="governance layer traceability",
     )
     packet = json.loads(packet_path.read_text(encoding="utf-8"))
@@ -109,7 +109,7 @@ def test_build_section_governance_packet_filters_patterns_by_regions(
 
     # Section summary about "governance" — should not match "research" pattern
     packet_path = build_section_governance_packet(
-        "01", planspace, codespace,
+        "01", planspace,
         section_summary="governance packet builder for advisory context",
     )
     packet = json.loads(packet_path.read_text(encoding="utf-8"))
@@ -139,7 +139,7 @@ def test_build_section_governance_packet_handles_missing_indexes(
     planspace.mkdir()
     codespace.mkdir()
 
-    packet_path = build_section_governance_packet("02", planspace, codespace)
+    packet_path = build_section_governance_packet("02", planspace)
     packet = json.loads(packet_path.read_text(encoding="utf-8"))
 
     assert packet["section"] == "02"

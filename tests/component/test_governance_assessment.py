@@ -18,7 +18,7 @@ def test_write_post_impl_assessment_prompt_uses_validated_writer(
     planspace.mkdir()
     codespace.mkdir()
 
-    prompt_path = write_post_impl_assessment_prompt("01", planspace, codespace)
+    prompt_path = write_post_impl_assessment_prompt("01", planspace)
     prompt_text = prompt_path.read_text(encoding="utf-8")
 
     assert "Governance packet" in prompt_text

@@ -294,7 +294,6 @@ def _check_alignment_and_requeue(
             queue,
             sections_by_num,
             planspace,
-            codespace,
             **kwargs,
         )
         return True
@@ -413,7 +412,7 @@ def run_proposal_pass(
     completed: set[str] = set()
 
     while queue:
-        if Services.pipeline_control().handle_pending_messages(planspace, queue, completed):
+        if Services.pipeline_control().handle_pending_messages(planspace):
             Services.logger().log("Aborted by parent")
             Services.communicator().mailbox_send(planspace, parent, "fail:aborted")
             raise ProposalPassExit

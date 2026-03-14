@@ -236,7 +236,7 @@ def reconcile_task_completion(
     _handle_research_completion(
         db_path, planspace, task, status, output_path, error, origin_refs, codespace,
     )
-    _handle_post_impl_assessment_completion(task, status, planspace, codespace)
+    _handle_post_impl_assessment_completion(task, status, planspace)
 
     if status == "failed":
         if chain_id:
@@ -385,10 +385,8 @@ def _handle_post_impl_assessment_completion(
     task: dict,
     status: str,
     planspace: Path,
-    codespace: Path | None,
 ) -> None:
     """Apply post-implementation assessment results on task completion."""
-    del codespace
 
     task_type = str(task.get("task_type") or "")
     if task_type != "implementation.post_assessment" or status != "complete":

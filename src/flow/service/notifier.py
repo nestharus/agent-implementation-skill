@@ -31,14 +31,12 @@ def notify_task_result(
 def record_task_routing(
     planspace: Path,
     task_id: str,
-    task_type: str,
     agent_file: str,
     model: str,
     *,
     db_path: str | Path | None = None,
 ) -> None:
     """Update the task row with the resolved agent file and model."""
-    del task_type
     resolved_db_path = (
         Path(db_path) if db_path is not None else PathRegistry(planspace).run_db()
     )
@@ -53,7 +51,6 @@ def record_task_routing(
 def record_qa_intercept(
     planspace: Path,
     task_id: str,
-    task_type: str,
     rejection_reason: str | None,
     *,
     db_path: str | Path | None = None,
@@ -65,7 +62,6 @@ def record_qa_intercept(
     genuine approval.  When *reason_code* is set and *rejection_reason*
     is None, the verdict is ``degraded`` (not ``passed``).
     """
-    del task_type
     resolved_db_path = (
         str(db_path) if db_path is not None else str(PathRegistry(planspace).run_db())
     )

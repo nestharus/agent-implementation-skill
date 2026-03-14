@@ -64,15 +64,12 @@ def check_for_messages(
 
 def handle_pending_messages(
     planspace: Path,
-    queue: list[str],
-    completed: set[str],
     *,
     db_sh: Path,
     agent_name: str,
 ) -> bool:
     """Process pending mailbox messages. Returns True on abort."""
     log = Services.logger().log
-    del queue, completed
     for msg in check_for_messages(
         planspace,
         db_sh=db_sh,

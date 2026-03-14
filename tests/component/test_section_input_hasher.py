@@ -22,8 +22,8 @@ class TestSectionInputsHash:
     def test_is_deterministic(self, planspace: Path, codespace: Path) -> None:
         sections = self._make_sections_by_num(planspace)
 
-        h1 = section_inputs_hash("01", planspace, codespace, sections)
-        h2 = section_inputs_hash("01", planspace, codespace, sections)
+        h1 = section_inputs_hash("01", planspace, sections)
+        h2 = section_inputs_hash("01", planspace, sections)
 
         assert h1 == h2
         assert len(h1) == 64
@@ -38,9 +38,9 @@ class TestSectionInputsHash:
             planspace / "artifacts" / "sections" / "section-01-problem-frame.md"
         )
 
-        h1 = section_inputs_hash("01", planspace, codespace, sections)
+        h1 = section_inputs_hash("01", planspace, sections)
         problem_frame.write_text("summarized problem frame", encoding="utf-8")
-        h2 = section_inputs_hash("01", planspace, codespace, sections)
+        h2 = section_inputs_hash("01", planspace, sections)
 
         assert h1 != h2
 
@@ -57,9 +57,9 @@ class TestSectionInputsHash:
         referenced.write_text("value = 1\n", encoding="utf-8")
         (inputs_dir / "config.ref").write_text(str(referenced), encoding="utf-8")
 
-        h1 = section_inputs_hash("01", planspace, codespace, sections)
+        h1 = section_inputs_hash("01", planspace, sections)
         referenced.write_text("value = 2\n", encoding="utf-8")
-        h2 = section_inputs_hash("01", planspace, codespace, sections)
+        h2 = section_inputs_hash("01", planspace, sections)
 
         assert h1 != h2
 
@@ -79,9 +79,9 @@ class TestSectionInputsHash:
         )
         dossier_path.parent.mkdir(parents=True, exist_ok=True)
 
-        h1 = section_inputs_hash("01", planspace, codespace, sections)
+        h1 = section_inputs_hash("01", planspace, sections)
         dossier_path.write_text("fresh research", encoding="utf-8")
-        h2 = section_inputs_hash("01", planspace, codespace, sections)
+        h2 = section_inputs_hash("01", planspace, sections)
 
         assert h1 != h2
 
@@ -99,12 +99,12 @@ class TestSectionInputsHash:
         )
         feedback_path.parent.mkdir(parents=True, exist_ok=True)
 
-        h1 = section_inputs_hash("01", planspace, codespace, sections)
+        h1 = section_inputs_hash("01", planspace, sections)
         feedback_path.write_text(
             '{"problem_surfaces":[{"id":"P-01-0001"}]}',
             encoding="utf-8",
         )
-        h2 = section_inputs_hash("01", planspace, codespace, sections)
+        h2 = section_inputs_hash("01", planspace, sections)
 
         assert h1 != h2
 
@@ -122,9 +122,9 @@ class TestSectionInputsHash:
         )
         packet_path.parent.mkdir(parents=True, exist_ok=True)
 
-        h1 = section_inputs_hash("01", planspace, codespace, sections)
+        h1 = section_inputs_hash("01", planspace, sections)
         packet_path.write_text('{"governing_profile": "PHI-global"}', encoding="utf-8")
-        h2 = section_inputs_hash("01", planspace, codespace, sections)
+        h2 = section_inputs_hash("01", planspace, sections)
 
         assert h1 != h2
 

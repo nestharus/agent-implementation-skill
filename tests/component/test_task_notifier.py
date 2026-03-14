@@ -49,7 +49,6 @@ def test_record_task_routing_updates_task_row(tmp_path: Path) -> None:
     record_task_routing(
         planspace,
         task_id,
-        "staleness.alignment_check",
         "alignment-judge.md",
         "test-model",
     )
@@ -67,7 +66,7 @@ def test_record_task_routing_updates_task_row(tmp_path: Path) -> None:
 def test_record_qa_intercept_logs_lifecycle_event(tmp_path: Path) -> None:
     planspace, db_path = _init_planspace(tmp_path)
 
-    record_qa_intercept(planspace, "22", "staleness.alignment_check", "reason.md")
+    record_qa_intercept(planspace, "22", "reason.md")
 
     rows = db_cmd(
         db_path,

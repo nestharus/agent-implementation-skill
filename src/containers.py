@@ -123,9 +123,9 @@ class PipelineControlService:
         from orchestrator.service.pipeline_control import poll_control_messages
         return poll_control_messages(planspace, parent, current_section)
 
-    def handle_pending_messages(self, planspace, sections, affected) -> bool:
+    def handle_pending_messages(self, planspace) -> bool:
         from orchestrator.service.pipeline_control import handle_pending_messages
-        return handle_pending_messages(planspace, sections, affected)
+        return handle_pending_messages(planspace)
 
     def alignment_changed_pending(self, planspace) -> bool:
         from staleness.service.change_tracker import check_pending
@@ -177,20 +177,20 @@ class PipelineControlService:
         wait_if_paused(planspace, parent)
 
     def requeue_changed_sections(
-        self, completed, queue, sections_by_num, planspace, codespace,
+        self, completed, queue, sections_by_num, planspace,
         *, current_section=None,
     ) -> list[str]:
         from orchestrator.service.pipeline_control import requeue_changed_sections
         return requeue_changed_sections(
-            completed, queue, sections_by_num, planspace, codespace,
+            completed, queue, sections_by_num, planspace,
             current_section=current_section,
         )
 
-    def section_inputs_hash(self, section_number, planspace, codespace, sections_by_num=None) -> str:
+    def section_inputs_hash(self, section_number, planspace, sections_by_num=None) -> str:
         from staleness.service.input_hasher import section_inputs_hash
         if sections_by_num is None:
             sections_by_num = {}
-        return section_inputs_hash(section_number, planspace, codespace, sections_by_num)
+        return section_inputs_hash(section_number, planspace, sections_by_num)
 
     def coordination_recheck_hash(self, sec_num, planspace, codespace, sections_by_num=None, modified_files=None) -> str:
         from staleness.service.input_hasher import coordination_recheck_hash

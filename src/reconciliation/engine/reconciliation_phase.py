@@ -70,7 +70,7 @@ def _run_reproposal_loop(
     parent: str,
 ) -> bool:
     for sec_num in reproposal_sections:
-        if Services.pipeline_control().handle_pending_messages(planspace, [], set()):
+        if Services.pipeline_control().handle_pending_messages(planspace):
             Services.logger().log("Aborted by parent during re-proposal pass")
             Services.communicator().mailbox_send(planspace, parent, "fail:aborted")
             raise ReconciliationPhaseExit

@@ -89,8 +89,6 @@ def test_handle_pending_messages_returns_true_for_abort(tmp_path: Path) -> None:
 
     assert handle_pending_messages(
         planspace,
-        [],
-        set(),
         db_sh=DB_SH,
         agent_name="section-loop",
     ) is True
