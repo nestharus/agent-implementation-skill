@@ -241,31 +241,9 @@ def _collect_bootstrap_context_artifacts(
 
 # ── bootstrap prompter (optional guidance generation) ─────────────────
 
-def _run_bootstrap_prompter(
-    planspace: Path,
-    codespace: Path,
-    parent: str,
-    paths: PathRegistry,
-) -> dict[str, Any] | None:
-    policy = Services.policies().load(planspace)
-    context_artifacts = _collect_bootstrap_context_artifacts(
-        planspace,
-        codespace,
-        paths,
-    )
-    if not context_artifacts:
-        Services.logger().log("Intent bootstrap: no project-shaping artifacts available for "
-            "bootstrap guidance — skipping optional prompter")
-        return None
-
-    guidance_path = _bootstrap_guidance_path(paths)
-    prompt_path = paths.philosophy_bootstrap_guidance_prompt()
-    output_path = paths.philosophy_bootstrap_guidance_output()
-    artifacts_block = "\n".join(
-        f"- `{artifact}` ({label})"
-        for label, artifact in context_artifacts
-    )
-    prompt_text = f"""# Task: Generate Optional Philosophy Bootstrap Guidance
+def _compose_bootstrap_guidance_text(artifacts_block: str, guidance_path: Path) -> str:
+    """Build the bootstrap guidance prompt text."""
+    return f"""# Task: Generate Optional Philosophy Bootstrap Guidance
 
 ## Context
 The repository bootstrap confirmed that no authoritative philosophy
@@ -306,6 +284,33 @@ Write JSON to: `{guidance_path}`
 - Avoid implementation tactics, framework choices, and feature requirements
 - If the artifacts do not support meaningful project-shaped prompts, write an empty `prompts` list and explain the context in `project_frame`
 """
+
+
+def _run_bootstrap_prompter(
+    planspace: Path,
+    codespace: Path,
+    parent: str,
+    paths: PathRegistry,
+) -> dict[str, Any] | None:
+    policy = Services.policies().load(planspace)
+    context_artifacts = _collect_bootstrap_context_artifacts(
+        planspace,
+        codespace,
+        paths,
+    )
+    if not context_artifacts:
+        Services.logger().log("Intent bootstrap: no project-shaping artifacts available for "
+            "bootstrap guidance — skipping optional prompter")
+        return None
+
+    guidance_path = _bootstrap_guidance_path(paths)
+    prompt_path = paths.philosophy_bootstrap_guidance_prompt()
+    output_path = paths.philosophy_bootstrap_guidance_output()
+    artifacts_block = "\n".join(
+        f"- `{artifact}` ({label})"
+        for label, artifact in context_artifacts
+    )
+    prompt_text = _compose_bootstrap_guidance_text(artifacts_block, guidance_path)
     if not Services.prompt_guard().write_validated(prompt_text, prompt_path):
         Services.logger().log("Intent bootstrap: bootstrap guidance prompt validation failed "
             "— continuing without optional guidance")
@@ -827,19 +832,9 @@ def _resolve_source_records(ctx: _BootstrapContext) -> dict[str, Any] | None:
     return None
 
 
-def _run_source_selector(ctx: _BootstrapContext) -> dict[str, Any] | None:
-    """Dispatch source selector agent or use user-provided records."""
-    if ctx.source_records is not None:
-        ctx.selected = {"sources": ctx.source_records}
-        return None
-
-    catalog_path = ctx.paths.philosophy_candidate_catalog()
-    selector_prompt = ctx.paths.philosophy_select_prompt()
-    selector_output = ctx.paths.philosophy_select_output()
-    selected_signal = ctx.paths.signals_dir() / "philosophy-selected-sources.json"
-    selected_signal.parent.mkdir(parents=True, exist_ok=True)
-
-    selector_prompt_text = f"""# Task: Select Philosophy Source Files
+def _compose_source_selector_text(catalog_path: Path, selected_signal: Path) -> str:
+    """Build the source selector prompt text."""
+    return f"""# Task: Select Philosophy Source Files
 
 ## Context
 Select which files from the candidate catalog contain execution
@@ -907,6 +902,21 @@ If NO files contain cross-cutting reasoning philosophy, write:
 {{"status": "empty", "sources": []}}
 ```
 """
+
+
+def _run_source_selector(ctx: _BootstrapContext) -> dict[str, Any] | None:
+    """Dispatch source selector agent or use user-provided records."""
+    if ctx.source_records is not None:
+        ctx.selected = {"sources": ctx.source_records}
+        return None
+
+    catalog_path = ctx.paths.philosophy_candidate_catalog()
+    selector_prompt = ctx.paths.philosophy_select_prompt()
+    selector_output = ctx.paths.philosophy_select_output()
+    selected_signal = ctx.paths.signals_dir() / "philosophy-selected-sources.json"
+    selected_signal.parent.mkdir(parents=True, exist_ok=True)
+
+    selector_prompt_text = _compose_source_selector_text(catalog_path, selected_signal)
     if not Services.prompt_guard().write_validated(selector_prompt_text, selector_prompt):
         return _block_bootstrap(
             ctx.paths,
@@ -1084,25 +1094,9 @@ def _run_extension_pass(ctx: _BootstrapContext) -> dict[str, Any] | None:
 _AMBIGUOUS_CAP = 5
 
 
-def _run_source_verifier(ctx: _BootstrapContext) -> dict[str, Any] | None:
-    """Build shortlist from selected+ambiguous, dispatch verifier agent."""
-    shortlisted = _build_verification_shortlist(ctx)
-    if not shortlisted:
-        return None
-
-    Services.logger().log(f"Intent bootstrap: verifying {len(shortlisted)} shortlisted "
-        "philosophy candidate(s) (full-read invariant check)")
-
-    verify_prompt = ctx.paths.philosophy_verify_prompt()
-    verify_output = ctx.paths.philosophy_verify_output()
-    verify_signal = ctx.paths.signals_dir() / "philosophy-verified-sources.json"
-    verify_signal.parent.mkdir(parents=True, exist_ok=True)
-
-    candidates_block = "\n".join(
-        f"- `{entry['path']}` — {entry.get('reason', 'shortlisted')}"
-        for entry in shortlisted
-    )
-    verify_prompt_text = f"""# Task: Verify Shortlisted Philosophy Sources
+def _compose_verify_sources_text(candidates_block: str, verify_signal: Path) -> str:
+    """Build the source verifier prompt text."""
+    return f"""# Task: Verify Shortlisted Philosophy Sources
 
 ## Context
 The source selector shortlisted these files as possible philosophy
@@ -1142,6 +1136,27 @@ Write a JSON signal to: `{verify_signal}`
 }}}}
 ```
 """
+
+
+def _run_source_verifier(ctx: _BootstrapContext) -> dict[str, Any] | None:
+    """Build shortlist from selected+ambiguous, dispatch verifier agent."""
+    shortlisted = _build_verification_shortlist(ctx)
+    if not shortlisted:
+        return None
+
+    Services.logger().log(f"Intent bootstrap: verifying {len(shortlisted)} shortlisted "
+        "philosophy candidate(s) (full-read invariant check)")
+
+    verify_prompt = ctx.paths.philosophy_verify_prompt()
+    verify_output = ctx.paths.philosophy_verify_output()
+    verify_signal = ctx.paths.signals_dir() / "philosophy-verified-sources.json"
+    verify_signal.parent.mkdir(parents=True, exist_ok=True)
+
+    candidates_block = "\n".join(
+        f"- `{entry['path']}` — {entry.get('reason', 'shortlisted')}"
+        for entry in shortlisted
+    )
+    verify_prompt_text = _compose_verify_sources_text(candidates_block, verify_signal)
     if not Services.prompt_guard().write_validated(verify_prompt_text, verify_prompt):
         return _block_bootstrap(
             ctx.paths,
