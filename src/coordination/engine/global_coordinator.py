@@ -227,7 +227,6 @@ def _classify_alignment_result(
     section_results: dict[str, SectionResult],
     problems: list[dict],
     recurrence: dict | None,
-    coord_dir: Path,
     planspace: Path,
 ) -> bool:
     """Classify alignment check outcome and record result.
@@ -240,7 +239,7 @@ def _classify_alignment_result(
             section_number=sec_num, aligned=True,
         )
         _record_recurrence_resolution(
-            sec_num, problems, recurrence, coord_dir, planspace,
+            sec_num, problems, recurrence, planspace,
         )
         return True
 
@@ -259,7 +258,6 @@ def _classify_alignment_result(
 
 
 def _recheck_section_alignment(
-    sec_num: str,
     section: Section,
     section_results: dict[str, SectionResult],
     problems: list[dict],
@@ -273,8 +271,8 @@ def _recheck_section_alignment(
     Returns ``True`` if aligned, ``False`` if still has problems,
     or ``None`` if alignment changed (caller should abort).
     """
+    sec_num = section.number
     paths = PathRegistry(planspace)
-    coord_dir = paths.coordination_dir()
     policy = Services.policies().load(planspace)
 
     notes = read_incoming_notes(section, planspace, codespace)
@@ -331,7 +329,7 @@ def _recheck_section_alignment(
 
     return _classify_alignment_result(
         sec_num, align_problems, signal, detail,
-        section_results, problems, recurrence, coord_dir, planspace,
+        section_results, problems, recurrence, planspace,
     )
 
 
@@ -360,7 +358,6 @@ def _record_recurrence_resolution(
     sec_num: str,
     problems: list[dict],
     recurrence: dict | None,
-    coord_dir: Path,
     planspace: Path,
 ) -> None:
     """Write resolution artifact if this section had a recurring problem."""
@@ -375,6 +372,7 @@ def _record_recurrence_resolution(
     if not prev_problem:
         return
     policy = Services.policies().load(planspace)
+    coord_dir = PathRegistry(planspace).coordination_dir()
     resolution_path = coord_dir / f"resolution-{sec_num}.md"
     resolution_path.write_text(
         _compose_recurrence_text(
@@ -436,7 +434,7 @@ def _recheck_affected_sections(
             return None
 
         result = _recheck_section_alignment(
-            sec_num, section, section_results, problems, recurrence,
+            section, section_results, problems, recurrence,
             planspace, codespace, parent,
         )
         if result is None:
