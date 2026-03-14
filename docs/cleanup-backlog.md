@@ -452,7 +452,7 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Source**: Expanded reviewer scan R120 (CODE-S3 from code-style-review)
 - **Top 5**: `submit_task()` 18 params, `_request_user_philosophy()` 15 params, `_dispatch_classified_signal_stage()` 13 params, `_write_prompt()` 13 params, `handle_tool_friction()` 12 params.
 - **Overlap**: Subsumes #93 (long parameter lists). This is the precise inventory.
-- **Status**: PARTIALLY DONE — Down to 49 functions with 8+ params (from 128+). Systematic elimination of redundant `paths: PathRegistry` (derivable from `planspace`), `policy: dict` (derivable via `Services.policies().load(planspace)`), `artifacts` (derivable from `planspace`), `coord_dir` (derivable from `planspace`), `sec_num` (derivable from `section.number`), and dead params across ~80 functions in Cycles 12-16. Remaining 49 are mostly at 8-9 params with no derivable redundancy — params are genuinely distinct data (DB insertion columns, dispatch configs, prompt data, hash inputs). Top remaining: `submit_task` (17, all keyword-only DB columns), `_apply_and_finalize` (11), `_block_bootstrap` (10).
+- **Status**: PARTIALLY DONE — Down to 48 functions with 8+ params (from 128+). Systematic elimination of redundant `paths: PathRegistry` (derivable from `planspace`), `policy: dict` (derivable via `Services.policies().load(planspace)`), `artifacts` (derivable from `planspace`), `coord_dir` (derivable from `planspace`), `sec_num` (derivable from `section.number`), and dead params across ~80 functions in Cycles 12-16. Remaining 49 are mostly at 8-9 params with no derivable redundancy — params are genuinely distinct data (DB insertion columns, dispatch configs, prompt data, hash inputs). Top remaining: `submit_task` (17, all keyword-only DB columns), `_apply_and_finalize` (11), `_block_bootstrap` (10).
 
 ### 130. Broad `except Exception` without `# noqa: BLE001` (CODE-E1)
 - **Category**: Error handling / exception specificity
@@ -629,6 +629,19 @@ Functions that take parameters obtainable from the DI container are exposing unn
   - Context builder protocol simplified: 5 inner `_build_context` functions (4→3 params each)
   - Fixed latent `NameError` for `coord_dir` in `_build_coordination_plan`
 - **Remaining 8+ param functions**: 49 (down from 51)
+- **Status**: DONE
+
+### 140. Cycle 16 continued — dead parameter sweep across flow, governance, pipeline
+- **Category**: Dead code / parameter reduction
+- **Dead params removed (Cycle 16b)**:
+  - `artifacts: Path` dead in `_check_upstream_freshness` — propagated removal through `_run_section_implementation_steps`, `_run_implementation_pass`, and `run_section` (entire artifacts threading chain was dead)
+  - `codespace: Path` dead in `write_bridge_prompt` (coordination/prompt/writers.py)
+  - `model_policy: dict | None` dead in `write_integration_proposal_prompt` and `write_strategic_impl_prompt`
+  - `codespace: Path` dead in `_write_traceability_index`
+  - `task_id: int` dead in `build_flow_context` (5→4 params)
+  - `planspace: Path` dead in `bootstrap_governance_if_missing`
+  - `registry: PathRegistry` dead in `_check_prerequisites` (substrate_discoverer.py)
+- **Remaining 8+ param functions**: 48 (down from 49)
 - **Status**: DONE
 
 ---
