@@ -12,7 +12,8 @@ from orchestrator.path_registry import PathRegistry
 from containers import Services
 from intent.service.expansion_facade import handle_user_gate, run_expansion_cycle
 from orchestrator.types import PauseType
-from signals.types import ACTION_CONTINUE
+from proposal.service.cycle_control import handle_pause_response
+from signals.types import ACTION_ABORT, ACTION_CONTINUE, RESUME_PREFIX
 
 
 def _handle_budget_exhaustion(
@@ -42,7 +43,7 @@ def _handle_budget_exhaustion(
         f"pause:{PauseType.INTENT_STALLED}:{section_number}:"
         f"expansion budget exhausted ({expansion_count}/{expansion_max})",
     )
-    if not response.startswith("resume"):
+    if not response.startswith(RESUME_PREFIX):
         return None
     return "break"
 
@@ -96,14 +97,10 @@ def run_aligned_expansion(
             parent,
             delta_result,
         )
-        if gate_response and not gate_response.startswith("resume"):
-            return None
         if gate_response:
-            payload = gate_response.partition(":")[2].strip()
-            if payload:
-                Services.cross_section().persist_decision(planspace, section_number, payload)
-        if Services.pipeline_control().alignment_changed_pending(planspace):
-            return None
+            result = handle_pause_response(planspace, section_number, gate_response)
+            if result == ACTION_ABORT:
+                return None
 
     if delta_result.get("restart_required"):
         Services.logger().log(
@@ -160,9 +157,7 @@ def run_misaligned_expansion(
             parent,
             delta_result,
         )
-        if gate_response and not gate_response.startswith("resume"):
-            return
         if gate_response:
-            payload = gate_response.partition(":")[2].strip()
-            if payload:
-                Services.cross_section().persist_decision(planspace, section_number, payload)
+            result = handle_pause_response(planspace, section_number, gate_response)
+            if result == ACTION_ABORT:
+                return

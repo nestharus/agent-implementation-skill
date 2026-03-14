@@ -33,6 +33,23 @@ if TYPE_CHECKING:
 # Service classes
 # ---------------------------------------------------------------------------
 
+class ConfigService:
+    """Agent configuration constants routed through DI."""
+
+    def __init__(self) -> None:
+        from _config import AGENT_NAME, DB_SH
+        self._agent_name = AGENT_NAME
+        self._db_sh = DB_SH
+
+    @property
+    def agent_name(self) -> str:
+        return self._agent_name
+
+    @property
+    def db_sh(self):
+        return self._db_sh
+
+
 class AgentDispatcher:
     """Dispatches agents to LLM providers.
 
@@ -235,18 +252,18 @@ class LogService:
     def log_lifecycle(self, planspace, event: str, status: str) -> None:
         """Log a lifecycle event to the coordination database."""
         import subprocess
-        from _config import AGENT_NAME, DB_SH
+        cfg = Services.config()
         subprocess.run(  # noqa: S603
             [
                 "bash",
-                str(DB_SH),  # noqa: S607
+                str(cfg.db_sh),  # noqa: S607
                 "log",
                 str(planspace / "run.db"),
                 "lifecycle",
                 event,
                 status,
                 "--agent",
-                AGENT_NAME,
+                cfg.agent_name,
             ],
             capture_output=True,
             text=True,
@@ -380,14 +397,14 @@ class ChangeTrackerService:
     """Alignment change flag and excerpt invalidation."""
 
     def set_flag(self, planspace) -> None:
-        from _config import AGENT_NAME, DB_SH
         from staleness.service.change_tracker import set_flag
-        set_flag(planspace, db_sh=DB_SH, agent_name=AGENT_NAME)
+        cfg = Services.config()
+        set_flag(planspace, db_sh=cfg.db_sh, agent_name=cfg.agent_name)
 
     def make_alignment_checker(self):
-        from _config import AGENT_NAME, DB_SH
         from staleness.service.change_tracker import make_alignment_checker
-        return make_alignment_checker(DB_SH, AGENT_NAME)
+        cfg = Services.config()
+        return make_alignment_checker(cfg.db_sh, cfg.agent_name)
 
     def invalidate_excerpts(self, planspace) -> None:
         from staleness.service.change_tracker import invalidate_excerpts
@@ -452,6 +469,7 @@ class SectionAlignmentService:
 class Services(containers.DeclarativeContainer):
     """Root container — one provider per cross-cutting service."""
 
+    config = providers.Singleton(ConfigService)
     dispatcher = providers.Singleton(AgentDispatcher)
     prompt_guard = providers.Singleton(PromptGuard)
     policies = providers.Singleton(ModelPolicyService)

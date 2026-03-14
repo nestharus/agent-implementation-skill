@@ -34,7 +34,6 @@ def write_model_choice_signal(
 ) -> None:
     """Write a structured model-choice signal for auditability."""
     signals_dir = PathRegistry(planspace).signals_dir()
-    signals_dir.mkdir(parents=True, exist_ok=True)
     signal = {
         "section": section,
         "step": step,

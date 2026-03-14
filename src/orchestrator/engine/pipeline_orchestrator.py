@@ -23,7 +23,6 @@ from proposal.engine.proposal_phase import ProposalPassExit, run_proposal_pass
 from reconciliation.engine.reconciliation_phase import ReconciliationPhaseExit, run_reconciliation_phase
 from scan.service.section_loader import load_sections
 
-from _config import AGENT_NAME
 from flow.service.task_db_client import init_db
 
 from containers import Services
@@ -69,12 +68,13 @@ def main() -> None:
         sys.exit(1)
 
     paths = PathRegistry(args.planspace)
+    paths.ensure_artifacts_tree()
     sections_dir = paths.sections_dir()
 
     # Initialize coordination DB (idempotent) and register
     init_db(paths.run_db())
     Services.communicator().mailbox_register(args.planspace)
-    Services.logger().log(f"Registered: {AGENT_NAME} (parent: {args.parent})")
+    Services.logger().log(f"Registered: {Services.config().agent_name} (parent: {args.parent})")
 
     ctx = DispatchContext(planspace=args.planspace, codespace=args.codespace, parent=args.parent)
 

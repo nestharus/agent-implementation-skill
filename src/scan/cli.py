@@ -114,7 +114,6 @@ def main(argv: list[str] | None = None) -> int:
     scan_log_dir = registry.scan_logs_dir()
     fingerprint_path = registry.codemap_fingerprint()
 
-    scan_log_dir.mkdir(parents=True, exist_ok=True)
 
     if not validate_preflight(codespace, sections_dir):
         return 1

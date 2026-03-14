@@ -11,37 +11,15 @@ from signals.service.blocker_manager import (
     update_blocker_rollup,
 )
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
-from signals.types import ACTION_CONTINUE, SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE, TRUNCATE_DETAIL
-
-
-def _write_scope_delta(
-    paths: PathRegistry, signal_dir: Path, section_number: str, detail: str,
-) -> None:
-    """Write a scope delta artifact for an out-of-scope signal."""
-    scope_delta_dir = paths.scope_deltas_dir()
-    scope_delta_dir.mkdir(parents=True, exist_ok=True)
-    setup_sig_path = signal_dir / f"setup-{section_number}-signal.json"
-    signal_payload = Services.artifact_io().read_json_or_default(setup_sig_path, {})
-    scope_delta = {
-        "delta_id": f"delta-{section_number}-setup-oos",
-        "section": section_number,
-        "signal": SIGNAL_OUT_OF_SCOPE,
-        "detail": detail,
-        "requires_root_reframing": True,
-        "signal_path": str(setup_sig_path),
-        "signal_payload": signal_payload,
-    }
-    Services.artifact_io().write_json(
-        paths.scope_delta_section(section_number),
-        scope_delta,
-    )
+from proposal.service.cycle_control import handle_pause_response, write_scope_delta
+from signals.types import ACTION_ABORT, SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE, TRUNCATE_DETAIL
 
 
 def _handle_setup_signal(
     signal: str, detail: str, planspace: Path, parent: str,
     section_number: str,
 ) -> str | None:
-    """Handle a setup agent signal. Returns None to abort, 'continue' to retry."""
+    """Handle a setup agent signal. Returns 'abort' or 'continue'."""
     if signal in (SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE):
         append_open_problem(planspace, section_number, detail, signal)
         Services.communicator().mailbox_send(
@@ -49,21 +27,14 @@ def _handle_setup_signal(
             f"open-problem:{section_number}:{signal}:{detail[:TRUNCATE_DETAIL]}",
         )
     if signal == SIGNAL_OUT_OF_SCOPE:
-        paths = PathRegistry(planspace)
-        _write_scope_delta(paths, paths.signals_dir(), section_number, detail)
+        sig_path = PathRegistry(planspace).signals_dir() / f"setup-{section_number}-signal.json"
+        write_scope_delta(planspace, sig_path, section_number, detail, "setup")
     update_blocker_rollup(planspace)
     response = Services.pipeline_control().pause_for_parent(
         planspace, parent,
         f"pause:{signal}:{section_number}:{detail}",
     )
-    if not response.startswith("resume"):
-        return None
-    payload = response.partition(":")[2].strip()
-    if payload:
-        Services.cross_section().persist_decision(planspace, section_number, payload)
-    if Services.pipeline_control().alignment_changed_pending(planspace):
-        return None
-    return ACTION_CONTINUE
+    return handle_pause_response(planspace, section_number, response)
 
 
 def extract_excerpts(
@@ -96,10 +67,11 @@ def extract_excerpts(
             agent_file=Services.task_router().agent_for("proposal.section_setup"),
         )
         if output == ALIGNMENT_CHANGED_PENDING:
+            Services.logger().log(f"Section {section.number}: alignment changed during setup dispatch — aborting")
             return None
         Services.communicator().mailbox_send(
             planspace, parent,
-            f"summary:setup:{section.number}:{Services.dispatch_helpers().summarize_output(output)}",
+            f"summary:setup:{section.number}:{Services.dispatch_helpers().summarize_output(output.output)}",
         )
 
         signal, detail = Services.dispatch_helpers().check_agent_signals(
@@ -110,7 +82,7 @@ def extract_excerpts(
                 signal, detail, planspace, parent,
                 section.number,
             )
-            if result is None:
+            if result == ACTION_ABORT:
                 return None
             continue
 

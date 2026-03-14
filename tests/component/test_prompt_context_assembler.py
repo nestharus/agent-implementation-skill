@@ -7,11 +7,13 @@ from src.dispatch.prompt.context_assembler import (
     build_impl_context_extras,
     build_proposal_context_extras,
 )
+from src.orchestrator.path_registry import PathRegistry
 
 
 def _section(planspace: Path, number: str = "01") -> Section:
+    planspace.mkdir(exist_ok=True)
+    PathRegistry(planspace).ensure_artifacts_tree()
     path = planspace / "artifacts" / "sections" / f"section-{number}.md"
-    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("# Section\n", encoding="utf-8")
     return Section(number=number, path=path)
 
@@ -24,7 +26,6 @@ def test_build_proposal_context_extras_writes_problem_and_note_artifacts(
     proposal_path = (
         planspace / "artifacts" / "proposals" / "section-01-integration-proposal.md"
     )
-    proposal_path.parent.mkdir(parents=True, exist_ok=True)
     proposal_path.write_text("# Existing\n", encoding="utf-8")
 
     extras = build_proposal_context_extras(
@@ -70,18 +71,14 @@ def test_build_impl_context_extras_collects_optional_refs_and_tooling(
     artifacts = planspace / "artifacts"
 
     decisions_path = artifacts / "decisions" / "section-01.md"
-    decisions_path.parent.mkdir(parents=True, exist_ok=True)
     decisions_path.write_text("## Decision\n", encoding="utf-8")
     corrections_path = artifacts / "signals" / "codemap-corrections.json"
-    corrections_path.parent.mkdir(parents=True, exist_ok=True)
     corrections_path.write_text("{}\n", encoding="utf-8")
     codemap_path = artifacts / "codemap.md"
     codemap_path.write_text("# Codemap\n", encoding="utf-8")
     todos_path = artifacts / "todos" / "section-01-todos.md"
-    todos_path.parent.mkdir(parents=True, exist_ok=True)
     todos_path.write_text("# TODOs\n", encoding="utf-8")
     tools_path = artifacts / "sections" / "section-01-tools-available.md"
-    tools_path.parent.mkdir(parents=True, exist_ok=True)
     tools_path.write_text("# Tools\n", encoding="utf-8")
 
     extras = build_impl_context_extras(

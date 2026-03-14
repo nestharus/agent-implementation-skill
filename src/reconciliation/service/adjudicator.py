@@ -98,10 +98,10 @@ def adjudicate_ungrouped_candidates(
         return []
 
     try:
-        json_start = result.find("{")
-        json_end = result.rfind("}")
+        json_start = result.output.find("{")
+        json_end = result.output.rfind("}")
         if json_start >= 0 and json_end > json_start:
-            data = json.loads(result[json_start:json_end + 1])
+            data = json.loads(result.output[json_start:json_end + 1])
             merged = data.get("merged_groups", [])
             if isinstance(merged, list):
                 return merged

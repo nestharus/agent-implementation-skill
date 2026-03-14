@@ -13,12 +13,11 @@ from orchestrator.service.pipeline_control import (
 )
 from staleness.service.change_tracker import (
     invalidate_excerpts as _invalidate_excerpts,
-    make_alignment_checker,
 )
-from _config import AGENT_NAME, DB_SH
+from containers import Services
 from orchestrator.types import Section
 
-_check_and_clear_alignment_changed = make_alignment_checker(DB_SH, AGENT_NAME)
+_check_and_clear_alignment_changed = Services.change_tracker().make_alignment_checker()
 
 
 class TestAlignmentChangedFlag:

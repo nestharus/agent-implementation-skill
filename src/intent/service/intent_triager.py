@@ -38,7 +38,6 @@ def run_intent_triage(
     """
     policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
-    paths.signals_dir().mkdir(parents=True, exist_ok=True)
 
     triage_signal_path = paths.intent_triage_signal(section_number)
     triage_prompt_path = paths.intent_triage_prompt(section_number)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from src.orchestrator.path_registry import PathRegistry
 from src.scan.substrate.prompt_builder import (
     write_pruner_prompt,
     write_seeder_prompt,
@@ -11,11 +12,12 @@ from src.scan.substrate.prompt_builder import (
 
 def test_write_shard_prompt_includes_optional_context_paths(tmp_path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     artifacts = planspace / "artifacts"
     codespace = tmp_path / "codespace"
     codespace.mkdir()
     section_path = artifacts / "sections" / "section-01.md"
-    section_path.parent.mkdir(parents=True, exist_ok=True)
     section_path.write_text("# Section 01\n", encoding="utf-8")
     (artifacts / "codemap.md").write_text("# Codemap\n", encoding="utf-8")
     proposal_excerpt = artifacts / "sections" / "section-01-proposal-excerpt.md"
@@ -29,7 +31,6 @@ def test_write_shard_prompt_includes_optional_context_paths(tmp_path) -> None:
     (intent_dir / "problem.md").write_text("problem\n", encoding="utf-8")
     (intent_dir / "problem-alignment.md").write_text("rubric\n", encoding="utf-8")
     corrections = artifacts / "signals" / "codemap-corrections.json"
-    corrections.parent.mkdir(parents=True, exist_ok=True)
     corrections.write_text("{}\n", encoding="utf-8")
 
     prompt_path = write_shard_prompt("01", section_path, planspace, codespace)
@@ -45,15 +46,15 @@ def test_write_shard_prompt_includes_optional_context_paths(tmp_path) -> None:
 
 def test_write_pruner_prompt_lists_targets_and_available_refs(tmp_path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     artifacts = planspace / "artifacts"
     codespace = tmp_path / "codespace"
     codespace.mkdir()
-    (artifacts / "proposal.md").parent.mkdir(parents=True, exist_ok=True)
     (artifacts / "proposal.md").write_text("proposal\n", encoding="utf-8")
     (artifacts / "alignment.md").write_text("alignment\n", encoding="utf-8")
     (artifacts / "codemap.md").write_text("# Codemap\n", encoding="utf-8")
     philosophy = artifacts / "intent" / "global" / "philosophy.md"
-    philosophy.parent.mkdir(parents=True, exist_ok=True)
     philosophy.write_text("philosophy\n", encoding="utf-8")
 
     prompt_path = write_pruner_prompt(planspace, codespace, ["01", "02", "03"])
@@ -70,13 +71,13 @@ def test_write_seeder_prompt_points_to_outputs_and_optional_codemap(
     tmp_path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     artifacts = planspace / "artifacts"
     codespace = tmp_path / "codespace"
     codespace.mkdir()
-    (artifacts / "codemap.md").parent.mkdir(parents=True, exist_ok=True)
     (artifacts / "codemap.md").write_text("# Codemap\n", encoding="utf-8")
     corrections = artifacts / "signals" / "codemap-corrections.json"
-    corrections.parent.mkdir(parents=True, exist_ok=True)
     corrections.write_text("{}\n", encoding="utf-8")
 
     prompt_path = write_seeder_prompt(planspace, codespace)

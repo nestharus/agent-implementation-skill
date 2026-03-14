@@ -21,7 +21,7 @@ from intake.service.governance_packet_builder import build_section_governance_pa
 from orchestrator.types import PauseType, Section
 
 from pipeline import AlignmentGuard, Pipeline, PipelineContext, Step
-from signals.types import BLOCKING_NEEDS_PARENT, BLOCKING_NEED_DECISION
+from signals.types import BLOCKING_NEEDS_PARENT, BLOCKING_NEED_DECISION, INTENT_MODE_FULL, INTENT_MODE_LIGHTWEIGHT
 
 _SECTION_SUMMARY_TRUNCATION = 500
 
@@ -65,7 +65,7 @@ def _step_triage(ctx: PipelineContext) -> dict:
         solve_count=ctx.section.solve_count,
         section_summary=pf_content[:_SECTION_SUMMARY_TRUNCATION] if pf_content else "",
     )
-    ctx.state["intent_mode"] = result.get("intent_mode", "lightweight")
+    ctx.state["intent_mode"] = result.get("intent_mode", INTENT_MODE_LIGHTWEIGHT)
     ctx.state["intent_budgets"] = result.get("budgets", {})
     return result
 
@@ -208,7 +208,7 @@ def _has_related_files(ctx: PipelineContext) -> bool:
 
 
 def _is_full_mode(ctx: PipelineContext) -> bool:
-    return ctx.state.get("intent_mode") == "full"
+    return ctx.state.get("intent_mode") == INTENT_MODE_FULL
 
 
 # -- Pipeline definition --------------------------------------------------

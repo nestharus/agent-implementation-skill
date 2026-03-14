@@ -7,6 +7,7 @@ import pytest
 from dependency_injector import providers
 
 from containers import FreshnessService, Services
+from src.orchestrator.path_registry import PathRegistry
 from src.proposal.engine.readiness_gate import (
     publish_discoveries,
     resolve_and_route,
@@ -21,7 +22,6 @@ def _section(planspace: Path) -> Section:
         number="03",
         path=planspace / "artifacts" / "sections" / "section-03.md",
     )
-    section.path.parent.mkdir(parents=True, exist_ok=True)
     section.path.write_text("# Section 03\n", encoding="utf-8")
     return section
 
@@ -30,8 +30,8 @@ def test_publish_discoveries_writes_scope_delta_and_research_artifact(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     planspace = tmp_path / "planspace"
-    (planspace / "artifacts" / "scope-deltas").mkdir(parents=True, exist_ok=True)
-    (planspace / "artifacts" / "open-problems").mkdir(parents=True, exist_ok=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     appended: list[str] = []
     monkeypatch.setattr(
         "src.proposal.engine.readiness_gate.append_open_problem",
@@ -60,7 +60,8 @@ def test_route_blockers_writes_signals_and_queues_reconciliation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     planspace = tmp_path / "planspace"
-    (planspace / "artifacts" / "signals").mkdir(parents=True, exist_ok=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     queued: list[tuple[list[str], list[str]]] = []
 
     monkeypatch.setattr(
@@ -101,13 +102,13 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     planspace = tmp_path / "planspace"
-    (planspace / "artifacts" / "signals").mkdir(parents=True, exist_ok=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     submitted: list[dict] = []
     prompt_calls: list[dict] = []
     status_writes: list[tuple[str, Path, str]] = []
 
     prompt_path = planspace / "artifacts" / "research-plan-03-prompt.md"
-    prompt_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_path.write_text("# Prompt\n", encoding="utf-8")
 
     monkeypatch.setattr(
@@ -418,9 +419,9 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
     monkeypatch: pytest.MonkeyPatch,
     noop_communicator) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     artifacts = planspace / "artifacts"
-    (artifacts / "proposals").mkdir(parents=True, exist_ok=True)
-    (artifacts / "signals").mkdir(parents=True, exist_ok=True)
     section = _section(planspace)
     proposal_state_path = artifacts / "proposals" / "section-03-proposal-state.json"
     proposal_state_path.write_text(

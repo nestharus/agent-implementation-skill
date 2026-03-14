@@ -101,7 +101,7 @@ def _dispatch_and_parse_plan(
     if plan_result == ALIGNMENT_CHANGED_PENDING:
         return None
 
-    coord_plan = _parse_coordination_plan(plan_result, problems)
+    coord_plan = _parse_coordination_plan(plan_result.output, problems)
     if coord_plan is None:
         Services.logger().log("  coordinator: plan parse failed — retrying with "
             "escalation model")
@@ -112,7 +112,7 @@ def _dispatch_and_parse_plan(
         )
         if retry_result == ALIGNMENT_CHANGED_PENDING:
             return None
-        coord_plan = _parse_coordination_plan(retry_result, problems)
+        coord_plan = _parse_coordination_plan(retry_result.output, problems)
 
     if coord_plan is None:
         Services.logger().log("  coordinator: plan parse failed after retry — fail closed")
@@ -317,8 +317,6 @@ def _recheck_section_alignment(
         planspace=ctx.planspace, parent=ctx.parent, codespace=ctx.codespace,
         adjudicator_model=ctx.resolve_model("adjudicator"),
     )
-    coord_signal_dir = ctx.paths.coordination_signals_dir()
-    coord_signal_dir.mkdir(parents=True, exist_ok=True)
     signal, detail = Services.dispatch_helpers().check_agent_signals(
         signal_path=ctx.paths.coordination_align_signal(sec_num),
     )
@@ -471,9 +469,6 @@ def run_global_coordination(
 
     Returns True if all sections are ALIGNED (or no problems remain).
     """
-    coord_dir = ctx.paths.coordination_dir()
-    coord_dir.mkdir(parents=True, exist_ok=True)
-
     # Phase 1: Collect problems + detect recurrence
     collected = _collect_and_persist_problems(
         section_results, sections_by_num, ctx.planspace,

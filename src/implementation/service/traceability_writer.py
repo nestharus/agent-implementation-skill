@@ -76,8 +76,6 @@ def write_traceability_index(
 ) -> None:
     """Write a traceability index for a completed section."""
     paths = PathRegistry(planspace)
-    trace_dir = paths.trace_dir()
-    trace_dir.mkdir(parents=True, exist_ok=True)
     sec = section.number
 
     proposal_excerpt = paths.proposal_excerpt(sec)

@@ -18,6 +18,7 @@ from unittest.mock import patch
 import pytest
 
 from _paths import DB_SH, WORKFLOW_HOME
+from src.orchestrator.path_registry import PathRegistry
 from conftest import override_dispatcher_and_guard
 
 # ---------------------------------------------------------------------------
@@ -39,8 +40,7 @@ def _setup_planspace(tmp_path: Path) -> Path:
     """Create a planspace with initialized DB."""
     ps = tmp_path / "planspace"
     ps.mkdir()
-    artifacts = ps / "artifacts"
-    artifacts.mkdir(parents=True)
+    PathRegistry(ps).ensure_artifacts_tree()
     _init_db(ps / "run.db")
     return ps
 
@@ -68,7 +68,7 @@ class TestReadQaParameters:
 
         ps = tmp_path / "planspace"
         ps.mkdir()
-        (ps / "artifacts").mkdir()
+        PathRegistry(ps).ensure_artifacts_tree()
 
         result = read_qa_parameters(ps)
         assert result == {"qa_mode": False}
@@ -79,8 +79,8 @@ class TestReadQaParameters:
 
         ps = tmp_path / "planspace"
         ps.mkdir()
+        PathRegistry(ps).ensure_artifacts_tree()
         artifacts = ps / "artifacts"
-        artifacts.mkdir()
         (artifacts / "parameters.json").write_text(
             json.dumps({"qa_mode": True, "extra": "value"}),
             encoding="utf-8",
@@ -96,8 +96,8 @@ class TestReadQaParameters:
 
         ps = tmp_path / "planspace"
         ps.mkdir()
+        PathRegistry(ps).ensure_artifacts_tree()
         artifacts = ps / "artifacts"
-        artifacts.mkdir()
         params_path = artifacts / "parameters.json"
         params_path.write_text("{not valid json", encoding="utf-8")
 
@@ -112,8 +112,8 @@ class TestReadQaParameters:
 
         ps = tmp_path / "planspace"
         ps.mkdir()
+        PathRegistry(ps).ensure_artifacts_tree()
         artifacts = ps / "artifacts"
-        artifacts.mkdir()
         params_path = artifacts / "parameters.json"
         params_path.write_text("[1, 2, 3]", encoding="utf-8")
 
@@ -129,8 +129,8 @@ class TestReadQaParameters:
 
         ps = tmp_path / "planspace"
         ps.mkdir()
+        PathRegistry(ps).ensure_artifacts_tree()
         artifacts = ps / "artifacts"
-        artifacts.mkdir()
         (artifacts / "parameters.json").write_text(
             json.dumps({"other_param": 42}),
             encoding="utf-8",

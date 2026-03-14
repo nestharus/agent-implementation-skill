@@ -8,6 +8,7 @@ from dependency_injector import providers
 from conftest import NoOpFlow, WritingGuard, make_dispatcher
 from containers import Services
 from src.implementation.service.microstrategy_generator import run_microstrategy
+from src.orchestrator.path_registry import PathRegistry
 from src.orchestrator.types import Section
 
 def _section(planspace: Path) -> Section:
@@ -17,7 +18,6 @@ def _section(planspace: Path) -> Section:
         path=artifacts / "sections" / "section-05.md",
         related_files=["src/main.py"],
     )
-    section.path.parent.mkdir(parents=True, exist_ok=True)
     section.path.write_text("# Section 05\n", encoding="utf-8")
     return section
 
@@ -25,13 +25,8 @@ def _section(planspace: Path) -> Section:
 def env(tmp_path: Path) -> tuple[Path, Path]:
     planspace = tmp_path / "planspace"
     codespace = tmp_path / "codespace"
-    for path in (
-        planspace / "artifacts" / "sections",
-        planspace / "artifacts" / "signals",
-        planspace / "artifacts" / "proposals",
-        planspace / "artifacts" / "todos",
-    ):
-        path.mkdir(parents=True, exist_ok=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     (planspace / "artifacts" / "proposals" / "section-05-integration-proposal.md").write_text(
         "proposal",
         encoding="utf-8",

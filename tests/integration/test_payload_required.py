@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 from _paths import DB_SH
 from conftest import override_dispatcher_and_guard
+from src.orchestrator.path_registry import PathRegistry
 
 from flow.types.schema import (
     BranchSpec,
@@ -46,8 +47,7 @@ def _setup_planspace(tmp_path: Path) -> Path:
     """Create a planspace with initialized DB."""
     ps = tmp_path / "planspace"
     ps.mkdir()
-    artifacts = ps / "artifacts"
-    artifacts.mkdir(parents=True)
+    PathRegistry(ps).ensure_artifacts_tree()
     _init_db(ps / "run.db")
     return ps
 

@@ -163,7 +163,6 @@ def _ensure_contract_delta(
     bridge_reason: str,
 ) -> bool:
     """Retry bridge dispatch if contract delta missing. Returns True on success."""
-    ctx.paths.contracts_dir().mkdir(parents=True, exist_ok=True)
     if contract_delta_path.exists():
         return True
 
@@ -441,7 +440,6 @@ def execute_coordination_plan(
     }
     all_modified: list[str] = []
     coord_dir = ctx.paths.coordination_dir()
-    coord_dir.mkdir(parents=True, exist_ok=True)
 
     for batch_num, batch in enumerate(batches):
         ctrl = Services.pipeline_control().poll_control_messages(ctx.planspace, ctx.parent)

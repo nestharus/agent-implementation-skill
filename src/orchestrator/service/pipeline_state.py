@@ -14,6 +14,31 @@ _DB_BODY_COLUMN_INDEX = 4
 _DB_MIN_COLUMNS = 5
 
 
+def _handle_control_msg(
+    msg: str,
+    mailbox: MailboxService,
+    planspace: Path,
+    parent: str,
+) -> str | None:
+    """Handle abort/alignment_changed control messages.
+
+    Returns ``None`` if the message was handled (control signal),
+    or the original ``msg`` if it should be processed by the caller.
+    """
+    log = Services.logger().log
+    if msg.startswith(ControlSignal.ABORT):
+        log("Received abort — shutting down")
+        mailbox.send(parent, "fail:aborted")
+        mailbox.cleanup()
+        raise PipelineAbortError("abort received")
+    if msg.startswith(ControlSignal.ALIGNMENT_CHANGED):
+        log("Alignment changed — invalidating excerpts")
+        Services.change_tracker().invalidate_excerpts(planspace)
+        Services.change_tracker().set_flag(planspace)
+        return None
+    return msg
+
+
 def check_pipeline_state(planspace: Path, *, db_sh: Path) -> str:
     """Return the latest pipeline-state lifecycle value."""
     line = DatabaseClient.for_planspace(planspace, db_sh).query(
@@ -52,17 +77,10 @@ def wait_if_paused(
         msg = mailbox.recv(timeout=_PAUSE_POLL_TIMEOUT_SECONDS)
         if msg == "TIMEOUT":
             continue
-        if msg.startswith(ControlSignal.ABORT):
-            log("Received abort while paused — shutting down")
-            mailbox.send(parent, "fail:aborted")
-            mailbox.cleanup()
-            raise PipelineAbortError("abort received")
-        if msg.startswith(ControlSignal.ALIGNMENT_CHANGED):
-            log("Alignment changed while paused — invalidating excerpts")
-            Services.change_tracker().invalidate_excerpts(planspace)
-            Services.change_tracker().set_flag(planspace)
+        result = _handle_control_msg(msg, mailbox, planspace, parent)
+        if result is None:
             continue
-        buffered.append(msg)
+        buffered.append(result)
     for msg in buffered:
         mailbox.send(agent_name, msg)
     log("Pipeline resumed")
@@ -87,14 +105,7 @@ def pause_for_parent(
     mailbox.send(parent, signal)
     while True:
         msg = mailbox.recv(timeout=0)
-        if msg.startswith(ControlSignal.ABORT):
-            log("Received abort — shutting down")
-            mailbox.send(parent, "fail:aborted")
-            mailbox.cleanup()
-            raise PipelineAbortError("abort received")
-        if msg.startswith(ControlSignal.ALIGNMENT_CHANGED):
-            log("Alignment changed during pause — invalidating excerpts")
-            Services.change_tracker().invalidate_excerpts(planspace)
-            Services.change_tracker().set_flag(planspace)
+        result = _handle_control_msg(msg, mailbox, planspace, parent)
+        if result is None:
             continue
-        return msg
+        return result

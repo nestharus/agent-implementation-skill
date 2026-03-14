@@ -31,6 +31,22 @@ ALIGNMENT_INVALID_FRAME = "INVALID_FRAME"
 PASS_MODE_PROPOSAL = "proposal"
 PASS_MODE_IMPLEMENTATION = "implementation"
 
+# ── intent mode constants ────────────────────────────────────────────
+
+INTENT_MODE_FULL = "full"
+INTENT_MODE_LIGHTWEIGHT = "lightweight"
+INTENT_MODE_CACHED = "cached"
+
+# ── research type constants ──────────────────────────────────────────
+
+RESEARCH_TYPE_WEB = "web"
+RESEARCH_TYPE_CODE = "code"
+RESEARCH_TYPE_BOTH = "both"
+
+# ── mailbox protocol prefix ──────────────────────────────────────────
+
+RESUME_PREFIX = "resume"
+
 # ── display truncation limits ────────────────────────────────────────
 
 TRUNCATE_DETAIL = 200       # problem descriptions, event details, decision records

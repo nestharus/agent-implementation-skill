@@ -6,6 +6,7 @@ from pathlib import Path
 
 from _paths import DB_SH
 from flow.types.context import FlowEnvelope
+from src.orchestrator.path_registry import PathRegistry
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from src.flow.engine.flow_submitter import (
     new_chain_id,
@@ -47,6 +48,7 @@ def test_submit_chain_writes_db_and_flow_context(tmp_path) -> None:
     db_path = tmp_path / "test.db"
     planspace = tmp_path / "planspace"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     _init_db(db_path)
 
     ids = submit_chain(
@@ -69,6 +71,7 @@ def test_submit_fanout_creates_gate_and_members(tmp_path) -> None:
     db_path = tmp_path / "test.db"
     planspace = tmp_path / "planspace"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     _init_db(db_path)
 
     gate_id = submit_fanout(

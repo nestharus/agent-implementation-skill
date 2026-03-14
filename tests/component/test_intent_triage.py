@@ -13,6 +13,7 @@ from containers import (
     Services,
     SignalReader,
 )
+from src.orchestrator.path_registry import PathRegistry
 from src.intent.service import intent_triager
 from src.intent.service.intent_triager import (
     _augment_risk_hints,
@@ -98,8 +99,9 @@ def test_run_intent_triage_returns_signal_from_agent(
     capturing_communicator,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     artifacts = planspace / "artifacts"
-    (artifacts / "sections").mkdir(parents=True)
     codespace = tmp_path / "codespace"
     codespace.mkdir()
 
@@ -144,8 +146,9 @@ def test_triage_prompt_does_not_advertise_skip(
 ) -> None:
     """The generated triage prompt only advertises light|full, never skip."""
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     artifacts = planspace / "artifacts"
-    (artifacts / "sections").mkdir(parents=True)
     codespace = tmp_path / "codespace"
     codespace.mkdir()
 

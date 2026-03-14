@@ -17,6 +17,7 @@ import pytest
 
 from _paths import DB_SH
 from conftest import override_dispatcher_and_guard
+from src.orchestrator.path_registry import PathRegistry
 
 
 # ---------------------------------------------------------------------------
@@ -39,9 +40,7 @@ def _setup_planspace(tmp_path: Path) -> Path:
     _planspace_counter += 1
     ps = tmp_path / f"planspace-{_planspace_counter}"
     ps.mkdir()
-    artifacts = ps / "artifacts"
-    for subdir in ("sections", "proposals", "signals"):
-        (artifacts / subdir).mkdir(parents=True)
+    PathRegistry(ps).ensure_artifacts_tree()
     _init_db(ps / "run.db")
     return ps
 

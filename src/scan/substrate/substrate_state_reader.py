@@ -75,7 +75,6 @@ def write_status(
 ) -> None:
     """Write ``artifacts/substrate/status.json``."""
     status_dir = registry_for_artifacts(artifacts_dir).substrate_dir()
-    status_dir.mkdir(parents=True, exist_ok=True)
     status = {
         "state": state,
         "project_mode": project_mode,

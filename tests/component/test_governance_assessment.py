@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from src.orchestrator.path_registry import PathRegistry
 from src.intake.service.assessment_evaluator import (
     read_post_impl_assessment,
     record_assessment_governance,
@@ -16,6 +17,7 @@ def test_write_post_impl_assessment_prompt_uses_validated_writer(
     planspace = tmp_path / "planspace"
     codespace = tmp_path / "codespace"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     codespace.mkdir()
 
     prompt_path = write_post_impl_assessment_prompt("01", planspace)
@@ -31,13 +33,14 @@ def test_read_post_impl_assessment_validates_verdict_and_preserves_corrupt_file(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     assessment_path = (
         planspace
         / "artifacts"
         / "governance"
         / "section-01-post-impl-assessment.json"
     )
-    assessment_path.parent.mkdir(parents=True, exist_ok=True)
 
     assessment_path.write_text(
         json.dumps(
@@ -83,8 +86,9 @@ def test_read_post_impl_assessment_validates_verdict_and_preserves_corrupt_file(
 
 def test_record_assessment_governance_updates_trace_index(tmp_path: Path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     trace_path = planspace / "artifacts" / "trace" / "section-01.json"
-    trace_path.parent.mkdir(parents=True, exist_ok=True)
     trace_path.write_text(
         json.dumps(
             {

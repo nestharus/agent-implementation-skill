@@ -18,6 +18,7 @@ from unittest.mock import patch
 import pytest
 
 from _paths import DB_SH
+from src.orchestrator.path_registry import PathRegistry
 from conftest import override_dispatcher_and_guard
 
 import dispatch.engine.agent_executor as executor_mod
@@ -151,8 +152,7 @@ class TestDispatcherReadsMetaSidecar:
         """Create a planspace with initialized DB."""
         ps = tmp_path / "planspace"
         ps.mkdir()
-        artifacts = ps / "artifacts"
-        artifacts.mkdir(parents=True)
+        PathRegistry(ps).ensure_artifacts_tree()
         _init_db(ps / "run.db")
         return ps
 

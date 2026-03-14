@@ -8,6 +8,7 @@ from dependency_injector import providers
 
 from conftest import make_dispatcher
 from containers import CrossSectionService, Services
+from src.orchestrator.path_registry import PathRegistry
 from src.proposal.service.excerpt_extractor import extract_excerpts
 from src.orchestrator.types import Section
 
@@ -19,7 +20,6 @@ def _section(planspace: Path) -> Section:
         global_proposal_path=artifacts / "global-proposal.md",
         global_alignment_path=artifacts / "global-alignment.md",
     )
-    section.path.parent.mkdir(parents=True, exist_ok=True)
     section.path.write_text("# Section 01\n", encoding="utf-8")
     section.global_proposal_path.write_text("# Global Proposal\n", encoding="utf-8")
     section.global_alignment_path.write_text("# Global Alignment\n", encoding="utf-8")
@@ -27,7 +27,6 @@ def _section(planspace: Path) -> Section:
 
 def _write_excerpts(planspace: Path, section_number: str) -> None:
     sections_dir = planspace / "artifacts" / "sections"
-    sections_dir.mkdir(parents=True, exist_ok=True)
     (sections_dir / f"section-{section_number}-proposal-excerpt.md").write_text(
         "proposal",
         encoding="utf-8",
@@ -41,9 +40,8 @@ def _write_excerpts(planspace: Path, section_number: str) -> None:
 def base_dirs(tmp_path: Path) -> tuple[Path, Path]:
     planspace = tmp_path / "planspace"
     codespace = tmp_path / "codespace"
-    (planspace / "artifacts" / "sections").mkdir(parents=True)
-    (planspace / "artifacts" / "signals").mkdir(parents=True)
-    (planspace / "artifacts" / "decisions").mkdir(parents=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     codespace.mkdir()
     return planspace, codespace
 

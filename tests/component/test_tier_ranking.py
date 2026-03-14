@@ -6,6 +6,7 @@ import subprocess
 from dependency_injector import providers
 
 from containers import PromptGuard, Services
+from src.orchestrator.path_registry import PathRegistry
 from src.staleness.helpers.content_hasher import content_hash
 from src.scan.explore.tier_ranker import run_tier_ranking, validate_tier_file
 from src.scan.codemap.cache import strip_scan_summaries
@@ -40,9 +41,9 @@ def test_run_tier_ranking_reuses_matching_existing_tier_file(
         "# Section\n\n## Related Files\n\n### src/main.py\n",
         encoding="utf-8",
     )
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts_dir = tmp_path / "artifacts"
     sections_dir = artifacts_dir / "sections"
-    sections_dir.mkdir(parents=True)
     tier_file = sections_dir / "section-01-file-tiers.json"
     tier_file.write_text(
         json.dumps({"tiers": {"critical": ["src/main.py"]}, "scan_now": ["critical"]}),
@@ -84,8 +85,8 @@ def test_run_tier_ranking_dispatches_and_writes_sidecar(
         "# Section\n\n## Related Files\n\n### src/main.py\n",
         encoding="utf-8",
     )
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts_dir = tmp_path / "artifacts"
-    (artifacts_dir / "sections").mkdir(parents=True)
     scan_log_dir = tmp_path / "scan-logs"
     codespace = tmp_path / "codespace"
     codespace.mkdir()

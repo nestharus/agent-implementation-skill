@@ -7,6 +7,7 @@ from evals.agentic.collectors import collect_outputs
 from evals.agentic.scenario_loader import CollectSpec, StructuralCheck, load_scenarios
 from evals.agentic.seed_engine import cleanup_scenario, seed_scenario
 from evals.agentic.structural_checks import run_structural_checks
+from src.orchestrator.path_registry import PathRegistry
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -62,7 +63,8 @@ def test_collect_outputs_and_structural_checks_cover_core_predicates(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
-    (planspace / "artifacts" / "signals").mkdir(parents=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     (planspace / "docs").mkdir(parents=True)
 
     (planspace / "artifacts" / "research-plan.json").write_text(

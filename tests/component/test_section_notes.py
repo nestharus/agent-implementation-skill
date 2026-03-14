@@ -10,13 +10,15 @@ from containers import ChangeTrackerService, Services
 from orchestrator.types import Section
 
 from src.coordination.service import completion_handler as section_notes
+from src.orchestrator.path_registry import PathRegistry
 
 
 def _make_section(tmp_path: Path, number: str = "01") -> tuple[Path, Path, Section]:
     planspace = tmp_path / "planspace"
     codespace = tmp_path / "codespace"
+    planspace.mkdir(exist_ok=True)
+    PathRegistry(planspace).ensure_artifacts_tree()
     section_path = planspace / "artifacts" / "sections" / f"section-{number}.md"
-    section_path.parent.mkdir(parents=True, exist_ok=True)
     section_path.write_text("# Section\n\nAuth summary\n", encoding="utf-8")
     return planspace, codespace, Section(
         number=number,
@@ -30,7 +32,6 @@ def test_read_incoming_notes_filters_resolved_notes_and_includes_diff(
 ) -> None:
     planspace, codespace, section = _make_section(tmp_path)
     notes_dir = planspace / "artifacts" / "notes"
-    notes_dir.mkdir(parents=True, exist_ok=True)
     (notes_dir / "from-02-to-01.md").write_text(
         "**Note ID**: `keep-me`\n\nActive note",
         encoding="utf-8",
@@ -40,7 +41,6 @@ def test_read_incoming_notes_filters_resolved_notes_and_includes_diff(
         encoding="utf-8",
     )
     ack_path = planspace / "artifacts" / "signals" / "note-ack-01.json"
-    ack_path.parent.mkdir(parents=True, exist_ok=True)
     ack_path.write_text(
         '{"acknowledged": [{"note_id": "skip-me", "action": "accepted"}]}',
         encoding="utf-8",
@@ -67,13 +67,11 @@ def test_read_incoming_notes_renames_malformed_ack_file(
 ) -> None:
     planspace, codespace, section = _make_section(tmp_path)
     notes_dir = planspace / "artifacts" / "notes"
-    notes_dir.mkdir(parents=True, exist_ok=True)
     (notes_dir / "from-02-to-01.md").write_text(
         "**Note ID**: `keep-me`\n\nActive note",
         encoding="utf-8",
     )
     ack_path = planspace / "artifacts" / "signals" / "note-ack-01.json"
-    ack_path.parent.mkdir(parents=True, exist_ok=True)
     ack_path.write_text("not json", encoding="utf-8")
 
     notes = section_notes.read_incoming_notes(section, planspace, codespace)

@@ -198,7 +198,6 @@ def run_impact_triage(
     policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
     triage_dir = paths.triage_dir()
-    triage_dir.mkdir(parents=True, exist_ok=True)
     triage_prompt_path = triage_dir / f"triage-{section.number}-prompt.md"
     triage_output_path = triage_dir / f"triage-{section.number}-output.md"
     triage_signal_path = paths.triage_signal(section.number)

@@ -162,7 +162,7 @@ def submit_fanout(
     *,
     gate: GateSpec | None = None,
 ) -> str | None:
-    """Submit parallel branches, optionally under a gate."""
+    """Submit parallel branches, optionally under a convergence gate."""
     if not branches:
         return None
 

@@ -7,6 +7,7 @@ from dependency_injector import providers
 
 from conftest import StubPolicies, WritingGuard, make_dispatcher
 from containers import Services
+from src.orchestrator.path_registry import PathRegistry
 from src.reconciliation.service import adjudicator
 
 
@@ -14,6 +15,8 @@ def test_adjudicate_ungrouped_candidates_returns_empty_for_singleton(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
 
     result = adjudicator.adjudicate_ungrouped_candidates(
         [{"title": "solo", "source_section": "01"}],
@@ -28,6 +31,8 @@ def test_adjudicate_ungrouped_candidates_writes_artifact_and_parses_json(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     candidates = [
         {"title": "shared auth", "source_section": "01"},
         {"title": "auth seam", "source_section": "02"},
@@ -76,6 +81,8 @@ def test_adjudicate_ungrouped_candidates_returns_empty_on_bad_json(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     candidates = [
         {"title": "shared auth", "source_section": "01"},
         {"title": "auth seam", "source_section": "02"},

@@ -19,7 +19,6 @@ def queue_reconciliation_request(
 ) -> Path:
     """Write a reconciliation-request artifact for *section_number*."""
     paths = PathRegistry(planspace)
-    paths.reconciliation_requests_dir().mkdir(parents=True, exist_ok=True)
 
     request = {
         "section": section_number,

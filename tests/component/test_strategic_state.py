@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+from src.orchestrator.path_registry import PathRegistry
 from src.signals.repository.artifact_io import write_json
 from src.orchestrator.repository.decisions import Decision, record_decision
 from src.orchestrator.engine.strategic_state_builder import build_strategic_state
@@ -13,8 +14,9 @@ def test_build_strategic_state_writes_snapshot_and_derives_fields(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     decisions_dir = planspace / "artifacts" / "decisions"
-    (planspace / "artifacts" / "signals").mkdir(parents=True)
 
     record_decision(
         decisions_dir,
@@ -102,9 +104,10 @@ def test_build_strategic_state_fail_closed_on_malformed_blocker(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     decisions_dir = planspace / "artifacts" / "decisions"
     blocker_path = planspace / "artifacts" / "signals" / "section-04-blocker.json"
-    blocker_path.parent.mkdir(parents=True)
     blocker_path.write_text("{not-json", encoding="utf-8")
 
     snapshot = build_strategic_state(
@@ -133,6 +136,8 @@ def test_build_strategic_state_includes_research_question_artifacts(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     decisions_dir = planspace / "artifacts" / "decisions"
     open_problems_dir = planspace / "artifacts" / "open-problems"
 

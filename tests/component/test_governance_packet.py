@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from src.orchestrator.path_registry import PathRegistry
 from src.intake.repository.governance_loader import build_governance_indexes
 from src.intake.service.governance_packet_builder import build_section_governance_packet
 
@@ -137,6 +138,7 @@ def test_build_section_governance_packet_handles_missing_indexes(
     planspace = tmp_path / "planspace"
     codespace = tmp_path / "codespace"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     codespace.mkdir()
 
     packet_path = build_section_governance_packet("02", planspace)

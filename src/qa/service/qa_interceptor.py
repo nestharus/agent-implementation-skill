@@ -192,7 +192,6 @@ def _write_rationale(
     Returns the path to the written file.
     """
     intercepts_dir = PathRegistry(planspace).qa_intercepts_dir()
-    intercepts_dir.mkdir(parents=True, exist_ok=True)
 
     task_id = task.get("id", "unknown")
     rationale_path = intercepts_dir / f"qa-{task_id}-rationale.json"
@@ -264,7 +263,7 @@ def _dispatch_and_evaluate(
         agent_file=Services.task_router().agent_for("qa.qa_intercept"),
     )
 
-    qa_verdict = parse_qa_verdict(output)
+    qa_verdict = parse_qa_verdict(output.output)
 
     if qa_verdict.verdict == "REJECT":
         rationale_path = _write_rationale(
@@ -327,7 +326,6 @@ def intercept_task(
         )
 
         intercepts_dir = PathRegistry(planspace).qa_intercepts_dir()
-        intercepts_dir.mkdir(parents=True, exist_ok=True)
         prompt_path = intercepts_dir / f"qa-{task_id}-prompt.md"
         prompt_path.write_text(qa_prompt_text, encoding="utf-8")
 

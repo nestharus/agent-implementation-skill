@@ -109,9 +109,6 @@ def write_dispatch_prompt(
     continuation_path: str | None = None,
 ) -> Path:
     """Create a wrapper prompt that includes flow context for dispatch."""
-    flows_dir = PathRegistry(planspace).flows_dir()
-    flows_dir.mkdir(parents=True, exist_ok=True)
-
     original_content = ""
     if original_prompt_path.exists():
         original_content = original_prompt_path.read_text(encoding="utf-8")
@@ -142,9 +139,6 @@ def write_flow_context(
     previous_task_id: int | None,
 ) -> None:
     """Write a flow context JSON file for a task."""
-    flows_dir = PathRegistry(planspace).flows_dir()
-    flows_dir.mkdir(parents=True, exist_ok=True)
-
     previous_result = None
     if previous_task_id is not None:
         previous_result = result_manifest_relpath(previous_task_id)

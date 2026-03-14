@@ -6,6 +6,7 @@ import pytest
 
 from _paths import DB_SH
 from orchestrator.types import PipelineAbortError
+from src.orchestrator.path_registry import PathRegistry
 from src.signals.service.database_client import DatabaseClient
 from src.signals.service.mailbox_service import MailboxService
 from src.orchestrator.service import pipeline_state
@@ -18,7 +19,8 @@ from src.orchestrator.service.pipeline_state import (
 
 def _db(tmp_path: Path) -> tuple[Path, DatabaseClient]:
     planspace = tmp_path / "planspace"
-    (planspace / "artifacts").mkdir(parents=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     client = DatabaseClient(DB_SH, planspace / "run.db")
     client.execute("init")
     return planspace, client
@@ -86,7 +88,6 @@ def test_pause_for_parent_consumes_alignment_changed_before_resume(
     parent = _mailbox(client, "parent")
     _mailbox(client, "section-loop")
     excerpts = planspace / "artifacts" / "sections"
-    excerpts.mkdir(parents=True)
     (excerpts / "section-01-proposal-excerpt.md").write_text("proposal")
 
     parent.send("section-loop", "alignment_changed")

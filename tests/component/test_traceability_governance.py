@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from orchestrator.types import Section
+from src.orchestrator.path_registry import PathRegistry
 from src.implementation.service.traceability_writer import (
     write_traceability_index,
     update_trace_governance,
@@ -12,13 +13,14 @@ from src.implementation.service.traceability_writer import (
 
 def _section(planspace: Path) -> Section:
     section_path = planspace / "artifacts" / "sections" / "section-01.md"
-    section_path.parent.mkdir(parents=True, exist_ok=True)
     section_path.write_text("# Section 01\n", encoding="utf-8")
     return Section(number="01", path=section_path, related_files=["src/main.py"])
 
 
 def testwrite_traceability_index_includes_governance_block(tmp_path: Path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     codespace = tmp_path / "codespace"
     section = _section(planspace)
     artifacts = planspace / "artifacts"
@@ -30,7 +32,6 @@ def testwrite_traceability_index_includes_governance_block(tmp_path: Path) -> No
         "alignment excerpt",
         encoding="utf-8",
     )
-    (artifacts / "proposals").mkdir(parents=True, exist_ok=True)
     (artifacts / "proposals" / "section-01-integration-proposal.md").write_text(
         "# Proposal\n",
         encoding="utf-8",
@@ -38,7 +39,6 @@ def testwrite_traceability_index_includes_governance_block(tmp_path: Path) -> No
     governance_packet = (
         artifacts / "governance" / "section-01-governance-packet.json"
     )
-    governance_packet.parent.mkdir(parents=True, exist_ok=True)
     governance_packet.write_text('{"section": "01"}\n', encoding="utf-8")
 
     write_traceability_index(planspace, section, ["src/main.py"])
@@ -55,8 +55,9 @@ def testwrite_traceability_index_includes_governance_block(tmp_path: Path) -> No
 
 def test_update_trace_governance_merges_without_duplicates(tmp_path: Path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     trace_path = planspace / "artifacts" / "trace" / "section-01.json"
-    trace_path.parent.mkdir(parents=True, exist_ok=True)
     trace_path.write_text(
         json.dumps(
             {

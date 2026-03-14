@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from containers import Services
+from intent.service.philosophy_bootstrap_state import BootstrapResult
 from intent.service.philosophy_bootstrapper import (
     ensure_global_philosophy as _ensure_global_philosophy,
 )
@@ -88,7 +89,7 @@ def ensure_global_philosophy(
     planspace: Path,
     codespace: Path,
     parent: str,
-) -> dict[str, Any]:
+) -> BootstrapResult:
     return _ensure_global_philosophy(
         planspace,
         codespace,

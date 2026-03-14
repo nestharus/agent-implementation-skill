@@ -6,6 +6,7 @@ import pytest
 from dependency_injector import providers
 
 from containers import Services
+from src.orchestrator.path_registry import PathRegistry
 from src.proposal.engine import proposal_phase as proposal_pass
 from src.proposal.engine.proposal_phase import ProposalPassExit, run_proposal_pass
 from orchestrator.types import ProposalPassResult, Section
@@ -13,7 +14,8 @@ from orchestrator.types import ProposalPassResult, Section
 
 def _planspace(tmp_path: Path) -> Path:
     planspace = tmp_path / "planspace"
-    (planspace / "artifacts").mkdir(parents=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     return planspace
 
 

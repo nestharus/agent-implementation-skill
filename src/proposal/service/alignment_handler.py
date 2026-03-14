@@ -12,7 +12,7 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 from orchestrator.types import PauseType
 from dispatch.prompt.writers import write_integration_alignment_prompt
-from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from dispatch.types import ALIGNMENT_CHANGED_PENDING, DispatchResult
 from proposal.service.cycle_control import handle_pause_response
 
 
@@ -21,7 +21,7 @@ def run_alignment_check(
     planspace: Path,
     codespace: Path,
     parent: str,
-) -> tuple[str, Path] | None:
+) -> tuple[DispatchResult, Path] | None:
     """Dispatch the alignment judge and return (result, output_path).
 
     Returns None if the caller should abort (ALIGNMENT_CHANGED_PENDING).
@@ -60,6 +60,7 @@ def run_alignment_check(
         agent_file=alignment_agent_file,
     )
     if align_result == ALIGNMENT_CHANGED_PENDING:
+        Services.logger().log(f"Section {section_number}: alignment changed during proposal alignment check — aborting")
         return None
 
     return align_result, align_output

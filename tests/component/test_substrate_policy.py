@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from src.orchestrator.path_registry import PathRegistry
 from src.scan.substrate.policy import (
     DEFAULT_SUBSTRATE_MODELS,
     DEFAULT_TRIGGER_THRESHOLD,
@@ -14,8 +15,8 @@ from src.scan.substrate.policy import (
 
 
 def test_read_substrate_model_policy_uses_defaults_and_overrides(tmp_path) -> None:
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts_dir = tmp_path / "artifacts"
-    artifacts_dir.mkdir()
     policy_path = artifacts_dir / "model-policy.json"
     policy_path.write_text(
         json.dumps({"substrate_shard": "custom-shard"}),
@@ -29,8 +30,8 @@ def test_read_substrate_model_policy_uses_defaults_and_overrides(tmp_path) -> No
 
 
 def test_read_substrate_model_policy_renames_malformed_json(tmp_path) -> None:
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts_dir = tmp_path / "artifacts"
-    artifacts_dir.mkdir()
     policy_path = artifacts_dir / "model-policy.json"
     policy_path.write_text("{bad json", encoding="utf-8")
 
@@ -42,10 +43,9 @@ def test_read_substrate_model_policy_renames_malformed_json(tmp_path) -> None:
 
 
 def test_read_trigger_signals_reads_single_and_multi_section_signals(tmp_path) -> None:
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts_dir = tmp_path / "artifacts"
-    artifacts_dir.mkdir()
     signals_dir = artifacts_dir / "signals"
-    signals_dir.mkdir()
     (signals_dir / "substrate-trigger-01.json").write_text(
         json.dumps({"section": "01"}),
         encoding="utf-8",
@@ -60,10 +60,9 @@ def test_read_trigger_signals_reads_single_and_multi_section_signals(tmp_path) -
 
 
 def test_read_trigger_signals_renames_malformed_json(tmp_path) -> None:
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts_dir = tmp_path / "artifacts"
-    artifacts_dir.mkdir()
     signals_dir = artifacts_dir / "signals"
-    signals_dir.mkdir()
     signal_path = signals_dir / "substrate-trigger-01.json"
     signal_path.write_text("{bad json", encoding="utf-8")
 
@@ -73,8 +72,8 @@ def test_read_trigger_signals_renames_malformed_json(tmp_path) -> None:
 
 
 def test_read_trigger_threshold_defaults_and_validates(tmp_path) -> None:
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts_dir = tmp_path / "artifacts"
-    artifacts_dir.mkdir()
 
     assert read_trigger_threshold(artifacts_dir) == DEFAULT_TRIGGER_THRESHOLD
 

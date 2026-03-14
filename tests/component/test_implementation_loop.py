@@ -9,6 +9,7 @@ from dependency_injector import providers
 from conftest import NoOpFlow, NoOpSectionAlignment, StubPolicies, make_dispatcher
 from containers import DispatchHelperService, Services
 from src.implementation.engine.implementation_cycle import run_implementation_loop
+from src.orchestrator.path_registry import PathRegistry
 from src.orchestrator.types import Section
 
 
@@ -18,7 +19,6 @@ def _section(planspace: Path) -> Section:
         path=planspace / "artifacts" / "sections" / "section-09.md",
         related_files=["src/main.py"],
     )
-    section.path.parent.mkdir(parents=True, exist_ok=True)
     section.path.write_text("# Section 09\n", encoding="utf-8")
     return section
 
@@ -27,12 +27,9 @@ def _section(planspace: Path) -> Section:
 def env(tmp_path: Path) -> tuple[Path, Path]:
     planspace = tmp_path / "planspace"
     codespace = tmp_path / "codespace"
-    for path in (
-        planspace / "artifacts" / "sections",
-        planspace / "artifacts" / "signals",
-        planspace / "artifacts" / "trace-map",
-    ):
-        path.mkdir(parents=True, exist_ok=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    (planspace / "artifacts" / "trace-map").mkdir(parents=True, exist_ok=True)
     (planspace / "artifacts" / "sections" / "section-09-problem-frame.md").write_text(
         "- fix auth\n",
         encoding="utf-8",

@@ -20,7 +20,7 @@ from intent.service.surface_registry import (
     save_surface_registry,
 )
 from proposal.service.expansion_handler import run_aligned_expansion, run_misaligned_expansion
-from signals.types import ACTION_ABORT, ACTION_CONTINUE
+from signals.types import ACTION_ABORT, ACTION_CONTINUE, INTENT_MODE_FULL
 
 
 DEFINITION_GAP_KINDS = {
@@ -122,7 +122,7 @@ def handle_aligned_surfaces(
     surfaces = _load_combined_surfaces(section_number, planspace)
     surface_count = _count_surfaces(surfaces)
     if surface_count:
-        if intent_mode != "full":
+        if intent_mode != INTENT_MODE_FULL:
             _persist_surfaces(section_number, planspace, surfaces)
             Services.logger().log(
                 f"Section {section_number}: lightweight mode discovered "
@@ -137,14 +137,14 @@ def handle_aligned_surfaces(
             )
             return SurfaceActionResult(
                 action=ACTION_CONTINUE,
-                intent_mode="full",
+                intent_mode=INTENT_MODE_FULL,
                 reproposal_reason=(
                     "Lightweight section discovered structured surfaces; "
                     "re-propose under full intent mode."
                 ),
             )
 
-        if intent_mode == "full":
+        if intent_mode == INTENT_MODE_FULL:
             action = run_aligned_expansion(
                 section_number, planspace, codespace, parent,
                 intent_budgets, expansion_counts,
@@ -199,7 +199,7 @@ def handle_misaligned_surfaces(
         f"Section {section_number}: persisted intent "
         f"surfaces from misaligned pass"
     )
-    if intent_mode != "full":
+    if intent_mode != INTENT_MODE_FULL:
         Services.logger().log(
             f"Section {section_number}: lightweight mode discovered "
             f"{misaligned_surface_count} structured surfaces on "
@@ -211,9 +211,9 @@ def handle_misaligned_surfaces(
             "structured_surfaces_on_lightweight_misaligned",
             misaligned_surface_count,
         )
-        intent_mode = "full"
+        intent_mode = INTENT_MODE_FULL
 
-    if intent_mode == "full" and _has_definition_gap_surfaces(
+    if intent_mode == INTENT_MODE_FULL and _has_definition_gap_surfaces(
         misaligned_surfaces,
     ):
         run_misaligned_expansion(

@@ -6,12 +6,31 @@ pipeline uses to communicate state to the rest of the system.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from containers import Services
 from orchestrator.path_registry import PathRegistry
+
+
+@dataclass(frozen=True, slots=True)
+class BootstrapResult:
+    """Typed result from ``ensure_global_philosophy``."""
+
+    status: str
+    blocking_state: str | None
+    philosophy_path: Path | None
+    detail: str
+
+    def __getitem__(self, key: str) -> Any:
+        """Backward compat: allow ``result["status"]`` style access."""
+        return getattr(self, key)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Backward compat: allow ``result.get("blocking_state")`` style access."""
+        return getattr(self, key, default)
 
 # ── constants ─────────────────────────────────────────────────────────
 
@@ -106,13 +125,13 @@ def bootstrap_result(
     blocking_state: str | None,
     philosophy_path: Path | None,
     detail: str,
-) -> dict[str, Any]:
-    return {
-        "status": status,
-        "blocking_state": blocking_state,
-        "philosophy_path": philosophy_path,
-        "detail": detail,
-    }
+) -> BootstrapResult:
+    return BootstrapResult(
+        status=status,
+        blocking_state=blocking_state,
+        philosophy_path=philosophy_path,
+        detail=detail,
+    )
 
 
 def block_bootstrap(
@@ -126,7 +145,7 @@ def block_bootstrap(
     why_blocked: str,
     philosophy_path: Path | None = None,
     extras: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+) -> BootstrapResult:
     write_bootstrap_signal(
         paths,
         state=blocking_state,

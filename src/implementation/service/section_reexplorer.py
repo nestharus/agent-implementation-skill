@@ -208,7 +208,6 @@ def write_alignment_surface(
     """
     registry = PathRegistry(planspace)
     sec = section.number
-    registry.sections_dir().mkdir(parents=True, exist_ok=True)
     surface_path = registry.alignment_surface(sec)
 
     lines = [

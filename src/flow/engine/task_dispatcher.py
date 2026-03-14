@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dispatch.repository.metadata import DispatchMetaResult, read_dispatch_metadata
+from dispatch.types import DispatchStatus
 from orchestrator.path_registry import PathRegistry
 from flow.service.task_db_client import (
     claim_task as _db_claim_task,
@@ -242,7 +243,7 @@ def _finalize_task(h: TaskHandle, planspace,
         if rc is not None and rc != 0:
             agent_failed = True
 
-    if not timed_out and output.startswith("TIMEOUT:"):
+    if not timed_out and output.status is DispatchStatus.TIMEOUT:
         timed_out = True
 
     if timed_out:

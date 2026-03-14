@@ -18,13 +18,12 @@ from orchestrator.service.pipeline_state import (
 from staleness.service.input_hasher import section_inputs_hash
 
 from containers import Services
-from _config import AGENT_NAME, DB_SH
 
 _section_inputs_hash = section_inputs_hash
 
 
 def check_pipeline_state(planspace: Path) -> str:
-    return query_pipeline_state(planspace, db_sh=DB_SH)
+    return query_pipeline_state(planspace, db_sh=Services.config().db_sh)
 
 
 def alignment_changed_pending(planspace: Path) -> bool:
@@ -77,22 +76,24 @@ def wait_if_paused(planspace: Path, parent: str) -> None:
     Buffers non-abort messages in memory while paused and replays them
     after resume (avoids the re-send-to-self infinite loop).
     """
+    cfg = Services.config()
     block_if_paused(
         planspace,
         parent,
-        db_sh=DB_SH,
-        agent_name=AGENT_NAME,
+        db_sh=cfg.db_sh,
+        agent_name=cfg.agent_name,
     )
 
 
 def pause_for_parent(planspace: Path, parent: str, signal: str) -> str:
     """Send a pause signal to parent and block until we get a response."""
+    cfg = Services.config()
     return wait_for_parent(
         planspace,
         parent,
         signal,
-        db_sh=DB_SH,
-        agent_name=AGENT_NAME,
+        db_sh=cfg.db_sh,
+        agent_name=cfg.agent_name,
     )
 
 
@@ -110,28 +111,31 @@ def poll_control_messages(
     Returns "alignment_changed" if the flag was set, None otherwise.
     Non-control messages are re-queued to our own mailbox (replay).
     """
+    cfg = Services.config()
     return poll_messages(
         planspace,
         parent,
         current_section,
-        db_sh=DB_SH,
-        agent_name=AGENT_NAME,
+        db_sh=cfg.db_sh,
+        agent_name=cfg.agent_name,
     )
 
 
 def check_for_messages(planspace: Path) -> list[str]:
     """Non-blocking check for any pending messages."""
+    cfg = Services.config()
     return drain_messages(
         planspace,
-        db_sh=DB_SH,
-        agent_name=AGENT_NAME,
+        db_sh=cfg.db_sh,
+        agent_name=cfg.agent_name,
     )
 
 
 def handle_pending_messages(planspace: Path) -> bool:
     """Process any pending messages. Returns True if should abort."""
+    cfg = Services.config()
     return handle_messages(
         planspace,
-        db_sh=DB_SH,
-        agent_name=AGENT_NAME,
+        db_sh=cfg.db_sh,
+        agent_name=cfg.agent_name,
     )

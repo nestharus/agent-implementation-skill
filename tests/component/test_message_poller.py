@@ -6,6 +6,7 @@ import pytest
 
 from _paths import DB_SH
 from orchestrator.types import PipelineAbortError
+from src.orchestrator.path_registry import PathRegistry
 from src.signals.service.database_client import DatabaseClient
 from src.signals.service.mailbox_service import MailboxService
 from src.signals.service.message_poller import (
@@ -17,7 +18,8 @@ from src.signals.service.message_poller import (
 
 def _db(tmp_path: Path) -> tuple[Path, DatabaseClient]:
     planspace = tmp_path / "planspace"
-    (planspace / "artifacts" / "sections").mkdir(parents=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     client = DatabaseClient(DB_SH, planspace / "run.db")
     client.execute("init")
     return planspace, client

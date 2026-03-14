@@ -20,6 +20,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from _paths import SRC_DIR
+from src.orchestrator.path_registry import PathRegistry
 
 
 @pytest.fixture()
@@ -27,9 +28,8 @@ def scan_planspace(tmp_path: Path) -> Path:
     """Create a planspace directory for scan stage tests."""
     ps = tmp_path / "planspace"
     ps.mkdir()
-    artifacts = ps / "artifacts"
-    for subdir in ("sections", "signals", "file-cards", "scope-deltas"):
-        (artifacts / subdir).mkdir(parents=True)
+    PathRegistry(ps).ensure_artifacts_tree()
+    (ps / "artifacts" / "file-cards").mkdir(parents=True, exist_ok=True)
     return ps
 
 
@@ -577,8 +577,9 @@ class TestScanModelPolicy:
         from scan.scan_dispatcher import read_scan_model_policy
 
         planspace = tmp_path / "planspace"
+        planspace.mkdir()
+        PathRegistry(planspace).ensure_artifacts_tree()
         artifacts_dir = planspace / "artifacts"
-        artifacts_dir.mkdir(parents=True)
         policy_file = artifacts_dir / "model-policy.json"
         policy_file.write_text(json.dumps({
             "scan": {"tier_ranking": "custom-model"},

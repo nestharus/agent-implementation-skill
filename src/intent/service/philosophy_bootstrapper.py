@@ -38,6 +38,7 @@ from intent.service.philosophy_grounding import (
     validate_philosophy_grounding,
 )
 from intent.service.philosophy_bootstrap_state import (
+    BootstrapResult,
     bootstrap_decisions_path as _bootstrap_decisions_path,
     bootstrap_guidance_path as _bootstrap_guidance_path,
     bootstrap_result as _bootstrap_result,
@@ -1144,7 +1145,7 @@ def ensure_global_philosophy(
     planspace: Path,
     codespace: Path,
     parent: str,
-) -> dict[str, Any]:
+) -> BootstrapResult:
     """Ensure the operational philosophy exists; distill if missing."""
     policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)

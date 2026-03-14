@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from src.orchestrator.path_registry import PathRegistry
 from src.coordination.repository.notes import (
     read_incoming_notes,
     write_consequence_note,
@@ -10,8 +11,9 @@ from src.coordination.repository.notes import (
 
 def test_read_incoming_notes_returns_sorted_note_records(tmp_path: Path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     notes_dir = planspace / "artifacts" / "notes"
-    notes_dir.mkdir(parents=True)
     (notes_dir / "from-02-to-01.md").write_text("second")
     (notes_dir / "from-01-to-01.md").write_text("first")
 
@@ -23,6 +25,8 @@ def test_read_incoming_notes_returns_sorted_note_records(tmp_path: Path) -> None
 
 def test_write_consequence_note_creates_expected_path(tmp_path: Path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
 
     note_path = write_consequence_note(
         planspace,

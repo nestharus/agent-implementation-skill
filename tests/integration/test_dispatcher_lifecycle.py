@@ -18,6 +18,7 @@ from dependency_injector import providers
 from _paths import DB_SH
 from conftest import override_dispatcher_and_guard
 from containers import FreshnessService, Services
+from src.orchestrator.path_registry import PathRegistry
 
 from flow.types.context import FlowEnvelope
 from flow.types.schema import TaskSpec
@@ -63,9 +64,7 @@ def _query_all_tasks(db_path: str) -> list[dict]:
 def _setup_planspace(tmp_path: Path) -> Path:
     ps = tmp_path / "planspace"
     ps.mkdir()
-    artifacts = ps / "artifacts"
-    for subdir in ("sections", "proposals", "signals", "flows"):
-        (artifacts / subdir).mkdir(parents=True)
+    PathRegistry(ps).ensure_artifacts_tree()
     _init_db(ps / "run.db")
     return ps
 

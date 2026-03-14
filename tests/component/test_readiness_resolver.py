@@ -5,17 +5,19 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from src.orchestrator.path_registry import PathRegistry
 from src.proposal.service.readiness_resolver import ReadinessResult, resolve_readiness
 
 
 def test_resolve_readiness_writes_ready_artifact(tmp_path: Path) -> None:
     """Tests use runtime layout: planspace -> artifacts/ -> proposals/."""
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     proposal_state = (
         planspace / "artifacts" / "proposals"
         / "section-03-proposal-state.json"
     )
-    proposal_state.parent.mkdir(parents=True)
     proposal_state.write_text(json.dumps({
         "resolved_anchors": ["cache.store"],
         "unresolved_anchors": [],
@@ -55,6 +57,7 @@ def test_resolve_readiness_writes_ready_artifact(tmp_path: Path) -> None:
 def test_resolve_readiness_fails_closed_when_artifact_missing(tmp_path: Path) -> None:
     planspace = tmp_path / "planspace"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     result = resolve_readiness(planspace, "04")
 
     assert isinstance(result, ReadinessResult)

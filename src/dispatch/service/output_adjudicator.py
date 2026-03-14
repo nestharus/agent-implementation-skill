@@ -48,7 +48,6 @@ def adjudicate_agent_output(
     """
 
     paths = PathRegistry(planspace)
-    paths.artifacts.mkdir(parents=True, exist_ok=True)
     adj_prompt = paths.adjudicate_prompt()
     adj_output = paths.adjudicate_output()
 
@@ -75,10 +74,10 @@ def adjudicate_agent_output(
 
     # Parse JSON from adjudicator output
     try:
-        json_start = result.find("{")
-        json_end = result.rfind("}")
+        json_start = result.output.find("{")
+        json_end = result.output.rfind("}")
         if json_start >= 0 and json_end > json_start:
-            data = json.loads(result[json_start:json_end + 1])
+            data = json.loads(result.output[json_start:json_end + 1])
             state = data.get("state", "").lower()
             detail = data.get("detail", "")
             if state in ("underspecified", "underspec"):

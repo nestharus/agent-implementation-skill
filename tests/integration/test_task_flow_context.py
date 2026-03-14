@@ -20,6 +20,7 @@ import pytest
 
 from _paths import DB_SH
 from conftest import override_dispatcher_and_guard
+from src.orchestrator.path_registry import PathRegistry
 
 from flow.types.schema import TaskSpec
 from flow.exceptions import FlowCorruptionError
@@ -74,7 +75,7 @@ def planspace(tmp_path: Path) -> Path:
     """Create a planspace directory for flow context files."""
     ps = tmp_path / "planspace"
     ps.mkdir()
-    (ps / "artifacts" / "flows").mkdir(parents=True)
+    PathRegistry(ps).ensure_artifacts_tree()
     return ps
 
 

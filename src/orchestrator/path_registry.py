@@ -25,6 +25,47 @@ class PathRegistry:
     def artifacts(self) -> Path:
         return self._artifacts
 
+    def ensure_artifacts_tree(self) -> None:
+        """Create all standard artifact directories.
+
+        Call once during pipeline initialization to eliminate the need
+        for every downstream function to defensively ``mkdir(parents=True)``.
+        """
+        for dir_fn in (
+            self.sections_dir,
+            self.proposals_dir,
+            self.signals_dir,
+            self.notes_dir,
+            self.decisions_dir,
+            self.todos_dir,
+            self.readiness_dir,
+            self.coordination_dir,
+            self.coordination_signals_dir,
+            self.reconciliation_dir,
+            self.reconciliation_requests_dir,
+            self.scope_deltas_dir,
+            self.contracts_dir,
+            self.inputs_dir,
+            self.trace_dir,
+            self.flows_dir,
+            self.qa_intercepts_dir,
+            self.substrate_dir,
+            self.substrate_prompts_dir,
+            self.intent_dir,
+            self.intent_global_dir,
+            self.intent_sections_dir,
+            self.risk_dir,
+            self.governance_dir,
+            self.research_dir,
+            self.research_sections_dir,
+            self.research_global_dir,
+            self.snapshots_dir,
+            self.scan_logs_dir,
+            self.open_problems_dir,
+            self.triage_dir,
+        ):
+            dir_fn().mkdir(parents=True, exist_ok=True)
+
     # --- Directory accessors ---
 
     def sections_dir(self) -> Path:

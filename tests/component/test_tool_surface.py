@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from dependency_injector import providers
 
 from containers import Services
+from src.orchestrator.path_registry import PathRegistry
 from tests.conftest import WritingGuard, make_dispatcher, StubPolicies
 
 from src.dispatch.service.tool_surface_writer import surface_tool_registry, write_tool_surface
@@ -35,12 +36,12 @@ def test_write_tool_surface_filters_cross_section_and_local_tools(tmp_path) -> N
 
 def test_surface_tool_registry_repairs_malformed_registry(tmp_path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     artifacts = planspace / "artifacts"
-    (artifacts / "signals").mkdir(parents=True)
     tool_registry_path = artifacts / "tool-registry.json"
     tool_registry_path.write_text("{bad json", encoding="utf-8")
     tools_available_path = artifacts / "sections" / "section-03-tools-available.md"
-    tools_available_path.parent.mkdir(parents=True)
     tools_available_path.write_text("stale", encoding="utf-8")
 
     dispatch_calls: list[tuple] = []
@@ -87,8 +88,9 @@ def test_surface_tool_registry_repairs_malformed_registry(tmp_path) -> None:
 
 def test_validate_tool_registry_after_implementation_dispatches_validator(tmp_path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     artifacts = planspace / "artifacts"
-    artifacts.mkdir(parents=True)
     tool_registry_path = artifacts / "tool-registry.json"
     tool_registry_path.write_text(
         json.dumps(
@@ -130,9 +132,9 @@ def test_validate_tool_registry_after_implementation_dispatches_validator(tmp_pa
 
 def test_handle_tool_friction_bridges_and_acknowledges_signal(tmp_path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     artifacts = planspace / "artifacts"
-    (artifacts / "signals").mkdir(parents=True)
-    (artifacts / "proposals").mkdir(parents=True)
     tool_registry_path = artifacts / "tool-registry.json"
     tool_registry_path.write_text(json.dumps({"tools": [{"path": "a.py"}]}), encoding="utf-8")
     friction_signal_path = artifacts / "signals" / "section-03-tool-friction.json"

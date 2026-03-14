@@ -99,9 +99,6 @@ def _prepare_build_prompt(
     codemap_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_file = scan_log_dir / "codemap-prompt.md"
 
-    signals_dir = artifacts_dir / "signals"
-    signals_dir.mkdir(parents=True, exist_ok=True)
-
     _paths = PathRegistry(artifacts_dir.parent)
     prompt = load_scan_template("codemap_build.md").format(
         project_mode_path=_paths.project_mode_txt(),
@@ -268,7 +265,6 @@ def _run_freshness_check(
     freshness_prompt = scan_log_dir / "codemap-freshness-prompt.md"
     freshness_output = scan_log_dir / "codemap-freshness-output.md"
     freshness_signal = artifacts_dir / "signals" / "codemap-freshness.json"
-    (artifacts_dir / "signals").mkdir(parents=True, exist_ok=True)
 
     if current_fp == NON_GIT_SENTINEL:
         change_desc = (

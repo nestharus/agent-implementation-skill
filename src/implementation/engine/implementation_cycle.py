@@ -11,10 +11,10 @@ from implementation.service.change_verifier import verify_changed_files
 from implementation.service.trace_map_builder import build_trace_map
 from flow.types.context import FlowEnvelope
 from flow.types.schema import TaskSpec
-from dispatch.types import ALIGNMENT_CHANGED_PENDING
-from proposal.service.cycle_control import check_early_abort
+from dispatch.types import ALIGNMENT_CHANGED_PENDING, DispatchResult, DispatchStatus
+from proposal.service.cycle_control import check_early_abort, handle_pause_response
 from orchestrator.types import PauseType
-from signals.types import TRUNCATE_DETAIL
+from signals.types import ACTION_ABORT, RESUME_PREFIX, TRUNCATE_DETAIL
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +180,7 @@ def _check_budget(
         f"pause:{PauseType.BUDGET_EXHAUSTED}:{section_number}:implementation loop exceeded "
         f"{cycle_budget['implementation_max']} attempts",
     )
-    if not response.startswith("resume"):
+    if not response.startswith(RESUME_PREFIX):
         return _ABORT
     reloaded = Services.artifact_io().read_json(cycle_budget_path)
     if reloaded is not None:
@@ -235,7 +235,7 @@ def _dispatch_implementation(
     codespace: Path,
     parent: str,
     impl_problems: str | None,
-) -> str | None:
+) -> DispatchResult | None:
     """Write the implementation prompt, dispatch to the agent, return result.
 
     Returns ``None`` when the caller should ``return None`` (prompt
@@ -270,15 +270,16 @@ def _dispatch_implementation(
         agent_file=Services.task_router().agent_for("implementation.strategic"),
     )
     if impl_result == ALIGNMENT_CHANGED_PENDING:
+        Services.logger().log(f"Section {section.number}: alignment changed during implementation dispatch — aborting")
         return None
 
     Services.communicator().mailbox_send(
         planspace,
         parent,
-        f"summary:impl:{section.number}:{Services.dispatch_helpers().summarize_output(impl_result)}",
+        f"summary:impl:{section.number}:{Services.dispatch_helpers().summarize_output(impl_result.output)}",
     )
 
-    if impl_result.startswith("TIMEOUT:"):
+    if impl_result.status is DispatchStatus.TIMEOUT:
         Services.logger().log(f"Section {section.number}: implementation agent timed out")
         Services.communicator().mailbox_send(
             planspace,
@@ -313,7 +314,6 @@ def _handle_post_dispatch(
         origin_refs=[str(artifacts / f"impl-{section_number}-output.md")],
     )
 
-    paths.signals_dir().mkdir(parents=True, exist_ok=True)
     signal, detail = Services.dispatch_helpers().check_agent_signals(
         signal_path=paths.impl_signal(section_number),
     )
@@ -337,12 +337,8 @@ def _handle_signal_pause(
         parent,
         f"pause:{signal}:{section_number}:{detail}",
     )
-    if not response.startswith("resume"):
-        return _ABORT
-    payload = response.partition(":")[2].strip()
-    if payload:
-        Services.cross_section().persist_decision(planspace, section_number, payload)
-    if Services.pipeline_control().alignment_changed_pending(planspace):
+    result = handle_pause_response(planspace, section_number, response)
+    if result == ACTION_ABORT:
         return _ABORT
     return _CONTINUE
 
@@ -357,7 +353,7 @@ def _dispatch_alignment_check(
     planspace: Path,
     codespace: Path,
     parent: str,
-) -> str | None:
+) -> DispatchResult | None:
     """Dispatch the alignment check agent. Return result or None to abort."""
     artifacts = PathRegistry(planspace).artifacts
     policy = Services.policies().load(planspace)
@@ -379,16 +375,17 @@ def _dispatch_alignment_check(
         agent_file=Services.task_router().agent_for("staleness.alignment_check"),
     )
     if impl_align_result == ALIGNMENT_CHANGED_PENDING:
+        Services.logger().log(f"Section {section.number}: alignment changed during alignment check — aborting")
         return None
 
     return impl_align_result
 
 
 def _handle_alignment_timeout(
-    impl_align_result: str, section_number: str,
+    impl_align_result: DispatchResult, section_number: str,
 ) -> str:
     """Return ``_CONTINUE`` if the alignment check timed out, else ``_PROCEED``."""
-    if impl_align_result.startswith("TIMEOUT:"):
+    if impl_align_result.status is DispatchStatus.TIMEOUT:
         Services.logger().log(
             f"Section {section_number}: implementation alignment check "
             f"timed out — retrying"
@@ -398,7 +395,7 @@ def _handle_alignment_timeout(
 
 
 def _extract_alignment_problems(
-    impl_align_result: str,
+    impl_align_result: DispatchResult,
     section_number: str,
     planspace: Path,
     parent: str,
@@ -409,7 +406,7 @@ def _extract_alignment_problems(
     policy = Services.policies().load(planspace)
     impl_align_output = artifacts / f"impl-align-{section_number}-output.md"
     return Services.section_alignment().extract_problems(
-        impl_align_result,
+        impl_align_result.output,
         output_path=impl_align_output,
         planspace=planspace,
         parent=parent,

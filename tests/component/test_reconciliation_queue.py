@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from src.orchestrator.path_registry import PathRegistry
 from src.reconciliation.repository.queue import (
     load_reconciliation_requests,
     queue_reconciliation_request,
@@ -33,8 +34,9 @@ def test_load_reconciliation_requests_skips_malformed_and_renames_non_dict(
     tmp_path: Path,
 ) -> None:
     run_dir = tmp_path / "planspace"
+    run_dir.mkdir()
+    PathRegistry(run_dir).ensure_artifacts_tree()
     recon_dir = run_dir / "artifacts" / "reconciliation-requests"
-    recon_dir.mkdir(parents=True)
     (recon_dir / "section-01-reconciliation.json").write_text(
         json.dumps({"section": "01"}) + "\n",
         encoding="utf-8",

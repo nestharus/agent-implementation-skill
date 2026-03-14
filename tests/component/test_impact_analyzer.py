@@ -7,6 +7,7 @@ from dependency_injector import providers
 from conftest import WritingGuard, make_dispatcher
 from containers import ContextAssemblyService, Services
 from src.implementation.service import impact_analyzer
+from src.orchestrator.path_registry import PathRegistry
 from src.orchestrator.types import Section
 
 def _write_section(path, summary: str) -> None:
@@ -15,10 +16,11 @@ def _write_section(path, summary: str) -> None:
 
 def test_collect_impact_candidates_uses_shared_refs_and_contracts(tmp_path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     artifacts = planspace / "artifacts"
     (artifacts / "inputs" / "section-01").mkdir(parents=True, exist_ok=True)
     (artifacts / "inputs" / "section-02").mkdir(parents=True, exist_ok=True)
-    (artifacts / "contracts").mkdir(parents=True, exist_ok=True)
     (artifacts / "inputs" / "section-01" / "shared.ref").write_text("", encoding="utf-8")
     (artifacts / "inputs" / "section-02" / "shared.ref").write_text("", encoding="utf-8")
     (artifacts / "contracts" / "contract-01-04.md").write_text("contract", encoding="utf-8")
@@ -48,7 +50,8 @@ def test_analyze_impacts_parses_material_impacts_from_primary_output(
     noop_communicator) -> None:
     planspace = tmp_path / "planspace"
     codespace = tmp_path / "codespace"
-    (planspace / "artifacts").mkdir(parents=True, exist_ok=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     codespace.mkdir(parents=True, exist_ok=True)
 
     source_path = tmp_path / "section-01.md"
@@ -99,7 +102,8 @@ def test_analyze_impacts_falls_back_to_normalizer_when_primary_is_invalid(
     noop_communicator) -> None:
     planspace = tmp_path / "planspace"
     codespace = tmp_path / "codespace"
-    (planspace / "artifacts").mkdir(parents=True, exist_ok=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     codespace.mkdir(parents=True, exist_ok=True)
 
     source_path = tmp_path / "section-01.md"

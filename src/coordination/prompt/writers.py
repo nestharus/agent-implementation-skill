@@ -25,7 +25,6 @@ def write_fix_prompt(
     in a coordinated way.
     """
     paths = PathRegistry(planspace)
-    paths.coordination_dir().mkdir(parents=True, exist_ok=True)
     prompt_path = paths.coordination_fix_prompt(group_id)
     modified_report = paths.coordination_fix_modified(group_id)
 
@@ -83,12 +82,10 @@ def write_bridge_prompt(
 ) -> Path | None:
     """Write a prompt for bridge resolution of cross-section overlap."""
     paths = PathRegistry(planspace)
-    paths.coordination_dir().mkdir(parents=True, exist_ok=True)
     bridge_prompt = paths.coordination_bridge_prompt(group_index)
     contract_path = paths.coordination_contract_patch(group_index)
     contract_delta_path = paths.contracts_dir() / f"contract-delta-group-{group_index}.md"
     notes_dir = paths.notes_dir()
-    notes_dir.mkdir(parents=True, exist_ok=True)
     sections_dir = paths.sections_dir()
     proposals_dir = paths.proposals_dir()
 

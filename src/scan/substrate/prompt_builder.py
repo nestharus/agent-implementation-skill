@@ -52,7 +52,6 @@ def write_shard_prompt(
     """Write the dispatch prompt for the shard explorer agent."""
     registry = PathRegistry(planspace)
     prompts_dir = registry.substrate_prompts_dir()
-    prompts_dir.mkdir(parents=True, exist_ok=True)
 
     output_path = registry.substrate_dir() / "shards" / f"shard-{section_num}.json"
     codemap_path = registry.codemap()
@@ -145,7 +144,6 @@ def write_pruner_prompt(
     """Write the dispatch prompt for the pruner agent."""
     registry = PathRegistry(planspace)
     prompts_dir = registry.substrate_prompts_dir()
-    prompts_dir.mkdir(parents=True, exist_ok=True)
 
     shards_dir = registry.substrate_dir() / "shards"
     substrate_dir = registry.substrate_dir()
@@ -227,7 +225,6 @@ def write_seeder_prompt(
     """Write the dispatch prompt for the seeder agent."""
     registry = PathRegistry(planspace)
     prompts_dir = registry.substrate_prompts_dir()
-    prompts_dir.mkdir(parents=True, exist_ok=True)
 
     substrate_dir = registry.substrate_dir()
     seed_plan_path = substrate_dir / "seed-plan.json"

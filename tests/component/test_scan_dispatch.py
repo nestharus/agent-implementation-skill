@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from src.orchestrator.path_registry import PathRegistry
 from src.scan.service.scan_dispatch_config import (
     DEFAULT_SCAN_MODELS,
     build_scan_dispatch_command,
@@ -18,8 +19,9 @@ from src.scan.service.scan_dispatch_config import (
 def test_read_scan_model_policy_uses_defaults_and_overrides(tmp_path) -> None:
     """Uses runtime layout: artifacts_dir = planspace / 'artifacts'."""
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     artifacts_dir = planspace / "artifacts"
-    artifacts_dir.mkdir(parents=True)
     policy_path = artifacts_dir / "model-policy.json"
     policy_path.write_text(
         json.dumps({"scan": {"tier_ranking": "custom-model"}}),
@@ -35,8 +37,9 @@ def test_read_scan_model_policy_uses_defaults_and_overrides(tmp_path) -> None:
 def test_read_scan_model_policy_renames_malformed_json(tmp_path) -> None:
     """Uses runtime layout: artifacts_dir = planspace / 'artifacts'."""
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     artifacts_dir = planspace / "artifacts"
-    artifacts_dir.mkdir(parents=True)
     policy_path = artifacts_dir / "model-policy.json"
     policy_path.write_text("{bad json", encoding="utf-8")
 

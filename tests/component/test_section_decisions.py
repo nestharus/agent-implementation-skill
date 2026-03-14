@@ -5,6 +5,7 @@ from pathlib import Path
 
 from orchestrator.types import Section
 
+from src.orchestrator.path_registry import PathRegistry
 from src.orchestrator.service.section_decision_store import (
     build_section_number_map,
     extract_section_summary,
@@ -35,6 +36,8 @@ def test_extract_section_summary_falls_back_to_first_content_line(
 
 def test_persist_decision_writes_json_and_prose(tmp_path: Path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
 
     persist_decision(planspace, "01", "Use JWT tokens")
 

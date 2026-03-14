@@ -6,10 +6,13 @@ from src.implementation.service.file_snapshotter import (
     compute_text_diff,
     snapshot_modified_files,
 )
+from src.orchestrator.path_registry import PathRegistry
 
 
 def test_snapshot_modified_files_copies_nested_paths(tmp_path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     codespace = tmp_path / "codespace"
     nested = codespace / "pkg" / "module.py"
     nested.parent.mkdir(parents=True, exist_ok=True)
@@ -29,6 +32,8 @@ def test_snapshot_modified_files_copies_nested_paths(tmp_path) -> None:
 
 def test_snapshot_modified_files_skips_escaping_paths_and_warns(tmp_path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     codespace = tmp_path / "codespace"
     outside = tmp_path / "outside.txt"
     outside.write_text("secret\n", encoding="utf-8")

@@ -188,7 +188,6 @@ def update_blocker_rollup(planspace: Path) -> None:
         return
 
     decisions_dir = paths.decisions_dir()
-    decisions_dir.mkdir(parents=True, exist_ok=True)
     rollup_path = decisions_dir / "needs-input.md"
 
     # Group blockers by category

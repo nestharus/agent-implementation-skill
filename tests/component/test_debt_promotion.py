@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from src.orchestrator.path_registry import PathRegistry
 from src.intake.service.assessment_evaluator import promote_debt_signals
 
 
@@ -23,8 +24,9 @@ def _write_signal(signals_dir: Path, section: str, items: list[dict]) -> None:
 def test_unchanged_debt_is_idempotent(tmp_path: Path) -> None:
     """PAT-0012: identical debt signal does not re-promote."""
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     signals = planspace / "artifacts" / "signals"
-    signals.mkdir(parents=True)
 
     item = {
         "category": "coupling",
@@ -48,8 +50,9 @@ def test_unchanged_debt_is_idempotent(tmp_path: Path) -> None:
 def test_materially_changed_debt_repromotes(tmp_path: Path) -> None:
     """PAT-0012: changed severity/mitigation triggers re-promotion."""
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     signals = planspace / "artifacts" / "signals"
-    signals.mkdir(parents=True)
 
     item = {
         "category": "coupling",

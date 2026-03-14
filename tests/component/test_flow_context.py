@@ -16,6 +16,7 @@ from flow.repository.flow_context_store import (
     write_flow_context,
 )
 from flow.types.context import FlowTask
+from orchestrator.path_registry import PathRegistry
 
 
 def test_relpath_helpers_match_existing_layout() -> None:
@@ -29,6 +30,7 @@ def test_relpath_helpers_match_existing_layout() -> None:
 def test_write_flow_context_writes_expected_json(tmp_path) -> None:
     planspace = tmp_path / "planspace"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
 
     write_flow_context(
         planspace=planspace,
@@ -64,7 +66,8 @@ def test_build_flow_context_raises_on_missing_file(tmp_path) -> None:
 
 def test_build_flow_context_enriches_gate_aggregate(tmp_path) -> None:
     planspace = tmp_path / "planspace"
-    (planspace / "artifacts" / "flows").mkdir(parents=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     gate_id = "gate_1"
     (planspace / gate_aggregate_relpath(gate_id)).write_text("{}", encoding="utf-8")
     (planspace / flow_context_relpath(11)).write_text(
@@ -90,6 +93,7 @@ def test_build_flow_context_enriches_gate_aggregate(tmp_path) -> None:
 def test_write_dispatch_prompt_wraps_original_without_mutation(tmp_path) -> None:
     planspace = tmp_path / "planspace"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     original = tmp_path / "prompt.md"
     original.write_text("# Original\n", encoding="utf-8")
 

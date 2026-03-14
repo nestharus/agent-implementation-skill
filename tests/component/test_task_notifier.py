@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from src.orchestrator.path_registry import PathRegistry
 from src.flow.service.task_db_client import db_cmd
 from src.flow.service.notifier import (
     notify_task_result,
@@ -14,6 +15,7 @@ from src.flow.service.notifier import (
 def _init_planspace(tmp_path: Path) -> tuple[Path, str]:
     planspace = tmp_path / "planspace"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     db_path = planspace / "run.db"
     db_cmd(str(db_path), "init")
     return planspace, str(db_path)

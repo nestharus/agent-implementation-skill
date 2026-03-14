@@ -10,6 +10,7 @@ from src.intent.service.philosophy_catalog import (
     build_philosophy_catalog,
     walk_md_bounded,
 )
+from src.orchestrator.path_registry import PathRegistry
 
 
 def test_walk_md_bounded_respects_depth_and_excluded_top_dirs(tmp_path: Path) -> None:
@@ -37,7 +38,8 @@ def test_build_philosophy_catalog_prefers_codespace_and_excludes_artifacts(
 ) -> None:
     planspace = tmp_path / "planspace"
     codespace = tmp_path / "codespace"
-    (planspace / "artifacts").mkdir(parents=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     codespace.mkdir()
 
     (planspace / "notes.md").write_text("# Plan notes\n", encoding="utf-8")

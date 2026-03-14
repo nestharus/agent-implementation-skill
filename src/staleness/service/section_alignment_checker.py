@@ -9,7 +9,7 @@ from pipeline.template import render_template
 from containers import Services
 from staleness.helpers.verdict_parsers import parse_alignment_verdict as _parse_alignment_verdict
 from orchestrator.types import Section, ControlSignal
-from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from dispatch.types import ALIGNMENT_CHANGED_PENDING, DispatchStatus
 from signals.types import ALIGNMENT_INVALID_FRAME
 
 
@@ -121,7 +121,7 @@ def _extract_problems(
             planspace, parent, codespace=codespace,
             agent_file=Services.task_router().agent_for("staleness.alignment_adjudicate"),
         )
-        return _parse_adjudicator_response(adj_result)
+        return _parse_adjudicator_response(adj_result.output)
 
     return ("MISSING_JSON_VERDICT: alignment judge did not produce "
             "structured output and adjudicator was not available")
@@ -160,10 +160,10 @@ def _run_alignment_check_with_retries(
             agent_file=Services.task_router().agent_for("staleness.alignment_check"),
         )
         if result == ALIGNMENT_CHANGED_PENDING:
-            return result
-        if not result.startswith("TIMEOUT:"):
+            return ALIGNMENT_CHANGED_PENDING
+        if result.status is not DispatchStatus.TIMEOUT:
             # Check for structured JSON verdict from alignment judge
-            verdict = _parse_alignment_verdict(result)
+            verdict = _parse_alignment_verdict(result.output)
             if verdict is not None and verdict.get("frame_ok") is False:
                 # Structural failure — the alignment prompt frame was
                 # invalid.  Do NOT retry; surface upward for parent
@@ -173,7 +173,7 @@ def _run_alignment_check_with_retries(
                     f"section {sec_num} — structural failure, "
                     f"requires parent intervention")
                 return ALIGNMENT_INVALID_FRAME
-            return result
+            return result.output
         Services.logger().log(f"  alignment check for section {sec_num} timed out "
             f"(attempt {attempt}/{max_retries + 1})")
     return None

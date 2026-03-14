@@ -32,7 +32,7 @@ def test_parse_scope_delta_adjudication_rejects_invalid_schema() -> None:
 def test_normalize_section_id_prefers_existing_exact_file(tmp_path) -> None:
     planspace = tmp_path
     paths = PathRegistry(planspace)
-    paths.scope_deltas_dir().mkdir(parents=True)
+    paths.ensure_artifacts_tree()
     paths.scope_delta_section("3").write_text("{}", encoding="utf-8")
 
     assert normalize_section_id("3", paths) == "3"
@@ -41,7 +41,7 @@ def test_normalize_section_id_prefers_existing_exact_file(tmp_path) -> None:
 def test_normalize_section_id_uses_zero_padded_match(tmp_path) -> None:
     planspace = tmp_path
     paths = PathRegistry(planspace)
-    paths.scope_deltas_dir().mkdir(parents=True)
+    paths.ensure_artifacts_tree()
     paths.scope_delta_section("03").write_text("{}", encoding="utf-8")
 
     assert normalize_section_id("3", paths) == "03"

@@ -20,6 +20,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.orchestrator.path_registry import PathRegistry
+
 
 # ---- Fixtures ----
 
@@ -29,16 +31,12 @@ def substrate_planspace(tmp_path: Path) -> Path:
     """Create a planspace directory for substrate tests."""
     ps = tmp_path / "planspace"
     ps.mkdir()
+    PathRegistry(ps).ensure_artifacts_tree()
     artifacts = ps / "artifacts"
     for subdir in (
-        "sections",
-        "signals",
-        "substrate",
         "substrate/shards",
-        "substrate/prompts",
         "substrate/logs",
         "signals/related-files-update",
-        "inputs",
     ):
         (artifacts / subdir).mkdir(parents=True, exist_ok=True)
     return ps

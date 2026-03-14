@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from containers import Services
+from dispatch.types import DispatchResult, DispatchStatus
 from intent.service.intent_triager import load_triage_result
 from orchestrator.path_registry import PathRegistry
 from pipeline.context import DispatchContext
@@ -60,7 +61,7 @@ def _check_proposal_written(
 
 
 def _evaluate_alignment(
-    align_result: str,
+    align_result: DispatchResult,
     align_output: Path,
     ctx: DispatchContext,
 ) -> tuple[str | None, bool]:
@@ -69,11 +70,11 @@ def _evaluate_alignment(
     Returns (problems, is_timeout).  When is_timeout is True, problems
     holds the timeout retry message.
     """
-    if align_result.startswith("TIMEOUT:"):
+    if align_result.status is DispatchStatus.TIMEOUT:
         return "Previous alignment check timed out.", True
 
     problems = Services.section_alignment().extract_problems(
-        align_result,
+        align_result.output,
         output_path=align_output,
         planspace=ctx.planspace,
         parent=ctx.parent,
@@ -107,7 +108,7 @@ def _log_misalignment_problems(
 def _run_alignment_phase(
     section,
     ctx: DispatchContext,
-    align_result: str,
+    align_result: DispatchResult,
     align_output: Path,
     intent_mode: str,
     intent_budgets: dict,

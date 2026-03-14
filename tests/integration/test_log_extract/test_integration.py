@@ -14,6 +14,7 @@ from log_extract import cli, formatters, timeline
 from log_extract.correlator import correlate
 from log_extract.extractors import artifacts, claude, codex, gemini, opencode, run_db
 from log_extract.utils import load_model_backend_map
+from src.orchestrator.path_registry import PathRegistry
 
 
 def _build_run_db(db_path: Path) -> None:
@@ -140,16 +141,15 @@ class TestEndToEnd:
         self.tmpdir = tempfile.mkdtemp()
         self.planspace = Path(self.tmpdir) / "planspace"
         self.planspace.mkdir()
+        PathRegistry(self.planspace).ensure_artifacts_tree()
 
         # run.db
         _build_run_db(self.planspace / "run.db")
 
         # Artifacts
         artifacts_dir = self.planspace / "artifacts"
-        artifacts_dir.mkdir()
         (artifacts_dir / "test-output.md").write_text("output content")
         signals_dir = artifacts_dir / "signals"
-        signals_dir.mkdir()
         (signals_dir / "model-choice-03.json").write_text(
             json.dumps({"model": "claude-opus", "section": "03"})
         )

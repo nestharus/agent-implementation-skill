@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from src.orchestrator.path_registry import PathRegistry
 from src.intent.service.surface_registry import load_research_derived_surfaces
 
 
@@ -10,6 +11,8 @@ def test_load_research_derived_surfaces_preserves_schema_mismatch(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     research_path = (
         planspace
         / "artifacts"
@@ -29,6 +32,8 @@ def test_load_research_derived_surfaces_accepts_expected_shape(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     research_path = (
         planspace
         / "artifacts"

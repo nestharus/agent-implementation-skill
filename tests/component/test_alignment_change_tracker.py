@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from _paths import DB_SH
+from src.orchestrator.path_registry import PathRegistry
 from src.staleness.service.change_tracker import (
     check_and_clear,
     check_pending,
@@ -14,7 +15,8 @@ from src.signals.service.database_client import DatabaseClient
 
 def _planspace(tmp_path: Path) -> Path:
     planspace = tmp_path / "planspace"
-    (planspace / "artifacts" / "sections").mkdir(parents=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     DatabaseClient(DB_SH, planspace / "run.db").execute("init")
     return planspace
 

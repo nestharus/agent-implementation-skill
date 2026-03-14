@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from scan.related.related_file_resolver import list_section_files
+from src.orchestrator.path_registry import PathRegistry
 from src.scan.substrate.substrate_state_reader import (
     count_existing_related,
     read_project_mode,
@@ -15,10 +16,9 @@ from src.scan.substrate.substrate_state_reader import (
 
 
 def test_read_project_mode_prefers_json_signal(tmp_path: Path) -> None:
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts_dir = tmp_path / "artifacts"
-    artifacts_dir.mkdir()
     signals_dir = artifacts_dir / "signals"
-    signals_dir.mkdir()
     (signals_dir / "project-mode.json").write_text(
         json.dumps({"mode": "Brownfield"}),
         encoding="utf-8",
@@ -29,10 +29,9 @@ def test_read_project_mode_prefers_json_signal(tmp_path: Path) -> None:
 
 
 def test_read_project_mode_falls_back_to_text_after_malformed_json(tmp_path: Path) -> None:
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts_dir = tmp_path / "artifacts"
-    artifacts_dir.mkdir()
     signals_dir = artifacts_dir / "signals"
-    signals_dir.mkdir()
     json_path = signals_dir / "project-mode.json"
     json_path.write_text("{bad json", encoding="utf-8")
     (artifacts_dir / "project-mode.txt").write_text("hybrid", encoding="utf-8")
@@ -73,8 +72,8 @@ def test_count_existing_related_counts_only_existing_files(tmp_path: Path) -> No
 
 
 def test_write_status_writes_expected_payload(tmp_path: Path) -> None:
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts_dir = tmp_path / "artifacts"
-    artifacts_dir.mkdir()
 
     write_status(
         artifacts_dir,

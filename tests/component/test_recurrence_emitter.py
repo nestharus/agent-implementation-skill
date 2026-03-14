@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from src.orchestrator.path_registry import PathRegistry
 from src.intent.service.recurrence_emitter import emit_recurrence_signal
 
 
 def test_emit_recurrence_signal_writes_expected_payload(tmp_path: Path) -> None:
     planspace = tmp_path / "planspace"
-    (planspace / "artifacts" / "signals").mkdir(parents=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
 
     emit_recurrence_signal(planspace, "07", 3)
 

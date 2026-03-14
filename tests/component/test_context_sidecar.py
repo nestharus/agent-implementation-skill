@@ -9,6 +9,7 @@ from src.dispatch.service.context_sidecar import (
     parse_context_field,
     resolve_context,
 )
+from src.orchestrator.path_registry import PathRegistry
 
 
 def test_parse_context_field_handles_missing_frontmatter_and_lists(tmp_path) -> None:
@@ -60,9 +61,9 @@ def test_resolve_context_skips_unknown_categories_and_returns_empty_for_missing(
 
 
 def test_resolve_context_appends_codemap_corrections(tmp_path) -> None:
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts = tmp_path / "artifacts"
     signals = artifacts / "signals"
-    signals.mkdir(parents=True, exist_ok=True)
     (artifacts / "codemap.md").write_text("Base codemap", encoding="utf-8")
     (signals / "codemap-corrections.json").write_text(
         json.dumps({"section-01": ["src/app.py"]}),
@@ -79,11 +80,10 @@ def test_resolve_context_appends_codemap_corrections(tmp_path) -> None:
 
 
 def test_resolve_context_related_files_prefers_json_sidecar(tmp_path) -> None:
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts = tmp_path / "artifacts"
     sections = artifacts / "sections"
     signals = artifacts / "signals"
-    sections.mkdir(parents=True, exist_ok=True)
-    signals.mkdir(parents=True, exist_ok=True)
     (sections / "section-07.md").write_text(
         "# Section\n\n## Related Files\n- fallback.py\n\n## Next\nbody\n",
         encoding="utf-8",
@@ -104,8 +104,8 @@ def test_resolve_context_related_files_prefers_json_sidecar(tmp_path) -> None:
 
 
 def test_resolve_context_related_files_falls_back_to_markdown_block(tmp_path) -> None:
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts = tmp_path / "artifacts" / "sections"
-    artifacts.mkdir(parents=True, exist_ok=True)
     (artifacts / "section-09.md").write_text(
         "# Section\n\n## Related Files\n- one.py\n- two.py\n\n## Notes\nrest\n",
         encoding="utf-8",
@@ -122,8 +122,8 @@ def test_resolve_context_related_files_falls_back_to_markdown_block(tmp_path) ->
 
 
 def test_resolve_context_flow_context_requires_exactly_one_file(tmp_path) -> None:
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     flows = tmp_path / "artifacts" / "flows"
-    flows.mkdir(parents=True, exist_ok=True)
     agent_file = tmp_path / "agent.md"
     agent_file.write_text(
         "---\ncontext:\n  - flow_context\n---\n",
@@ -140,8 +140,8 @@ def test_resolve_context_flow_context_requires_exactly_one_file(tmp_path) -> Non
 
 
 def test_resolve_context_reads_governance_packet(tmp_path) -> None:
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     governance_dir = tmp_path / "artifacts" / "governance"
-    governance_dir.mkdir(parents=True, exist_ok=True)
     packet_path = governance_dir / "section-03-governance-packet.json"
     packet_path.write_text('{"section": "03", "profiles": []}', encoding="utf-8")
     agent_file = tmp_path / "agent.md"
@@ -156,8 +156,8 @@ def test_resolve_context_reads_governance_packet(tmp_path) -> None:
 
 
 def test_materialize_context_sidecar_writes_pretty_json_with_trailing_newline(tmp_path) -> None:
+    PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts = tmp_path / "artifacts" / "sections"
-    artifacts.mkdir(parents=True, exist_ok=True)
     (artifacts / "section-11.md").write_text("# Section 11\n", encoding="utf-8")
     agent_file = tmp_path / "section-agent.md"
     agent_file.write_text(
@@ -167,7 +167,6 @@ def test_materialize_context_sidecar_writes_pretty_json_with_trailing_newline(tm
 
     sidecar = materialize_context_sidecar(str(agent_file), tmp_path, section="11")
 
-    from src.orchestrator.path_registry import PathRegistry
     assert sidecar == PathRegistry(tmp_path).context_sidecar("section-agent")
     assert sidecar is not None
     assert sidecar.read_text(encoding="utf-8").endswith("\n")

@@ -126,7 +126,7 @@ def _dispatch_adjudication(
     if adjudication_result == ALIGNMENT_CHANGED_PENDING:
         raise ScopeDeltaAggregationExit
 
-    adj_data = parse_scope_delta_adjudication(adjudication_result)
+    adj_data = parse_scope_delta_adjudication(adjudication_result.output)
     if adj_data is not None:
         return adj_data
 
@@ -150,7 +150,7 @@ def _dispatch_adjudication(
     if retry_result == ALIGNMENT_CHANGED_PENDING:
         raise ScopeDeltaAggregationExit
 
-    return parse_scope_delta_adjudication(retry_result)
+    return parse_scope_delta_adjudication(retry_result.output)
 
 
 def _build_delta_id_map(delta_files: list[Path]) -> dict[str, Path]:

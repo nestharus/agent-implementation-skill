@@ -31,9 +31,6 @@ def _query_all(db_path: Path, sql: str) -> list[sqlite3.Row]:
 
 def _write_common_artifacts(planspace: Path, section_number: str = "03") -> None:
     paths = PathRegistry(planspace)
-    paths.section_spec(section_number).parent.mkdir(parents=True, exist_ok=True)
-    paths.proposal_state(section_number).parent.mkdir(parents=True, exist_ok=True)
-    paths.signals_dir().mkdir(parents=True, exist_ok=True)
     paths.research_section_dir(section_number).mkdir(parents=True, exist_ok=True)
     paths.section_spec(section_number).write_text("# Section\n", encoding="utf-8")
     paths.problem_frame(section_number).write_text("# Problem Frame\n", encoding="utf-8")
@@ -50,6 +47,7 @@ def test_execute_research_plan_translates_semantic_plan_into_fanout(
     codespace = tmp_path / "codespace"
     db_path = planspace / "run.db"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     codespace.mkdir()
     _init_db(db_path)
     _write_common_artifacts(planspace)
@@ -87,7 +85,6 @@ def test_execute_research_plan_translates_semantic_plan_into_fanout(
     )
 
     plan_output = planspace / "artifacts" / "task-99-output.md"
-    plan_output.parent.mkdir(parents=True, exist_ok=True)
     plan_output.write_text("planner output\n", encoding="utf-8")
 
     assert execute_research_plan("03", planspace, codespace, plan_output) is True
@@ -125,6 +122,7 @@ def test_execute_research_plan_fails_closed_when_plan_is_schema_mismatched(
     planspace = tmp_path / "planspace"
     db_path = planspace / "run.db"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     _init_db(db_path)
     paths = PathRegistry(planspace)
     write_json(paths.research_plan("03"), {"section": "03", "tickets": []})

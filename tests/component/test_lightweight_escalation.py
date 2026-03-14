@@ -8,12 +8,12 @@ import pytest
 from conftest import override_dispatcher_and_guard
 from containers import Services
 from pipeline.context import DispatchContext
+from src.orchestrator.path_registry import PathRegistry
 from src.proposal.engine.proposal_cycle import run_proposal_loop
 from src.orchestrator.types import Section
 
 def _section(planspace: Path, number: str = "01") -> Section:
     section_path = planspace / "artifacts" / "sections" / f"section-{number}.md"
-    section_path.parent.mkdir(parents=True, exist_ok=True)
     section_path.write_text(f"# Section {number}\n", encoding="utf-8")
     return Section(number=number, path=section_path, related_files=["src/main.py"])
 
@@ -21,13 +21,8 @@ def _section(planspace: Path, number: str = "01") -> Section:
 def env(tmp_path: Path) -> tuple[Path, Path]:
     planspace = tmp_path / "planspace"
     codespace = tmp_path / "codespace"
-    for path in (
-        planspace / "artifacts" / "sections",
-        planspace / "artifacts" / "signals",
-        planspace / "artifacts" / "proposals",
-        planspace / "artifacts" / "notes",
-    ):
-        path.mkdir(parents=True, exist_ok=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     codespace.mkdir()
     return planspace, codespace
 

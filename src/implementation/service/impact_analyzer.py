@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from containers import Services
-from _config import AGENT_NAME, DB_SH
 from dispatch.helpers.signal_checker import extract_fenced_block
 from orchestrator.path_registry import PathRegistry
 from orchestrator.service.section_decision_store import (
@@ -127,17 +126,18 @@ def analyze_impacts(
         return []
 
     Services.logger().log(f"Section {section_number}: running impact analysis")
+    cfg = Services.config()
     subprocess.run(  # noqa: S603
         [
             "bash",
-            str(DB_SH),
+            str(cfg.db_sh),
             "log",
             str(planspace / "run.db"),
             "summary",
             f"glm-explore:{section_number}",
             "impact analysis",
             "--agent",
-            AGENT_NAME,
+            cfg.agent_name,
         ],
         capture_output=True,
         text=True,
@@ -155,7 +155,7 @@ def analyze_impacts(
     )
 
     sec_num_map = build_section_number_map(all_sections)
-    impacted_sections = _parse_material_impacts(impact_result, sec_num_map)
+    impacted_sections = _parse_material_impacts(impact_result.output, sec_num_map)
     if impacted_sections is not None:
         if not impacted_sections:
             Services.logger().log(f"Section {section_number}: no material impacts on other sections")
@@ -167,7 +167,7 @@ def analyze_impacts(
         return impacted_sections
 
     return _dispatch_normalizer(
-        impact_result, section_number, normalizer_model,
+        impact_result.output, section_number, normalizer_model,
         planspace, parent, codespace, sec_num_map,
     )
 
@@ -365,7 +365,7 @@ def _dispatch_normalizer(
         section_number=section_number,
         agent_file=Services.task_router().agent_for("signals.impact_normalize"),
     )
-    impacted_sections = _parse_material_impacts(normalize_result, sec_num_map)
+    impacted_sections = _parse_material_impacts(normalize_result.output, sec_num_map)
     if impacted_sections is None:
         Services.logger().log(
             f"Section {section_number}: GLM normalizer also failed to "

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from src.orchestrator.path_registry import PathRegistry
 from src.signals.repository.artifact_io import write_json
 from src.research.engine.orchestrator import (
     compute_trigger_hash,
@@ -50,9 +51,12 @@ def test_validate_research_plan_rejects_malformed_payloads(tmp_path: Path) -> No
 
 
 def test_write_research_status_writes_status_artifact(tmp_path: Path) -> None:
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     status_path = write_research_status(
         "03",
-        tmp_path / "planspace",
+        planspace,
         "planned",
         detail="awaiting planner",
         trigger_hash="hash-03",
@@ -81,6 +85,8 @@ def test_write_research_status_writes_status_artifact(tmp_path: Path) -> None:
 
 def test_is_research_complete_only_for_terminal_states(tmp_path: Path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     assert is_research_complete("03", planspace) is False
 
     status_path = (
@@ -121,6 +127,8 @@ def test_is_research_complete_only_for_terminal_states(tmp_path: Path) -> None:
 
 def test_load_research_status_preserves_schema_mismatches(tmp_path: Path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     status_path = (
         planspace
         / "artifacts"

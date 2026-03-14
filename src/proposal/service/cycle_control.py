@@ -15,13 +15,42 @@ from signals.service.blocker_manager import (
     append_open_problem,
     update_blocker_rollup,
 )
-from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from dispatch.types import ALIGNMENT_CHANGED_PENDING, DispatchResult, DispatchStatus
 from orchestrator.types import PauseType
 from signals.types import (
     ACTION_ABORT, ACTION_CONTINUE,
+    RESUME_PREFIX,
     SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE,
     TRUNCATE_DETAIL,
 )
+
+
+def write_scope_delta(
+    planspace: Path, signal_path: Path, section_number: str,
+    detail: str, origin: str,
+) -> None:
+    """Write a scope delta artifact for an out-of-scope signal.
+
+    ``origin`` identifies where the OOS signal came from (e.g. "setup",
+    "proposal") and is used in the delta ID.
+    """
+    paths = PathRegistry(planspace)
+    scope_delta_dir = paths.scope_deltas_dir()
+    scope_delta_dir.mkdir(parents=True, exist_ok=True)
+    signal_payload = Services.artifact_io().read_json_or_default(signal_path, {})
+    scope_delta = {
+        "delta_id": f"delta-{section_number}-{origin}-oos",
+        "section": section_number,
+        "signal": SIGNAL_OUT_OF_SCOPE,
+        "detail": detail,
+        "requires_root_reframing": True,
+        "signal_path": str(signal_path),
+        "signal_payload": signal_payload,
+    }
+    Services.artifact_io().write_json(
+        paths.scope_delta_section(section_number),
+        scope_delta,
+    )
 
 
 def handle_pause_response(
@@ -34,7 +63,7 @@ def handle_pause_response(
     Returns ``ACTION_ABORT`` if the parent rejected or alignment changed,
     ``ACTION_CONTINUE`` otherwise.  Persists any payload decision.
     """
-    if not response.startswith("resume"):
+    if not response.startswith(RESUME_PREFIX):
         return ACTION_ABORT
     payload = response.partition(":")[2].strip()
     if payload:
@@ -112,7 +141,7 @@ def check_budget_exceeded(
         f"pause:{PauseType.BUDGET_EXHAUSTED}:{section_number}:proposal loop exceeded "
         f"{cycle_budget['proposal_max']} attempts",
     )
-    if not response.startswith("resume"):
+    if not response.startswith(RESUME_PREFIX):
         return True
     reloaded = Services.artifact_io().read_json(cycle_budget_path)
     if reloaded is not None:
@@ -128,10 +157,10 @@ def dispatch_proposal(
     proposal_model: str,
     intg_prompt: Path,
     integration_proposal: Path,
-) -> str | None:
+) -> DispatchResult | None:
     """Dispatch the proposal agent, handle timeout, send summary, and ingest.
 
-    Returns the dispatch result string, or None if the caller should abort.
+    Returns the dispatch result, or None if the caller should abort.
     """
     paths = PathRegistry(planspace)
     intg_output = paths.artifacts / f"intg-proposal-{section_number}-output.md"
@@ -148,14 +177,15 @@ def dispatch_proposal(
         agent_file=Services.task_router().agent_for("proposal.integration"),
     )
     if intg_result == ALIGNMENT_CHANGED_PENDING:
+        Services.logger().log(f"Section {section_number}: alignment changed during integration dispatch — aborting")
         return None
     Services.communicator().mailbox_send(
         planspace,
         parent,
-        f"summary:proposal:{section_number}:{Services.dispatch_helpers().summarize_output(intg_result)}",
+        f"summary:proposal:{section_number}:{Services.dispatch_helpers().summarize_output(intg_result.output)}",
     )
 
-    if intg_result.startswith("TIMEOUT:"):
+    if intg_result.status is DispatchStatus.TIMEOUT:
         Services.logger().log(
             f"Section {section_number}: integration proposal agent "
             f"timed out"
@@ -190,7 +220,6 @@ def handle_proposal_signals(
         None — no signal, proceed normally
     """
     paths = PathRegistry(planspace)
-    paths.signals_dir().mkdir(parents=True, exist_ok=True)
     signal, detail = Services.dispatch_helpers().check_agent_signals(
         signal_path=paths.proposal_signal(section_number),
     )
@@ -205,22 +234,9 @@ def handle_proposal_signals(
             f"open-problem:{section_number}:{signal}:{detail[:TRUNCATE_DETAIL]}",
         )
     if signal == SIGNAL_OUT_OF_SCOPE:
-        scope_delta_dir = paths.scope_deltas_dir()
-        scope_delta_dir.mkdir(parents=True, exist_ok=True)
-        proposal_sig_path = paths.proposal_signal(section_number)
-        signal_payload = Services.artifact_io().read_json_or_default(proposal_sig_path, {})
-        scope_delta = {
-            "delta_id": f"delta-{section_number}-proposal-oos",
-            "section": section_number,
-            "signal": SIGNAL_OUT_OF_SCOPE,
-            "detail": detail,
-            "requires_root_reframing": True,
-            "signal_path": str(proposal_sig_path),
-            "signal_payload": signal_payload,
-        }
-        Services.artifact_io().write_json(
-            paths.scope_delta_section(section_number),
-            scope_delta,
+        write_scope_delta(
+            planspace, paths.proposal_signal(section_number),
+            section_number, detail, "proposal",
         )
     update_blocker_rollup(planspace)
     response = Services.pipeline_control().pause_for_parent(

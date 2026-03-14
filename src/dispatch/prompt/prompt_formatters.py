@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from containers import Services
 from orchestrator.path_registry import PathRegistry
-from _config import DB_SH
 from pipeline.template import load_template, render
 
 
@@ -23,7 +23,7 @@ def agent_mail_instructions(
     """Return narration-via-mailbox instructions for an agent."""
     run_db = PathRegistry(planspace).run_db()
     mailbox_cmd = (
-        f'bash "{DB_SH}" send "{run_db}" '
+        f'bash "{Services.config().db_sh}" send "{run_db}" '
         f"{agent_name} --from {agent_name}"
     )
     template = load_template("dispatch/mail-instructions.md")

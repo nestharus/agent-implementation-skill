@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from _paths import DB_SH
+from src.orchestrator.path_registry import PathRegistry
 
 from flow.repository.catalog import (
     KNOWN_PACKAGES,
@@ -136,8 +137,7 @@ def db_path(tmp_path: Path) -> Path:
 def planspace(tmp_path: Path) -> Path:
     ps = tmp_path / "planspace"
     ps.mkdir()
-    (ps / "artifacts" / "flows").mkdir(parents=True)
-    (ps / "artifacts" / "coordination").mkdir(parents=True)
+    PathRegistry(ps).ensure_artifacts_tree()
     return ps
 
 

@@ -15,11 +15,13 @@ from src.coordination.engine.plan_executor import (
 )
 from orchestrator.types import Section
 from pipeline.context import DispatchContext
+from src.orchestrator.path_registry import PathRegistry
 
 
 def _planspace(tmp_path: Path) -> Path:
     planspace = tmp_path / "planspace"
-    (planspace / "artifacts").mkdir(parents=True)
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     return planspace
 
 
@@ -73,7 +75,6 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
 ) -> None:
     planspace = _planspace(tmp_path)
     notes_dir = planspace / "artifacts" / "notes"
-    notes_dir.mkdir(parents=True)
     sections_by_num = {
         "01": Section(
             number="01",

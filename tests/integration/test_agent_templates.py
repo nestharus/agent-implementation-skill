@@ -189,15 +189,18 @@ class TestAdjudicatePromptIntegration:
         from unittest.mock import patch
 
         artifacts = planspace / "artifacts"
-        artifacts.mkdir(parents=True, exist_ok=True)
         output_path = artifacts / "some-output.md"
         output_path.write_text("Agent produced this output.")
 
         # We need to call adjudicate_agent_output but mock dispatch_agent
         # so no actual agent runs.
+        from dispatch.types import DispatchResult, DispatchStatus
         with patch(
             "dispatch.engine.section_dispatcher.dispatch_agent",
-            return_value='{"state": "ALIGNED", "detail": "all good"}',
+            return_value=DispatchResult(
+                status=DispatchStatus.SUCCESS,
+                output='{"state": "ALIGNED", "detail": "all good"}',
+            ),
         ):
             from dispatch.service.output_adjudicator import adjudicate_agent_output
 

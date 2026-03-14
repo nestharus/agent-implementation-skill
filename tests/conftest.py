@@ -15,6 +15,7 @@ import pytest
 from dependency_injector import providers
 
 from _paths import DB_SH
+from orchestrator.path_registry import PathRegistry
 from containers import (
     AgentDispatcher,
     ChangeTrackerService,
@@ -28,6 +29,31 @@ from containers import (
     SectionAlignmentService,
     Services,
 )
+from dispatch.types import (
+    ALIGNMENT_CHANGED_PENDING,
+    DispatchResult,
+    DispatchStatus,
+)
+
+
+def _wrap_dispatch_result(value) -> DispatchResult:
+    """Wrap a plain string return into a ``DispatchResult``.
+
+    Test dispatch functions return strings for convenience. This
+    normalises them so production code that accesses ``.status`` or
+    ``.output`` works unchanged.
+    """
+    if isinstance(value, DispatchResult):
+        return value
+    if not isinstance(value, str):
+        return value
+    if value == ALIGNMENT_CHANGED_PENDING:
+        return DispatchResult(status=DispatchStatus.ALIGNMENT_CHANGED, output="")
+    if value.startswith("TIMEOUT:"):
+        return DispatchResult(status=DispatchStatus.TIMEOUT, output=value)
+    if value.startswith("QA_REJECTED:"):
+        return DispatchResult(status=DispatchStatus.QA_REJECTED, output=value[len("QA_REJECTED:"):])
+    return DispatchResult(status=DispatchStatus.SUCCESS, output=value)
 
 
 class MockDispatcher(AgentDispatcher):
@@ -36,8 +62,8 @@ class MockDispatcher(AgentDispatcher):
     def __init__(self) -> None:
         self.mock = MagicMock(return_value="")
 
-    def dispatch(self, *args, **kwargs) -> str:
-        return self.mock(*args, **kwargs)
+    def dispatch(self, *args, **kwargs) -> DispatchResult:
+        return _wrap_dispatch_result(self.mock(*args, **kwargs))
 
 
 def make_dispatcher(dispatch_fn) -> AgentDispatcher:
@@ -45,7 +71,7 @@ def make_dispatcher(dispatch_fn) -> AgentDispatcher:
 
     class _Dispatcher(AgentDispatcher):
         def dispatch(self, *args, **kwargs):
-            return dispatch_fn(*args, **kwargs)
+            return _wrap_dispatch_result(dispatch_fn(*args, **kwargs))
 
     return _Dispatcher()
 
@@ -141,19 +167,7 @@ def planspace(tmp_path: Path) -> Path:
     """
     ps = tmp_path / "planspace"
     ps.mkdir()
-    artifacts = ps / "artifacts"
-    for subdir in (
-        "sections",
-        "proposals",
-        "signals",
-        "notes",
-        "decisions",
-        "todos",
-        "coordination",
-        "readiness",
-        "risk",
-    ):
-        (artifacts / subdir).mkdir(parents=True)
+    PathRegistry(ps).ensure_artifacts_tree()
 
     # Initialize the coordination database via db.sh
     subprocess.run(

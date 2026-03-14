@@ -42,15 +42,13 @@ class _SectionTally:
 def build_strategic_state(
     decisions_dir: Path,
     section_results: dict[str, Any],
-    planspace: Path | None = None,
+    planspace: Path,
 ) -> dict[str, Any]:
     """Derive the current strategic-state snapshot."""
     decision_warnings: list[str] = []
     decisions = load_decisions(decisions_dir, warnings=decision_warnings)
 
-    research_questions: list[dict[str, Any]] = []
-    if planspace is not None:
-        research_questions = _load_research_questions(planspace)
+    research_questions = _load_research_questions(planspace)
 
     tally = _classify_sections(section_results, planspace)
     _append_child_problems(decisions, tally.open_problems)
@@ -83,17 +81,14 @@ def build_strategic_state(
     if decision_warnings:
         snapshot["warnings"] = decision_warnings
 
-    if planspace is not None:
-        state_path = PathRegistry(planspace).strategic_state()
-    else:
-        state_path = decisions_dir.parent / "strategic-state.json"
+    state_path = PathRegistry(planspace).strategic_state()
     Services.artifact_io().write_json(state_path, snapshot)
     return snapshot
 
 
 def _classify_sections(
     section_results: dict[str, Any],
-    planspace: Path | None,
+    planspace: Path,
 ) -> _SectionTally:
     """Walk *section_results* and bucket each section."""
     tally = _SectionTally()
@@ -106,8 +101,7 @@ def _classify_sections(
             aligned = getattr(result, "aligned", False)
             problems = getattr(result, "problems", None)
 
-        if planspace is not None:
-            _accumulate_risk(planspace, sec_num, tally)
+        _accumulate_risk(planspace, sec_num, tally)
 
         if aligned:
             tally.completed.append(sec_num)
@@ -143,13 +137,11 @@ def _accumulate_risk(
 
 
 def _check_blocker(
-    planspace: Path | None,
+    planspace: Path,
     sec_num: str,
     tally: _SectionTally,
 ) -> bool:
     """Return ``True`` (and update *tally*) when *sec_num* is blocked."""
-    if planspace is None:
-        return False
     blocker_path = PathRegistry(planspace).blocker_signal(sec_num)
     if not blocker_path.exists():
         return False

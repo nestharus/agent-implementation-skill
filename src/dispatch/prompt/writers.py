@@ -122,8 +122,6 @@ def write_section_setup_prompt(
         codespace: Path,
     ) -> dict:
         paths = PathRegistry(planspace)
-        sections_dir = paths.sections_dir()
-        sections_dir.mkdir(parents=True, exist_ok=True)
         sec = section.number
         a_name = f"setup-{sec}"
         m_name = f"{a_name}-monitor"
@@ -165,8 +163,6 @@ def write_integration_proposal_prompt(
         codespace: Path,
     ) -> dict:
         paths = PathRegistry(planspace)
-        proposals_dir = paths.proposals_dir()
-        proposals_dir.mkdir(parents=True, exist_ok=True)
         sec = section.number
         a_name = f"intg-proposal-{sec}"
         m_name = f"{a_name}-monitor"

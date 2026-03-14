@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from src.orchestrator.path_registry import PathRegistry
 from src.proposal.repository.excerpts import (
     exists,
     invalidate_all,
@@ -28,8 +29,9 @@ def test_read_missing_excerpt_returns_none(tmp_path: Path) -> None:
 
 def test_invalidate_all_deletes_only_excerpts(tmp_path: Path) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     sections = planspace / "artifacts" / "sections"
-    sections.mkdir(parents=True)
     write(planspace, "01", "proposal", "proposal")
     write(planspace, "01", "alignment", "alignment")
     (sections / "section-01.md").write_text("spec")

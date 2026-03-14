@@ -25,6 +25,7 @@ from pathlib import Path
 import pytest
 
 from _paths import DB_SH
+from src.orchestrator.path_registry import PathRegistry
 
 from flow.types.context import FlowEnvelope
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
@@ -249,8 +250,7 @@ def planspace(tmp_path: Path) -> Path:
     """Create a planspace directory for flow artifacts."""
     ps = tmp_path / "planspace"
     ps.mkdir()
-    (ps / "artifacts" / "flows").mkdir(parents=True)
-    (ps / "artifacts" / "signals").mkdir(parents=True)
+    PathRegistry(ps).ensure_artifacts_tree()
     return ps
 
 

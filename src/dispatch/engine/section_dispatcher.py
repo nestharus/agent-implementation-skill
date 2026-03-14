@@ -8,7 +8,6 @@ from dispatch.service.monitor_service import MonitorService
 from orchestrator.path_registry import PathRegistry
 
 from pipeline.template import SRC_TEMPLATE_DIR, load_template, render, render_template
-from _config import AGENT_NAME, DB_SH
 
 from dispatch.service.context_sidecar import materialize_context_sidecar
 from containers import Services
@@ -17,9 +16,10 @@ _SECTION_DISPATCH_TIMEOUT_SECONDS = 1800
 
 
 def _monitor_service(planspace: Path) -> MonitorService:
+    cfg = Services.config()
     return MonitorService(
-        DatabaseClient.for_planspace(planspace, DB_SH),
-        AGENT_NAME,
+        DatabaseClient.for_planspace(planspace, cfg.db_sh),
+        cfg.agent_name,
     )
 
 
@@ -151,11 +151,12 @@ def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
     Services.logger().log(f"  dispatch {model} → {prompt_path.name}")
     if planspace and section_number:
         name_label = agent_name or model
-        DatabaseClient.for_planspace(planspace, DB_SH).log_event(
+        cfg = Services.config()
+        DatabaseClient.for_planspace(planspace, cfg.db_sh).log_event(
             "summary",
             f"dispatch:{section_number}",
             f"{name_label} dispatched",
-            agent=AGENT_NAME,
+            agent=cfg.agent_name,
             check=False,
         )
 
@@ -178,7 +179,7 @@ def _write_agent_monitor_prompt(
     dynamic_body = render(template, {
         "agent_name": agent_name,
         "monitor_name": monitor_name,
-        "db_sh": str(DB_SH),
+        "db_sh": str(Services.config().db_sh),
         "db_path": str(db_path),
         "planspace": str(planspace),
     })

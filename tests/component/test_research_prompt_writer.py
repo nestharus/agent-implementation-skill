@@ -6,6 +6,7 @@ import pytest
 from dependency_injector import providers
 
 from containers import PromptGuard, Services
+from src.orchestrator.path_registry import PathRegistry
 from src.research.prompt.writers import (
     write_research_plan_prompt,
     write_research_synthesis_prompt,
@@ -16,11 +17,10 @@ from src.research.prompt.writers import (
 
 def _write_common_inputs(planspace: Path, section_number: str = "03") -> Path:
     artifacts = planspace / "artifacts"
+    planspace.mkdir(exist_ok=True)
+    PathRegistry(planspace).ensure_artifacts_tree()
     research_section = artifacts / "research" / "sections" / f"section-{section_number}"
     research_section.mkdir(parents=True, exist_ok=True)
-    (artifacts / "sections").mkdir(parents=True, exist_ok=True)
-    (artifacts / "proposals").mkdir(parents=True, exist_ok=True)
-    (artifacts / "signals").mkdir(parents=True, exist_ok=True)
 
     (artifacts / "sections" / f"section-{section_number}.md").write_text(
         "# Section 03\n",

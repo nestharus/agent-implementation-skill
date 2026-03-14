@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from dependency_injector import providers
 
 from containers import PromptGuard, Services
+from src.orchestrator.path_registry import PathRegistry
 from src.signals.repository.artifact_io import write_json
 from src.staleness.helpers.content_hasher import content_hash, file_hash
 from src.scan.related.related_file_resolver import (
@@ -83,8 +84,9 @@ def test_validate_existing_related_files_skips_when_inputs_unchanged(
 ) -> None:
     # Use proper planspace/artifacts layout so PathRegistry works
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     artifacts_dir = planspace / "artifacts"
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
 
     section_file = artifacts_dir / "section-07.md"
     section_file.write_text(
@@ -94,7 +96,6 @@ def test_validate_existing_related_files_skips_when_inputs_unchanged(
     codemap_path = artifacts_dir / "codemap.md"
     codemap_path.write_text("codemap\n", encoding="utf-8")
     corrections_file = artifacts_dir / "signals" / "codemap-corrections.json"
-    corrections_file.parent.mkdir(parents=True, exist_ok=True)
     write_json(corrections_file, {"fixes": []})
     scan_log_dir = tmp_path / "scan-logs"
     section_log = scan_log_dir / "section-07"
@@ -154,8 +155,9 @@ def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
 ) -> None:
     # Use proper planspace/artifacts layout so PathRegistry works
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     artifacts_dir = planspace / "artifacts"
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
 
     section_file = artifacts_dir / "section-08.md"
     section_file.write_text(
@@ -167,7 +169,6 @@ def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
     )
     codemap_path = artifacts_dir / "codemap.md"
     codemap_path.write_text("codemap\n", encoding="utf-8")
-    (artifacts_dir / "signals").mkdir(parents=True, exist_ok=True)
     scan_log_dir = tmp_path / "scan-logs"
     codespace = tmp_path / "codespace"
     # Create the addition target so normalizer accepts it

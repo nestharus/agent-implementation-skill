@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from src.orchestrator.path_registry import PathRegistry
 from src.staleness.service.freshness_calculator import compute_section_freshness
 
 
@@ -9,12 +10,11 @@ def test_compute_section_freshness_is_stable_for_same_inputs(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     sections_dir = planspace / "artifacts" / "sections"
     proposals_dir = planspace / "artifacts" / "proposals"
     notes_dir = planspace / "artifacts" / "notes"
-    sections_dir.mkdir(parents=True)
-    proposals_dir.mkdir(parents=True)
-    notes_dir.mkdir(parents=True)
 
     (sections_dir / "section-01.md").write_text("spec", encoding="utf-8")
     (sections_dir / "section-01-alignment-excerpt.md").write_text(
@@ -36,8 +36,9 @@ def test_compute_section_freshness_changes_when_load_bearing_artifact_changes(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     decisions_dir = planspace / "artifacts" / "decisions"
-    decisions_dir.mkdir(parents=True)
     decision_path = decisions_dir / "section-02.md"
     decision_path.write_text("first", encoding="utf-8")
 
@@ -52,6 +53,8 @@ def test_compute_section_freshness_changes_when_research_dossier_added(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     dossier_path = (
         planspace
         / "artifacts"
@@ -73,13 +76,14 @@ def test_compute_section_freshness_changes_when_impl_feedback_added(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     feedback_path = (
         planspace
         / "artifacts"
         / "signals"
         / "impl-feedback-surfaces-04.json"
     )
-    feedback_path.parent.mkdir(parents=True, exist_ok=True)
 
     before = compute_section_freshness(planspace, "04")
     feedback_path.write_text('{"problem_surfaces":[]}', encoding="utf-8")
@@ -92,6 +96,8 @@ def test_compute_section_freshness_changes_when_research_derived_added(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     derived_path = (
         planspace
         / "artifacts"
@@ -113,6 +119,8 @@ def test_compute_section_freshness_changes_when_research_artifact_removed(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     addendum_path = (
         planspace
         / "artifacts"
@@ -135,13 +143,14 @@ def test_compute_section_freshness_changes_when_governance_packet_changes(
     tmp_path: Path,
 ) -> None:
     planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     governance_packet = (
         planspace
         / "artifacts"
         / "governance"
         / "section-07-governance-packet.json"
     )
-    governance_packet.parent.mkdir(parents=True, exist_ok=True)
 
     before = compute_section_freshness(planspace, "07")
     governance_packet.write_text('{"profiles": ["PHI-global"]}', encoding="utf-8")

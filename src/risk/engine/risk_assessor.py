@@ -184,7 +184,7 @@ def _validate_and_dispatch_assessment(
         f"risk-assessor-{tag}{scope}",
         agent_file=Services.task_router().agent_for("risk.assess"),
     )
-    return parse_risk_assessment(response)
+    return parse_risk_assessment(response.output)
 
 
 def _validate_and_dispatch_optimization(
@@ -222,7 +222,7 @@ def _validate_and_dispatch_optimization(
         f"execution-optimizer-{scope}",
         agent_file=Services.task_router().agent_for("risk.optimize"),
     )
-    return parse_risk_plan(response)
+    return parse_risk_plan(response.output)
 
 
 def _validate_and_dispatch_lightweight_optimization(
@@ -255,7 +255,7 @@ def _validate_and_dispatch_lightweight_optimization(
             f"Lightweight optimization dispatch failed ({exc}) — failing open",
         )
         return None
-    return parse_risk_plan(response)
+    return parse_risk_plan(response.output)
 
 
 # ---------------------------------------------------------------------------

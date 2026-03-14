@@ -112,6 +112,7 @@ def test_build_governance_indexes_writes_empty_indexes_when_docs_missing(
     planspace = tmp_path / "planspace"
     codespace.mkdir()
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
 
     result = build_governance_indexes(codespace, planspace)
 
@@ -240,6 +241,7 @@ def test_bootstrap_governance_creates_scaffolding_for_greenfield(
     planspace = tmp_path / "planspace"
     codespace.mkdir()
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
 
     result = bootstrap_governance_if_missing(codespace)
 
@@ -264,6 +266,7 @@ def test_bootstrap_governance_skips_when_governance_exists(
     planspace = tmp_path / "planspace"
     (codespace / "governance" / "problems").mkdir(parents=True)
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
 
     (codespace / "governance" / "problems" / "index.md").write_text(
         "# Problem Archive\n\n## PRB-0001: Existing\n\n**Status**: active\n",
@@ -287,6 +290,7 @@ def test_bootstrap_then_build_indexes_produces_valid_planspace(
     planspace = tmp_path / "planspace"
     codespace.mkdir()
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
 
     bootstrap_governance_if_missing(codespace)
     result = build_governance_indexes(codespace, planspace)

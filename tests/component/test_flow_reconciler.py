@@ -8,6 +8,7 @@ from pathlib import Path
 from _paths import DB_SH
 from flow.types.context import FlowEnvelope
 from flow.types.schema import TaskSpec
+from src.orchestrator.path_registry import PathRegistry
 from src.signals.repository.artifact_io import write_json
 from src.research.engine.orchestrator import write_research_status
 from src.flow.engine.reconciler import (
@@ -77,6 +78,7 @@ def test_reconcile_task_completion_writes_result_manifest(tmp_path) -> None:
     db_path = tmp_path / "test.db"
     planspace = tmp_path / "planspace"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     _init_db(db_path)
 
     [task_id] = submit_chain(
@@ -105,6 +107,7 @@ def test_reconcile_task_completion_extends_chain_from_continuation(tmp_path) -> 
     db_path = tmp_path / "test.db"
     planspace = tmp_path / "planspace"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     _init_db(db_path)
 
     [task_id] = submit_chain(
@@ -145,6 +148,7 @@ def test_reconcile_task_completion_runs_research_plan_executor(
     db_path = tmp_path / "test.db"
     planspace = tmp_path / "planspace"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     _init_db(db_path)
 
     [task_id] = submit_chain(
@@ -185,6 +189,7 @@ def test_reconcile_task_completion_submits_research_verify_after_synthesis(
     db_path = tmp_path / "test.db"
     planspace = tmp_path / "planspace"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     _init_db(db_path)
 
     research_dir = (
@@ -249,14 +254,13 @@ def test_reconcile_task_completion_records_post_impl_debt_signal(tmp_path) -> No
     db_path = tmp_path / "test.db"
     planspace = tmp_path / "planspace"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     _init_db(db_path)
 
     prompt_path = planspace / "artifacts" / "post-impl-01-prompt.md"
-    prompt_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_path.write_text("# prompt\n", encoding="utf-8")
 
     trace_path = planspace / "artifacts" / "trace" / "section-01.json"
-    trace_path.parent.mkdir(parents=True, exist_ok=True)
     trace_path.write_text(
         json.dumps(
             {
@@ -279,7 +283,6 @@ def test_reconcile_task_completion_records_post_impl_debt_signal(tmp_path) -> No
         / "governance"
         / "section-01-post-impl-assessment.json"
     )
-    assessment_path.parent.mkdir(parents=True, exist_ok=True)
     assessment_path.write_text(
         json.dumps(
             {
@@ -329,6 +332,7 @@ def test_reconcile_task_completion_emits_post_impl_refactor_blocker(tmp_path) ->
     db_path = tmp_path / "test.db"
     planspace = tmp_path / "planspace"
     planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
     _init_db(db_path)
 
     prompt_path = planspace / "artifacts" / "post-impl-02-prompt.md"
@@ -359,7 +363,6 @@ def test_reconcile_task_completion_emits_post_impl_refactor_blocker(tmp_path) ->
         / "governance"
         / "section-02-post-impl-assessment.json"
     )
-    assessment_path.parent.mkdir(parents=True, exist_ok=True)
     assessment_path.write_text(
         json.dumps(
             {

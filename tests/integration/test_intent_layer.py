@@ -38,8 +38,8 @@ from orchestrator.types import Section
 def intent_planspace(planspace: Path) -> Path:
     """Extend standard planspace with intent layer directories."""
     artifacts = planspace / "artifacts"
-    (artifacts / "intent" / "global").mkdir(parents=True)
-    (artifacts / "intent" / "sections" / "section-01").mkdir(parents=True)
+    (artifacts / "intent" / "global").mkdir(parents=True, exist_ok=True)
+    (artifacts / "intent" / "sections" / "section-01").mkdir(parents=True, exist_ok=True)
     return planspace
 
 
@@ -2378,14 +2378,16 @@ class TestR58ToolRegistryCoordinationPreservation:
         """Malformed tool-registry → .malformed.json copy exists."""
         from coordination.prompt.writers import write_fix_prompt
 
+        from orchestrator.path_registry import PathRegistry
+
         planspace = tmp_path / "plan"
         codespace = tmp_path / "code"
         planspace.mkdir()
         codespace.mkdir()
+        PathRegistry(planspace).ensure_artifacts_tree()
 
         # Write malformed tool-registry
         artifacts = planspace / "artifacts"
-        artifacts.mkdir()
         tool_reg = artifacts / "tool-registry.json"
         tool_reg.write_text("{BROKEN JSON!", encoding="utf-8")
 
@@ -2393,8 +2395,6 @@ class TestR58ToolRegistryCoordinationPreservation:
         from coordination.problem_types import Problem
         group = [Problem(section="01", type="test", description="d",
                   files=["a.py"])]
-        sec_dir = planspace / "artifacts" / "sections"
-        sec_dir.mkdir(parents=True)
 
         write_fix_prompt(group, planspace, codespace, 0)
 
