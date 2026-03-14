@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from _config import AGENT_NAME, DB_PATH, DB_SH  # noqa: F401 — DB_PATH re-exported for tests
+from _config import AGENT_NAME, DB_SH
 from signals.service.database_client import DatabaseClient
 from signals.service.mailbox_service import MailboxService, summary_tag
 from orchestrator.path_registry import PathRegistry
