@@ -644,6 +644,20 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Remaining 8+ param functions**: 48 (down from 49)
 - **Status**: DONE
 
+### 141. Cycle 16c — remaining del-marked dead params and stale imports
+- **Category**: Dead code / parameter reduction
+- **Dead params removed**:
+  - `task_type: str` dead in `record_task_routing` and `record_qa_intercept` (flow/service/notifier.py)
+  - `parent: str` dead in `route_blockers` (proposal/engine/readiness_gate.py)
+  - `assume_tz: str` dead in `parse_timestamp` (dispatch/helpers/log_extract_helpers.py)
+  - `queue: list[str]` + `completed: set[str]` dead in `handle_pending_messages` — propagated through full chain: message_poller → pipeline_control → container → 5 production callers + 2 test stubs
+  - `codespace: Path` dead in `section_inputs_hash` — propagated through container, `requeue_changed_sections`, `global_alignment_rechecker`, `_persist_section_hashes`
+  - `codespace: Path` dead in `write_post_impl_assessment_prompt`, `build_section_governance_packet`, `_handle_post_impl_assessment_completion`, `_dispatch_post_impl_assessment`
+  - `impl_completed: set[str]` newly dead in `_check_abort_conditions` after handle_pending_messages simplification — removed param and dead variable in caller
+- **Stale imports removed**: `Services` and `RiskAssessment` in risk/prompt/writers.py (orphaned by prior del-param removals)
+- **Remaining 8+ param functions**: 48 (unchanged — these removals were on <8 param functions)
+- **Status**: DONE
+
 ---
 
 ## NOT A BUG

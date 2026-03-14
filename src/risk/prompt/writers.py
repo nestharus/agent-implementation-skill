@@ -8,10 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from containers import Services
 from orchestrator.path_registry import PathRegistry
 from risk.service.package_builder import read_text, scope_number
-from risk.types import RiskAssessment, RiskPackage
+from risk.types import RiskPackage
 
 
 def write_risk_assessment_prompt(
