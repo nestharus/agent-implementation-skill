@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 from scan.scan_context import ScanContext
@@ -35,16 +36,26 @@ def safe_name(source_file: str) -> str:
     return f"{path_token}.{extension_token}.{source_hash}"
 
 
+@dataclass(frozen=True)
+class AnalysisLogPaths:
+    """Log file paths for a single deep-scan analysis run."""
+
+    prompt: Path
+    response: Path
+    stderr: Path
+    feedback: Path
+
+
 def _resolve_log_paths(
     section_log: Path,
     source_file: str,
-) -> tuple[Path, Path, Path, Path]:
+) -> AnalysisLogPaths:
     name = safe_name(source_file)
-    return (
-        section_log / f"deep-{name}-prompt.md",
-        section_log / f"deep-{name}-response.md",
-        section_log / f"deep-{name}.stderr.log",
-        section_log / f"deep-{name}-feedback.json",
+    return AnalysisLogPaths(
+        prompt=section_log / f"deep-{name}-prompt.md",
+        response=section_log / f"deep-{name}-response.md",
+        stderr=section_log / f"deep-{name}.stderr.log",
+        feedback=section_log / f"deep-{name}-feedback.json",
     )
 
 
@@ -190,9 +201,7 @@ def analyze_file(
 
     section_log = ctx.scan_log_dir / section_name
     section_log.mkdir(parents=True, exist_ok=True)
-    prompt_file, response_file, stderr_file, feedback_file = _resolve_log_paths(
-        section_log, source_file,
-    )
+    log_paths = _resolve_log_paths(section_log, source_file)
 
     content_key = file_card_cache.content_hash(
         section_file,
@@ -203,35 +212,35 @@ def analyze_file(
     cached = _try_cached_response(
         file_card_cache, content_key,
         section_file, section_name, source_file,
-        response_file, feedback_file, ctx.scan_log_dir,
+        log_paths.response, log_paths.feedback, ctx.scan_log_dir,
     )
     if cached is not None:
         return cached
 
     prompt = _build_prompt(
         section_file, abs_source, ctx.codemap_path,
-        ctx.corrections_path, feedback_file, source_file,
+        ctx.corrections_path, log_paths.feedback, source_file,
     )
 
     if not _validate_and_write_prompt(
-        prompt, prompt_file, section_name, source_file, ctx.scan_log_dir,
+        prompt, log_paths.prompt, section_name, source_file, ctx.scan_log_dir,
     ):
         return False
 
     if not _dispatch_and_validate(
-        ctx, prompt_file,
-        response_file, stderr_file,
+        ctx, log_paths.prompt,
+        log_paths.response, log_paths.stderr,
         section_name, source_file,
     ):
         return False
 
     file_card_cache.store(
         content_key,
-        response_file,
-        feedback_file if feedback_file.is_file() else None,
+        log_paths.response,
+        log_paths.feedback if log_paths.feedback.is_file() else None,
     )
 
-    if not update_match(section_file, source_file, response_file):
+    if not update_match(section_file, source_file, log_paths.response):
         log_phase_failure(
             "deep-update",
             f"{section_name}:{source_file}",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -327,13 +328,20 @@ def _apply_and_finalize(
     codemap_hash_file.write_text(combined_hash)
 
 
+@dataclass(frozen=True)
+class ValidationHashes:
+    """Content hashes for validation freshness check."""
+
+    codemap_hash: str
+    corrections_hash: str
+    section_text_raw: str
+    combined_hash: str
+
+
 def _compute_validation_hashes(
     section_file: Path, codemap_path: Path, corrections_file: Path,
-) -> tuple[str, str, str, str]:
-    """Compute content hashes for validation freshness check.
-
-    Returns (codemap_hash, corrections_hash, section_text_raw, combined_hash).
-    """
+) -> ValidationHashes:
+    """Compute content hashes for validation freshness check."""
     codemap_hash = _sha256_file(codemap_path) if codemap_path.is_file() else ""
     corrections_hash = (
         _sha256_file(corrections_file) if corrections_file.is_file() else ""
@@ -342,7 +350,12 @@ def _compute_validation_hashes(
     section_hash = Services.hasher().content_hash(strip_scan_summaries(section_text_raw))
     combined = f"{codemap_hash}:{corrections_hash}:{section_hash}"
     combined_hash = Services.hasher().content_hash(combined)
-    return codemap_hash, corrections_hash, section_text_raw, combined_hash
+    return ValidationHashes(
+        codemap_hash=codemap_hash,
+        corrections_hash=corrections_hash,
+        section_text_raw=section_text_raw,
+        combined_hash=combined_hash,
+    )
 
 
 def validate_existing_related_files(
@@ -357,14 +370,14 @@ def validate_existing_related_files(
     section_log.mkdir(parents=True, exist_ok=True)
     codemap_hash_file = section_log / "codemap-hash.txt"
 
-    codemap_hash, corrections_hash, section_text_raw, combined_hash = (
-        _compute_validation_hashes(section_file, ctx.codemap_path, ctx.corrections_path)
+    hashes = _compute_validation_hashes(
+        section_file, ctx.codemap_path, ctx.corrections_path,
     )
 
     signal_file = PathRegistry(
         artifacts_dir.parent
     ).scan_related_files_update_signal(section_name)
-    missing_existing = _missing_existing_related_files(section_text_raw, ctx.codespace)
+    missing_existing = _missing_existing_related_files(hashes.section_text_raw, ctx.codespace)
 
     prev_hash = ""
     if codemap_hash_file.is_file():
@@ -377,14 +390,14 @@ def validate_existing_related_files(
         allow_applied=True,
     )
 
-    if combined_hash == prev_hash and prev_hash and cached_signal is not None:
+    if hashes.combined_hash == prev_hash and prev_hash and cached_signal is not None:
         print(
             f"[EXPLORE] {section_name}: Related Files exist, "
             "codemap+section unchanged — skipping",
         )
         return
 
-    if combined_hash == prev_hash and prev_hash:
+    if hashes.combined_hash == prev_hash and prev_hash:
         print(
             f"[EXPLORE][WARN] {section_name}: cached related-files hash has "
             "no reusable validation signal — revalidating",
@@ -427,7 +440,7 @@ def validate_existing_related_files(
         signal_file=signal_file,
         ctx=ctx,
         missing_existing=missing_existing,
-        validation_hashes=(codemap_hash, corrections_hash, combined_hash),
+        validation_hashes=(hashes.codemap_hash, hashes.corrections_hash, hashes.combined_hash),
     )
 
 

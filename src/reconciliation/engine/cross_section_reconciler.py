@@ -11,6 +11,7 @@ Entry point: ``run_reconciliation_loop(run_dir, proposal_results)``.
 """
 
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
@@ -160,10 +161,21 @@ def _merge_recon_requests_into_states(
                     state.setdefault("unresolved_anchors", []).append(anchor)
 
 
+@dataclass
+class CrossSectionIssues:
+    """Detected cross-section reconciliation issues."""
+
+    anchor_overlaps: list[dict] = field(default_factory=list)
+    contract_conflicts: list[dict] = field(default_factory=list)
+    consolidated_sections: list[dict] = field(default_factory=list)
+    shared_seams: list[dict] = field(default_factory=list)
+    substrate_seams: list[dict] = field(default_factory=list)
+
+
 def _detect_cross_section_issues(
     states: dict[str, dict],
     run_dir: Path,
-) -> tuple[list[dict], list[dict], list[dict], list[dict], list[dict]]:
+) -> CrossSectionIssues:
     anchor_overlaps = detect_anchor_overlaps(states)
     contract_conflicts = detect_contract_conflicts(states)
     consolidated_sections, ungrouped_titles = consolidate_new_section_candidates(
@@ -178,7 +190,13 @@ def _detect_cross_section_issues(
 
     substrate_seams = [s for s in shared_seams if s.get("needs_substrate")]
 
-    return anchor_overlaps, contract_conflicts, consolidated_sections, shared_seams, substrate_seams
+    return CrossSectionIssues(
+        anchor_overlaps=anchor_overlaps,
+        contract_conflicts=contract_conflicts,
+        consolidated_sections=consolidated_sections,
+        shared_seams=shared_seams,
+        substrate_seams=substrate_seams,
+    )
 
 
 def _build_section_result(
@@ -310,32 +328,30 @@ def run_reconciliation_loop(
     )
     _merge_recon_requests_into_states(recon_requests, states)
 
-    anchor_overlaps, contract_conflicts, consolidated_sections, \
-        shared_seams, substrate_seams = _detect_cross_section_issues(
-            states, run_dir,
-        )
+    issues = _detect_cross_section_issues(states, run_dir)
 
     affected_sections = _collect_affected_sections(
-        anchor_overlaps, contract_conflicts,
-        consolidated_sections, substrate_seams,
+        issues.anchor_overlaps, issues.contract_conflicts,
+        issues.consolidated_sections, issues.substrate_seams,
     )
 
     for sec_num in section_numbers:
         result = _build_section_result(
-            sec_num, anchor_overlaps, contract_conflicts,
-            consolidated_sections, substrate_seams, affected_sections,
+            sec_num, issues.anchor_overlaps, issues.contract_conflicts,
+            issues.consolidated_sections, issues.substrate_seams,
+            affected_sections,
         )
         write_result(run_dir, sec_num, result)
 
-    for consolidated in consolidated_sections:
+    for consolidated in issues.consolidated_sections:
         write_scope_delta(run_dir, consolidated)
 
-    for seam in substrate_seams:
+    for seam in issues.substrate_seams:
         write_substrate_trigger(run_dir, seam)
 
     summary = _build_summary(
-        affected_sections, consolidated_sections, substrate_seams,
-        anchor_overlaps, contract_conflicts, shared_seams,
+        affected_sections, issues.consolidated_sections, issues.substrate_seams,
+        issues.anchor_overlaps, issues.contract_conflicts, issues.shared_seams,
     )
     logger.info("Reconciliation summary: %s", summary)
 

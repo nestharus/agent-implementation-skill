@@ -1,5 +1,6 @@
 """Intent bootstrap: ensure philosophy and per-section intent packs exist."""
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -128,6 +129,15 @@ def _check_pack_freshness(
     return None
 
 
+@dataclass(frozen=True)
+class PromptInputs:
+    """Assembled inputs for an intent pack prompt."""
+
+    inputs_block: str
+    file_list: str
+    notes_block: str
+
+
 def _build_inputs_block(
     section_path: Path,
     paths: PathRegistry,
@@ -135,11 +145,8 @@ def _build_inputs_block(
     codespace: Path,
     related_files: list,
     incoming_notes: str,
-) -> tuple[str, str, str]:
-    """Build the inputs block, file list, and notes block for the prompt.
-
-    Returns (inputs_block, file_list, notes_block).
-    """
+) -> PromptInputs:
+    """Build the inputs block, file list, and notes block for the prompt."""
     proposal_excerpt = paths.proposal_excerpt(sec)
     alignment_excerpt = paths.alignment_excerpt(sec)
     problem_frame = paths.problem_frame(sec)
@@ -177,7 +184,7 @@ def _build_inputs_block(
         notes_file.write_text(incoming_notes, encoding="utf-8")
         notes_block = f"\n8. Incoming notes: `{notes_file}`\n"
 
-    return inputs_block, file_list, notes_block
+    return PromptInputs(inputs_block, file_list, notes_block)
 
 
 def _compose_intent_pack_text(
@@ -319,11 +326,11 @@ def generate_intent_pack(
     if freshness is True:
         return intent_sec
 
-    inputs_block, file_list, notes_block = _build_inputs_block(
+    inputs = _build_inputs_block(
         section.path, paths, sec, codespace, section.related_files, incoming_notes,
     )
     prompt_text = _build_intent_pack_prompt(
-        sec, inputs_block, file_list, notes_block,
+        sec, inputs.inputs_block, inputs.file_list, inputs.notes_block,
         problem_path, rubric_path, intent_sec,
     )
 

@@ -7,6 +7,7 @@ from the main proposal loop orchestration.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 from containers import Services
@@ -89,6 +90,15 @@ def _write_intent_escalation_signal(
     )
 
 
+@dataclass(frozen=True)
+class SurfaceActionResult:
+    """Result of aligned/misaligned surface handling."""
+
+    action: str
+    intent_mode: str
+    reproposal_reason: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Surface action handlers (aligned / misaligned paths)
 # ---------------------------------------------------------------------------
@@ -101,10 +111,10 @@ def handle_aligned_surfaces(
     intent_mode: str,
     intent_budgets: dict,
     expansion_counts: dict[str, int],
-) -> tuple[str, str, str | None]:
+) -> SurfaceActionResult:
     """Handle surface processing when the proposal is aligned.
 
-    Returns (action, updated_intent_mode, reproposal_reason) where action is:
+    Returns a ``SurfaceActionResult`` with action:
         "break" — alignment accepted, exit loop
         "continue" — re-propose needed (reproposal_reason has the message)
         "abort" — caller should return None
@@ -125,11 +135,13 @@ def handle_aligned_surfaces(
                 "structured_surfaces_on_lightweight",
                 surface_count,
             )
-            return (
-                ACTION_CONTINUE,
-                "full",
-                "Lightweight section discovered structured surfaces; "
-                "re-propose under full intent mode.",
+            return SurfaceActionResult(
+                action=ACTION_CONTINUE,
+                intent_mode="full",
+                reproposal_reason=(
+                    "Lightweight section discovered structured surfaces; "
+                    "re-propose under full intent mode."
+                ),
             )
 
         if intent_mode == "full":
@@ -138,13 +150,15 @@ def handle_aligned_surfaces(
                 intent_budgets, expansion_counts,
             )
             if action is None:
-                return ACTION_ABORT, intent_mode, None
+                return SurfaceActionResult(action=ACTION_ABORT, intent_mode=intent_mode)
             if action == ACTION_CONTINUE:
-                return (
-                    ACTION_CONTINUE,
-                    intent_mode,
-                    "Intent expanded; re-propose against "
-                    "updated problem/philosophy definitions.",
+                return SurfaceActionResult(
+                    action=ACTION_CONTINUE,
+                    intent_mode=intent_mode,
+                    reproposal_reason=(
+                        "Intent expanded; re-propose against "
+                        "updated problem/philosophy definitions."
+                    ),
                 )
 
     Services.logger().log(f"Section {section_number}: integration proposal ALIGNED")
@@ -153,7 +167,7 @@ def handle_aligned_surfaces(
         parent,
         f"summary:proposal-align:{section_number}:ALIGNED",
     )
-    return "break", intent_mode, None
+    return SurfaceActionResult(action="break", intent_mode=intent_mode)
 
 
 def handle_misaligned_surfaces(

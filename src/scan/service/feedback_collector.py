@@ -4,6 +4,8 @@ Translates the post-scan feedback collection and routing from scan.sh.
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
@@ -22,13 +24,22 @@ from containers import Services
 from signals.types import SIGNAL_OUT_OF_SCOPE
 
 
+@dataclass
+class SectionScanFeedback:
+    """Collected feedback entries for a single section."""
+
+    irrelevant_files: list[str] = field(default_factory=list)
+    missing_files: list[str] = field(default_factory=list)
+    out_of_scope_items: list[str] = field(default_factory=list)
+
+    def has_feedback(self) -> bool:
+        return bool(self.irrelevant_files or self.missing_files or self.out_of_scope_items)
+
+
 def _collect_section_scan_feedback(
     sec_log_dir: Path, sec_name: str, scan_log_dir: Path,
-) -> tuple[list[str], list[str], list[str]]:
-    """Collect feedback entries for a single section.
-
-    Returns (irrelevant_files, missing_files, out_of_scope_items).
-    """
+) -> SectionScanFeedback:
+    """Collect feedback entries for a single section."""
     irrelevant_files: list[str] = []
     missing_files: list[str] = []
     out_of_scope_items: list[str] = []
@@ -63,27 +74,26 @@ def _collect_section_scan_feedback(
             if isinstance(oos, str) and oos.strip():
                 out_of_scope_items.append(f"- {oos.strip()}")
 
-    return irrelevant_files, missing_files, out_of_scope_items
+    return SectionScanFeedback(irrelevant_files, missing_files, out_of_scope_items)
 
 
 def _append_section_report(
     report_lines: list[str], sec_name: str,
-    irrelevant_files: list[str], missing_files: list[str],
-    out_of_scope_items: list[str],
+    feedback: SectionScanFeedback,
 ) -> None:
     """Append a section's feedback to the report lines."""
     report_lines.append(f"## {sec_name}\n\n")
-    if irrelevant_files:
+    if feedback.irrelevant_files:
         report_lines.append("### Irrelevant files (consider removing)\n")
-        report_lines.extend(f"{line}\n" for line in irrelevant_files)
+        report_lines.extend(f"{line}\n" for line in feedback.irrelevant_files)
         report_lines.append("\n")
-    if missing_files:
+    if feedback.missing_files:
         report_lines.append("### Missing files (consider adding)\n")
-        report_lines.extend(f"{line}\n" for line in missing_files)
+        report_lines.extend(f"{line}\n" for line in feedback.missing_files)
         report_lines.append("\n")
-    if out_of_scope_items:
+    if feedback.out_of_scope_items:
         report_lines.append("### Open problems (out of scope for this section)\n")
-        report_lines.extend(f"{line}\n" for line in out_of_scope_items)
+        report_lines.extend(f"{line}\n" for line in feedback.out_of_scope_items)
         report_lines.append("\n")
 
 
@@ -114,12 +124,10 @@ def collect_and_route_feedback(
     for section_file in section_files:
         sec_name = section_file.stem
         sec_log_dir = scan_log_dir / sec_name
-        irrelevant, missing, oos = _collect_section_scan_feedback(
-            sec_log_dir, sec_name, scan_log_dir,
-        )
-        if irrelevant or missing or oos:
+        fb = _collect_section_scan_feedback(sec_log_dir, sec_name, scan_log_dir)
+        if fb.has_feedback():
             has_feedback = True
-            _append_section_report(report_lines, sec_name, irrelevant, missing, oos)
+            _append_section_report(report_lines, sec_name, fb)
 
     if has_feedback:
         feedback_report.write_text("".join(report_lines))

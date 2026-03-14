@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
@@ -17,6 +18,15 @@ from risk.types import (
     StepDecision,
 )
 from implementation.service.risk_artifact_writer import unique_strings
+
+
+@dataclass(frozen=True)
+class ImplementationOutcome:
+    """Classified outcome of an implementation or risk decision."""
+
+    outcome: str
+    surprises: list[str] = field(default_factory=list)
+    verification: str | None = None
 
 
 def append_risk_review_failure_history(
@@ -50,26 +60,26 @@ def append_risk_review_failure_history(
 def _determine_decision_outcome(
     decision,
     risk_plan: RiskPlan,
-    accepted_outcome: str,
-    accepted_surprises: list[str],
-    accepted_verification: str | None,
-) -> tuple[str, list[str], str | None]:
-    """Map a step decision to its (outcome, surprises, verification) tuple."""
+    accepted_outcome: ImplementationOutcome,
+) -> ImplementationOutcome:
+    """Map a step decision to its implementation outcome."""
     if decision.decision == StepDecision.ACCEPT:
-        return accepted_outcome, list(accepted_surprises), accepted_verification
+        return ImplementationOutcome(
+            accepted_outcome.outcome,
+            list(accepted_outcome.surprises),
+            accepted_outcome.verification,
+        )
     if decision.decision == StepDecision.REJECT_DEFER:
-        return (
+        return ImplementationOutcome(
             "deferred",
             unique_strings(
                 decision.wait_for + list(risk_plan.expected_reassessment_inputs),
             ),
-            None,
         )
-    return (
+    return ImplementationOutcome(
         "reopened",
         [decision.reason] if decision.reason
         else ["ROAL reopened this step for higher-level routing"],
-        None,
     )
 
 
@@ -125,16 +135,17 @@ def _record_over_guarding(
 
 def _classify_implementation_outcome(
     modified: list[str], implementation_failed: bool,
-) -> tuple[str, list[str], str | None]:
-    """Classify the implementation outcome for risk history recording.
-
-    Returns (outcome, surprises, verification_outcome).
-    """
+) -> ImplementationOutcome:
+    """Classify the implementation outcome for risk history recording."""
     if implementation_failed:
-        return "failure", ["implementation failed after ROAL acceptance"], "failed"
+        return ImplementationOutcome(
+            "failure", ["implementation failed after ROAL acceptance"], "failed",
+        )
     if modified:
-        return "success", [], "passed"
-    return "warning", ["implementation completed without file modifications"], None
+        return ImplementationOutcome("success", [], "passed")
+    return ImplementationOutcome(
+        "warning", ["implementation completed without file modifications"],
+    )
 
 
 def append_risk_history(
@@ -161,9 +172,7 @@ def append_risk_history(
     }
 
     modified = list(modified_files or [])
-    accepted_outcome, accepted_surprises, accepted_verification = (
-        _classify_implementation_outcome(modified, implementation_failed)
-    )
+    accepted = _classify_implementation_outcome(modified, implementation_failed)
 
     for decision in risk_plan.step_decisions:
         package_step = package_steps.get(decision.step_id)
@@ -171,12 +180,7 @@ def append_risk_history(
         if package_step is None:
             continue
 
-        actual_outcome, surfaced_surprises, verification_outcome = (
-            _determine_decision_outcome(
-                decision, risk_plan,
-                accepted_outcome, accepted_surprises, accepted_verification,
-            )
-        )
+        result = _determine_decision_outcome(decision, risk_plan, accepted)
         append_history_entry(
             paths.risk_history(),
             RiskHistoryEntry(
@@ -190,9 +194,9 @@ def append_risk_history(
                     if decision.residual_risk is not None
                     else MAX_RESIDUAL_RISK
                 ),
-                actual_outcome=actual_outcome,
-                surfaced_surprises=list(surfaced_surprises),
-                verification_outcome=verification_outcome,
+                actual_outcome=result.outcome,
+                surfaced_surprises=list(result.surprises),
+                verification_outcome=result.verification,
                 dominant_risks=(
                     list(assessment_step.dominant_risks)
                     if assessment_step is not None
@@ -207,11 +211,11 @@ def append_risk_history(
         )
         if (
             decision.decision == StepDecision.ACCEPT
-            and actual_outcome in {"success", "warning"}
+            and result.outcome in {"success", "warning"}
             and assessment_step is not None
         ):
             _record_over_guarding(
                 decision, package_step, assessment_step,
-                risk_plan, prior_history, accepted_verification,
+                risk_plan, prior_history, accepted.verification,
                 paths.risk_history(),
             )

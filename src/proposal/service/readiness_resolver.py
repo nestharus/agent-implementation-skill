@@ -96,14 +96,22 @@ def _check_governance_questions(state: dict) -> list[dict]:
     return []
 
 
+@dataclass
+class GovernanceIds:
+    """Validated governance IDs extracted from proposal state."""
+
+    problem_ids: list[str] = field(default_factory=list)
+    pattern_ids: list[str] = field(default_factory=list)
+    profile_id: str = ""
+
+    def has_declared_ids(self) -> bool:
+        return bool(self.problem_ids or self.pattern_ids or self.profile_id)
+
+
 def _validate_declared_ids_types(
     state: dict, section_number: str,
-) -> tuple[list[str], list[str], str]:
-    """Extract and type-check declared governance IDs from *state*.
-
-    Returns ``(problem_ids, pattern_ids, profile_id)`` with safe defaults
-    when types are unexpected.
-    """
+) -> GovernanceIds:
+    """Extract and type-check declared governance IDs from *state*."""
     problem_ids = state.get("problem_ids", [])
     pattern_ids = state.get("pattern_ids", [])
     profile_id = state.get("profile_id", "")
@@ -125,7 +133,7 @@ def _validate_declared_ids_types(
             section_number, type(profile_id).__name__,
         )
         profile_id = ""
-    return problem_ids, pattern_ids, profile_id
+    return GovernanceIds(problem_ids, pattern_ids, profile_id)
 
 
 def _check_packet_ambiguity(packet: dict, state: dict) -> list[dict]:
@@ -283,10 +291,8 @@ def _validate_governance_identity(
     packet_path = paths.governance_packet(section_number)
     packet = Services.artifact_io().read_json(packet_path)
 
-    problem_ids, pattern_ids, profile_id = _validate_declared_ids_types(
-        state, section_number,
-    )
-    has_declared_ids = bool(problem_ids or pattern_ids or profile_id)
+    gov_ids = _validate_declared_ids_types(state, section_number)
+    has_declared_ids = gov_ids.has_declared_ids()
 
     if isinstance(packet, dict):
         blockers.extend(_check_packet_ambiguity(packet, state))
@@ -295,7 +301,7 @@ def _validate_governance_identity(
         governing_profile = packet.get("governing_profile", "")
         if not isinstance(governing_profile, str):
             governing_profile = ""
-        blockers.extend(_check_profile_mismatch(profile_id, governing_profile))
+        blockers.extend(_check_profile_mismatch(gov_ids.profile_id, governing_profile))
 
         packet_problems = packet.get("candidate_problems", [])
         packet_patterns = packet.get("candidate_patterns", [])
@@ -304,7 +310,8 @@ def _validate_governance_identity(
         if not isinstance(packet_patterns, list):
             packet_patterns = []
         blockers.extend(_check_packet_membership(
-            problem_ids, pattern_ids, packet_problems, packet_patterns,
+            gov_ids.problem_ids, gov_ids.pattern_ids,
+            packet_problems, packet_patterns,
         ))
     else:
         blockers.extend(_check_missing_packet(has_declared_ids, packet))

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
@@ -42,16 +43,36 @@ from containers import Services
 from signals.types import BLOCKING_NEEDS_PARENT
 
 
+@dataclass(frozen=True)
+class PrerequisiteResult:
+    """Result of prerequisite checks (project mode + section files)."""
+
+    project_mode: str
+    section_files: list[Path] = field(default_factory=list)
+    total_sections: int = 0
+
+
+@dataclass(frozen=True)
+class TargetingResult:
+    """Result of target section selection (vacuum + signal triggers)."""
+
+    target_sections: list[str] = field(default_factory=list)
+    target_paths: dict[str, Path] = field(default_factory=dict)
+    trigger_reason: str = ""
+    vacuum_sections: list[str] = field(default_factory=list)
+    trigger_threshold: int = 2
+
+
 # ---- Helpers ----
 
 
 def _check_prerequisites(
     artifacts_dir: Path,
     sections_dir: Path,
-) -> tuple[str, list[Path], int] | None:
+) -> PrerequisiteResult | None:
     """Steps 1-2: read project mode and load section specs.
 
-    Returns ``(project_mode, section_files, total_sections)`` on success,
+    Returns a ``PrerequisiteResult`` on success,
     or ``None`` after writing a NEEDS_PARENT status on failure.
     """
     # ---- Step 1: Read project mode ----
@@ -95,7 +116,11 @@ def _check_prerequisites(
         )
         return None
 
-    return project_mode, section_files, total_sections
+    return PrerequisiteResult(
+        project_mode=project_mode,
+        section_files=section_files,
+        total_sections=total_sections,
+    )
 
 
 def _find_target_sections(
@@ -104,11 +129,10 @@ def _find_target_sections(
     codespace: Path,
     project_mode: str,
     total_sections: int,
-) -> tuple[list[str], dict[str, Path], str, list[str], int] | None:
+) -> TargetingResult | None:
     """Steps 3-4: determine vacuum sections, read trigger signals, evaluate trigger rule.
 
-    Returns ``(target_sections, target_paths, trigger_reason,
-    vacuum_sections, trigger_threshold)`` on success, or ``None`` if
+    Returns a ``TargetingResult`` on success, or ``None`` if
     the trigger rule says to skip (after writing status and printing).
     """
     # ---- Step 3: Determine vacuum sections ----
@@ -149,12 +173,12 @@ def _find_target_sections(
             f"(threshold={trigger_threshold}) -- "
             f"running for {len(target_sections)} sections"
         )
-        return (
-            target_sections,
-            target_paths,
-            trigger_reason,
-            vacuum_sections,
-            trigger_threshold,
+        return TargetingResult(
+            target_sections=target_sections,
+            target_paths=target_paths,
+            trigger_reason=trigger_reason,
+            vacuum_sections=vacuum_sections,
+            trigger_threshold=trigger_threshold,
         )
 
     # Not enough vacuum sections and no signals -- skip
@@ -434,24 +458,23 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
     prereqs = _check_prerequisites(artifacts_dir, sections_dir)
     if prereqs is None:
         return False
-    project_mode, section_files, total_sections = prereqs
 
     # Steps 3-4: Determine targets and evaluate trigger rule
     targeting = _find_target_sections(
-        section_files, artifacts_dir, codespace, project_mode, total_sections,
+        prereqs.section_files, artifacts_dir, codespace,
+        prereqs.project_mode, prereqs.total_sections,
     )
     if targeting is None:
         return True  # Skip is a success -- not an error
 
-    target_sections, target_paths, trigger_reason, vacuum_sections, trigger_threshold = targeting
-    print(f"[SUBSTRATE] Triggered: {trigger_reason}")
+    print(f"[SUBSTRATE] Triggered: {targeting.trigger_reason}")
 
     # Read model policy
     model_policy = _read_model_policy(artifacts_dir)
 
     # Phase A: Shard exploration
     valid_shards = _run_shard_exploration(
-        target_sections, target_paths, registry, codespace,
+        targeting.target_sections, targeting.target_paths, registry, codespace,
         model_policy,
     )
     if not valid_shards:
@@ -459,19 +482,19 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
         _write_status(
             artifacts_dir,
             state="RAN",
-            project_mode=project_mode,
-            total_sections=total_sections,
-            vacuum_sections=vacuum_sections,
+            project_mode=prereqs.project_mode,
+            total_sections=prereqs.total_sections,
+            vacuum_sections=targeting.vacuum_sections,
             notes="All shard explorers failed -- no seed plan produced",
-            threshold=trigger_threshold,
+            threshold=targeting.trigger_threshold,
         )
         return False
 
     # Phase B: Pruning
     pruning_result = _run_pruning(
         codespace, planspace, valid_shards, model_policy,
-        project_mode, total_sections, vacuum_sections,
-        trigger_threshold,
+        prereqs.project_mode, prereqs.total_sections,
+        targeting.vacuum_sections, targeting.trigger_threshold,
     )
     if pruning_result is None:
         return False
@@ -479,23 +502,23 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
 
     # Phase C: Seeding + apply related-files updates
     updated_count = _run_seeding_and_apply(
-        registry, planspace, codespace, target_sections, model_policy,
-        substrate_md_path,
+        registry, planspace, codespace, targeting.target_sections,
+        model_policy, substrate_md_path,
     )
 
     # Write final status
     _write_status(
         artifacts_dir,
         state="RAN",
-        project_mode=project_mode,
-        total_sections=total_sections,
-        vacuum_sections=vacuum_sections,
+        project_mode=prereqs.project_mode,
+        total_sections=prereqs.total_sections,
+        vacuum_sections=targeting.vacuum_sections,
         notes=(
             f"Completed: {len(valid_shards)} shards, "
             f"{len(seed_plan.get('anchors', []))} anchors, "
             f"{updated_count} sections wired"
         ),
-        threshold=trigger_threshold,
+        threshold=targeting.trigger_threshold,
     )
 
     print("[SUBSTRATE] Done")

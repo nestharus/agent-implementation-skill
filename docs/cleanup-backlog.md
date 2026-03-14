@@ -937,7 +937,7 @@ Functions that accept parameters which could be computed from other parameters a
   14. `_prepare_ticket_spec` (3-tuple of `Path`) — `research/prompt/writers.py:104`
 - **Risk**: Positional coupling — callers must know element order. Adding/removing a field requires updating every unpacking site. `return x, y, z` reveals nothing about what each element means.
 - **Prior work**: #67 fixed 8 worst offenders (Cycle 8). `FrontierSliceResult` fixed 4-tuple in `implementation_phase.py` (this cycle). 14 remain.
-- **Status**: IN PROGRESS — `FrontierSliceResult` dataclass added to `implementation_phase.py`, eliminating worst 4-tuple. 14 remaining functions to fix.
+- **Status**: DONE — 13 of 14 functions fixed with frozen dataclasses. `FrontierSliceResult` (implementation_phase.py), `PrerequisiteResult` + `TargetingResult` (substrate_discoverer.py), `CrossSectionIssues` (cross_section_reconciler.py), `AnalysisLogPaths` (analyzer.py), `ValidationHashes` (related_file_resolver.py), `SurfaceActionResult` (surface_handler.py), `AlignmentPhaseResult` (proposal_cycle.py), `ImplementationOutcome` (risk_history_recorder.py), `SectionScanFeedback` (feedback_collector.py), `GovernanceIds` (readiness_resolver.py), `SourceMapValidationFailure` (philosophy_grounding.py), `PromptInputs` (intent_pack_generator.py), `TicketPaths` (research/prompt/writers.py). Remaining: `_scan_session_messages` in `scripts/log_extract/` (low priority, scripts dir).
 
 ### 156. Shared config and validation-related migration issues
 - **Category**: Migration hygiene

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from containers import Services
@@ -26,6 +27,15 @@ from proposal.service.surface_handler import (
     handle_misaligned_surfaces,
 )
 from signals.types import ACTION_ABORT, ACTION_CONTINUE, TRUNCATE_DETAIL
+
+
+@dataclass(frozen=True)
+class AlignmentPhaseResult:
+    """Result of the alignment evaluation phase."""
+
+    action: str
+    problems: str | None = None
+    intent_mode: str = ""
 
 
 def _check_proposal_written(
@@ -102,10 +112,10 @@ def _run_alignment_phase(
     intent_mode: str,
     intent_budgets: dict,
     expansion_counts: dict[str, int],
-) -> tuple[str, str | None, str]:
+) -> AlignmentPhaseResult:
     """Evaluate alignment and handle surfaces.
 
-    Returns (action, problems, intent_mode) where action is:
+    Returns an ``AlignmentPhaseResult`` with action:
     - ``'abort'`` to exit loop returning None,
     - ``'continue'`` to retry with problems,
     - ``'break'`` to exit loop with success.
@@ -118,33 +128,36 @@ def _run_alignment_phase(
             f"Section {section.number}: proposal alignment check "
             f"timed out — retrying"
         )
-        return ACTION_CONTINUE, problems, intent_mode
+        return AlignmentPhaseResult(ACTION_CONTINUE, problems, intent_mode)
 
     align_signal = handle_alignment_signals(
         section.number, ctx.planspace, ctx.parent,
     )
     if align_signal == ACTION_ABORT:
-        return ACTION_ABORT, None, intent_mode
+        return AlignmentPhaseResult(ACTION_ABORT, intent_mode=intent_mode)
     if align_signal == ACTION_CONTINUE:
-        return ACTION_CONTINUE, None, intent_mode
+        return AlignmentPhaseResult(ACTION_CONTINUE, intent_mode=intent_mode)
 
     if problems is None:
-        action, intent_mode, reproposal_reason = handle_aligned_surfaces(
+        surface_result = handle_aligned_surfaces(
             section.number, ctx.planspace, ctx.codespace, ctx.parent,
             intent_mode, intent_budgets, expansion_counts,
         )
-        if action == ACTION_ABORT:
-            return ACTION_ABORT, None, intent_mode
-        if action == ACTION_CONTINUE:
-            return ACTION_CONTINUE, reproposal_reason, intent_mode
+        if surface_result.action == ACTION_ABORT:
+            return AlignmentPhaseResult(ACTION_ABORT, intent_mode=surface_result.intent_mode)
+        if surface_result.action == ACTION_CONTINUE:
+            return AlignmentPhaseResult(
+                ACTION_CONTINUE, surface_result.reproposal_reason,
+                surface_result.intent_mode,
+            )
         write_alignment_surface(ctx.planspace, section)
-        return "break", None, intent_mode
+        return AlignmentPhaseResult("break", intent_mode=surface_result.intent_mode)
 
     intent_mode = handle_misaligned_surfaces(
         section.number, ctx.planspace, ctx.codespace, ctx.parent,
         intent_mode, intent_budgets, expansion_counts,
     )
-    return ACTION_CONTINUE, problems, intent_mode
+    return AlignmentPhaseResult(ACTION_CONTINUE, problems, intent_mode)
 
 
 def _dispatch_and_validate_proposal(
@@ -246,21 +259,22 @@ def run_proposal_loop(
             return None
         align_result, align_output = align_check
 
-        action, problems, intent_mode = _run_alignment_phase(
+        phase = _run_alignment_phase(
             section, ctx,
             align_result, align_output,
             intent_mode, intent_budgets, expansion_counts,
         )
-        if action == ACTION_ABORT:
+        intent_mode = phase.intent_mode
+        if phase.action == ACTION_ABORT:
             return None
-        if action == "break":
+        if phase.action == "break":
             break
         # action == ACTION_CONTINUE
-        proposal_problems = problems
-        if problems is not None:
+        proposal_problems = phase.problems
+        if phase.problems is not None:
             _log_misalignment_problems(
                 section.number, ctx.planspace, ctx.parent,
-                problems, proposal_attempt,
+                phase.problems, proposal_attempt,
             )
 
     return proposal_problems or ""
