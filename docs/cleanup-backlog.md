@@ -658,6 +658,26 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Remaining 8+ param functions**: 48 (unchanged — these removals were on <8 param functions)
 - **Status**: DONE
 
+### 142. Cycle 16d — dead variables, redundant params, string constants, db_path internalization
+- **Category**: Dead code / parameter reduction / type safety
+- **Dead variable assignments removed** (8 sites across 7 files):
+  - 3× `policy = Services.policies().load(planspace)` in tool_registry_manager.py
+  - 1× each in expansion_orchestrator.py, proposal_phase.py, expansion_handler.py, research_plan_executor.py, global_alignment_rechecker.py, pipeline_orchestrator.py
+- **Redundant PathRegistry params removed** (4 functions):
+  - `_collect_note_problems` (problem_resolver.py): removed `planspace`, use `paths.planspace`
+  - `_apply_philosophy_expansion` (expansion_orchestrator.py): removed `planspace`, use `paths.planspace`
+  - `_finalize_expansion` (expansion_orchestrator.py): removed `planspace`, use `paths.planspace`
+  - `_run_shard_exploration` (substrate_discoverer.py): removed `planspace`, use `registry.planspace`
+- **Stringly-typed constants extracted** (~45 raw string literals → 5 named constants):
+  - `SOURCE_MODE_USER`, `SOURCE_MODE_REPO`, `SOURCE_MODE_NONE` in philosophy_classifier.py
+  - `STATE_VALID_NONEMPTY`, `STATE_VALID_EMPTY` in philosophy_classifier.py
+  - Replaced across philosophy_bootstrapper.py (~40 sites) and philosophy_classifier.py (~5 sites)
+- **Parameter internalization** (`ingest_and_submit` db_path):
+  - `db_path` made keyword-only optional param, derived from `PathRegistry(planspace).run_db()` when not provided
+  - All 5 production callers simplified (removed `db_path=paths.run_db()`)
+  - 17 test calls updated to pass `db_path=` as keyword arg
+- **Status**: DONE
+
 ---
 
 ## NOT A BUG
