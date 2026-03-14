@@ -183,7 +183,6 @@ def surface_tool_registry(
     codespace: Path,
 ) -> int:
     """Load the tool registry, repair if needed, and write the tool surface."""
-    policy = Services.policies().load(planspace)
     if not tool_registry_path.exists():
         return 0
 
@@ -383,7 +382,6 @@ def validate_tool_registry_after_implementation(
     codespace: Path,
 ) -> Path:
     """Validate the tool registry after implementation and return the friction path."""
-    policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
     friction_signal_path = paths.tool_friction_signal(section_number)
     if not tool_registry_path.exists():
@@ -681,9 +679,6 @@ def handle_tool_friction(
     codespace: Path,
 ) -> None:
     """Handle tool-friction signals and dispatch bridge-tools when needed."""
-    policy = Services.policies().load(planspace)
-    paths = PathRegistry(planspace)
-
     if not (_detect_friction(friction_signal_path) and tool_registry_path.exists()):
         return
 

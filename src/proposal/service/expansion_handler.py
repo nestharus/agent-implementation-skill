@@ -61,7 +61,6 @@ def run_aligned_expansion(
         "break" — caller should accept alignment
         None — caller should abort (return None)
     """
-    paths = PathRegistry(planspace)
     expansion_max = intent_budgets.get("intent_expansion_max", 2)
     expansion_count = expansion_counts.get(section_number, 0)
 

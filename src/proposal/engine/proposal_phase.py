@@ -406,7 +406,6 @@ def run_proposal_pass(
     parent: str,
 ) -> dict[str, ProposalPassResult]:
     """Run the proposal pass for all sections and return proposal results."""
-    policy = Services.policies().load(planspace)
     proposal_results: dict[str, ProposalPassResult] = {}
     queue = [section.number for section in all_sections]
     completed: set[str] = set()

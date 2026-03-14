@@ -144,7 +144,6 @@ def run_global_alignment_recheck(
 ) -> str:
     """Refresh per-section alignment results for Phase 2."""
     paths = PathRegistry(planspace)
-    policy = Services.policies().load(planspace)
     Services.logger().log("=== Phase 2: global coordination ===")
     Services.logger().log("Re-checking alignment across all sections...")
 

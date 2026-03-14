@@ -187,7 +187,6 @@ def run_expansion_cycle(
     budgets: dict | None = None,
 ) -> dict:
     """Run one expansion cycle: validate surfaces and expand definitions."""
-    policy = Services.policies().load(planspace)
     paths = PathRegistry(planspace)
     budget_config = budgets or {}
     no_work = {

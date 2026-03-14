@@ -311,7 +311,6 @@ def execute_research_plan(
     plan_output_path: Path,
 ) -> bool:
     """Translate semantic research plan into flow submissions."""
-    paths = PathRegistry(planspace)
     status = load_research_status(section_number, planspace) or {}
     trigger_hash = str(status.get("trigger_hash", ""))
     cycle_id = str(status.get("cycle_id", ""))
