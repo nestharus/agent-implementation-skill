@@ -81,12 +81,7 @@ def handle_alignment_signals(
     """
     paths = PathRegistry(planspace)
     signal, detail = Services.dispatch_helpers().check_agent_signals(
-        align_result,
         signal_path=paths.signals_dir() / f"proposal-align-{section_number}-signal.json",
-        output_path=align_output,
-        planspace=planspace,
-        parent=parent,
-        codespace=codespace,
     )
     if signal != "underspec":
         return None

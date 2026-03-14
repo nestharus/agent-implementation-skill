@@ -6,10 +6,10 @@ import json
 import subprocess
 from pathlib import Path
 
+from _config import DB_PATH
 from _paths import DB_SH
 from src.signals.service.section_communicator import (
     AGENT_NAME,
-    DB_PATH,
     _record_traceability,
     log,
     mailbox_drain,

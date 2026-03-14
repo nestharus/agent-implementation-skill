@@ -55,13 +55,13 @@ def test_check_agent_signals_reads_structured_signal_file(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    signal, detail = check_agent_signals("ignored output", signal_path=signal_path)
+    signal, detail = check_agent_signals(signal_path=signal_path)
 
     assert signal == "dependency"
     assert "section 02" in detail
 
 
 def test_check_agent_signals_returns_none_when_signal_missing(tmp_path) -> None:
-    result = check_agent_signals("ignored", signal_path=tmp_path / "missing.json")
+    result = check_agent_signals(signal_path=tmp_path / "missing.json")
     assert result.signal_type is None
     assert result.detail == ""

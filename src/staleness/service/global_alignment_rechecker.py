@@ -121,10 +121,7 @@ def _apply_alignment_outcome(
     main_signal_dir = paths.signals_dir()
     main_signal_dir.mkdir(parents=True, exist_ok=True)
     signal, detail = Services.dispatch_helpers().check_agent_signals(
-        align_result,
         signal_path=main_signal_dir / f"global-align-{sec_num}-signal.json",
-        output_path=global_align_output,
-        planspace=planspace, parent=parent, codespace=codespace,
     )
 
     if problems is None and signal is None:

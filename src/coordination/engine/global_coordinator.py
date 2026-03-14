@@ -319,10 +319,7 @@ def _recheck_section_alignment(
     coord_signal_dir = paths.coordination_signals_dir()
     coord_signal_dir.mkdir(parents=True, exist_ok=True)
     signal, detail = Services.dispatch_helpers().check_agent_signals(
-        align_result,
         signal_path=paths.coordination_align_signal(sec_num),
-        output_path=paths.coordination_align_output(sec_num),
-        planspace=planspace, parent=parent, codespace=codespace,
     )
 
     return _classify_alignment_result(

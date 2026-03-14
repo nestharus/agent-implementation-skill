@@ -309,13 +309,10 @@ class DispatchHelperService:
     """Cross-cutting dispatch helpers: signals, summaries, model-choice audit."""
 
     def check_agent_signals(
-        self, output, signal_path=None, output_path=None,
-        planspace=None, parent=None, codespace=None,
+        self, signal_path=None,
     ):
         from dispatch.helpers.signal_checker import check_agent_signals
-        return check_agent_signals(
-            output, signal_path, output_path, planspace, parent, codespace,
-        )
+        return check_agent_signals(signal_path)
 
     def summarize_output(self, output: str, max_len: int = 200) -> str:
         from dispatch.helpers.signal_checker import summarize_output

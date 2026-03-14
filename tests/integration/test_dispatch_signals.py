@@ -181,7 +181,6 @@ class TestCheckAgentSignals:
             "detail": "needs section 02",
         }))
         sig, detail = check_agent_signals(
-            "some agent output text",
             signal_path=sig_path,
         )
         assert sig == "dependency"
@@ -190,7 +189,6 @@ class TestCheckAgentSignals:
         self, tmp_path: Path,
     ) -> None:
         sig, detail = check_agent_signals(
-            "some output",
             signal_path=tmp_path / "missing.json",
         )
         assert sig is None
@@ -205,7 +203,7 @@ class TestCheckAgentSignals:
             "detail": "belongs to infrastructure team",
         }))
         sig, detail = check_agent_signals(
-            "some output", signal_path=sig_path,
+            signal_path=sig_path,
         )
         assert sig == "out_of_scope"
         assert "infrastructure" in detail
@@ -219,7 +217,7 @@ class TestCheckAgentSignals:
             "detail": "architecture decision required at project level",
         }))
         sig, detail = check_agent_signals(
-            "some output", signal_path=sig_path,
+            signal_path=sig_path,
         )
         assert sig == "needs_parent"
         assert "architecture" in detail

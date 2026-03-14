@@ -47,15 +47,9 @@ def write_model_choice_signal(
 
 
 def check_agent_signals(
-    output: str,
     signal_path: Path | None = None,
-    output_path: Path | None = None,
-    planspace: Path | None = None,
-    parent: str | None = None,
-    codespace: Path | None = None,
 ) -> SignalResult:
     """Check for agent signals via the structured JSON file."""
-    del output, output_path, planspace, parent, codespace
     if signal_path:
         result = Services.signals().read_tuple(signal_path)
         if result.signal_type:

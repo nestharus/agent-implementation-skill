@@ -321,12 +321,7 @@ def _handle_post_dispatch(
 
     paths.signals_dir().mkdir(parents=True, exist_ok=True)
     signal, detail = Services.dispatch_helpers().check_agent_signals(
-        impl_result,
         signal_path=paths.impl_signal(section_number),
-        output_path=artifacts / f"impl-{section_number}-output.md",
-        planspace=planspace,
-        parent=parent,
-        codespace=codespace,
     )
     if signal:
         return _handle_signal_pause(
@@ -438,14 +433,8 @@ def _handle_underspec_signal(
 ) -> str:
     """Check for underspec signal after alignment; return loop action."""
     paths = PathRegistry(planspace)
-    impl_align_output = paths.artifacts / f"impl-align-{section_number}-output.md"
     signal, detail = Services.dispatch_helpers().check_agent_signals(
-        impl_align_result,
         signal_path=paths.signals_dir() / f"impl-align-{section_number}-signal.json",
-        output_path=impl_align_output,
-        planspace=planspace,
-        parent=parent,
-        codespace=codespace,
     )
     if signal == "underspec":
         return _handle_signal_pause(

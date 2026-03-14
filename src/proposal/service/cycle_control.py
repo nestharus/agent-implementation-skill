@@ -172,15 +172,9 @@ def handle_proposal_signals(
         None — no signal, proceed normally
     """
     paths = PathRegistry(planspace)
-    intg_output = paths.artifacts / f"intg-proposal-{section_number}-output.md"
     paths.signals_dir().mkdir(parents=True, exist_ok=True)
     signal, detail = Services.dispatch_helpers().check_agent_signals(
-        intg_result,
         signal_path=paths.proposal_signal(section_number),
-        output_path=intg_output,
-        planspace=planspace,
-        parent=parent,
-        codespace=codespace,
     )
     if not signal:
         return None

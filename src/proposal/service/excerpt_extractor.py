@@ -103,10 +103,7 @@ def extract_excerpts(
         )
 
         signal, detail = Services.dispatch_helpers().check_agent_signals(
-            output,
             signal_path=signal_dir / f"setup-{section.number}-signal.json",
-            output_path=setup_output,
-            planspace=planspace, parent=parent, codespace=codespace,
         )
         if signal:
             result = _handle_setup_signal(
