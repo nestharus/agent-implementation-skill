@@ -21,7 +21,6 @@ class DispatchMetaStatus(str, Enum):
         return self.value
 
 
-
 @dataclass(frozen=True)
 class DispatchMetaResult:
     """Result of reading a dispatch metadata sidecar."""
