@@ -8,8 +8,10 @@ from containers import Services
 from orchestrator.path_registry import PathRegistry
 from signals.types import SignalResult
 
+_DEFAULT_SUMMARY_MAX_LENGTH = 200
 
-def summarize_output(output: str, max_len: int = 200) -> str:
+
+def summarize_output(output: str, max_len: int = _DEFAULT_SUMMARY_MAX_LENGTH) -> str:
     """Extract a brief summary from agent output for status messages."""
     for line in output.split("\n"):
         stripped = line.strip()

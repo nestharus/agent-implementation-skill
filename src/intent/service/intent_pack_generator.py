@@ -10,6 +10,9 @@ from intent.service.philosophy_bootstrapper import (
     validate_philosophy_grounding as _validate_grounding,
 )
 from intent.service.philosophy_catalog import (
+    _DEFAULT_CATALOG_MAX_DEPTH,
+    _DEFAULT_CATALOG_MAX_FILES,
+    _DEFAULT_CATALOG_MAX_SIZE_KB,
     build_philosophy_catalog as _build_catalog,
     walk_md_bounded as _walk_bounded,
 )
@@ -39,9 +42,9 @@ def _build_philosophy_catalog(
     planspace: Path,
     codespace: Path,
     *,
-    max_files: int = 50,
-    max_size_kb: int = 100,
-    max_depth: int = 3,
+    max_files: int = _DEFAULT_CATALOG_MAX_FILES,
+    max_size_kb: int = _DEFAULT_CATALOG_MAX_SIZE_KB,
+    max_depth: int = _DEFAULT_CATALOG_MAX_DEPTH,
     extensions: frozenset[str] = frozenset({".md"}),
 ) -> list[dict]:
     return _build_catalog(

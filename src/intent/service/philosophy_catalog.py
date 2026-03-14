@@ -16,6 +16,10 @@ _PREVIEW_CONTEXT_AFTER = 8
 _CODESPACE_QUOTA_NUMERATOR = 4
 _CODESPACE_QUOTA_DENOMINATOR = 5
 
+_DEFAULT_CATALOG_MAX_FILES = 50
+_DEFAULT_CATALOG_MAX_SIZE_KB = 100
+_DEFAULT_CATALOG_MAX_DEPTH = 3
+
 
 def walk_md_bounded(
     root: Path,
@@ -53,9 +57,9 @@ def build_philosophy_catalog(
     planspace: Path,
     codespace: Path,
     *,
-    max_files: int = 50,
-    max_size_kb: int = 100,
-    max_depth: int = 3,
+    max_files: int = _DEFAULT_CATALOG_MAX_FILES,
+    max_size_kb: int = _DEFAULT_CATALOG_MAX_SIZE_KB,
+    max_depth: int = _DEFAULT_CATALOG_MAX_DEPTH,
     extensions: frozenset[str] = frozenset({".md"}),
 ) -> list[dict]:
     """Build a mechanical catalog of candidate philosophy source files."""

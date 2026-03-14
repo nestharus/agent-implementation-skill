@@ -51,6 +51,7 @@ from containers import Services
 from signals.types import TRUNCATE_TOKEN
 
 DISPATCHER_NAME = "task-dispatcher"
+_DEFAULT_POLL_INTERVAL_SECONDS = 3.0
 logger = logging.getLogger(__name__)
 
 # Sentinel returned by _read_dispatch_meta when the sidecar file exists
@@ -356,8 +357,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Task queue dispatcher")
     parser.add_argument("planspace", type=Path, help="Planspace directory")
     parser.add_argument(
-        "--poll-interval", type=float, default=3.0,
-        help="Seconds between polls (default: 3)",
+        "--poll-interval", type=float, default=_DEFAULT_POLL_INTERVAL_SECONDS,
+        help=f"Seconds between polls (default: {_DEFAULT_POLL_INTERVAL_SECONDS})",
     )
     parser.add_argument(
         "--once", action="store_true",
