@@ -452,6 +452,7 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Source**: Expanded reviewer scan R120 (CODE-S3 from code-style-review)
 - **Top 5**: `submit_task()` 18 params, `_request_user_philosophy()` 15 params, `_dispatch_classified_signal_stage()` 13 params, `_write_prompt()` 13 params, `handle_tool_friction()` 12 params.
 - **Overlap**: Subsumes #93 (long parameter lists). This is the precise inventory.
+- **Status**: PARTIALLY DONE — Down to 64 functions with 8+ params (from 128+). Systematic elimination of redundant `paths: PathRegistry` (derivable from `planspace`) and `policy: dict` (derivable via `Services.policies().load(planspace)`) across ~35 functions in Cycles 12-13. Remaining 64 are mostly at 8-9 params with no derivable redundancy — params are genuinely distinct data (DB insertion columns, dispatch configs, prompt data). Top remaining: `submit_task` (17, all keyword-only DB columns), `_apply_and_finalize` (11), `_block_bootstrap` (10).
 
 ### 130. Broad `except Exception` without `# noqa: BLE001` (CODE-E1)
 - **Category**: Error handling / exception specificity
@@ -541,6 +542,30 @@ Functions that take parameters obtainable from the DI container are exposing unn
 - **Deduplication**:
   - `_unique_strings()` was copy-pasted in `risk_artifact_writer.py` and `risk_history_recorder.py`. Now imports from canonical location.
 - **Status**: DONE — codebase clean across all CODE-* categories
+
+### 136. Cycle 13 — dead code, magic numbers, parameter reduction
+- **Category**: Multi-category rescan and cleanup
+- **Dead code removed**:
+  - `_inline_json_block()` in `risk/prompt/writers.py` — private function, test verified it was NOT used. Removed function + test + dead `json` import + dead `risk_prompt_writers` test import.
+  - 4 dead imports from `risk/service/quantifier.py` (removed in Cycle 12 continuation): `deepcopy`, `Path`, `Any`, `Services`.
+  - `all_agent_files()` from `taskrouter/agents.py` — zero production callers.
+  - `DispatchResult.succeeded` property — zero callers.
+  - 9 dead `PathRegistry` methods: `flow_continuation`, `flow_result_manifest`, `source_inventory`, `candidate_claims`, `hypothesis_sets`, `verification_packet_json`, `verification_packet_md`, `verification_receipts`, `value_scales`.
+  - Dead module `flow/helpers/task_parser.py` + `flow/helpers/` directory + test.
+- **Magic numbers extracted** (16 constants across 7 files):
+  - `philosophy_bootstrapper.py`: `_MAX_SECTION_SPECS`, `_MAX_PROPOSALS`, `_MAX_DECISIONS`, `_MAX_NOTES`, `_MAX_FILE_EXTENSION_LENGTH`, `_MAX_DISTILLER_ATTEMPTS`
+  - `philosophy_catalog.py`: `_PREVIEW_START_LINES`, `_PREVIEW_CONTEXT_BEFORE`, `_PREVIEW_CONTEXT_AFTER`, `_CODESPACE_QUOTA_NUMERATOR/_DENOMINATOR`
+  - `governance_packet_builder.py`: `_MIN_TERM_LENGTH`, `_MAX_KEYWORDS_IN_BASIS`, `_MAX_BASIS_PARTS`
+  - `microstrategy_decider.py`: `_TODO_CONTEXT_BEFORE`, `_TODO_CONTEXT_AFTER`
+  - `monitor_service.py`: `_MONITOR_WAIT_TIMEOUT`, `_MIN_SIGNAL_LOG_FIELDS`, `_SIGNAL_LOG_TRUNCATION`
+  - `pipeline_orchestrator.py`: `_MAX_BLOCKERS_IN_SUMMARY`
+- **Parameter count reduction** (~35 functions reduced across 4 rounds):
+  - Round 1 (Cycle 12): 11 functions — `paths: PathRegistry` removed from proposal system
+  - Round 2 (Cycle 12): coordination + plan_executor `paths`/`policy` removed
+  - Round 3 (Cycle 13): `_request_user_philosophy` (11→10), `_apply_and_finalize` (13→10), `_run_pruning` (10→8), `_compose_microstrategy_text` (10→8), `_build_microstrategy_prompt` (7→6)
+  - Round 4 (Cycle 13): `_dispatch_new_tool_validation` (9→7), `_dispatch_post_impl_repair` (8→6), `_dispatch_registry_repair` (8→7), `_dispatch_and_retry` (9→8), `_try_escalation` (9→8), `_reexplore_missing_files` (8→7)
+- **AST verification**: 0 functions >50 exec lines, 0 real nesting depth >4 violations (1 false positive: flat elif chain in AST).
+- **Status**: DONE
 
 ---
 
