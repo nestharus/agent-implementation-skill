@@ -58,6 +58,3 @@ def resolve_agent_path(agent_file: str) -> Path:
     return path
 
 
-def all_agent_files() -> dict[str, Path]:
-    """Return a copy of the full agent index."""
-    return dict(_INDEX)

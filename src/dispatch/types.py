@@ -19,10 +19,6 @@ class DispatchResult:
     status: DispatchStatus
     output: str
 
-    @property
-    def succeeded(self) -> bool:
-        return self.status is DispatchStatus.SUCCESS
-
     def __eq__(self, other):
         if isinstance(other, str):
             # Backward compatibility: allow comparison with sentinel strings
