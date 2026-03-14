@@ -479,7 +479,7 @@ def _finalize(
             "implementation change",
         )
 
-    _write_traceability_index(planspace, section, codespace, actually_changed)
+    _write_traceability_index(planspace, section, actually_changed)
 
     build_trace_map(
         planspace, codespace, section.number,

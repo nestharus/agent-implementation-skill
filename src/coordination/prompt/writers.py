@@ -79,7 +79,6 @@ def write_bridge_prompt(
     group_index: int,
     group_sections: list[str],
     planspace: Path,
-    codespace: Path,
     bridge_reason: str,
 ) -> Path | None:
     """Write a prompt for bridge resolution of cross-section overlap."""

@@ -179,7 +179,6 @@ _CONTINUE = object()
 def _check_upstream_freshness(
     section: Section,
     planspace: Path,
-    artifacts: Path,
 ) -> bool:
     """Check readiness and reconciliation freshness gates.
 
@@ -306,7 +305,6 @@ def _run_implementation_pass(
     planspace: Path, codespace: Path, section: Section, parent: str,
     *,
     all_sections: list[Section] | None = None,
-    artifacts: Path,
 ) -> list[str] | None:
     """Execute implementation for a section whose proposal is already aligned.
 
@@ -341,7 +339,6 @@ def _run_implementation_pass(
     return _run_section_implementation_steps(
         planspace, codespace, section, parent,
         all_sections=all_sections,
-        artifacts=artifacts,
     )
 
 
@@ -376,15 +373,11 @@ def run_section(
     - ``ProposalPassResult`` when ``pass_mode="proposal"`` completes.
     - ``None`` if paused/aborted (waiting for parent).
     """
-    paths = PathRegistry(planspace)
-    artifacts = paths.artifacts
-
     # Implementation-only mode: skip proposal steps, jump to execution
     if pass_mode == PASS_MODE_IMPLEMENTATION:
         return _run_implementation_pass(
             planspace, codespace, section, parent,
             all_sections=all_sections,
-            artifacts=artifacts,
         )
 
     # Recurrence signal
@@ -438,7 +431,6 @@ def run_section(
     return _run_section_implementation_steps(
         planspace, codespace, section, parent,
         all_sections=all_sections,
-        artifacts=artifacts,
     )
 
 
@@ -446,7 +438,6 @@ def _run_section_implementation_steps(
     planspace: Path, codespace: Path, section: Section, parent: str,
     *,
     all_sections: list[Section] | None = None,
-    artifacts: Path,
 ) -> list[str] | None:
     """Execute microstrategy through post-completion for a section.
 
@@ -457,7 +448,7 @@ def _run_section_implementation_steps(
     paths = PathRegistry(planspace)
 
     # Upstream freshness gate
-    if not _check_upstream_freshness(section, planspace, artifacts):
+    if not _check_upstream_freshness(section, planspace):
         return None
 
     # Load cycle budget and pre-implementation tool count

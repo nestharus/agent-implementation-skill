@@ -71,7 +71,7 @@ def _optional_artifact(path: Path) -> dict | None:
 
 
 def _write_traceability_index(
-    planspace: Path, section: Section, codespace: Path,
+    planspace: Path, section: Section,
     modified_files: list[str],
 ) -> None:
     """Write a traceability index for a completed section."""

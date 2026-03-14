@@ -41,7 +41,7 @@ def test_write_traceability_index_includes_governance_block(tmp_path: Path) -> N
     governance_packet.parent.mkdir(parents=True, exist_ok=True)
     governance_packet.write_text('{"section": "01"}\n', encoding="utf-8")
 
-    _write_traceability_index(planspace, section, codespace, ["src/main.py"])
+    _write_traceability_index(planspace, section, ["src/main.py"])
 
     trace = json.loads(
         (artifacts / "trace" / "section-01.json").read_text(encoding="utf-8")

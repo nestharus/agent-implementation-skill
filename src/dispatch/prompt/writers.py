@@ -156,7 +156,6 @@ def write_integration_proposal_prompt(
     codespace: Path,
     alignment_problems: str | None = None,
     incoming_notes: str | None = None,
-    model_policy: dict | None = None,
 ) -> Path:
     """Write the prompt for creating an integration proposal."""
 
@@ -355,7 +354,6 @@ def write_strategic_impl_prompt(
     planspace: Path,
     codespace: Path,
     alignment_problems: str | None = None,
-    model_policy: dict | None = None,
 ) -> Path:
     """Write the prompt for strategic implementation."""
 

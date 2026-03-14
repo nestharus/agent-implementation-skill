@@ -223,7 +223,7 @@ def _run_bridge_for_group(
 
     bridge_prompt = write_bridge_prompt(
         group, group_index, group_sections,
-        planspace, codespace, bridge_reason,
+        planspace, bridge_reason,
     )
     if bridge_prompt is None:
         return
