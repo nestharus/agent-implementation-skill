@@ -349,7 +349,7 @@ def execute_research_plan(
         return False
 
     _submit_fanout(
-        paths, section_number, planspace, branches, synthesis_prompt,
+        section_number, planspace, branches, synthesis_prompt,
         plan_output_path, trigger_hash, cycle_id,
     )
     return True
@@ -448,7 +448,6 @@ def _write_synthesis(
 
 
 def _submit_fanout(
-    paths: PathRegistry,
     section_number: str,
     planspace: Path,
     branches: list[BranchSpec],
@@ -458,6 +457,7 @@ def _submit_fanout(
     cycle_id: str,
 ) -> None:
     """Write submission status, compute freshness, and submit the fanout."""
+    paths = PathRegistry(planspace)
     # Write status BEFORE computing freshness so the hash includes
     # research-status.json at both submission and dispatch time.
     write_research_status(
