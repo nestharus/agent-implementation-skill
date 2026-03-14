@@ -2,7 +2,7 @@ from pathlib import Path
 
 from containers import Services
 from coordination.problem_types import Problem
-from coordination.types import CoordinationStrategy
+from coordination.types import BridgeDirective, CoordinationStrategy, ProblemGroup, RecurrenceReport
 from pipeline.context import DispatchContext
 from coordination.engine.plan_executor import (
     CoordinationExecutionExit,
@@ -44,7 +44,7 @@ def _collect_and_persist_problems(
     section_results: dict[str, SectionResult],
     sections_by_num: dict[str, Section],
     planspace: Path,
-) -> tuple[list[Problem], dict | None] | None:
+) -> tuple[list[Problem], RecurrenceReport | None] | None:
     """Collect outstanding problems, detect recurrence, persist state.
 
     Returns ``(problems, recurrence)`` or ``None`` if no problems exist.
@@ -69,8 +69,8 @@ def _collect_and_persist_problems(
             Services.policies().resolve(policy, "escalation_model"), encoding="utf-8")
         Services.logger().log(f"  coordinator: recurrence escalation — setting model to "
             f"{Services.policies().resolve(policy, 'escalation_model')} for "
-            f"{recurrence['recurring_problem_count']} recurring problems "
-            f"across sections {recurrence['recurring_sections']}")
+            f"{recurrence.recurring_problem_count} recurring problems "
+            f"across sections {recurrence.recurring_sections}")
 
     state_path = paths.coordination_problems()
     Services.artifact_io().write_json(state_path, problems)
@@ -131,11 +131,11 @@ def _build_coordination_plan(
     problems: list[Problem],
     planspace: Path,
     parent: str,
-) -> tuple[list[list[Problem]], list[str], dict] | None:
-    """Dispatch planner agent, parse plan, build confirmed groups.
+) -> tuple[list[ProblemGroup], list[list[int]] | None] | None:
+    """Dispatch planner agent, parse plan, build problem groups.
 
-    Returns ``(confirmed_groups, group_strategies, coord_plan)`` or
-    ``None`` on failure (alignment changed, parse failures).
+    Returns ``(groups, agent_batches)`` or ``None`` on failure
+    (alignment changed, parse failures).
     """
     policy = Services.policies().load(planspace)
 
@@ -150,18 +150,28 @@ def _build_coordination_plan(
     if coord_plan is None:
         return None
 
-    confirmed_groups: list[list[Problem]] = []
-    group_strategies: list[str] = []
+    groups: list[ProblemGroup] = []
     for g in coord_plan["groups"]:
         group_problems = [problems[i] for i in g["problems"]]
-        confirmed_groups.append(group_problems)
-        group_strategies.append(g.get("strategy", CoordinationStrategy.SEQUENTIAL))
-        Services.logger().log(f"  coordinator: group {len(confirmed_groups) - 1} — "
+        bridge_dict = g.get("bridge", {})
+        if not isinstance(bridge_dict, dict):
+            bridge_dict = {}
+        group = ProblemGroup(
+            problems=group_problems,
+            strategy=g.get("strategy", CoordinationStrategy.SEQUENTIAL),
+            reason=g.get("reason", ""),
+            bridge=BridgeDirective(
+                needed=bridge_dict.get("needed", False),
+                reason=bridge_dict.get("reason", ""),
+            ),
+        )
+        groups.append(group)
+        Services.logger().log(f"  coordinator: group {len(groups) - 1} — "
             f"{len(group_problems)} problems, "
-            f"strategy={group_strategies[-1]}, "
-            f"reason={g.get('reason', '(none)')}")
+            f"strategy={group.strategy}, "
+            f"reason={group.reason or '(none)'}")
 
-    Services.logger().log(f"  coordinator: {len(confirmed_groups)} problem groups from "
+    Services.logger().log(f"  coordinator: {len(groups)} problem groups from "
         f"coordination plan")
 
     # Save plan and groups for debugging
@@ -171,18 +181,19 @@ def _build_coordination_plan(
 
     groups_path = coord_dir / "groups.json"
     groups_data = []
-    for i, g in enumerate(confirmed_groups):
+    for i, group in enumerate(groups):
         groups_data.append({
             "group_id": i,
-            "problem_count": len(g),
-            "strategy": group_strategies[i],
-            "sections": sorted({p.section for p in g}),
-            "files": sorted({f for p in g for f in p.files}),
+            "problem_count": len(group.problems),
+            "strategy": str(group.strategy),
+            "sections": sorted({p.section for p in group.problems}),
+            "files": sorted({f for p in group.problems for f in p.files}),
         })
     Services.artifact_io().write_json(groups_path, groups_data)
     Services.communicator().log_artifact(planspace,"coordination:groups")
 
-    return confirmed_groups, group_strategies, coord_plan
+    agent_batches = coord_plan.get("batches")
+    return groups, agent_batches
 
 
 # ---------------------------------------------------------------------------
@@ -190,20 +201,16 @@ def _build_coordination_plan(
 # ---------------------------------------------------------------------------
 
 def _execute_plan(
-    coord_plan: dict,
-    confirmed_groups: list[list[Problem]],
+    groups: list[ProblemGroup],
     sections_by_num: dict[str, Section],
     ctx: DispatchContext,
+    agent_batches: list[list[int]] | None = None,
 ) -> tuple[list[str], set[str]] | None:
     """Execute coordination plan. Returns (affected_sections, all_modified) or None."""
     try:
         affected_sections = execute_coordination_plan(
-            {
-                "coord_plan": coord_plan,
-                "confirmed_groups": confirmed_groups,
-            },
-            sections_by_num,
-            ctx,
+            groups, sections_by_num, ctx,
+            agent_batches=agent_batches,
         )
     except CoordinationExecutionExit:
         return None
@@ -223,7 +230,7 @@ def _classify_alignment_result(
     detail: str | None,
     section_results: dict[str, SectionResult],
     problems: list[Problem],
-    recurrence: dict | None,
+    recurrence: RecurrenceReport | None,
     planspace: Path,
 ) -> bool:
     """Classify alignment check outcome and record result.
@@ -258,7 +265,7 @@ def _recheck_section_alignment(
     section: Section,
     section_results: dict[str, SectionResult],
     problems: list[Problem],
-    recurrence: dict | None,
+    recurrence: RecurrenceReport | None,
     ctx: DispatchContext,
 ) -> bool | None:
     """Re-run alignment check on one section after coordination fixes.
@@ -346,13 +353,13 @@ def _compose_recurrence_text(
 def _record_recurrence_resolution(
     sec_num: str,
     problems: list[Problem],
-    recurrence: dict | None,
+    recurrence: RecurrenceReport | None,
     planspace: Path,
 ) -> None:
     """Write resolution artifact if this section had a recurring problem."""
     if not recurrence:
         return
-    if sec_num not in [str(s) for s in recurrence.get("recurring_sections", [])]:
+    if sec_num not in recurrence.recurring_sections:
         return
     prev_problem = next(
         (p for p in problems if p.section == sec_num),
@@ -382,7 +389,7 @@ def _recheck_affected_sections(
     sections_by_num: dict[str, Section],
     section_results: dict[str, SectionResult],
     problems: list[Problem],
-    recurrence: dict | None,
+    recurrence: RecurrenceReport | None,
     ctx: DispatchContext,
 ) -> bool | None:
     """Re-check alignment for all affected sections.
@@ -487,12 +494,12 @@ def run_global_coordination(
     )
     if plan_result is None:
         return False
-    confirmed_groups, _group_strategies, coord_plan = plan_result
+    groups, agent_batches = plan_result
 
     # Phase 3: Execute the coordination plan
-    # isinstance(bridge_directive, dict) check is in plan_executor
     exec_result = _execute_plan(
-        coord_plan, confirmed_groups, sections_by_num, ctx,
+        groups, sections_by_num, ctx,
+        agent_batches=agent_batches,
     )
     if exec_result is None:
         return False

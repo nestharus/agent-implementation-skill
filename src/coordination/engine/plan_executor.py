@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
 
 from containers import Services
 from coordination.problem_types import Problem
+from coordination.types import ProblemGroup
 from orchestrator.path_registry import PathRegistry
 from orchestrator.types import PauseType
 from pipeline.context import DispatchContext
@@ -50,16 +50,15 @@ def _try_place_in_batch(
 
 
 def _build_execution_batches(
-    coord_plan: dict[str, Any],
-    confirmed_groups: list[list[Problem]],
+    groups: list[ProblemGroup],
+    agent_batches: list[list[int]] | None = None,
 ) -> list[list[int]]:
     group_file_sets = [
-        set(file_path for problem in group for file_path in problem.files)
-        for group in confirmed_groups
+        set(file_path for problem in group.problems for file_path in problem.files)
+        for group in groups
     ]
 
-    if "batches" in coord_plan:
-        agent_batches = coord_plan["batches"]
+    if agent_batches is not None:
         batches: list[list[int]] = []
         for agent_batch in agent_batches:
             allowed = set(agent_batch)
@@ -368,36 +367,27 @@ def read_execution_modified_files(planspace: Path) -> list[str]:
 
 def _run_bridges_and_overlaps_for_batch(
     batch: list[int],
-    confirmed_groups: list[list[Problem]],
-    coord_plan: dict[str, Any],
+    groups: list[ProblemGroup],
     coord_dir: Path,
     ctx: DispatchContext,
 ) -> None:
     for group_index in batch:
-        group = confirmed_groups[group_index]
-        plan_group = (
-            coord_plan["groups"][group_index]
-            if group_index < len(coord_plan["groups"])
-            else {}
-        )
-        bridge_directive = plan_group.get("bridge", {})
-        if not isinstance(bridge_directive, dict):
-            bridge_directive = {}
-        if bridge_directive.get("needed", False):
+        group = groups[group_index]
+        if group.bridge.needed:
             _run_bridge_for_group(
                 group_index=group_index,
-                group=group,
+                group=group.problems,
                 ctx=ctx,
-                bridge_reason=bridge_directive.get("reason", "planner-requested"),
+                bridge_reason=group.bridge.reason or "planner-requested",
             )
         else:
-            _write_overlap_stats(coord_dir, group_index, group)
+            _write_overlap_stats(coord_dir, group_index, group.problems)
 
 
 def _dispatch_batch_parallel(
     batch: list[int],
     batch_num: int,
-    confirmed_groups: list[list[Problem]],
+    groups: list[ProblemGroup],
     ctx: DispatchContext,
     fix_model_default: str,
 ) -> list[str]:
@@ -407,7 +397,7 @@ def _dispatch_batch_parallel(
         futures = {
             pool.submit(
                 _dispatch_fix_group,
-                confirmed_groups[group_index],
+                groups[group_index].problems,
                 group_index,
                 ctx,
                 fix_model_default,
@@ -435,20 +425,19 @@ def _dispatch_batch_parallel(
 
 
 def execute_coordination_plan(
-    plan: dict[str, Any],
+    groups: list[ProblemGroup],
     sections_by_num: dict[str, Section],
     ctx: DispatchContext,
+    agent_batches: list[list[int]] | None = None,
 ) -> list[str]:
     """Execute the coordination plan and return affected section numbers."""
-    coord_plan = plan["coord_plan"]
-    confirmed_groups = plan["confirmed_groups"]
-    batches = _build_execution_batches(coord_plan, confirmed_groups)
+    batches = _build_execution_batches(groups, agent_batches)
     Services.logger().log(f"  coordinator: {len(batches)} execution batches")
 
     affected_sections: set[str] = {
         problem.section
-        for group in confirmed_groups
-        for problem in group
+        for group in groups
+        for problem in group.problems
     }
     all_modified: list[str] = []
     coord_dir = ctx.paths.coordination_dir()
@@ -460,15 +449,14 @@ def execute_coordination_plan(
             raise CoordinationExecutionExit
 
         _run_bridges_and_overlaps_for_batch(
-            batch, confirmed_groups, coord_plan, coord_dir,
-            ctx,
+            batch, groups, coord_dir, ctx,
         )
 
         fix_model_default = ctx.resolve_model("coordination_fix")
         if len(batch) == 1:
             group_index = batch[0]
             _, modified = _dispatch_fix_group(
-                confirmed_groups[group_index],
+                groups[group_index].problems,
                 group_index,
                 ctx,
                 default_fix_model=fix_model_default,
@@ -480,7 +468,7 @@ def execute_coordination_plan(
 
         all_modified.extend(
             _dispatch_batch_parallel(
-                batch, batch_num, confirmed_groups,
+                batch, batch_num, groups,
                 ctx, fix_model_default,
             ),
         )

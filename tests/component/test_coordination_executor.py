@@ -6,6 +6,7 @@ import pytest
 
 from conftest import override_dispatcher_and_guard
 from coordination.problem_types import MisalignedProblem
+from coordination.types import BridgeDirective, ProblemGroup
 from src.coordination.engine import plan_executor as executor
 from src.coordination.engine.plan_executor import (
     CoordinationExecutionExit,
@@ -48,18 +49,14 @@ def test_execute_coordination_plan_runs_fix_groups_and_persists_modified_files(
     )
 
     affected_sections = execute_coordination_plan(
-        {
-            "coord_plan": {
-                "groups": [
-                    {"problems": [0], "strategy": "sequential", "bridge": {"needed": False}},
-                    {"problems": [1], "strategy": "sequential", "bridge": {"needed": False}},
-                ],
-            },
-            "confirmed_groups": [
-                [MisalignedProblem(section="01", description="", files=["src/a.py"])],
-                [MisalignedProblem(section="02", description="", files=["src/b.py"])],
-            ],
-        },
+        [
+            ProblemGroup(
+                problems=[MisalignedProblem(section="01", description="", files=["src/a.py"])],
+            ),
+            ProblemGroup(
+                problems=[MisalignedProblem(section="02", description="", files=["src/b.py"])],
+            ),
+        ],
         sections_by_num,
         DispatchContext(planspace=planspace, codespace=tmp_path / "codespace", parent="parent"),
     )
@@ -116,23 +113,15 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
 
     with override_dispatcher_and_guard(_dispatch_agent):
         affected_sections = execute_coordination_plan(
-            {
-                "coord_plan": {
-                    "groups": [
-                        {
-                            "problems": [0],
-                            "strategy": "sequential",
-                            "bridge": {"needed": True, "reason": "shared seam"},
-                        },
-                    ],
-                },
-                "confirmed_groups": [
-                    [
+            [
+                ProblemGroup(
+                    problems=[
                         MisalignedProblem(section="01", description="", files=["src/a.py"]),
                         MisalignedProblem(section="02", description="", files=["src/a.py"]),
                     ],
-                ],
-            },
+                    bridge=BridgeDirective(needed=True, reason="shared seam"),
+                ),
+            ],
             sections_by_num,
             DispatchContext(planspace=planspace, codespace=tmp_path / "codespace", parent="parent"),
         )
@@ -165,16 +154,11 @@ def test_execute_coordination_plan_raises_on_fix_group_sentinel(
 
     with pytest.raises(CoordinationExecutionExit):
         execute_coordination_plan(
-            {
-                "coord_plan": {
-                    "groups": [
-                        {"problems": [0], "strategy": "sequential", "bridge": {"needed": False}},
-                    ],
-                },
-                "confirmed_groups": [
-                    [MisalignedProblem(section="01", description="", files=["src/a.py"])],
-                ],
-            },
+            [
+                ProblemGroup(
+                    problems=[MisalignedProblem(section="01", description="", files=["src/a.py"])],
+                ),
+            ],
             sections_by_num,
             DispatchContext(planspace=planspace, codespace=tmp_path / "codespace", parent="parent"),
         )

@@ -892,7 +892,7 @@ Functions that accept parameters which could be computed from other parameters a
   7. `dict[str, Any]` ("coord_plan") — raw planner output dict threaded through execution pipeline
 - **Files affected**: `coordination/engine/global_coordinator.py`, `coordination/engine/plan_executor.py`, `coordination/service/problem_resolver.py`, `coordination/service/planner.py`
 - **Risk**: Type annotations hide semantic meaning. `list[list[Problem]]` reveals nothing about groups, strategies, or bridge directives. Consumers rely on variable names and docstrings. Adding a field to a group requires modifying parallel list constructions in lockstep.
-- **Status**: IN PROGRESS — `BridgeDirective`, `RecurrenceReport`, `ProblemGroup` dataclasses added to `coordination/types.py`. `_detect_recurrence_patterns` migrated to return `RecurrenceReport`. Remaining: migrate `global_coordinator.py` to use `ProblemGroup` instead of parallel lists, migrate `plan_executor.py` to accept `list[ProblemGroup]`, update tests.
+- **Status**: DONE — `BridgeDirective`, `RecurrenceReport`, `ProblemGroup` dataclasses added to `coordination/types.py`. `_detect_recurrence_patterns` returns `RecurrenceReport`. `global_coordinator.py` uses `ProblemGroup` instead of parallel lists. `plan_executor.py` accepts `list[ProblemGroup]`, bridge directives accessed via `group.bridge.needed`/`group.bridge.reason`. `coord_plan` dict no longer threaded through execution — only `agent_batches: list[list[int]] | None` extracted from raw plan. Tests updated.
 
 ### 155. Derivable path parameters in tool dispatch functions — 8+ params with PathRegistry derivation
 - **Category**: Parameter coupling / derivable params (methodology §18)
