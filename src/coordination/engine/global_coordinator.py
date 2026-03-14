@@ -267,13 +267,13 @@ def _recheck_section_alignment(
     planspace: Path,
     codespace: Path,
     parent: str,
-    paths: PathRegistry,
 ) -> bool | None:
     """Re-run alignment check on one section after coordination fixes.
 
     Returns ``True`` if aligned, ``False`` if still has problems,
     or ``None`` if alignment changed (caller should abort).
     """
+    paths = PathRegistry(planspace)
     coord_dir = paths.coordination_dir()
     policy = Services.policies().load(planspace)
 
@@ -399,14 +399,13 @@ def _recheck_affected_sections(
     planspace: Path,
     codespace: Path,
     parent: str,
-    paths: PathRegistry,
 ) -> bool | None:
     """Re-check alignment for all affected sections.
 
     Returns ``True`` if all aligned, ``False`` if some remain,
     or ``None`` if alignment changed (caller should return False).
     """
-    coord_dir = paths.coordination_dir()
+    coord_dir = PathRegistry(planspace).coordination_dir()
     inputs_hash_dir = coord_dir / "inputs-hashes"
     inputs_hash_dir.mkdir(parents=True, exist_ok=True)
 
@@ -438,7 +437,7 @@ def _recheck_affected_sections(
 
         result = _recheck_section_alignment(
             sec_num, section, section_results, problems, recurrence,
-            planspace, codespace, parent, paths,
+            planspace, codespace, parent,
         )
         if result is None:
             return None
@@ -523,7 +522,7 @@ def run_global_coordination(
     recheck = _recheck_affected_sections(
         affected_sections, all_modified, sections_by_num,
         section_results, problems, recurrence,
-        planspace, codespace, parent, paths,
+        planspace, codespace, parent,
     )
     if recheck is None:
         return False
