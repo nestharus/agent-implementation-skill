@@ -284,7 +284,6 @@ def _recheck_section_alignment(
         section, planspace, codespace, parent,
         output_prefix="coord-align",
         model=Services.policies().resolve(policy, "alignment"),
-        adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
     )
     if align_result == ALIGNMENT_CHANGED_PENDING:
         return None

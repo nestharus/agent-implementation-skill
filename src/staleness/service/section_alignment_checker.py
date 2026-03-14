@@ -133,7 +133,6 @@ def _run_alignment_check_with_retries(
     max_retries: int = 2,
     *,
     model: str,
-    adjudicator_model: str,
 ) -> str | None:
     """Run an alignment check with TIMEOUT retry logic.
 

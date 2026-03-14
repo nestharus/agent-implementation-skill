@@ -35,7 +35,6 @@ def _update_result(
 
 
 def _recheck_section(
-    sec_num: str,
     section: Section,
     section_results: dict[str, SectionResult],
     sections_by_num: dict[str, Section],
@@ -44,6 +43,7 @@ def _recheck_section(
     parent: str,
 ) -> str | None:
     """Recheck a single section's alignment. Returns a CoordinationStatus to abort, or None to continue."""
+    sec_num = section.number
     paths = PathRegistry(planspace)
     policy = Services.policies().load(planspace)
     cur_hash = Services.pipeline_control().section_inputs_hash(
@@ -77,7 +77,6 @@ def _recheck_section(
         section, planspace, codespace, parent,
         output_prefix="global-align",
         model=Services.policies().resolve(policy, "alignment"),
-        adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
     )
     if align_result == ALIGNMENT_CHANGED_PENDING:
         return CoordinationStatus.RESTART_PHASE1
@@ -157,7 +156,7 @@ def run_global_alignment_recheck(
 
     for sec_num, section in sections_by_num.items():
         abort_status = _recheck_section(
-            sec_num, section, section_results, sections_by_num,
+            section, section_results, sections_by_num,
             planspace, codespace, parent,
         )
         if abort_status is not None:

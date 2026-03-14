@@ -233,13 +233,13 @@ def _maybe_reassess_deferred_steps(
 
 def _run_risk_review(
     planspace: Path,
-    sec_num: str,
     section: Section,
 ) -> RiskPlan | None:
     """Run ROAL risk review for a section before implementation.
 
     Returns the risk plan, or None on failure.
     """
+    sec_num = section.number
     scope = f"section-{sec_num}"
     paths = PathRegistry(planspace)
     package: RiskPackage | None = None
@@ -481,13 +481,13 @@ def _run_frontier_iterations(
 
 
 def _persist_section_hashes(
-    paths: PathRegistry,
     sec_num: str,
     planspace: Path,
     codespace: Path,
     sections_by_num: dict[str, Section],
 ) -> None:
     """Write baseline and phase2 section-input hashes after implementation."""
+    paths = PathRegistry(planspace)
     cur_hash = Services.pipeline_control().section_inputs_hash(
         sec_num, planspace, codespace, sections_by_num,
     )
@@ -502,13 +502,14 @@ def _persist_section_hashes(
 
 
 def _prepare_risk_plan(
-    planspace: Path, sec_num: str, section: Section,
+    planspace: Path, section: Section,
 ) -> tuple[RiskPlan | None, bool]:
     """Run risk review, persist ROAL artifacts, check accepted frontier.
 
     Returns (risk_plan, should_skip).
     """
-    risk_plan = _run_risk_review(planspace, sec_num, section)
+    sec_num = section.number
+    risk_plan = _run_risk_review(planspace, section)
     if risk_plan is None:
         refresh_roal_input_index(
             planspace, sec_num,
@@ -543,19 +544,18 @@ def _handle_failed_impl(
 
 
 def _implement_section(
-    sec_num: str,
     section: Section,
     sections_by_num: dict[str, Section],
     planspace: Path,
     codespace: Path,
     parent: str,
-    paths: PathRegistry,
 ) -> SectionResult | None:
     """Process a single section through the implementation pipeline.
 
     Returns a ``SectionResult`` when the section was successfully
     implemented, or ``None`` when it was skipped or failed.
     """
+    sec_num = section.number
     Services.logger().log(f"=== Section {sec_num} implementation pass ===")
     Services.logger().log_lifecycle(planspace, f"start:section:{sec_num}:impl", f"round {section.solve_count}")
 
@@ -567,7 +567,7 @@ def _implement_section(
         )
         return None
 
-    risk_plan, should_skip = _prepare_risk_plan(planspace, sec_num, section)
+    risk_plan, should_skip = _prepare_risk_plan(planspace, section)
     if should_skip:
         return None
 
@@ -602,7 +602,7 @@ def _implement_section(
         f"done:{sec_num}:{len(all_modified_files)} files modified",
     )
 
-    _persist_section_hashes(paths, sec_num, planspace, codespace, sections_by_num)
+    _persist_section_hashes(sec_num, planspace, codespace, sections_by_num)
     Services.logger().log(f"Section {sec_num}: implementation done")
     Services.logger().log_lifecycle(planspace, f"end:section:{sec_num}:impl", "done")
 
@@ -622,7 +622,6 @@ def run_implementation_pass(
     parent: str,
 ) -> dict[str, SectionResult]:
     """Run the implementation pass for execution-ready sections."""
-    paths = PathRegistry(planspace)
     ready_sections = sorted(
         sec_num
         for sec_num, proposal_result in proposal_results.items()
@@ -635,13 +634,11 @@ def run_implementation_pass(
         _check_abort_conditions(planspace, parent, impl_completed)
 
         result = _implement_section(
-            sec_num,
             sections_by_num[sec_num],
             sections_by_num,
             planspace,
             codespace,
             parent,
-            paths,
         )
         if result is not None:
             impl_completed.add(sec_num)

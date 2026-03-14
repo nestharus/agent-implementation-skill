@@ -158,7 +158,6 @@ def _run_triage_alignment(
         parent,
         output_prefix="triage-align",
         model=Services.policies().resolve(policy, "alignment"),
-        adjudicator_model=Services.policies().resolve(policy, "adjudicator"),
     )
     if verify_result == ALIGNMENT_CHANGED_PENDING:
         return (ACTION_ABORT, None)

@@ -49,7 +49,7 @@ def test_run_risk_review_with_mocked_dispatch_returns_plan(
 
     Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     try:
-        plan = _run_risk_review(planspace, "01", section)
+        plan = _run_risk_review(planspace, section)
     finally:
         Services.dispatcher.reset_override()
 
@@ -75,7 +75,7 @@ def test_run_risk_review_returns_plan_when_engagement_light(
 
     Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     try:
-        plan = _run_risk_review(planspace, "01", section)
+        plan = _run_risk_review(planspace, section)
     finally:
         Services.dispatcher.reset_override()
 
@@ -99,7 +99,7 @@ def test_run_risk_review_failure_blocks_fail_closed(
 
     Services.dispatcher.override(providers.Object(make_dispatcher(lambda *args, **kwargs: "")))
     try:
-        plan = _run_risk_review(planspace, "01", section)
+        plan = _run_risk_review(planspace, section)
     finally:
         Services.dispatcher.reset_override()
 
@@ -334,7 +334,7 @@ def testappend_risk_history_records_deferred_reopened_and_failure(
 
     Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     try:
-        plan = _run_risk_review(planspace, "01", section)
+        plan = _run_risk_review(planspace, section)
     finally:
         Services.dispatcher.reset_override()
     assert plan is not None

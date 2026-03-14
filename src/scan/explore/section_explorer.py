@@ -8,7 +8,6 @@ from orchestrator.path_registry import PathRegistry
 from scan.service.phase_failure_logger import log_phase_failure
 from scan.service.template_loader import load_scan_template
 from scan.related.related_file_resolver import (
-    apply_related_files_update,
     list_section_files,
     validate_existing_related_files,
 )
@@ -58,7 +57,6 @@ def run_section_exploration(
             codespace=codespace,
             artifacts_dir=artifacts_dir,
             scan_log_dir=scan_log_dir,
-            corrections_file=corrections_file,
             model_policy=model_policy,
         )
 
@@ -76,7 +74,6 @@ def _explore_section(
     codespace: Path,
     artifacts_dir: Path,
     scan_log_dir: Path,
-    corrections_file: Path,
     model_policy: dict[str, str],
 ) -> None:
     """Dispatch agent to identify related files for a new section."""

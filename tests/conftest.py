@@ -382,8 +382,7 @@ class NoOpSectionAlignment(SectionAlignmentService):
         return []
 
     def run_alignment_check(self, section, planspace, codespace, parent,
-                            output_prefix="align", max_retries=2, *, model: str,
-                            adjudicator_model: str):
+                            output_prefix="align", max_retries=2, *, model: str):
         return None
 
     def parse_alignment_verdict(self, result):

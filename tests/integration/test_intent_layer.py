@@ -2420,7 +2420,7 @@ class TestR58RelatedFilesSignalPreservation:
 
     def test_malformed_signal_preserved(self, tmp_path):
         """Malformed signal → returns False + .malformed.json exists."""
-        from scan.explore.section_explorer import apply_related_files_update
+        from scan.related.related_file_resolver import apply_related_files_update
 
         section_file = tmp_path / "section-01.md"
         section_file.write_text("## Related Files\n### a.py\nInfo\n")

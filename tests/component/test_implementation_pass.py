@@ -1024,8 +1024,8 @@ def test_run_implementation_pass_invokes_roal_when_section_is_ready(
     )
     monkeypatch.setattr(
         "implementation.engine.implementation_phase._run_risk_review",
-        lambda planspace_arg, sec_num, section_arg: (
-            risk_plans.append((sec_num, section_arg.number)) or None
+        lambda planspace_arg, section_arg: (
+            risk_plans.append((section_arg.number, section_arg.number)) or None
         ),
     )
     monkeypatch.setattr(

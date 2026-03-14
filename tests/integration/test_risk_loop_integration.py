@@ -256,7 +256,7 @@ def test_full_risk_loop_single_step(
         json.dumps(serialize_plan(plan)),
     ]
 
-    result = _run_risk_review(planspace, "01", section)
+    result = _run_risk_review(planspace, section)
 
     assert result is not None
     assert result.accepted_frontier == [package.steps[0].step_id]
@@ -304,7 +304,7 @@ def test_full_risk_loop_multi_step_with_defer(
         json.dumps(serialize_plan(plan)),
     ]
 
-    result = _run_risk_review(planspace, "01", section)
+    result = _run_risk_review(planspace, section)
 
     assert result is not None
     assert result.accepted_frontier == [package.steps[0].step_id]
@@ -325,7 +325,7 @@ def test_risk_loop_fallback_on_parse_failure(
     package = build_package_from_proposal("section-01", planspace)
     mock_dispatch.return_value = "not valid json"
 
-    result = _run_risk_review(planspace, "01", section)
+    result = _run_risk_review(planspace, section)
 
     assert result is not None
     assert result.accepted_frontier == []
@@ -365,7 +365,7 @@ def test_risk_loop_respects_threshold_enforcement(
         json.dumps(serialize_plan(over_threshold_plan)),
     ]
 
-    result = _run_risk_review(planspace, "01", section)
+    result = _run_risk_review(planspace, section)
 
     assert result is not None
     assert result.accepted_frontier == []
@@ -426,8 +426,8 @@ def test_risk_history_accumulates(
         json.dumps(serialize_plan(second_plan)),
     ]
 
-    first_result = _run_risk_review(planspace, "01", first_section)
-    second_result = _run_risk_review(planspace, "02", second_section)
+    first_result = _run_risk_review(planspace, first_section)
+    second_result = _run_risk_review(planspace, second_section)
     assert first_result is not None
     assert second_result is not None
 
