@@ -565,14 +565,14 @@ class TestScanModelPolicy:
 
     def test_default_policy_has_all_tasks(self) -> None:
         """Default policy covers all scan task types."""
-        from scan.scan_dispatcher import _DEFAULT_MODELS
+        from scan.service.scan_dispatch_config import DEFAULT_SCAN_MODELS
         required = {
             "codemap_build", "codemap_freshness", "exploration",
             "validation", "tier_ranking", "deep_analysis",
             "feedback_updater",
         }
-        assert required <= set(_DEFAULT_MODELS), (
-            f"Missing default models: {required - set(_DEFAULT_MODELS)}"
+        assert required <= set(DEFAULT_SCAN_MODELS), (
+            f"Missing default models: {required - set(DEFAULT_SCAN_MODELS)}"
         )
 
     def test_policy_override_from_file(self, tmp_path: Path) -> None:
