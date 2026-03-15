@@ -123,6 +123,16 @@ class IntentInitializer:
 
         return todo_entries or ""
 
+    def _is_qa_mode(self, planspace: Path) -> bool:
+        """Check whether qa_mode is enabled in parameters.json."""
+        params_path = PathRegistry(planspace).parameters()
+        if not params_path.exists():
+            return False
+        data = self._artifact_io.read_json(params_path)
+        if not isinstance(data, dict):
+            return False
+        return bool(data.get("qa_mode"))
+
     def _step_philosophy(self, ctx: PipelineContext) -> dict:
         """Ensure global philosophy is bootstrapped."""
         result = self._philosophy_bootstrapper.ensure_global_philosophy(
@@ -133,6 +143,12 @@ class IntentInitializer:
             blocking_state = result.get("blocking_state")
             sec = ctx.section.number
             if blocking_state == BLOCKING_NEED_DECISION:
+                if self._is_qa_mode(ctx.planspace):
+                    self._logger.log(
+                        f"Section {sec}: QA mode auto-accepted spec-derived "
+                        f"philosophy without user review — {result['detail']}",
+                    )
+                    return result
                 self._logger.log(
                     f"Section {sec}: philosophy bootstrap needs "
                     f"user input — {result['detail']}",

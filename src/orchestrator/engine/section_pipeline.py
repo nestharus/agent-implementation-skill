@@ -421,29 +421,18 @@ class SectionPipeline:
 # ---------------------------------------------------------------------------
 
 
-def build_section_pipeline() -> SectionPipeline:
-    """Construct a fully-wired ``SectionPipeline`` from the Services container.
-
-    This is a convenience builder for callers that do not manage their own
-    dependency graph.  The orchestrator's ``main()`` entry-point builds
-    the phases directly; this helper exists for tests and simpler call
-    sites.
-    """
-    from containers import Services
-    from coordination.service.completion_handler import CompletionHandler as _CH
-    from implementation.service.impact_analyzer import ImpactAnalyzer as _IA
-    from proposal.service.excerpt_extractor import ExcerptExtractor as _EE
-    from proposal.service.problem_frame_gate import ProblemFrameGate as _PFG
+def _build_shared_collaborators(s):
+    """Build collaborators shared across multiple sub-builders."""
+    from coordination.service.completion_handler import CompletionHandler
+    from dispatch.prompt.writers import Writers
+    from implementation.service.impact_analyzer import ImpactAnalyzer
+    from proposal.service.cycle_control import CycleControl
     from reconciliation.engine.cross_section_reconciler import CrossSectionReconciler as _CSR
-    from reconciliation.repository.queue import Queue as _Q
-    from reconciliation.repository.results import Results as _RR
-    from reconciliation.service.adjudicator import Adjudicator as _ADJ
-    from proposal.service.cycle_control import CycleControl as _CC
-    from dispatch.prompt.writers import Writers as _PW
+    from reconciliation.repository.queue import Queue
+    from reconciliation.repository.results import Results
+    from reconciliation.service.adjudicator import Adjudicator
 
-    s = Services
-
-    impact_analyzer = _IA(
+    impact_analyzer = ImpactAnalyzer(
         communicator=s.communicator(),
         config=s.config(),
         context_assembly=s.context_assembly(),
@@ -454,7 +443,7 @@ def build_section_pipeline() -> SectionPipeline:
         prompt_guard=s.prompt_guard(),
         task_router=s.task_router(),
     )
-    completion_handler = _CH(
+    completion_handler = CompletionHandler(
         artifact_io=s.artifact_io(),
         change_tracker=s.change_tracker(),
         communicator=s.communicator(),
@@ -462,7 +451,7 @@ def build_section_pipeline() -> SectionPipeline:
         impact_analyzer=impact_analyzer,
         logger=s.logger(),
     )
-    cycle_control = _CC(
+    cycle_control = CycleControl(
         logger=s.logger(),
         artifact_io=s.artifact_io(),
         communicator=s.communicator(),
@@ -473,7 +462,7 @@ def build_section_pipeline() -> SectionPipeline:
         task_router=s.task_router(),
         flow_ingestion=s.flow_ingestion(),
     )
-    prompt_writers = _PW(
+    prompt_writers = Writers(
         task_router=s.task_router(),
         prompt_guard=s.prompt_guard(),
         logger=s.logger(),
@@ -483,7 +472,156 @@ def build_section_pipeline() -> SectionPipeline:
         cross_section=s.cross_section(),
         config=s.config(),
     )
-    excerpt_extractor = _EE(
+    reconciliation_results = Results(
+        artifact_io=s.artifact_io(),
+        hasher=s.hasher(),
+    )
+    cross_section_reconciler = _CSR(
+        artifact_io=s.artifact_io(),
+        results=reconciliation_results,
+        queue=Queue(artifact_io=s.artifact_io()),
+        adjudicator=Adjudicator(
+            artifact_io=s.artifact_io(),
+            prompt_guard=s.prompt_guard(),
+            policies=s.policies(),
+            dispatcher=s.dispatcher(),
+            task_router=s.task_router(),
+        ),
+    )
+    return {
+        "completion_handler": completion_handler,
+        "cycle_control": cycle_control,
+        "prompt_writers": prompt_writers,
+        "reconciliation_results": reconciliation_results,
+        "cross_section_reconciler": cross_section_reconciler,
+    }
+
+
+def _build_intent_collaborators(s, shared):
+    """Build IntentInitializer and RecurrenceEmitter."""
+    from intake.service.governance_packet_builder import GovernancePacketBuilder
+    from intent.engine.intent_initializer import IntentInitializer as _II
+    from intent.service.expanders import Expanders
+    from intent.engine.expansion_orchestrator import ExpansionOrchestrator
+    from intent.service.intent_pack_generator import IntentPackGenerator
+    from intent.service.intent_triager import IntentTriager
+    from intent.service.philosophy_bootstrap_state import PhilosophyBootstrapState
+    from intent.service.philosophy_bootstrapper import PhilosophyBootstrapper
+    from intent.service.philosophy_classifier import PhilosophyClassifier
+    from intent.service.philosophy_dispatcher import PhilosophyDispatcher
+    from intent.service.philosophy_grounding import PhilosophyGrounding
+    from intent.service.recurrence_emitter import RecurrenceEmitter as _RE
+    from intent.service.surface_registry import SurfaceRegistry
+
+    bootstrap_state = PhilosophyBootstrapState(artifact_io=s.artifact_io())
+    classifier = PhilosophyClassifier(artifact_io=s.artifact_io())
+    grounding = PhilosophyGrounding(
+        artifact_io=s.artifact_io(),
+        bootstrap_state=bootstrap_state,
+        hasher=s.hasher(),
+        logger=s.logger(),
+    )
+    philosophy_dispatcher = PhilosophyDispatcher(
+        dispatcher=s.dispatcher(),
+        logger=s.logger(),
+    )
+    philosophy_bootstrapper = PhilosophyBootstrapper(
+        artifact_io=s.artifact_io(),
+        bootstrap_state=bootstrap_state,
+        classifier=classifier,
+        communicator=s.communicator(),
+        dispatcher=s.dispatcher(),
+        grounding=grounding,
+        hasher=s.hasher(),
+        logger=s.logger(),
+        philosophy_dispatcher=philosophy_dispatcher,
+        policies=s.policies(),
+        prompt_guard=s.prompt_guard(),
+        task_router=s.task_router(),
+    )
+    intent_triager = IntentTriager(
+        communicator=s.communicator(),
+        dispatcher=s.dispatcher(),
+        logger=s.logger(),
+        policies=s.policies(),
+        prompt_guard=s.prompt_guard(),
+        signals=s.signals(),
+        task_router=s.task_router(),
+        artifact_io=s.artifact_io(),
+    )
+    intent_pack_generator = IntentPackGenerator(
+        artifact_io=s.artifact_io(),
+        communicator=s.communicator(),
+        dispatcher=s.dispatcher(),
+        hasher=s.hasher(),
+        logger=s.logger(),
+        policies=s.policies(),
+        prompt_guard=s.prompt_guard(),
+        task_router=s.task_router(),
+    )
+    governance_packet_builder = GovernancePacketBuilder(artifact_io=s.artifact_io())
+    intent_initializer = _II(
+        artifact_io=s.artifact_io(),
+        communicator=s.communicator(),
+        governance_packet_builder=governance_packet_builder,
+        intent_pack_generator=intent_pack_generator,
+        intent_triager=intent_triager,
+        logger=s.logger(),
+        philosophy_bootstrapper=philosophy_bootstrapper,
+        pipeline_control=s.pipeline_control(),
+        policies=s.policies(),
+    )
+    recurrence_emitter = _RE(
+        artifact_io=s.artifact_io(),
+        logger=s.logger(),
+    )
+    surface_registry = SurfaceRegistry(
+        artifact_io=s.artifact_io(),
+        hasher=s.hasher(),
+        logger=s.logger(),
+        signals=s.signals(),
+    )
+    expanders = Expanders(
+        artifact_io=s.artifact_io(),
+        communicator=s.communicator(),
+        dispatcher=s.dispatcher(),
+        grounding=grounding,
+        logger=s.logger(),
+        policies=s.policies(),
+        prompt_guard=s.prompt_guard(),
+        signals=s.signals(),
+        task_router=s.task_router(),
+    )
+    expansion_orchestrator = ExpansionOrchestrator(
+        artifact_io=s.artifact_io(),
+        expanders=expanders,
+        logger=s.logger(),
+        pipeline_control=s.pipeline_control(),
+        surface_registry=surface_registry,
+    )
+    return {
+        "intent_initializer": intent_initializer,
+        "intent_triager": intent_triager,
+        "recurrence_emitter": recurrence_emitter,
+        "surface_registry": surface_registry,
+        "expansion_orchestrator": expansion_orchestrator,
+    }
+
+
+def _build_proposal_collaborators(s, shared, intent_collab):
+    """Build ProposalCycle and ReadinessGate."""
+    from proposal.engine.proposal_cycle import ProposalCycle as _PC
+    from proposal.engine.readiness_gate import ReadinessGate as _RG
+    from proposal.service.alignment_handler import AlignmentHandler
+    from proposal.service.excerpt_extractor import ExcerptExtractor
+    from proposal.service.expansion_handler import ExpansionHandler
+    from proposal.service.problem_frame_gate import ProblemFrameGate
+    from proposal.service.proposal_prep import ProposalPrep
+    from proposal.service.surface_handler import SurfaceHandler
+    from reconciliation.repository.queue import Queue
+    from research.prompt.writers import ResearchPromptWriter
+
+    excerpt_extractor = ExcerptExtractor(
         logger=s.logger(),
         policies=s.policies(),
         dispatcher=s.dispatcher(),
@@ -491,10 +629,10 @@ def build_section_pipeline() -> SectionPipeline:
         communicator=s.communicator(),
         pipeline_control=s.pipeline_control(),
         task_router=s.task_router(),
-        cycle_control=cycle_control,
-        prompt_writers=prompt_writers,
+        cycle_control=shared["cycle_control"],
+        prompt_writers=shared["prompt_writers"],
     )
-    problem_frame_gate = _PFG(
+    problem_frame_gate = ProblemFrameGate(
         logger=s.logger(),
         policies=s.policies(),
         dispatcher=s.dispatcher(),
@@ -507,30 +645,220 @@ def build_section_pipeline() -> SectionPipeline:
         cross_section=s.cross_section(),
         config=s.config(),
     )
-    cross_section_reconciler = _CSR(
-        artifact_io=s.artifact_io(),
-        results=_RR(
-            artifact_io=s.artifact_io(),
-            hasher=s.hasher(),
-        ),
-        queue=_Q(artifact_io=s.artifact_io()),
-        adjudicator=_ADJ(
-            artifact_io=s.artifact_io(),
-            prompt_guard=s.prompt_guard(),
-            policies=s.policies(),
-            dispatcher=s.dispatcher(),
-            task_router=s.task_router(),
-        ),
+    proposal_prep = ProposalPrep(
+        logger=s.logger(),
+        policies=s.policies(),
+        dispatch_helpers=s.dispatch_helpers(),
+        reconciliation_results=shared["reconciliation_results"],
+        prompt_writers=shared["prompt_writers"],
     )
+    alignment_handler = AlignmentHandler(
+        logger=s.logger(),
+        policies=s.policies(),
+        dispatcher=s.dispatcher(),
+        dispatch_helpers=s.dispatch_helpers(),
+        pipeline_control=s.pipeline_control(),
+        cycle_control=shared["cycle_control"],
+        prompt_writers=shared["prompt_writers"],
+    )
+    expansion_handler = ExpansionHandler(
+        logger=s.logger(),
+        artifact_io=s.artifact_io(),
+        communicator=s.communicator(),
+        pipeline_control=s.pipeline_control(),
+        cycle_control=shared["cycle_control"],
+        expansion_orchestrator=intent_collab["expansion_orchestrator"],
+    )
+    surface_handler = SurfaceHandler(
+        logger=s.logger(),
+        artifact_io=s.artifact_io(),
+        communicator=s.communicator(),
+        expansion_handler=expansion_handler,
+        surface_registry=intent_collab["surface_registry"],
+    )
+    proposal_cycle = _PC(
+        logger=s.logger(),
+        communicator=s.communicator(),
+        intent_triager=intent_collab["intent_triager"],
+        section_alignment=s.section_alignment(),
+        cycle_control=shared["cycle_control"],
+        proposal_prep=proposal_prep,
+        alignment_handler=alignment_handler,
+        surface_handler=surface_handler,
+    )
+    research_prompt_writer = ResearchPromptWriter(
+        prompt_guard=s.prompt_guard(),
+        artifact_io=s.artifact_io(),
+    )
+    readiness_resolver = ReadinessResolver(artifact_io=s.artifact_io())
+    readiness_gate = _RG(
+        logger=s.logger(),
+        artifact_io=s.artifact_io(),
+        hasher=s.hasher(),
+        communicator=s.communicator(),
+        research=s.research(),
+        freshness=s.freshness(),
+        prompt_writer=research_prompt_writer,
+        reconciliation_queue=Queue(artifact_io=s.artifact_io()),
+        readiness_resolver=readiness_resolver,
+    )
+    return {
+        "excerpt_extractor": excerpt_extractor,
+        "problem_frame_gate": problem_frame_gate,
+        "proposal_cycle": proposal_cycle,
+        "readiness_gate": readiness_gate,
+        "readiness_resolver": readiness_resolver,
+    }
+
+
+def _build_implementation_collaborators(s, shared):
+    """Build ImplementationCycle, MicrostrategyGenerator, TriageOrchestrator, and tool services."""
+    from implementation.service.change_verifier import ChangeVerifier
+    from implementation.service.microstrategy_decider import MicrostrategyDecider
+    from implementation.service.trace_map_builder import TraceMapBuilder
+    from implementation.service.traceability_writer import TraceabilityWriter
+    from intake.service.assessment_evaluator import AssessmentEvaluator
+
+    assessment_evaluator = AssessmentEvaluator(
+        artifact_io=s.artifact_io(),
+        prompt_guard=s.prompt_guard(),
+    )
+    change_verifier = ChangeVerifier(
+        logger=s.logger(),
+        section_alignment=s.section_alignment(),
+        staleness=s.staleness(),
+    )
+    trace_map_builder = TraceMapBuilder(
+        artifact_io=s.artifact_io(),
+        hasher=s.hasher(),
+        logger=s.logger(),
+    )
+    traceability_writer = TraceabilityWriter(
+        artifact_io=s.artifact_io(),
+        hasher=s.hasher(),
+        logger=s.logger(),
+        section_alignment=s.section_alignment(),
+    )
+    microstrategy_decider = MicrostrategyDecider(
+        artifact_io=s.artifact_io(),
+        dispatcher=s.dispatcher(),
+        prompt_guard=s.prompt_guard(),
+        task_router=s.task_router(),
+    )
+    implementation_cycle = ImplementationCycle(
+        artifact_io=s.artifact_io(),
+        assessment_evaluator=assessment_evaluator,
+        change_verifier=change_verifier,
+        communicator=s.communicator(),
+        cycle_control=shared["cycle_control"],
+        dispatcher=s.dispatcher(),
+        dispatch_helpers=s.dispatch_helpers(),
+        flow_ingestion=s.flow_ingestion(),
+        logger=s.logger(),
+        pipeline_control=s.pipeline_control(),
+        policies=s.policies(),
+        section_alignment=s.section_alignment(),
+        staleness=s.staleness(),
+        task_router=s.task_router(),
+        prompt_writers=shared["prompt_writers"],
+        trace_map_builder=trace_map_builder,
+        traceability_writer=traceability_writer,
+    )
+    microstrategy_generator = MicrostrategyGenerator(
+        artifact_io=s.artifact_io(),
+        communicator=s.communicator(),
+        config=s.config(),
+        dispatcher=s.dispatcher(),
+        flow_ingestion=s.flow_ingestion(),
+        logger=s.logger(),
+        microstrategy_decider=microstrategy_decider,
+        policies=s.policies(),
+        pipeline_control=s.pipeline_control(),
+        prompt_guard=s.prompt_guard(),
+        task_router=s.task_router(),
+    )
+    triage_orchestrator = TriageOrchestrator(
+        artifact_io=s.artifact_io(),
+        communicator=s.communicator(),
+        dispatcher=s.dispatcher(),
+        logger=s.logger(),
+        policies=s.policies(),
+        prompt_guard=s.prompt_guard(),
+        section_alignment=s.section_alignment(),
+        task_router=s.task_router(),
+    )
+    tool_surface_writer = ToolSurfaceWriter(
+        artifact_io=s.artifact_io(),
+        logger=s.logger(),
+        policies=s.policies(),
+        prompt_guard=s.prompt_guard(),
+        dispatcher=s.dispatcher(),
+        task_router=s.task_router(),
+    )
+    tool_validator = ToolValidator(
+        artifact_io=s.artifact_io(),
+        logger=s.logger(),
+        policies=s.policies(),
+        prompt_guard=s.prompt_guard(),
+        dispatcher=s.dispatcher(),
+        task_router=s.task_router(),
+    )
+    tool_bridge = ToolBridge(
+        artifact_io=s.artifact_io(),
+        logger=s.logger(),
+        policies=s.policies(),
+        prompt_guard=s.prompt_guard(),
+        dispatcher=s.dispatcher(),
+        task_router=s.task_router(),
+        cross_section=s.cross_section(),
+        hasher=s.hasher(),
+    )
+    return {
+        "implementation_cycle": implementation_cycle,
+        "microstrategy_generator": microstrategy_generator,
+        "triage_orchestrator": triage_orchestrator,
+        "tool_surface_writer": tool_surface_writer,
+        "tool_validator": tool_validator,
+        "tool_bridge": tool_bridge,
+    }
+
+
+def build_section_pipeline() -> SectionPipeline:
+    """Construct a fully-wired ``SectionPipeline`` from the Services container.
+
+    This is a convenience builder for callers that do not manage their own
+    dependency graph.  The orchestrator's ``main()`` entry-point builds
+    the phases directly; this helper exists for tests and simpler call
+    sites.
+    """
+    from containers import Services
+
+    s = Services
+
+    shared = _build_shared_collaborators(s)
+    intent_collab = _build_intent_collaborators(s, shared)
+    proposal_collab = _build_proposal_collaborators(s, shared, intent_collab)
+    impl_collab = _build_implementation_collaborators(s, shared)
 
     return SectionPipeline(
         logger=s.logger(),
         artifact_io=s.artifact_io(),
         pipeline_control=s.pipeline_control(),
-        completion_handler=completion_handler,
-        excerpt_extractor=excerpt_extractor,
-        problem_frame_gate=problem_frame_gate,
-        cross_section_reconciler=cross_section_reconciler,
+        completion_handler=shared["completion_handler"],
+        excerpt_extractor=proposal_collab["excerpt_extractor"],
+        problem_frame_gate=proposal_collab["problem_frame_gate"],
+        cross_section_reconciler=shared["cross_section_reconciler"],
+        intent_initializer=intent_collab["intent_initializer"],
+        recurrence_emitter=intent_collab["recurrence_emitter"],
+        proposal_cycle=proposal_collab["proposal_cycle"],
+        readiness_gate=proposal_collab["readiness_gate"],
+        readiness_resolver=proposal_collab["readiness_resolver"],
+        implementation_cycle=impl_collab["implementation_cycle"],
+        microstrategy_generator=impl_collab["microstrategy_generator"],
+        triage_orchestrator=impl_collab["triage_orchestrator"],
+        tool_surface_writer=impl_collab["tool_surface_writer"],
+        tool_validator=impl_collab["tool_validator"],
+        tool_bridge=impl_collab["tool_bridge"],
     )
 
 

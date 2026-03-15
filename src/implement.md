@@ -38,12 +38,17 @@ Schedule step → Skill section mapping:
 ## Your Role in the Pipeline
 
 The control plane is module-owned (`orchestrator.engine.pipeline_orchestrator`,
-`workflow.sh`, `flow.engine.task_dispatcher`). You **start** the pipeline,
+`pipeline.runner`, `flow.engine.task_dispatcher`). You **start** the pipeline,
 **monitor** its progress, **respond** to blockers, and **read** artifacts.
 You do NOT build prompts, launch agents directly, or manage dispatch
 loops — the control plane handles all mechanical coordination.
 
-- **Start** the pipeline via `workflow.sh`
+- **Start** the pipeline via `python -m pipeline`:
+
+      python -m pipeline <planspace> <codespace> --spec <spec-path>
+
+  Note: `scripts/workflow.sh` manages schedule state markers (next/done/fail/skip).
+  It is invoked internally by the runner. It is NOT the pipeline entry point.
 - **Monitor** progress via `db.sh tail` / `db.sh query`
 - **Respond** to blockers (pause/resume signals, `ask:` messages)
 - **Read** proposals, agent outputs, alignment verdicts, test results
@@ -548,11 +553,12 @@ The control plane is script-owned:
    `flow.engine.task_dispatcher` polls the DB task queue for tasks
    submitted programmatically.
 
-The workflow schedule is managed by `scripts/workflow.sh` and the
-section-loop script, not by an orchestrator agent. All coordination goes
-through `db.sh` and a single `run.db` per pipeline run. No
+The workflow schedule is managed by the pipeline runner (`python -m pipeline`)
+which invokes `scripts/workflow.sh` internally for schedule state markers.
+The orchestrating session must NOT invoke `workflow.sh` or `agents` directly.
+All coordination goes through `db.sh` and a single `run.db` per pipeline run. No
 team/SendMessage infrastructure -- agents are standalone processes launched
-via `agents`, not Claude teammates. Every coordination operation (send,
+by the pipeline runner, not Claude teammates. Every coordination operation (send,
 recv, log) is automatically recorded in the database. Messages are claimed,
 not consumed -- the database file is the complete audit trail.
 

@@ -222,6 +222,116 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
     ).exists()
 
 
+def test_run_intent_bootstrap_qa_mode_bypasses_philosophy_block(
+    planspace: Path,
+    codespace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capturing_pipeline_control,
+    noop_communicator,
+) -> None:
+    """When qa_mode is enabled, BLOCKING_NEED_DECISION should not halt the pipeline."""
+    section = _make_section(planspace)
+
+    # Write parameters.json with qa_mode enabled.
+    params_path = planspace / "artifacts" / "parameters.json"
+    params_path.write_text(json.dumps({"qa_mode": True}), encoding="utf-8")
+
+    triage_result = {"intent_mode": "lightweight", "budgets": {}}
+
+    initializer, governance, _ = _make_initializer(
+        triage_result,
+        philosophy_result={
+            "status": "needs_user_input",
+            "blocking_state": "NEED_DECISION",
+            "philosophy_path": None,
+            "detail": "philosophy bootstrap needs user input",
+        },
+        pipeline_control=capturing_pipeline_control,
+    )
+
+    monkeypatch.setattr(
+        bootstrap,
+        "extract_todos_from_files",
+        lambda *_args, **_kwargs: "",
+    )
+    blocker_rollups: list[Path] = []
+    monkeypatch.setattr(
+        bootstrap,
+        "update_blocker_rollup",
+        lambda current_planspace: blocker_rollups.append(current_planspace),
+    )
+
+    result = initializer.run_intent_bootstrap(
+        section,
+        planspace,
+        codespace,
+        None,
+    )
+
+    # Pipeline should continue — not return None.
+    assert result is not None
+    # No blocker rollup or pause should have been triggered.
+    assert blocker_rollups == []
+    assert capturing_pipeline_control.pause_calls == []
+    # Governance step should have been reached.
+    assert governance.calls == [("01", planspace, "Problem frame summary")]
+
+
+def test_run_intent_bootstrap_qa_mode_false_still_blocks(
+    planspace: Path,
+    codespace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capturing_pipeline_control,
+    noop_communicator,
+) -> None:
+    """When qa_mode is explicitly false, BLOCKING_NEED_DECISION should still halt."""
+    section = _make_section(planspace)
+
+    # Write parameters.json with qa_mode disabled.
+    params_path = planspace / "artifacts" / "parameters.json"
+    params_path.write_text(json.dumps({"qa_mode": False}), encoding="utf-8")
+
+    triage_result = {"intent_mode": "lightweight", "budgets": {}}
+
+    initializer, _, _ = _make_initializer(
+        triage_result,
+        philosophy_result={
+            "status": "needs_user_input",
+            "blocking_state": "NEED_DECISION",
+            "philosophy_path": None,
+            "detail": "philosophy bootstrap needs user input",
+        },
+        pipeline_control=capturing_pipeline_control,
+    )
+
+    monkeypatch.setattr(
+        bootstrap,
+        "extract_todos_from_files",
+        lambda *_args, **_kwargs: "",
+    )
+    blocker_rollups: list[Path] = []
+    monkeypatch.setattr(
+        bootstrap,
+        "update_blocker_rollup",
+        lambda current_planspace: blocker_rollups.append(current_planspace),
+    )
+
+    result = initializer.run_intent_bootstrap(
+        section,
+        planspace,
+        codespace,
+        None,
+    )
+
+    # Pipeline should halt.
+    assert result is None
+    assert blocker_rollups == [planspace]
+    assert capturing_pipeline_control.pause_calls == [(
+        planspace,
+        "pause:need_decision:global:philosophy bootstrap requires user input",
+    )]
+
+
 def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
     planspace: Path,
     codespace: Path,

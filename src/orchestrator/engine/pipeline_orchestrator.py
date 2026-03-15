@@ -28,6 +28,7 @@ from implementation.engine.implementation_phase import (
 )
 from orchestrator.path_registry import PathRegistry
 from scan.service.project_mode import ProjectModeResolver
+from orchestrator.engine.section_pipeline import SectionPipeline, build_section_pipeline
 from proposal.engine.proposal_phase import ProposalPassExit, run_proposal_pass
 from reconciliation.engine.cross_section_reconciler import CrossSectionReconciler
 from reconciliation.engine.reconciliation_phase import ReconciliationPhase, ReconciliationPhaseExit
@@ -62,6 +63,7 @@ class PipelineOrchestrator:
         coordination_controller: CoordinationController,
         implementation_phase: ImplementationPhase,
         reconciliation_phase: ReconciliationPhase,
+        section_pipeline: SectionPipeline | None = None,
     ) -> None:
         self._communicator = communicator
         self._logger = logger
@@ -74,6 +76,7 @@ class PipelineOrchestrator:
         self._coordination_controller = coordination_controller
         self._implementation_phase = implementation_phase
         self._reconciliation_phase = reconciliation_phase
+        self._section_pipeline = section_pipeline
         self._strategic_state_builder = StrategicStateBuilder(artifact_io=artifact_io)
         self._check_and_clear_alignment_changed = change_tracker.make_alignment_checker()
 
@@ -191,6 +194,7 @@ class PipelineOrchestrator:
             try:
                 proposal_results = run_proposal_pass(
                     all_sections, sections_by_num, ctx.planspace, ctx.codespace,
+                    section_pipeline=self._section_pipeline,
                 )
             except ProposalPassExit:
                 return
@@ -361,7 +365,9 @@ def _build_coordination_controller():
     )
 
 
-def _build_reconciliation_phase() -> ReconciliationPhase:
+def _build_reconciliation_phase(
+    section_pipeline: SectionPipeline | None = None,
+) -> ReconciliationPhase:
     """Build the ReconciliationPhase with its full dependency chain."""
     from containers import Services
     from reconciliation.repository.queue import Queue
@@ -387,10 +393,13 @@ def _build_reconciliation_phase() -> ReconciliationPhase:
                 task_router=Services.task_router(),
             ),
         ),
+        section_pipeline=section_pipeline,
     )
 
 
-def _build_implementation_phase() -> ImplementationPhase:
+def _build_implementation_phase(
+    section_pipeline: SectionPipeline | None = None,
+) -> ImplementationPhase:
     """Build the ImplementationPhase with its full dependency chain."""
     from containers import FreshnessService, Services
     from implementation.repository.roal_index import RoalIndex
@@ -407,11 +416,13 @@ def _build_implementation_phase() -> ImplementationPhase:
             freshness=FreshnessService(),
         ),
         roal_index=RoalIndex(artifact_io=Services.artifact_io()),
+        section_pipeline=section_pipeline,
     )
 
 
 def main() -> None:
     from containers import Services
+    pipeline = build_section_pipeline()
     PipelineOrchestrator(
         communicator=Services.communicator(),
         logger=Services.logger(),
@@ -422,8 +433,9 @@ def main() -> None:
         change_tracker=Services.change_tracker(),
         pipeline_control=Services.pipeline_control(),
         coordination_controller=_build_coordination_controller(),
-        implementation_phase=_build_implementation_phase(),
-        reconciliation_phase=_build_reconciliation_phase(),
+        implementation_phase=_build_implementation_phase(section_pipeline=pipeline),
+        reconciliation_phase=_build_reconciliation_phase(section_pipeline=pipeline),
+        section_pipeline=pipeline,
     ).main()
 
 

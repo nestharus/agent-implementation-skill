@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from orchestrator.engine.section_pipeline import SectionPipeline, build_section_pipeline
 from orchestrator.types import ProposalPassResult, Section
 from reconciliation.engine.cross_section_reconciler import CrossSectionReconciler
 from signals.service.section_communicator import send_to_parent
@@ -55,18 +56,14 @@ class ReconciliationPhase:
         pipeline_control: PipelineControlService,
         change_tracker: ChangeTrackerService,
         cross_section_reconciler: CrossSectionReconciler,
+        section_pipeline: SectionPipeline | None = None,
     ) -> None:
         self._logger = logger
         self._artifact_io = artifact_io
         self._pipeline_control = pipeline_control
         self._change_tracker = change_tracker
         self._cross_section_reconciler = cross_section_reconciler
-        from orchestrator.engine.section_pipeline import SectionPipeline
-        self._section_pipeline = SectionPipeline(
-            logger=logger,
-            artifact_io=artifact_io,
-            pipeline_control=pipeline_control,
-        )
+        self._section_pipeline = section_pipeline if section_pipeline is not None else build_section_pipeline()
         self._check_and_clear_alignment_changed = (
             self._change_tracker.make_alignment_checker()
         )

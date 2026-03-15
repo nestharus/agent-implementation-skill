@@ -29,7 +29,7 @@ $WORKFLOW_HOME/
   constraints.md        # constraint discovery
   models.md             # model selection guide
   scripts/
-    workflow.sh         # schedule driver ([wait]/[run]/[done]/[fail])
+    workflow.sh         # schedule state markers ([wait]/[run]/[done]/[fail]) — internal, not the entry point
     db.sh               # SQLite-backed coordination database
   tools/
     extract-docstring-py  # extract Python module docstrings
@@ -164,42 +164,23 @@ issues requiring RCA.
 For multi-step workflows, use the orchestration system instead of running
 everything from memory.
 
-### Dispatch: All Agents via `agents`
+### Running the Implementation Pipeline
 
-**CRITICAL**: All step dispatch goes through `agents` via Bash.
+All implementation work goes through the canonical pipeline runner:
+
+    python -m pipeline <planspace> <codespace> --spec <spec-path> [--slug <slug>] [--qa-mode]
+
+The runner owns stages 1-7 end-to-end: planspace initialization, governance bootstrap,
+schedule rendering, section decomposition, codemap exploration, substrate discovery,
+section-loop (propose -> align -> implement), verification, and promotion.
+
+Do NOT dispatch agents directly via the `agents` binary or write prompts manually.
+All dispatch must go through the pipeline runner, which ensures QA interception,
+coordination DB tracking, and section-loop discipline.
+
 Never use any sub-agent spawning or delegation mechanism outside this
-repo's `agents` dispatch and task-submission system — external spawning
-causes "sibling" errors and reliability issues. The agent runner automatically unsets
-`CLAUDECODE` so sibling Claude sessions can launch.
-
-```bash
-# Sequential dispatch — model directly with prompt file
-agents --model <model> --file <planspace>/artifacts/step-N-prompt.md \
-  > <planspace>/artifacts/step-N-output.md 2>&1
-
-# Agent file dispatch — agent instructions prepended to prompt
-agents --agent-file "$WORKFLOW_HOME/proposal/agents/alignment-judge.md" \
-  --file <planspace>/artifacts/alignment-prompt.md
-
-# Parallel dispatch with db.sh coordination
-(agents --model gpt-high --file <prompt-A.md> && \
-  bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-A") &
-(agents --model gpt-high --file <prompt-B.md> && \
-  bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-B") &
-bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator
-bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator
-
-# Codemap exploration dispatch (Opus explores the codespace)
-agents --model claude-opus --project <codespace> \
-  --file <planspace>/artifacts/scan-logs/codemap-prompt.md \
-  > <planspace>/artifacts/codemap.md 2>&1
-```
-
-**Note**: The examples above show **script-level** dispatch — the orchestrator
-launching step agents. **Nested strategic work** within step agents (e.g.,
-exploration during integration proposals) uses **task submission**: agents write
-structured task-request files, and the dispatcher resolves agent file + model.
-See `implement.md` Stage 4-5 for task submission details.
+repo's dispatch and task-submission system — external spawning
+causes "sibling" errors and reliability issues.
 
 ### Schedule Templates
 
@@ -318,3 +299,38 @@ bash "$WORKFLOW_HOME/scripts/db.sh" query <planspace>/run.db <kind> [--tag <t>] 
 - **audit.md** — Concern-based problem decomposition + alignment tracing
 - **constraints.md** — Before implementation or when something feels wrong
 - **models.md** — Which external model to use for any given task
+
+## Internal Dispatch Reference (Script Use Only)
+
+> **WARNING**: These are internal implementation details used by the pipeline runner
+> and section dispatcher. The orchestrating session must NOT invoke `agents` directly.
+> Direct invocation bypasses QA interception, coordination tracking, and pipeline discipline.
+
+```bash
+# Sequential dispatch — model directly with prompt file
+agents --model <model> --file <planspace>/artifacts/step-N-prompt.md \
+  > <planspace>/artifacts/step-N-output.md 2>&1
+
+# Agent file dispatch — agent instructions prepended to prompt
+agents --agent-file "$WORKFLOW_HOME/proposal/agents/alignment-judge.md" \
+  --file <planspace>/artifacts/alignment-prompt.md
+
+# Parallel dispatch with db.sh coordination
+(agents --model gpt-high --file <prompt-A.md> && \
+  bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-A") &
+(agents --model gpt-high --file <prompt-B.md> && \
+  bash "$WORKFLOW_HOME/scripts/db.sh" send <planspace>/run.db orchestrator "done:block-B") &
+bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator
+bash "$WORKFLOW_HOME/scripts/db.sh" recv <planspace>/run.db orchestrator
+
+# Codemap exploration dispatch (Opus explores the codespace)
+agents --model claude-opus --project <codespace> \
+  --file <planspace>/artifacts/scan-logs/codemap-prompt.md \
+  > <planspace>/artifacts/codemap.md 2>&1
+```
+
+**Note**: The examples above show **script-level** dispatch — the pipeline runner
+launching step agents internally. **Nested strategic work** within step agents (e.g.,
+exploration during integration proposals) uses **task submission**: agents write
+structured task-request files, and the dispatcher resolves agent file + model.
+See `implement.md` Stage 4-5 for task submission details.

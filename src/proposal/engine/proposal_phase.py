@@ -30,7 +30,7 @@ from risk.repository.serialization import RiskSerializer
 from risk.types import EngagementContext, RiskAssessment, RiskMode, RiskPackage, RiskType
 from scan.service.section_loader import parse_related_files
 from implementation.service.section_reexplorer import SectionReexplorer
-from orchestrator.engine.section_pipeline import SectionPipeline
+from orchestrator.engine.section_pipeline import SectionPipeline, build_section_pipeline
 from orchestrator.types import ProposalPassResult, Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from signals.types import PASS_MODE_PROPOSAL, SIGNAL_NEEDS_PARENT
@@ -127,6 +127,7 @@ class ProposalPhase:
         change_tracker: ChangeTrackerService,
         roal_index: RoalIndex,
         section_reexplorer: SectionReexplorer,
+        section_pipeline: SectionPipeline | None = None,
     ) -> None:
         self._logger = logger_svc
         self._artifact_io = artifact_io
@@ -138,11 +139,7 @@ class ProposalPhase:
         self._section_reexplorer = section_reexplorer
         self._package_builder = PackageBuilder(artifact_io=artifact_io)
         self._serializer = RiskSerializer(artifact_io=artifact_io)
-        self._section_pipeline = SectionPipeline(
-            logger=logger_svc,
-            artifact_io=artifact_io,
-            pipeline_control=pipeline_control,
-        )
+        self._section_pipeline = section_pipeline if section_pipeline is not None else build_section_pipeline()
         self._check_and_clear = change_tracker.make_alignment_checker()
 
     def _write_proposal_risk_blocker(
@@ -513,7 +510,9 @@ class ProposalPhase:
         return proposal_results
 
 
-def _get_proposal_phase() -> ProposalPhase:
+def _get_proposal_phase(
+    section_pipeline: SectionPipeline | None = None,
+) -> ProposalPhase:
     from containers import Services
     return ProposalPhase(
         logger_svc=Services.logger(),
@@ -533,6 +532,7 @@ def _get_proposal_phase() -> ProposalPhase:
             prompt_guard=Services.prompt_guard(),
             task_router=Services.task_router(),
         ),
+        section_pipeline=section_pipeline,
     )
 
 
@@ -541,8 +541,9 @@ def run_proposal_pass(
     sections_by_num: dict[str, Section],
     planspace: Path,
     codespace: Path,
+    section_pipeline: SectionPipeline | None = None,
 ) -> dict[str, ProposalPassResult]:
     """Run the proposal pass for all sections and return proposal results."""
-    return _get_proposal_phase().run_proposal_pass(
+    return _get_proposal_phase(section_pipeline=section_pipeline).run_proposal_pass(
         all_sections, sections_by_num, planspace, codespace,
     )

@@ -18,7 +18,7 @@ from risk.types import (
     RiskPlan,
     StepDecision,
 )
-from orchestrator.engine.section_pipeline import SectionPipeline
+from orchestrator.engine.section_pipeline import SectionPipeline, build_section_pipeline
 from implementation.repository.roal_index import (
     IMPLEMENTATION_ROAL_KINDS,
     RoalIndex,
@@ -175,6 +175,7 @@ class ImplementationPhase:
         risk_assessment: RiskAssessmentService,
         risk_artifacts: RiskArtifacts,
         roal_index: RoalIndex,
+        section_pipeline: SectionPipeline | None = None,
     ) -> None:
         self._artifact_io = artifact_io
         self._communicator = communicator
@@ -184,11 +185,7 @@ class ImplementationPhase:
         self._risk_artifacts = risk_artifacts
         self._roal_index = roal_index
         self._package_builder = PackageBuilder(artifact_io=artifact_io)
-        self._section_pipeline = SectionPipeline(
-            logger=logger,
-            artifact_io=artifact_io,
-            pipeline_control=pipeline_control,
-        )
+        self._section_pipeline = section_pipeline if section_pipeline is not None else build_section_pipeline()
         self._check_and_clear_alignment_changed = change_tracker.make_alignment_checker()
 
     def _persist_roal_artifacts(

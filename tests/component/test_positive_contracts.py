@@ -185,6 +185,8 @@ _SANCTIONED_CONTAINER_SITES = {
     # CLI / factory composition helpers
     "proposal/engine/proposal_phase.py",
     "scan/substrate/substrate_discoverer.py",
+    # Top-level workflow runner (composition root)
+    "pipeline/runner.py",
 }
 
 # Known PAT-0019 residue — quarantined, not sanctioned
