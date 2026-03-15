@@ -458,6 +458,15 @@ Descent into microstrategy or implementation is allowed only when blocking unres
 **Implementation cannot silently repair missing structure.**
 If implementation discovers that anchors, contracts, or boundaries were never actually resolved, that is not implementation freedom. That is evidence that the proposal/reconciliation layer must reopen.
 
+**Proposal evaluation rule**: A superior proposal may replace the user's
+proposal, but it MUST solve the same problems. An optimization or complexity
+argument is an excuse about not solving the assigned task. A superior proposal
+must also not introduce additional constraints or rules that the user did not
+specify — doing so changes the problem being solved, which is not solving the
+original problem. This rule constrains both agents producing proposals and
+agents evaluating them: the evaluation surface must verify same-problem
+coverage and absence of user-unspecified constraints.
+
 ---
 
 ## 16. Risk-Optimization as Strategy Generator (2026-03-07)

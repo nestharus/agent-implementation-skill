@@ -13,7 +13,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
+from coordination.repository.notes import list_all_notes
 from orchestrator.path_registry import PathRegistry
+from orchestrator.repository.decisions import list_all_decisions_md
 
 from intent.service.philosophy_classifier import (
     SOURCE_MODE_NONE,
@@ -118,12 +120,10 @@ def _collect_bootstrap_context_artifacts(
     for proposal in sorted(proposals_dir.glob("section-*-integration-proposal.md"))[:_MAX_PROPOSALS]:
         add("proposal", proposal)
 
-    decisions_dir = paths.decisions_dir()
-    for decision in sorted(decisions_dir.glob("*.md"))[:_MAX_DECISIONS]:
+    for decision in list_all_decisions_md(paths.decisions_dir())[:_MAX_DECISIONS]:
         add("decision", decision)
 
-    notes_dir = paths.notes_dir()
-    for note in sorted(notes_dir.glob("*.md"))[:_MAX_NOTES]:
+    for note in list_all_notes(paths)[:_MAX_NOTES]:
         add("note", note)
 
     return context

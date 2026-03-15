@@ -60,15 +60,7 @@ class MailboxService:
         agent_name: str,
         logger: LogService | None = None,
     ) -> MailboxService:
-        """Create a mailbox wired to the run database for *planspace*.
-
-        When *logger* is not supplied the service-locator is used as a
-        backward-compat fallback so callers outside the signals package
-        keep working without changes.
-        """
-        if logger is None:
-            from containers import Services
-            logger = Services.logger()
+        """Create a mailbox wired to the run database for *planspace*."""
         db = DatabaseClient.for_planspace(planspace, db_sh)
         return cls(db, agent_name, logger=logger)
 

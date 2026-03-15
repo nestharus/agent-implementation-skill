@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from coordination.repository.notes import list_notes_to
 from orchestrator.path_registry import PathRegistry
 from signals.service.blocker_manager import update_blocker_rollup
 from orchestrator.types import PauseType, Section
@@ -73,12 +74,7 @@ class IntentInitializer:
         )
         ctx.state["pf_content"] = pf_content
 
-        notes_count = 0
-        notes_dir = paths.notes_dir()
-        if notes_dir.exists():
-            notes_count = len(
-                list(notes_dir.glob(f"from-*-to-{ctx.section.number}.md")),
-            )
+        notes_count = len(list_notes_to(paths, ctx.section.number))
 
         result = self._intent_triager.run_intent_triage(
             ctx.section.number,
@@ -242,7 +238,7 @@ class IntentInitializer:
             steps=steps,
             middleware=[
                 AlignmentGuard(
-                    alignment_changed_pending,
+                    self._pipeline_control.alignment_changed_pending,
                     after_steps={"philosophy", "intent-pack"},
                 ),
             ],
@@ -269,10 +265,3 @@ def extract_todos_from_files(codespace: Path, related_files: list[str]) -> str:
 
     return extract_todos(codespace, related_files)
 
-
-
-# Module-level callback — monkey-patched by runner before use; default
-# routes through the DI container so standalone calls also work.
-def alignment_changed_pending(planspace):
-    from containers import Services
-    return Services.pipeline_control().alignment_changed_pending(planspace)

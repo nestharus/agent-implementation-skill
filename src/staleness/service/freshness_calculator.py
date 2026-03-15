@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from coordination.repository.notes import list_notes_to
 from staleness.helpers.content_hasher import content_hash
 from orchestrator.path_registry import PathRegistry
 
@@ -28,10 +29,8 @@ def compute_section_freshness(planspace: Path, section_number: str) -> str:
     ):
         _add(path)
 
-    notes_dir = registry.notes_dir()
-    if notes_dir.exists():
-        for note in sorted(notes_dir.glob(f"from-*-to-{sec}.md")):
-            hash_parts.append(note.read_bytes())
+    for note in list_notes_to(registry, sec):
+        hash_parts.append(note.read_bytes())
 
     _add(registry.tool_registry())
 

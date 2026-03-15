@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from coordination.problem_types import Problem
+from coordination.repository.notes import list_notes_to
 from orchestrator.path_registry import PathRegistry
 from pipeline.template import SRC_TEMPLATE_DIR, TASK_SUBMISSION_SEMANTICS, load_template, render
 from dispatch.service.context_sidecar import ContextSidecar
@@ -138,7 +139,7 @@ class Writers:
 
         consequence_refs = []
         for section_num in group_sections:
-            for note in sorted(notes_dir.glob(f"from-*-to-{section_num}.md")):
+            for note in list_notes_to(paths, section_num):
                 consequence_refs.append(f"- `{note}`")
         consequence_block = ""
         if consequence_refs:

@@ -64,11 +64,25 @@ class _StubBootstrapper:
         return self._result
 
 
+class _StubPipelineControl:
+    """Minimal stub for PipelineControlService."""
+
+    def __init__(self, *, alignment_values=None):
+        self._iter = iter(alignment_values or [False])
+
+    def alignment_changed_pending(self, _planspace):
+        return next(self._iter, False)
+
+    def pause_for_parent(self, *_args, **_kwargs):
+        pass
+
+
 def _make_initializer(
     triage_result: dict,
     governance: _StubGovernance | None = None,
     intent_pack: _StubIntentPack | None = None,
     philosophy_result: dict | None = None,
+    pipeline_control: _StubPipelineControl | None = None,
 ) -> tuple[IntentInitializer, _StubGovernance, _StubIntentPack]:
     gov = governance or _StubGovernance()
     pack = intent_pack or _StubIntentPack()
@@ -84,7 +98,7 @@ def _make_initializer(
         intent_triager=_StubTriager(triage_result),
         logger=Services.logger(),
         philosophy_bootstrapper=phi,
-        pipeline_control=Services.pipeline_control(),
+        pipeline_control=pipeline_control or _StubPipelineControl(),
         policies=Services.policies(),
     )
     return initializer, gov, pack
@@ -134,11 +148,6 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
         "extract_todos_from_files",
         lambda *_args, **_kwargs: "- TODO: preserve invariant\n",
     )
-    monkeypatch.setattr(
-        bootstrap,
-        "alignment_changed_pending",
-        lambda *_args, **_kwargs: False,
-    )
 
     cycle_budget = initializer.run_intent_bootstrap(
         section,
@@ -180,17 +189,13 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
             "philosophy_path": None,
             "detail": "philosophy bootstrap needs user input",
         },
+        pipeline_control=capturing_pipeline_control,
     )
 
     monkeypatch.setattr(
         bootstrap,
         "extract_todos_from_files",
         lambda *_args, **_kwargs: "",
-    )
-    monkeypatch.setattr(
-        bootstrap,
-        "alignment_changed_pending",
-        lambda *_args, **_kwargs: False,
     )
     blocker_rollups: list[Path] = []
     monkeypatch.setattr(
@@ -238,18 +243,13 @@ def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
             ),
             "detail": "ready",
         },
+        pipeline_control=_StubPipelineControl(alignment_values=[True]),
     )
 
     monkeypatch.setattr(
         bootstrap,
         "extract_todos_from_files",
         lambda *_args, **_kwargs: "",
-    )
-    alignment_states = iter([True])
-    monkeypatch.setattr(
-        bootstrap,
-        "alignment_changed_pending",
-        lambda *_args, **_kwargs: next(alignment_states),
     )
 
     result = initializer.run_intent_bootstrap(

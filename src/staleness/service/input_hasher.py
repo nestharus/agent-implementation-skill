@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from coordination.repository.notes import list_notes_to
 from staleness.helpers.content_hasher import content_hash, file_hash
 from orchestrator.path_registry import PathRegistry
 
@@ -78,10 +79,8 @@ def section_inputs_hash(
             "\n".join(sorted(section.related_files)).encode("utf-8"),
         )
 
-    notes_dir = paths.notes_dir()
-    if notes_dir.exists():
-        for note in sorted(notes_dir.glob(f"from-*-to-{sec_num}.md")):
-            hash_parts.append(note.read_bytes())
+    for note in list_notes_to(paths, sec_num):
+        hash_parts.append(note.read_bytes())
 
     tool_registry_path = paths.tool_registry()
     if tool_registry_path.exists():

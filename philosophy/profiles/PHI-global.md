@@ -30,6 +30,31 @@ Proportional. Accept performance cost for safety. Accept token cost for correctn
 - Exhaustive scanning (use heuristic exploration)
 - Mode-based routing forks (mode is observation, not routing key)
 
+## Ordering-Sensitive Constraints
+
+These constraints are ordering-sensitive — they apply in specific contexts
+and are easy to lose when compressed into broad values:
+
+- **Proposal evaluation rule**: A superior proposal must solve the same
+  problems and must not add user-unspecified constraints. Optimization or
+  complexity arguments do not excuse not solving the assigned task.
+- **Sections are concerns, not file bundles**: A section's identity comes
+  from the problem it addresses. The file list is a starting hypothesis that
+  can change. Cross-section coordination is about problem interaction, not
+  file overlap.
+- **Atomic migration consistency**: When migrating execution models, the
+  migration must be atomic per surface. Split instructions (method says one
+  thing, runtime template says another) degrade behavior worse than either
+  model alone.
+- **System vs target system distinction**: Our system (pipeline) is Python +
+  Bash + Markdown where mechanical enforcement is legitimate. The target
+  system (analyzed codebases) can be anything — agents must reason flexibly
+  without hardcoded language assumptions.
+- **Model and agent-file choice carry method of thinking**: Model selection
+  is sensitive to agent file definitions. Agent files impart a method of
+  thinking. The choice of which model runs which agent file is a
+  method-of-thinking decision, not a performance/cost decision.
+
 ## Pattern Implications
 
 All patterns in the pattern archive embody this profile unless marked otherwise. Specifically:

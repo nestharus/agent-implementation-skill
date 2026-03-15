@@ -35,6 +35,16 @@ class Decision:
     timestamp: str = ""
 
 
+def list_section_decisions_md(decisions_dir: Path, section: str) -> list[Path]:
+    """Sorted decision markdown files for *section*."""
+    return sorted(decisions_dir.glob(f"section-{section}*.md")) if decisions_dir.is_dir() else []
+
+
+def list_all_decisions_md(decisions_dir: Path) -> list[Path]:
+    """All decision markdown files, sorted."""
+    return sorted(decisions_dir.glob("*.md")) if decisions_dir.is_dir() else []
+
+
 class Decisions:
     def __init__(self, artifact_io: ArtifactIOService) -> None:
         self._artifact_io = artifact_io

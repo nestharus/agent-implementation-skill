@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from coordination.repository.notes import list_notes_from, list_notes_to
 from orchestrator.path_registry import PathRegistry
 from risk.service.package_builder import read_text, scope_number
 from risk.types import RiskPackage
@@ -62,12 +63,8 @@ def write_risk_assessment_prompt(
     lines.extend(_json_block("Risk history", paths.risk_history()))
     lines.extend(_artifact_block("Monitor signals directory", paths.signals_dir(), "dir"))
 
-    consequence_paths = sorted(
-        paths.notes_dir().glob(f"from-*-to-{section_number}.md")
-    )
-    outgoing_paths = sorted(
-        paths.notes_dir().glob(f"from-{section_number}-to-*.md")
-    )
+    consequence_paths = list_notes_to(paths, section_number)
+    outgoing_paths = list_notes_from(paths, section_number)
     impact_paths = sorted(paths.coordination_dir().glob(f"*{scope}*"))
     lines.extend(_path_list_block("Incoming consequence notes", consequence_paths))
     lines.extend(_path_list_block("Outgoing consequence notes", outgoing_paths))

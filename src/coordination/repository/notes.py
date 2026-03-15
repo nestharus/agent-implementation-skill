@@ -14,13 +14,29 @@ def _note_path(planspace: Path, from_section: str, to_section: str) -> Path:
     )
 
 
+def list_notes_to(paths: PathRegistry, section: str) -> list[Path]:
+    """Sorted inbound notes targeting *section*."""
+    d = paths.notes_dir()
+    return sorted(d.glob(f"from-*-to-{section}.md")) if d.is_dir() else []
+
+
+def list_notes_from(paths: PathRegistry, section: str) -> list[Path]:
+    """Sorted outbound notes originating from *section*."""
+    d = paths.notes_dir()
+    return sorted(d.glob(f"from-{section}-to-*.md")) if d.is_dir() else []
+
+
+def list_all_notes(paths: PathRegistry) -> list[Path]:
+    """All note markdown files, sorted."""
+    d = paths.notes_dir()
+    return sorted(d.glob("*.md")) if d.is_dir() else []
+
+
 def read_incoming_notes(planspace: Path, section_number: str) -> list[dict]:
     """Read note files targeting a section."""
-    notes_dir = PathRegistry(planspace).notes_dir()
-    if not notes_dir.exists():
-        return []
+    paths = PathRegistry(planspace)
     notes: list[dict] = []
-    for note_path in sorted(notes_dir.glob(f"from-*-to-{section_number}.md")):
+    for note_path in list_notes_to(paths, section_number):
         match = re.match(r"from-(.+)-to-(\d+)\.md$", note_path.name)
         if not match:
             continue

@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from coordination.repository.notes import list_notes_from, list_notes_to
 from orchestrator.path_registry import PathRegistry
+from orchestrator.repository.decisions import list_section_decisions_md
 
 if TYPE_CHECKING:
     from containers import (
@@ -85,15 +87,13 @@ def _gather_complexity_signals(
         signals["related_file_count"] = "unknown"
 
     # 3. Cross-section notes (from other sections to this one, or this to others)
-    notes_dir = paths.notes_dir()
-    cross_notes_inbound = sorted(notes_dir.glob(f"from-*-to-{section_number}.md")) if notes_dir.is_dir() else []
-    cross_notes_outbound = sorted(notes_dir.glob(f"from-{section_number}-to-*.md")) if notes_dir.is_dir() else []
+    cross_notes_inbound = list_notes_to(paths, section_number)
+    cross_notes_outbound = list_notes_from(paths, section_number)
     total_notes = len(cross_notes_inbound) + len(cross_notes_outbound)
     signals["cross_section_notes"] = f"yes ({total_notes})" if total_notes else "no"
 
     # 4. Cross-section decisions
-    decisions_dir = paths.decisions_dir()
-    decisions = sorted(decisions_dir.glob(f"section-{section_number}*.md")) if decisions_dir.is_dir() else []
+    decisions = list_section_decisions_md(paths.decisions_dir(), section_number)
     signals["cross_section_decisions"] = f"yes ({len(decisions)})" if decisions else "no"
 
     # 5. TODO extraction

@@ -37,7 +37,13 @@ if TYPE_CHECKING:
 
 
 def _make_signal_parser() -> FlowSignalParser:
-    """Create a FlowSignalParser wired from the DI container."""
+    """Composition-root helper for the deprecated ``ingest_task_requests``.
+
+    PAT-0019 residue: uses Services container directly.  Kept only for
+    backward compatibility with integration tests that call the deprecated
+    free function.  New callers should use ``TaskRequestIngestor`` (which
+    receives ``signal_parser`` via constructor injection).
+    """
     from containers import Services
     return FlowSignalParser(
         logger=Services.logger(),

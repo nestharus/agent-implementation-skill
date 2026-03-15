@@ -28,15 +28,20 @@ The system never confuses these. Planspace is working memory. Codespace is the o
 ### Wiring and composition roots
 
 `src/containers.py` defines the runtime's cross-cutting service interfaces and
-composition helpers. Constructor dependency injection is the universal
+composition helpers. Constructor dependency injection is the dominant
 production wiring pattern: engines, services, repositories, and orchestrators
 receive collaborators through their constructors, and callers pass fully
 constructed dependencies downward.
 
-Only CLI entry points / `main()` functions touch the container directly. After
-composition, production code works only with injected collaborators. The old
-free-function facade pattern — construct from the global container, delegate,
-return — is retired.
+Only CLI entry points / `main()` functions / sanctioned composition helpers
+touch the container directly. After composition, production code works only
+with injected collaborators. The old free-function facade pattern — construct
+from the global container, delegate, return — is retired. Service-locator
+residue persists in constructor fallbacks, backward-compat factory methods,
+and a small number of helper-level container lookups (documented in PAT-0019
+known instances and RISK-0008). Scan-stage adapter surfaces
+(`scan_dispatcher.py`, `deep_scanner.py`) are explicitly scoped as
+composition helpers.
 
 ### The bounded substrate
 
@@ -193,7 +198,8 @@ The governance layer makes per-run artifacts cumulative. Codespace holds authori
 Governance runtime surfaces follow the same wiring rule as the rest of the
 system: `src/containers.py` defines the service interfaces, production modules
 receive collaborators via constructors, and only CLI / composition-root entry
-points wire concrete instances from the container.
+points wire concrete instances from the container. The same PAT-0019 residue
+caveats noted above apply here.
 
 Post-implementation assessment queues after successful implementation, validates results with PAT-0001, merges governance IDs into trace artifacts, and routes verdicts mechanically: `accept` → record governance IDs, `accept_with_debt` → emit debt signal for risk-register staging, `refactor_required` → emit structured blocker signal.
 

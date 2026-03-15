@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from coordination.repository.notes import list_notes_to
 from orchestrator.path_registry import PathRegistry
+from orchestrator.repository.decisions import list_section_decisions_md
 from pipeline.template import TASK_SUBMISSION_SEMANTICS
 from orchestrator.types import Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
@@ -119,15 +121,11 @@ def _collect_surface_entries(
             problem_frame,
         ))
 
-    notes_dir = paths.notes_dir()
-    if notes_dir.exists():
-        for note in sorted(notes_dir.glob(f"from-*-to-{sec}.md")):
-            entries.append(("Incoming note", note))
+    for note in list_notes_to(paths, sec):
+        entries.append(("Incoming note", note))
 
-    decisions_dir = paths.decisions_dir()
-    if decisions_dir.exists():
-        for dec in sorted(decisions_dir.glob(f"section-{sec}*.md")):
-            entries.append(("Decision", dec))
+    for dec in list_section_decisions_md(paths.decisions_dir(), sec):
+        entries.append(("Decision", dec))
 
     intent_sec_dir = paths.intent_section_dir(sec)
     intent_artifacts: list[tuple[str, Path]] = [

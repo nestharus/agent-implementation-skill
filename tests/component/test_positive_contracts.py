@@ -138,3 +138,86 @@ def test_system_synthesis_pattern_count_matches_catalog() -> None:
         f"system-synthesis.md says {matches} patterns, "
         f"catalog has {pat_count}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 4. Governance archive reference integrity — known-instance paths must exist.
+# ---------------------------------------------------------------------------
+
+def _extract_known_instance_paths(text: str) -> list[str]:
+    """Extract backtick-quoted src/ paths from pattern catalog text.
+
+    Skips glob patterns (containing * or ?) since those are not literal files.
+    """
+    raw = re.findall(r"`(src/[^`]+\.py)`", text)
+    return [p for p in raw if "*" not in p and "?" not in p]
+
+
+def test_pattern_known_instance_paths_exist() -> None:
+    """Every src/ path cited in governance/patterns/index.md must exist."""
+    patterns = GOV / "patterns" / "index.md"
+    if not patterns.exists():
+        pytest.skip("patterns index not found")
+    paths = _extract_known_instance_paths(patterns.read_text(encoding="utf-8"))
+    assert paths, "no src/ paths found in pattern catalog"
+    missing = [p for p in paths if not (ROOT / p).exists()]
+    assert not missing, (
+        f"Pattern catalog references {len(missing)} dead path(s): {missing}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 5. Services.* allowlist — production code must not use the container
+#    outside sanctioned composition roots (PAT-0019).
+# ---------------------------------------------------------------------------
+
+# Sanctioned composition roots — these are allowed to use Services.*
+_SANCTIONED_CONTAINER_SITES = {
+    "containers.py",
+    "scan/cli.py",
+    "pipeline/middleware.py",
+    "orchestrator/engine/pipeline_orchestrator.py",
+    "orchestrator/engine/section_pipeline.py",
+    "risk/engine/risk_assessor.py",
+    "flow/engine/task_dispatcher.py",
+    # scan-stage adapter/build helpers (explicitly scoped per PAT-0019)
+    "scan/scan_dispatcher.py",
+    "scan/explore/deep_scanner.py",
+}
+
+# Known PAT-0019 residue — quarantined, not sanctioned
+_QUARANTINED_RESIDUE = {
+    "scan/codemap/cache.py",
+    "pipeline/context.py",
+    "scan/substrate/substrate_discoverer.py",
+    "staleness/service/section_alignment_checker.py",
+    "staleness/service/global_alignment_rechecker.py",
+    "dispatch/engine/section_dispatcher.py",
+    "proposal/engine/proposal_phase.py",
+    "signals/service/section_communicator.py",
+    "signals/service/mailbox_service.py",
+    "signals/service/message_poller.py",
+    "signals/service/blocker_manager.py",
+    "flow/service/task_request_ingestor.py",
+    "orchestrator/service/pipeline_state.py",
+}
+
+
+def test_services_container_usage_is_bounded() -> None:
+    """Production src/ files that import 'from containers import Services'
+    must be either sanctioned composition roots or quarantined residue."""
+    import_pattern = re.compile(r"from\s+containers\s+import\s+.*Services")
+    violations = []
+    for py_file in sorted(SRC.rglob("*.py")):
+        rel = str(py_file.relative_to(SRC))
+        if rel.startswith("scripts/"):
+            continue
+        text = py_file.read_text(encoding="utf-8")
+        if not import_pattern.search(text):
+            continue
+        if rel in _SANCTIONED_CONTAINER_SITES or rel in _QUARANTINED_RESIDUE:
+            continue
+        violations.append(rel)
+    assert not violations, (
+        f"Unsanctioned Services.* usage in {len(violations)} file(s): {violations}"
+    )

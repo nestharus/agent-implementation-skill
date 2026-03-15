@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from dispatch.prompt.writers import Writers as PromptWriters
     from reconciliation.repository.results import Results
 
+from coordination.repository.notes import list_notes_to
 from orchestrator.path_registry import PathRegistry
 
 
@@ -42,10 +43,7 @@ class ProposalPrep:
         paths = PathRegistry(planspace)
         policy = self._policies.load(planspace)
         proposal_model = self._policies.resolve(policy, "proposal")
-        notes_count = 0
-        notes_dir = paths.notes_dir()
-        if notes_dir.exists():
-            notes_count = len(list(notes_dir.glob(f"from-*-to-{section_number}.md")))
+        notes_count = len(list_notes_to(paths, section_number))
         escalated_from = None
         triggers = policy.get("escalation_triggers", {})
         max_attempts = triggers.get("max_attempts_before_escalation", 3)
