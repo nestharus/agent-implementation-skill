@@ -174,7 +174,7 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         result = cycle.run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace),
+            DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )

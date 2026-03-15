@@ -25,15 +25,12 @@ class DispatchContext:
 
     planspace: Path
     codespace: Path
-    _policies: ModelPolicyService | None = field(
-        default=None, repr=False, compare=False, hash=False,
+    _policies: ModelPolicyService = field(
+        repr=False, compare=False, hash=False,
     )
 
     def _get_policies(self) -> ModelPolicyService:
-        if self._policies is not None:
-            return self._policies
-        from containers import Services
-        return Services.policies()
+        return self._policies
 
     @cached_property
     def paths(self) -> PathRegistry:

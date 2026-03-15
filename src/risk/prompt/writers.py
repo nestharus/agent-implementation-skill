@@ -14,6 +14,13 @@ from risk.service.package_builder import read_text, scope_number
 from risk.types import RiskPackage
 
 
+def _list_scoped_artifacts(directory: Path, scope: str) -> list[Path]:
+    """Named listing helper for scoped coordination/reconciliation evidence (PAT-0003)."""
+    if not directory.is_dir():
+        return []
+    return sorted(directory.glob(f"*{scope}*"))
+
+
 def write_risk_assessment_prompt(
     package: RiskPackage,
     planspace: Path,
@@ -65,7 +72,7 @@ def write_risk_assessment_prompt(
 
     consequence_paths = list_notes_to(paths, section_number)
     outgoing_paths = list_notes_from(paths, section_number)
-    impact_paths = sorted(paths.coordination_dir().glob(f"*{scope}*"))
+    impact_paths = _list_scoped_artifacts(paths.coordination_dir(), scope)
     lines.extend(_path_list_block("Incoming consequence notes", consequence_paths))
     lines.extend(_path_list_block("Outgoing consequence notes", outgoing_paths))
     lines.extend(_path_list_block("Impact artifacts", impact_paths))
@@ -170,7 +177,7 @@ def _collect_roal_evidence(
     if align_result.exists():
         evidence.append(("Alignment check result", align_result))
 
-    for recon in sorted(paths.reconciliation_dir().glob(f"*{scope}*")):
+    for recon in _list_scoped_artifacts(paths.reconciliation_dir(), scope):
         evidence.append(("Reconciliation result", recon))
 
     for risk_path in (

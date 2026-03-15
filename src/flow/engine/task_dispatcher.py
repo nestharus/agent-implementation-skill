@@ -51,7 +51,7 @@ from taskrouter import ensure_discovered, registry as _task_registry
 from signals.types import TRUNCATE_TOKEN
 
 if TYPE_CHECKING:
-    from containers import AgentDispatcher, ArtifactIOService, FreshnessService, ModelPolicyService, PromptGuard
+    from containers import AgentDispatcher, ArtifactIOService, FreshnessService, ModelPolicyService, PromptGuard, TaskRouterService
     from flow.engine.reconciler import Reconciler
     from flow.repository.flow_context_store import FlowContextStore
     from flow.service.notifier import Notifier
@@ -82,6 +82,7 @@ class TaskDispatcher:
         reconciler: Reconciler,
         flow_context_store: FlowContextStore,
         artifact_io: ArtifactIOService,
+        task_router: TaskRouterService,
     ) -> None:
         self._prompt_guard = prompt_guard
         self._freshness = freshness
@@ -91,6 +92,7 @@ class TaskDispatcher:
         self._reconciler = reconciler
         self._flow_context_store = flow_context_store
         self._artifact_io = artifact_io
+        self._task_router = task_router
 
     def _read_dispatch_meta(self, meta_path: Path) -> DispatchMetaResult:
         """Read the dispatch metadata sidecar with fail-closed semantics."""
@@ -150,11 +152,10 @@ class TaskDispatcher:
     def _run_qa_gate(self, planspace, h: TaskHandle,
                      agent_file, prompt_path, task):
         """Run the QA dispatch interceptor. Returns False if rejected."""
-        from containers import Services
         from qa.service.qa_gate import QaGate
         qa_gate = QaGate(
             artifact_io=self._artifact_io,
-            task_router=Services.task_router(),
+            task_router=self._task_router,
             policies=self._policies,
             dispatcher=self._dispatcher,
             prompt_guard=self._prompt_guard,
@@ -490,6 +491,7 @@ def _get_dispatcher() -> TaskDispatcher:
         reconciler=reconciler,
         flow_context_store=flow_context_store,
         artifact_io=artifact_io,
+        task_router=Services.task_router(),
     )
 
 

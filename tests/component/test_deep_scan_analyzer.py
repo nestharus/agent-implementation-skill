@@ -41,7 +41,7 @@ def test_analyze_file_returns_false_when_source_missing(tmp_path) -> None:
             scan_log_dir=scan_log_dir,
             model_policy={"deep_analysis": "glm"},
         ),
-        FileCardCache(tmp_path / "file-cards"),
+        FileCardCache(tmp_path / "file-cards", hasher=Services.hasher(), artifact_io=Services.artifact_io()),
     )
 
     assert ok is False
@@ -63,7 +63,7 @@ def test_analyze_file_uses_cached_response_and_feedback(
     (codespace / "src").mkdir(parents=True)
     source_path = codespace / "src" / "main.py"
     source_path.write_text("print('ok')\n", encoding="utf-8")
-    cache = FileCardCache(tmp_path / "file-cards")
+    cache = FileCardCache(tmp_path / "file-cards", hasher=Services.hasher(), artifact_io=Services.artifact_io())
     response = tmp_path / "cached-response.md"
     response.write_text("cached response", encoding="utf-8")
     feedback = tmp_path / "cached-feedback.json"
@@ -124,7 +124,7 @@ def test_analyze_file_dispatches_and_caches_response(
     codespace = tmp_path / "codespace"
     (codespace / "src").mkdir(parents=True)
     (codespace / "src" / "main.py").write_text("print('ok')\n", encoding="utf-8")
-    cache = FileCardCache(tmp_path / "file-cards")
+    cache = FileCardCache(tmp_path / "file-cards", hasher=Services.hasher(), artifact_io=Services.artifact_io())
     scan_log_dir = tmp_path / "scan-logs"
 
     monkeypatch.setattr(

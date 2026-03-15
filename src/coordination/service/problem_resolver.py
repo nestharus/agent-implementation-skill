@@ -16,6 +16,7 @@ from coordination.problem_types import (
     UnaddressedNoteProblem,
 )
 from coordination.repository.notes import read_incoming_notes as load_incoming_notes
+from coordination.repository.scope_deltas import list_scope_delta_files
 from orchestrator.path_registry import PathRegistry
 from coordination.types import NoteAction, RecurrenceReport
 from orchestrator.types import Section, SectionResult
@@ -26,6 +27,13 @@ if TYPE_CHECKING:
 
 _SKIP_ACCEPTED = object()
 """Sentinel: note ack was accepted, skip without appending a problem."""
+
+
+def _list_recurrence_signals(signals_dir: Path) -> list[Path]:
+    """Named listing helper for recurrence signal files (PAT-0003)."""
+    if not signals_dir.is_dir():
+        return []
+    return sorted(signals_dir.glob("section-*-recurrence.json"))
 
 
 class ProblemResolver:
@@ -139,10 +147,7 @@ class ProblemResolver:
         if not scope_deltas_dir.exists():
             return problems
 
-        for delta_path in sorted(scope_deltas_dir.iterdir()):
-            if delta_path.suffix != ".json" or delta_path.name.endswith(".malformed.json"):
-                continue
-
+        for delta_path in list_scope_delta_files(scope_deltas_dir):
             delta = self._artifact_io.read_json(delta_path)
             if delta is None:
                 self._logger.log(
@@ -240,7 +245,7 @@ class ProblemResolver:
             return None
 
         recurring_sections_data: list[dict[str, Any]] = []
-        for sig_path in sorted(signals_dir.glob("section-*-recurrence.json")):
+        for sig_path in _list_recurrence_signals(signals_dir):
             data = self._artifact_io.read_json(sig_path)
             if data is not None:
                 if data.get("recurring"):

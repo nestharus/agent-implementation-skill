@@ -44,17 +44,11 @@ class FileCardCache:
     def __init__(
         self,
         cards_dir: Path,
-        hasher: HasherService | None = None,
-        artifact_io: ArtifactIOService | None = None,
+        hasher: HasherService,
+        artifact_io: ArtifactIOService,
     ) -> None:
         self.cards_dir = cards_dir
         self.cards_dir.mkdir(parents=True, exist_ok=True)
-        if hasher is None or artifact_io is None:
-            from containers import Services
-            if hasher is None:
-                hasher = Services.hasher()
-            if artifact_io is None:
-                artifact_io = Services.artifact_io()
         self._hasher = hasher
         self._artifact_io = artifact_io
 

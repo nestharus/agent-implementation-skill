@@ -75,7 +75,7 @@ def test_run_coordination_loop_completes_when_everything_is_aligned(
     status = ctrl.run_coordination_loop(
         {"01": SectionResult(section_number="01", aligned=True)},
         {"01": section},
-        DispatchContext(planspace=planspace, codespace=planspace),
+        DispatchContext(planspace=planspace, codespace=planspace, _policies=Services.policies()),
     )
 
     assert status == "complete"
@@ -95,7 +95,7 @@ def test_run_coordination_loop_restarts_when_control_message_arrives(
     status = ctrl.run_coordination_loop(
         {"01": SectionResult(section_number="01", aligned=False, problems="x")},
         {"01": section},
-        DispatchContext(planspace=planspace, codespace=planspace),
+        DispatchContext(planspace=planspace, codespace=planspace, _policies=Services.policies()),
     )
 
     assert status == "restart_phase1"
@@ -125,7 +125,7 @@ def test_run_coordination_loop_stalls_and_reports_remaining_sections(
         status = ctrl.run_coordination_loop(
             {"01": SectionResult(section_number="01", aligned=False, problems="still broken")},
             {"01": section},
-            DispatchContext(planspace=planspace, codespace=planspace),
+            DispatchContext(planspace=planspace, codespace=planspace, _policies=Services.policies()),
         )
     finally:
         Services.policies.reset_override()
@@ -171,7 +171,7 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
     status = ctrl.run_coordination_loop(
         {"01": SectionResult(section_number="01", aligned=True)},
         {"01": section},
-        DispatchContext(planspace=planspace, codespace=planspace),
+        DispatchContext(planspace=planspace, codespace=planspace, _policies=Services.policies()),
     )
 
     assert status == "exhausted"
@@ -224,7 +224,7 @@ def test_run_coordination_loop_enters_coordination_for_root_reframing_delta(
     status = ctrl.run_coordination_loop(
         {"01": SectionResult(section_number="01", aligned=True)},
         {"01": section},
-        DispatchContext(planspace=planspace, codespace=planspace),
+        DispatchContext(planspace=planspace, codespace=planspace, _policies=Services.policies()),
     )
 
     assert status == "complete"

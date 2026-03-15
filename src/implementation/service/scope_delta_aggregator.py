@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from coordination.repository.scope_deltas import list_scope_delta_files
 from orchestrator.repository.decisions import Decision, Decisions
 from orchestrator.path_registry import PathRegistry
 from implementation.service.scope_delta_parser import (
@@ -99,11 +100,7 @@ class ScopeDeltaAggregator:
         self._decisions = Decisions(artifact_io=artifact_io)
 
     def _load_pending_deltas(self, scope_deltas_dir: Path) -> tuple[list[Path], list[dict]]:
-        delta_files = sorted(
-            path
-            for path in scope_deltas_dir.iterdir()
-            if path.suffix == ".json" and not path.name.endswith(".malformed.json")
-        )
+        delta_files = list_scope_delta_files(scope_deltas_dir)
         pending_deltas: list[dict] = []
         for delta_file in delta_files:
             delta = self._artifact_io.read_json(delta_file)

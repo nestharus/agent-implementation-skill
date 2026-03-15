@@ -110,7 +110,7 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         result = cycle.run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace),
+            DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -185,7 +185,7 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         result = cycle.run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace),
+            DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -273,7 +273,7 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         result = cycle.run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace),
+            DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )

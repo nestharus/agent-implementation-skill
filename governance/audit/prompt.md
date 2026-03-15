@@ -124,25 +124,7 @@ Output: pattern violations, new islands, unhealthy patterns, and candidate new p
 Now audit the codebase against BOTH the philosophy AND the patterns. For each principle in the philosophy and each template in the pattern catalog, search the codebase for violations.
 
 Key areas to examine in the codebase:
-- `src/orchestrator/engine/` — Pipeline orchestrator, strategic state builder
-- `src/implementation/engine/` — Implementation cycle, section pipeline, implementation phase
-- `src/proposal/engine/` — Proposal cycle, proposal phase, readiness gate
-- `src/coordination/engine/` — Global coordinator, coordination controller
-- `src/dispatch/engine/` — Section dispatcher, agent executor
-- `src/scan/` — Stage 3 coordinator (codemap, exploration, deep scan)
-- `src/scan/substrate/` — Stage 3.5 SIS (shard, prune, seed)
-- `src/flow/engine/` — Task dispatcher, flow submitter
-- `src/risk/engine/` — Risk assessor, ROAL loop
-- `src/research/engine/` — Research plan executor
-- `src/intent/engine/` — Intent initializer, expansion orchestrator
-- `src/reconciliation/engine/` — Cross-section reconciler, reconciliation phase
-- `src/intake/` — Governance loader, assessment evaluator, governance packet builder
-- `src/staleness/` — Freshness calculator, alignment collector, content hasher
-- `src/signals/` — Blocker manager, section communicator, message poller
-- `src/taskrouter/` — Task routing, model policy, agent resolution
-- `src/*/agents/*.md` — Agent definitions (48 agents across 12 namespaces)
-- `src/SKILL.md` — Skill entry point
-- `src/implement.md` — Pipeline documentation
+- `src/`
 - `evals/` — Evaluation scenarios
 - `governance/` — Problem archive, pattern catalog, risk register
 - `system-synthesis.md` — Architecture + governance connections

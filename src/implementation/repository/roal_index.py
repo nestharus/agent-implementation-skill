@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
+from orchestrator.repository.input_refs import list_input_refs
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService
@@ -87,7 +88,7 @@ class RoalIndex:
         }
 
         if input_dir.exists():
-            for ref_path in sorted(input_dir.glob("*.ref")):
+            for ref_path in list_input_refs(input_dir):
                 try:
                     referenced = ref_path.read_text(encoding="utf-8").strip()
                 except OSError:

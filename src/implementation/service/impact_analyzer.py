@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from dispatch.helpers.signal_checker import extract_fenced_block
 from orchestrator.path_registry import PathRegistry
+from orchestrator.repository.input_refs import list_input_refs
 from orchestrator.service.section_decision_store import (
     build_section_number_map,
     normalize_section_number,
@@ -48,9 +49,7 @@ def collect_impact_candidates(
     modified_set = set(modified_files)
 
     source_inputs = paths.input_refs_dir(section_number)
-    source_refs = set()
-    if source_inputs.is_dir():
-        source_refs = {entry.name for entry in source_inputs.iterdir() if entry.suffix == ".ref"}
+    source_refs = {p.name for p in list_input_refs(source_inputs)}
 
     candidates: list[Section] = []
     for other in other_sections:
@@ -77,11 +76,10 @@ def collect_impact_candidates(
 
         if source_refs:
             other_inputs = paths.input_refs_dir(other.number)
-            if other_inputs.is_dir():
-                other_refs = {entry.name for entry in other_inputs.iterdir() if entry.suffix == ".ref"}
-                if source_refs & other_refs:
-                    candidates.append(other)
-                    continue
+            other_refs = {p.name for p in list_input_refs(other_inputs)}
+            if source_refs & other_refs:
+                candidates.append(other)
+                continue
 
         if contracts_dir.is_dir():
             fwd = contracts_dir / f"contract-{section_number}-{other.number}.md"

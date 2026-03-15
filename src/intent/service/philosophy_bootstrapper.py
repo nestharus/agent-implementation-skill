@@ -77,6 +77,20 @@ _MAX_SECTION_SPECS = 12
 _MAX_PROPOSALS = 6
 _MAX_DECISIONS = 6
 _MAX_NOTES = 6
+
+
+def _list_section_specs(sections_dir: Path) -> list[Path]:
+    """Named listing helper for section spec files (PAT-0003)."""
+    if not sections_dir.is_dir():
+        return []
+    return sorted(sections_dir.glob("section-*.md"))
+
+
+def _list_integration_proposals(proposals_dir: Path) -> list[Path]:
+    """Named listing helper for integration proposal files (PAT-0003)."""
+    if not proposals_dir.is_dir():
+        return []
+    return sorted(proposals_dir.glob("section-*-integration-proposal.md"))
 _MAX_FILE_EXTENSION_LENGTH = 6
 _MAX_DISTILLER_ATTEMPTS = 2
 _MAX_README_FILES_PER_DIR = 2
@@ -113,11 +127,11 @@ def _collect_bootstrap_context_artifacts(
     add("codemap", paths.codemap())
 
     sections_dir = paths.sections_dir()
-    for section_spec in sorted(sections_dir.glob("section-*.md"))[:_MAX_SECTION_SPECS]:
+    for section_spec in _list_section_specs(sections_dir)[:_MAX_SECTION_SPECS]:
         add("section_spec", section_spec)
 
     proposals_dir = paths.proposals_dir()
-    for proposal in sorted(proposals_dir.glob("section-*-integration-proposal.md"))[:_MAX_PROPOSALS]:
+    for proposal in _list_integration_proposals(proposals_dir)[:_MAX_PROPOSALS]:
         add("proposal", proposal)
 
     for decision in list_all_decisions_md(paths.decisions_dir())[:_MAX_DECISIONS]:
@@ -460,7 +474,7 @@ class PhilosophyBootstrapper:
             self._logger.log("Intent bootstrap: no markdown files found for philosophy "
                 "catalog — requesting user bootstrap input")
             return self._request_user_philosophy(
-                ctx=DispatchContext(ctx.planspace, ctx.codespace),
+                ctx=DispatchContext(ctx.planspace, ctx.codespace, _policies=self._policies),
                 source_mode=SOURCE_MODE_NONE,
                 detail=(
                     "Bootstrap confirmed that the repository contains no "
@@ -508,7 +522,7 @@ class PhilosophyBootstrapper:
             final_outcome=SIGNAL_NEED_DECISION,
         )
         return self._request_user_philosophy(
-            ctx=DispatchContext(ctx.planspace, ctx.codespace),
+            ctx=DispatchContext(ctx.planspace, ctx.codespace, _policies=self._policies),
             source_mode=SOURCE_MODE_NONE,
             detail=(
                 "Bootstrap confirmed that the repository catalog contains "
@@ -615,7 +629,7 @@ class PhilosophyBootstrapper:
             signal_path=selected_signal,
             models=ctx.selector_models,
             classifier=self._classifier._classify_selector_result,
-            ctx=DispatchContext(ctx.planspace, ctx.codespace),
+            ctx=DispatchContext(ctx.planspace, ctx.codespace, _policies=self._policies),
             agent_file=self._task_router.agent_for("intent.philosophy_selector"),
         )
         selected_classification = selector_run["classification"]
@@ -669,7 +683,7 @@ class PhilosophyBootstrapper:
             signal_path=selected_signal,
             models=ctx.selector_models,
             classifier=self._classifier._classify_selector_result,
-            ctx=DispatchContext(ctx.planspace, ctx.codespace),
+            ctx=DispatchContext(ctx.planspace, ctx.codespace, _policies=self._policies),
             agent_file=self._task_router.agent_for("intent.philosophy_selector"),
         )
         expanded_classification = expanded_run["classification"]
@@ -689,7 +703,7 @@ class PhilosophyBootstrapper:
         self._logger.log("Intent bootstrap: verifier rejected all shortlisted "
             "philosophy candidates")
         return self._request_user_philosophy(
-            ctx=DispatchContext(ctx.planspace, ctx.codespace),
+            ctx=DispatchContext(ctx.planspace, ctx.codespace, _policies=self._policies),
             source_mode=SOURCE_MODE_NONE,
             detail=(
                 "Bootstrap confirmed that none of the repository files "
@@ -791,7 +805,7 @@ class PhilosophyBootstrapper:
                 self._policies.resolve(ctx.policy, "intent_philosophy_selector_escalation"),
             ],
             classifier=self._classifier._classify_verifier_result,
-            ctx=DispatchContext(ctx.planspace, ctx.codespace),
+            ctx=DispatchContext(ctx.planspace, ctx.codespace, _policies=self._policies),
             agent_file=self._task_router.agent_for("intent.philosophy_verifier"),
         )
         verified_classification = verify_run["classification"]
@@ -978,7 +992,7 @@ class PhilosophyBootstrapper:
                 overwrite=True,
             )
         return self._request_user_philosophy(
-            ctx=DispatchContext(ctx.planspace, ctx.codespace),
+            ctx=DispatchContext(ctx.planspace, ctx.codespace, _policies=self._policies),
             source_mode=SOURCE_MODE_USER,
             detail=(
                 "The user-provided philosophy input is not yet stable "
@@ -1007,7 +1021,7 @@ class PhilosophyBootstrapper:
         self._logger.log("Intent bootstrap: distiller found no extractable "
             "philosophy in verified sources")
         return self._request_user_philosophy(
-            ctx=DispatchContext(ctx.planspace, ctx.codespace),
+            ctx=DispatchContext(ctx.planspace, ctx.codespace, _policies=self._policies),
             source_mode=SOURCE_MODE_REPO,
             detail=(
                 "Bootstrap confirmed that the available repository "

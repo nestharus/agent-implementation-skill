@@ -67,7 +67,7 @@ class SubstrateDiscoverer:
         self,
         artifact_io: ArtifactIOService,
         task_router: TaskRouterService,
-        prompt_guard: PromptGuard | None = None,
+        prompt_guard: PromptGuard,
     ) -> None:
         self._artifact_io = artifact_io
         self._task_router = task_router
@@ -76,11 +76,7 @@ class SubstrateDiscoverer:
         self._schemas = Schemas(artifact_io=artifact_io)
         self._related_files = RelatedFiles(artifact_io=artifact_io)
         self._dispatcher = SubstrateDispatcher(task_router=task_router)
-        if prompt_guard is not None:
-            self._prompt_builder = PromptBuilder(prompt_guard=prompt_guard)
-        else:
-            from containers import Services
-            self._prompt_builder = PromptBuilder(prompt_guard=Services.prompt_guard())
+        self._prompt_builder = PromptBuilder(prompt_guard=prompt_guard)
 
     def _check_prerequisites(
         self,

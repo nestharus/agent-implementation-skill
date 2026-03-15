@@ -4,8 +4,9 @@ from pathlib import Path
 from typing import Any
 
 from coordination.repository.notes import list_notes_to
-from staleness.helpers.content_hasher import content_hash, file_hash
 from orchestrator.path_registry import PathRegistry
+from orchestrator.repository.input_refs import list_input_refs
+from staleness.helpers.content_hasher import content_hash, file_hash
 
 
 def _static_input_paths(paths: PathRegistry, sec_num: str) -> list[Path]:
@@ -43,9 +44,7 @@ def _collect_ref_parts(
     inputs_dir: Path, hash_parts: list[bytes],
 ) -> None:
     """Collect hash parts from input reference files."""
-    if not inputs_dir.exists():
-        return
-    for ref_path in sorted(inputs_dir.glob("*.ref")):
+    for ref_path in list_input_refs(inputs_dir):
         hash_parts.append(ref_path.read_bytes())
         try:
             referenced = Path(ref_path.read_text(encoding="utf-8").strip())

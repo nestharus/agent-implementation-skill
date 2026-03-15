@@ -19,6 +19,13 @@ _TODO_CONTEXT_BEFORE = 3
 _TODO_CONTEXT_AFTER = 4
 
 
+def _list_proposal_signals(signals_dir: Path, section: str) -> list[Path]:
+    """Named listing helper for proposal-attempt signals (PAT-0003)."""
+    if not signals_dir.is_dir():
+        return []
+    return sorted(signals_dir.glob(f"proposal-{section}-*.json"))
+
+
 def extract_todos_from_files(
     codespace: Path, related_files: list[str],
 ) -> str:
@@ -102,7 +109,7 @@ def _gather_complexity_signals(
 
     # 6. Previous proposal attempts (proposal signals for this section)
     signals_dir = paths.signals_dir()
-    prev_proposals = sorted(signals_dir.glob(f"proposal-{section_number}-*.json")) if signals_dir.is_dir() else []
+    prev_proposals = _list_proposal_signals(signals_dir, section_number)
     signals["previous_proposal_attempts"] = str(len(prev_proposals))
 
     return signals

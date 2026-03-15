@@ -52,7 +52,7 @@ def test_scan_sections_returns_failure_when_tier_ranking_unavailable(
         [section_file],
         _ctx(tmp_path),
         tmp_path / "artifacts",
-        FileCardCache(tmp_path / "file-cards"),
+        FileCardCache(tmp_path / "file-cards", hasher=Services.hasher(), artifact_io=Services.artifact_io()),
         {},
     )
 
@@ -94,7 +94,7 @@ def test_scan_sections_skips_already_scanned_files(
         [section_file],
         _ctx(tmp_path),
         tmp_path / "artifacts",
-        FileCardCache(tmp_path / "file-cards"),
+        FileCardCache(tmp_path / "file-cards", hasher=Services.hasher(), artifact_io=Services.artifact_io()),
         {"section-01": {"src/main.py"}},
     )
 
@@ -135,7 +135,7 @@ def test_scan_sections_analyzes_new_files_and_updates_state(
         [section_file],
         _ctx(tmp_path),
         tmp_path / "artifacts",
-        FileCardCache(tmp_path / "file-cards"),
+        FileCardCache(tmp_path / "file-cards", hasher=Services.hasher(), artifact_io=Services.artifact_io()),
         already_scanned,
     )
 

@@ -196,13 +196,13 @@ Advisory surfaces (QA interception, reconciliation adjudication) are deliberatel
 
 ## PRB-0017: Testing Philosophy Drift / Historical Regression Oracles
 
-**Status**: active — substantially addressed (R109-R110), scope expanded R112
+**Status**: active — substantially addressed (R109-R110), scope expanded R112, R120-R121
 **Provenance**: audit-inferred (R109)
 **Regions**: integration tests, regression tests, component tests, authoritative runtime surfaces
 
-Tests written as source-text archaeology create fragile regressions. R110 extended PAT-0015 to require representative round-trip contract tests. The suite has converged on positive contract testing. R112: PAT-0015 scope expanded to require that executable audit/eval surfaces themselves have positive current-layout contracts. Missing inventory-truth, retirement-boundary, and eval-entrypoint contracts are now explicitly scoped as gaps. R120: positive-contract suite remains materially under-scoped — missing locks for proposal-state schema projection across agent/template/eval surfaces, governance archive/path reference-integrity checks (pattern/problem known-instance paths), and `Services.*` boundary allowlisting to enforce PAT-0019 composition-root rule.
+Tests written as source-text archaeology create fragile regressions. R110 extended PAT-0015 to require representative round-trip contract tests. The suite has converged on positive contract testing. R112: PAT-0015 scope expanded to require that executable audit/eval surfaces themselves have positive current-layout contracts. R120 added governance archive reference-integrity checks and `Services.*` boundary allowlisting. R121: remaining gaps are governance self-report truth locks (present-tense residue/health claims must match live code) and PAT-0005 centralization locks (no local model-policy fallback chains at operational callsites).
 
-**Solution surfaces**: PAT-0015 (Positive Contract Testing), positive behavioral assertions over source-grep absence tests, output-shape contracts, representative round-trip contract tests for high-risk handoffs (R110), executable eval/audit surface contracts (R112).
+**Solution surfaces**: PAT-0015 (Positive Contract Testing), positive behavioral assertions over source-grep absence tests, output-shape contracts, representative round-trip contract tests for high-risk handoffs (R110), executable eval/audit surface contracts (R112), governance reference-integrity and Services boundary allowlisting (R120), PAT-0005 centralization lock (R121).
 
 ---
 
@@ -236,13 +236,15 @@ The current authoritative architecture description records the runtime wiring
 boundary: `src/containers.py` defines service interfaces, production code
 receives collaborators via constructors, and only CLI `main()` composition
 roots touch the container directly. The boundary is formalized as PAT-0019.
-Service-locator residue remains in constructor fallbacks and compat wrappers
-across several production modules (documented in PAT-0019 known instances).
-R120: uncataloged PAT-0019 residue identified at `task_request_ingestor.py`,
-`intent_initializer.py`, and `mailbox_service.py`; scan-stage adapter surfaces
-(`scan_dispatcher.py`, `deep_scanner.py`) need explicit sanctioned/residue
-classification; `system-synthesis.md` still publishes a cleaner DI boundary
-than the runtime enforces.
+Service-locator residue remains in compat wrappers and a small number of
+runtime method-level lookups (documented in PAT-0019 known instances).
+R120 identified uncataloged residue and classified scan-stage adapters.
+R121 removed constructor fallbacks from `cache.py`, `pipeline/context.py`,
+and `substrate_discoverer.py`; extracted QaGate wiring from
+`task_dispatcher.py` into constructor injection; injected advisory writer
+dependency in `proposal_phase.py`. Remaining residue: `section_dispatcher.py`
+QaGate construction (circular dep — genuinely quarantined), staleness service
+method-level lookups, and backward-compat wrappers in signals services.
 
 **Solution surfaces**: PAT-0016 (Runtime Inventory Truth & Surface Retirement), PAT-0019 (Constructor DI boundary formalization), registry-derived inventory, atomic doc updates with code changes, authoritative wiring-contract updates.
 
@@ -250,23 +252,23 @@ than the runtime enforces.
 
 ## PRB-0020: Governance Self-Report Drift / False Health Reporting
 
-**Status**: active — substantially addressed (R112-R119)
+**Status**: active — substantially addressed (R112-R121)
 **Provenance**: audit-inferred (R112)
-**Regions**: governance/patterns/index.md, governance/risk-register.md, governance/problems/index.md, governance/audit/history.md
+**Regions**: governance/patterns/index.md, governance/risk-register.md, governance/problems/index.md, governance/audit/history.md, tests/component/test_positive_contracts.py
 
-Governance self-report surfaces (pattern health notes, risk register status, problem archive status, audit history counts) diverge from actual codebase state. R112-R113 corrected pattern health notes and risk register status, but R113 falsely claimed PAT-0001/PAT-0003 as "Healthy" and RISK-0007 as "resolved" while bypasses and unsaturated families remained. R114 corrected all four pattern health notes to reflect actual code state: PAT-0001 now genuinely healthy (last bypass fixed), PAT-0003 truthfully reported as "improved but not converged," PAT-0015 as "improved," PAT-0016 as "improved." R116 updated PAT-0003 health notes to include reconciliation family migration, PAT-0015 health notes to include doctrine-projection and reconciliation-family positive contract tests, and added PAT-0018 health note. R117 corrected PAT-0018 known instances (11th surface was missing) and PAT-0003 health note (4 new accessors + 7 consumer migrations). R119 corrected three specific drift instances: phantom PAT-0019 reference (now cataloged), five dead known-instance paths in the pattern archive (corrected to live paths), and stale pattern health notes (refreshed to match actual code state including DI migration status). R120: philosophy projection gap identified — the proposal-evaluation rule (better proposals must solve the same problems, must not add user-unspecified constraints) is present in runtime doctrine surfaces (`src/SKILL.md`, `src/pipeline/template.py`, `src/staleness/agents/alignment-judge.md`) but absent from philosophy distillation surfaces (`design-philosophy-analysis.md`, `philosophy/profiles/PHI-global.md`). Execution doctrine is ahead of philosophy distillation.
+Governance self-report surfaces (pattern health notes, risk register status, problem archive status, audit history counts, test allowlists) diverge from actual codebase state. R112-R119 corrected pattern health notes, risk register status, dead-path references, and stale counts. R120 repaired the philosophy projection gap (proposal-evaluation rule now in both analysis and PHI-global). R121: the active drift class is now false present-tense reporting — governance surfaces (PRB-0019, RISK-0008, test allowlists) still named cleaned files as residue. R121 refreshed all stale inventories atomically with the code changes that resolved them: removed `intent_initializer.py`, `mailbox_service.py`, `pipeline/middleware.py`, `pipeline_state.py` from residue/allowlist sets; corrected PAT-0003 health to reflect solved helper surfaces vs remaining family islands.
 
-**Solution surfaces**: PAT-0016 scope expansion to governance self-reports (R112), truthful pattern health notes, audit-time verification of present-tense claims, RISK-0002 stale test count fixed (R118), dead-path and phantom-reference correction (R119).
+**Solution surfaces**: PAT-0016 scope expansion to governance self-reports (R112), truthful pattern health notes, audit-time verification of present-tense claims, dead-path and phantom-reference correction (R119), philosophy projection repair (R120), atomic truth-surface refresh (R121).
 
 ---
 
 ## PRB-0021: PathRegistry Consumer Saturation / File-Level Accessor Incompleteness
 
-**Status**: substantially addressed (R113-R118)
-**Provenance**: audit-inferred (R113), reopened R114, substantially addressed R115, reconciliation family R116, residual sweep R117, 3-family sweep R118
+**Status**: substantially addressed (R113-R121)
+**Provenance**: audit-inferred (R113), reopened R114, substantially addressed R115, reconciliation family R116, residual sweep R117, 3-family sweep R118, note/decision helpers R120, remaining family helpers R121
 **Regions**: PathRegistry, freshness/hashing, reconciliation, readiness, dispatch prompts, proposal cycle, flow system, traceability, coordination, signals, intent
 
-Durable artifact families used at multiple authoritative sites had only directory-level accessors or no accessors at all. R113 added `reconciliation_result()` and `execution_ready()` file-level accessors. R114 added 5 flow family accessors and fixed 4 existing-accessor bypasses. R115 added accessors for 6 remaining families (decision md/json, governance synthesis-cues/index-status, trace-index, intent-triage signal/prompt/output, coordination problems/escalation/fix/bridge/align/task-request, bridge-tools prompt/output/escalation) and migrated ~30 consumer sites. R116 added 3 reconciliation family accessors (`reconciliation_requests_dir()`, `reconciliation_request()`, `reconciliation_summary()`), migrated `queue.py` and `cross_section_reconciler.py` consumers, and normalized `load_reconciliation_result()` to accept planspace root exclusively (eliminating mixed-root semantics). R117 added 4 more accessors (`recurrence_signal()`, `coordination_recurrence()`, `related_files_signal()`, `global_decision_json()`) and migrated 7 consumer sites: proposal_state() bypasses (traceability_writer, section_communicator), note_ack_signal() bypass (problem_resolver), recurrence family (recurrence_emitter, problem_resolver, planner), context_sidecar (global decisions, related-files signals). Remaining gaps are now discovery/listing islands rather than raw filename construction: research-question aggregation in `strategic_state_builder.py`; decision discovery in `section_reexplorer.py` and `microstrategy_decider.py`; proposal-attempt discovery in `microstrategy_decider.py`; recurrence discovery in `problem_resolver.py`; repeated note-family counting/listing in `notes.py`, `proposal_prep.py`, `intent_initializer.py`, `freshness_calculator.py`, `input_hasher.py`, `risk/prompt/writers.py`, and `coordination/prompt/writers.py`; decision-family listing in `decisions.py`, `section_reexplorer.py`, `microstrategy_decider.py`, and `philosophy_bootstrapper.py`; and `decisions.py` repository functions with raw `decisions_dir` parameters. These are the same PAT-0003 class: authoritative family discovery still depends on repeated glob patterns instead of named iterator/listing helpers per rule 11. Flow relpath helpers remain a documented by-design exception for DB storage.
+Durable artifact families used at multiple authoritative sites had only directory-level accessors or no accessors at all. R113-R118 added file-level accessors and migrated ~50 consumer sites across 6 sweeps. R120 added domain-repository listing helpers for note-family (`coordination/repository/notes.py`) and decision-family (`orchestrator/repository/decisions.py`) and migrated 12 consumers. R121 added helpers for the remaining 7 family islands: scope-delta listing (`coordination/repository/scope_deltas.py`), input-ref listing (`orchestrator/repository/input_refs.py`), plus local named helpers for research-question, proposal-attempt, recurrence, section-spec/proposal, and scoped impact/reconciliation evidence families. Consumers migrated atomically. Remaining: `decisions.py` repository functions with raw `decisions_dir` Path parameter (by-design — the repository receives its dir from callers). Flow relpath helpers remain a documented by-design exception for DB storage.
 
 **Solution surfaces**: PAT-0003 file-level accessor requirement (rules 1-10) and discovery/listing helper requirement (rule 11), family-level accessor addition + atomic consumer migration, flow family accessors (R114), 6-family saturation sweep (R115), reconciliation family migration (R116), residual sweep (R117), 3-family sweep with 7 accessors and 12 consumer migrations (R118).
 

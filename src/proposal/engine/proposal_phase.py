@@ -56,10 +56,10 @@ def _write_proposal_risk_advisory(
     sec_num: str,
     advisory_scope: str,
     summary: dict[str, Any],
+    artifact_io: ArtifactIOService,
 ) -> Path:
-    from containers import Services
     return SectionArtifacts(
-        artifact_io=Services.artifact_io(),
+        artifact_io=artifact_io,
     ).write_section_input_artifact(
         PathRegistry(planspace),
         sec_num,
@@ -225,6 +225,7 @@ class ProposalPhase:
                 sec_num,
                 advisory_scope,
                 summary,
+                artifact_io=self._artifact_io,
             )
             advisory_entries.append({
                 "kind": "proposal_advisory",

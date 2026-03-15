@@ -299,10 +299,11 @@ class TestCacheKeyIncludesCorrections:
 
     def test_corrections_change_cache_key(self, tmp_path: Path) -> None:
         """Cache key must differ when corrections content changes."""
+        from containers import Services
         from scan.codemap.cache import FileCardCache
 
         cards_dir = tmp_path / "cards"
-        cache = FileCardCache(cards_dir)
+        cache = FileCardCache(cards_dir, hasher=Services.hasher(), artifact_io=Services.artifact_io())
 
         section = tmp_path / "section.md"
         source = tmp_path / "source.py"
@@ -326,10 +327,11 @@ class TestCacheKeyIncludesCorrections:
 
     def test_no_corrections_matches_old_behavior(self, tmp_path: Path) -> None:
         """Without extra files, key matches the 2-file computation."""
+        from containers import Services
         from scan.codemap.cache import FileCardCache
 
         cards_dir = tmp_path / "cards"
-        cache = FileCardCache(cards_dir)
+        cache = FileCardCache(cards_dir, hasher=Services.hasher(), artifact_io=Services.artifact_io())
 
         section = tmp_path / "section.md"
         source = tmp_path / "source.py"
@@ -533,10 +535,11 @@ class TestScanSummaryIdempotency:
 
     def test_cache_key_ignores_scan_summaries(self, tmp_path: Path) -> None:
         """Cache key is stable regardless of scan summary content."""
+        from containers import Services
         from scan.codemap.cache import FileCardCache
 
         cards_dir = tmp_path / "cards"
-        cache = FileCardCache(cards_dir)
+        cache = FileCardCache(cards_dir, hasher=Services.hasher(), artifact_io=Services.artifact_io())
 
         section = tmp_path / "section.md"
         source = tmp_path / "source.py"
@@ -566,10 +569,11 @@ class TestCachedFeedbackValidation:
         self, tmp_path: Path,
     ) -> None:
         """Cache with invalid feedback falls through to fresh analysis."""
+        from containers import Services
         from scan.codemap.cache import FileCardCache
 
         cards_dir = tmp_path / "cards"
-        cache = FileCardCache(cards_dir)
+        cache = FileCardCache(cards_dir, hasher=Services.hasher(), artifact_io=Services.artifact_io())
 
         # Store a response with invalid feedback (missing source_file)
         resp = tmp_path / "resp.md"
@@ -588,10 +592,11 @@ class TestCachedFeedbackValidation:
 
     def test_valid_feedback_is_cached(self, tmp_path: Path) -> None:
         """Valid feedback is stored in cache."""
+        from containers import Services
         from scan.codemap.cache import FileCardCache
 
         cards_dir = tmp_path / "cards"
-        cache = FileCardCache(cards_dir)
+        cache = FileCardCache(cards_dir, hasher=Services.hasher(), artifact_io=Services.artifact_io())
 
         resp = tmp_path / "resp.md"
         resp.write_text("analysis")
@@ -778,7 +783,7 @@ class TestScanLoopClosure:
                               "deep_analysis": "glm"},
             ),
             artifacts_dir=artifacts,
-            file_card_cache=FileCardCache(artifacts / "file-cards"),
+            file_card_cache=FileCardCache(artifacts / "file-cards", hasher=Services.hasher(), artifact_io=Services.artifact_io()),
             already_scanned=already_scanned,
         )
 
@@ -853,7 +858,7 @@ class TestDeepScanTierRankingFailureUnit:
                 },
             ),
             artifacts_dir=artifacts,
-            file_card_cache=FileCardCache(artifacts / "file-cards"),
+            file_card_cache=FileCardCache(artifacts / "file-cards", hasher=Services.hasher(), artifact_io=Services.artifact_io()),
             already_scanned={},
         )
 

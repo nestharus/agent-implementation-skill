@@ -21,6 +21,7 @@ class RelatedFileStatus(str, Enum):
 
     def __str__(self) -> str:  # noqa: D105
         return self.value
+from dispatch.service.model_policy import resolve as resolve_model
 from orchestrator.path_registry import PathRegistry
 from scan.scan_context import ScanContext
 from scan.service.template_loader import load_scan_template
@@ -286,7 +287,7 @@ class RelatedFileResolver:
             missing_existing=missing_existing,
         )
 
-        escalation_model = ctx.model_policy.get("exploration", ctx.model_policy["validation"])
+        escalation_model = resolve_model(ctx.model_policy, "exploration")
         if (
             result.returncode == 0
             and normalized is None

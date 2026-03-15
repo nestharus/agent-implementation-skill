@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
+from orchestrator.repository.input_refs import list_input_refs
 from orchestrator.types import Section
 
 if TYPE_CHECKING:
@@ -200,7 +201,7 @@ def _build_intent_context(paths: PathRegistry, sec: str) -> dict:
 
 def _build_ref_files_block(inputs_dir: Path, roal_paths: set[str]) -> str:
     """Build the additional inputs block from .ref files, excluding ROAL."""
-    ref_files = sorted(inputs_dir.glob("*.ref"))
+    ref_files = list_input_refs(inputs_dir)
     if not ref_files:
         return ""
 

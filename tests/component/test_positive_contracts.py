@@ -175,7 +175,6 @@ def test_pattern_known_instance_paths_exist() -> None:
 _SANCTIONED_CONTAINER_SITES = {
     "containers.py",
     "scan/cli.py",
-    "pipeline/middleware.py",
     "orchestrator/engine/pipeline_orchestrator.py",
     "orchestrator/engine/section_pipeline.py",
     "risk/engine/risk_assessor.py",
@@ -183,23 +182,20 @@ _SANCTIONED_CONTAINER_SITES = {
     # scan-stage adapter/build helpers (explicitly scoped per PAT-0019)
     "scan/scan_dispatcher.py",
     "scan/explore/deep_scanner.py",
+    # CLI / factory composition helpers
+    "proposal/engine/proposal_phase.py",
+    "scan/substrate/substrate_discoverer.py",
 }
 
 # Known PAT-0019 residue — quarantined, not sanctioned
 _QUARANTINED_RESIDUE = {
-    "scan/codemap/cache.py",
-    "pipeline/context.py",
-    "scan/substrate/substrate_discoverer.py",
     "staleness/service/section_alignment_checker.py",
     "staleness/service/global_alignment_rechecker.py",
     "dispatch/engine/section_dispatcher.py",
-    "proposal/engine/proposal_phase.py",
     "signals/service/section_communicator.py",
-    "signals/service/mailbox_service.py",
     "signals/service/message_poller.py",
     "signals/service/blocker_manager.py",
     "flow/service/task_request_ingestor.py",
-    "orchestrator/service/pipeline_state.py",
 }
 
 
@@ -220,4 +216,35 @@ def test_services_container_usage_is_bounded() -> None:
         violations.append(rel)
     assert not violations, (
         f"Unsanctioned Services.* usage in {len(violations)} file(s): {violations}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 6. PAT-0005 centralization — no local model-policy fallback chains
+#    at operational callsites.
+# ---------------------------------------------------------------------------
+
+# Operational files where policy.get("key", policy["other_key"]) is banned.
+# Composition roots and test files are excluded.
+_PAT0005_EXCLUDED_PREFIXES = ("scripts/", "containers.py")
+
+
+def test_no_local_model_policy_fallback_chains() -> None:
+    """Operational callsites must not use policy.get(key, policy[other_key])
+    style fallback chains — use resolve(policy, key) instead (PAT-0005)."""
+    fallback_pattern = re.compile(
+        r"model_policy\.get\(\s*\"[^\"]+\"\s*,\s*"
+        r"(?:ctx\.model_policy|policy|self\._policy)\[",
+    )
+    violations = []
+    for py_file in sorted(SRC.rglob("*.py")):
+        rel = str(py_file.relative_to(SRC))
+        if any(rel.startswith(p) for p in _PAT0005_EXCLUDED_PREFIXES):
+            continue
+        text = py_file.read_text(encoding="utf-8")
+        if fallback_pattern.search(text):
+            violations.append(rel)
+    assert not violations, (
+        f"Local model-policy fallback chain in {len(violations)} file(s): "
+        f"{violations} — use resolve(policy, key) instead"
     )

@@ -332,9 +332,10 @@ class SectionPipeline:
 
         # Step 2: Proposal loop
         if self._proposal_cycle is not None:
+            from containers import Services as _Services
             if self._proposal_cycle.run_proposal_loop(
                 section,
-                DispatchContext(planspace=planspace, codespace=codespace),
+                DispatchContext(planspace=planspace, codespace=codespace, _policies=_Services.policies()),
                 cycle_budget, incoming_notes,
             ) is None:
                 return None

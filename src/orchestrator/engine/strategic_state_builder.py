@@ -155,15 +155,17 @@ class StrategicStateBuilder:
             return True
         return False
 
+    @staticmethod
+    def _list_research_question_artifacts(open_problems_dir: Path) -> list[Path]:
+        """Named listing helper for research-question artifacts (PAT-0003)."""
+        if not open_problems_dir.is_dir():
+            return []
+        return sorted(open_problems_dir.glob("section-*-research-questions.json"))
+
     def _load_research_questions(self, planspace: Path) -> list[dict[str, Any]]:
         open_problems_dir = PathRegistry(planspace).open_problems_dir()
-        if not open_problems_dir.exists():
-            return []
-
         aggregated: list[dict[str, Any]] = []
-        for artifact_path in sorted(
-            open_problems_dir.glob("section-*-research-questions.json")
-        ):
+        for artifact_path in self._list_research_question_artifacts(open_problems_dir):
             artifact = self._artifact_io.read_json(artifact_path)
             if not isinstance(artifact, dict):
                 continue

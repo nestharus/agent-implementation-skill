@@ -86,7 +86,11 @@ def run_deep_scan(
     print("=== Deep Scan: agent-driven analysis of confirmed related files ===")
 
     section_files = list_section_files(sections_dir)
-    file_card_cache = FileCardCache(artifacts_dir / "file-cards")
+    file_card_cache = FileCardCache(
+        artifacts_dir / "file-cards",
+        hasher=Services.hasher(),
+        artifact_io=Services.artifact_io(),
+    )
     ctx = ScanContext.from_artifacts(
         codespace=codespace,
         codemap_path=codemap_path,

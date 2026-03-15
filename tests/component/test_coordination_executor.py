@@ -83,7 +83,7 @@ def test_execute_coordination_plan_runs_fix_groups_and_persists_modified_files(
             ),
         ],
         sections_by_num,
-        DispatchContext(planspace=planspace, codespace=tmp_path / "codespace"),
+        DispatchContext(planspace=planspace, codespace=tmp_path / "codespace", _policies=Services.policies()),
     )
 
     assert affected_sections == ["01", "02"]
@@ -147,7 +147,7 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
                 ),
             ],
             sections_by_num,
-            DispatchContext(planspace=planspace, codespace=tmp_path / "codespace"),
+            DispatchContext(planspace=planspace, codespace=tmp_path / "codespace", _policies=Services.policies()),
         )
 
     assert affected_sections == ["01", "02"]
@@ -185,5 +185,5 @@ def test_execute_coordination_plan_raises_on_fix_group_sentinel(
                 ),
             ],
             sections_by_num,
-            DispatchContext(planspace=planspace, codespace=tmp_path / "codespace"),
+            DispatchContext(planspace=planspace, codespace=tmp_path / "codespace", _policies=Services.policies()),
         )

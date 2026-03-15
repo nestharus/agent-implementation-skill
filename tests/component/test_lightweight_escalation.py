@@ -164,7 +164,7 @@ def test_lightweight_aligned_surfaces_force_reproposal_under_full_intent(
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         result = cycle.run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace),
+            DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -232,7 +232,7 @@ def test_lightweight_aligned_surfaces_persist_registry_entries(
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         cycle.run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace),
+            DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -281,7 +281,7 @@ def test_lightweight_empty_surface_payload_does_not_escalate(
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         result = cycle.run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace),
+            DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -346,7 +346,7 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         result = cycle.run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace),
+            DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
@@ -414,7 +414,7 @@ def test_full_mode_surfaces_do_not_emit_lightweight_escalation_signal(
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         result = cycle.run_proposal_loop(
             section,
-            DispatchContext(planspace=planspace, codespace=codespace),
+            DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
             {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )

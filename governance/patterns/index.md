@@ -206,6 +206,8 @@ consumer migration, runtime-shape tests.
 - `src/scan/substrate/policy.py`,
   `src/scan/substrate/related_files.py`, and
   `src/scan/substrate/schemas.py`
+- `src/scan/related/related_file_resolver.py` — scan validation escalation
+  must stay policy-resolved, not local-fallback driven
 - `src/implementation/service/microstrategy_generator.py`
 - `src/implementation/engine/implementation_cycle.py`
 - `src/proposal/service/readiness_resolver.py`
@@ -293,6 +295,15 @@ consumer migration, runtime-shape tests.
 - Research-question / recurrence discovery consumers in
   `src/orchestrator/engine/strategic_state_builder.py` and
   `src/coordination/service/problem_resolver.py`
+- Input-ref family discovery consumers in
+  `src/dispatch/prompt/context_builder.py`,
+  `src/staleness/service/input_hasher.py`,
+  `src/implementation/repository/roal_index.py`, and
+  `src/implementation/service/impact_analyzer.py`
+- Section/proposal listing consumers in
+  `src/intent/service/philosophy_bootstrapper.py`,
+  `src/scan/service/section_loader.py`, and
+  `src/proposal/repository/excerpts.py`
 - Section-input risk-artifact family consumers in
   `src/implementation/service/risk_artifacts.py`,
   `src/risk/prompt/writers.py`, and
@@ -366,13 +377,15 @@ centrally from policy.
 5. Long-lived controllers (dispatchers, orchestrators) must refresh policy per
    dispatch cycle or use content-hash invalidation. A startup-only policy
    snapshot that goes stale during a long poll loop is a violation.
-6. Local fallback literals must be sourced from the authoritative default
-   module (e.g., `DEFAULT_SCAN_MODELS` in `scan_dispatch_config.py`), not retyped
-   ad hoc at the callsite. Operational callsites must not use
-   `policy.get("key", "literal")` with a retyped literal that duplicates
-   the authoritative default — use `policy["key"]` or `resolve(policy, key)`
-   instead. The authoritative default lives in `ModelPolicy` (for main
-   policy) or `DEFAULT_SCAN_MODELS` (for scan policy), not at the callsite.
+6. Local fallback defaults or policy-key fallback chains must be sourced
+   from the authoritative default module or centralized resolver, not
+   improvised at the callsite. Operational callsites must not use
+   `policy.get(...)` to choose between policy keys or literals (for example
+   `policy.get("exploration", policy["validation"])`) — use
+   `resolve(policy, key)`, direct required-key access, or explicit policy
+   normalization upstream instead. The authoritative default lives in
+   `ModelPolicy` (for main policy) or `DEFAULT_SCAN_MODELS` (for scan policy),
+   not at the callsite.
 7. Helper functions must not carry concrete model defaults in their
    signatures (e.g., `model: str = "glm"`). Callers must pass
    policy-resolved values; helpers must require the parameter. This applies
@@ -946,6 +959,13 @@ a false pass — either way it says nothing about whether the behavior is correc
 12. When architecture doctrine claims that only explicit composition roots may
     touch the service container, add a positive contract that enforces a narrow
     allowlist of sanctioned container-touch sites.
+13. When governance self-report surfaces or test-maintained allowlists publish
+    current residue / health inventories, add a positive contract that derives
+    the live inventory from code and compares it to the published set.
+14. When model-selection policy is supposed to be centralized, add a positive
+    contract that fails if operational callsites perform local
+    `policy.get(...)` fallback logic instead of using the authoritative
+    resolver or required-key contract.
 
 **Canonical instance**: `run_structural_checks()` in
 `evals/agentic/structural_checks.py`
@@ -953,6 +973,10 @@ a false pass — either way it says nothing about whether the behavior is correc
 **Known instances**:
 - `tests/component/test_positive_contracts.py` — component-level positive
   contract suite for doctrine, inventory truth, and registry saturation
+- `tests/component/test_model_policy.py` and
+  `tests/component/test_scan_policy_coherence.py` — policy/default contract
+  surfaces; currently helpful but not sufficient to lock PAT-0005 callsite
+  centralization
 - `evals/agentic/structural_checks.py` — positive assertions over current
   collected outputs (existence, JSON validity, keys, headings, DB rows,
   signal states)
@@ -1030,6 +1054,10 @@ retired. Governance cannot steer the system if its own state reports are stale.
    corresponding archive.
 9. Pattern-archive `Known instances` must point to live paths unless they are
    explicitly marked historical/retired; dead paths are false inventory.
+10. Test-maintained allowlists or quarantine inventories that sanction live
+    residue (for example container-touch site sets) are themselves
+    authoritative self-report surfaces and must be updated atomically when the
+    underlying code inventory changes.
 
 **Canonical instance**: `src/taskrouter/agents.py` +
 `src/taskrouter/discovery.py`
@@ -1120,24 +1148,33 @@ no traced problem/pattern basis is also a violation.
 
 ## PAT-0018: Behavioral Doctrine Projection
 
-**Problem**: PRB-0023 (Behavioral Doctrine Projection Drift)
+**Problem class**: Behavioral doctrine projection drift / method-of-thinking
+split-brain.
 
-**Regions**: Proposal, Implementation, Coordination, Risk, Scan
+**Regions**: proposal, implementation, coordination, risk, scan
 
-**Solution surfaces**: Agent files, dispatch templates, operator docs
+**Solution surfaces**: agent files, dispatch templates, operator docs,
+positive doctrine-projection contracts
+
+**Philosophy**: Agent files carry the method of thinking. When execution
+doctrine changes, the routed agent/template surfaces that embody that doctrine
+must change atomically.
 
 **Template**:
-1. One bounded set of **authoritative doctrine surfaces** owns the live
-   method contract (`src/SKILL.md`, `src/implement.md`).
-2. All routed agent files, dispatch templates, and validating agents
-   **must** be atomically updated when that doctrine changes.
-3. No surface may reintroduce literal "zero risk" claims, "trivially
-   small" shortcut exceptions, or "simple enough to skip a step"
-   reasoning when the authoritative doctrine says otherwise.
-4. The authoritative doctrine heading is **"Accuracy First — Zero
-   Tolerance for Fabrication"** with body text asserting zero tolerance
-   for fabricated understanding or bypassed safeguards, and proportional
-   operational risk via ROAL.
+1. One bounded set of authoritative doctrine surfaces owns the live method
+   contract (`src/SKILL.md`, `src/implement.md`).
+2. All routed agent files, dispatch templates, and validating agents must be
+   atomically updated when that doctrine changes.
+3. No surface may reintroduce literal "zero risk" claims, "trivially small"
+   shortcut exceptions, or "simple enough to skip a step" reasoning when the
+   authoritative doctrine says otherwise.
+4. The authoritative doctrine heading is **"Accuracy First — Zero Tolerance
+   for Fabrication"** with body text asserting zero tolerance for fabricated
+   understanding or bypassed safeguards, and proportional operational risk via
+   ROAL.
+
+**Canonical instance**: `src/SKILL.md` +
+`src/proposal/agents/integration-proposer.md`
 
 **Known instances**:
 - `src/proposal/agents/integration-proposer.md`
@@ -1151,11 +1188,15 @@ no traced problem/pattern basis is also a violation.
 - `src/scan/agents/substrate-pruner.md`
 - `src/scan/agents/substrate-seeder.md`
 - `src/implementation/agents/microstrategy-writer.md`
+- `tests/component/test_positive_contracts.py` — doctrine heading / wording
+  contract surface
 
-**Conformance**: All listed surfaces must use the authoritative heading
-and must not contain the stale "Zero Risk Tolerance" heading, "trivially
-small" exception language, or "accept zero risk" phrasing. Positive
-contract tests enforce this (PAT-0015).
+**Conformance**: All listed surfaces must use the authoritative heading and
+must not contain the stale "Zero Risk Tolerance" heading, "trivially small"
+exception language, or "accept zero risk" phrasing. Positive contract tests
+enforce this (PAT-0015).
+
+---
 
 
 ## PAT-0019: Constructor Dependency Injection / Composition-Root Boundary
@@ -1200,11 +1241,14 @@ docs must describe the same wiring rule the runtime actually follows.
 classes such as `src/coordination/engine/global_coordinator.py`
 
 **Known instances**:
-- `src/orchestrator/engine/pipeline_orchestrator.py` — top-level composition
-  root and builder helpers
-- `src/orchestrator/engine/section_pipeline.py` and
-  `src/risk/engine/risk_assessor.py` — explicit builder helpers that should
-  remain quarantined as composition-only surfaces
+- `src/containers.py` — service-container definition and wiring root
+- `src/orchestrator/engine/pipeline_orchestrator.py`,
+  `src/orchestrator/engine/section_pipeline.py`,
+  `src/risk/engine/risk_assessor.py`, and
+  `src/scan/cli.py` — sanctioned composition roots
+- `src/scan/scan_dispatcher.py` and
+  `src/scan/explore/deep_scanner.py` — explicitly scoped scan-stage
+  build-helper surfaces that may touch `Services` only for wiring
 - `src/coordination/engine/global_coordinator.py`,
   `src/implementation/engine/implementation_phase.py`,
   `src/reconciliation/engine/reconciliation_phase.py`, and
@@ -1215,23 +1259,18 @@ classes such as `src/coordination/engine/global_coordinator.py`
 - `src/staleness/service/section_alignment_checker.py` and
   `src/staleness/service/global_alignment_rechecker.py` — runtime method-level
   container lookups
+- `src/flow/engine/task_dispatcher.py` — mixed surface: top-level composition
+  root plus helper-level `QaGate` construction via `Services`
+- `src/dispatch/engine/section_dispatcher.py`,
+  `src/proposal/engine/proposal_phase.py`, and
+  `src/flow/service/task_request_ingestor.py` — helper/module-level container
+  access that should converge on explicit wiring
 - `src/signals/service/section_communicator.py`,
-  `src/signals/service/message_poller.py`,
-  `src/signals/service/blocker_manager.py`, and
-  `src/signals/service/mailbox_service.py` — compatibility-wrapper /
+  `src/signals/service/message_poller.py`, and
+  `src/signals/service/blocker_manager.py` — compatibility-wrapper /
   backward-compat residue
-- `src/flow/engine/task_dispatcher.py`,
-  `src/dispatch/engine/section_dispatcher.py`,
-  `src/proposal/engine/proposal_phase.py`,
-  `src/flow/service/task_request_ingestor.py`, and
-  `src/intent/engine/intent_initializer.py` — free-function / helper-level
-  container access that should converge on explicit wiring
-- `src/scan/scan_dispatcher.py` and
-  `src/scan/explore/deep_scanner.py` — scan-stage adapter/build-helper
-  surfaces that must remain explicitly scoped if they continue touching
-  `Services`
-- `src/containers.py` and `system-synthesis.md` — authoritative boundary
-  surfaces that must agree with runtime reality
+- `system-synthesis.md` and `tests/component/test_positive_contracts.py` —
+  authoritative boundary-report surfaces that must agree with runtime
 
 **Conformance**: Production runtime code may not touch `Services` outside
 sanctioned composition roots or explicitly quarantined compatibility adapters.
@@ -1249,30 +1288,29 @@ must match the live boundary.
 - **PAT-0002 (Prompt Safety)**: Healthy. R109 clarified that payload-file
   contents are untrusted dynamic content even when delivered through internal
   tasks. QA interceptor now validates payload content before dispatch.
-- **PAT-0003 (Path Registry)**: Improved but not converged. R118 added 7
-  accessors for 3 newly identified families (scope-delta: scope_delta_section/
-  candidate/reconciliation, research-question: research_questions_artifact,
-  section-input risk-artifact: risk_accepted_steps/risk_deferred/
-  modified_file_manifest) and migrated 12 consumer files. R117 added 4
-  accessors and migrated 7 consumers. R116 added reconciliation family. R115
-  added 6 families. Remaining gaps are now discovery/listing islands rather
-  than raw filename construction: research-question aggregation in
-  `strategic_state_builder.py`; decision discovery in
-  `section_reexplorer.py` and `microstrategy_decider.py`; proposal-attempt
-  discovery in `microstrategy_decider.py`; recurrence discovery in
-  `problem_resolver.py`; repeated note-family counting/listing in
-  `notes.py`, `proposal_prep.py`, `intent_initializer.py`,
-  `freshness_calculator.py`, `input_hasher.py`, `risk/prompt/writers.py`,
-  and `coordination/prompt/writers.py`; and `decisions.py` repository
-  functions with raw `decisions_dir` parameters. These are the same PAT-0003
-  class: authoritative family discovery still depends on repeated glob
-  patterns instead of named iterator/listing helpers. Flow relpath helpers
-  remain a documented by-design exception for DB storage.
+- **PAT-0003 (Path Registry)**: Improved but not converged. Note-family and
+  decision-family repository helpers now exist
+  (`coordination/repository/notes.py`, `orchestrator/repository/decisions.py`),
+  so the catalog must stop reporting those helper surfaces as missing. The
+  remaining rule-11 gaps are discovery/listing islands rather than raw
+  filename construction: scope-delta enumeration in
+  `scope_delta_aggregator.py` and `problem_resolver.py`; recurrence discovery
+  in `problem_resolver.py`; proposal-attempt discovery in
+  `microstrategy_decider.py`; research-question aggregation in
+  `strategic_state_builder.py`; input-ref family listing in
+  `context_builder.py`, `input_hasher.py`, `roal_index.py`, and
+  `impact_analyzer.py`; impact/reconciliation evidence selection in
+  `risk/prompt/writers.py`; and section/proposal listing in
+  `philosophy_bootstrapper.py`. Flow relpath helpers remain a documented
+  by-design exception for DB storage.
 - **PAT-0004 (Flow System)**: Healthy.
-- **PAT-0005 (Policy-Driven Models)**: Healthy. R110 replaced the last two
-  local `policy.get()` fallback sites (`proposal_cycle.py` intent_judge,
-  `related_file_resolver.py` validation) with `resolve()` / direct key access.
-  Stale GPT/Opus docstrings rewritten to policy-based language.
+- **PAT-0005 (Policy-Driven Models)**: Regressed. Most runtime callsites still
+  resolve models centrally, but `src/scan/related/related_file_resolver.py`
+  reintroduced local policy-fallback business logic with
+  `ctx.model_policy.get("exploration", ctx.model_policy["validation"])` for
+  validation escalation. The pattern is not healthy again until that choice is
+  pushed back through the authoritative resolver / policy contract and locked
+  by a positive test.
 - **PAT-0006 (Freshness Computation)**: Healthy in mechanism. Governance packet
   overscoping fixed in R108 (no-match returns empty candidates, not full
   archive), reducing avoidable invalidation pressure.
@@ -1300,25 +1338,22 @@ must match the live boundary.
   `safety_blocked`); dispatcher logs `qa:degraded` distinctly from
   `qa:passed`; notifier carries reason_code through lifecycle events;
   reconciliation adjudicator references PAT-0014 degraded states in warnings.
-- **PAT-0015 (Positive Contract Testing)**: Improved but under-scoped. R115
-  resolved the proposal-state split-brain by rolling back ungoverned fields.
-  R116 added positive contract tests for doctrine projection (PAT-0018),
-  reconciliation family-saturation (PAT-0003), and system-synthesis count
-  accuracy (PAT-0016). PAT-0019 is now cataloged and dead known-instance paths
-  are corrected, resolving two previously cited drift classes. The remaining
-  high-value gaps are (a) proposal-state projection locks across
-  agent/template/eval surfaces, (b) authoritative governance
-  archive/path reference-integrity checks, and (c) service-container
-  boundary enforcement outside composition roots.
-- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Improved.
-  PAT-0019 is now cataloged (resolving the phantom reference in
-  `system-synthesis.md`), dead known-instance paths are corrected, and the
-  19-pattern count is now accurate. The remaining gap is that the published
-  constructor-DI boundary is not fully runtime-true: `system-synthesis.md`
-  still describes a cleaner boundary than the runtime actually enforces,
-  because service-locator residue persists in constructor fallbacks,
-  helper-level container lookups, and compatibility wrappers across several
-  production modules. R114's runtime-truth sweep remains valuable.
+- **PAT-0015 (Positive Contract Testing)**: Improved but still under-scoped.
+  The suite now covers doctrine projection, archive reference integrity,
+  system-synthesis count truth, and a bounded `Services` allowlist, but it does
+  not yet lock the two drift classes that reopened this round: governance
+  self-report truthfulness and policy-centralization regressions. In practice,
+  `tests/component/test_positive_contracts.py` now carries stale sanctioned /
+  quarantined container inventories, and no positive contract currently fails
+  on local `policy.get(...)` model-fallback logic such as the
+  `related_file_resolver.py` escalation path.
+- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Improved, but
+  governance self-report drift reopened. `system-synthesis.md` is broadly
+  runtime-true, but present-tense self-reports are stale in the PAT-0003,
+  PAT-0005, PAT-0015, and PAT-0019 health notes; PRB-0019/0020/0021; RISK-0008;
+  and the allowlist/quarantine inventories inside
+  `tests/component/test_positive_contracts.py`. The active drift is now about
+  published residue/health inventories, not agent/path counts.
 - **PAT-0017 (Proposal-State Contract Projection)**: Improved. R115 rolled
   back the three ungoverned required fields (`constraint_ids`,
   `governance_candidate_refs`, `design_decision_refs`) from the canonical
@@ -1332,19 +1367,16 @@ must match the live boundary.
   instances and positive contract test list. All 11 live routed doctrine
   surfaces now match the authoritative wording in SKILL.md and implement.md.
 - **PAT-0019 (Constructor Dependency Injection / Composition-Root Boundary)**:
-  New, now cataloged, not fully converged. Free-function backward-compat
-  wrappers are retired (`expansion_facade.py`, `flow_facade.py`,
-  `philosophy.py` deleted; `qa_gate.py` converted to class; `persist_decision`
-  inlined into `DecisionRecorder`; SQL consolidated into repository layer).
-  Remaining service-locator residue: constructor fallbacks in `cache.py`,
-  `pipeline/context.py`, `substrate_discoverer.py`; runtime method-level
-  container lookups in `section_alignment_checker.py` and
-  `global_alignment_rechecker.py`; compat wrappers in
-  `section_communicator.py` and `mailbox_service.py`; helper/module-level
-  container access in `task_dispatcher.py`, `section_dispatcher.py`,
-  `proposal_phase.py`, `task_request_ingestor.py`, and
-  `intent_initializer.py`. Legitimate composition-root / adapter surfaces:
-  `pipeline_orchestrator.py`, `section_pipeline.py`, `risk_assessor.py`,
-  `scan/cli.py`, `task_dispatcher.py` (`_get_dispatcher`), and the
-  scan-stage builder/adapter helpers in `deep_scanner.py` and
-  `scan_dispatcher.py` if they remain explicitly scoped and allowlisted.
+  Cataloged, still not converged. Actual production `Services` import sites are
+  narrower than several governance surfaces report: `mailbox_service.py`,
+  `intent_initializer.py`, `orchestrator/service/pipeline_state.py`, and
+  `pipeline/middleware.py` should not be described as current residue. Real
+  residue remains in constructor fallbacks (`cache.py`, `pipeline/context.py`,
+  `substrate_discoverer.py`), runtime method/container lookups
+  (`section_alignment_checker.py`, `global_alignment_rechecker.py`),
+  helper-level wiring (`task_dispatcher.py`, `section_dispatcher.py`,
+  `proposal_phase.py`, `task_request_ingestor.py`), and compatibility wrappers
+  (`section_communicator.py`, `message_poller.py`, `blocker_manager.py`).
+  Sanctioned composition roots remain `containers.py`, `scan/cli.py`,
+  `pipeline_orchestrator.py`, `section_pipeline.py`, `risk_assessor.py`, and
+  the explicitly scoped scan build helpers.
