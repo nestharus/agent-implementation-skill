@@ -277,6 +277,22 @@ consumer migration, runtime-shape tests.
   `src/reconciliation/repository/results.py`
 - Research-question family consumer in
   `src/proposal/engine/readiness_gate.py`
+- Cross-section note family consumers in
+  `src/coordination/repository/notes.py`,
+  `src/proposal/service/proposal_prep.py`,
+  `src/intent/engine/intent_initializer.py`,
+  `src/staleness/service/freshness_calculator.py`,
+  `src/staleness/service/input_hasher.py`,
+  `src/risk/prompt/writers.py`, and
+  `src/coordination/prompt/writers.py`
+- Decision / proposal-signal discovery consumers in
+  `src/orchestrator/repository/decisions.py`,
+  `src/implementation/service/section_reexplorer.py`,
+  `src/implementation/service/microstrategy_decider.py`, and
+  `src/intent/service/philosophy_bootstrapper.py`
+- Research-question / recurrence discovery consumers in
+  `src/orchestrator/engine/strategic_state_builder.py` and
+  `src/coordination/service/problem_resolver.py`
 - Section-input risk-artifact family consumers in
   `src/implementation/service/risk_artifacts.py`,
   `src/risk/prompt/writers.py`, and
@@ -1200,12 +1216,20 @@ classes such as `src/coordination/engine/global_coordinator.py`
   `src/staleness/service/global_alignment_rechecker.py` — runtime method-level
   container lookups
 - `src/signals/service/section_communicator.py`,
-  `src/signals/service/message_poller.py`, and
-  `src/signals/service/blocker_manager.py` — compatibility-wrapper residue
+  `src/signals/service/message_poller.py`,
+  `src/signals/service/blocker_manager.py`, and
+  `src/signals/service/mailbox_service.py` — compatibility-wrapper /
+  backward-compat residue
 - `src/flow/engine/task_dispatcher.py`,
-  `src/dispatch/engine/section_dispatcher.py`, and
-  `src/proposal/engine/proposal_phase.py` — free-function / helper-level
+  `src/dispatch/engine/section_dispatcher.py`,
+  `src/proposal/engine/proposal_phase.py`,
+  `src/flow/service/task_request_ingestor.py`, and
+  `src/intent/engine/intent_initializer.py` — free-function / helper-level
   container access that should converge on explicit wiring
+- `src/scan/scan_dispatcher.py` and
+  `src/scan/explore/deep_scanner.py` — scan-stage adapter/build-helper
+  surfaces that must remain explicitly scoped if they continue touching
+  `Services`
 - `src/containers.py` and `system-synthesis.md` — authoritative boundary
   surfaces that must agree with runtime reality
 
@@ -1231,12 +1255,19 @@ must match the live boundary.
   section-input risk-artifact: risk_accepted_steps/risk_deferred/
   modified_file_manifest) and migrated 12 consumer files. R117 added 4
   accessors and migrated 7 consumers. R116 added reconciliation family. R115
-  added 6 families. Remaining gaps are now concentrated in discovery/listing
-  sites: research-question aggregation in `strategic_state_builder.py`,
-  decision discovery in `section_reexplorer.py` and `microstrategy_decider.py`,
-  recurrence discovery in `problem_resolver.py`, and `decisions.py`
-  repository functions with raw `decisions_dir` parameters. Flow relpath
-  helpers remain a documented by-design exception for DB storage.
+  added 6 families. Remaining gaps are now discovery/listing islands rather
+  than raw filename construction: research-question aggregation in
+  `strategic_state_builder.py`; decision discovery in
+  `section_reexplorer.py` and `microstrategy_decider.py`; proposal-attempt
+  discovery in `microstrategy_decider.py`; recurrence discovery in
+  `problem_resolver.py`; repeated note-family counting/listing in
+  `notes.py`, `proposal_prep.py`, `intent_initializer.py`,
+  `freshness_calculator.py`, `input_hasher.py`, `risk/prompt/writers.py`,
+  and `coordination/prompt/writers.py`; and `decisions.py` repository
+  functions with raw `decisions_dir` parameters. These are the same PAT-0003
+  class: authoritative family discovery still depends on repeated glob
+  patterns instead of named iterator/listing helpers. Flow relpath helpers
+  remain a documented by-design exception for DB storage.
 - **PAT-0004 (Flow System)**: Healthy.
 - **PAT-0005 (Policy-Driven Models)**: Healthy. R110 replaced the last two
   local `policy.get()` fallback sites (`proposal_cycle.py` intent_judge,
@@ -1275,15 +1306,18 @@ must match the live boundary.
   reconciliation family-saturation (PAT-0003), and system-synthesis count
   accuracy (PAT-0016). PAT-0019 is now cataloged and dead known-instance paths
   are corrected, resolving two previously cited drift classes. The remaining
-  high-value gap is service-container boundary enforcement outside composition
-  roots. Proposal-state projection also remains under-locked across
-  agent/template/eval surfaces.
+  high-value gaps are (a) proposal-state projection locks across
+  agent/template/eval surfaces, (b) authoritative governance
+  archive/path reference-integrity checks, and (c) service-container
+  boundary enforcement outside composition roots.
 - **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Improved.
   PAT-0019 is now cataloged (resolving the phantom reference in
   `system-synthesis.md`), dead known-instance paths are corrected, and the
   19-pattern count is now accurate. The remaining gap is that the published
-  constructor-DI boundary is not fully runtime-true: service-locator residue
-  persists in constructor fallbacks and backward-compat wrappers across several
+  constructor-DI boundary is not fully runtime-true: `system-synthesis.md`
+  still describes a cleaner boundary than the runtime actually enforces,
+  because service-locator residue persists in constructor fallbacks,
+  helper-level container lookups, and compatibility wrappers across several
   production modules. R114's runtime-truth sweep remains valuable.
 - **PAT-0017 (Proposal-State Contract Projection)**: Improved. R115 rolled
   back the three ungoverned required fields (`constraint_ids`,
@@ -1304,8 +1338,13 @@ must match the live boundary.
   inlined into `DecisionRecorder`; SQL consolidated into repository layer).
   Remaining service-locator residue: constructor fallbacks in `cache.py`,
   `pipeline/context.py`, `substrate_discoverer.py`; runtime method-level
-  container lookups in `section_alignment_checker.py`,
+  container lookups in `section_alignment_checker.py` and
   `global_alignment_rechecker.py`; compat wrappers in
-  `section_communicator.py`. Legitimate composition roots:
+  `section_communicator.py` and `mailbox_service.py`; helper/module-level
+  container access in `task_dispatcher.py`, `section_dispatcher.py`,
+  `proposal_phase.py`, `task_request_ingestor.py`, and
+  `intent_initializer.py`. Legitimate composition-root / adapter surfaces:
   `pipeline_orchestrator.py`, `section_pipeline.py`, `risk_assessor.py`,
-  `scan/cli.py`, `task_dispatcher.py` (`_get_dispatcher`).
+  `scan/cli.py`, `task_dispatcher.py` (`_get_dispatcher`), and the
+  scan-stage builder/adapter helpers in `deep_scanner.py` and
+  `scan_dispatcher.py` if they remain explicitly scoped and allowlisted.

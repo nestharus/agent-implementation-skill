@@ -107,7 +107,7 @@ Post-implementation assessment emits `accept_with_debt` verdicts with typed `deb
 ### RISK-0008: Service-container boundary residue
 
 - **Category**: coupling / pattern-drift
-- **Region**: constructor fallbacks (`cache.py`, `pipeline/context.py`, `substrate_discoverer.py`), runtime method-level lookups (`section_alignment_checker.py`, `global_alignment_rechecker.py`), backward-compat wrappers (`section_communicator.py`), runtime helpers (`section_dispatcher.py`, `task_dispatcher.py` non-composition-root sites)
+- **Region**: constructor fallbacks (`cache.py`, `pipeline/context.py`, `substrate_discoverer.py`), runtime method-level lookups (`section_alignment_checker.py`, `global_alignment_rechecker.py`), backward-compat wrappers (`section_communicator.py`, `mailbox_service.py`), runtime helpers (`section_dispatcher.py`, `task_dispatcher.py`, `proposal_phase.py`, `task_request_ingestor.py`, `intent_initializer.py` non-composition-root sites), unclassified scan-stage adapters (`scan_dispatcher.py`, `deep_scanner.py`)
 - **Description**: PAT-0019 formalizes the constructor-DI / composition-root boundary, but service-locator residue persists in production code outside sanctioned composition roots. Constructor fallbacks silently resolve missing dependencies from the global container instead of requiring explicit wiring. Runtime methods build collaborator graphs from `Services` inside business logic. Backward-compat wrapper functions delegate through the container instead of through injected dependencies.
 - **Severity**: medium
 - **Status**: accepted
