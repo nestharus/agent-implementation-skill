@@ -93,6 +93,10 @@ _SCENARIO_MODULES = [
     "evals.scenarios.microstrategy_writer",
     "evals.scenarios.post_assessment",
     "evals.scenarios.alignment_adjudicator",
+    "evals.scenarios.substrate_agents",
+    "evals.scenarios.philosophy_agents",
+    "evals.scenarios.domain_researcher",
+    "evals.scenarios.intent_agents",
 ]
 
 
