@@ -1,13 +1,12 @@
 """End-to-end greenfield QA tests for the pipeline runner.
 
-Verifies that the full pipeline runner bootstraps correctly for a
-greenfield project (no existing code, just a spec): planspace creation,
-parameters.json, run-metadata.json, governance scaffolding, run.db
-initialization, schedule rendering, and stage dispatch behaviour.
+Verifies that the bootstrap runner creates the planspace correctly:
+parameters.json, run-metadata.json, run.db initialization, spec copy,
+and the handoff seam.
 
-Mock boundary: ``Services.dispatcher()`` and ``Services.policies()``
-are mocked to avoid real LLM calls.  Everything else — file I/O,
-SQLite initialization, template rendering — runs for real.
+Mock boundary: ``_handoff`` is patched to avoid real orchestrator
+construction.  Everything else -- file I/O, SQLite initialization --
+runs for real.
 """
 
 from __future__ import annotations
@@ -15,22 +14,14 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-from dependency_injector import providers
 
-from conftest import MockDispatcher, StubPolicies
-from containers import Services
 from intake.repository.governance_loader import bootstrap_governance_if_missing
 from orchestrator.path_registry import PathRegistry
 from pipeline.runner import (
-    StageError,
-    _CRITICAL_STAGES,
-    _STAGES,
     _init_planspace,
-    _run_stage,
-    _write_schedule,
     main,
 )
 
@@ -40,7 +31,7 @@ from pipeline.runner import (
 # ---------------------------------------------------------------------------
 
 def _make_greenfield_codespace(tmp_path: Path) -> Path:
-    """Create a codespace with only a project-spec.md — no existing code."""
+    """Create a codespace with only a project-spec.md -- no existing code."""
     cs = tmp_path / "codespace"
     cs.mkdir()
     (cs / "project-spec.md").write_text(
@@ -55,31 +46,12 @@ def _make_spec(codespace: Path) -> Path:
     return codespace / "project-spec.md"
 
 
-def _override_policies_and_dispatcher():
-    """Override Services with stubs that avoid real LLM/policy calls.
-
-    Returns (mock_dispatcher, cleanup_fn) so tests can inspect calls
-    and clean up after themselves.
-    """
-    stub_policies = StubPolicies()
-    mock_disp = MockDispatcher()
-
-    Services.dispatcher.override(providers.Object(mock_disp))
-    Services.policies.override(providers.Object(stub_policies))
-
-    def cleanup():
-        Services.dispatcher.reset_override()
-        Services.policies.reset_override()
-
-    return mock_disp, cleanup
-
-
 # ---------------------------------------------------------------------------
 # Test 1: Planspace structure
 # ---------------------------------------------------------------------------
 
 class TestPlanspaceStructure:
-    """Verify that runner init creates the planspace directory tree."""
+    """Verify that runner init creates the planspace artifacts root."""
 
     def test_runner_creates_planspace_structure(self, tmp_path: Path) -> None:
         cs = _make_greenfield_codespace(tmp_path)
@@ -90,10 +62,6 @@ class TestPlanspaceStructure:
 
         assert ps.is_dir()
         assert registry.artifacts.is_dir()
-        # Verify several key subdirectories exist
-        assert registry.sections_dir().is_dir()
-        assert registry.proposals_dir().is_dir()
-        assert registry.signals_dir().is_dir()
 
 
 # ---------------------------------------------------------------------------
@@ -165,16 +133,8 @@ class TestSlugOverridesPlanspace:
         cs = _make_greenfield_codespace(tmp_path)
         spec = _make_spec(cs)
 
-        # Use main() with --slug to test the planspace override.
-        # We need to mock out everything after init to avoid real dispatch.
-        mock_disp, cleanup = _override_policies_and_dispatcher()
-        mock_disp.mock.return_value = ""
         try:
-            # Patch _run_stage to avoid real stage execution and
-            # _write_schedule to avoid needing a real template render
-            # when the planspace is under ~/.claude
-            with patch("pipeline.runner._run_stage") as mock_stage, \
-                 patch("pipeline.runner._write_schedule"):
+            with patch("pipeline.runner._handoff"):
                 result = main([
                     str(tmp_path / "dummy-planspace"),
                     str(cs),
@@ -183,16 +143,11 @@ class TestSlugOverridesPlanspace:
                 ])
 
             expected_planspace = Path.home() / ".claude" / "workspaces" / "myproject"
-            # Verify the planspace was set correctly by checking
-            # the first call to _run_stage (if any) or the artifacts
-            # created at the slug path.
             assert expected_planspace.is_dir() or result == 0
-            # The main function resolves planspace from slug
             # Verify by checking that parameters.json was written there
             params = expected_planspace / "artifacts" / "parameters.json"
             assert params.exists()
         finally:
-            cleanup()
             # Clean up the slug directory if created
             slug_dir = Path.home() / ".claude" / "workspaces" / "myproject"
             if slug_dir.exists():
@@ -302,237 +257,61 @@ class TestRunDbInit:
 
 
 # ---------------------------------------------------------------------------
-# Test 7: Schedule rendering
+# Test 7: Handoff seam
 # ---------------------------------------------------------------------------
 
-class TestScheduleRendering:
-    """Verify _write_schedule renders the template with expected stage names."""
+class TestHandoff:
+    """Verify the handoff seam delegates correctly."""
 
-    def test_runner_renders_schedule(self, tmp_path: Path) -> None:
-        ps = tmp_path / "planspace"
-        ps.mkdir()
-        spec = tmp_path / "my-spec.md"
-        spec.write_text("# Spec\n")
-
-        _write_schedule(ps, spec)
-
-        schedule_path = ps / "schedule.md"
-        assert schedule_path.exists()
-
-        content = schedule_path.read_text(encoding="utf-8")
-        # All expected stage names must appear in the schedule
-        assert "decompose" in content
-        assert "docstrings" in content
-        assert "scan" in content
-        assert "substrate" in content
-        assert "section-loop" in content
-        assert "verify" in content
-        assert "post-verify" in content
-        assert "promote" in content
-
-    def test_schedule_header_references_template_slots(self, tmp_path: Path) -> None:
-        """Schedule header contains the task-name and proposal-path slots.
-
-        The template uses double-brace escaping (``{{task-name}}``) which
-        Python's ``format_map`` renders as literal ``{task-name}``.
-        """
-        ps = tmp_path / "planspace"
-        ps.mkdir()
-        spec = tmp_path / "build-widget.md"
-        spec.write_text("# Widget Spec\n")
-
-        _write_schedule(ps, spec)
-
-        content = (ps / "schedule.md").read_text(encoding="utf-8")
-        # Template renders header with slot markers
-        assert "Schedule:" in content
-        assert "Source:" in content
-
-    def test_schedule_lines_start_with_wait(self, tmp_path: Path) -> None:
-        """All stage lines start with [wait] after initial rendering."""
-        ps = tmp_path / "planspace"
-        ps.mkdir()
-        spec = tmp_path / "spec.md"
-        spec.write_text("# Spec\n")
-
-        _write_schedule(ps, spec)
-
-        content = (ps / "schedule.md").read_text(encoding="utf-8")
-        stage_lines = [
-            line for line in content.splitlines()
-            if line.strip() and not line.startswith("#")
-        ]
-        for line in stage_lines:
-            assert line.startswith("[wait]"), f"Expected [wait] prefix: {line}"
-
-
-# ---------------------------------------------------------------------------
-# Test 8: QA-mode dispatch goes through dispatcher
-# ---------------------------------------------------------------------------
-
-class TestUnimplementedStagesRaiseNotImplemented:
-    """Stages that need domain-specific orchestration raise NotImplementedError."""
-
-    def test_decompose_not_implemented(self, tmp_path: Path) -> None:
-        from pipeline.runner import _run_decompose
-        cs = _make_greenfield_codespace(tmp_path)
-        ps = tmp_path / "planspace"
-        spec = _make_spec(cs)
-        registry = _init_planspace(ps, cs, "test", True, spec)
-        with pytest.raises(NotImplementedError, match="decompose"):
-            _run_decompose(ps, cs, registry)
-
-    def test_verify_not_implemented(self, tmp_path: Path) -> None:
-        from pipeline.runner import _run_verify
-        cs = _make_greenfield_codespace(tmp_path)
-        ps = tmp_path / "planspace"
-        spec = _make_spec(cs)
-        registry = _init_planspace(ps, cs, "test", True, spec)
-        with pytest.raises(NotImplementedError, match="verify"):
-            _run_verify(ps, cs, registry)
-
-
-# ---------------------------------------------------------------------------
-# Test 9: Critical stage failure aborts
-# ---------------------------------------------------------------------------
-
-class TestCriticalStageFailureAborts:
-    """Verify that a critical stage failure aborts the pipeline."""
-
-    def test_runner_critical_stage_failure_aborts(self, tmp_path: Path) -> None:
-        cs = _make_greenfield_codespace(tmp_path)
-        spec = _make_spec(cs)
-
-        # decompose raises NotImplementedError (critical stage) -> pipeline returns 1
-        with patch("pipeline.runner._mark_schedule") as mock_schedule:
-            mock_schedule.return_value = ""
-            result = main([
-                str(tmp_path / "planspace"),
-                str(cs),
-                "--spec", str(spec),
-                "--qa-mode",
-            ])
-
-        assert result == 1
-
-        fail_calls = [
-            call for call in mock_schedule.call_args_list
-            if call[0][0] == "fail"
-        ]
-        assert len(fail_calls) > 0
-
-    def test_critical_stages_are_defined(self) -> None:
-        """decompose and section-loop are critical stages."""
-        assert "decompose" in _CRITICAL_STAGES
-        assert "section-loop" in _CRITICAL_STAGES
-
-
-# ---------------------------------------------------------------------------
-# Test 10: Non-critical stage failure continues
-# ---------------------------------------------------------------------------
-
-class TestNoncriticalStageFailureContinues:
-    """Verify that a non-critical stage failure allows the pipeline to continue."""
-
-    def test_runner_noncritical_stage_failure_continues(
-        self, tmp_path: Path,
-    ) -> None:
-        cs = _make_greenfield_codespace(tmp_path)
-        spec = _make_spec(cs)
-
-        mock_disp, cleanup = _override_policies_and_dispatcher()
-
-        # Track which stages are dispatched
-        dispatched_stages: list[str] = []
-
-        def fake_run_stage(stage_name, planspace, codespace, registry):
-            dispatched_stages.append(stage_name)
-            if stage_name == "docstrings":
-                raise StageError("docstrings", "non-critical failure")
-
-        try:
-            with patch("pipeline.runner._run_stage", side_effect=fake_run_stage), \
-                 patch("pipeline.runner._mark_schedule", return_value=""):
-                result = main([
-                    str(tmp_path / "planspace"),
-                    str(cs),
-                    "--spec", str(spec),
-                ])
-
-            # Pipeline should complete successfully (return 0)
-            # because docstrings is non-critical
-            assert result == 0
-
-            # Verify decompose ran first, then docstrings, then scan
-            # (pipeline did NOT abort after docstrings failure)
-            assert "decompose" in dispatched_stages
-            assert "docstrings" in dispatched_stages
-            assert "scan" in dispatched_stages
-
-            # Verify stages after docstrings were attempted
-            docstrings_idx = dispatched_stages.index("docstrings")
-            assert len(dispatched_stages) > docstrings_idx + 1
-
-        finally:
-            cleanup()
-
-    def test_docstrings_is_not_critical(self) -> None:
-        """docstrings stage is NOT in the critical stages set."""
-        assert "docstrings" not in _CRITICAL_STAGES
-
-    def test_noncritical_stage_failure_marks_schedule_fail(self, tmp_path: Path) -> None:
-        """When a non-critical stage raises an error,
-        the schedule is marked fail and the error propagates as StageError."""
+    def test_main_calls_handoff(self, tmp_path: Path) -> None:
+        """main() calls _handoff after initialization."""
         cs = _make_greenfield_codespace(tmp_path)
         ps = tmp_path / "planspace"
         spec = _make_spec(cs)
 
-        registry = _init_planspace(ps, cs, "test", False, spec)
-        _write_schedule(ps, spec)
+        with patch("pipeline.runner._handoff") as mock_handoff:
+            result = main([str(ps), str(cs), "--spec", str(spec)])
 
-        with patch("pipeline.runner._mark_schedule") as mock_schedule:
-            mock_schedule.return_value = ""
-            # docstrings raises NotImplementedError -> wrapped as StageError
-            with pytest.raises(StageError, match="docstrings"):
-                _run_stage("docstrings", ps, cs, registry)
+        assert result == 0
+        mock_handoff.assert_called_once()
+        call_args = mock_handoff.call_args
+        assert call_args[0][0] == ps  # planspace
+        assert call_args[0][1] == cs  # codespace
 
-            fail_calls = [
-                call for call in mock_schedule.call_args_list
-                if call[0][0] == "fail"
-            ]
-            assert len(fail_calls) > 0
+    def test_spec_copied_to_artifacts(self, tmp_path: Path) -> None:
+        """main() copies the spec into artifacts/spec.md."""
+        cs = _make_greenfield_codespace(tmp_path)
+        ps = tmp_path / "planspace"
+        spec = _make_spec(cs)
+
+        with patch("pipeline.runner._handoff"):
+            main([str(ps), str(cs), "--spec", str(spec)])
+
+        spec_dest = ps / "artifacts" / "spec.md"
+        assert spec_dest.exists()
+        assert spec_dest.read_text(encoding="utf-8") == spec.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
-# Additional: Full init path (init + governance + schedule)
+# Test 8: Full init path
 # ---------------------------------------------------------------------------
 
 class TestFullInitPath:
-    """Verify the full initialization sequence that main() performs
-    before driving stages."""
+    """Verify the full initialization sequence that main() performs."""
 
     def test_full_init_creates_all_artifacts(self, tmp_path: Path) -> None:
         cs = _make_greenfield_codespace(tmp_path)
         ps = tmp_path / "planspace"
         spec = _make_spec(cs)
 
-        # Run the full init sequence manually
-        registry = _init_planspace(ps, cs, "full-init", True, spec)
-        bootstrap_governance_if_missing(cs)
-        _write_schedule(ps, spec)
-
-        # Copy spec like main() does
-        spec_dest = registry.artifacts / "spec.md"
-        spec_dest.write_text(spec.read_text(encoding="utf-8"), encoding="utf-8")
+        with patch("pipeline.runner._handoff"):
+            main([str(ps), str(cs), "--spec", str(spec)])
 
         # Verify everything is in place
         assert (ps / "artifacts" / "parameters.json").exists()
         assert (ps / "artifacts" / "run-metadata.json").exists()
         assert (ps / "run.db").exists()
-        assert (ps / "schedule.md").exists()
         assert (ps / "artifacts" / "spec.md").exists()
-        assert (cs / "governance" / "problems" / "index.md").exists()
-        assert (cs / "governance" / "patterns" / "index.md").exists()
 
     def test_init_is_idempotent(self, tmp_path: Path) -> None:
         """Calling _init_planspace twice does not corrupt state."""

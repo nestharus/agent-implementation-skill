@@ -441,6 +441,7 @@ class GovernanceLoader:
         which indexes failed so downstream consumers can distinguish parse
         failure from true no-governance (PAT-0008 R108).
         """
+        bootstrap_governance_if_missing(codespace)
         paths = PathRegistry(planspace)
 
         parsed, parse_failures = self._parse_governance_indexes(codespace)

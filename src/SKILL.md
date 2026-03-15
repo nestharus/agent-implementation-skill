@@ -170,13 +170,14 @@ All implementation work goes through the canonical pipeline runner:
 
     python -m pipeline <planspace> <codespace> --spec <spec-path> [--slug <slug>] [--qa-mode]
 
-The runner owns stages 1-7 end-to-end: planspace initialization, governance bootstrap,
-schedule rendering, section decomposition, codemap exploration, substrate discovery,
-section-loop (propose -> align -> implement), verification, and promotion.
+The runner provides minimal bootstrap: planspace initialization (paths,
+parameters.json, run-metadata.json, run.db), then hands off to the
+adaptive orchestration system.  It does NOT own stages, schedule,
+governance, or directory scaffolding -- those are determined by the
+system's own decision-making (ROAL, coordination, signal processing).
 
 Do NOT dispatch agents directly via the `agents` binary or write prompts manually.
-All dispatch must go through the pipeline runner, which ensures QA interception,
-coordination DB tracking, and section-loop discipline.
+All dispatch must go through the pipeline's adaptive orchestration system.
 
 Never use any sub-agent spawning or delegation mechanism outside this
 repo's dispatch and task-submission system — external spawning

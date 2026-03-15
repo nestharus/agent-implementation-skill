@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     )
 
 from intake.service.assessment_evaluator import AssessmentEvaluator
-from intake.repository.governance_loader import bootstrap_governance_if_missing, GovernanceLoader
+from intake.repository.governance_loader import GovernanceLoader
 from coordination.engine.coordination_controller import CoordinationController
 from coordination.types import CoordinationStatus
 from implementation.engine.implementation_phase import (
@@ -111,11 +111,7 @@ class PipelineOrchestrator:
             sys.exit(1)
 
         paths = PathRegistry(args.planspace)
-        paths.ensure_artifacts_tree()
         sections_dir = paths.sections_dir()
-
-        # Initialize coordination DB (idempotent) and register
-        init_db(paths.run_db())
         self._communicator.mailbox_register(args.planspace)
         self._communicator.set_parent(args.parent)
         self._pipeline_control.set_parent(args.parent)
@@ -165,16 +161,20 @@ class PipelineOrchestrator:
     def _run_loop(self, ctx: DispatchContext,
                   sections_dir: Path, global_proposal: Path,
                   global_alignment: Path) -> None:
-        bootstrap_governance_if_missing(ctx.codespace)
+        # Governance bootstrap is demand-driven via build_governance_indexes()
         governance_loader = GovernanceLoader(artifact_io=self._artifact_io)
         governance_loader.build_governance_indexes(ctx.codespace, ctx.planspace)
-        _mode_resolver = ProjectModeResolver(
-            artifact_io=self._artifact_io,
-            logger=self._logger,
-            pipeline_control=self._pipeline_control,
-        )
-        project_mode, mode_constraints = _mode_resolver.resolve_project_mode(ctx.planspace)
-        _mode_resolver.write_mode_contract(ctx.planspace, project_mode, mode_constraints)
+
+        # Project mode: resolve only if not already determined by scan
+        _paths = PathRegistry(ctx.planspace)
+        if not _paths.project_mode_json().exists():
+            _mode_resolver = ProjectModeResolver(
+                artifact_io=self._artifact_io,
+                logger=self._logger,
+                pipeline_control=self._pipeline_control,
+            )
+            project_mode, mode_constraints = _mode_resolver.resolve_project_mode(ctx.planspace)
+            _mode_resolver.write_mode_contract(ctx.planspace, project_mode, mode_constraints)
 
         all_sections = load_sections(sections_dir)
         for sec in all_sections:

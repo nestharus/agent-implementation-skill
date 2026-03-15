@@ -47,8 +47,8 @@ loops — the control plane handles all mechanical coordination.
 
       python -m pipeline <planspace> <codespace> --spec <spec-path>
 
-  Note: `scripts/workflow.sh` manages schedule state markers (next/done/fail/skip).
-  It is invoked internally by the runner. It is NOT the pipeline entry point.
+  The runner provides minimal bootstrap (planspace, metadata, run.db)
+  then hands off to the adaptive orchestration system.
 - **Monitor** progress via `db.sh tail` / `db.sh query`
 - **Respond** to blockers (pause/resume signals, `ask:` messages)
 - **Read** proposals, agent outputs, alignment verdicts, test results
@@ -553,12 +553,12 @@ The control plane is script-owned:
    `flow.engine.task_dispatcher` polls the DB task queue for tasks
    submitted programmatically.
 
-The workflow schedule is managed by the pipeline runner (`python -m pipeline`)
-which invokes `scripts/workflow.sh` internally for schedule state markers.
-The orchestrating session must NOT invoke `workflow.sh` or `agents` directly.
+The pipeline runner (`python -m pipeline`) bootstraps the planspace and
+hands off to the adaptive orchestration system. The orchestrating session
+must NOT invoke `workflow.sh` or `agents` directly.
 All coordination goes through `db.sh` and a single `run.db` per pipeline run. No
 team/SendMessage infrastructure -- agents are standalone processes launched
-by the pipeline runner, not Claude teammates. Every coordination operation (send,
+by the orchestration system, not Claude teammates. Every coordination operation (send,
 recv, log) is automatically recorded in the database. Messages are claimed,
 not consumed -- the database file is the complete audit trail.
 
