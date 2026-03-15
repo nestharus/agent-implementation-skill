@@ -83,8 +83,16 @@ class SectionDispatcher:
         """Run QA gate evaluation. Returns rejection result or None to proceed."""
         if agent_file == "qa-interceptor.md":
             return None
-        from qa.service.qa_gate import evaluate_qa_gate
-        intercept = evaluate_qa_gate(
+        from containers import Services
+        from qa.service.qa_gate import QaGate
+        qa_gate = QaGate(
+            artifact_io=self._artifact_io,
+            task_router=self._task_router,
+            policies=Services.policies(),
+            dispatcher=Services.dispatcher(),
+            prompt_guard=self._prompt_guard,
+        )
+        intercept = qa_gate.evaluate(
             planspace, agent_file, prompt_path,
             submitted_by=agent_name or "section-loop",
         )

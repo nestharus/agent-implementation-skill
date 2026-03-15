@@ -22,10 +22,41 @@ from src.orchestrator.path_registry import PathRegistry
 
 from flow.types.context import FlowEnvelope
 from flow.types.schema import TaskSpec
-from flow.service.flow_facade import (
-    reconcile_task_completion,
-    submit_chain,
-)
+from flow.engine.flow_submitter import FlowSubmitter
+from flow.engine.reconciler import Reconciler
+from flow.repository.flow_context_store import FlowContextStore
+from flow.repository.gate_repository import GateRepository
+from implementation.service.traceability_writer import TraceabilityWriter
+
+
+def submit_chain(env, steps, **kwargs):
+    return Services.flow_ingestion().submit_chain(env, steps, **kwargs)
+
+
+def reconcile_task_completion(db_path, planspace, task_id, status, output_path, **kwargs):
+    artifact_io = Services.artifact_io()
+    flow_context_store = FlowContextStore(artifact_io)
+    flow_submitter = FlowSubmitter(
+        freshness=Services.freshness(),
+        flow_context_store=flow_context_store,
+    )
+    gate_repository = GateRepository(artifact_io)
+    reconciler = Reconciler(
+        artifact_io=artifact_io,
+        research=Services.research(),
+        prompt_guard=Services.prompt_guard(),
+        flow_submitter=flow_submitter,
+        gate_repository=gate_repository,
+        traceability_writer=TraceabilityWriter(
+            artifact_io=artifact_io,
+            hasher=Services.hasher(),
+            logger=Services.logger(),
+            section_alignment=Services.section_alignment(),
+        ),
+    )
+    return reconciler.reconcile_task_completion(
+        db_path, planspace, task_id, status, output_path, **kwargs,
+    )
 from staleness.service.freshness_calculator import compute_section_freshness
 
 

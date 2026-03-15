@@ -11,8 +11,41 @@ from containers import CrossSectionService, Services
 from dispatch.prompt.writers import Writers as PromptWriters
 from pipeline.context import DispatchContext
 from reconciliation.repository.results import Results
-from src.intent.service.expansion_facade import run_expansion_cycle
+from intent.engine.expansion_orchestrator import ExpansionOrchestrator
 from src.orchestrator.types import Section
+
+
+def _make_expansion_orchestrator():
+    from containers import Services
+    from intent.engine.expansion_orchestrator import ExpansionOrchestrator
+    from intent.service.expanders import Expanders
+    from intent.service.philosophy_bootstrap_state import PhilosophyBootstrapState
+    from intent.service.philosophy_grounding import PhilosophyGrounding
+    from intent.service.surface_registry import SurfaceRegistry
+    artifact_io = Services.artifact_io()
+    logger = Services.logger()
+    hasher = Services.hasher()
+    bootstrap_state = PhilosophyBootstrapState(artifact_io=artifact_io)
+    grounding = PhilosophyGrounding(
+        artifact_io=artifact_io, bootstrap_state=bootstrap_state,
+        hasher=hasher, logger=logger,
+    )
+    expanders = Expanders(
+        artifact_io=artifact_io, communicator=Services.communicator(),
+        dispatcher=Services.dispatcher(), grounding=grounding,
+        logger=logger, policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(), signals=Services.signals(),
+        task_router=Services.task_router(),
+    )
+    surface_registry = SurfaceRegistry(
+        artifact_io=artifact_io, hasher=hasher, logger=logger,
+        signals=Services.signals(),
+    )
+    return ExpansionOrchestrator(
+        artifact_io=artifact_io, expanders=expanders, logger=logger,
+        pipeline_control=Services.pipeline_control(),
+        surface_registry=surface_registry,
+    )
 
 
 class _StubTriager:
@@ -123,8 +156,8 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "proposal.service.expansion_handler.run_expansion_cycle",
-        lambda section_number, *_args, **_kwargs: (
+        ExpansionOrchestrator, "run_expansion_cycle",
+        lambda self, section_number, *_args, **_kwargs: (
             expansion_calls.append(section_number)
             or {
                 "restart_required": False,
@@ -133,8 +166,8 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         ),
     )
     monkeypatch.setattr(
-        "proposal.service.expansion_handler.handle_user_gate",
-        lambda *_args, **_kwargs: None,
+        ExpansionOrchestrator, "handle_user_gate",
+        lambda self, *_args, **_kwargs: None,
     )
 
     try:
@@ -195,7 +228,7 @@ def test_run_expansion_cycle_merges_research_surfaces_into_pending_payload(
     )
 
     try:
-        result = run_expansion_cycle("01", planspace, codespace)
+        result = _make_expansion_orchestrator().run_expansion_cycle("01", planspace, codespace)
 
         pending_payload = json.loads(
             (

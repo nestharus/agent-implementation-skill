@@ -78,9 +78,11 @@ def _install_common_patches(
         "proposal.engine.proposal_cycle.write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
+    from intent.engine.expansion_orchestrator import ExpansionOrchestrator
     monkeypatch.setattr(
-        "proposal.service.expansion_handler.handle_user_gate",
-        lambda *_args, **_kwargs: None,
+        ExpansionOrchestrator,
+        "handle_user_gate",
+        lambda self, *_args, **_kwargs: None,
     )
     def _dispatch(*args, **kwargs):
         if kwargs.get("agent_file") == "integration-proposer.md":
@@ -125,9 +127,11 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
         "load_combined_intent_surfaces",
         lambda self, *_args, **_kwargs: next(combined_surfaces),
     )
+    from intent.engine.expansion_orchestrator import ExpansionOrchestrator
     monkeypatch.setattr(
-        "proposal.service.expansion_handler.run_expansion_cycle",
-        lambda *args, **kwargs: expansion_calls.append(args[0]) or {
+        ExpansionOrchestrator,
+        "run_expansion_cycle",
+        lambda self, *args, **kwargs: expansion_calls.append(args[0]) or {
             "needs_user_input": False,
             "restart_required": False,
         },
@@ -189,9 +193,11 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
         "load_combined_intent_surfaces",
         lambda self, *_args, **_kwargs: next(combined_surfaces),
     )
+    from intent.engine.expansion_orchestrator import ExpansionOrchestrator
     monkeypatch.setattr(
-        "proposal.service.expansion_handler.run_expansion_cycle",
-        lambda *args, **kwargs: expansion_calls.append(args[0]) or {
+        ExpansionOrchestrator,
+        "run_expansion_cycle",
+        lambda self, *args, **kwargs: expansion_calls.append(args[0]) or {
             "needs_user_input": False,
             "restart_required": False,
         },
@@ -253,9 +259,11 @@ def test_misaligned_definition_gap_expansion_respects_budget(
         "load_combined_intent_surfaces",
         lambda self, *_args, **_kwargs: next(combined_surfaces),
     )
+    from intent.engine.expansion_orchestrator import ExpansionOrchestrator
     monkeypatch.setattr(
-        "proposal.service.expansion_handler.run_expansion_cycle",
-        lambda *args, **kwargs: expansion_calls.append(args[0]) or {
+        ExpansionOrchestrator,
+        "run_expansion_cycle",
+        lambda self, *args, **kwargs: expansion_calls.append(args[0]) or {
             "needs_user_input": False,
             "restart_required": False,
         },

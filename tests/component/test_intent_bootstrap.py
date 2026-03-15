@@ -54,13 +54,28 @@ class _StubIntentPack:
         self.calls.append(incoming_notes)
 
 
+class _StubBootstrapper:
+    """Minimal stub for PhilosophyBootstrapper."""
+
+    def __init__(self, result: dict) -> None:
+        self._result = result
+
+    def ensure_global_philosophy(self, *_args, **_kwargs):
+        return self._result
+
+
 def _make_initializer(
     triage_result: dict,
     governance: _StubGovernance | None = None,
     intent_pack: _StubIntentPack | None = None,
+    philosophy_result: dict | None = None,
 ) -> tuple[IntentInitializer, _StubGovernance, _StubIntentPack]:
     gov = governance or _StubGovernance()
     pack = intent_pack or _StubIntentPack()
+    phi = _StubBootstrapper(philosophy_result or {
+        "status": "ready", "blocking_state": None,
+        "philosophy_path": None, "detail": "ready",
+    })
     initializer = IntentInitializer(
         artifact_io=ArtifactIOService(),
         communicator=Services.communicator(),
@@ -68,6 +83,7 @@ def _make_initializer(
         intent_pack_generator=pack,
         intent_triager=_StubTriager(triage_result),
         logger=Services.logger(),
+        philosophy_bootstrapper=phi,
         pipeline_control=Services.pipeline_control(),
         policies=Services.policies(),
     )
@@ -101,17 +117,9 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
         },
     }
 
-    initializer, governance, intent_pack = _make_initializer(triage_result)
-
-    monkeypatch.setattr(
-        bootstrap,
-        "extract_todos_from_files",
-        lambda *_args, **_kwargs: "- TODO: preserve invariant\n",
-    )
-    monkeypatch.setattr(
-        bootstrap,
-        "ensure_global_philosophy",
-        lambda *_args, **_kwargs: {
+    initializer, governance, intent_pack = _make_initializer(
+        triage_result,
+        philosophy_result={
             "status": "ready",
             "blocking_state": None,
             "philosophy_path": (
@@ -119,6 +127,12 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
             ),
             "detail": "ready",
         },
+    )
+
+    monkeypatch.setattr(
+        bootstrap,
+        "extract_todos_from_files",
+        lambda *_args, **_kwargs: "- TODO: preserve invariant\n",
     )
     monkeypatch.setattr(
         bootstrap,
@@ -158,22 +172,20 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
 
     triage_result = {"intent_mode": "lightweight", "budgets": {}}
 
-    initializer, _, _ = _make_initializer(triage_result)
-
-    monkeypatch.setattr(
-        bootstrap,
-        "extract_todos_from_files",
-        lambda *_args, **_kwargs: "",
-    )
-    monkeypatch.setattr(
-        bootstrap,
-        "ensure_global_philosophy",
-        lambda *_args, **_kwargs: {
+    initializer, _, _ = _make_initializer(
+        triage_result,
+        philosophy_result={
             "status": "needs_user_input",
             "blocking_state": "NEED_DECISION",
             "philosophy_path": None,
             "detail": "philosophy bootstrap needs user input",
         },
+    )
+
+    monkeypatch.setattr(
+        bootstrap,
+        "extract_todos_from_files",
+        lambda *_args, **_kwargs: "",
     )
     monkeypatch.setattr(
         bootstrap,
@@ -216,17 +228,9 @@ def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
 
     triage_result = {"intent_mode": "full", "budgets": {}}
 
-    initializer, _, _ = _make_initializer(triage_result)
-
-    monkeypatch.setattr(
-        bootstrap,
-        "extract_todos_from_files",
-        lambda *_args, **_kwargs: "",
-    )
-    monkeypatch.setattr(
-        bootstrap,
-        "ensure_global_philosophy",
-        lambda *_args, **_kwargs: {
+    initializer, _, _ = _make_initializer(
+        triage_result,
+        philosophy_result={
             "status": "ready",
             "blocking_state": None,
             "philosophy_path": (
@@ -234,6 +238,12 @@ def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
             ),
             "detail": "ready",
         },
+    )
+
+    monkeypatch.setattr(
+        bootstrap,
+        "extract_todos_from_files",
+        lambda *_args, **_kwargs: "",
     )
     alignment_states = iter([True])
     monkeypatch.setattr(

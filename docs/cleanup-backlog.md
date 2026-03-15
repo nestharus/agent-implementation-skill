@@ -247,7 +247,7 @@ Functions that accept parameters which could be computed from other parameters a
 - **Source**: External code review
 - **Resolution**: Moved `_insert_gate_record` to `gate_repository.py` as `insert_gate_record`. Added `update_task_flow_paths` to `flow/types/routing.py`. Moved ID generators (`new_instance_id`, `new_flow_id`, `new_chain_id`, `new_gate_id`) from `flow_submitter.py` to `flow/types/context.py` to break circular imports. No raw SQL remains in `flow_submitter.py`.
 
-### 180. Remove backward-compat free-function wrappers — phase 2 (remaining 105 files)
+### ~~180. Remove backward-compat free-function wrappers — phase 2 (remaining 105 files)~~ DONE
 - **Category**: Anti-pattern / DI coupling
 - **Source**: Rescan after #178 revealed full scale — 105 files across all domain packages still have backward-compat wrappers
 - **Problem**: Same pattern as #178 — `_get_*()` factory + free-function wrappers defeat constructor injection
@@ -257,7 +257,7 @@ Functions that accept parameters which could be computed from other parameters a
   - `proposal/` (8 files), `reconciliation/` (4 files), `research/` (4 files), `risk/` (3 files)
   - `scan/` (14 files)
 - **Fix**: For each file: find all callers of the free functions → migrate callers to inject the class via constructor → delete the wrappers. Work by package to manage cascading import changes.
-- **Status**: OPEN
+- **Resolution**: Phase 1 migrated 105 files (commit e117d56). Phase 2 removed final 13 wrappers across 6 files: `persist_decision` (section_decision_store → DecisionRecorder DI), `ensure_global_philosophy` (intent_pack_generator → IntentInitializer DI), `run_expansion_cycle`/`handle_user_gate` (expansion_facade deleted → ExpansionHandler DI), `evaluate_qa_gate` (qa_gate → QaGate class DI), `submit_chain`/`submit_fanout`/`build_flow_context`/`reconcile_task_completion` (flow_facade deleted → TaskDispatcher DI). `dispatch_task` and `main` retained as composition-root entry points in task_dispatcher (analogous to CLI __main__).
 
 ### ~~177. Rescan Cycle 28 — dead imports, dead constant, redundant mkdirs, magic strings~~ DONE
 - **Category**: Multi-category rescan and cleanup
@@ -1009,14 +1009,14 @@ Functions that accept parameters which could be computed from other parameters a
 
 ## NOT A BUG
 
-### 81. `staleness/service/section_alignment_checker.py` imports `write_impl_alignment_prompt` from `dispatch.prompt.writers`
+### ~~81. `staleness/service/section_alignment_checker.py` imports `write_impl_alignment_prompt` from `dispatch.prompt.writers`~~ CLOSED
 - **Resolution**: Not a layer violation. `dispatch/` is a shared service layer (prompt construction + agent dispatch) consumed by multiple systems including `implementation/` and `staleness/`. The lazy import avoids circular imports at module load time. Both consumers need to construct prompts before dispatching alignment check agents — this is a legitimate service dependency, not a forward dependency.
 
-### 44. `ensure_global_philosophy` defined in 2 files
-- `intent_pack_generator.py` is a dependency-injection wrapper around `philosophy_bootstrapper.py`. Same pattern as `expansion_facade.py`/`expansion_orchestrator.py`.
+### ~~44. `ensure_global_philosophy` defined in 2 files~~ DONE
+- **Resolution**: Free-function wrapper in `intent_pack_generator.py` deleted. `IntentInitializer` now receives `PhilosophyBootstrapper` via constructor DI and calls the method directly. Only one definition remains in `philosophy_bootstrapper.py`.
 
-### 45. `handle_user_gate`/`run_expansion_cycle` duplicated
-- `expansion_facade.py` wraps `expansion_orchestrator.py` with dependency injection. All callers import from `expansion_facade.py`. Same pattern as `intent_pack_generator.py`/`philosophy_bootstrapper.py`.
+### ~~45. `handle_user_gate`/`run_expansion_cycle` duplicated~~ DONE
+- **Resolution**: `expansion_facade.py` deleted. `ExpansionHandler` now receives `ExpansionOrchestrator` via constructor DI and calls methods directly. Only one definition remains in `expansion_orchestrator.py`.
 
 ---
 

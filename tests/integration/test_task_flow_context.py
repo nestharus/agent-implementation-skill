@@ -24,12 +24,52 @@ from src.orchestrator.path_registry import PathRegistry
 
 from flow.types.schema import TaskSpec
 from flow.exceptions import FlowCorruptionError
-from flow.service.flow_facade import (
-    build_flow_context,
-    submit_chain,
-    submit_fanout,
-    write_dispatch_prompt,
-)
+from containers import Services
+from flow.repository.flow_context_store import FlowContextStore, write_dispatch_prompt
+
+
+def build_flow_context(planspace, flow_context_path=None, **kwargs):
+    return FlowContextStore(Services.artifact_io()).build_flow_context(
+        planspace, flow_context_path=flow_context_path, **kwargs,
+    )
+
+
+def submit_chain(env, steps, **kwargs):
+    return Services.flow_ingestion().submit_chain(env, steps, **kwargs)
+
+
+def submit_fanout(env, branches, **kwargs):
+    return Services.flow_ingestion().submit_fanout(env, branches, **kwargs)
+
+
+def reconcile_task_completion(db_path, planspace, task_id, status, output_path, **kwargs):
+    from flow.engine.flow_submitter import FlowSubmitter
+    from flow.engine.reconciler import Reconciler
+    from flow.repository.gate_repository import GateRepository
+    from implementation.service.traceability_writer import TraceabilityWriter
+    artifact_io = Services.artifact_io()
+    flow_context_store = FlowContextStore(artifact_io)
+    flow_submitter = FlowSubmitter(
+        freshness=Services.freshness(),
+        flow_context_store=flow_context_store,
+    )
+    gate_repository = GateRepository(artifact_io)
+    reconciler = Reconciler(
+        artifact_io=artifact_io,
+        research=Services.research(),
+        prompt_guard=Services.prompt_guard(),
+        flow_submitter=flow_submitter,
+        gate_repository=gate_repository,
+        traceability_writer=TraceabilityWriter(
+            artifact_io=artifact_io,
+            hasher=Services.hasher(),
+            logger=Services.logger(),
+            section_alignment=Services.section_alignment(),
+        ),
+    )
+    return reconciler.reconcile_task_completion(
+        db_path, planspace, task_id, status, output_path, **kwargs,
+    )
 from flow.types.context import FlowEnvelope
 from flow.types.schema import BranchSpec, GateSpec
 
@@ -629,8 +669,6 @@ class TestEndToEndFlowContext:
         self, db_path: Path, planspace: Path,
     ) -> None:
         """Synthesis task can discover its gate aggregate manifest."""
-        from flow.service.flow_facade import reconcile_task_completion
-
         # Create a fanout with a synthesis gate.
         branches = [
             BranchSpec(

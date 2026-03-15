@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from intent.service.philosophy_bootstrap_state import BootstrapResult
 from intent.service.philosophy_catalog import (
     _DEFAULT_CATALOG_MAX_DEPTH,
     _DEFAULT_CATALOG_MAX_FILES,
@@ -66,49 +65,6 @@ def _build_philosophy_catalog(
         max_depth=max_depth,
         extensions=extensions,
     )
-
-
-def ensure_global_philosophy(
-    planspace: Path,
-    codespace: Path,
-) -> BootstrapResult:
-    from containers import Services
-    from intent.service.philosophy_bootstrap_state import PhilosophyBootstrapState
-    from intent.service.philosophy_classifier import PhilosophyClassifier
-    from intent.service.philosophy_dispatcher import PhilosophyDispatcher
-    from intent.service.philosophy_grounding import PhilosophyGrounding
-    from intent.service.philosophy_bootstrapper import PhilosophyBootstrapper
-    artifact_io = Services.artifact_io()
-    bootstrap_state = PhilosophyBootstrapState(artifact_io=artifact_io)
-    classifier = PhilosophyClassifier(artifact_io=artifact_io)
-    logger = Services.logger()
-    hasher = Services.hasher()
-    dispatcher_svc = Services.dispatcher()
-    grounding = PhilosophyGrounding(
-        artifact_io=artifact_io,
-        bootstrap_state=bootstrap_state,
-        hasher=hasher,
-        logger=logger,
-    )
-    philosophy_dispatcher = PhilosophyDispatcher(
-        dispatcher=dispatcher_svc,
-        logger=logger,
-    )
-    bootstrapper = PhilosophyBootstrapper(
-        artifact_io=artifact_io,
-        bootstrap_state=bootstrap_state,
-        classifier=classifier,
-        communicator=Services.communicator(),
-        dispatcher=dispatcher_svc,
-        grounding=grounding,
-        hasher=hasher,
-        logger=logger,
-        philosophy_dispatcher=philosophy_dispatcher,
-        policies=Services.policies(),
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-    )
-    return bootstrapper.ensure_global_philosophy(planspace, codespace)
 
 
 @dataclass(frozen=True)

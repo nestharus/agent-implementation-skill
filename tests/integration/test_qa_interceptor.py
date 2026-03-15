@@ -18,9 +18,10 @@ from unittest.mock import patch
 import pytest
 
 from _paths import DB_SH, WORKFLOW_HOME
-from src.orchestrator.path_registry import PathRegistry
 from conftest import override_dispatcher_and_guard
 from containers import Services
+from flow.engine.reconciler import Reconciler
+from src.orchestrator.path_registry import PathRegistry
 
 # ---------------------------------------------------------------------------
 # Helpers — same pattern as test_dispatch_meta_fail_closed.py
@@ -469,7 +470,7 @@ class TestDispatcherQaIntegration:
         with (
             override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
-            patch.object(task_dispatcher, "reconcile_task_completion"),
+            patch.object(Reconciler, "reconcile_task_completion"),
         ):
             task = {
                 "id": task_id, "type": "test-task",
@@ -517,7 +518,7 @@ class TestDispatcherQaIntegration:
         with (
             override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("alignment-judge.md", "test-model")),
-            patch.object(task_dispatcher, "reconcile_task_completion"),
+            patch.object(Reconciler, "reconcile_task_completion"),
         ):
             task = {
                 "id": task_id, "type": "test-task",
@@ -565,7 +566,7 @@ class TestDispatcherQaIntegration:
         with (
             override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("alignment-judge.md", "test-model")),
-            patch.object(task_dispatcher, "reconcile_task_completion"),
+            patch.object(Reconciler, "reconcile_task_completion"),
         ):
             task = {
                 "id": task_id, "type": "test-task",
@@ -613,7 +614,7 @@ class TestDispatcherQaIntegration:
         with (
             override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("alignment-judge.md", "test-model")),
-            patch.object(task_dispatcher, "reconcile_task_completion"),
+            patch.object(Reconciler, "reconcile_task_completion"),
         ):
             task = {
                 "id": task_id, "type": "test-task",
@@ -658,7 +659,7 @@ class TestDispatcherQaIntegration:
         with (
             override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("alignment-judge.md", "test-model")),
-            patch.object(task_dispatcher, "reconcile_task_completion"),
+            patch.object(Reconciler, "reconcile_task_completion"),
         ):
             task = {
                 "id": task_id, "type": "test-task",
@@ -701,7 +702,7 @@ class TestDispatcherQaIntegration:
         with (
             override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("alignment-judge.md", "test-model")),
-            patch.object(task_dispatcher, "reconcile_task_completion"),
+            patch.object(Reconciler, "reconcile_task_completion"),
         ):
             task = {
                 "id": task_id, "type": "test-task",

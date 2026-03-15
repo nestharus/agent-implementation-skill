@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from orchestrator.repository.decisions import Decision, Decisions
 from orchestrator.path_registry import PathRegistry
 from signals.types import TRUNCATE_DETAIL
 
@@ -20,30 +19,6 @@ def read_decisions(planspace: Path, section_number: str) -> str:
     if decisions_file.exists():
         return decisions_file.read_text(encoding="utf-8")
     return ""
-
-
-def persist_decision(planspace: Path, section_number: str, decision_text: str) -> None:
-    """Persist a resume payload as a decision for a section."""
-    from containers import Services
-    decisions_repo = Decisions(artifact_io=Services.artifact_io())
-    decisions_dir = PathRegistry(planspace).decisions_dir()
-
-    existing = decisions_repo.load_decisions(decisions_dir, section=section_number)
-    next_num = len(existing) + 1
-    decision_id = f"d-{section_number}-{next_num:03d}"
-
-    decision = Decision(
-        id=decision_id,
-        scope="section",
-        section=section_number,
-        problem_id=None,
-        parent_problem_id=None,
-        concern_scope="parent-resume",
-        proposal_summary=decision_text,
-        alignment_to_parent=None,
-        status="decided",
-    )
-    decisions_repo.record_decision(decisions_dir, decision)
 
 
 def extract_section_summary(section_path: Path) -> str:

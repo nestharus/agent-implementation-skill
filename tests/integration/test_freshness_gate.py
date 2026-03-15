@@ -17,6 +17,7 @@ import pytest
 
 from _paths import DB_SH
 from conftest import override_dispatcher_and_guard
+from flow.engine.reconciler import Reconciler
 from src.orchestrator.path_registry import PathRegistry
 
 
@@ -143,7 +144,7 @@ def _dispatch_and_capture(
     with (
         override_dispatcher_and_guard(fake_dispatch),
         patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
-        patch.object(task_dispatcher, "reconcile_task_completion"),
+        patch.object(Reconciler, "reconcile_task_completion"),
         patch("flow.engine.task_dispatcher._db_claim_task"),
         patch("flow.engine.task_dispatcher._db_complete_task"),
         patch("flow.engine.task_dispatcher._db_fail_task", side_effect=tracking_fail_task),

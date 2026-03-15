@@ -98,14 +98,14 @@ class TestReadDecisions:
 
 class TestPersistDecision:
     def test_creates_decision_file(self, planspace: Path) -> None:
-        recorder = DecisionRecorder(communicator=Services.communicator())
+        recorder = DecisionRecorder(artifact_io=Services.artifact_io(), communicator=Services.communicator())
         recorder.persist_decision(planspace, "01", "Use JWT tokens")
         dec = planspace / "artifacts" / "decisions" / "section-01.md"
         assert dec.exists()
         assert "Use JWT tokens" in dec.read_text()
 
     def test_appends_to_existing(self, planspace: Path) -> None:
-        recorder = DecisionRecorder(communicator=Services.communicator())
+        recorder = DecisionRecorder(artifact_io=Services.artifact_io(), communicator=Services.communicator())
         recorder.persist_decision(planspace, "01", "First decision")
         recorder.persist_decision(planspace, "01", "Second decision")
         content = (planspace / "artifacts" / "decisions"

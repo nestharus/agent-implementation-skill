@@ -51,7 +51,7 @@ from taskrouter import ensure_discovered, registry as _task_registry
 from signals.types import TRUNCATE_TOKEN
 
 if TYPE_CHECKING:
-    from containers import AgentDispatcher, FreshnessService, ModelPolicyService, PromptGuard
+    from containers import AgentDispatcher, ArtifactIOService, FreshnessService, ModelPolicyService, PromptGuard
     from flow.engine.reconciler import Reconciler
     from flow.repository.flow_context_store import FlowContextStore
     from flow.service.notifier import Notifier
@@ -59,74 +59,6 @@ if TYPE_CHECKING:
 DISPATCHER_NAME = "task-dispatcher"
 _DEFAULT_POLL_INTERVAL_SECONDS = 3.0
 logger = logging.getLogger(__name__)
-
-
-def _make_reconciler():
-    """Create a Reconciler wired from the DI container."""
-    from containers import Services
-    from flow.engine.flow_submitter import FlowSubmitter
-    from flow.engine.reconciler import Reconciler
-    from flow.repository.flow_context_store import FlowContextStore
-    from flow.repository.gate_repository import GateRepository
-    artifact_io = Services.artifact_io()
-    flow_context_store = FlowContextStore(artifact_io)
-    flow_submitter = FlowSubmitter(
-        freshness=Services.freshness(),
-        flow_context_store=flow_context_store,
-    )
-    gate_repository = GateRepository(artifact_io)
-    from implementation.service.traceability_writer import TraceabilityWriter
-    return Reconciler(
-        artifact_io=artifact_io,
-        research=Services.research(),
-        prompt_guard=Services.prompt_guard(),
-        flow_submitter=flow_submitter,
-        gate_repository=gate_repository,
-        traceability_writer=TraceabilityWriter(
-            artifact_io=Services.artifact_io(),
-            hasher=Services.hasher(),
-            logger=Services.logger(),
-            section_alignment=Services.section_alignment(),
-        ),
-    )
-
-
-def reconcile_task_completion(
-    db_path: Path,
-    planspace: Path,
-    task_id: int,
-    status: str,
-    output_path: str | None,
-    error: str | None = None,
-    codespace: Path | None = None,
-) -> None:
-    """Module-level reconciliation entry point.
-
-    Used by ``TaskDispatcher`` and patchable by tests.
-    """
-    return _make_reconciler().reconcile_task_completion(
-        db_path, planspace, task_id, status, output_path,
-        error=error, codespace=codespace,
-    )
-
-
-def _make_flow_context_store():
-    """Create a FlowContextStore wired from the DI container."""
-    from containers import Services
-    from flow.repository.flow_context_store import FlowContextStore
-    return FlowContextStore(Services.artifact_io())
-
-
-def build_flow_context(
-    planspace: Path,
-    flow_context_path=None,
-    continuation_path=None,
-    trigger_gate_id=None,
-):
-    """Module-level flow context builder, patchable by tests."""
-    return _make_flow_context_store().build_flow_context(
-        planspace, flow_context_path, continuation_path, trigger_gate_id,
-    )
 
 
 @dataclass(frozen=True)
@@ -147,18 +79,22 @@ class TaskDispatcher:
         dispatcher: AgentDispatcher,
         policies: ModelPolicyService,
         notifier: Notifier,
+        reconciler: Reconciler,
+        flow_context_store: FlowContextStore,
+        artifact_io: ArtifactIOService,
     ) -> None:
         self._prompt_guard = prompt_guard
         self._freshness = freshness
         self._dispatcher = dispatcher
         self._policies = policies
         self._notifier = notifier
+        self._reconciler = reconciler
+        self._flow_context_store = flow_context_store
+        self._artifact_io = artifact_io
 
     def _read_dispatch_meta(self, meta_path: Path) -> DispatchMetaResult:
         """Read the dispatch metadata sidecar with fail-closed semantics."""
-        from containers import Services
-
-        result = Metadata(artifact_io=Services.artifact_io()).read_dispatch_metadata(meta_path)
+        result = Metadata(artifact_io=self._artifact_io).read_dispatch_metadata(meta_path)
         if result.is_corrupt:
             log(
                 f"WARNING: Malformed dispatch meta at {meta_path} "
@@ -172,7 +108,7 @@ class TaskDispatcher:
         _db_fail_task(h.db_path, h.task_id, error=err)
         notify_task_result(h.db_path, h.submitted_by, h.task_id, h.task_type, TaskStatus.FAILED, err)
         if planspace is not None:
-            reconcile_task_completion(
+            self._reconciler.reconcile_task_completion(
                 Path(h.db_path), planspace, int(h.task_id),
                 TaskStatus.FAILED, output_path,
                 error=err, codespace=codespace,
@@ -214,8 +150,16 @@ class TaskDispatcher:
     def _run_qa_gate(self, planspace, h: TaskHandle,
                      agent_file, prompt_path, task):
         """Run the QA dispatch interceptor. Returns False if rejected."""
-        from qa.service.qa_gate import evaluate_qa_gate
-        intercept = evaluate_qa_gate(
+        from containers import Services
+        from qa.service.qa_gate import QaGate
+        qa_gate = QaGate(
+            artifact_io=self._artifact_io,
+            task_router=Services.task_router(),
+            policies=self._policies,
+            dispatcher=self._dispatcher,
+            prompt_guard=self._prompt_guard,
+        )
+        intercept = qa_gate.evaluate(
             planspace, agent_file, prompt_path,
             task=task,
         )
@@ -250,7 +194,7 @@ class TaskDispatcher:
         continuation_relpath = task.get("continuation")
         trigger_gate_id = task.get("trigger_gate")
         try:
-            flow_ctx = build_flow_context(
+            flow_ctx = self._flow_context_store.build_flow_context(
                 planspace,
                 flow_context_path=flow_context_relpath,
                 continuation_path=continuation_relpath,
@@ -336,7 +280,7 @@ class TaskDispatcher:
             notify_task_result(h.db_path, h.submitted_by, h.task_id, h.task_type, TaskStatus.COMPLETE,
                                str(output_path))
             log(f"Task {h.task_id} complete -> {output_path}")
-            reconcile_task_completion(
+            self._reconciler.reconcile_task_completion(
                 Path(h.db_path), planspace, int(h.task_id),
                 TaskStatus.COMPLETE, str(output_path), codespace=codespace,
             )
@@ -495,19 +439,6 @@ def _read_dispatch_meta(meta_path: Path) -> DispatchMetaResult:
     return result
 
 
-def _get_dispatcher() -> TaskDispatcher:
-    from containers import Services
-    from flow.service.notifier import Notifier
-    notifier = Notifier(logger=Services.logger())
-    return TaskDispatcher(
-        prompt_guard=Services.prompt_guard(),
-        freshness=Services.freshness(),
-        dispatcher=Services.dispatcher(),
-        policies=Services.policies(),
-        notifier=notifier,
-    )
-
-
 def dispatch_task(
     db_path: str,
     planspace: Path,
@@ -515,8 +446,50 @@ def dispatch_task(
     codespace: Path | None = None,
     model_policy: dict[str, str] | None = None,
 ) -> None:
+    """Module-level entry point for tests and CLI callers."""
     return _get_dispatcher().dispatch_task(
         db_path, planspace, task, codespace=codespace, model_policy=model_policy,
+    )
+
+
+def _get_dispatcher() -> TaskDispatcher:
+    from containers import Services
+    from flow.engine.flow_submitter import FlowSubmitter
+    from flow.engine.reconciler import Reconciler
+    from flow.repository.flow_context_store import FlowContextStore
+    from flow.repository.gate_repository import GateRepository
+    from flow.service.notifier import Notifier
+    from implementation.service.traceability_writer import TraceabilityWriter
+    artifact_io = Services.artifact_io()
+    flow_context_store = FlowContextStore(artifact_io)
+    flow_submitter = FlowSubmitter(
+        freshness=Services.freshness(),
+        flow_context_store=flow_context_store,
+    )
+    gate_repository = GateRepository(artifact_io)
+    reconciler = Reconciler(
+        artifact_io=artifact_io,
+        research=Services.research(),
+        prompt_guard=Services.prompt_guard(),
+        flow_submitter=flow_submitter,
+        gate_repository=gate_repository,
+        traceability_writer=TraceabilityWriter(
+            artifact_io=artifact_io,
+            hasher=Services.hasher(),
+            logger=Services.logger(),
+            section_alignment=Services.section_alignment(),
+        ),
+    )
+    notifier = Notifier(logger=Services.logger())
+    return TaskDispatcher(
+        prompt_guard=Services.prompt_guard(),
+        freshness=Services.freshness(),
+        dispatcher=Services.dispatcher(),
+        policies=Services.policies(),
+        notifier=notifier,
+        reconciler=reconciler,
+        flow_context_store=flow_context_store,
+        artifact_io=artifact_io,
     )
 
 

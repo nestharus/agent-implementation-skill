@@ -4,6 +4,5 @@ Public API (import from submodules):
     intent_initializer: run_intent_bootstrap
     intent_triager: load_triage_result, run_intent_triage
     intent_pack_generator: ensure_global_philosophy, generate_intent_pack
-    expansion_facade: handle_user_gate, run_expansion_cycle
     recurrence_emitter: emit_recurrence_signal
 """

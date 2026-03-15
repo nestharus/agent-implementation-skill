@@ -462,7 +462,11 @@ def build_proposal_cycle(*, intent_triager=None):
     Pass *intent_triager* to supply a test stub (e.g. for load_triage_result).
     """
     from dispatch.prompt.writers import Writers as PromptWriters
+    from intent.engine.expansion_orchestrator import ExpansionOrchestrator
+    from intent.service.expanders import Expanders
     from intent.service.intent_triager import IntentTriager
+    from intent.service.philosophy_bootstrap_state import PhilosophyBootstrapState
+    from intent.service.philosophy_grounding import PhilosophyGrounding
     from intent.service.surface_registry import SurfaceRegistry
     from proposal.engine.proposal_cycle import ProposalCycle
     from proposal.service.alignment_handler import AlignmentHandler
@@ -531,19 +535,45 @@ def build_proposal_cycle(*, intent_triager=None):
         prompt_writers=prompt_writers,
     )
 
+    bootstrap_state = PhilosophyBootstrapState(artifact_io=artifact_io)
+    grounding = PhilosophyGrounding(
+        artifact_io=artifact_io,
+        bootstrap_state=bootstrap_state,
+        hasher=hasher,
+        logger=logger,
+    )
+    expanders = Expanders(
+        artifact_io=artifact_io,
+        communicator=communicator,
+        dispatcher=dispatcher,
+        grounding=grounding,
+        logger=logger,
+        policies=policies,
+        prompt_guard=prompt_guard,
+        signals=signals,
+        task_router=task_router,
+    )
+    surface_registry = SurfaceRegistry(
+        artifact_io=artifact_io,
+        hasher=hasher,
+        logger=logger,
+        signals=signals,
+    )
+    expansion_orchestrator = ExpansionOrchestrator(
+        artifact_io=artifact_io,
+        expanders=expanders,
+        logger=logger,
+        pipeline_control=pipeline_control,
+        surface_registry=surface_registry,
+    )
+
     expansion_handler = ExpansionHandler(
         logger=logger,
         artifact_io=artifact_io,
         communicator=communicator,
         pipeline_control=pipeline_control,
         cycle_control=cycle_control,
-    )
-
-    surface_registry = SurfaceRegistry(
-        artifact_io=artifact_io,
-        hasher=hasher,
-        logger=logger,
-        signals=signals,
+        expansion_orchestrator=expansion_orchestrator,
     )
 
     surface_handler = SurfaceHandler(

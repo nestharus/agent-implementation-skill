@@ -16,10 +16,10 @@ if TYPE_CHECKING:
         LogService,
         PipelineControlService,
     )
+    from intent.engine.expansion_orchestrator import ExpansionOrchestrator
     from proposal.service.cycle_control import CycleControl
 
 from orchestrator.path_registry import PathRegistry
-from intent.service.expansion_facade import handle_user_gate, run_expansion_cycle
 from orchestrator.types import PauseType
 from signals.types import ACTION_ABORT, ACTION_BREAK, ACTION_CONTINUE, RESUME_PREFIX
 
@@ -32,12 +32,14 @@ class ExpansionHandler:
         communicator: Communicator,
         pipeline_control: PipelineControlService,
         cycle_control: CycleControl,
+        expansion_orchestrator: ExpansionOrchestrator,
     ) -> None:
         self._logger = logger
         self._artifact_io = artifact_io
         self._communicator = communicator
         self._pipeline_control = pipeline_control
         self._cycle_control = cycle_control
+        self._expansion_orchestrator = expansion_orchestrator
 
     def _handle_budget_exhaustion(
         self,
@@ -103,7 +105,7 @@ class ExpansionHandler:
             planspace,
             f"summary:intent-expand:{section_number}:cycle-{expansion_count + 1}",
         )
-        delta_result = run_expansion_cycle(
+        delta_result = self._expansion_orchestrator.run_expansion_cycle(
             section_number,
             planspace,
             codespace,
@@ -112,7 +114,7 @@ class ExpansionHandler:
         expansion_counts[section_number] = expansion_count + 1
 
         if delta_result.get("needs_user_input"):
-            gate_response = handle_user_gate(
+            gate_response = self._expansion_orchestrator.handle_user_gate(
                 section_number,
                 planspace,
                 delta_result,
@@ -160,7 +162,7 @@ class ExpansionHandler:
             f"Section {section_number}: definition-gap surfaces "
             f"found on misaligned pass — running expansion"
         )
-        delta_result = run_expansion_cycle(
+        delta_result = self._expansion_orchestrator.run_expansion_cycle(
             section_number,
             planspace,
             codespace,
@@ -169,7 +171,7 @@ class ExpansionHandler:
         expansion_counts[section_number] = expansion_count + 1
 
         if delta_result.get("needs_user_input"):
-            gate_response = handle_user_gate(
+            gate_response = self._expansion_orchestrator.handle_user_gate(
                 section_number,
                 planspace,
                 delta_result,

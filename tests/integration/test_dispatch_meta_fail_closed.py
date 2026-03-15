@@ -18,8 +18,9 @@ from unittest.mock import patch
 import pytest
 
 from _paths import DB_SH
-from src.orchestrator.path_registry import PathRegistry
 from conftest import override_dispatcher_and_guard
+from flow.engine.reconciler import Reconciler
+from src.orchestrator.path_registry import PathRegistry
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +159,7 @@ class TestDispatcherMetaCorruptionFailsClosed:
         with (
             override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
-            patch.object(task_dispatcher, "reconcile_task_completion"),
+            patch.object(Reconciler, "reconcile_task_completion"),
         ):
             task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)
@@ -200,7 +201,7 @@ class TestDispatcherMetaCorruptionFailsClosed:
         with (
             override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
-            patch.object(task_dispatcher, "reconcile_task_completion"),
+            patch.object(Reconciler, "reconcile_task_completion"),
         ):
             task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)
@@ -237,7 +238,7 @@ class TestDispatcherMetaCorruptionFailsClosed:
         with (
             override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
-            patch.object(task_dispatcher, "reconcile_task_completion") as mock_reconcile,
+            patch.object(Reconciler, "reconcile_task_completion") as mock_reconcile,
         ):
             task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)
@@ -281,7 +282,7 @@ class TestAbsentMetaAllowsFallback:
         with (
             override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
-            patch.object(task_dispatcher, "reconcile_task_completion"),
+            patch.object(Reconciler, "reconcile_task_completion"),
         ):
             task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)
@@ -319,7 +320,7 @@ class TestAbsentMetaAllowsFallback:
         with (
             override_dispatcher_and_guard(fake_dispatch),
             patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
-            patch.object(task_dispatcher, "reconcile_task_completion"),
+            patch.object(Reconciler, "reconcile_task_completion"),
         ):
             task = {"id": task_id, "type": "test-task", "by": "test-submitter", "payload": str(payload)}
             task_dispatcher.dispatch_task(db_path, ps, task)

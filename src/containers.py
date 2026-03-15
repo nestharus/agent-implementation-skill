@@ -394,7 +394,7 @@ class CrossSectionService:
 
     def _get_recorder(self):
         from coordination.service.decision_recorder import DecisionRecorder
-        return DecisionRecorder(communicator=Services.communicator())
+        return DecisionRecorder(artifact_io=Services.artifact_io(), communicator=Services.communicator())
 
     def persist_decision(self, planspace, section_number: str, payload: str) -> None:
         return self._get_recorder().persist_decision(planspace, section_number, payload)

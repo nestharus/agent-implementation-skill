@@ -21,7 +21,15 @@ from src.orchestrator.path_registry import PathRegistry
 from flow.repository.catalog import KNOWN_PACKAGES, resolve_chain_ref
 from flow.types.context import FlowEnvelope
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
-from flow.service.flow_facade import submit_chain, submit_fanout
+from containers import Services
+
+
+def submit_chain(env, steps, **kwargs):
+    return Services.flow_ingestion().submit_chain(env, steps, **kwargs)
+
+
+def submit_fanout(env, branches, **kwargs):
+    return Services.flow_ingestion().submit_fanout(env, branches, **kwargs)
 
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
-from intent.service.intent_pack_generator import ensure_global_philosophy
 from signals.service.blocker_manager import update_blocker_rollup
 from orchestrator.types import PauseType, Section
 
@@ -30,6 +29,7 @@ if TYPE_CHECKING:
     from intake.service.governance_packet_builder import GovernancePacketBuilder
     from intent.service.intent_pack_generator import IntentPackGenerator
     from intent.service.intent_triager import IntentTriager
+    from intent.service.philosophy_bootstrapper import PhilosophyBootstrapper
 
 _SECTION_SUMMARY_TRUNCATION = 500
 
@@ -48,6 +48,7 @@ class IntentInitializer:
         intent_pack_generator: IntentPackGenerator,
         intent_triager: IntentTriager,
         logger: LogService,
+        philosophy_bootstrapper: PhilosophyBootstrapper,
         pipeline_control: PipelineControlService,
         policies: ModelPolicyService,
     ) -> None:
@@ -57,6 +58,7 @@ class IntentInitializer:
         self._intent_pack_generator = intent_pack_generator
         self._intent_triager = intent_triager
         self._logger = logger
+        self._philosophy_bootstrapper = philosophy_bootstrapper
         self._pipeline_control = pipeline_control
         self._policies = policies
 
@@ -127,7 +129,7 @@ class IntentInitializer:
 
     def _step_philosophy(self, ctx: PipelineContext) -> dict:
         """Ensure global philosophy is bootstrapped."""
-        result = ensure_global_philosophy(
+        result = self._philosophy_bootstrapper.ensure_global_philosophy(
             ctx.planspace, ctx.codespace,
         )
 

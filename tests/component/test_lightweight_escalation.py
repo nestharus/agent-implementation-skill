@@ -13,6 +13,7 @@ from pipeline.context import DispatchContext
 from reconciliation.repository.results import Results
 from src.orchestrator.path_registry import PathRegistry
 from src.orchestrator.types import Section
+from intent.engine.expansion_orchestrator import ExpansionOrchestrator
 
 
 class _StubTriager:
@@ -101,8 +102,8 @@ def _install_common_patches(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "proposal.service.expansion_handler.handle_user_gate",
-        lambda *_args, **_kwargs: None,
+        ExpansionOrchestrator, "handle_user_gate",
+        lambda self, *_args, **_kwargs: None,
     )
     def _dispatch(*args, **kwargs):
         output_path = args[2]
@@ -150,8 +151,8 @@ def test_lightweight_aligned_surfaces_force_reproposal_under_full_intent(
         lambda self, *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
-        "proposal.service.expansion_handler.run_expansion_cycle",
-        lambda *_args, **_kwargs: {
+        ExpansionOrchestrator, "run_expansion_cycle",
+        lambda self, *_args, **_kwargs: {
             "restart_required": False,
             "needs_user_input": False,
         },
@@ -218,8 +219,8 @@ def test_lightweight_aligned_surfaces_persist_registry_entries(
         lambda self, *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
-        "proposal.service.expansion_handler.run_expansion_cycle",
-        lambda *_args, **_kwargs: {
+        ExpansionOrchestrator, "run_expansion_cycle",
+        lambda self, *_args, **_kwargs: {
             "restart_required": False,
             "needs_user_input": False,
         },
@@ -267,8 +268,8 @@ def test_lightweight_empty_surface_payload_does_not_escalate(
         },
     )
     monkeypatch.setattr(
-        "proposal.service.expansion_handler.run_expansion_cycle",
-        lambda *_args, **_kwargs: {
+        ExpansionOrchestrator, "run_expansion_cycle",
+        lambda self, *_args, **_kwargs: {
             "restart_required": False,
             "needs_user_input": False,
         },
@@ -327,8 +328,8 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
         lambda self, *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
-        "proposal.service.expansion_handler.run_expansion_cycle",
-        lambda section_number, *_args, **_kwargs: expansion_calls.append(section_number)
+        ExpansionOrchestrator, "run_expansion_cycle",
+        lambda self, section_number, *_args, **_kwargs: expansion_calls.append(section_number)
         or {
             "restart_required": False,
             "needs_user_input": False,
@@ -399,8 +400,8 @@ def test_full_mode_surfaces_do_not_emit_lightweight_escalation_signal(
         lambda self, *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
-        "proposal.service.expansion_handler.run_expansion_cycle",
-        lambda section_number, *_args, **_kwargs: expansion_calls.append(section_number)
+        ExpansionOrchestrator, "run_expansion_cycle",
+        lambda self, section_number, *_args, **_kwargs: expansion_calls.append(section_number)
         or {
             "restart_required": False,
             "needs_user_input": False,

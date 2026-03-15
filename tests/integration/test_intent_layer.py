@@ -69,6 +69,75 @@ def _make_intent_pack_generator():
     )
 
 
+def _make_expansion_orchestrator():
+    """Build an ExpansionOrchestrator from the DI container (for test use)."""
+    from intent.engine.expansion_orchestrator import ExpansionOrchestrator
+    from intent.service.expanders import Expanders
+    from intent.service.philosophy_bootstrap_state import PhilosophyBootstrapState
+    from intent.service.philosophy_grounding import PhilosophyGrounding
+    artifact_io = Services.artifact_io()
+    logger = Services.logger()
+    hasher = Services.hasher()
+    bootstrap_state = PhilosophyBootstrapState(artifact_io=artifact_io)
+    grounding = PhilosophyGrounding(
+        artifact_io=artifact_io, bootstrap_state=bootstrap_state,
+        hasher=hasher, logger=logger,
+    )
+    expanders = Expanders(
+        artifact_io=artifact_io, communicator=Services.communicator(),
+        dispatcher=Services.dispatcher(), grounding=grounding,
+        logger=logger, policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(), signals=Services.signals(),
+        task_router=Services.task_router(),
+    )
+    from intent.service.surface_registry import SurfaceRegistry
+    surface_registry = SurfaceRegistry(
+        artifact_io=artifact_io, hasher=hasher, logger=logger,
+        signals=Services.signals(),
+    )
+    return ExpansionOrchestrator(
+        artifact_io=artifact_io, expanders=expanders, logger=logger,
+        pipeline_control=Services.pipeline_control(),
+        surface_registry=surface_registry,
+    )
+
+
+def _make_philosophy_bootstrapper():
+    """Build a PhilosophyBootstrapper from the DI container (for test use)."""
+    from intent.service.philosophy_bootstrapper import PhilosophyBootstrapper
+    from intent.service.philosophy_bootstrap_state import PhilosophyBootstrapState
+    from intent.service.philosophy_classifier import PhilosophyClassifier
+    from intent.service.philosophy_dispatcher import PhilosophyDispatcher
+    from intent.service.philosophy_grounding import PhilosophyGrounding
+    artifact_io = Services.artifact_io()
+    logger = Services.logger()
+    hasher = Services.hasher()
+    bootstrap_state = PhilosophyBootstrapState(artifact_io=artifact_io)
+    classifier = PhilosophyClassifier(artifact_io=artifact_io)
+    grounding = PhilosophyGrounding(
+        artifact_io=artifact_io, bootstrap_state=bootstrap_state,
+        hasher=hasher, logger=logger,
+    )
+    philosophy_dispatcher = PhilosophyDispatcher(
+        dispatcher=Services.dispatcher(),
+        logger=logger,
+    )
+    return PhilosophyBootstrapper(
+        artifact_io=artifact_io,
+        bootstrap_state=bootstrap_state,
+        classifier=classifier,
+        communicator=Services.communicator(),
+        dispatcher=Services.dispatcher(),
+        grounding=grounding,
+        hasher=hasher,
+        logger=logger,
+        philosophy_dispatcher=philosophy_dispatcher,
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+    )
+
+
 def _make_section_pipeline(*, proposal_cycle=None):
     """Build a SectionPipeline with IntentInitializer wired in."""
     from intent.engine.intent_initializer import IntentInitializer
@@ -87,6 +156,7 @@ def _make_section_pipeline(*, proposal_cycle=None):
             intent_pack_generator=_make_intent_pack_generator(),
             intent_triager=_make_intent_triager(),
             logger=Services.logger(),
+            philosophy_bootstrapper=_make_philosophy_bootstrapper(),
             pipeline_control=Services.pipeline_control(),
             policies=Services.policies(),
         ),
@@ -430,8 +500,7 @@ class TestIntentBootstrap:
 
         mock_dispatch.side_effect = handle_dispatch
 
-        from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(
+        result = _make_philosophy_bootstrapper().ensure_global_philosophy(
             intent_planspace, intent_planspace,
         )
         assert result["status"] == "ready"
@@ -449,8 +518,7 @@ class TestIntentBootstrap:
         )
         philosophy_path.write_text("# Existing Philosophy\n\nP1...\n")
 
-        from intent.service.intent_pack_generator import ensure_global_philosophy
-        ensure_global_philosophy(
+        _make_philosophy_bootstrapper().ensure_global_philosophy(
             intent_planspace, intent_planspace,
         )
         assert mock_dispatch.call_count == 0
@@ -484,8 +552,7 @@ class TestExpansionCycle:
         self, intent_planspace: Path, mock_dispatch: MagicMock,
     ) -> None:
         """No surfaces signal → no expansion, no restart."""
-        from intent.service.expansion_facade import run_expansion_cycle
-        result = run_expansion_cycle(
+        result = _make_expansion_orchestrator().run_expansion_cycle(
             "01", intent_planspace, intent_planspace,
         )
         assert result["restart_required"] is False
@@ -546,8 +613,7 @@ class TestExpansionCycle:
 
         mock_dispatch.side_effect = write_delta
 
-        from intent.service.expansion_facade import run_expansion_cycle
-        result = run_expansion_cycle(
+        result = _make_expansion_orchestrator().run_expansion_cycle(
             "01", intent_planspace, intent_planspace,
         )
         assert result["restart_required"] is True
@@ -630,8 +696,7 @@ class TestExpansionCycle:
 
         mock_dispatch.side_effect = write_adjudication
 
-        from intent.service.expansion_facade import run_expansion_cycle
-        result = run_expansion_cycle(
+        result = _make_expansion_orchestrator().run_expansion_cycle(
             "01", intent_planspace, intent_planspace,
         )
         assert result["expansion_applied"] is False
@@ -935,24 +1000,22 @@ class TestIntentConventions:
 
     def test_intent_module_imports(self) -> None:
         """Intent module public API is importable."""
-        from intent.service.intent_pack_generator import (
-            IntentPackGenerator,
-            ensure_global_philosophy,
-        )
+        from intent.service.intent_pack_generator import IntentPackGenerator
         from intent.service.surface_registry import (
             SurfaceRegistry,
             find_discarded_recurrences,
             merge_surfaces_into_registry,
         )
-        from intent.service.expansion_facade import run_expansion_cycle
+        from intent.engine.expansion_orchestrator import ExpansionOrchestrator
+        from intent.service.philosophy_bootstrapper import PhilosophyBootstrapper
         from intent.service.intent_triager import IntentTriager
         # Smoke check — all names resolve
-        assert callable(ensure_global_philosophy)
         assert callable(find_discarded_recurrences)
         assert IntentPackGenerator is not None
         assert SurfaceRegistry is not None
         assert callable(merge_surfaces_into_registry)
-        assert callable(run_expansion_cycle)
+        assert ExpansionOrchestrator is not None
+        assert PhilosophyBootstrapper is not None
         assert IntentTriager is not None
 
     def test_normalize_surface_ids_assigns_stable_ids(self) -> None:
@@ -1010,9 +1073,8 @@ class TestIntentConventions:
         self, intent_planspace: Path, mock_dispatch: MagicMock,
     ) -> None:
         """No philosophy sources → fail-closed, return blocker result."""
-        from intent.service.intent_pack_generator import ensure_global_philosophy
         # No constraints.md, philosophy.md etc. in planspace
-        result = ensure_global_philosophy(
+        result = _make_philosophy_bootstrapper().ensure_global_philosophy(
             intent_planspace, intent_planspace,
         )
         assert result["status"] == "needs_user_input"
@@ -1247,8 +1309,10 @@ class TestIntentConventions:
     ) -> None:
         """proposal_max and implementation_max from triage reach cycle budget (V7/R53)."""
         # V1/R75: philosophy is now a gate — mock it as available
+        from intent.service.philosophy_bootstrapper import PhilosophyBootstrapper
         monkeypatch.setattr(
-            "intent.engine.intent_initializer.ensure_global_philosophy",
+            PhilosophyBootstrapper,
+            "ensure_global_philosophy",
             MagicMock(return_value={
                 "status": "ready",
                 "blocking_state": None,
@@ -1318,8 +1382,10 @@ class TestIntentConventions:
     ) -> None:
         """Malformed cycle budget → renamed + proceeds (V6/R53)."""
         # V1/R75: philosophy is now a gate — mock it as available
+        from intent.service.philosophy_bootstrapper import PhilosophyBootstrapper
         monkeypatch.setattr(
-            "intent.engine.intent_initializer.ensure_global_philosophy",
+            PhilosophyBootstrapper,
+            "ensure_global_philosophy",
             MagicMock(return_value={
                 "status": "ready",
                 "blocking_state": None,
@@ -1569,7 +1635,6 @@ class TestR55BudgetEnforcementFunctional:
     ) -> None:
         """When budget truncates, pending-surfaces file is written."""
         import json
-        from intent.service.expansion_facade import run_expansion_cycle
 
         artifacts = planspace / "artifacts"
         signals = artifacts / "signals"
@@ -1603,7 +1668,7 @@ class TestR55BudgetEnforcementFunctional:
 
         mock_dispatch.return_value = ""
 
-        run_expansion_cycle(
+        _make_expansion_orchestrator().run_expansion_cycle(
             "01", planspace, codespace,
             budgets={"max_new_surfaces_per_cycle": 3},
         )
@@ -1631,7 +1696,6 @@ class TestR56QueueSemantics:
         self, planspace, codespace, section_01, mock_dispatch,
     ) -> None:
         """Pending surfaces from prior truncation are processed next cycle."""
-        from intent.service.expansion_facade import run_expansion_cycle
 
         artifacts = planspace / "artifacts"
         signals = artifacts / "signals"
@@ -1680,7 +1744,7 @@ class TestR56QueueSemantics:
 
         mock_dispatch.return_value = ""
 
-        result = run_expansion_cycle(
+        result = _make_expansion_orchestrator().run_expansion_cycle(
             "01", planspace, codespace,
             budgets={"max_new_surfaces_per_cycle": 8},
         )
@@ -1773,8 +1837,7 @@ class TestR56AgentSelectedSources:
 
         mock_dispatch.side_effect = selector_empty
 
-        from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace)
+        result = _make_philosophy_bootstrapper().ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "needs_user_input", (
             "Empty selection must fail-closed with a blocker result")
 
@@ -1792,8 +1855,7 @@ class TestR56AgentSelectedSources:
 
         mock_dispatch.side_effect = selector_missing
 
-        from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace)
+        result = _make_philosophy_bootstrapper().ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "failed"
         assert result["blocking_state"] == "NEEDS_PARENT"
         assert models == ["gpt-high", "gpt-high", "claude-opus"]
@@ -1835,8 +1897,7 @@ class TestR56AgentSelectedSources:
 
         mock_dispatch.side_effect = selector_states
 
-        from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace)
+        result = _make_philosophy_bootstrapper().ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "needs_user_input"
 
         diagnostics = planspace / "artifacts" / "intent" / "global" / \
@@ -1886,8 +1947,7 @@ class TestR56AgentSelectedSources:
 
         mock_dispatch.side_effect = verifier_missing
 
-        from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace)
+        result = _make_philosophy_bootstrapper().ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "failed"
         assert result["blocking_state"] == "NEEDS_PARENT"
         assert verifier_models == ["claude-opus", "claude-opus", "claude-opus"]
@@ -1971,8 +2031,7 @@ class TestR56AgentSelectedSources:
 
         mock_dispatch.side_effect = verifier_authoritative
 
-        from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace)
+        result = _make_philosophy_bootstrapper().ensure_global_philosophy(planspace, codespace)
 
         assert result["status"] == "ready"
         assert verifier_seen_paths == [
@@ -2015,7 +2074,6 @@ class TestR56AxisBudgetEnforcement:
         self, planspace, codespace, section_01, mock_dispatch,
     ) -> None:
         """axes_added_so_far is persisted in registry after expansion."""
-        from intent.service.expansion_facade import run_expansion_cycle
 
         artifacts = planspace / "artifacts"
         signals = artifacts / "signals"
@@ -2058,7 +2116,7 @@ class TestR56AxisBudgetEnforcement:
 
         mock_dispatch.side_effect = write_delta
 
-        run_expansion_cycle(
+        _make_expansion_orchestrator().run_expansion_cycle(
             "01", planspace, codespace,
             budgets={"max_new_axes_total": 6},
         )
@@ -2073,7 +2131,6 @@ class TestR56AxisBudgetEnforcement:
         self, planspace, codespace, section_01, mock_dispatch,
     ) -> None:
         """R68/V5: Exceeding max_new_axes_total is advisory — axes accepted."""
-        from intent.service.expansion_facade import run_expansion_cycle
 
         artifacts = planspace / "artifacts"
         signals = artifacts / "signals"
@@ -2117,7 +2174,7 @@ class TestR56AxisBudgetEnforcement:
 
         mock_dispatch.side_effect = write_delta
 
-        result = run_expansion_cycle(
+        result = _make_expansion_orchestrator().run_expansion_cycle(
             "01", planspace, codespace,
             budgets={"max_new_axes_total": 6},
         )
@@ -2241,8 +2298,6 @@ class TestR57GateTypeSpecificMessaging:
         capturing_pipeline_control,
     ):
         """Axis budget gate must NOT say 'Philosophy tension'."""
-        from intent.service.expansion_facade import handle_user_gate
-
         artifacts = planspace / "artifacts"
         signals = artifacts / "signals"
         signals.mkdir(parents=True, exist_ok=True)
@@ -2256,7 +2311,7 @@ class TestR57GateTypeSpecificMessaging:
 
         capturing_pipeline_control._pause_return = "resume:accept"
 
-        handle_user_gate("01", planspace, delta_result)
+        _make_expansion_orchestrator().handle_user_gate("01", planspace, delta_result)
 
         # Check the pause message does NOT say philosophy
         assert len(capturing_pipeline_control.pause_calls) >= 1
@@ -2280,8 +2335,6 @@ class TestR57GateTypeSpecificMessaging:
         capturing_pipeline_control,
     ):
         """Philosophy gate correctly says 'Philosophy tension'."""
-        from intent.service.expansion_facade import handle_user_gate
-
         artifacts = planspace / "artifacts"
         signals = artifacts / "signals"
         signals.mkdir(parents=True, exist_ok=True)
@@ -2296,7 +2349,7 @@ class TestR57GateTypeSpecificMessaging:
 
         capturing_pipeline_control._pause_return = "resume:accept"
 
-        handle_user_gate("01", planspace, delta_result)
+        _make_expansion_orchestrator().handle_user_gate("01", planspace, delta_result)
 
         assert len(capturing_pipeline_control.pause_calls) >= 1
         pause_msg = capturing_pipeline_control.pause_calls[0][1]
@@ -2660,8 +2713,7 @@ class TestR59PhilosophyGroundingValidation:
 
         mock_dispatch.side_effect = side_effect
 
-        from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace)
+        result = _make_philosophy_bootstrapper().ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "failed", (
             "Missing source map must cause grounding failure")
         assert distiller_calls == 2, (
@@ -2718,8 +2770,7 @@ class TestR59PhilosophyGroundingValidation:
 
         mock_dispatch.side_effect = side_effect
 
-        from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace)
+        result = _make_philosophy_bootstrapper().ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "failed"
 
         malformed = intent_global / "philosophy-source-map.malformed.json"
@@ -2774,8 +2825,7 @@ class TestR59PhilosophyGroundingValidation:
 
         mock_dispatch.side_effect = side_effect
 
-        from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace)
+        result = _make_philosophy_bootstrapper().ensure_global_philosophy(planspace, codespace)
 
         assert result["status"] == "needs_user_input"
         assert result["blocking_state"] == "NEED_DECISION"
@@ -2831,8 +2881,7 @@ class TestR59PhilosophyGroundingValidation:
 
         mock_dispatch.side_effect = side_effect
 
-        from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace)
+        result = _make_philosophy_bootstrapper().ensure_global_philosophy(planspace, codespace)
 
         assert result["status"] == "ready"
         assert dispatches == ["philosophy-distiller.md"]
@@ -2900,8 +2949,7 @@ class TestR59PhilosophyGroundingValidation:
 
         mock_dispatch.side_effect = side_effect
 
-        from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace)
+        result = _make_philosophy_bootstrapper().ensure_global_philosophy(planspace, codespace)
 
         assert result["status"] == "needs_user_input"
         assert result["blocking_state"] == "NEED_DECISION"
@@ -2971,8 +3019,7 @@ class TestR59PhilosophyGroundingValidation:
 
         mock_dispatch.side_effect = side_effect
 
-        from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace)
+        result = _make_philosophy_bootstrapper().ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "failed", (
             "Unmapped principles must cause grounding failure")
 
@@ -3038,8 +3085,7 @@ class TestR59PhilosophyGroundingValidation:
 
         mock_dispatch.side_effect = side_effect
 
-        from intent.service.intent_pack_generator import ensure_global_philosophy
-        result = ensure_global_philosophy(planspace, codespace)
+        result = _make_philosophy_bootstrapper().ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "ready", (
             "Fully grounded philosophy must succeed")
         status_path = artifacts / "intent" / "global" / \
