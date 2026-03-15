@@ -28,7 +28,6 @@ from pipeline.runner import (
     StageError,
     _CRITICAL_STAGES,
     _STAGES,
-    _dispatch_stage_agent,
     _init_planspace,
     _run_stage,
     _write_schedule,
@@ -371,26 +370,26 @@ class TestScheduleRendering:
 # Test 8: QA-mode dispatch goes through dispatcher
 # ---------------------------------------------------------------------------
 
-class TestDispatchGoesThruDispatcher:
-    """Verify that stage dispatch uses Services.dispatcher()."""
+class TestUnimplementedStagesRaiseNotImplemented:
+    """Stages that need domain-specific orchestration raise NotImplementedError."""
 
-    def test_runner_qa_mode_dispatch_goes_through_dispatcher(
-        self, tmp_path: Path,
-    ) -> None:
+    def test_decompose_not_implemented(self, tmp_path: Path) -> None:
+        from pipeline.runner import _run_decompose
         cs = _make_greenfield_codespace(tmp_path)
         ps = tmp_path / "planspace"
         spec = _make_spec(cs)
-
         registry = _init_planspace(ps, cs, "test", True, spec)
+        with pytest.raises(NotImplementedError, match="decompose"):
+            _run_decompose(ps, cs, registry)
 
-        mock_disp, cleanup = _override_policies_and_dispatcher()
-        mock_disp.mock.return_value = ""
-        try:
-            _dispatch_stage_agent("decompose", ps, cs, registry)
-            assert mock_disp.mock.called
-            assert mock_disp.mock.call_count == 1
-        finally:
-            cleanup()
+    def test_verify_not_implemented(self, tmp_path: Path) -> None:
+        from pipeline.runner import _run_verify
+        cs = _make_greenfield_codespace(tmp_path)
+        ps = tmp_path / "planspace"
+        spec = _make_spec(cs)
+        registry = _init_planspace(ps, cs, "test", True, spec)
+        with pytest.raises(NotImplementedError, match="verify"):
+            _run_verify(ps, cs, registry)
 
 
 # ---------------------------------------------------------------------------
@@ -404,30 +403,23 @@ class TestCriticalStageFailureAborts:
         cs = _make_greenfield_codespace(tmp_path)
         spec = _make_spec(cs)
 
-        mock_disp, cleanup = _override_policies_and_dispatcher()
-        mock_disp.mock.return_value = "QA_REJECTED:decompose failed"
-        try:
-            # Use main() so we can verify return code and schedule state
-            with patch("pipeline.runner._mark_schedule") as mock_schedule:
-                mock_schedule.return_value = ""
-                result = main([
-                    str(tmp_path / "planspace"),
-                    str(cs),
-                    "--spec", str(spec),
-                    "--qa-mode",
-                ])
+        # decompose raises NotImplementedError (critical stage) -> pipeline returns 1
+        with patch("pipeline.runner._mark_schedule") as mock_schedule:
+            mock_schedule.return_value = ""
+            result = main([
+                str(tmp_path / "planspace"),
+                str(cs),
+                "--spec", str(spec),
+                "--qa-mode",
+            ])
 
-            # Critical stage (decompose) failed -> pipeline returns 1
-            assert result == 1
+        assert result == 1
 
-            # Verify _mark_schedule was called with "fail" for decompose
-            fail_calls = [
-                call for call in mock_schedule.call_args_list
-                if call[0][0] == "fail"
-            ]
-            assert len(fail_calls) > 0
-        finally:
-            cleanup()
+        fail_calls = [
+            call for call in mock_schedule.call_args_list
+            if call[0][0] == "fail"
+        ]
+        assert len(fail_calls) > 0
 
     def test_critical_stages_are_defined(self) -> None:
         """decompose and section-loop are critical stages."""
@@ -488,9 +480,9 @@ class TestNoncriticalStageFailureContinues:
         """docstrings stage is NOT in the critical stages set."""
         assert "docstrings" not in _CRITICAL_STAGES
 
-    def test_noncritical_stage_skip_marks_schedule(self, tmp_path: Path) -> None:
-        """When a non-critical agent dispatch returns QA_REJECTED,
-        the schedule is marked skip (not fail) and the stage returns."""
+    def test_noncritical_stage_failure_marks_schedule_fail(self, tmp_path: Path) -> None:
+        """When a non-critical stage raises an error,
+        the schedule is marked fail and the error propagates as StageError."""
         cs = _make_greenfield_codespace(tmp_path)
         ps = tmp_path / "planspace"
         spec = _make_spec(cs)
@@ -498,21 +490,17 @@ class TestNoncriticalStageFailureContinues:
         registry = _init_planspace(ps, cs, "test", False, spec)
         _write_schedule(ps, spec)
 
-        mock_disp, cleanup = _override_policies_and_dispatcher()
-        mock_disp.mock.return_value = "QA_REJECTED:skipped"
-        try:
-            with patch("pipeline.runner._mark_schedule") as mock_schedule:
-                mock_schedule.return_value = ""
-                # docstrings is non-critical: dispatch rejected -> skip
+        with patch("pipeline.runner._mark_schedule") as mock_schedule:
+            mock_schedule.return_value = ""
+            # docstrings raises NotImplementedError -> wrapped as StageError
+            with pytest.raises(StageError, match="docstrings"):
                 _run_stage("docstrings", ps, cs, registry)
 
-            skip_calls = [
+            fail_calls = [
                 call for call in mock_schedule.call_args_list
-                if call[0][0] == "skip"
+                if call[0][0] == "fail"
             ]
-            assert len(skip_calls) > 0
-        finally:
-            cleanup()
+            assert len(fail_calls) > 0
 
 
 # ---------------------------------------------------------------------------

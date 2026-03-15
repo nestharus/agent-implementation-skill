@@ -182,69 +182,82 @@ def _run_section_loop(
         sys.argv = saved_argv
 
 
-def _dispatch_stage_agent(
-    stage_name: str,
-    planspace: Path,
-    codespace: Path,
-    registry: PathRegistry,
-) -> bool:
-    """Dispatch a stage agent through the Services container.
+def _run_decompose(planspace: Path, codespace: Path, registry: PathRegistry) -> None:
+    """Stage 1: Section decomposition.
 
-    Used for stages that are handled by a single agent dispatch
-    (decompose, docstrings, verify, post-verify/promote).
+    This is a multi-phase orchestration process (see implement.md Stage 1):
+    - Phase A: Recursive identification (manifests)
+    - Phase B: Materialize terminal section files
+    - Phase C: Section summaries (GLM per section)
 
-    Returns True on success, False on failure.
+    TODO: Wire to proper decomposition orchestrator. Currently raises
+    NotImplementedError — the stage must be implemented as domain-specific
+    orchestration, not a generic single-agent dispatch.
     """
-    from containers import Services
-
-    policies = Services.policies()
-    policy = policies.load(planspace)
-
-    task_router = Services.task_router()
-    dispatcher = Services.dispatcher()
-
-    # Map stage names to task route qualifiers and prompt context.
-    # Stages that do not yet have dedicated task routes fall back to
-    # writing a minimal prompt and dispatching via the dispatcher
-    # with a generic agent file resolved from the stage name.
-    prompt_path = registry.artifacts / f"{stage_name}-prompt.md"
-    output_path = registry.artifacts / f"{stage_name}-output.md"
-
-    # Build a minimal prompt referencing the spec and planspace
-    prompt_content = (
-        f"# Stage: {stage_name}\n\n"
-        f"## Planspace\n`{planspace}`\n\n"
-        f"## Codespace\n`{codespace}`\n\n"
-        f"## Instructions\n"
-        f"Execute the {stage_name} stage of the implementation pipeline.\n"
-        f"Read the schedule at `{planspace / 'schedule.md'}` for context.\n"
+    raise NotImplementedError(
+        "Stage 1 (decompose) requires multi-phase orchestration "
+        "(recursive manifests → materialize → summaries). "
+        "See implement.md Stage 1 for the full specification."
     )
-    prompt_path.write_text(prompt_content, encoding="utf-8")
 
-    # Resolve model from policy or use a sensible default
-    model_key = stage_name.replace("-", "_")
-    try:
-        model = policies.resolve(policy, model_key)
-    except (KeyError, ValueError, AttributeError):
-        model = policy.get("default", "claude-opus")
 
-    # Resolve agent file — try the task router first, fall back to
-    # a conventional agent filename
-    try:
-        agent_file = task_router.agent_for(f"pipeline.{model_key}")
-    except (KeyError, ValueError):
-        agent_file = f"{stage_name}.md"
+def _run_docstrings(planspace: Path, codespace: Path, registry: PathRegistry) -> None:
+    """Stage 2: Demand-driven docstring cache.
 
-    result = dispatcher.dispatch(
-        model,
-        prompt_path,
-        output_path,
-        planspace,
-        agent_name=stage_name,
-        codespace=codespace,
-        agent_file=agent_file,
+    Language-agnostic: discovers the codespace's language stack and adds
+    module-level documentation to files that will be used by later stages.
+
+    TODO: Wire to proper docstring orchestrator. Currently raises
+    NotImplementedError.
+    """
+    raise NotImplementedError(
+        "Stage 2 (docstrings) requires language-aware file discovery "
+        "and per-file dispatch. See implement.md Stage 2."
     )
-    return result.status.name != "QA_REJECTED"
+
+
+def _run_verify(planspace: Path, codespace: Path, registry: PathRegistry) -> None:
+    """Stage 6: Verification.
+
+    Discovers available verification tools from the codespace (linters,
+    type checkers, test runners) and runs constraint alignment checks.
+
+    TODO: Wire to proper verification orchestrator. Currently raises
+    NotImplementedError.
+    """
+    raise NotImplementedError(
+        "Stage 6 (verify) requires stack-aware tool discovery "
+        "and constraint alignment checking. See implement.md Stage 6."
+    )
+
+
+def _run_post_verify(planspace: Path, codespace: Path, registry: PathRegistry) -> None:
+    """Stage 7: Post-verification.
+
+    Full test suite, import/dependency verification, and commit preparation.
+
+    TODO: Wire to proper post-verification orchestrator. Currently raises
+    NotImplementedError.
+    """
+    raise NotImplementedError(
+        "Stage 7 (post-verify) requires stack-aware verification "
+        "and commit preparation. See implement.md Stage 7."
+    )
+
+
+def _run_promote(planspace: Path, codespace: Path, registry: PathRegistry) -> None:
+    """Promote: Project-level review.
+
+    Reviews constraints and tradeoffs at the project level using the
+    governance and risk artifacts produced during the section loop.
+
+    TODO: Wire to proper promotion orchestrator. Currently raises
+    NotImplementedError.
+    """
+    raise NotImplementedError(
+        "Promote stage requires project-level review against "
+        "governance artifacts. Not yet implemented."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -278,16 +291,10 @@ def _run_stage(
 
     try:
         if stage_name == "decompose":
-            ok = _dispatch_stage_agent("decompose", planspace, codespace, registry)
-            if not ok:
-                raise StageError("decompose", "agent dispatch rejected")
+            _run_decompose(planspace, codespace, registry)
 
         elif stage_name == "docstrings":
-            ok = _dispatch_stage_agent("docstrings", planspace, codespace, registry)
-            if not ok:
-                logger.warning("Docstring stage failed — continuing (non-critical)")
-                _mark_schedule("skip", planspace)
-                return
+            _run_docstrings(planspace, codespace, registry)
 
         elif stage_name == "scan":
             rc = _run_scan(planspace, codespace)
@@ -305,23 +312,13 @@ def _run_stage(
             _run_section_loop(planspace, codespace, registry)
 
         elif stage_name == "verify":
-            ok = _dispatch_stage_agent("verify", planspace, codespace, registry)
-            if not ok:
-                raise StageError("verify", "verification dispatch rejected")
+            _run_verify(planspace, codespace, registry)
 
         elif stage_name == "post-verify":
-            ok = _dispatch_stage_agent("post-verify", planspace, codespace, registry)
-            if not ok:
-                logger.warning("Post-verify stage failed — non-critical")
-                _mark_schedule("skip", planspace)
-                return
+            _run_post_verify(planspace, codespace, registry)
 
         elif stage_name == "promote":
-            ok = _dispatch_stage_agent("promote", planspace, codespace, registry)
-            if not ok:
-                logger.warning("Promote stage failed — non-critical")
-                _mark_schedule("skip", planspace)
-                return
+            _run_promote(planspace, codespace, registry)
 
         else:
             logger.warning("Unknown stage: %s — skipping", stage_name)
