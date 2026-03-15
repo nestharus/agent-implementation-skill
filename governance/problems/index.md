@@ -214,31 +214,44 @@ Tests written as source-text archaeology create fragile regressions. R110 extend
 
 Legacy execution surfaces remain under live discovery trees after migration. R111 deleted 3 dead files (`orchestrator.md`, `exception-handler.md`, `state-detector.md`). R112 deleted `src/dispatch/agents/monitor.md` — the last unrouted agent in the live discovery tree. Runtime inventory now matches: 48 agents / 48 routes / 12 namespaces.
 
-**Solution surfaces**: PAT-0016 (Runtime Inventory Truth & Surface Retirement), dead file deletion, discovery tree hygiene.
+Constructor-DI completion also retired three more legacy production surfaces
+that no longer belonged in the live tree:
+`src/intent/service/expansion_facade.py`,
+`src/flow/service/flow_facade.py`, and the dead 64-name re-export facade
+`src/intent/service/philosophy.py`.
+
+**Solution surfaces**: PAT-0016 (Runtime Inventory Truth & Surface Retirement), dead file deletion, discovery tree hygiene, constructor-DI facade retirement.
 
 ---
 
 ## PRB-0019: Runtime Inventory Drift / Authoritative Interface Mismatch
 
-**Status**: active — substantially addressed (R111-R116)
+**Status**: active — substantially addressed (R111-R119)
 **Provenance**: audit-inferred (R111)
 **Regions**: system-synthesis.md, governance/audit/prompt.md, operator docs, eval adapters, pyproject.toml, runtime-facing templates, agent definitions
 
-Authoritative path/count/entrypoint claims are hand-maintained and diverge from live runtime registries after structural migrations. R111 corrected system-synthesis.md and governance/audit/prompt.md (paths/counts). R112 corrected governance/audit/prompt.md region paths to current layout (48 agents / 12 namespaces), fixed pyproject.toml (stale pythonpath entries), and updated eval harness + trigger adapter imports. R113 fixed `src/flow/engine/task_dispatcher.py` docstring, `src/models.md` stale reference, and `system-synthesis.md` problem count. R114 fixed stale runtime substrate references across SKILL.md, implement.md, models.md, rca.md, templates (`implementation-alignment.md`, `rca-cycle.md`), and agent definitions (`risk-assessor.md`, `execution-optimizer.md`) — removing references to retired `scan.sh`, `substrate.sh`, `section-loop.py`, worktree model, and stale `agents/` paths. R116 corrected `system-synthesis.md` stale counts (21→23 problems, 16→18 patterns) and added PAT-0017/PAT-0018 to the governance-layer pattern list.
+Authoritative path/count/entrypoint claims are hand-maintained and diverge from live runtime registries after structural migrations. R111 corrected system-synthesis.md and governance/audit/prompt.md (paths/counts). R112 corrected governance/audit/prompt.md region paths to current layout (48 agents / 12 namespaces), fixed pyproject.toml (stale pythonpath entries), and updated eval harness + trigger adapter imports. R113 fixed `src/flow/engine/task_dispatcher.py` docstring, `src/models.md` stale reference, and `system-synthesis.md` problem count. R114 fixed stale runtime substrate references across SKILL.md, implement.md, models.md, rca.md, templates (`implementation-alignment.md`, `rca-cycle.md`), and agent definitions (`risk-assessor.md`, `execution-optimizer.md`) — removing references to retired `scan.sh`, `substrate.sh`, `section-loop.py`, worktree model, and stale `agents/` paths. R116 corrected `system-synthesis.md` stale counts (21→23 problems, 16→18 patterns) and added PAT-0017/PAT-0018 to the governance-layer pattern list. R119 formalized PAT-0019 (Constructor DI / Composition-Root Boundary) in the pattern catalog, resolving the `system-synthesis.md` phantom reference and bringing the 19-pattern count into agreement with the live catalog.
 
-**Solution surfaces**: PAT-0016 (Runtime Inventory Truth & Surface Retirement), registry-derived inventory, atomic doc updates with code changes.
+The current authoritative architecture description records the runtime wiring
+boundary: `src/containers.py` defines service interfaces, production code
+receives collaborators via constructors, and only CLI `main()` composition
+roots touch the container directly. The boundary is formalized as PAT-0019.
+Service-locator residue remains in constructor fallbacks and compat wrappers
+across several production modules (documented in PAT-0019 known instances).
+
+**Solution surfaces**: PAT-0016 (Runtime Inventory Truth & Surface Retirement), PAT-0019 (Constructor DI boundary formalization), registry-derived inventory, atomic doc updates with code changes, authoritative wiring-contract updates.
 
 ---
 
 ## PRB-0020: Governance Self-Report Drift / False Health Reporting
 
-**Status**: active — substantially addressed (R112-R118)
+**Status**: active — substantially addressed (R112-R119)
 **Provenance**: audit-inferred (R112)
 **Regions**: governance/patterns/index.md, governance/risk-register.md, governance/problems/index.md, governance/audit/history.md
 
-Governance self-report surfaces (pattern health notes, risk register status, problem archive status, audit history counts) diverge from actual codebase state. R112-R113 corrected pattern health notes and risk register status, but R113 falsely claimed PAT-0001/PAT-0003 as "Healthy" and RISK-0007 as "resolved" while bypasses and unsaturated families remained. R114 corrected all four pattern health notes to reflect actual code state: PAT-0001 now genuinely healthy (last bypass fixed), PAT-0003 truthfully reported as "improved but not converged," PAT-0015 as "improved," PAT-0016 as "improved." R116 updated PAT-0003 health notes to include reconciliation family migration, PAT-0015 health notes to include doctrine-projection and reconciliation-family positive contract tests, and added PAT-0018 health note. R117 corrected PAT-0018 known instances (11th surface was missing) and PAT-0003 health note (4 new accessors + 7 consumer migrations).
+Governance self-report surfaces (pattern health notes, risk register status, problem archive status, audit history counts) diverge from actual codebase state. R112-R113 corrected pattern health notes and risk register status, but R113 falsely claimed PAT-0001/PAT-0003 as "Healthy" and RISK-0007 as "resolved" while bypasses and unsaturated families remained. R114 corrected all four pattern health notes to reflect actual code state: PAT-0001 now genuinely healthy (last bypass fixed), PAT-0003 truthfully reported as "improved but not converged," PAT-0015 as "improved," PAT-0016 as "improved." R116 updated PAT-0003 health notes to include reconciliation family migration, PAT-0015 health notes to include doctrine-projection and reconciliation-family positive contract tests, and added PAT-0018 health note. R117 corrected PAT-0018 known instances (11th surface was missing) and PAT-0003 health note (4 new accessors + 7 consumer migrations). R119 corrected three specific drift instances: phantom PAT-0019 reference (now cataloged), five dead known-instance paths in the pattern archive (corrected to live paths), and stale pattern health notes (refreshed to match actual code state including DI migration status).
 
-**Solution surfaces**: PAT-0016 scope expansion to governance self-reports (R112), truthful pattern health notes, audit-time verification of present-tense claims, RISK-0002 stale test count fixed (R118).
+**Solution surfaces**: PAT-0016 scope expansion to governance self-reports (R112), truthful pattern health notes, audit-time verification of present-tense claims, RISK-0002 stale test count fixed (R118), dead-path and phantom-reference correction (R119).
 
 ---
 
@@ -248,9 +261,9 @@ Governance self-report surfaces (pattern health notes, risk register status, pro
 **Provenance**: audit-inferred (R113), reopened R114, substantially addressed R115, reconciliation family R116, residual sweep R117, 3-family sweep R118
 **Regions**: PathRegistry, freshness/hashing, reconciliation, readiness, dispatch prompts, proposal cycle, flow system, traceability, coordination, signals, intent
 
-Durable artifact families used at multiple authoritative sites had only directory-level accessors or no accessors at all. R113 added `reconciliation_result()` and `execution_ready()` file-level accessors. R114 added 5 flow family accessors and fixed 4 existing-accessor bypasses. R115 added accessors for 6 remaining families (decision md/json, governance synthesis-cues/index-status, trace-index, intent-triage signal/prompt/output, coordination problems/escalation/fix/bridge/align/task-request, bridge-tools prompt/output/escalation) and migrated ~30 consumer sites. R116 added 3 reconciliation family accessors (`reconciliation_requests_dir()`, `reconciliation_request()`, `reconciliation_summary()`), migrated `queue.py` and `cross_section_reconciler.py` consumers, and normalized `load_reconciliation_result()` to accept planspace root exclusively (eliminating mixed-root semantics). R117 added 4 more accessors (`recurrence_signal()`, `coordination_recurrence()`, `related_files_signal()`, `global_decision_json()`) and migrated 7 consumer sites: proposal_state() bypasses (traceability_writer, section_communicator), note_ack_signal() bypass (problem_resolver), recurrence family (recurrence_emitter, problem_resolver, planner), context_sidecar (global decisions, related-files signals). Remaining: glob-pattern consumers for decisions and recurrence discovery, `decisions.py` repository functions with raw Path parameter, flow relpath helpers (kept by design for DB storage).
+Durable artifact families used at multiple authoritative sites had only directory-level accessors or no accessors at all. R113 added `reconciliation_result()` and `execution_ready()` file-level accessors. R114 added 5 flow family accessors and fixed 4 existing-accessor bypasses. R115 added accessors for 6 remaining families (decision md/json, governance synthesis-cues/index-status, trace-index, intent-triage signal/prompt/output, coordination problems/escalation/fix/bridge/align/task-request, bridge-tools prompt/output/escalation) and migrated ~30 consumer sites. R116 added 3 reconciliation family accessors (`reconciliation_requests_dir()`, `reconciliation_request()`, `reconciliation_summary()`), migrated `queue.py` and `cross_section_reconciler.py` consumers, and normalized `load_reconciliation_result()` to accept planspace root exclusively (eliminating mixed-root semantics). R117 added 4 more accessors (`recurrence_signal()`, `coordination_recurrence()`, `related_files_signal()`, `global_decision_json()`) and migrated 7 consumer sites: proposal_state() bypasses (traceability_writer, section_communicator), note_ack_signal() bypass (problem_resolver), recurrence family (recurrence_emitter, problem_resolver, planner), context_sidecar (global decisions, related-files signals). Remaining gaps are now concentrated in discovery/listing sites: research-question aggregation in `strategic_state_builder.py`, decision discovery in `section_reexplorer.py` and `microstrategy_decider.py`, recurrence discovery in `problem_resolver.py`, and `decisions.py` repository functions with raw `decisions_dir` parameters. These need named iterator/listing helpers per PAT-0003 rule 11 rather than another file-level accessor sweep. Flow relpath helpers remain a documented by-design exception for DB storage.
 
-**Solution surfaces**: PAT-0003 file-level accessor requirement, family-level accessor addition + atomic consumer migration, flow family accessors (R114), 6-family saturation sweep (R115), reconciliation family migration (R116), residual sweep (R117), 3-family sweep with 7 accessors and 12 consumer migrations (R118).
+**Solution surfaces**: PAT-0003 file-level accessor requirement (rules 1-10) and discovery/listing helper requirement (rule 11), family-level accessor addition + atomic consumer migration, flow family accessors (R114), 6-family saturation sweep (R115), reconciliation family migration (R116), residual sweep (R117), 3-family sweep with 7 accessors and 12 consumer migrations (R118).
 
 ---
 

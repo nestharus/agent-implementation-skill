@@ -25,6 +25,19 @@ These are substrate invariants, not project-level patterns. They trace to PHI-gl
 
 The system never confuses these. Planspace is working memory. Codespace is the object of work.
 
+### Wiring and composition roots
+
+`src/containers.py` defines the runtime's cross-cutting service interfaces and
+composition helpers. Constructor dependency injection is the universal
+production wiring pattern: engines, services, repositories, and orchestrators
+receive collaborators through their constructors, and callers pass fully
+constructed dependencies downward.
+
+Only CLI entry points / `main()` functions touch the container directly. After
+composition, production code works only with injected collaborators. The old
+free-function facade pattern — construct from the global container, delegate,
+return — is retired.
+
 ### The bounded substrate
 
 The substrate is intentionally typed and bounded because durable restart requires stable mechanics, pause/resume requires known protocols, monitoring requires known task classes, and safety depends on every dispatch having an agent file.
@@ -41,9 +54,13 @@ The task queue is not a workflow ladder. It is a typed blackboard of discovered 
 
 - **Problems solved**: PRB-0001 (Safe Multi-Agent Orchestration), PRB-0003 (Stale Artifacts)
 - **Philosophy**: PHI-global (bounded autonomy, fail-closed)
-- **Patterns**: PAT-0004 (Flow System), PAT-0005 (Policy-Driven Models), PAT-0006 (Freshness)
+- **Patterns**: PAT-0004 (Flow System), PAT-0005 (Policy-Driven Models), PAT-0006 (Freshness), PAT-0019 (Constructor Dependency Injection)
 
 The flow system expresses multi-step agent work as chains (sequential), fanout (parallel branches with gates), and named packages. ``src/flow/types/routing.py`` maps the typed task vocabulary to agent files and default models. ``src/flow/engine/task_dispatcher.py`` polls the queue, resolves task types, claims work, dispatches agents, and records completion. ``src/flow/engine/reconciler.py`` handles task completion hooks — research flow, post-implementation assessment, gate synthesis.
+
+Flow wiring is explicit: `TaskDispatcher` is constructed with its
+`Reconciler` and `FlowContextStore` collaborators, and the retired
+`src/flow/service/flow_facade.py` layer no longer mediates task execution.
 
 Agents say what they need. The substrate decides how that need is executed. Task submission (not direct spawning) keeps agents short-lived, ensures every dispatch uses an approved agent file, keeps execution observable and resumable, and prevents arbitrary social behavior between agents.
 
@@ -56,6 +73,12 @@ Agents say what they need. The substrate decides how that need is executed. Task
 - **Patterns**: PAT-0010 (Intent Surfaces), PAT-0009 (Blocker Taxonomy)
 
 The section loop is a multi-pass orchestrator. `src/orchestrator/engine/pipeline_orchestrator.py` orders: proposal pass → reconciliation → implementation pass → global alignment recheck → coordination. Per-section execution sequences: impact triage → excerpt extraction → problem-frame validation → intent bootstrap → proposal writing → readiness routing → microstrategy → implementation → tool validation → post-completion work.
+
+Composition inside the loop is explicit as well: section decisions are now
+persisted through `src/coordination/service/decision_recorder.py`, which
+receives artifact and communication collaborators via constructor injection.
+`src/orchestrator/service/section_decision_store.py` is now a read /
+normalization helper rather than a write facade.
 
 Integration proposals are problem-state artifacts, not file-change plans. They emit resolved/unresolved anchors, contracts, research questions, user questions, new-section candidates, shared seam candidates, and execution readiness declarations.
 
@@ -76,11 +99,17 @@ The scan stage builds the codemap (a structured routing map of subsystems, entry
 
 - **Problems solved**: PRB-0002 (Strategic Implementation — problem framing), PRB-0007 (Execution Risk — philosophy constraints)
 - **Philosophy**: PHI-global (problems not features, alignment over audit)
-- **Patterns**: PAT-0010 (Intent Surfaces)
+- **Patterns**: PAT-0010 (Intent Surfaces), PAT-0019 (Constructor Dependency Injection)
 
 The intent layer centers on living problem-definition and philosophy artifacts. Full intent mode gives each section a problem.md (axes of concern) and problem-alignment.md (rubric). The intent triager decides lightweight vs full handling based on structural signals.
 
 Philosophy bootstrap is a gated workflow: it scaffolds user input for greenfield repos, pauses on NEED_DECISION, and resumes after user-authored philosophy passes distillation. The selector, verifier, and distiller share a strict definition of philosophy as cross-cutting reasoning doctrine.
+
+Intent wiring is direct: `IntentInitializer` receives
+`PhilosophyBootstrapper` via constructor injection, and proposal expansion uses
+`ExpansionHandler` with an injected `ExpansionOrchestrator`. The retired
+`src/intent/service/expansion_facade.py` and dead
+`src/intent/service/philosophy.py` surfaces are gone.
 
 Intent surfaces are passively discovered during alignment: missing axes, tensions, ungrounded assumptions, philosophy silence. These surfaces are normalized, registered, expanded, or reopened through recurrence adjudication. Research-derived and implementation-feedback surfaces feed the same expansion cycle.
 
@@ -147,19 +176,24 @@ When sections lack enough shared structure for meaningful proposals, SIS activat
 
 - **Problems solved**: PRB-0004 (Agent Output Corruption), PRB-0003 (Stale Artifacts)
 - **Philosophy**: PHI-global (evidence preservation, fail-closed)
-- **Patterns**: PAT-0001 (Corruption Preservation), PAT-0003 (Path Registry), PAT-0006 (Freshness), PAT-0008 (Fail-Closed)
+- **Patterns**: PAT-0001 (Corruption Preservation), PAT-0003 (Path Registry), PAT-0006 (Freshness), PAT-0008 (Fail-Closed), PAT-0019 (Constructor Dependency Injection)
 
 Cross-cutting infrastructure: `artifact_io.py` (read_json/write_json/rename_malformed), `path_registry.py` (all artifact paths from a single source), `content_hasher.py` (content-based hashing), `freshness_calculator.py` (section freshness tokens from 18+ input categories), `input_hasher.py` (full section input hash including governance).
 
-**Key modules**: `src/signals/repository/artifact_io.py`, `src/orchestrator/path_registry.py`, `src/staleness/service/freshness_calculator.py`, `src/staleness/service/input_hasher.py`
+**Key modules**: `src/containers.py`, `src/signals/repository/artifact_io.py`, `src/orchestrator/path_registry.py`, `src/staleness/service/freshness_calculator.py`, `src/staleness/service/input_hasher.py`
 
 ### Governance Layer
 
 - **Problems solved**: PRB-0008 (Implementation Risk), PRB-0009 (Problem Traceability), PRB-0010 (Pattern Governance)
 - **Philosophy**: PHI-global
-- **Patterns**: PAT-0001, PAT-0002, PAT-0003, PAT-0005, PAT-0008, PAT-0011 (Applicable Governance Packet Threading), PAT-0012 (Post-Implementation Governance Feedback), PAT-0013 (Governed Proposal Identity), PAT-0014 (Advisory Gate Transparency), PAT-0015 (Positive Contract Testing), PAT-0016 (Runtime Inventory Truth & Surface Retirement), PAT-0017 (Proposal-State Contract Projection), PAT-0018 (Behavioral Doctrine Projection)
+- **Patterns**: PAT-0001, PAT-0002, PAT-0003, PAT-0005, PAT-0008, PAT-0011 (Applicable Governance Packet Threading), PAT-0012 (Post-Implementation Governance Feedback), PAT-0013 (Governed Proposal Identity), PAT-0014 (Advisory Gate Transparency), PAT-0015 (Positive Contract Testing), PAT-0016 (Runtime Inventory Truth & Surface Retirement), PAT-0017 (Proposal-State Contract Projection), PAT-0018 (Behavioral Doctrine Projection), PAT-0019 (Constructor Dependency Injection)
 
-The governance layer makes per-run artifacts cumulative. Codespace holds authoritative documents (problem archive with 23 problems, pattern catalog with 18 patterns, philosophy profiles, risk register). The runtime parses these into planspace JSON indexes (including synthesis cues extracted from this document's Regions block), builds per-section governance packets with section-scoped candidate filtering (including applicability-aware pattern scoping, bounded no-match behavior, and synthesis cue boosting), and threads them into prompt context, sidecars, freshness hashing, section-input hashing, and traceability.
+The governance layer makes per-run artifacts cumulative. Codespace holds authoritative documents (problem archive with 23 problems, pattern catalog with 19 patterns, philosophy profiles, risk register). The runtime parses these into planspace JSON indexes (including synthesis cues extracted from this document's Regions block), builds per-section governance packets with section-scoped candidate filtering (including applicability-aware pattern scoping, bounded no-match behavior, and synthesis cue boosting), and threads them into prompt context, sidecars, freshness hashing, section-input hashing, and traceability.
+
+Governance runtime surfaces follow the same wiring rule as the rest of the
+system: `src/containers.py` defines the service interfaces, production modules
+receive collaborators via constructors, and only CLI / composition-root entry
+points wire concrete instances from the container.
 
 Post-implementation assessment queues after successful implementation, validates results with PAT-0001, merges governance IDs into trace artifacts, and routes verdicts mechanically: `accept` → record governance IDs, `accept_with_debt` → emit debt signal for risk-register staging, `refactor_required` → emit structured blocker signal.
 
@@ -228,7 +262,7 @@ Agents expand work inside this vocabulary without inventing new execution primit
 ## Open tensions
 
 - **PRB-0009 (Problem Traceability)**: Governance enrichment covers all three trace surfaces (trace index, trace map, traceability.json) with problem_ids, pattern_ids, and profile_id. R103 added proposal-time governance identity (PAT-0013) so lineage originates at proposal time rather than post-implementation inference. Full round-trip traceability from problem → proposal → code → assessment is now wired; post-implementation assessment validates and enriches proposal-time lineage.
-- **PRB-0010 (Pattern Governance)**: Pattern archive (18 patterns) is loaded into governance packets and threaded into prompts, freshness hashing, microstrategy, alignment, and ROAL. R103 added proposal-time pattern_ids and pattern_deviations to proposal-state. R104 deepened the loader to parse template and conformance fields. R105 updated PAT-0005 (long-lived policy refresh), PAT-0011 (explicit ambiguity states), PAT-0012 (material-payload dedup), and PAT-0013 (profile compatibility, non-empty identity requirement). R109 added PAT-0014 (advisory gate transparency — structured reason_codes) and PAT-0015 (positive contract testing). Runtime pattern governance is increasingly structural — proposals must declare governance identity when packets provide candidates, and conformance criteria are now available at runtime.
+- **PRB-0010 (Pattern Governance)**: Pattern archive (19 patterns) is loaded into governance packets and threaded into prompts, freshness hashing, microstrategy, alignment, and ROAL. R103 added proposal-time pattern_ids and pattern_deviations to proposal-state. R104 deepened the loader to parse template and conformance fields. R105 updated PAT-0005 (long-lived policy refresh), PAT-0011 (explicit ambiguity states), PAT-0012 (material-payload dedup), and PAT-0013 (profile compatibility, non-empty identity requirement). R109 added PAT-0014 (advisory gate transparency — structured reason_codes) and PAT-0015 (positive contract testing). PAT-0019 now records the universal constructor-DI / composition-root boundary. Runtime pattern governance is increasingly structural — proposals must declare governance identity when packets provide candidates, and conformance criteria are now available at runtime.
 - **PRB-0014 (Governance Context Dilution)**: R103 added region-based candidate filtering. R104 expanded to multi-signal applicability. R105 added explicit applicability states (matched/ambiguous_applicability/no_applicable_governance), narrowed profile scope to governing profile, and populated governance_questions on ambiguity rather than silently broadening. Packets now carry section-scoped candidate sets with explicit applicability state.
 - **Stabilization loop**: Post-impl assessment emits `accept_with_debt` → risk-register staging signal and `refactor_required` → structured blocker signal. R103 wired bounded stabilization consumer. R104 made promotion idempotent. R105 made dedup material-payload-aware: severity, mitigation, rationale, and governance lineage now affect the dedup key so changed risk re-promotes while unchanged debt stays idempotent.
 - **Per-region philosophy**: Region-profile-map exists but all regions currently use PHI-global. The infrastructure supports overrides when materially different values emerge.

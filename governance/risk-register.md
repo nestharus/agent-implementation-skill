@@ -98,6 +98,18 @@ Post-implementation assessment emits `accept_with_debt` verdicts with typed `deb
 - **Region**: PathRegistry consumers across scan, intent/prompt assembly, tool surfaces, freshness/hash services, dispatch prompt assembly, implementation services, orchestrator, flow system, coordination
 - **Description**: PAT-0003 had correct accessors for several durable families, but authoritative consumers still reconstructed those paths manually. R113 resolved two families but the broader problem persists: flow system has parallel relpath helpers, trace/decision/governance/intent/coordination families lack accessors entirely, and existing accessors (`proposal_state`, `execution_ready`, `philosophy`) had bypass sites.
 - **Severity**: low
-- **Status**: mitigated → substantially resolved (R115)
-- **Acceptance rationale**: R115 added accessors for all 6 remaining families and migrated ~30 consumer sites. Residual gaps are glob-pattern consumers (cannot use file-level accessors), `decisions.py` repository functions with raw Path parameter, and flow relpath helpers (kept by design for DB storage).
-- **Mitigation**: R110-R114 saturation sweeps + R115 6-family accessor addition and consumer migration. Remaining gaps documented in PRB-0021.
+- **Status**: mitigated → substantially resolved (R115-R118)
+- **Acceptance rationale**: R115 added accessors for all 6 remaining families and migrated ~30 consumer sites. R116-R118 continued with reconciliation, residual, and 3-family sweeps. Residual gaps are now concentrated in discovery/listing sites (research-question aggregation, decision/recurrence discovery) that need named iterator/listing helpers per PAT-0003 rule 11, plus `decisions.py` repository functions with raw Path parameter. Flow relpath helpers remain by design for DB storage.
+- **Mitigation**: R110-R118 saturation sweeps + family accessor addition and consumer migration. Remaining gaps documented in PRB-0021. PAT-0003 rule 11 formalizes the discovery/listing helper requirement.
+
+---
+
+### RISK-0008: Service-container boundary residue
+
+- **Category**: coupling / pattern-drift
+- **Region**: constructor fallbacks (`cache.py`, `pipeline/context.py`, `substrate_discoverer.py`), runtime method-level lookups (`section_alignment_checker.py`, `global_alignment_rechecker.py`), backward-compat wrappers (`section_communicator.py`), runtime helpers (`section_dispatcher.py`, `task_dispatcher.py` non-composition-root sites)
+- **Description**: PAT-0019 formalizes the constructor-DI / composition-root boundary, but service-locator residue persists in production code outside sanctioned composition roots. Constructor fallbacks silently resolve missing dependencies from the global container instead of requiring explicit wiring. Runtime methods build collaborator graphs from `Services` inside business logic. Backward-compat wrapper functions delegate through the container instead of through injected dependencies.
+- **Severity**: medium
+- **Status**: accepted
+- **Acceptance rationale**: The dominant anti-pattern (105+ free-function backward-compat wrappers) is retired. The remaining sites are constructor fallbacks and runtime helpers that work correctly but violate the published architecture boundary. Risk is coupling drift and split-brain between docs and runtime, not immediate breakage.
+- **Mitigation**: PAT-0019 catalogs the boundary rule. Known residue sites are documented in PAT-0019 known instances. Future migration should prioritize constructor fallback removal (cache.py, context.py, substrate_discoverer.py) and runtime method extraction (section_alignment_checker.py, global_alignment_rechecker.py).
