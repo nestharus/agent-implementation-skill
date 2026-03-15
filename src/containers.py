@@ -145,13 +145,19 @@ class SignalReader:
 class PipelineControlService:
     """Pipeline control: pausing, polling, alignment, requeue, hashing."""
 
+    def __init__(self) -> None:
+        self._parent: str = ""
+
     def _get(self):
         from orchestrator.service.pipeline_control import PipelineControl
-        return PipelineControl(
+        ctrl = PipelineControl(
             config=Services.config(),
             logger=Services.logger(),
             change_tracker=Services.change_tracker(),
         )
+        if self._parent:
+            ctrl.set_parent(self._parent)
+        return ctrl
 
     def pause_for_parent(self, planspace, message) -> str:
         return self._get().pause_for_parent(planspace, message)
@@ -206,6 +212,10 @@ class PipelineControlService:
         otherwise.  The caller decides what value to return.
         """
         return checker(planspace)
+
+    def set_parent(self, parent: str) -> None:
+        """Set the parent mailbox name (called once at pipeline startup)."""
+        self._parent = parent
 
     def wait_if_paused(self, planspace) -> None:
         return self._get().wait_if_paused(planspace)

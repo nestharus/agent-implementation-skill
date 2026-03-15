@@ -121,6 +121,7 @@ class PipelineOrchestrator:
         self._pipeline_control.set_parent(args.parent)
         self._logger.log(f"Registered: {self._config.agent_name} (parent: {args.parent})")
 
+        from containers import Services
         ctx = DispatchContext(planspace=args.planspace, codespace=args.codespace, _policies=Services.policies())
 
         try:

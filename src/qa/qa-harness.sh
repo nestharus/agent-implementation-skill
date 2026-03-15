@@ -54,8 +54,8 @@ QA_START_ISO="$(date -Iseconds)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
 RUN_DIR="$ANSWER_KEY/runs/$RUN_ID"
 
-# Timeout: 2 hours max
-TIMEOUT_SECONDS=7200
+# No timeout — the run completes when the workflow agent exits or the budget is exhausted.
+TIMEOUT_SECONDS=0
 
 echo "═══════════════════════════════════════════════════"
 echo "  QA Harness — $SLUG"
@@ -65,7 +65,7 @@ echo "  Spec:        $SPEC_PATH"
 echo "  Answer key:  $ANSWER_KEY"
 echo "  Planspace:   $PLANSPACE"
 echo "  Run output:  $RUN_DIR"
-echo "  Timeout:     ${TIMEOUT_SECONDS}s"
+echo "  Timeout:     $([ "$TIMEOUT_SECONDS" -gt 0 ] && echo "${TIMEOUT_SECONDS}s" || echo "none (budget-limited)")"
 echo "═══════════════════════════════════════════════════"
 
 # ── Preflight ─────────────────────────────────────────────────────────
@@ -351,12 +351,14 @@ for sec, cnt in counts.items():
       log_finding "HEARTBEAT" "-" "events:$EVT_COUNT agents:$AGENT_COUNT findings:$FINDING_COUNT elapsed:${ELAPSED}s"
     fi
 
-    # ── Timeout check ──
-    ELAPSED=$(( $(date +%s) - START_TIME ))
-    if [ "$ELAPSED" -gt "$TIMEOUT_SECONDS" ]; then
-      log_finding "ABORT" "TIMEOUT" "QA harness timeout after ${ELAPSED}s"
-      kill "$WORKFLOW_PID" 2>/dev/null || true
-      break
+    # ── Timeout check (disabled when TIMEOUT_SECONDS=0) ──
+    if [ "$TIMEOUT_SECONDS" -gt 0 ]; then
+      ELAPSED=$(( $(date +%s) - START_TIME ))
+      if [ "$ELAPSED" -gt "$TIMEOUT_SECONDS" ]; then
+        log_finding "ABORT" "TIMEOUT" "QA harness timeout after ${ELAPSED}s"
+        kill "$WORKFLOW_PID" 2>/dev/null || true
+        break
+      fi
     fi
 
     sleep 15

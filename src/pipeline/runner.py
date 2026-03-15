@@ -225,7 +225,7 @@ def _dispatch_stage_agent(
     model_key = stage_name.replace("-", "_")
     try:
         model = policies.resolve(policy, model_key)
-    except (KeyError, ValueError):
+    except (KeyError, ValueError, AttributeError):
         model = policy.get("default", "claude-opus")
 
     # Resolve agent file — try the task router first, fall back to
