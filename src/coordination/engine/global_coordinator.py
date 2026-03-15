@@ -8,25 +8,18 @@ from coordination.types import BridgeDirective, CoordinationStrategy, ProblemGro
 from pipeline.context import DispatchContext
 from coordination.engine.plan_executor import (
     CoordinationExecutionExit,
-    execute_coordination_plan,
-    read_execution_modified_files,
+    PlanExecutor,
 )
-from coordination.service.planner import (
-    _parse_coordination_plan,
-    write_coordination_plan_prompt,
-)
-from coordination.service.problem_resolver import (
-    collect_outstanding_problems,
-    detect_recurrence_patterns,
-)
+from coordination.service.planner import Planner
+from coordination.service.problem_resolver import ProblemResolver
 from orchestrator.path_registry import PathRegistry
 from implementation.service.scope_delta_aggregator import (
     ScopeDeltaAggregationExit,
-    aggregate_scope_deltas,
+    ScopeDeltaAggregator,
 )
 
 
-from coordination.service.completion_handler import read_incoming_notes
+from coordination.service.completion_handler import CompletionHandler
 from orchestrator.types import Section, SectionResult, ControlSignal
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from signals.types import ALIGNMENT_INVALID_FRAME
@@ -59,21 +52,31 @@ class GlobalCoordinator:
         *,
         artifact_io: ArtifactIOService,
         communicator: Communicator,
+        completion_handler: CompletionHandler,
         dispatch_helpers: DispatchHelperService,
         dispatcher: AgentDispatcher,
         logger: LogService,
+        plan_executor: PlanExecutor,
+        planner: Planner,
         pipeline_control: PipelineControlService,
         policies: ModelPolicyService,
+        problem_resolver: ProblemResolver,
+        scope_delta_aggregator: ScopeDeltaAggregator,
         section_alignment: SectionAlignmentService,
         task_router: TaskRouterService,
     ) -> None:
         self._artifact_io = artifact_io
         self._communicator = communicator
+        self._completion_handler = completion_handler
         self._dispatch_helpers = dispatch_helpers
         self._dispatcher = dispatcher
         self._logger = logger
+        self._plan_executor = plan_executor
+        self._planner = planner
         self._pipeline_control = pipeline_control
         self._policies = policies
+        self._problem_resolver = problem_resolver
+        self._scope_delta_aggregator = scope_delta_aggregator
         self._section_alignment = section_alignment
         self._task_router = task_router
 
@@ -91,7 +94,7 @@ class GlobalCoordinator:
 
         Returns ``(problems, recurrence)`` or ``None`` if no problems exist.
         """
-        problems = collect_outstanding_problems(
+        problems = self._problem_resolver.collect_outstanding_problems(
             section_results, sections_by_num, planspace,
         )
 
@@ -104,7 +107,7 @@ class GlobalCoordinator:
 
         paths = PathRegistry(planspace)
         policy = self._policies.load(planspace)
-        recurrence = detect_recurrence_patterns(planspace, problems)
+        recurrence = self._problem_resolver.detect_recurrence_patterns(planspace, problems)
         if recurrence:
             escalation_file = paths.coordination_model_escalation()
             escalation_file.write_text(
@@ -132,7 +135,7 @@ class GlobalCoordinator:
     ) -> dict | None:
         """Dispatch planner agent with retry, return parsed plan or None."""
         coord_dir = PathRegistry(planspace).coordination_dir()
-        plan_prompt = write_coordination_plan_prompt(problems, planspace)
+        plan_prompt = self._planner.write_coordination_plan_prompt(problems, planspace)
         plan_output = coord_dir / "coordination-plan-output.md"
         self._logger.log("  coordinator: dispatching coordination-planner agent")
         plan_result = self._dispatcher.dispatch(
@@ -142,7 +145,7 @@ class GlobalCoordinator:
         if plan_result == ALIGNMENT_CHANGED_PENDING:
             return None
 
-        coord_plan = _parse_coordination_plan(plan_result.output, problems)
+        coord_plan = self._planner._parse_coordination_plan(plan_result.output, problems)
         if coord_plan is None:
             self._logger.log("  coordinator: plan parse failed — retrying with "
                 "escalation model")
@@ -153,7 +156,7 @@ class GlobalCoordinator:
             )
             if retry_result == ALIGNMENT_CHANGED_PENDING:
                 return None
-            coord_plan = _parse_coordination_plan(retry_result.output, problems)
+            coord_plan = self._planner._parse_coordination_plan(retry_result.output, problems)
 
         if coord_plan is None:
             self._logger.log("  coordinator: plan parse failed after retry — fail closed")
@@ -248,13 +251,13 @@ class GlobalCoordinator:
     ) -> tuple[list[str], set[str]] | None:
         """Execute coordination plan. Returns (affected_sections, all_modified) or None."""
         try:
-            affected_sections = execute_coordination_plan(
+            affected_sections = self._plan_executor.execute_coordination_plan(
                 groups, sections_by_num, ctx,
                 agent_batches=agent_batches,
             )
         except CoordinationExecutionExit:
             return None
-        all_modified = read_execution_modified_files(ctx.planspace)
+        all_modified = self._plan_executor.read_execution_modified_files(ctx.planspace)
         return affected_sections, all_modified
 
     # ---------------------------------------------------------------------------
@@ -314,7 +317,7 @@ class GlobalCoordinator:
         """
         sec_num = section.number
 
-        notes = read_incoming_notes(section, ctx.planspace, ctx.codespace)
+        notes = self._completion_handler.read_incoming_notes(section, ctx.planspace, ctx.codespace)
         if notes:
             self._logger.log(f"  coordinator: section {sec_num} has incoming notes "
                 f"from other sections")
@@ -454,7 +457,7 @@ class GlobalCoordinator:
         # Check if everything is now aligned
         remaining = [r for r in section_results.values() if not r.aligned]
         if not remaining:
-            outstanding_after = collect_outstanding_problems(
+            outstanding_after = self._problem_resolver.collect_outstanding_problems(
                 section_results, sections_by_num, ctx.planspace,
             )
             if outstanding_after:
@@ -497,7 +500,7 @@ class GlobalCoordinator:
 
         # Phase 1b: Aggregate scope deltas
         try:
-            aggregate_scope_deltas(ctx.planspace)
+            self._scope_delta_aggregator.aggregate_scope_deltas(ctx.planspace)
         except ScopeDeltaAggregationExit:
             return False
 
@@ -552,32 +555,3 @@ def _compose_recurrence_text(
         f"{files_block}\n"
     )
 
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_global_coordinator() -> GlobalCoordinator:
-    from containers import Services
-    return GlobalCoordinator(
-        artifact_io=Services.artifact_io(),
-        communicator=Services.communicator(),
-        dispatch_helpers=Services.dispatch_helpers(),
-        dispatcher=Services.dispatcher(),
-        logger=Services.logger(),
-        pipeline_control=Services.pipeline_control(),
-        policies=Services.policies(),
-        section_alignment=Services.section_alignment(),
-        task_router=Services.task_router(),
-    )
-
-
-def run_global_coordination(
-    section_results: dict[str, SectionResult],
-    sections_by_num: dict[str, Section],
-    ctx: DispatchContext,
-) -> bool:
-    """Run the global problem coordinator."""
-    return _get_global_coordinator().run_global_coordination(
-        section_results, sections_by_num, ctx,
-    )

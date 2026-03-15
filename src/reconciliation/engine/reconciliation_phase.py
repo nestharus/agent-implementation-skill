@@ -6,14 +6,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from reconciliation.engine.cross_section_reconciler import run_reconciliation_loop
-from orchestrator.engine.section_pipeline import run_section
 from orchestrator.types import ProposalPassResult, Section
+from reconciliation.engine.cross_section_reconciler import CrossSectionReconciler
 from signals.service.section_communicator import send_to_parent
 from signals.types import PASS_MODE_PROPOSAL
 
 if TYPE_CHECKING:
     from containers import (
+        ArtifactIOService,
         ChangeTrackerService,
         LogService,
         PipelineControlService,
@@ -51,12 +51,22 @@ class ReconciliationPhase:
     def __init__(
         self,
         logger: LogService,
+        artifact_io: ArtifactIOService,
         pipeline_control: PipelineControlService,
         change_tracker: ChangeTrackerService,
+        cross_section_reconciler: CrossSectionReconciler,
     ) -> None:
         self._logger = logger
+        self._artifact_io = artifact_io
         self._pipeline_control = pipeline_control
         self._change_tracker = change_tracker
+        self._cross_section_reconciler = cross_section_reconciler
+        from orchestrator.engine.section_pipeline import SectionPipeline
+        self._section_pipeline = SectionPipeline(
+            logger=logger,
+            artifact_io=artifact_io,
+            pipeline_control=pipeline_control,
+        )
         self._check_and_clear_alignment_changed = (
             self._change_tracker.make_alignment_checker()
         )
@@ -100,7 +110,7 @@ class ReconciliationPhase:
                 raise ReconciliationPhaseExit
 
             if self._pipeline_control.check_alignment_and_return(
-                planspace, _check_and_clear_alignment_changed,
+                planspace, self._check_and_clear_alignment_changed,
             ):
                 self._logger.log("Alignment changed during re-proposal pass — restarting from Phase 1")
                 return True
@@ -108,7 +118,7 @@ class ReconciliationPhase:
             section = sections_by_num[sec_num]
             self._logger.log(f"=== Section {sec_num} re-proposal pass (reconciliation-affected) ===")
 
-            reproposal_result = run_section(
+            reproposal_result = self._section_pipeline.run_section(
                 planspace,
                 codespace,
                 section,
@@ -117,7 +127,7 @@ class ReconciliationPhase:
             )
 
             if self._pipeline_control.check_alignment_and_return(
-                planspace, _check_and_clear_alignment_changed,
+                planspace, self._check_and_clear_alignment_changed,
             ):
                 self._logger.log("Alignment changed during re-proposal — restarting from Phase 1")
                 return True
@@ -150,7 +160,7 @@ class ReconciliationPhase:
 
         ready_sections, blocked_sections = _partition_sections(proposal_results)
 
-        recon_summary = run_reconciliation_loop(
+        recon_summary = self._cross_section_reconciler.run_reconciliation_loop(
             planspace,
             list(proposal_results.values()),
         )
@@ -205,44 +215,3 @@ class ReconciliationPhase:
             removed_section_numbers=blocked_sections,
             alignment_changed=restart_phase1,
         )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_reconciliation_phase() -> ReconciliationPhase:
-    from containers import Services
-    return ReconciliationPhase(
-        logger=Services.logger(),
-        pipeline_control=Services.pipeline_control(),
-        change_tracker=Services.change_tracker(),
-    )
-
-
-def run_reconciliation_phase(
-    proposal_results: dict[str, ProposalPassResult],
-    sections_by_num: dict[str, Section],
-    all_sections: list[Section],
-    planspace: Path,
-    codespace: Path,
-) -> ReconciliationResult:
-    """Run reconciliation blocking and any required re-proposal passes."""
-    return _get_reconciliation_phase().run_reconciliation_phase(
-        proposal_results,
-        sections_by_num,
-        all_sections,
-        planspace,
-        codespace,
-    )
-
-
-def _check_and_clear_alignment_changed(planspace: Path) -> bool:
-    """Module-level alignment checker for backward compatibility.
-
-    Tests monkeypatch this name directly.  In production the function
-    lazily creates a fresh checker from the container.
-    """
-    from containers import Services
-    checker = Services.change_tracker().make_alignment_checker()
-    return checker(planspace)

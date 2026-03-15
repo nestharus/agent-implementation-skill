@@ -4,9 +4,13 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from conftest import NoOpChangeTracker, NoOpCommunicator, NoOpPipelineControl
+from containers import ArtifactIOService, FreshnessService, Services
 from signals.repository.artifact_io import write_json
-from implementation.engine.implementation_phase import _run_risk_review
-from risk.service.package_builder import build_package_from_proposal
+from implementation.engine.implementation_phase import ImplementationPhase
+from implementation.repository.roal_index import RoalIndex
+from implementation.service.risk_artifacts import RiskArtifacts
+from risk.service.package_builder import PackageBuilder
 from risk.repository.serialization import serialize_assessment, serialize_plan
 from risk.types import (
     PostureProfile,
@@ -21,6 +25,23 @@ from risk.types import (
     UnderstandingInventory,
 )
 from orchestrator.types import Section
+
+
+def _run_risk_review(planspace, section):
+    phase = ImplementationPhase(
+        artifact_io=Services.artifact_io(),
+        change_tracker=NoOpChangeTracker(),
+        communicator=NoOpCommunicator(),
+        logger=Services.logger(),
+        pipeline_control=NoOpPipelineControl(),
+        risk_assessment=Services.risk_assessment(),
+        risk_artifacts=RiskArtifacts(
+            artifact_io=Services.artifact_io(),
+            freshness=FreshnessService(),
+        ),
+        roal_index=RoalIndex(artifact_io=Services.artifact_io()),
+    )
+    return phase._run_risk_review(planspace, section)
 
 
 def _write_risk_inputs(
@@ -107,7 +128,7 @@ def _section(planspace: Path, sec_num: str) -> Section:
 
 
 def _full_review_payloads(planspace: Path, sec_num: str) -> tuple[str, str]:
-    package = build_package_from_proposal(f"section-{sec_num}", planspace)
+    package = PackageBuilder(artifact_io=ArtifactIOService()).build_package_from_proposal(f"section-{sec_num}", planspace)
     assessment = RiskAssessment(
         assessment_id=f"assessment-section-{sec_num}",
         layer="implementation",

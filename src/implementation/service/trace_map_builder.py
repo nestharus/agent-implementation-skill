@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
-from proposal.repository.state import load_proposal_state
+from proposal.repository.state import State as ProposalStateRepo
 
 if TYPE_CHECKING:
     from containers import (
@@ -86,7 +86,7 @@ class TraceMapBuilder:
         trace_map_path = paths.trace_map(section_number)
         trace_map_path.parent.mkdir(parents=True, exist_ok=True)
 
-        ps = load_proposal_state(paths.proposal_state(section_number))
+        ps = ProposalStateRepo(artifact_io=self._artifact_io).load_proposal_state(paths.proposal_state(section_number))
         trace_map = {
             "section": section_number,
             "problems": _extract_problems(paths, section_number),
@@ -110,27 +110,3 @@ class TraceMapBuilder:
         self._artifact_io.write_json(trace_map_path, trace_map)
         self._logger.log(f"Section {section_number}: trace-map written to {trace_map_path}")
         return trace_map
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat free function wrapper
-# ---------------------------------------------------------------------------
-
-
-def build_trace_map(
-    planspace: Path,
-    codespace: Path,
-    section_number: str,
-    changed_files: list[str],
-    related_files: list[str],
-) -> dict:
-    """Build and persist a trace map for the given section."""
-    from containers import Services
-    builder = TraceMapBuilder(
-        artifact_io=Services.artifact_io(),
-        hasher=Services.hasher(),
-        logger=Services.logger(),
-    )
-    return builder.build_trace_map(
-        planspace, codespace, section_number, changed_files, related_files,
-    )

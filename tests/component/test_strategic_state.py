@@ -6,8 +6,21 @@ from types import SimpleNamespace
 
 from src.orchestrator.path_registry import PathRegistry
 from src.signals.repository.artifact_io import write_json
-from src.orchestrator.repository.decisions import Decision, record_decision
-from src.orchestrator.engine.strategic_state_builder import build_strategic_state
+from containers import Services
+from src.orchestrator.repository.decisions import Decision, Decisions
+from src.orchestrator.engine.strategic_state_builder import StrategicStateBuilder
+
+_artifact_io = Services.artifact_io()
+_decisions = Decisions(artifact_io=_artifact_io)
+_builder = StrategicStateBuilder(artifact_io=_artifact_io)
+
+
+def record_decision(decisions_dir, decision):
+    _decisions.record_decision(decisions_dir, decision)
+
+
+def build_strategic_state(decisions_dir, section_results, planspace):
+    return _builder.build_strategic_state(decisions_dir, section_results, planspace)
 
 
 def test_build_strategic_state_writes_snapshot_and_derives_fields(

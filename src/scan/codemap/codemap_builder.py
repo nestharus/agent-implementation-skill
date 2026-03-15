@@ -426,38 +426,3 @@ def _has_content(path: Path) -> bool:
         return False
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ------------------------------------------------------------------
-
-
-def _default_builder() -> CodemapBuilder:
-    from containers import Services
-    return CodemapBuilder(
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-        artifact_io=Services.artifact_io(),
-    )
-
-
-def run_codemap_build(
-    *,
-    codemap_path: Path,
-    codespace: Path,
-    artifacts_dir: Path,
-    scan_log_dir: Path,
-    fingerprint_path: Path,
-    model_policy: dict[str, str] | None = None,
-) -> bool:
-    """Build (or reuse) the codemap artifact.
-
-    Returns ``True`` on success, ``False`` on failure.
-    """
-    return _default_builder().run_codemap_build(
-        codemap_path=codemap_path,
-        codespace=codespace,
-        artifacts_dir=artifacts_dir,
-        scan_log_dir=scan_log_dir,
-        fingerprint_path=fingerprint_path,
-        model_policy=model_policy,
-    )

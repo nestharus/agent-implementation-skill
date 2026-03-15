@@ -22,19 +22,3 @@ class DecisionRecorder:
         """Persist a decision and log the resulting artifact for observability."""
         _persist_decision(planspace, section_number, payload)
         self._communicator.log_artifact(planspace, f"decision:section-{section_number}")
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_decision_recorder() -> DecisionRecorder:
-    from containers import Services
-    return DecisionRecorder(
-        communicator=Services.communicator(),
-    )
-
-
-def persist_decision(planspace, section_number: str, payload: str) -> None:
-    """Persist a decision and log the resulting artifact for observability."""
-    return _get_decision_recorder().persist_decision(planspace, section_number, payload)

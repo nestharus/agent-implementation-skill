@@ -5,13 +5,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from containers import ArtifactIOService
 from risk.repository.history import (
+    RiskHistory,
     append_history_entry,
-    compute_history_adjustment,
     pattern_signature,
-    read_history,
 )
 from risk.types import PostureProfile, RiskHistoryEntry, RiskType, StepClass
+
+
+def _history() -> RiskHistory:
+    return RiskHistory(artifact_io=ArtifactIOService())
 
 
 def _entry(
@@ -47,11 +51,11 @@ def test_append_and_read_round_trip(tmp_path: Path) -> None:
     append_history_entry(history_path, first)
     append_history_entry(history_path, second)
 
-    assert read_history(history_path) == [first, second]
+    assert _history().read_history(history_path) == [first, second]
 
 
 def test_compute_history_adjustment_with_no_history_returns_zero(tmp_path: Path) -> None:
-    adjustment = compute_history_adjustment(
+    adjustment = _history().compute_history_adjustment(
         tmp_path / "missing.jsonl",
         StepClass.EDIT,
         [RiskType.BRUTE_FORCE_REGRESSION],
@@ -65,7 +69,7 @@ def test_read_history_empty_file_returns_empty_list(tmp_path: Path) -> None:
     history_path = tmp_path / "risk-history.jsonl"
     history_path.write_text("", encoding="utf-8")
 
-    assert read_history(history_path) == []
+    assert _history().read_history(history_path) == []
 
 
 def test_read_history_skips_corrupted_jsonl_lines(tmp_path: Path) -> None:
@@ -108,7 +112,7 @@ def test_read_history_skips_corrupted_jsonl_lines(tmp_path: Path) -> None:
         }))
         handle.write("\n")
 
-    assert read_history(history_path) == [first, second]
+    assert _history().read_history(history_path) == [first, second]
 
 
 def test_compute_history_adjustment_positive_for_underestimated_history(
@@ -125,7 +129,7 @@ def test_compute_history_adjustment_positive_for_underestimated_history(
         ),
     )
 
-    adjustment = compute_history_adjustment(
+    adjustment = _history().compute_history_adjustment(
         history_path,
         StepClass.EDIT,
         [RiskType.BRUTE_FORCE_REGRESSION],
@@ -149,7 +153,7 @@ def test_compute_history_adjustment_negative_for_overestimated_history(
         ),
     )
 
-    adjustment = compute_history_adjustment(
+    adjustment = _history().compute_history_adjustment(
         history_path,
         StepClass.EDIT,
         [RiskType.BRUTE_FORCE_REGRESSION],
@@ -202,7 +206,7 @@ def test_history_adjustment_is_bounded(tmp_path: Path) -> None:
             ),
         )
 
-    adjustment = compute_history_adjustment(
+    adjustment = _history().compute_history_adjustment(
         history_path,
         StepClass.EDIT,
         [RiskType.BRUTE_FORCE_REGRESSION],
@@ -230,7 +234,7 @@ def test_read_history_handles_large_files(tmp_path: Path) -> None:
             ),
         )
 
-    history = read_history(history_path)
+    history = _history().read_history(history_path)
 
     assert len(history) == 250
     assert history[0].package_id == "pkg-0"

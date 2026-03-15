@@ -10,8 +10,8 @@ from scan.scan_context import ScanContext
 from scan.service.phase_failure_logger import log_phase_failure
 from scan.service.template_loader import load_scan_template
 from scan.related.related_file_resolver import (
+    RelatedFileResolver,
     list_section_files,
-    validate_existing_related_files,
 )
 
 from scan.scan_dispatcher import dispatch_agent, read_scan_model_policy
@@ -30,9 +30,11 @@ class SectionExplorer:
         self,
         prompt_guard: PromptGuard,
         task_router: TaskRouterService,
+        related_file_resolver: RelatedFileResolver | None = None,
     ) -> None:
         self._prompt_guard = prompt_guard
         self._task_router = task_router
+        self._related_file_resolver = related_file_resolver
 
     def run_section_exploration(
         self,
@@ -62,7 +64,7 @@ class SectionExplorer:
             # If section already has Related Files, run validation pass
             section_text = section_file.read_text()
             if "## Related Files" in section_text:
-                validate_existing_related_files(
+                self._related_file_resolver.validate_existing_related_files(
                     section_file=section_file,
                     section_name=section_name,
                     ctx=ctx,
@@ -168,34 +170,3 @@ class SectionExplorer:
                 )
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrapper
-# ------------------------------------------------------------------
-
-
-def _default_explorer() -> SectionExplorer:
-    from containers import Services
-    return SectionExplorer(
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-    )
-
-
-def run_section_exploration(
-    *,
-    sections_dir: Path,
-    codemap_path: Path,
-    codespace: Path,
-    artifacts_dir: Path,
-    scan_log_dir: Path,
-    model_policy: dict[str, str] | None = None,
-) -> None:
-    """Dispatch agents per section to identify related files."""
-    _default_explorer().run_section_exploration(
-        sections_dir=sections_dir,
-        codemap_path=codemap_path,
-        codespace=codespace,
-        artifacts_dir=artifacts_dir,
-        scan_log_dir=scan_log_dir,
-        model_policy=model_policy,
-    )

@@ -19,24 +19,19 @@ from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
 
-from proposal.repository.state import ProposalState, load_proposal_state
-from reconciliation.service.adjudicator import adjudicate_ungrouped_candidates
+from proposal.repository.state import ProposalState, State as ProposalStateRepo
 from reconciliation.service.detectors import (
     aggregate_shared_seams,
     consolidate_new_section_candidates,
     detect_anchor_overlaps,
     detect_contract_conflicts,
 )
-from reconciliation.repository.results import (
-    load_result,
-    write_result,
-    write_scope_delta,
-    write_substrate_trigger,
-)
-from reconciliation.repository.queue import load_reconciliation_requests
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService
+    from reconciliation.repository.queue import Queue
+    from reconciliation.repository.results import Results
+    from reconciliation.service.adjudicator import Adjudicator
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +40,7 @@ logger = logging.getLogger(__name__)
 # Adjudication helpers
 # ---------------------------------------------------------------------------
 
-def _adjudicate_ungrouped(ungrouped, run_dir, kind):
+def _adjudicate_ungrouped(ungrouped, run_dir, kind, adjudicator: Adjudicator):
     """Run adjudicator over ungrouped candidates and return merged groups.
 
     Each merged group is a dict with ``canonical_title``, ``members``,
@@ -53,7 +48,7 @@ def _adjudicate_ungrouped(ungrouped, run_dir, kind):
     """
     if len(ungrouped) < 2:
         return []
-    merged_groups = adjudicate_ungrouped_candidates(ungrouped, run_dir, kind)
+    merged_groups = adjudicator.adjudicate_ungrouped_candidates(ungrouped, run_dir, kind)
     if not merged_groups:
         return []
 
@@ -140,11 +135,13 @@ def _extract_section_numbers(proposal_results: list) -> list[str]:
 def _load_proposal_states(
     run_dir: Path,
     section_numbers: list[str],
+    artifact_io: ArtifactIOService,
 ) -> dict[str, ProposalState]:
+    repo = ProposalStateRepo(artifact_io=artifact_io)
     states: dict[str, ProposalState] = {}
     for sec_num in section_numbers:
         state_path = PathRegistry(run_dir).proposal_state(sec_num)
-        states[sec_num] = load_proposal_state(state_path)
+        states[sec_num] = repo.load_proposal_state(state_path)
     return states
 
 
@@ -178,17 +175,18 @@ class CrossSectionIssues:
 def _detect_cross_section_issues(
     states: dict[str, ProposalState],
     run_dir: Path,
+    adjudicator: Adjudicator,
 ) -> CrossSectionIssues:
     anchor_overlaps = detect_anchor_overlaps(states)
     contract_conflicts = detect_contract_conflicts(states)
     consolidated_sections, ungrouped_titles = consolidate_new_section_candidates(
         states
     )
-    adjudicated = _adjudicate_ungrouped(ungrouped_titles, run_dir, "new_section")
+    adjudicated = _adjudicate_ungrouped(ungrouped_titles, run_dir, "new_section", adjudicator)
     _merge_new_section_adjudications(adjudicated, consolidated_sections)
 
     shared_seams, ungrouped_seams = aggregate_shared_seams(states)
-    adjudicated = _adjudicate_ungrouped(ungrouped_seams, run_dir, "shared_seam")
+    adjudicated = _adjudicate_ungrouped(ungrouped_seams, run_dir, "shared_seam", adjudicator)
     _merge_seam_adjudications(adjudicated, shared_seams)
 
     substrate_seams = [s for s in shared_seams if s.get("needs_substrate")]
@@ -261,8 +259,17 @@ def _build_summary(
 class CrossSectionReconciler:
     """Orchestrates cross-section reconciliation after the proposal pass."""
 
-    def __init__(self, artifact_io: ArtifactIOService) -> None:
+    def __init__(
+        self,
+        artifact_io: ArtifactIOService,
+        results: Results,
+        queue: Queue,
+        adjudicator: Adjudicator,
+    ) -> None:
         self._artifact_io = artifact_io
+        self._results = results
+        self._queue = queue
+        self._adjudicator = adjudicator
 
     def load_reconciliation_result(
         self,
@@ -284,7 +291,7 @@ class CrossSectionReconciler:
             The reconciliation result dict, or ``None`` if no result file
             exists or the file is malformed.
         """
-        return load_result(planspace, section_number)
+        return self._results.load_result(planspace, section_number)
 
     def run_reconciliation_loop(
         self,
@@ -311,9 +318,9 @@ class CrossSectionReconciler:
             ``substrate_needed``, ``conflicts_found``.
         """
         section_numbers = _extract_section_numbers(proposal_results)
-        states = _load_proposal_states(run_dir, section_numbers)
+        states = _load_proposal_states(run_dir, section_numbers, self._artifact_io)
 
-        recon_requests = load_reconciliation_requests(run_dir)
+        recon_requests = self._queue.load_reconciliation_requests(run_dir)
         logger.info(
             "Reconciliation: loaded %d proposal states, %d reconciliation "
             "requests",
@@ -321,7 +328,7 @@ class CrossSectionReconciler:
         )
         _merge_recon_requests_into_states(recon_requests, states)
 
-        issues = _detect_cross_section_issues(states, run_dir)
+        issues = _detect_cross_section_issues(states, run_dir, self._adjudicator)
 
         affected_sections = _collect_affected_sections(
             issues.anchor_overlaps, issues.contract_conflicts,
@@ -334,13 +341,13 @@ class CrossSectionReconciler:
                 issues.consolidated_sections, issues.substrate_seams,
                 affected_sections,
             )
-            write_result(run_dir, sec_num, result)
+            self._results.write_result(run_dir, sec_num, result)
 
         for consolidated in issues.consolidated_sections:
-            write_scope_delta(run_dir, consolidated)
+            self._results.write_scope_delta(run_dir, consolidated)
 
         for seam in issues.substrate_seams:
-            write_substrate_trigger(run_dir, seam)
+            self._results.write_substrate_trigger(run_dir, seam)
 
         summary = _build_summary(
             affected_sections, issues.consolidated_sections, issues.substrate_seams,
@@ -353,64 +360,3 @@ class CrossSectionReconciler:
         )
 
         return summary
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_cross_section_reconciler() -> CrossSectionReconciler:
-    from containers import Services
-    return CrossSectionReconciler(artifact_io=Services.artifact_io())
-
-
-def load_reconciliation_result(
-    planspace: Path,
-    section_number: str,
-) -> dict | None:
-    """Load a section's reconciliation result if it exists.
-
-    Parameters
-    ----------
-    planspace:
-        The planspace root directory containing ``artifacts/``.
-    section_number:
-        Zero-padded section number (e.g. ``"03"``).
-
-    Returns
-    -------
-    dict | None
-        The reconciliation result dict, or ``None`` if no result file
-        exists or the file is malformed.
-    """
-    return _get_cross_section_reconciler().load_reconciliation_result(
-        planspace, section_number,
-    )
-
-
-def run_reconciliation_loop(
-    run_dir: Path,
-    proposal_results: list,
-) -> dict:
-    """Run universal cross-section reconciliation.
-
-    Called once after Phase 1a (proposal pass) completes for all
-    sections and before Phase 1c (implementation pass) begins.
-
-    Parameters
-    ----------
-    run_dir:
-        The planspace root directory containing ``artifacts/``.
-    proposal_results:
-        List of ``ProposalPassResult`` instances (or dicts with at least
-        a ``section_number`` key) from the proposal pass.
-
-    Returns
-    -------
-    dict
-        Summary with keys ``sections_affected``, ``new_sections_proposed``,
-        ``substrate_needed``, ``conflicts_found``.
-    """
-    return _get_cross_section_reconciler().run_reconciliation_loop(
-        run_dir, proposal_results,
-    )

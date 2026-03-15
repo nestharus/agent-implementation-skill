@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from containers import (
         ArtifactIOService,
+        ChangeTrackerService,
         Communicator,
         LogService,
         ModelPolicyService,
@@ -17,19 +18,19 @@ if TYPE_CHECKING:
     )
 
 from orchestrator.path_registry import PathRegistry
-from orchestrator.repository.section_artifacts import write_section_input_artifact
-from implementation.repository.roal_index import refresh_roal_input_index
-from proposal.repository.state import ProposalState, load_proposal_state
+from orchestrator.repository.section_artifacts import SectionArtifacts
+from implementation.repository.roal_index import RoalIndex
+from proposal.repository.state import ProposalState, State as ProposalStateRepo
 from risk.service.engagement import determine_engagement
-from risk.service.package_builder import build_package_from_proposal
+from risk.service.package_builder import PackageBuilder
 
 _RAW_RISK_EXPLORATION_THRESHOLD = 60
 _RISK_SEVERITY_BLOCKER_THRESHOLD = 3
-from risk.repository.serialization import load_risk_assessment
+from risk.repository.serialization import RiskSerializer
 from risk.types import EngagementContext, RiskAssessment, RiskMode, RiskPackage, RiskType
 from scan.service.section_loader import parse_related_files
-from implementation.service.section_reexplorer import reexplore_section
-from orchestrator.engine.section_pipeline import run_section
+from implementation.service.section_reexplorer import SectionReexplorer
+from orchestrator.engine.section_pipeline import SectionPipeline
 from orchestrator.types import ProposalPassResult, Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from signals.types import PASS_MODE_PROPOSAL, SIGNAL_NEEDS_PARENT
@@ -56,7 +57,10 @@ def _write_proposal_risk_advisory(
     advisory_scope: str,
     summary: dict[str, Any],
 ) -> Path:
-    return write_section_input_artifact(
+    from containers import Services
+    return SectionArtifacts(
+        artifact_io=Services.artifact_io(),
+    ).write_section_input_artifact(
         PathRegistry(planspace),
         sec_num,
         f"{advisory_scope}-risk-advisory.json",
@@ -120,6 +124,9 @@ class ProposalPhase:
         pipeline_control: PipelineControlService,
         policies: ModelPolicyService,
         risk_assessment: RiskAssessmentService,
+        change_tracker: ChangeTrackerService,
+        roal_index: RoalIndex,
+        section_reexplorer: SectionReexplorer,
     ) -> None:
         self._logger = logger_svc
         self._artifact_io = artifact_io
@@ -127,14 +134,16 @@ class ProposalPhase:
         self._pipeline_control = pipeline_control
         self._policies = policies
         self._risk_assessment = risk_assessment
-        self._check_and_clear_alignment_changed = None
-
-    def _get_alignment_checker(self):
-        """Lazy-init the alignment checker from change_tracker."""
-        if self._check_and_clear_alignment_changed is None:
-            from containers import Services
-            self._check_and_clear_alignment_changed = Services.change_tracker().make_alignment_checker()
-        return self._check_and_clear_alignment_changed
+        self._roal_index = roal_index
+        self._section_reexplorer = section_reexplorer
+        self._package_builder = PackageBuilder(artifact_io=artifact_io)
+        self._serializer = RiskSerializer(artifact_io=artifact_io)
+        self._section_pipeline = SectionPipeline(
+            logger=logger_svc,
+            artifact_io=artifact_io,
+            pipeline_control=pipeline_control,
+        )
+        self._check_and_clear = change_tracker.make_alignment_checker()
 
     def _write_proposal_risk_blocker(
         self,
@@ -253,11 +262,11 @@ class ProposalPhase:
         paths = PathRegistry(planspace)
 
         try:
-            package = build_package_from_proposal(scope, planspace)
+            package = self._package_builder.build_package_from_proposal(scope, planspace)
             advisory_package = _build_advisory_package(package, advisory_scope)
-            proposal_state = load_proposal_state(
-                paths.proposal_state(sec_num)
-            )
+            proposal_state = ProposalStateRepo(
+                artifact_io=self._artifact_io,
+            ).load_proposal_state(paths.proposal_state(sec_num))
             risk_mode = self._resolve_triage_engagement(
                 paths, sec_num, advisory_package, proposal_state,
             )
@@ -267,9 +276,9 @@ class ProposalPhase:
                 "proposal",
                 advisory_package,
             )
-            assessment = load_risk_assessment(paths.risk_assessment(advisory_scope))
+            assessment = self._serializer.load_risk_assessment(paths.risk_assessment(advisory_scope))
             if assessment is None:
-                refresh_roal_input_index(
+                self._roal_index.refresh_roal_input_index(
                     planspace,
                     sec_num,
                     replace_kinds=frozenset({"proposal_advisory"}),
@@ -284,7 +293,7 @@ class ProposalPhase:
             advisory_entries = self._write_advisory_artifacts(
                 planspace, sec_num, advisory_scope, summary,
             )
-            refresh_roal_input_index(
+            self._roal_index.refresh_roal_input_index(
                 planspace,
                 sec_num,
                 replace_kinds=frozenset({"proposal_advisory"}),
@@ -292,7 +301,7 @@ class ProposalPhase:
             )
             return summary
         except Exception as exc:  # noqa: BLE001
-            refresh_roal_input_index(
+            self._roal_index.refresh_roal_input_index(
                 planspace,
                 sec_num,
                 replace_kinds=frozenset({"proposal_advisory"}),
@@ -315,9 +324,7 @@ class ProposalPhase:
         *,
         current_section: str | None = None,
     ) -> bool:
-        # Use module-level _check_and_clear_alignment_changed so
-        # monkeypatch targets work.
-        if _check_and_clear_alignment_changed(planspace):
+        if self._check_and_clear(planspace):
             kwargs: dict[str, Any] = {}
             if current_section is not None:
                 kwargs["current_section"] = current_section
@@ -350,7 +357,7 @@ class ProposalPhase:
             f"Section {sec_num}: no related files — dispatching "
             f"re-explorer agent",
         )
-        reexplore_result = reexplore_section(
+        reexplore_result = self._section_reexplorer.reexplore_section(
             section,
             planspace,
             codespace,
@@ -387,9 +394,7 @@ class ProposalPhase:
         planspace: Path,
     ) -> None:
         if proposal_result.execution_ready:
-            # Use module-level _risk_check_proposal so monkeypatch
-            # targets work.
-            risk_summary = _risk_check_proposal(
+            risk_summary = self._risk_check_proposal(
                 planspace,
                 sec_num,
             )
@@ -471,7 +476,7 @@ class ProposalPhase:
                 ):
                     continue
 
-            proposal_result = run_section(
+            proposal_result = self._section_pipeline.run_section(
                 planspace,
                 codespace,
                 section,
@@ -507,8 +512,6 @@ class ProposalPhase:
         return proposal_results
 
 
-# Backward-compat wrappers
-
 def _get_proposal_phase() -> ProposalPhase:
     from containers import Services
     return ProposalPhase(
@@ -518,26 +521,18 @@ def _get_proposal_phase() -> ProposalPhase:
         pipeline_control=Services.pipeline_control(),
         policies=Services.policies(),
         risk_assessment=Services.risk_assessment(),
+        change_tracker=Services.change_tracker(),
+        roal_index=RoalIndex(artifact_io=Services.artifact_io()),
+        section_reexplorer=SectionReexplorer(
+            communicator=Services.communicator(),
+            cross_section=Services.cross_section(),
+            dispatcher=Services.dispatcher(),
+            flow_ingestion=Services.flow_ingestion(),
+            logger=Services.logger(),
+            prompt_guard=Services.prompt_guard(),
+            task_router=Services.task_router(),
+        ),
     )
-
-
-def _check_and_clear_alignment_changed(planspace: Path) -> bool:
-    """Module-level alignment checker for backward compatibility.
-
-    Tests monkeypatch this name directly.  In production the function
-    lazily creates a fresh checker from the container.
-    """
-    from containers import Services
-    checker = Services.change_tracker().make_alignment_checker()
-    return checker(planspace)
-
-
-def _risk_check_proposal(
-    planspace: Path,
-    sec_num: str,
-) -> dict | None:
-    """Run optional risk pre-check on a proposal — backward-compat wrapper."""
-    return _get_proposal_phase()._risk_check_proposal(planspace, sec_num)
 
 
 def run_proposal_pass(

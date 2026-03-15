@@ -11,12 +11,11 @@ from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
 from scan.service.feedback_router import (
+    FeedbackRouter,
     _append_to_log,
-    _is_valid_updater_signal,
-    _route_scope_deltas,
     _validate_feedback_schema,
 )
-from scan.related.related_file_resolver import RelatedFileStatus, apply_related_files_update
+from scan.related.related_file_resolver import RelatedFileResolver, RelatedFileStatus
 from scan.service.template_loader import load_scan_template
 
 from scan.scan_context import ScanContext
@@ -70,10 +69,14 @@ class FeedbackCollector:
         artifact_io: ArtifactIOService,
         prompt_guard: PromptGuard,
         task_router: TaskRouterService,
+        related_file_resolver: RelatedFileResolver | None = None,
+        feedback_router: FeedbackRouter | None = None,
     ) -> None:
         self._artifact_io = artifact_io
         self._prompt_guard = prompt_guard
         self._task_router = task_router
+        self._related_file_resolver = related_file_resolver
+        self._feedback_router = feedback_router or FeedbackRouter(artifact_io=artifact_io)
 
     def _collect_section_scan_feedback(
         self,
@@ -159,7 +162,7 @@ class FeedbackCollector:
             )
             feedback_report.write_text("".join(report_lines))
 
-        _route_scope_deltas(
+        self._feedback_router._route_scope_deltas(
             section_files=section_files,
             artifacts_dir=artifacts_dir,
             scan_log_dir=scan_log_dir,
@@ -294,7 +297,7 @@ class FeedbackCollector:
 
         # Check if signal is valid; escalate on failure
         if result.returncode == 0 and updater_signal.is_file():
-            valid_signal = _is_valid_updater_signal(updater_signal)
+            valid_signal = self._feedback_router._is_valid_updater_signal(updater_signal)
         else:
             valid_signal = False
 
@@ -313,7 +316,7 @@ class FeedbackCollector:
             valid_signal = (
                 result.returncode == 0
                 and updater_signal.is_file()
-                and _is_valid_updater_signal(updater_signal)
+                and self._feedback_router._is_valid_updater_signal(updater_signal)
             )
 
         if not valid_signal:
@@ -335,7 +338,7 @@ class FeedbackCollector:
         status = sig_data.get("status", "")
 
         if status == RelatedFileStatus.STALE:
-            applied = apply_related_files_update(
+            applied = self._related_file_resolver.apply_related_files_update(
                 section_file, updater_signal)
             # Acknowledge the signal — update status so it isn't
             # re-applied on subsequent runs.
@@ -424,58 +427,3 @@ class FeedbackCollector:
             )
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ------------------------------------------------------------------
-
-
-def _default_collector() -> FeedbackCollector:
-    from containers import Services
-    return FeedbackCollector(
-        artifact_io=Services.artifact_io(),
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-    )
-
-
-def collect_and_route_feedback(
-    *,
-    section_files: list[Path],
-    codemap_path: Path,
-    codespace: Path,
-    artifacts_dir: Path,
-    scan_log_dir: Path,
-    model_policy: dict[str, str] | None = None,
-) -> bool:
-    """Collect feedback from deep scan, produce report, and route findings.
-
-    Returns ``True`` if any feedback was found.
-    """
-    return _default_collector().collect_and_route_feedback(
-        section_files=section_files,
-        codemap_path=codemap_path,
-        codespace=codespace,
-        artifacts_dir=artifacts_dir,
-        scan_log_dir=scan_log_dir,
-        model_policy=model_policy,
-    )
-
-
-def _apply_feedback(
-    *,
-    section_files: list[Path],
-    codemap_path: Path,
-    codespace: Path,
-    artifacts_dir: Path,
-    scan_log_dir: Path,
-    model_policy: dict[str, str],
-) -> None:
-    """Apply missing files and prune irrelevant files from feedback."""
-    _default_collector()._apply_feedback(
-        section_files=section_files,
-        codemap_path=codemap_path,
-        codespace=codespace,
-        artifacts_dir=artifacts_dir,
-        scan_log_dir=scan_log_dir,
-        model_policy=model_policy,
-    )

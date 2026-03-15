@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 from orchestrator.path_registry import PathRegistry
-from risk.repository.history import append_history_entry, pattern_signature, read_history
-from risk.service.package_builder import read_package
-from risk.repository.serialization import load_risk_assessment
+from risk.repository.history import RiskHistory, append_history_entry, pattern_signature
+from risk.service.package_builder import PackageBuilder
+from risk.repository.serialization import RiskSerializer
 from risk.types import (
     MAX_RESIDUAL_RISK,
     PostureProfile,
@@ -155,12 +159,13 @@ def append_risk_history(
     modified_files: list[str] | None,
     *,
     implementation_failed: bool = False,
+    artifact_io: ArtifactIOService,
 ) -> None:
     scope = f"section-{sec_num}"
     paths = PathRegistry(planspace)
-    package = read_package(paths, scope)
-    assessment = load_risk_assessment(paths.risk_assessment(scope))
-    prior_history = read_history(paths.risk_history())
+    package = PackageBuilder(artifact_io=artifact_io).read_package(paths, scope)
+    assessment = RiskSerializer(artifact_io=artifact_io).load_risk_assessment(paths.risk_assessment(scope))
+    prior_history = RiskHistory(artifact_io=artifact_io).read_history(paths.risk_history())
 
     package_steps = {
         step.step_id: step

@@ -87,17 +87,3 @@ def summarize_text(text: str, limit: int = _DEFAULT_SUMMARIZE_LIMIT) -> str:
 
 def _fmt(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_helpers() -> LogExtractHelpers:
-    from containers import Services
-    return LogExtractHelpers(hasher=Services.hasher())
-
-
-def prompt_signature(text: str) -> str:
-    """Stable hash of prompt text for correlation matching."""
-    return _get_helpers().prompt_signature(text)

@@ -6,13 +6,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
-from risk.repository.history import read_history
+from risk.repository.history import RiskHistory
 from risk.types import PostureProfile
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 if TYPE_CHECKING:
     from containers import (
         AgentDispatcher,
+        ArtifactIOService,
         Communicator,
         LogService,
         ModelPolicyService,
@@ -43,6 +44,7 @@ class IntentTriager:
         prompt_guard: PromptGuard,
         signals: SignalReader,
         task_router: TaskRouterService,
+        artifact_io: ArtifactIOService,
     ) -> None:
         self._communicator = communicator
         self._dispatcher = dispatcher
@@ -51,6 +53,7 @@ class IntentTriager:
         self._prompt_guard = prompt_guard
         self._signals = signals
         self._task_router = task_router
+        self._risk_history = RiskHistory(artifact_io=artifact_io)
 
     def run_intent_triage(
         self,
@@ -88,7 +91,7 @@ class IntentTriager:
 
         if not self._prompt_guard.write_validated(triage_prompt_text, triage_prompt_path):
             return _augment_risk_hints(
-                _full_default(section_number), section_number, planspace, **risk_kw,
+                _full_default(section_number), section_number, planspace, self._risk_history, **risk_kw,
             )
         self._communicator.log_artifact(planspace, f"prompt:intent-triage-{section_number}")
 
@@ -99,7 +102,7 @@ class IntentTriager:
 
         if result == ALIGNMENT_CHANGED_PENDING:
             return _augment_risk_hints(
-                _full_default(section_number), section_number, planspace, **risk_kw,
+                _full_default(section_number), section_number, planspace, self._risk_history, **risk_kw,
             )
 
         triage = self._signals.read(
@@ -111,7 +114,7 @@ class IntentTriager:
             )
             if escalated is not None:
                 return _augment_risk_hints(
-                    escalated, section_number, planspace, **risk_kw,
+                    escalated, section_number, planspace, self._risk_history, **risk_kw,
                 )
 
             self._logger.log(
@@ -119,7 +122,7 @@ class IntentTriager:
                 f"{triage.get('intent_mode', 'unknown')}",
             )
             return _augment_risk_hints(
-                triage, section_number, planspace, **risk_kw,
+                triage, section_number, planspace, self._risk_history, **risk_kw,
             )
 
         self._logger.log(
@@ -127,7 +130,7 @@ class IntentTriager:
             f"malformed — defaulting to full (uncertainty → more strategy)",
         )
         return _augment_risk_hints(
-            _full_default(section_number), section_number, planspace, **risk_kw,
+            _full_default(section_number), section_number, planspace, self._risk_history, **risk_kw,
         )
 
     def _dispatch_triage(
@@ -195,7 +198,7 @@ class IntentTriager:
         )
         if triage is None:
             return None
-        return _augment_risk_hints(triage, section_number, planspace)
+        return _augment_risk_hints(triage, section_number, planspace, self._risk_history)
 
 
 # -- Pure functions (no Services usage) ------------------------------------
@@ -331,6 +334,7 @@ def _augment_risk_hints(
     triage: dict,
     section_number: str,
     planspace: Path,
+    risk_history: RiskHistory,
     **_kwargs: object,
 ) -> dict:
     result = dict(triage)
@@ -341,12 +345,12 @@ def _augment_risk_hints(
     result.setdefault("risk_mode", "full")
     result.setdefault("risk_budget_hint", 0)
     result.setdefault("risk_confidence", confidence)
-    result["posture_floor"] = _derive_posture_floor(section_number, planspace)
+    result["posture_floor"] = _derive_posture_floor(section_number, planspace, risk_history)
     return result
 
 
-def _derive_posture_floor(section_number: str, planspace: Path) -> str | None:
-    history = read_history(PathRegistry(planspace).risk_history())
+def _derive_posture_floor(section_number: str, planspace: Path, risk_history: RiskHistory) -> str | None:
+    history = risk_history.read_history(PathRegistry(planspace).risk_history())
     relevant = [
         entry
         for entry in history
@@ -369,48 +373,3 @@ def _derive_posture_floor(section_number: str, planspace: Path) -> str | None:
     ):
         return PostureProfile.P2_STANDARD.value
     return None
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_intent_triager() -> IntentTriager:
-    from containers import Services
-    return IntentTriager(
-        communicator=Services.communicator(),
-        dispatcher=Services.dispatcher(),
-        logger=Services.logger(),
-        policies=Services.policies(),
-        prompt_guard=Services.prompt_guard(),
-        signals=Services.signals(),
-        task_router=Services.task_router(),
-    )
-
-
-def run_intent_triage(
-    section_number: str,
-    planspace: Path,
-    codespace: Path,
-    *,
-    related_files_count: int = 0,
-    incoming_notes_count: int = 0,
-    solve_count: int = 0,
-    section_summary: str = "",
-) -> dict:
-    """Dispatch intent-triager (GLM) and return the triage result."""
-    return _get_intent_triager().run_intent_triage(
-        section_number, planspace, codespace,
-        related_files_count=related_files_count,
-        incoming_notes_count=incoming_notes_count,
-        solve_count=solve_count,
-        section_summary=section_summary,
-    )
-
-
-def load_triage_result(
-    section_number: str,
-    planspace: Path,
-) -> dict | None:
-    """Load a previously-written triage result from signal file."""
-    return _get_intent_triager().load_triage_result(section_number, planspace)

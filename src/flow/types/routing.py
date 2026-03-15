@@ -102,3 +102,22 @@ def submit_task(db_path: Path, task: Task) -> int:
         conn.commit()
         task_id = cur.lastrowid
     return task_id
+
+
+def update_task_flow_paths(
+    db_path: Path,
+    task_id: int,
+    flow_context_path: str,
+    continuation_path: str,
+    result_manifest_path: str,
+) -> None:
+    """Update a task's flow-related paths after submission."""
+    with task_db(db_path) as conn:
+        conn.execute(
+            """UPDATE tasks
+               SET flow_context_path=?, continuation_path=?,
+                   result_manifest_path=?
+               WHERE id=?""",
+            (flow_context_path, continuation_path, result_manifest_path, task_id),
+        )
+        conn.commit()

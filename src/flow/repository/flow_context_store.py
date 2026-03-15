@@ -159,36 +159,3 @@ def write_dispatch_prompt(
     dispatch_path.write_text(wrapper_content, encoding="utf-8")
 
     return dispatch_path
-
-
-# Backward-compat wrappers
-
-def _get_store() -> FlowContextStore:
-    from containers import Services
-    return FlowContextStore(
-        artifact_io=Services.artifact_io(),
-    )
-
-
-def read_flow_json(path: Path) -> tuple[str, dict | list | None]:
-    return _get_store().read_flow_json(path)
-
-
-def build_flow_context(
-    planspace: Path,
-    flow_context_path: str | None = None,
-    continuation_path: str | None = None,
-    trigger_gate_id: str | None = None,
-) -> FlowContext | None:
-    return _get_store().build_flow_context(
-        planspace, flow_context_path, continuation_path, trigger_gate_id,
-    )
-
-
-def write_flow_context(
-    planspace: Path,
-    task: FlowTask,
-    origin_refs: list[str],
-    previous_task_id: int | None,
-) -> None:
-    return _get_store().write_flow_context(planspace, task, origin_refs, previous_task_id)

@@ -257,31 +257,3 @@ class TriageOrchestrator:
             return (ACTION_CONTINUE, None)
 
         return self._run_triage_alignment(section, planspace, codespace, policy)
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat free function wrapper
-# ---------------------------------------------------------------------------
-
-
-def run_impact_triage(
-    section: Section,
-    planspace: Path,
-    codespace: Path,
-    incoming_notes: str | None,
-) -> tuple[str, list[str] | None]:
-    """Classify note impact and optionally short-circuit to alignment."""
-    from containers import Services
-    orchestrator = TriageOrchestrator(
-        artifact_io=Services.artifact_io(),
-        communicator=Services.communicator(),
-        dispatcher=Services.dispatcher(),
-        logger=Services.logger(),
-        policies=Services.policies(),
-        prompt_guard=Services.prompt_guard(),
-        section_alignment=Services.section_alignment(),
-        task_router=Services.task_router(),
-    )
-    return orchestrator.run_impact_triage(
-        section, planspace, codespace, incoming_notes,
-    )

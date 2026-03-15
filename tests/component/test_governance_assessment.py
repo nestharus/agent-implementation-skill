@@ -4,11 +4,16 @@ import json
 from pathlib import Path
 
 from src.orchestrator.path_registry import PathRegistry
-from src.intake.service.assessment_evaluator import (
-    read_post_impl_assessment,
-    record_assessment_governance,
-    write_post_impl_assessment_prompt,
-)
+from src.containers import ArtifactIOService, HasherService, LogService, PromptGuard, SectionAlignmentService
+from src.intake.service.assessment_evaluator import AssessmentEvaluator
+from src.implementation.service.traceability_writer import TraceabilityWriter
+
+
+def _evaluator() -> AssessmentEvaluator:
+    return AssessmentEvaluator(
+        artifact_io=ArtifactIOService(),
+        prompt_guard=PromptGuard(),
+    )
 
 
 def test_write_post_impl_assessment_prompt_uses_validated_writer(
@@ -20,7 +25,7 @@ def test_write_post_impl_assessment_prompt_uses_validated_writer(
     PathRegistry(planspace).ensure_artifacts_tree()
     codespace.mkdir()
 
-    prompt_path = write_post_impl_assessment_prompt("01", planspace)
+    prompt_path = _evaluator().write_post_impl_assessment_prompt("01", planspace)
     prompt_text = prompt_path.read_text(encoding="utf-8")
 
     assert "Governance packet" in prompt_text
@@ -57,7 +62,7 @@ def test_read_post_impl_assessment_validates_verdict_and_preserves_corrupt_file(
         ),
         encoding="utf-8",
     )
-    assert read_post_impl_assessment("01", planspace)["verdict"] == "accept_with_debt"
+    assert _evaluator().read_post_impl_assessment("01", planspace)["verdict"] == "accept_with_debt"
 
     assessment_path.write_text(
         json.dumps(
@@ -75,7 +80,7 @@ def test_read_post_impl_assessment_validates_verdict_and_preserves_corrupt_file(
         encoding="utf-8",
     )
 
-    assert read_post_impl_assessment("01", planspace) is None
+    assert _evaluator().read_post_impl_assessment("01", planspace) is None
     assert (
         planspace
         / "artifacts"
@@ -105,14 +110,18 @@ def test_record_assessment_governance_updates_trace_index(tmp_path: Path) -> Non
         encoding="utf-8",
     )
 
-    record_assessment_governance(
-        "01",
+    writer = TraceabilityWriter(
+        artifact_io=ArtifactIOService(),
+        hasher=HasherService(),
+        logger=LogService(),
+        section_alignment=SectionAlignmentService(),
+    )
+    writer.update_trace_governance(
         planspace,
-        {
-            "problem_ids_addressed": ["PRB-0009"],
-            "pattern_ids_followed": ["PAT-0003"],
-            "profile_id": "PHI-global",
-        },
+        "01",
+        problem_ids=["PRB-0009"],
+        pattern_ids=["PAT-0003"],
+        profile_id="PHI-global",
     )
 
     trace = json.loads(trace_path.read_text(encoding="utf-8"))

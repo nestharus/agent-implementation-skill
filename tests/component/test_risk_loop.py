@@ -24,7 +24,8 @@ from risk.service.response_parser import (
     parse_risk_assessment,
     parse_risk_plan,
 )
-from risk.repository.serialization import load_risk_artifact, serialize_assessment, serialize_plan
+from containers import ArtifactIOService
+from risk.repository.serialization import RiskSerializer, serialize_assessment, serialize_plan
 from risk.types import (
     PackageStep,
     PostureProfile,
@@ -381,7 +382,7 @@ def test_run_risk_loop_applies_history_adjustment_to_assessment(tmp_path: Path) 
     finally:
         Services.dispatcher.reset_override()
 
-    assessment_payload = load_risk_artifact(
+    assessment_payload = RiskSerializer(artifact_io=ArtifactIOService()).load_risk_artifact(
         tmp_path / "artifacts" / "risk" / "section-03-risk-assessment.json",
     )
 

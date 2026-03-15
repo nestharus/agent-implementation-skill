@@ -176,24 +176,3 @@ def _format_prose_entry(decision: Decision) -> str:
         f"{next_line}\n"
         f"- **Timestamp**: {decision.timestamp}\n"
     )
-
-
-# Backward-compat wrappers
-
-def _get_decisions() -> Decisions:
-    from containers import Services
-    return Decisions(
-        artifact_io=Services.artifact_io(),
-    )
-
-
-def record_decision(decisions_dir: Path, decision: Decision) -> None:
-    return _get_decisions().record_decision(decisions_dir, decision)
-
-
-def load_decisions(
-    decisions_dir: Path,
-    section: str | None = None,
-    warnings: list[str] | None = None,
-) -> list[Decision]:
-    return _get_decisions().load_decisions(decisions_dir, section=section, warnings=warnings)

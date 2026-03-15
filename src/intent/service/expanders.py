@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
-from intent.service.philosophy_bootstrapper import validate_philosophy_grounding
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 if TYPE_CHECKING:
@@ -20,6 +19,7 @@ if TYPE_CHECKING:
         SignalReader,
         TaskRouterService,
     )
+    from intent.service.philosophy_grounding import PhilosophyGrounding
 
 # When remaining axis budget falls below this, prompt the expander to prefer
 # expanding existing axes over creating new ones.
@@ -171,6 +171,7 @@ class Expanders:
         artifact_io: ArtifactIOService,
         communicator: Communicator,
         dispatcher: AgentDispatcher,
+        grounding: PhilosophyGrounding,
         logger: LogService,
         policies: ModelPolicyService,
         prompt_guard: PromptGuard,
@@ -180,6 +181,7 @@ class Expanders:
         self._artifact_io = artifact_io
         self._communicator = communicator
         self._dispatcher = dispatcher
+        self._grounding = grounding
         self._logger = logger
         self._policies = policies
         self._prompt_guard = prompt_guard
@@ -294,7 +296,7 @@ class Expanders:
 
         delta = self._signals.read(delta_path)
         if delta and delta.get("applied", {}).get("philosophy_updated"):
-            grounding_ok = validate_philosophy_grounding(
+            grounding_ok = self._grounding.validate_philosophy_grounding(
                 philosophy_path,
                 source_map_path,
                 artifacts,
@@ -373,63 +375,3 @@ class Expanders:
         self._logger.log(f"Section {section_number}: recurrence adjudication signal "
             f"missing — keeping surfaces discarded (fail-closed)")
         return []
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_expanders() -> Expanders:
-    from containers import Services
-    return Expanders(
-        artifact_io=Services.artifact_io(),
-        communicator=Services.communicator(),
-        dispatcher=Services.dispatcher(),
-        logger=Services.logger(),
-        policies=Services.policies(),
-        prompt_guard=Services.prompt_guard(),
-        signals=Services.signals(),
-        task_router=Services.task_router(),
-    )
-
-
-def run_problem_expander(
-    section_number: str,
-    planspace: Path,
-    codespace: Path,
-    *,
-    pending_surfaces_path: Path | None = None,
-    remaining_axis_budget: int = _DEFAULT_AXIS_BUDGET,
-) -> dict | None:
-    """Dispatch problem-expander and return its delta."""
-    return _get_expanders().run_problem_expander(
-        section_number, planspace, codespace,
-        pending_surfaces_path=pending_surfaces_path,
-        remaining_axis_budget=remaining_axis_budget,
-    )
-
-
-def run_philosophy_expander(
-    section_number: str,
-    planspace: Path,
-    codespace: Path,
-    *,
-    pending_surfaces_path: Path | None = None,
-) -> dict | None:
-    """Dispatch philosophy-expander and return its delta."""
-    return _get_expanders().run_philosophy_expander(
-        section_number, planspace, codespace,
-        pending_surfaces_path=pending_surfaces_path,
-    )
-
-
-def adjudicate_recurrence(
-    section_number: str,
-    planspace: Path,
-    codespace: Path,
-    recurrences: list[dict],
-) -> list[str]:
-    """Dispatch adjudicator to decide on discarded surfaces that resurfaced."""
-    return _get_expanders().adjudicate_recurrence(
-        section_number, planspace, codespace, recurrences,
-    )

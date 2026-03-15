@@ -235,32 +235,3 @@ def _resolve_flow_context(planspace: Path, _section: str | None) -> str:
     if len(context_files) == 1:
         return context_files[0].read_text(encoding="utf-8")
     return ""
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_sidecar() -> ContextSidecar:
-    from containers import Services
-    return ContextSidecar(artifact_io=Services.artifact_io())
-
-
-def resolve_context(
-    agent_file: str,
-    planspace: Path,
-    section: str | None = None,
-) -> dict[str, str]:
-    """Resolve an agent's declared context categories to content strings."""
-    return _get_sidecar().resolve_context(agent_file, planspace, section)
-
-
-def materialize_context_sidecar(
-    agent_file_path: str,
-    planspace: Path,
-    section: str | None = None,
-) -> Path | None:
-    """Resolve and write the scoped-context sidecar JSON."""
-    return _get_sidecar().materialize_context_sidecar(
-        agent_file_path, planspace, section,
-    )

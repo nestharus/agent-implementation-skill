@@ -7,14 +7,16 @@ from pathlib import Path
 
 from dependency_injector import providers
 
-from conftest import make_dispatcher
-from containers import Services
+from conftest import make_dispatcher, NoOpChangeTracker, NoOpCommunicator, NoOpPipelineControl
+from containers import ArtifactIOService, FreshnessService, Services
 from signals.repository.artifact_io import read_json, write_json
-from implementation.engine.implementation_phase import _run_risk_review
+from implementation.engine.implementation_phase import ImplementationPhase
+from implementation.repository.roal_index import RoalIndex
+from implementation.service.risk_artifacts import RiskArtifacts
 from implementation.service.risk_history_recorder import append_risk_history
-from proposal.engine.proposal_phase import _risk_check_proposal
-from orchestrator.engine.strategic_state_builder import build_strategic_state
-from risk.repository.history import read_history
+from proposal.engine.proposal_phase import ProposalPhase
+from orchestrator.engine.strategic_state_builder import StrategicStateBuilder
+from risk.repository.history import RiskHistory
 from risk.repository.serialization import serialize_assessment, serialize_plan
 from risk.types import (
     PostureProfile,
@@ -30,6 +32,49 @@ from risk.types import (
     UnderstandingInventory,
 )
 from orchestrator.types import Section
+
+
+def _make_implementation_phase() -> ImplementationPhase:
+    return ImplementationPhase(
+        artifact_io=Services.artifact_io(),
+        change_tracker=NoOpChangeTracker(),
+        communicator=NoOpCommunicator(),
+        logger=Services.logger(),
+        pipeline_control=NoOpPipelineControl(),
+        risk_assessment=Services.risk_assessment(),
+        risk_artifacts=RiskArtifacts(
+            artifact_io=Services.artifact_io(),
+            freshness=FreshnessService(),
+        ),
+        roal_index=RoalIndex(artifact_io=Services.artifact_io()),
+    )
+
+
+def _run_risk_review(planspace, section):
+    return _make_implementation_phase()._run_risk_review(planspace, section)
+
+
+def _make_proposal_phase() -> ProposalPhase:
+    from implementation.service.section_reexplorer import SectionReexplorer
+    return ProposalPhase(
+        logger_svc=Services.logger(),
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        pipeline_control=Services.pipeline_control(),
+        policies=Services.policies(),
+        risk_assessment=Services.risk_assessment(),
+        change_tracker=Services.change_tracker(),
+        roal_index=RoalIndex(artifact_io=Services.artifact_io()),
+        section_reexplorer=SectionReexplorer(
+            communicator=Services.communicator(),
+            cross_section=Services.cross_section(),
+            dispatcher=Services.dispatcher(),
+            flow_ingestion=Services.flow_ingestion(),
+            logger=Services.logger(),
+            prompt_guard=Services.prompt_guard(),
+            task_router=Services.task_router(),
+        ),
+    )
 
 
 def test_run_risk_review_with_mocked_dispatch_returns_plan(
@@ -93,7 +138,7 @@ def test_run_risk_review_failure_blocks_fail_closed(
         related_files=["src/app.py", "src/utils.py"],
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase.build_package_from_proposal",
+        "risk.service.package_builder.PackageBuilder.build_package_from_proposal",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
     )
 
@@ -127,7 +172,7 @@ def test_risk_check_proposal_returns_advisory_summary(planspace: Path) -> None:
 
     Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     try:
-        summary = _risk_check_proposal(planspace, "01")
+        summary = _make_proposal_phase()._risk_check_proposal(planspace, "01")
     finally:
         Services.dispatcher.reset_override()
 
@@ -150,7 +195,7 @@ def test_risk_check_proposal_writes_advisory_artifact_and_blocker(
 
     Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     try:
-        summary = _risk_check_proposal(planspace, "01")
+        summary = _make_proposal_phase()._risk_check_proposal(planspace, "01")
     finally:
         Services.dispatcher.reset_override()
 
@@ -212,7 +257,7 @@ def test_risk_check_proposal_remains_advisory_without_blocking_finalization(
 
     Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     try:
-        summary = _risk_check_proposal(planspace, "01")
+        summary = _make_proposal_phase()._risk_check_proposal(planspace, "01")
     finally:
         Services.dispatcher.reset_override()
 
@@ -242,7 +287,9 @@ def test_build_strategic_state_includes_risk_fields_when_artifacts_exist(
         serialize_assessment(_proposal_assessment(scope="section-02")),
     )
 
-    snapshot = build_strategic_state(
+    snapshot = StrategicStateBuilder(
+        artifact_io=Services.artifact_io(),
+    ).build_strategic_state(
         decisions_dir,
         {
             "01": {"aligned": True, "problems": None},
@@ -267,7 +314,9 @@ def test_build_strategic_state_uses_empty_risk_fields_without_artifacts(
 ) -> None:
     decisions_dir = planspace / "artifacts" / "decisions"
 
-    snapshot = build_strategic_state(
+    snapshot = StrategicStateBuilder(
+        artifact_io=Services.artifact_io(),
+    ).build_strategic_state(
         decisions_dir,
         {"01": {"aligned": True, "problems": None}},
         planspace,
@@ -339,14 +388,16 @@ def testappend_risk_history_records_deferred_reopened_and_failure(
         Services.dispatcher.reset_override()
     assert plan is not None
 
+    _aio = ArtifactIOService()
     append_risk_history(
         planspace,
         "01",
         plan,
         None,
         implementation_failed=True,
+        artifact_io=_aio,
     )
-    history = read_history(planspace / "artifacts" / "risk" / "risk-history.jsonl")
+    history = RiskHistory(artifact_io=_aio).read_history(planspace / "artifacts" / "risk" / "risk-history.jsonl")
 
     assert {entry.step_id: entry.actual_outcome for entry in history} == {
         "explore-01": "failure",

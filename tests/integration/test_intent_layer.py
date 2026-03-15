@@ -18,16 +18,80 @@ from staleness.helpers.content_hasher import file_hash
 from taskrouter.agents import resolve_agent_path
 
 from intent.service.surface_registry import (
+    SurfaceRegistry,
     find_discarded_recurrences,
-    load_surface_registry,
     merge_surfaces_into_registry,
-    normalize_surface_ids,
-    save_surface_registry,
     mark_surfaces_applied,
     mark_surfaces_discarded,
 )
+from containers import Services
 from intent.service.intent_triager import _full_default
 from orchestrator.types import Section
+
+
+def _make_surface_registry() -> SurfaceRegistry:
+    """Build a SurfaceRegistry from the DI container (for test use)."""
+    return SurfaceRegistry(
+        artifact_io=Services.artifact_io(),
+        hasher=Services.hasher(),
+        logger=Services.logger(),
+        signals=Services.signals(),
+    )
+
+
+def _make_intent_triager():
+    """Build an IntentTriager from the DI container (for test use)."""
+    from intent.service.intent_triager import IntentTriager
+    return IntentTriager(
+        communicator=Services.communicator(),
+        dispatcher=Services.dispatcher(),
+        logger=Services.logger(),
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        signals=Services.signals(),
+        task_router=Services.task_router(),
+        artifact_io=Services.artifact_io(),
+    )
+
+
+def _make_intent_pack_generator():
+    """Build an IntentPackGenerator from the DI container (for test use)."""
+    from intent.service.intent_pack_generator import IntentPackGenerator
+    return IntentPackGenerator(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        dispatcher=Services.dispatcher(),
+        hasher=Services.hasher(),
+        logger=Services.logger(),
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+    )
+
+
+def _make_section_pipeline(*, proposal_cycle=None):
+    """Build a SectionPipeline with IntentInitializer wired in."""
+    from intent.engine.intent_initializer import IntentInitializer
+    from intake.service.governance_packet_builder import GovernancePacketBuilder
+    from orchestrator.engine.section_pipeline import SectionPipeline
+    return SectionPipeline(
+        logger=Services.logger(),
+        artifact_io=Services.artifact_io(),
+        pipeline_control=Services.pipeline_control(),
+        intent_initializer=IntentInitializer(
+            artifact_io=Services.artifact_io(),
+            communicator=Services.communicator(),
+            governance_packet_builder=GovernancePacketBuilder(
+                artifact_io=Services.artifact_io(),
+            ),
+            intent_pack_generator=_make_intent_pack_generator(),
+            intent_triager=_make_intent_triager(),
+            logger=Services.logger(),
+            pipeline_control=Services.pipeline_control(),
+            policies=Services.policies(),
+        ),
+        proposal_cycle=proposal_cycle,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +179,8 @@ class TestSurfaceRegistry:
     def test_empty_registry_loads_default(
         self, intent_planspace: Path,
     ) -> None:
-        registry = load_surface_registry("99", intent_planspace)
+        sr = _make_surface_registry()
+        registry = sr.load_surface_registry("99", intent_planspace)
         assert registry["next_id"] == 1
         assert registry["surfaces"] == []
 
@@ -215,8 +280,9 @@ class TestSurfaceRegistry:
                 {"id": "P-01-0001", "status": "applied"},
             ],
         }
-        save_surface_registry("01", intent_planspace, registry)
-        loaded = load_surface_registry("01", intent_planspace)
+        sr = _make_surface_registry()
+        sr.save_surface_registry("01", intent_planspace, registry)
+        loaded = sr.load_surface_registry("01", intent_planspace)
         assert loaded["next_id"] == 3
         assert loaded["surfaces"][0]["id"] == "P-01-0001"
 
@@ -227,7 +293,8 @@ class TestSurfaceRegistry:
             / "section-01" / "surface-registry.json"
         )
         registry_path.write_text("not json!", encoding="utf-8")
-        loaded = load_surface_registry("01", intent_planspace)
+        sr = _make_surface_registry()
+        loaded = sr.load_surface_registry("01", intent_planspace)
         assert loaded["surfaces"] == []
         assert registry_path.with_suffix(".malformed.json").exists()
 
@@ -272,8 +339,7 @@ class TestIntentTriage:
 
         mock_dispatch.side_effect = write_triage_signal
 
-        from intent.service.intent_triager import run_intent_triage
-        result = run_intent_triage(
+        result = _make_intent_triager().run_intent_triage(
             "01", intent_planspace, intent_planspace,
             related_files_count=6,
         )
@@ -286,8 +352,7 @@ class TestIntentTriage:
         """V2/R75: When GLM fails to write signal, fallback to full."""
         mock_dispatch.return_value = ""
 
-        from intent.service.intent_triager import run_intent_triage
-        result = run_intent_triage(
+        result = _make_intent_triager().run_intent_triage(
             "01", intent_planspace, intent_planspace,
         )
         assert result["intent_mode"] == "full"
@@ -398,8 +463,7 @@ class TestIntentBootstrap:
         section = _make_intent_section(intent_planspace, codespace)
         mock_dispatch.return_value = ""
 
-        from intent.service.intent_pack_generator import generate_intent_pack
-        intent_dir = generate_intent_pack(
+        intent_dir = _make_intent_pack_generator().generate_intent_pack(
             section, intent_planspace, codespace,
         )
         registry_path = intent_dir / "surface-registry.json"
@@ -545,7 +609,7 @@ class TestExpansionCycle:
                  "notes": "", "description": "D3", "evidence": "E3"},
             ],
         }
-        save_surface_registry("01", intent_planspace, registry)
+        _make_surface_registry().save_surface_registry("01", intent_planspace, registry)
 
         # Write model policy so adjudicator model is available
         (intent_planspace / "artifacts" / "model-policy.json").write_text(
@@ -702,8 +766,11 @@ class TestRunnerIntentIntegration:
 
         mock_dispatch.side_effect = track_calls
 
-        from orchestrator.engine.section_pipeline import run_section
-        result = run_section(
+        from conftest import build_proposal_cycle
+        pipeline = _make_section_pipeline(
+            proposal_cycle=build_proposal_cycle(),
+        )
+        result = pipeline.run_section(
             intent_planspace, codespace, section,
         )
 
@@ -769,7 +836,7 @@ class TestRunnerIntentIntegration:
 
         mock_dispatch.side_effect = track_calls
 
-        from orchestrator.engine.section_pipeline import run_section
+        run_section = _make_section_pipeline().run_section
         run_section(intent_planspace, codespace, section)
 
         # Verify alignment-judge.md was used (not intent-judge.md)
@@ -851,7 +918,7 @@ class TestIntentConventions:
 
     def test_intent_model_policy_defaults_exist(self) -> None:
         """All intent model keys have defaults in read_model_policy."""
-        from dispatch.service.model_policy import load_model_policy as read_model_policy
+        from containers import Services; from dispatch.service.model_policy import ModelPolicyLoader; read_model_policy = lambda ps: ModelPolicyLoader(artifact_io=Services.artifact_io()).load_model_policy(ps)
         from pathlib import Path
         import tempfile
 
@@ -869,26 +936,24 @@ class TestIntentConventions:
     def test_intent_module_imports(self) -> None:
         """Intent module public API is importable."""
         from intent.service.intent_pack_generator import (
+            IntentPackGenerator,
             ensure_global_philosophy,
-            generate_intent_pack,
         )
         from intent.service.surface_registry import (
+            SurfaceRegistry,
             find_discarded_recurrences,
-            load_surface_registry,
             merge_surfaces_into_registry,
-            normalize_surface_ids,
         )
         from intent.service.expansion_facade import run_expansion_cycle
-        from intent.service.intent_triager import run_intent_triage
+        from intent.service.intent_triager import IntentTriager
         # Smoke check — all names resolve
         assert callable(ensure_global_philosophy)
         assert callable(find_discarded_recurrences)
-        assert callable(generate_intent_pack)
-        assert callable(load_surface_registry)
+        assert IntentPackGenerator is not None
+        assert SurfaceRegistry is not None
         assert callable(merge_surfaces_into_registry)
-        assert callable(normalize_surface_ids)
         assert callable(run_expansion_cycle)
-        assert callable(run_intent_triage)
+        assert IntentTriager is not None
 
     def test_normalize_surface_ids_assigns_stable_ids(self) -> None:
         """normalize_surface_ids assigns P-sec-NNNN / F-sec-NNNN IDs."""
@@ -907,7 +972,8 @@ class TestIntentConventions:
                  "evidence": "Section 01 constraints"},
             ],
         }
-        result = normalize_surface_ids(surfaces, registry, "01")
+        sr = _make_surface_registry()
+        result = sr.normalize_surface_ids(surfaces, registry, "01")
         assert result["problem_surfaces"][0]["id"] == "P-01-0001"
         assert result["philosophy_surfaces"][0]["id"] == "F-01-0002"
         assert registry["next_id"] == 3
@@ -934,7 +1000,8 @@ class TestIntentConventions:
             ],
             "philosophy_surfaces": [],
         }
-        result = normalize_surface_ids(surfaces, registry, "01")
+        sr = _make_surface_registry()
+        result = sr.normalize_surface_ids(surfaces, registry, "01")
         # Should reuse existing ID, not allocate a new one
         assert result["problem_surfaces"][0]["id"] == "P-01-0003"
         assert registry["next_id"] == 5  # counter unchanged
@@ -1049,7 +1116,8 @@ class TestIntentConventions:
             "section": "01", "axis_count": 8,
             "axes": [{"id": "A1", "title": "Intent"}],
         }), encoding="utf-8")
-        loaded = load_surface_registry("01", intent_planspace)
+        sr = _make_surface_registry()
+        loaded = sr.load_surface_registry("01", intent_planspace)
         assert loaded["surfaces"] == []
         assert loaded["next_id"] == 1
         assert registry_path.with_suffix(".malformed.json").exists()
@@ -1166,7 +1234,7 @@ class TestIntentConventions:
 
         mock_dispatch.side_effect = track_calls
 
-        from orchestrator.engine.section_pipeline import run_section
+        run_section = _make_section_pipeline().run_section
         run_section(intent_planspace, codespace, section)
 
         # intent-pack-generator must come AFTER TODO extraction
@@ -1180,7 +1248,7 @@ class TestIntentConventions:
         """proposal_max and implementation_max from triage reach cycle budget (V7/R53)."""
         # V1/R75: philosophy is now a gate — mock it as available
         monkeypatch.setattr(
-            "orchestrator.engine.section_pipeline.ensure_global_philosophy",
+            "intent.engine.intent_initializer.ensure_global_philosophy",
             MagicMock(return_value={
                 "status": "ready",
                 "blocking_state": None,
@@ -1234,7 +1302,7 @@ class TestIntentConventions:
 
         mock_dispatch.side_effect = track_calls
 
-        from orchestrator.engine.section_pipeline import run_section
+        run_section = _make_section_pipeline().run_section
         run_section(intent_planspace, codespace, section)
 
         # Read cycle budget and verify triage keys are present
@@ -1251,7 +1319,7 @@ class TestIntentConventions:
         """Malformed cycle budget → renamed + proceeds (V6/R53)."""
         # V1/R75: philosophy is now a gate — mock it as available
         monkeypatch.setattr(
-            "orchestrator.engine.section_pipeline.ensure_global_philosophy",
+            "intent.engine.intent_initializer.ensure_global_philosophy",
             MagicMock(return_value={
                 "status": "ready",
                 "blocking_state": None,
@@ -1304,7 +1372,7 @@ class TestIntentConventions:
 
         mock_dispatch.side_effect = track_calls
 
-        from orchestrator.engine.section_pipeline import run_section
+        run_section = _make_section_pipeline().run_section
         # Should not crash
         run_section(intent_planspace, codespace, section)
 
@@ -1371,7 +1439,7 @@ class TestIntentConventions:
         mock_dispatch.side_effect = track_calls
         section = _make_intent_section(intent_planspace, intent_planspace)
 
-        from orchestrator.engine.section_pipeline import run_section
+        run_section = _make_section_pipeline().run_section
         run_section(intent_planspace, intent_planspace, section)
 
         # First model is GLM (triage), second is escalation model
@@ -1424,7 +1492,7 @@ class TestIntentConventions:
 
     def test_intent_model_policy_escalation_keys(self) -> None:
         """Model policy includes escalation and recurrence adjudicator keys (V1/V5 R54)."""
-        from dispatch.service.model_policy import load_model_policy as read_model_policy
+        from containers import Services; from dispatch.service.model_policy import ModelPolicyLoader; read_model_policy = lambda ps: ModelPolicyLoader(artifact_io=Services.artifact_io()).load_model_policy(ps)
         import tempfile
 
         with tempfile.TemporaryDirectory() as td:
@@ -1463,7 +1531,6 @@ class TestR55IntentPackCorrections:
         self, planspace, codespace, section_01, mock_dispatch,
     ) -> None:
         """Intent pack prompt references codemap corrections when present."""
-        from intent.service.intent_pack_generator import generate_intent_pack
         from orchestrator.types import Section
 
         # Create codemap and corrections
@@ -1484,7 +1551,7 @@ class TestR55IntentPackCorrections:
         )
         mock_dispatch.return_value = ""
 
-        generate_intent_pack(sec, planspace, codespace)
+        _make_intent_pack_generator().generate_intent_pack(sec, planspace, codespace)
 
         # The prompt should reference corrections
         prompt_path = artifacts / "intent-pack-01-prompt.md"
@@ -1673,7 +1740,7 @@ class TestR56AgentSelectedSources:
 
     def test_model_policy_has_selector_key(self) -> None:
         """Model policy must include intent_philosophy_selector key."""
-        from dispatch.service.model_policy import load_model_policy as read_model_policy
+        from containers import Services; from dispatch.service.model_policy import ModelPolicyLoader; read_model_policy = lambda ps: ModelPolicyLoader(artifact_io=Services.artifact_io()).load_model_policy(ps)
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             ps = Path(td)
@@ -2067,7 +2134,8 @@ class TestR57DeepScanFeedbackPreservation:
 
     def test_malformed_feedback_renamed(self, tmp_path):
         """Malformed feedback JSON is renamed to .malformed.json."""
-        from scan.related.match_updater import update_match
+        from containers import Services
+        from scan.related.match_updater import MatchUpdater
 
         section_file = tmp_path / "section-01.md"
         section_file.write_text(
@@ -2079,7 +2147,8 @@ class TestR57DeepScanFeedbackPreservation:
         feedback = tmp_path / "deep-src_foo_py-feedback.json"
         feedback.write_text("{not valid json")
 
-        result = update_match(section_file, "src/foo.py", details)
+        updater = MatchUpdater(artifact_io=Services.artifact_io())
+        result = updater.update_match(section_file, "src/foo.py", details)
         assert result is True, "Should continue despite malformed feedback"
         assert not feedback.exists(), "Original should be renamed"
         assert (tmp_path / "deep-src_foo_py-feedback.malformed.json").exists()
@@ -2092,12 +2161,12 @@ class TestR57UpdaterSignalValidityPreservation:
         self, tmp_path,
     ):
         """Malformed JSON in validity check path is renamed."""
-        from scan.service.feedback_collector import _is_valid_updater_signal
+        from scan.service.feedback_router import FeedbackRouter
 
         signal_path = tmp_path / "update-signal.json"
         signal_path.write_text("{broken json!!")
 
-        result = _is_valid_updater_signal(signal_path)
+        result = FeedbackRouter(artifact_io=Services.artifact_io())._is_valid_updater_signal(signal_path)
         assert result is False
         assert not signal_path.exists(), (
             "Original should be renamed by validity check")
@@ -2147,7 +2216,7 @@ class TestR57RefExpansionWarnings:
         self, planspace, codespace, section_01, capsys,
     ):
         """Broken ref in context builder emits warning."""
-        from dispatch.prompt.context_builder import build_prompt_context
+        from containers import Services; from dispatch.prompt.context_builder import ContextBuilder; build_prompt_context = lambda sec, ps, cs, **kw: ContextBuilder(artifact_io=Services.artifact_io(), cross_section=Services.cross_section()).build_prompt_context(sec, ps, cs, **kw)
         from orchestrator.types import Section
 
         sec_path = planspace / "artifacts" / "sections" / "section-01.md"
@@ -2271,24 +2340,18 @@ class TestR57SurfacePersistenceOnMisalignment:
         (signals / "intent-surfaces-01.json").write_text(
             json.dumps(surfaces))
 
-        # Import the surface functions to verify merge
-        from intent.service.surface_registry import (
-            load_intent_surfaces,
-            load_surface_registry,
-            merge_surfaces_into_registry,
-            normalize_surface_ids,
-            save_surface_registry,
-        )
+        # Use SurfaceRegistry class directly
+        sr = _make_surface_registry()
 
         # Simulate what the runner does in the PROBLEMS branch (V5/R57)
-        misaligned_surfaces = load_intent_surfaces("01", planspace)
+        misaligned_surfaces = sr.load_intent_surfaces("01", planspace)
         assert misaligned_surfaces is not None
 
-        reg = load_surface_registry("01", planspace)
-        misaligned_surfaces = normalize_surface_ids(
+        reg = sr.load_surface_registry("01", planspace)
+        misaligned_surfaces = sr.normalize_surface_ids(
             misaligned_surfaces, reg, "01")
         new_ids, _ = merge_surfaces_into_registry(reg, misaligned_surfaces)
-        save_surface_registry("01", planspace, reg)
+        sr.save_surface_registry("01", planspace, reg)
 
         # Verify surfaces are now in registry
         final_reg = json.loads(
@@ -2378,7 +2441,8 @@ class TestR58ToolRegistryCoordinationPreservation:
 
     def test_malformed_tool_registry_preserved(self, tmp_path):
         """Malformed tool-registry → .malformed.json copy exists."""
-        from coordination.prompt.writers import write_fix_prompt
+        from containers import Services
+        from coordination.prompt.writers import Writers
 
         from orchestrator.path_registry import PathRegistry
 
@@ -2398,7 +2462,14 @@ class TestR58ToolRegistryCoordinationPreservation:
         group = [Problem(section="01", type="test", description="d",
                   files=["a.py"])]
 
-        write_fix_prompt(group, planspace, codespace, 0)
+        writers = Writers(
+            artifact_io=Services.artifact_io(),
+            communicator=Services.communicator(),
+            logger=Services.logger(),
+            prompt_guard=Services.prompt_guard(),
+            task_router=Services.task_router(),
+        )
+        writers.write_fix_prompt(group, planspace, codespace, 0)
 
         # Assert malformed copy was preserved
         malformed = tool_reg.with_suffix(".malformed.json")
@@ -2423,7 +2494,16 @@ class TestR58RelatedFilesSignalPreservation:
 
     def test_malformed_signal_preserved(self, tmp_path):
         """Malformed signal → returns False + .malformed.json exists."""
-        from scan.related.related_file_resolver import apply_related_files_update
+        from scan.related.related_file_resolver import RelatedFileResolver
+        from containers import ArtifactIOService, HasherService, TaskRouterService
+        from conftest import WritingGuard
+
+        resolver = RelatedFileResolver(
+            artifact_io=ArtifactIOService(),
+            hasher=HasherService(),
+            prompt_guard=WritingGuard(),
+            task_router=TaskRouterService(),
+        )
 
         section_file = tmp_path / "section-01.md"
         section_file.write_text("## Related Files\n### a.py\nInfo\n")
@@ -2431,7 +2511,7 @@ class TestR58RelatedFilesSignalPreservation:
         signal_file = tmp_path / "related-files-update.json"
         signal_file.write_text("NOT VALID JSON{{{", encoding="utf-8")
 
-        result = apply_related_files_update(section_file, signal_file)
+        result = resolver.apply_related_files_update(section_file, signal_file)
 
         assert result is False, "Must return False on malformed signal"
 
@@ -2977,8 +3057,6 @@ class TestR59IntentPackHashInvalidation:
         self, planspace, codespace, mock_dispatch,
     ) -> None:
         """Existing pack must regenerate when upstream inputs change."""
-        from intent.service.intent_pack_generator import generate_intent_pack
-
         sec = _make_intent_section(planspace, codespace)
         artifacts = planspace / "artifacts"
         intent_sec = artifacts / "intent" / "sections" / "section-01"
@@ -3004,7 +3082,7 @@ class TestR59IntentPackHashInvalidation:
 
         mock_dispatch.side_effect = side_effect
 
-        generate_intent_pack(sec, planspace, codespace)
+        _make_intent_pack_generator().generate_intent_pack(sec, planspace, codespace)
         assert len(dispatch_called) > 0, (
             "Must dispatch agent when input hash differs (regenerate)")
 
@@ -3012,9 +3090,7 @@ class TestR59IntentPackHashInvalidation:
         self, planspace, codespace, mock_dispatch,
     ) -> None:
         """Existing pack with matching hash must skip regeneration."""
-        from intent.service.intent_pack_generator import (
-            generate_intent_pack, _compute_intent_pack_hash,
-        )
+        from intent.service.intent_pack_generator import IntentPackGenerator
 
         sec = _make_intent_section(planspace, codespace)
         artifacts = planspace / "artifacts"
@@ -3027,7 +3103,8 @@ class TestR59IntentPackHashInvalidation:
 
         # Compute the real hash from current inputs
         from orchestrator.path_registry import PathRegistry
-        real_hash = _compute_intent_pack_hash(
+        gen = _make_intent_pack_generator()
+        real_hash = gen._compute_intent_pack_hash(
             PathRegistry(planspace), sec, "",
         )
         (intent_sec / "intent-pack-input-hash.txt").write_text(real_hash)
@@ -3040,7 +3117,7 @@ class TestR59IntentPackHashInvalidation:
 
         mock_dispatch.side_effect = side_effect
 
-        generate_intent_pack(sec, planspace, codespace)
+        gen.generate_intent_pack(sec, planspace, codespace)
         assert len(dispatch_called) == 0, (
             "Must NOT dispatch when input hash matches (skip)")
 
@@ -3048,8 +3125,6 @@ class TestR59IntentPackHashInvalidation:
         self, planspace, codespace, mock_dispatch,
     ) -> None:
         """Successful generation must write input hash file."""
-        from intent.service.intent_pack_generator import generate_intent_pack
-
         sec = _make_intent_section(planspace, codespace)
         artifacts = planspace / "artifacts"
         intent_sec = artifacts / "intent" / "sections" / "section-01"
@@ -3062,7 +3137,7 @@ class TestR59IntentPackHashInvalidation:
 
         mock_dispatch.side_effect = side_effect
 
-        generate_intent_pack(sec, planspace, codespace)
+        _make_intent_pack_generator().generate_intent_pack(sec, planspace, codespace)
 
         hash_file = intent_sec / "intent-pack-input-hash.txt"
         assert hash_file.exists(), (

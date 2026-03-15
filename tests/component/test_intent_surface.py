@@ -4,12 +4,32 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from dependency_injector import providers
 
 from conftest import StubPolicies
 from containers import Services
 from src.intent.engine import expansion_orchestrator
+from src.intent.engine.expansion_orchestrator import ExpansionOrchestrator
+
+
+def _make_expansion_orchestrator(
+    *,
+    surface_registry=None,
+    expanders=None,
+    artifact_io=None,
+    logger=None,
+    pipeline_control=None,
+) -> ExpansionOrchestrator:
+    """Build an ExpansionOrchestrator with defaults for test use."""
+    return ExpansionOrchestrator(
+        artifact_io=artifact_io or Services.artifact_io(),
+        expanders=expanders or MagicMock(),
+        logger=logger or Services.logger(),
+        pipeline_control=pipeline_control or Services.pipeline_control(),
+        surface_registry=surface_registry or MagicMock(),
+    )
 
 
 def test_build_pending_surface_payload_reconstructs_backlog_entries() -> None:
@@ -59,14 +79,15 @@ def test_build_pending_surface_payload_reconstructs_backlog_entries() -> None:
 
 
 def test_run_expansion_cycle_returns_no_work_when_no_surfaces(
-    monkeypatch,
     tmp_path: Path,
 ) -> None:
     Services.policies.override(providers.Object(StubPolicies()))
-    monkeypatch.setattr(expansion_orchestrator, "load_combined_intent_surfaces", lambda *_: None)
+    mock_sr = MagicMock()
+    mock_sr.load_combined_intent_surfaces.return_value = None
 
     try:
-        result = expansion_orchestrator.run_expansion_cycle(
+        orchestrator = _make_expansion_orchestrator(surface_registry=mock_sr)
+        result = orchestrator.run_expansion_cycle(
             "01",
             tmp_path,
             tmp_path / "codespace",
@@ -88,7 +109,11 @@ def test_handle_user_gate_writes_philosophy_specific_blocker(
 ) -> None:
     capturing_pipeline_control._pause_return = "ack"
 
-    response = expansion_orchestrator.handle_user_gate(
+    orchestrator = _make_expansion_orchestrator(
+        pipeline_control=capturing_pipeline_control,
+        artifact_io=Services.artifact_io(),
+    )
+    response = orchestrator.handle_user_gate(
         "01",
         tmp_path,
         {

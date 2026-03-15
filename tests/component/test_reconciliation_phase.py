@@ -1,18 +1,31 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from dependency_injector import providers
 
-from conftest import CapturingCommunicator, CapturingPipelineControl
-from containers import Services
-from src.reconciliation.engine import reconciliation_phase
-from src.reconciliation.engine.reconciliation_phase import (
+from conftest import CapturingCommunicator, CapturingPipelineControl, NoOpChangeTracker
+from containers import ArtifactIOService, ChangeTrackerService, Services
+from reconciliation.engine.reconciliation_phase import (
+    ReconciliationPhase,
     ReconciliationPhaseExit,
-    run_reconciliation_phase,
 )
 from orchestrator.types import ProposalPassResult, Section
+
+
+class _AlignmentChangedTracker(ChangeTrackerService):
+    """Change tracker whose alignment checker always returns True."""
+
+    def set_flag(self, planspace) -> None:
+        pass
+
+    def make_alignment_checker(self):
+        return lambda _planspace: True
+
+    def invalidate_excerpts(self, planspace) -> None:
+        pass
 
 
 def _make_section(planspace: Path, number: str) -> Section:
@@ -21,11 +34,26 @@ def _make_section(planspace: Path, number: str) -> Section:
     return Section(number=number, path=section_path)
 
 
+def _make_phase(cross_section_reconciler=None) -> ReconciliationPhase:
+    """Construct a ReconciliationPhase, optionally with a mock reconciler."""
+    if cross_section_reconciler is None:
+        cross_section_reconciler = MagicMock()
+    with patch("orchestrator.engine.section_pipeline.SectionPipeline"):
+        return ReconciliationPhase(
+            logger=Services.logger(),
+            artifact_io=ArtifactIOService(),
+            pipeline_control=Services.pipeline_control(),
+            change_tracker=Services.change_tracker(),
+            cross_section_reconciler=cross_section_reconciler,
+        )
+
+
 def test_run_reconciliation_phase_reproposes_blocked_sections(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
     noop_pipeline_control,
+    noop_change_tracker,
     capturing_communicator,
 ) -> None:
     section = _make_section(planspace, "01")
@@ -35,31 +63,22 @@ def test_run_reconciliation_phase_reproposes_blocked_sections(
         "02": ProposalPassResult(section_number="02", execution_ready=False),
     }
 
-    monkeypatch.setattr(
-        reconciliation_phase,
-        "run_reconciliation_loop",
-        lambda *_args, **_kwargs: {
-            "conflicts_found": 1,
-            "new_sections_proposed": 0,
-            "substrate_needed": False,
-            "sections_affected": ["01"],
-        },
-    )
-    monkeypatch.setattr(
-        reconciliation_phase,
-        "_check_and_clear_alignment_changed",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
-        reconciliation_phase,
-        "run_section",
-        lambda *_args, **_kwargs: ProposalPassResult(
-            section_number="01",
-            execution_ready=True,
-        ),
+    mock_reconciler = MagicMock()
+    mock_reconciler.run_reconciliation_loop.return_value = {
+        "conflicts_found": 1,
+        "new_sections_proposed": 0,
+        "substrate_needed": False,
+        "sections_affected": ["01"],
+    }
+
+    phase = _make_phase(mock_reconciler)
+    phase._section_pipeline = MagicMock()
+    phase._section_pipeline.run_section.return_value = ProposalPassResult(
+        section_number="01",
+        execution_ready=True,
     )
 
-    result = run_reconciliation_phase(
+    result = phase.run_reconciliation_phase(
         proposal_results,
         {"01": section, "02": other},
         [section, other],
@@ -87,29 +106,28 @@ def test_run_reconciliation_phase_restarts_on_alignment_change(
 
     capturing_pipeline_control._alignment_changed_return = True
 
-    monkeypatch.setattr(
-        reconciliation_phase,
-        "run_reconciliation_loop",
-        lambda *_args, **_kwargs: {
-            "conflicts_found": 1,
-            "new_sections_proposed": 0,
-            "substrate_needed": False,
-            "sections_affected": ["01"],
-        },
-    )
-    monkeypatch.setattr(
-        reconciliation_phase,
-        "_check_and_clear_alignment_changed",
-        lambda *_args, **_kwargs: True,
-    )
+    # Provide a change tracker whose alignment checker returns True
+    ct = _AlignmentChangedTracker()
+    Services.change_tracker.override(providers.Object(ct))
 
-    result = run_reconciliation_phase(
-        proposal_results,
-        {"01": section},
-        [section],
-        planspace,
-        codespace,
-    )
+    mock_reconciler = MagicMock()
+    mock_reconciler.run_reconciliation_loop.return_value = {
+        "conflicts_found": 1,
+        "new_sections_proposed": 0,
+        "substrate_needed": False,
+        "sections_affected": ["01"],
+    }
+
+    try:
+        result = _make_phase(mock_reconciler).run_reconciliation_phase(
+            proposal_results,
+            {"01": section},
+            [section],
+            planspace,
+            codespace,
+        )
+    finally:
+        Services.change_tracker.reset_override()
 
     assert result.new_section_numbers == []
     assert result.removed_section_numbers == ["01"]
@@ -121,6 +139,7 @@ def test_run_reconciliation_phase_exits_when_parent_aborts(
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
     capturing_pipeline_control,
+    noop_change_tracker,
     capturing_communicator,
 ) -> None:
     section = _make_section(planspace, "01")
@@ -130,19 +149,16 @@ def test_run_reconciliation_phase_exits_when_parent_aborts(
 
     capturing_pipeline_control._pending_return = True
 
-    monkeypatch.setattr(
-        reconciliation_phase,
-        "run_reconciliation_loop",
-        lambda *_args, **_kwargs: {
-            "conflicts_found": 1,
-            "new_sections_proposed": 0,
-            "substrate_needed": False,
-            "sections_affected": ["01"],
-        },
-    )
+    mock_reconciler = MagicMock()
+    mock_reconciler.run_reconciliation_loop.return_value = {
+        "conflicts_found": 1,
+        "new_sections_proposed": 0,
+        "substrate_needed": False,
+        "sections_affected": ["01"],
+    }
 
     with pytest.raises(ReconciliationPhaseExit):
-        run_reconciliation_phase(
+        _make_phase(mock_reconciler).run_reconciliation_phase(
             proposal_results,
             {"01": section},
             [section],

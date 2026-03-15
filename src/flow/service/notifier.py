@@ -95,26 +95,3 @@ def record_task_routing(
             (agent_file, model, int(task_id)),
         )
         conn.commit()
-
-
-# Backward-compat wrappers
-
-def _get_notifier() -> Notifier:
-    from containers import Services
-    return Notifier(
-        logger=Services.logger(),
-    )
-
-
-def record_qa_intercept(
-    planspace: Path,
-    task_id: str,
-    rejection_reason: str | None,
-    *,
-    db_path: str | Path | None = None,
-    reason_code: str | None = None,
-) -> None:
-    return _get_notifier().record_qa_intercept(
-        planspace, task_id, rejection_reason,
-        db_path=db_path, reason_code=reason_code,
-    )

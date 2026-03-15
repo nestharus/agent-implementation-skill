@@ -5,12 +5,24 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.intent.service.philosophy_bootstrapper import validate_philosophy_grounding
+from containers import ArtifactIOService, HasherService, LogService
+from src.intent.service.philosophy_grounding import PhilosophyGrounding
+from src.intent.service.philosophy_bootstrap_state import PhilosophyBootstrapState
 from src.intent.service.philosophy_catalog import (
     build_philosophy_catalog,
     walk_md_bounded,
 )
 from src.orchestrator.path_registry import PathRegistry
+
+
+def _make_grounding() -> PhilosophyGrounding:
+    artifact_io = ArtifactIOService()
+    return PhilosophyGrounding(
+        artifact_io=artifact_io,
+        bootstrap_state=PhilosophyBootstrapState(artifact_io=artifact_io),
+        hasher=HasherService(),
+        logger=LogService(),
+    )
 
 
 def test_walk_md_bounded_respects_depth_and_excluded_top_dirs(tmp_path: Path) -> None:
@@ -75,7 +87,7 @@ def test_validate_philosophy_grounding_renames_malformed_source_map(
     )
     source_map_path.write_text("{not json", encoding="utf-8")
 
-    result = validate_philosophy_grounding(
+    result = _make_grounding().validate_philosophy_grounding(
         philosophy_path,
         source_map_path,
         artifacts,
@@ -116,7 +128,7 @@ def test_validate_philosophy_grounding_rejects_stale_source_files(
         encoding="utf-8",
     )
 
-    result = validate_philosophy_grounding(
+    result = _make_grounding().validate_philosophy_grounding(
         philosophy_path,
         source_map_path,
         artifacts,
@@ -149,7 +161,7 @@ def test_validate_philosophy_grounding_rejects_legacy_source_map_shape(
         encoding="utf-8",
     )
 
-    result = validate_philosophy_grounding(
+    result = _make_grounding().validate_philosophy_grounding(
         philosophy_path,
         source_map_path,
         artifacts,

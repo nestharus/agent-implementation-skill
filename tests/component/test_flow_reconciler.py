@@ -10,13 +10,22 @@ from flow.types.context import FlowEnvelope
 from flow.types.schema import TaskSpec
 from src.orchestrator.path_registry import PathRegistry
 from src.signals.repository.artifact_io import write_json
-from src.research.engine.orchestrator import write_research_status
+from containers import ArtifactIOService, HasherService
+from src.research.engine.orchestrator import ResearchOrchestrator
 from src.flow.engine.reconciler import (
     build_gate_aggregate_manifest,
     build_result_manifest,
-    reconcile_task_completion,
 )
-from src.flow.engine.flow_submitter import submit_chain
+from containers import Services
+
+
+def submit_chain(env, steps, **kwargs):
+    return Services.flow_ingestion().submit_chain(env, steps, **kwargs)
+
+
+def reconcile_task_completion(db_path, planspace, task_id, status, output_path, **kwargs):
+    from flow.service.flow_facade import reconcile_task_completion as _reconcile
+    return _reconcile(db_path, planspace, task_id, status, output_path, **kwargs)
 
 
 def _init_db(db_path: Path) -> None:
@@ -208,7 +217,10 @@ def test_reconcile_task_completion_submits_research_verify_after_synthesis(
             "flow": {"parallel_groups": [["T-01"]], "verify_claims": True},
         },
     )
-    write_research_status(
+    ResearchOrchestrator(
+        hasher=HasherService(),
+        artifact_io=ArtifactIOService(),
+    ).write_research_status(
         "03",
         planspace,
         "tickets_submitted",

@@ -4,12 +4,9 @@ from __future__ import annotations
 
 import json
 
-from src.dispatch.service.context_sidecar import (
-    materialize_context_sidecar,
-    parse_context_field,
-    resolve_context,
-)
-from src.orchestrator.path_registry import PathRegistry
+from containers import Services
+from dispatch.service.context_sidecar import ContextSidecar, parse_context_field
+from orchestrator.path_registry import PathRegistry
 
 
 def test_parse_context_field_handles_missing_frontmatter_and_lists(tmp_path) -> None:
@@ -52,7 +49,7 @@ def test_resolve_context_skips_unknown_categories_and_returns_empty_for_missing(
         encoding="utf-8",
     )
 
-    result = resolve_context(str(agent_file), tmp_path, section="03")
+    result = ContextSidecar(artifact_io=Services.artifact_io()).resolve_context(str(agent_file), tmp_path, section="03")
 
     assert result == {
         "section_spec": "",
@@ -72,7 +69,7 @@ def test_resolve_context_appends_codemap_corrections(tmp_path) -> None:
     agent_file = tmp_path / "agent.md"
     agent_file.write_text("---\ncontext:\n  - codemap\n---\n", encoding="utf-8")
 
-    result = resolve_context(str(agent_file), tmp_path)
+    result = ContextSidecar(artifact_io=Services.artifact_io()).resolve_context(str(agent_file), tmp_path)
 
     assert "Base codemap" in result["codemap"]
     assert "Codemap Corrections (authoritative)" in result["codemap"]
@@ -98,7 +95,7 @@ def test_resolve_context_related_files_prefers_json_sidecar(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    result = resolve_context(str(agent_file), tmp_path, section="07")
+    result = ContextSidecar(artifact_io=Services.artifact_io()).resolve_context(str(agent_file), tmp_path, section="07")
 
     assert result["related_files"] == '["preferred.py"]'
 
@@ -116,7 +113,7 @@ def test_resolve_context_related_files_falls_back_to_markdown_block(tmp_path) ->
         encoding="utf-8",
     )
 
-    result = resolve_context(str(agent_file), tmp_path, section="09")
+    result = ContextSidecar(artifact_io=Services.artifact_io()).resolve_context(str(agent_file), tmp_path, section="09")
 
     assert result["related_files"] == "## Related Files\n- one.py\n- two.py"
 
@@ -130,13 +127,13 @@ def test_resolve_context_flow_context_requires_exactly_one_file(tmp_path) -> Non
         encoding="utf-8",
     )
 
-    assert resolve_context(str(agent_file), tmp_path)["flow_context"] == ""
+    assert ContextSidecar(artifact_io=Services.artifact_io()).resolve_context(str(agent_file), tmp_path)["flow_context"] == ""
 
     (flows / "task-1-context.json").write_text('{"task": 1}', encoding="utf-8")
-    assert resolve_context(str(agent_file), tmp_path)["flow_context"] == '{"task": 1}'
+    assert ContextSidecar(artifact_io=Services.artifact_io()).resolve_context(str(agent_file), tmp_path)["flow_context"] == '{"task": 1}'
 
     (flows / "task-2-context.json").write_text('{"task": 2}', encoding="utf-8")
-    assert resolve_context(str(agent_file), tmp_path)["flow_context"] == ""
+    assert ContextSidecar(artifact_io=Services.artifact_io()).resolve_context(str(agent_file), tmp_path)["flow_context"] == ""
 
 
 def test_resolve_context_reads_governance_packet(tmp_path) -> None:
@@ -150,7 +147,7 @@ def test_resolve_context_reads_governance_packet(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    result = resolve_context(str(agent_file), tmp_path, section="03")
+    result = ContextSidecar(artifact_io=Services.artifact_io()).resolve_context(str(agent_file), tmp_path, section="03")
 
     assert result["governance"] == '{"section": "03", "profiles": []}'
 
@@ -165,7 +162,7 @@ def test_materialize_context_sidecar_writes_pretty_json_with_trailing_newline(tm
         encoding="utf-8",
     )
 
-    sidecar = materialize_context_sidecar(str(agent_file), tmp_path, section="11")
+    sidecar = ContextSidecar(artifact_io=Services.artifact_io()).materialize_context_sidecar(str(agent_file), tmp_path, section="11")
 
     assert sidecar == PathRegistry(tmp_path).context_sidecar("section-agent")
     assert sidecar is not None
@@ -179,4 +176,4 @@ def test_materialize_context_sidecar_returns_none_without_declared_context(tmp_p
     agent_file = tmp_path / "agent.md"
     agent_file.write_text("# No context\n", encoding="utf-8")
 
-    assert materialize_context_sidecar(str(agent_file), tmp_path) is None
+    assert ContextSidecar(artifact_io=Services.artifact_io()).materialize_context_sidecar(str(agent_file), tmp_path) is None

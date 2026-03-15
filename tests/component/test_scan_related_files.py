@@ -11,12 +11,26 @@ from src.orchestrator.path_registry import PathRegistry
 from src.signals.repository.artifact_io import write_json
 from src.staleness.helpers.content_hasher import content_hash, file_hash
 from src.scan.related.related_file_resolver import (
-    apply_related_files_update,
+    RelatedFileResolver,
     list_section_files,
-    validate_existing_related_files,
 )
 from src.scan.codemap.cache import strip_scan_summaries
 from src.scan.scan_context import ScanContext
+from src.containers import ArtifactIOService, HasherService, TaskRouterService
+
+
+def _make_resolver(prompt_guard=None, task_router=None):
+    """Create a RelatedFileResolver with real ArtifactIO and Hasher."""
+    if prompt_guard is None:
+        prompt_guard = Services.prompt_guard()
+    if task_router is None:
+        task_router = TaskRouterService()
+    return RelatedFileResolver(
+        artifact_io=ArtifactIOService(),
+        hasher=HasherService(),
+        prompt_guard=prompt_guard,
+        task_router=task_router,
+    )
 
 
 def test_list_section_files_filters_and_sorts(tmp_path) -> None:
@@ -55,7 +69,8 @@ def test_apply_related_files_update_updates_related_files_block(tmp_path) -> Non
         },
     )
 
-    applied = apply_related_files_update(section_file, signal_file)
+    resolver = _make_resolver()
+    applied = resolver.apply_related_files_update(section_file, signal_file)
     updated = section_file.read_text(encoding="utf-8")
 
     assert applied is True
@@ -72,7 +87,8 @@ def test_apply_related_files_update_returns_false_for_malformed_signal(
     signal_file = tmp_path / "bad-signal.json"
     signal_file.write_text("{not json", encoding="utf-8")
 
-    applied = apply_related_files_update(section_file, signal_file)
+    resolver = _make_resolver()
+    applied = resolver.apply_related_files_update(section_file, signal_file)
 
     assert applied is False
     assert not signal_file.exists()
@@ -132,7 +148,8 @@ def test_validate_existing_related_files_skips_when_inputs_unchanged(
         fail_dispatch,
     )
 
-    validate_existing_related_files(
+    resolver = _make_resolver()
+    resolver.validate_existing_related_files(
         section_file=section_file,
         section_name="section-07",
         ctx=ScanContext(
@@ -224,7 +241,8 @@ def test_validate_existing_related_files_applies_stale_signal_and_updates_hash(
     )
 
     try:
-        validate_existing_related_files(
+        resolver = _make_resolver(prompt_guard=_NoopGuard())
+        resolver.validate_existing_related_files(
             section_file=section_file,
             section_name="section-08",
             ctx=ScanContext(

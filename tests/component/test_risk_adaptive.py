@@ -11,7 +11,8 @@ from conftest import make_dispatcher
 from containers import Services
 from risk.repository.history import append_history_entry
 from risk.engine.risk_assessor import run_risk_loop
-from risk.repository.serialization import load_risk_artifact, serialize_assessment, serialize_plan
+from containers import ArtifactIOService
+from risk.repository.serialization import RiskSerializer, serialize_assessment, serialize_plan
 from risk.types import (
     PackageStep,
     PostureProfile,
@@ -52,7 +53,7 @@ def test_history_adjustment_modifies_assessment_risk_score(tmp_path: Path) -> No
     finally:
         Services.dispatcher.reset_override()
 
-    assessment_payload = load_risk_artifact(
+    assessment_payload = RiskSerializer(artifact_io=ArtifactIOService()).load_risk_artifact(
         tmp_path / "artifacts" / "risk" / "section-03-risk-assessment.json",
     )
 

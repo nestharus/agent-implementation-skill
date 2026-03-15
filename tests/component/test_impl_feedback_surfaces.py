@@ -2,16 +2,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from containers import ArtifactIOService, HasherService, LogService, SignalReader
 from signals.repository.artifact_io import write_json
-from src.intent.service.surface_registry import (
-    load_implementation_feedback_surfaces,
-)
+from src.intent.service.surface_registry import SurfaceRegistry
+
+
+def _make_registry() -> SurfaceRegistry:
+    return SurfaceRegistry(
+        artifact_io=ArtifactIOService(),
+        hasher=HasherService(),
+        logger=LogService(),
+        signals=SignalReader(),
+    )
 
 
 def test_load_implementation_feedback_surfaces_returns_none_when_missing(
     tmp_path: Path,
 ) -> None:
-    assert load_implementation_feedback_surfaces("01", tmp_path) is None
+    assert _make_registry().load_implementation_feedback_surfaces("01", tmp_path) is None
 
 
 def test_load_implementation_feedback_surfaces_reads_valid_payload(
@@ -34,7 +42,7 @@ def test_load_implementation_feedback_surfaces_reads_valid_payload(
     }
     write_json(feedback_path, payload)
 
-    result = load_implementation_feedback_surfaces("01", tmp_path)
+    result = _make_registry().load_implementation_feedback_surfaces("01", tmp_path)
     assert result is not None
     assert result.get("problem_surfaces") == payload["problem_surfaces"]
     assert result.get("philosophy_surfaces") == payload["philosophy_surfaces"]
@@ -49,6 +57,6 @@ def test_load_implementation_feedback_surfaces_returns_none_for_malformed_json(
     feedback_path.parent.mkdir(parents=True, exist_ok=True)
     feedback_path.write_text("{not-json", encoding="utf-8")
 
-    assert load_implementation_feedback_surfaces("01", tmp_path) is None
+    assert _make_registry().load_implementation_feedback_surfaces("01", tmp_path) is None
     assert not feedback_path.exists()
     assert feedback_path.with_suffix(".malformed.json").exists()

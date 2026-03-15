@@ -5,15 +5,14 @@ from pathlib import Path
 import pytest
 
 from conftest import override_dispatcher_and_guard
-from coordination.problem_types import MisalignedProblem
-from coordination.types import BridgeDirective, ProblemGroup
-from src.coordination.engine import plan_executor as executor
-from src.coordination.engine.plan_executor import (
+from containers import Services
+from coordination.engine.plan_executor import (
     CoordinationExecutionExit,
     PlanExecutor,
-    execute_coordination_plan,
-    read_execution_modified_files,
 )
+from coordination.problem_types import MisalignedProblem
+from coordination.prompt.writers import Writers
+from coordination.types import BridgeDirective, ProblemGroup
 from orchestrator.types import Section
 from pipeline.context import DispatchContext
 from src.orchestrator.path_registry import PathRegistry
@@ -24,6 +23,28 @@ def _planspace(tmp_path: Path) -> Path:
     planspace.mkdir()
     PathRegistry(planspace).ensure_artifacts_tree()
     return planspace
+
+
+def _make_executor() -> PlanExecutor:
+    writers = Writers(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        logger=Services.logger(),
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+    )
+    return PlanExecutor(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        dispatch_helpers=Services.dispatch_helpers(),
+        dispatcher=Services.dispatcher(),
+        flow_ingestion=Services.flow_ingestion(),
+        hasher=Services.hasher(),
+        logger=Services.logger(),
+        pipeline_control=Services.pipeline_control(),
+        task_router=Services.task_router(),
+        writers=writers,
+    )
 
 
 def test_execute_coordination_plan_runs_fix_groups_and_persists_modified_files(
@@ -51,7 +72,8 @@ def test_execute_coordination_plan_runs_fix_groups_and_persists_modified_files(
         lambda self, group, group_index, *args, **kwargs: (group_index, [group[0].files[0]]),
     )
 
-    affected_sections = execute_coordination_plan(
+    executor = _make_executor()
+    affected_sections = executor.execute_coordination_plan(
         [
             ProblemGroup(
                 problems=[MisalignedProblem(section="01", description="", files=["src/a.py"])],
@@ -65,7 +87,7 @@ def test_execute_coordination_plan_runs_fix_groups_and_persists_modified_files(
     )
 
     assert affected_sections == ["01", "02"]
-    assert read_execution_modified_files(planspace) == ["src/a.py", "src/b.py"]
+    assert executor.read_execution_modified_files(planspace) == ["src/a.py", "src/b.py"]
 
 
 def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
@@ -106,7 +128,6 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
         "_dispatch_fix_group",
         lambda self, group, group_index, *args, **kwargs: (group_index, ["src/a.py"]),
     )
-    from src.containers import Services
     monkeypatch.setattr(
         Services.hasher(),
         "content_hash",
@@ -114,7 +135,8 @@ def test_execute_coordination_plan_runs_bridge_and_registers_inputs(
     )
 
     with override_dispatcher_and_guard(_dispatch_agent):
-        affected_sections = execute_coordination_plan(
+        executor = _make_executor()
+        affected_sections = executor.execute_coordination_plan(
             [
                 ProblemGroup(
                     problems=[
@@ -154,8 +176,9 @@ def test_execute_coordination_plan_raises_on_fix_group_sentinel(
         lambda self, *args, **kwargs: (0, None),
     )
 
+    executor = _make_executor()
     with pytest.raises(CoordinationExecutionExit):
-        execute_coordination_plan(
+        executor.execute_coordination_plan(
             [
                 ProblemGroup(
                     problems=[MisalignedProblem(section="01", description="", files=["src/a.py"])],

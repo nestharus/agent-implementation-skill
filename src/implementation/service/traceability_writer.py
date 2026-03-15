@@ -16,13 +16,13 @@ if TYPE_CHECKING:
     )
 
 
-def _proposal_governance_ids(planspace: Path, section_number: str) -> dict:
+def _proposal_governance_ids(planspace: Path, section_number: str, artifact_io: ArtifactIOService) -> dict:
     """Extract governance identity from proposal-state if available."""
-    from proposal.repository.state import load_proposal_state
+    from proposal.repository.state import State
 
     paths = PathRegistry(planspace)
     state_path = paths.proposal_state(section_number)
-    state = load_proposal_state(state_path)
+    state = State(artifact_io=artifact_io).load_proposal_state(state_path)
     return {
         "problem_ids": [
             str(x) for x in state.problem_ids
@@ -132,7 +132,7 @@ class TraceabilityWriter:
             "governance": {
                 "packet_path": str(paths.governance_packet(sec)),
                 "packet_hash": self._hasher.file_hash(paths.governance_packet(sec)),
-                **_proposal_governance_ids(planspace, sec),
+                **_proposal_governance_ids(planspace, sec, self._artifact_io),
             },
         }
 
@@ -191,47 +191,3 @@ class TraceabilityWriter:
         data["governance"] = governance
         self._artifact_io.write_json(trace_path, data)
         return True
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ---------------------------------------------------------------------------
-
-
-def write_traceability_index(
-    planspace: Path, section: Section,
-    modified_files: list[str],
-) -> None:
-    """Write a traceability index for a completed section."""
-    from containers import Services
-    writer = TraceabilityWriter(
-        artifact_io=Services.artifact_io(),
-        hasher=Services.hasher(),
-        logger=Services.logger(),
-        section_alignment=Services.section_alignment(),
-    )
-    writer.write_traceability_index(planspace, section, modified_files)
-
-
-def update_trace_governance(
-    planspace: Path,
-    section_number: str,
-    *,
-    problem_ids: list[str] | None = None,
-    pattern_ids: list[str] | None = None,
-    profile_id: str | None = None,
-) -> bool:
-    """Update governance fields in an existing trace index."""
-    from containers import Services
-    writer = TraceabilityWriter(
-        artifact_io=Services.artifact_io(),
-        hasher=Services.hasher(),
-        logger=Services.logger(),
-        section_alignment=Services.section_alignment(),
-    )
-    return writer.update_trace_governance(
-        planspace, section_number,
-        problem_ids=problem_ids,
-        pattern_ids=pattern_ids,
-        profile_id=profile_id,
-    )

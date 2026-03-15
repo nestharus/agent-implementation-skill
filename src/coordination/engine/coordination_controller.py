@@ -7,14 +7,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from coordination.problem_types import Problem
-from coordination.service.problem_resolver import collect_outstanding_problems
+from coordination.service.problem_resolver import ProblemResolver
 from coordination.types import CoordinationStatus
 from orchestrator.path_registry import PathRegistry
-from orchestrator.engine.strategic_state_builder import build_strategic_state
+from orchestrator.engine.strategic_state_builder import StrategicStateBuilder
 from coordination.engine.global_coordinator import (
+    GlobalCoordinator,
     MAX_COORDINATION_ROUNDS,
     MIN_COORDINATION_ROUNDS,
-    run_global_coordination,
 )
 from coordination.service.stall_detector import StallDetector
 from orchestrator.types import Section, SectionResult, ControlSignal
@@ -50,16 +50,21 @@ class CoordinationController:
         artifact_io: ArtifactIOService,
         change_tracker: ChangeTrackerService,
         communicator: Communicator,
+        global_coordinator: GlobalCoordinator,
         logger: LogService,
         pipeline_control: PipelineControlService,
         policies: ModelPolicyService,
+        problem_resolver: ProblemResolver,
     ) -> None:
         self._artifact_io = artifact_io
         self._change_tracker = change_tracker
         self._communicator = communicator
+        self._global_coordinator = global_coordinator
         self._logger = logger
         self._pipeline_control = pipeline_control
         self._policies = policies
+        self._problem_resolver = problem_resolver
+        self._strategic_state_builder = StrategicStateBuilder(artifact_io=artifact_io)
 
     def _check_alignment(self, planspace: Path) -> bool:
         """Poll for alignment changes.  Returns True if changed."""
@@ -85,7 +90,7 @@ class CoordinationController:
         outstanding: list[Problem] = []
 
         if not misaligned:
-            outstanding = collect_outstanding_problems(
+            outstanding = self._problem_resolver.collect_outstanding_problems(
                 section_results, sections_by_num, planspace,
             )
             if outstanding:
@@ -98,7 +103,7 @@ class CoordinationController:
                 if self._check_alignment(planspace):
                     return AssessmentResult(misaligned=misaligned, outstanding=outstanding, early_exit_reason=CoordinationStatus.RESTART_PHASE1)
                 self._logger.log("=== All sections ALIGNED after initial pass ===")
-                build_strategic_state(decisions_dir, section_results, planspace)
+                self._strategic_state_builder.build_strategic_state(decisions_dir, section_results, planspace)
                 self._communicator.send_to_parent(planspace, "complete")
                 return AssessmentResult(misaligned=misaligned, outstanding=outstanding, early_exit_reason=CoordinationStatus.COMPLETE)
 
@@ -122,7 +127,7 @@ class CoordinationController:
                 f"=== Coordination finished after {round_num} rounds, "
                 f"{len(remaining)} sections still unresolved ===",
             )
-            build_strategic_state(decisions_dir, section_results, planspace)
+            self._strategic_state_builder.build_strategic_state(decisions_dir, section_results, planspace)
             for result in remaining:
                 summary = (result.problems or "unknown")[:TRUNCATE_MEDIUM]
                 self._logger.log(f"  - Section {result.section_number}: {summary}")
@@ -132,7 +137,7 @@ class CoordinationController:
                 )
             return termination_reason
 
-        outstanding = collect_outstanding_problems(
+        outstanding = self._problem_resolver.collect_outstanding_problems(
             section_results, sections_by_num, planspace,
         )
         if outstanding:
@@ -141,7 +146,7 @@ class CoordinationController:
                 f"sections aligned but {len(outstanding)} outstanding problems "
                 "remain ===",
             )
-            build_strategic_state(decisions_dir, section_results, planspace)
+            self._strategic_state_builder.build_strategic_state(decisions_dir, section_results, planspace)
             rollup_dir = paths.coordination_dir()
             self._artifact_io.write_json(
                 rollup_dir / "coordination-exhausted.json",
@@ -212,7 +217,7 @@ class CoordinationController:
                 f"status:coordination:round-{round_num}",
             )
 
-            all_done = run_global_coordination(
+            all_done = self._global_coordinator.run_global_coordination(
                 section_results, sections_by_num, ctx,
             )
 
@@ -226,14 +231,14 @@ class CoordinationController:
                 if self._check_alignment(ctx.planspace):
                     return CoordinationStatus.RESTART_PHASE1
                 self._logger.log(f"=== All sections ALIGNED after coordination round {round_num} ===")
-                build_strategic_state(decisions_dir, section_results, ctx.planspace)
+                self._strategic_state_builder.build_strategic_state(decisions_dir, section_results, ctx.planspace)
                 self._communicator.send_to_parent(ctx.planspace, "complete")
                 return CoordinationStatus.COMPLETE
 
             # Measure progress
             remaining = [r for r in section_results.values() if not r.aligned]
             remaining_outstanding = (
-                collect_outstanding_problems(
+                self._problem_resolver.collect_outstanding_problems(
                     section_results, sections_by_num, ctx.planspace,
                 )
                 if not remaining
@@ -261,29 +266,3 @@ class CoordinationController:
             decisions_dir, round_num, termination_reason,
         )
 
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_coordination_controller() -> CoordinationController:
-    from containers import Services
-    return CoordinationController(
-        artifact_io=Services.artifact_io(),
-        change_tracker=Services.change_tracker(),
-        communicator=Services.communicator(),
-        logger=Services.logger(),
-        pipeline_control=Services.pipeline_control(),
-        policies=Services.policies(),
-    )
-
-
-def run_coordination_loop(
-    section_results: dict[str, SectionResult],
-    sections_by_num: dict[str, Section],
-    ctx: DispatchContext,
-) -> str:
-    """Run the adaptive coordination loop until completion or exhaustion."""
-    return _get_coordination_controller().run_coordination_loop(
-        section_results, sections_by_num, ctx,
-    )

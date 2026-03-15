@@ -2,23 +2,27 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from containers import ArtifactIOService, HasherService
 from src.orchestrator.path_registry import PathRegistry
 from src.signals.repository.artifact_io import write_json
-from src.research.engine.orchestrator import (
-    compute_trigger_hash,
-    is_research_complete,
-    is_research_complete_for_trigger,
-    load_research_status,
-    validate_research_plan,
-    write_research_status,
-)
+from src.research.engine.orchestrator import ResearchOrchestrator
 
 
-def test_compute_trigger_hash_is_order_insensitive() -> None:
-    assert compute_trigger_hash(["b", "a"]) == compute_trigger_hash(["a", "b"])
+@pytest.fixture()
+def orchestrator() -> ResearchOrchestrator:
+    return ResearchOrchestrator(
+        hasher=HasherService(),
+        artifact_io=ArtifactIOService(),
+    )
 
 
-def test_validate_research_plan_accepts_valid_structure(tmp_path: Path) -> None:
+def test_compute_trigger_hash_is_order_insensitive(orchestrator: ResearchOrchestrator) -> None:
+    assert orchestrator.compute_trigger_hash(["b", "a"]) == orchestrator.compute_trigger_hash(["a", "b"])
+
+
+def test_validate_research_plan_accepts_valid_structure(tmp_path: Path, orchestrator: ResearchOrchestrator) -> None:
     plan_path = tmp_path / "research-plan.json"
     write_json(plan_path, {
         "section": "03",
@@ -26,14 +30,14 @@ def test_validate_research_plan_accepts_valid_structure(tmp_path: Path) -> None:
         "flow": {"parallel_groups": [["T-01"]]},
     })
 
-    assert validate_research_plan(plan_path) == {
+    assert orchestrator.validate_research_plan(plan_path) == {
         "section": "03",
         "tickets": [{"ticket_id": "T-01"}],
         "flow": {"parallel_groups": [["T-01"]]},
     }
 
 
-def test_validate_research_plan_rejects_malformed_payloads(tmp_path: Path) -> None:
+def test_validate_research_plan_rejects_malformed_payloads(tmp_path: Path, orchestrator: ResearchOrchestrator) -> None:
     wrong_type = tmp_path / "wrong-type.json"
     missing_keys = tmp_path / "missing-keys.json"
     tickets_not_list = tmp_path / "tickets-not-list.json"
@@ -42,19 +46,19 @@ def test_validate_research_plan_rejects_malformed_payloads(tmp_path: Path) -> No
     write_json(missing_keys, {"section": "03", "tickets": []})
     write_json(tickets_not_list, {"section": "03", "tickets": {}, "flow": {}})
 
-    assert validate_research_plan(wrong_type) is None
-    assert validate_research_plan(missing_keys) is None
-    assert validate_research_plan(tickets_not_list) is None
+    assert orchestrator.validate_research_plan(wrong_type) is None
+    assert orchestrator.validate_research_plan(missing_keys) is None
+    assert orchestrator.validate_research_plan(tickets_not_list) is None
     assert wrong_type.with_suffix(".malformed.json").exists()
     assert missing_keys.with_suffix(".malformed.json").exists()
     assert tickets_not_list.with_suffix(".malformed.json").exists()
 
 
-def test_write_research_status_writes_status_artifact(tmp_path: Path) -> None:
+def test_write_research_status_writes_status_artifact(tmp_path: Path, orchestrator: ResearchOrchestrator) -> None:
     planspace = tmp_path / "planspace"
     planspace.mkdir()
     PathRegistry(planspace).ensure_artifacts_tree()
-    status_path = write_research_status(
+    status_path = orchestrator.write_research_status(
         "03",
         planspace,
         "planned",
@@ -83,11 +87,11 @@ def test_write_research_status_writes_status_artifact(tmp_path: Path) -> None:
     )
 
 
-def test_is_research_complete_only_for_terminal_states(tmp_path: Path) -> None:
+def test_is_research_complete_only_for_terminal_states(tmp_path: Path, orchestrator: ResearchOrchestrator) -> None:
     planspace = tmp_path / "planspace"
     planspace.mkdir()
     PathRegistry(planspace).ensure_artifacts_tree()
-    assert is_research_complete("03", planspace) is False
+    assert orchestrator.is_research_complete("03", planspace) is False
 
     status_path = (
         planspace
@@ -107,8 +111,8 @@ def test_is_research_complete_only_for_terminal_states(tmp_path: Path) -> None:
             "cycle_id": "cycle-03",
         },
     )
-    assert is_research_complete("03", planspace) is False
-    assert is_research_complete_for_trigger("03", planspace, "other-hash") is False
+    assert orchestrator.is_research_complete("03", planspace) is False
+    assert orchestrator.is_research_complete_for_trigger("03", planspace, "other-hash") is False
 
     for terminal in ("synthesized", "verified", "failed"):
         write_json(
@@ -121,11 +125,11 @@ def test_is_research_complete_only_for_terminal_states(tmp_path: Path) -> None:
                 "cycle_id": "cycle-03",
             },
         )
-        assert is_research_complete("03", planspace) is True
-        assert is_research_complete_for_trigger("03", planspace, "hash-03") is True
+        assert orchestrator.is_research_complete("03", planspace) is True
+        assert orchestrator.is_research_complete_for_trigger("03", planspace, "hash-03") is True
 
 
-def test_load_research_status_preserves_schema_mismatches(tmp_path: Path) -> None:
+def test_load_research_status_preserves_schema_mismatches(tmp_path: Path, orchestrator: ResearchOrchestrator) -> None:
     planspace = tmp_path / "planspace"
     planspace.mkdir()
     PathRegistry(planspace).ensure_artifacts_tree()
@@ -139,5 +143,5 @@ def test_load_research_status_preserves_schema_mismatches(tmp_path: Path) -> Non
     )
     write_json(status_path, {"status": "planned"})
 
-    assert load_research_status("03", planspace) is None
+    assert orchestrator.load_research_status("03", planspace) is None
     assert status_path.with_suffix(".malformed.json").exists()

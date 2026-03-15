@@ -6,30 +6,16 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from containers import Communicator, LogService, SectionAlignmentService
+    from intent.service.intent_triager import IntentTriager
+    from proposal.service.cycle_control import CycleControl
+    from proposal.service.proposal_prep import ProposalPrep
+    from proposal.service.alignment_handler import AlignmentHandler
+    from proposal.service.surface_handler import SurfaceHandler
 
 from dispatch.types import DispatchResult, DispatchStatus
-from intent.service.intent_triager import load_triage_result
 from orchestrator.path_registry import PathRegistry
 from pipeline.context import DispatchContext
 from implementation.service.section_reexplorer import write_alignment_surface
-from proposal.service.cycle_control import (
-    check_early_abort,
-    check_budget_exceeded,
-    dispatch_proposal,
-    handle_proposal_signals,
-)
-from proposal.service.proposal_prep import (
-    build_proposal_prompt,
-    resolve_proposal_model,
-)
-from proposal.service.alignment_handler import (
-    handle_alignment_signals,
-    run_alignment_check,
-)
-from proposal.service.surface_handler import (
-    handle_aligned_surfaces,
-    handle_misaligned_surfaces,
-)
 from signals.types import ACTION_ABORT, ACTION_BREAK, ACTION_CONTINUE, TRUNCATE_DETAIL
 
 
@@ -47,11 +33,21 @@ class ProposalCycle:
         self,
         logger: LogService,
         communicator: Communicator,
+        intent_triager: IntentTriager,
         section_alignment: SectionAlignmentService,
+        cycle_control: CycleControl,
+        proposal_prep: ProposalPrep,
+        alignment_handler: AlignmentHandler,
+        surface_handler: SurfaceHandler,
     ) -> None:
         self._logger = logger
         self._communicator = communicator
+        self._intent_triager = intent_triager
         self._section_alignment = section_alignment
+        self._cycle_control = cycle_control
+        self._proposal_prep = proposal_prep
+        self._alignment_handler = alignment_handler
+        self._surface_handler = surface_handler
 
     def _check_proposal_written(
         self,
@@ -141,7 +137,7 @@ class ProposalCycle:
             )
             return AlignmentPhaseResult(ACTION_CONTINUE, problems, intent_mode)
 
-        align_signal = handle_alignment_signals(
+        align_signal = self._alignment_handler.handle_alignment_signals(
             section.number, ctx.planspace,
         )
         if align_signal == ACTION_ABORT:
@@ -150,7 +146,7 @@ class ProposalCycle:
             return AlignmentPhaseResult(ACTION_CONTINUE, intent_mode=intent_mode)
 
         if problems is None:
-            surface_result = handle_aligned_surfaces(
+            surface_result = self._surface_handler.handle_aligned_surfaces(
                 section.number, ctx.planspace, ctx.codespace,
                 intent_mode, intent_budgets, expansion_counts,
             )
@@ -164,7 +160,7 @@ class ProposalCycle:
             write_alignment_surface(ctx.planspace, section)
             return AlignmentPhaseResult(ACTION_BREAK, intent_mode=surface_result.intent_mode)
 
-        intent_mode = handle_misaligned_surfaces(
+        intent_mode = self._surface_handler.handle_misaligned_surfaces(
             section.number, ctx.planspace, ctx.codespace,
             intent_mode, intent_budgets, expansion_counts,
         )
@@ -182,24 +178,24 @@ class ProposalCycle:
         or 'proceed'.
         """
         integration_proposal = PathRegistry(ctx.planspace).proposal(section.number)
-        proposal_model = resolve_proposal_model(
+        proposal_model = self._proposal_prep.resolve_proposal_model(
             section.number, ctx.planspace, proposal_attempt,
         )
-        intg_prompt = build_proposal_prompt(
+        intg_prompt = self._proposal_prep.build_proposal_prompt(
             section, ctx.planspace, ctx.codespace,
             proposal_problems, incoming_notes,
         )
         if intg_prompt is None:
             return ACTION_ABORT, None
 
-        intg_result = dispatch_proposal(
+        intg_result = self._cycle_control.dispatch_proposal(
             section.number, ctx.planspace, ctx.codespace,
             proposal_model, intg_prompt, integration_proposal,
         )
         if intg_result is None:
             return ACTION_ABORT, None
 
-        signal_action = handle_proposal_signals(
+        signal_action = self._cycle_control.handle_proposal_signals(
             section.number, ctx.planspace,
         )
         if signal_action == ACTION_ABORT:
@@ -224,7 +220,7 @@ class ProposalCycle:
         """Run the integration proposal loop until aligned or aborted."""
         paths = PathRegistry(ctx.planspace)
         cycle_budget_path = paths.cycle_budget(section.number)
-        triage_result = load_triage_result(section.number, ctx.planspace) or {}
+        triage_result = self._intent_triager.load_triage_result(section.number, ctx.planspace) or {}
         intent_mode = triage_result.get("intent_mode", "lightweight")
         intent_budgets = triage_result.get("budgets", {})
         proposal_problems: str | None = None
@@ -233,13 +229,13 @@ class ProposalCycle:
 
         while True:
             # --- early abort checks ---
-            if check_early_abort(section.number, ctx.planspace):
+            if self._cycle_control.check_early_abort(section.number, ctx.planspace):
                 return None
 
             proposal_attempt += 1
 
             # --- budget enforcement ---
-            budget_result = check_budget_exceeded(
+            budget_result = self._cycle_control.check_budget_exceeded(
                 section.number, ctx.planspace,
                 proposal_attempt, cycle_budget, cycle_budget_path,
             )
@@ -263,7 +259,7 @@ class ProposalCycle:
                 continue
 
             # --- alignment check ---
-            align_check = run_alignment_check(
+            align_check = self._alignment_handler.run_alignment_check(
                 section, ctx.planspace, ctx.codespace,
             )
             if align_check is None:
@@ -289,26 +285,3 @@ class ProposalCycle:
                 )
 
         return proposal_problems or ""
-
-
-# Backward-compat wrappers
-
-def _get_proposal_cycle() -> ProposalCycle:
-    from containers import Services
-    return ProposalCycle(
-        logger=Services.logger(),
-        communicator=Services.communicator(),
-        section_alignment=Services.section_alignment(),
-    )
-
-
-def run_proposal_loop(
-    section,
-    ctx: DispatchContext,
-    cycle_budget: dict,
-    incoming_notes: str | None,
-) -> str | None:
-    """Run the integration proposal loop until aligned or aborted."""
-    return _get_proposal_cycle().run_proposal_loop(
-        section, ctx, cycle_budget, incoming_notes,
-    )

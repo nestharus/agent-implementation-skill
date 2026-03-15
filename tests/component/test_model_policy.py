@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import json
 
-from src.dispatch.service.model_policy import ModelPolicy, load_model_policy, resolve
+from containers import Services
+from dispatch.service.model_policy import ModelPolicy, ModelPolicyLoader, resolve
+
+
+def _load_model_policy(planspace):
+    return ModelPolicyLoader(artifact_io=Services.artifact_io()).load_model_policy(planspace)
 
 
 def test_load_model_policy_returns_defaults_when_file_missing(tmp_path) -> None:
-    policy = load_model_policy(tmp_path)
+    policy = _load_model_policy(tmp_path)
 
     assert isinstance(policy, ModelPolicy)
     assert policy.setup == "claude-opus"
@@ -34,7 +39,7 @@ def test_load_model_policy_merges_overrides_and_nested_triggers(tmp_path) -> Non
         "escalation_triggers": {"stall_count": 5},
     }), encoding="utf-8")
 
-    policy = load_model_policy(tmp_path)
+    policy = _load_model_policy(tmp_path)
 
     assert policy.proposal == "gpt-xhigh"
     assert resolve(policy, "risk_assessor") == "gpt-xhigh"
@@ -56,7 +61,7 @@ def test_load_model_policy_preserves_known_non_section_loop_keys(tmp_path) -> No
         "future_key": "future-model",
     }), encoding="utf-8")
 
-    policy = load_model_policy(tmp_path)
+    policy = _load_model_policy(tmp_path)
 
     assert policy["substrate_trigger_min_vacuum_sections"] == 7
     assert policy["future_key"] == "future-model"
@@ -68,7 +73,7 @@ def test_load_model_policy_renames_non_object_json_and_falls_back(tmp_path) -> N
     policy_path.parent.mkdir(parents=True, exist_ok=True)
     policy_path.write_text('["not", "an", "object"]', encoding="utf-8")
 
-    policy = load_model_policy(tmp_path)
+    policy = _load_model_policy(tmp_path)
 
     assert policy.setup == "claude-opus"
     assert not policy_path.exists()
@@ -79,7 +84,7 @@ def test_resolve_raises_for_missing_or_non_nested_key(tmp_path) -> None:
     policy_path = tmp_path / "artifacts" / "model-policy.json"
     policy_path.parent.mkdir(parents=True, exist_ok=True)
     policy_path.write_text(json.dumps({"scan": {}}), encoding="utf-8")
-    policy = load_model_policy(tmp_path)
+    policy = _load_model_policy(tmp_path)
 
     try:
         resolve(policy, "scan.codemap_build")

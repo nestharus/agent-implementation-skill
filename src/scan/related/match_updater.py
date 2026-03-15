@@ -91,20 +91,3 @@ class MatchUpdater:
         return True
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ------------------------------------------------------------------
-
-
-def _default_updater() -> MatchUpdater:
-    from containers import Services
-    return MatchUpdater(artifact_io=Services.artifact_io())
-
-
-def update_match(
-    section_file: Path,
-    source_file: str,
-    details_file: Path,
-) -> bool:
-    """Annotate section file with summary lines from feedback JSON."""
-    return _default_updater().update_match(section_file, source_file, details_file)

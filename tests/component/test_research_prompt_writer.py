@@ -5,14 +5,17 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
-from containers import PromptGuard, Services
+from containers import ArtifactIOService, PromptGuard, Services
 from src.orchestrator.path_registry import PathRegistry
-from src.research.prompt.writers import (
-    write_research_plan_prompt,
-    write_research_synthesis_prompt,
-    write_research_ticket_prompt,
-    write_research_verify_prompt,
-)
+from src.research.prompt.writers import ResearchPromptWriter
+
+
+@pytest.fixture()
+def writer() -> ResearchPromptWriter:
+    return ResearchPromptWriter(
+        prompt_guard=Services.prompt_guard(),
+        artifact_io=ArtifactIOService(),
+    )
 
 
 def _write_common_inputs(planspace: Path, section_number: str = "03") -> Path:
@@ -59,13 +62,13 @@ def _write_common_inputs(planspace: Path, section_number: str = "03") -> Path:
 
 
 def test_write_research_plan_prompt_includes_full_authority_surface(
-    tmp_path: Path,
+    tmp_path: Path, writer: ResearchPromptWriter,
 ) -> None:
     planspace = tmp_path / "planspace"
     trigger_path = _write_common_inputs(planspace)
     codespace = tmp_path / "codespace"
 
-    prompt_path = write_research_plan_prompt("03", planspace, codespace, trigger_path)
+    prompt_path = writer.write_research_plan_prompt("03", planspace, codespace, trigger_path)
 
     assert prompt_path == planspace / "artifacts" / "research-plan-03-prompt.md"
     content = prompt_path.read_text(encoding="utf-8")
@@ -80,7 +83,7 @@ def test_write_research_plan_prompt_includes_full_authority_surface(
 
 
 def test_write_research_ticket_prompt_writes_spec_and_code_context(
-    tmp_path: Path,
+    tmp_path: Path, writer: ResearchPromptWriter,
 ) -> None:
     planspace = tmp_path / "planspace"
     _write_common_inputs(planspace)
@@ -91,7 +94,7 @@ def test_write_research_ticket_prompt_writes_spec_and_code_context(
         "questions": ["How is the adapter wired?"],
     }
 
-    prompt_path = write_research_ticket_prompt("03", planspace, codespace, ticket, 2)
+    prompt_path = writer.write_research_ticket_prompt("03", planspace, codespace, ticket, 2)
 
     assert prompt_path == (
         planspace
@@ -119,13 +122,13 @@ def test_write_research_ticket_prompt_writes_spec_and_code_context(
 
 
 def test_write_research_synthesis_and_verify_prompts_reference_outputs(
-    tmp_path: Path,
+    tmp_path: Path, writer: ResearchPromptWriter,
 ) -> None:
     planspace = tmp_path / "planspace"
     _write_common_inputs(planspace)
 
-    synthesis_prompt = write_research_synthesis_prompt("03", planspace, 4)
-    verify_prompt = write_research_verify_prompt("03", planspace)
+    synthesis_prompt = writer.write_research_synthesis_prompt("03", planspace, 4)
+    verify_prompt = writer.write_research_verify_prompt("03", planspace)
 
     synthesis_content = synthesis_prompt.read_text(encoding="utf-8")
     assert f"`{planspace / 'artifacts' / 'research' / 'sections' / 'section-03' / 'dossier.md'}`" in synthesis_content
@@ -152,11 +155,12 @@ def test_write_research_plan_prompt_returns_none_when_prompt_guard_blocks(
         def validate_dynamic(self, content: str) -> list[str]:
             return []
 
-    Services.prompt_guard.override(providers.Object(_BlockingGuard()))
-    try:
-        prompt_path = write_research_plan_prompt("03", planspace, None, trigger_path)
-    finally:
-        Services.prompt_guard.reset_override()
+    blocking_writer = ResearchPromptWriter(
+        prompt_guard=_BlockingGuard(),
+        artifact_io=ArtifactIOService(),
+    )
+
+    prompt_path = blocking_writer.write_research_plan_prompt("03", planspace, None, trigger_path)
 
     assert prompt_path is None
     assert (

@@ -13,19 +13,14 @@ if str(_SCRIPTS_DIR) not in sys.path:
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from orchestrator.path_registry import PathRegistry
 from flow.types.context import FlowEnvelope
-from research.engine.orchestrator import ResearchState, load_research_status, validate_research_plan, write_research_status
-from research.engine.research_branch_builder import (
-    build_branch,
-    emit_not_researchable_signals,
-    ordered_ticket_ids,
-)
-from research.prompt.writers import (
-    write_research_synthesis_prompt,
-    write_research_verify_prompt,
-)
+from research.engine.orchestrator import ResearchState
+from research.engine.research_branch_builder import ordered_ticket_ids
 
 if TYPE_CHECKING:
     from containers import FlowIngestionService, FreshnessService
+    from research.engine.orchestrator import ResearchOrchestrator
+    from research.engine.research_branch_builder import ResearchBranchBuilder
+    from research.prompt.writers import ResearchPromptWriter
 
 
 class ResearchPlanExecutor:
@@ -35,9 +30,15 @@ class ResearchPlanExecutor:
         self,
         freshness: FreshnessService,
         flow_ingestion: FlowIngestionService,
+        orchestrator: ResearchOrchestrator,
+        branch_builder: ResearchBranchBuilder,
+        prompt_writer: ResearchPromptWriter,
     ) -> None:
         self._freshness = freshness
         self._flow_ingestion = flow_ingestion
+        self._orchestrator = orchestrator
+        self._branch_builder = branch_builder
+        self._prompt_writer = prompt_writer
 
     def execute_research_plan(
         self,
@@ -47,31 +48,31 @@ class ResearchPlanExecutor:
         plan_output_path: Path,
     ) -> bool:
         """Translate semantic research plan into flow submissions."""
-        status = load_research_status(section_number, planspace) or {}
+        status = self._orchestrator.load_research_status(section_number, planspace) or {}
         trigger_hash = str(status.get("trigger_hash", ""))
         cycle_id = str(status.get("cycle_id", ""))
 
-        plan = _validate_plan(section_number, trigger_hash, cycle_id, planspace)
+        plan = self._validate_plan(section_number, trigger_hash, cycle_id, planspace)
         if plan is None:
             return False
 
         not_researchable = [
             item for item in plan.get("not_researchable", []) if isinstance(item, dict)
         ]
-        emit_not_researchable_signals(section_number, planspace, not_researchable)
+        self._branch_builder.emit_not_researchable_signals(section_number, planspace, not_researchable)
 
-        branches = _collect_branches(
+        branches = self._collect_branches(
             plan, section_number, planspace, codespace, trigger_hash, cycle_id,
         )
         if branches is None:
             return False
 
         if not branches:
-            _fail_status(section_number, planspace, trigger_hash, cycle_id,
+            self._fail_status(section_number, planspace, trigger_hash, cycle_id,
                          "planner returned no researchable tickets")
             return bool(not_researchable)
 
-        synthesis_prompt = _write_synthesis(
+        synthesis_prompt = self._write_synthesis(
             section_number, planspace, len(branches), trigger_hash, cycle_id,
         )
         if synthesis_prompt is None:
@@ -95,7 +96,7 @@ class ResearchPlanExecutor:
     ) -> None:
         """Write submission status, compute freshness, and submit the fanout."""
         paths = PathRegistry(planspace)
-        write_research_status(
+        self._orchestrator.write_research_status(
             section_number, planspace, ResearchState.TICKETS_SUBMITTED,
             detail=f"submitted {len(branches)} research ticket branches",
             trigger_hash=trigger_hash, cycle_id=cycle_id,
@@ -138,10 +139,10 @@ class ResearchPlanExecutor:
         origin_refs: list[str] | None = None,
     ) -> bool:
         """Submit the research verifier as a follow-on task."""
-        status = load_research_status(section_number, planspace) or {}
-        verify_prompt = write_research_verify_prompt(section_number, planspace)
+        status = self._orchestrator.load_research_status(section_number, planspace) or {}
+        verify_prompt = self._prompt_writer.write_research_verify_prompt(section_number, planspace)
         if verify_prompt is None:
-            write_research_status(
+            self._orchestrator.write_research_status(
                 section_number,
                 planspace,
                 ResearchState.FAILED,
@@ -168,7 +169,7 @@ class ResearchPlanExecutor:
                 )
             ],
         )
-        write_research_status(
+        self._orchestrator.write_research_status(
             section_number,
             planspace,
             ResearchState.VERIFYING,
@@ -178,125 +179,87 @@ class ResearchPlanExecutor:
         )
         return True
 
+    # -------------------------------------------------------------------
+    # Private helpers
+    # -------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Pure helper functions (no Services usage)
-# ---------------------------------------------------------------------------
-
-def _fail_status(
-    section_number: str,
-    planspace: Path,
-    trigger_hash: str,
-    cycle_id: str,
-    detail: str,
-) -> None:
-    """Write a failure status entry."""
-    write_research_status(
-        section_number, planspace, ResearchState.FAILED,
-        detail=detail, trigger_hash=trigger_hash, cycle_id=cycle_id,
-    )
-
-
-def _validate_plan(
-    section_number: str,
-    trigger_hash: str,
-    cycle_id: str,
-    planspace: Path,
-) -> dict | None:
-    """Validate the research plan, writing a failure status if invalid."""
-    plan = validate_research_plan(PathRegistry(planspace).research_plan(section_number))
-    if plan is None:
-        _fail_status(section_number, planspace, trigger_hash, cycle_id,
-                     "research-plan.json missing or malformed")
-    return plan
-
-
-def _collect_branches(
-    plan: dict,
-    section_number: str,
-    planspace: Path,
-    codespace: Path | None,
-    trigger_hash: str,
-    cycle_id: str,
-) -> list[BranchSpec] | None:
-    """Build branch specs from ordered tickets."""
-    tickets_by_id = {
-        str(ticket.get("ticket_id", "")): ticket
-        for ticket in plan.get("tickets", [])
-        if isinstance(ticket, dict) and str(ticket.get("ticket_id", ""))
-    }
-    branches: list[BranchSpec] = []
-
-    for ticket_index, ticket_id in enumerate(ordered_ticket_ids(plan), start=1):
-        ticket = tickets_by_id.get(ticket_id)
-        if ticket is None:
-            continue
-        branch = build_branch(
-            section_number=section_number,
-            planspace=planspace,
-            codespace=codespace,
-            ticket=ticket,
-            ticket_index=ticket_index,
+    def _fail_status(
+        self,
+        section_number: str,
+        planspace: Path,
+        trigger_hash: str,
+        cycle_id: str,
+        detail: str,
+    ) -> None:
+        """Write a failure status entry."""
+        self._orchestrator.write_research_status(
+            section_number, planspace, ResearchState.FAILED,
+            detail=detail, trigger_hash=trigger_hash, cycle_id=cycle_id,
         )
-        if branch is None:
-            _fail_status(section_number, planspace, trigger_hash, cycle_id,
-                         f"failed to build research branch for {ticket_id}")
-            return None
-        branches.append(branch)
 
-    return branches
+    def _validate_plan(
+        self,
+        section_number: str,
+        trigger_hash: str,
+        cycle_id: str,
+        planspace: Path,
+    ) -> dict | None:
+        """Validate the research plan, writing a failure status if invalid."""
+        plan = self._orchestrator.validate_research_plan(PathRegistry(planspace).research_plan(section_number))
+        if plan is None:
+            self._fail_status(section_number, planspace, trigger_hash, cycle_id,
+                         "research-plan.json missing or malformed")
+        return plan
 
+    def _collect_branches(
+        self,
+        plan: dict,
+        section_number: str,
+        planspace: Path,
+        codespace: Path | None,
+        trigger_hash: str,
+        cycle_id: str,
+    ) -> list[BranchSpec] | None:
+        """Build branch specs from ordered tickets."""
+        tickets_by_id = {
+            str(ticket.get("ticket_id", "")): ticket
+            for ticket in plan.get("tickets", [])
+            if isinstance(ticket, dict) and str(ticket.get("ticket_id", ""))
+        }
+        branches: list[BranchSpec] = []
 
-def _write_synthesis(
-    section_number: str,
-    planspace: Path,
-    branch_count: int,
-    trigger_hash: str,
-    cycle_id: str,
-) -> Path | None:
-    """Write the synthesis prompt, returning ``None`` on failure."""
-    synthesis_prompt = write_research_synthesis_prompt(
-        section_number, planspace, branch_count,
-    )
-    if synthesis_prompt is None:
-        _fail_status(section_number, planspace, trigger_hash, cycle_id,
-                     "failed to write research synthesis prompt")
-    return synthesis_prompt
+        for ticket_index, ticket_id in enumerate(ordered_ticket_ids(plan), start=1):
+            ticket = tickets_by_id.get(ticket_id)
+            if ticket is None:
+                continue
+            branch = self._branch_builder.build_branch(
+                section_number=section_number,
+                planspace=planspace,
+                codespace=codespace,
+                ticket=ticket,
+                ticket_index=ticket_index,
+            )
+            if branch is None:
+                self._fail_status(section_number, planspace, trigger_hash, cycle_id,
+                             f"failed to build research branch for {ticket_id}")
+                return None
+            branches.append(branch)
 
+        return branches
 
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers — used by tests
-# ---------------------------------------------------------------------------
-
-def _get_executor() -> ResearchPlanExecutor:
-    from containers import Services
-    return ResearchPlanExecutor(
-        freshness=Services.freshness(),
-        flow_ingestion=Services.flow_ingestion(),
-    )
-
-
-def execute_research_plan(
-    section_number: str,
-    planspace: Path,
-    codespace: Path | None,
-    plan_output_path: Path,
-) -> bool:
-    return _get_executor().execute_research_plan(
-        section_number, planspace, codespace, plan_output_path,
-    )
-
-
-def submit_research_verify(
-    section_number: str,
-    planspace: Path,
-    *,
-    db_path: Path,
-    declared_by_task_id: int | None,
-    origin_refs: list[str] | None = None,
-) -> bool:
-    return _get_executor().submit_research_verify(
-        section_number, planspace,
-        db_path=db_path, declared_by_task_id=declared_by_task_id,
-        origin_refs=origin_refs,
-    )
+    def _write_synthesis(
+        self,
+        section_number: str,
+        planspace: Path,
+        branch_count: int,
+        trigger_hash: str,
+        cycle_id: str,
+    ) -> Path | None:
+        """Write the synthesis prompt, returning ``None`` on failure."""
+        synthesis_prompt = self._prompt_writer.write_research_synthesis_prompt(
+            section_number, planspace, branch_count,
+        )
+        if synthesis_prompt is None:
+            self._fail_status(section_number, planspace, trigger_hash, cycle_id,
+                         "failed to write research synthesis prompt")
+        return synthesis_prompt

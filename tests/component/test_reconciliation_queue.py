@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.orchestrator.path_registry import PathRegistry
-from src.reconciliation.repository.queue import (
-    load_reconciliation_requests,
-    queue_reconciliation_request,
-)
+from containers import ArtifactIOService
+from orchestrator.path_registry import PathRegistry
+from reconciliation.repository.queue import Queue
+
+
+def _make_queue() -> Queue:
+    return Queue(artifact_io=ArtifactIOService())
 
 
 def test_queue_reconciliation_request_writes_expected_json(
@@ -15,7 +17,7 @@ def test_queue_reconciliation_request_writes_expected_json(
 ) -> None:
     planspace = tmp_path / "planspace"
 
-    request_path = queue_reconciliation_request(
+    request_path = _make_queue().queue_reconciliation_request(
         planspace,
         "03",
         ["contract-a"],
@@ -48,7 +50,7 @@ def test_load_reconciliation_requests_skips_malformed_and_renames_non_dict(
     array_path = recon_dir / "section-03-reconciliation.json"
     array_path.write_text(json.dumps(["not", "a", "dict"]) + "\n", encoding="utf-8")
 
-    requests = load_reconciliation_requests(run_dir)
+    requests = _make_queue().load_reconciliation_requests(run_dir)
 
     assert requests == [{"section": "01"}]
     assert not array_path.exists()

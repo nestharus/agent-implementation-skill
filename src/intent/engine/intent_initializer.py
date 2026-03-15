@@ -11,13 +11,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
-from intent.service.intent_pack_generator import (
-    ensure_global_philosophy,
-    generate_intent_pack,
-)
-from intent.service.intent_triager import run_intent_triage
+from intent.service.intent_pack_generator import ensure_global_philosophy
 from signals.service.blocker_manager import update_blocker_rollup
-from intake.service.governance_packet_builder import build_section_governance_packet
 from orchestrator.types import PauseType, Section
 
 from pipeline import AlignmentGuard, Pipeline, PipelineContext, Step
@@ -32,6 +27,9 @@ if TYPE_CHECKING:
         ModelPolicyService,
         PipelineControlService,
     )
+    from intake.service.governance_packet_builder import GovernancePacketBuilder
+    from intent.service.intent_pack_generator import IntentPackGenerator
+    from intent.service.intent_triager import IntentTriager
 
 _SECTION_SUMMARY_TRUNCATION = 500
 
@@ -46,12 +44,18 @@ class IntentInitializer:
         self,
         artifact_io: ArtifactIOService,
         communicator: Communicator,
+        governance_packet_builder: GovernancePacketBuilder,
+        intent_pack_generator: IntentPackGenerator,
+        intent_triager: IntentTriager,
         logger: LogService,
         pipeline_control: PipelineControlService,
         policies: ModelPolicyService,
     ) -> None:
         self._artifact_io = artifact_io
         self._communicator = communicator
+        self._governance_packet_builder = governance_packet_builder
+        self._intent_pack_generator = intent_pack_generator
+        self._intent_triager = intent_triager
         self._logger = logger
         self._pipeline_control = pipeline_control
         self._policies = policies
@@ -74,7 +78,7 @@ class IntentInitializer:
                 list(notes_dir.glob(f"from-*-to-{ctx.section.number}.md")),
             )
 
-        result = run_intent_triage(
+        result = self._intent_triager.run_intent_triage(
             ctx.section.number,
             ctx.planspace,
             ctx.codespace,
@@ -157,7 +161,7 @@ class IntentInitializer:
     def _step_governance(self, ctx: PipelineContext) -> str:
         """Build the section governance packet."""
         pf_content = ctx.state.get("pf_content", "")
-        build_section_governance_packet(
+        self._governance_packet_builder.build_section_governance_packet(
             ctx.section.number,
             ctx.planspace,
             pf_content[:_SECTION_SUMMARY_TRUNCATION] if pf_content else "",
@@ -166,7 +170,7 @@ class IntentInitializer:
 
     def _step_intent_pack(self, ctx: PipelineContext) -> str:
         """Generate full intent pack (only in full mode)."""
-        generate_intent_pack(
+        self._intent_pack_generator.generate_intent_pack(
             ctx.section,
             ctx.planspace,
             ctx.codespace,
@@ -264,33 +268,9 @@ def extract_todos_from_files(codespace: Path, related_files: list[str]) -> str:
     return extract_todos(codespace, related_files)
 
 
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_intent_initializer() -> IntentInitializer:
-    from containers import Services
-    return IntentInitializer(
-        artifact_io=Services.artifact_io(),
-        communicator=Services.communicator(),
-        logger=Services.logger(),
-        pipeline_control=Services.pipeline_control(),
-        policies=Services.policies(),
-    )
-
 
 # Module-level callback — monkey-patched by runner before use; default
 # routes through the DI container so standalone calls also work.
-alignment_changed_pending = lambda planspace: _get_intent_initializer()._pipeline_control.alignment_changed_pending(planspace)
-
-
-def run_intent_bootstrap(
-    section: Section,
-    planspace: Path,
-    codespace: Path,
-    incoming_notes: str | None,
-) -> dict | None:
-    """Run intent triage, TODO surfacing, philosophy, and budget assembly."""
-    return _get_intent_initializer().run_intent_bootstrap(
-        section, planspace, codespace, incoming_notes,
-    )
+def alignment_changed_pending(planspace):
+    from containers import Services
+    return Services.pipeline_control().alignment_changed_pending(planspace)

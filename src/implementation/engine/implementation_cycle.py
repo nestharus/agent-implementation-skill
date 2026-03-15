@@ -4,15 +4,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
-from intake.service.assessment_evaluator import write_post_impl_assessment_prompt
-from dispatch.prompt.writers import write_impl_alignment_prompt, write_strategic_impl_prompt
-from implementation.service.traceability_writer import write_traceability_index
-from implementation.service.change_verifier import verify_changed_files
-from implementation.service.trace_map_builder import build_trace_map
+from implementation.service.traceability_writer import TraceabilityWriter
+from implementation.service.change_verifier import ChangeVerifier
+from implementation.service.trace_map_builder import TraceMapBuilder
 from flow.types.context import FlowEnvelope
 from flow.types.schema import TaskSpec
 from dispatch.types import ALIGNMENT_CHANGED_PENDING, DispatchResult, DispatchStatus
-from proposal.service.cycle_control import check_early_abort, handle_pause_response
 from orchestrator.types import PauseType
 from signals.types import ACTION_ABORT, RESUME_PREFIX, SIGNAL_UNDERSPEC, TRUNCATE_DETAIL
 
@@ -30,6 +27,9 @@ if TYPE_CHECKING:
         StalenessDetectionService,
         TaskRouterService,
     )
+    from dispatch.prompt.writers import Writers as PromptWriters
+    from intake.service.assessment_evaluator import AssessmentEvaluator
+    from proposal.service.cycle_control import CycleControl
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +62,10 @@ class ImplementationCycle:
     def __init__(
         self,
         artifact_io: ArtifactIOService,
+        assessment_evaluator: AssessmentEvaluator,
+        change_verifier: ChangeVerifier,
         communicator: Communicator,
+        cycle_control: CycleControl,
         dispatcher: AgentDispatcher,
         dispatch_helpers: DispatchHelperService,
         flow_ingestion: FlowIngestionService,
@@ -72,9 +75,15 @@ class ImplementationCycle:
         section_alignment: SectionAlignmentService,
         staleness: StalenessDetectionService,
         task_router: TaskRouterService,
+        prompt_writers: PromptWriters,
+        trace_map_builder: TraceMapBuilder,
+        traceability_writer: TraceabilityWriter,
     ) -> None:
         self._artifact_io = artifact_io
+        self._assessment_evaluator = assessment_evaluator
+        self._change_verifier = change_verifier
         self._communicator = communicator
+        self._cycle_control = cycle_control
         self._dispatcher = dispatcher
         self._dispatch_helpers = dispatch_helpers
         self._flow_ingestion = flow_ingestion
@@ -84,6 +93,9 @@ class ImplementationCycle:
         self._section_alignment = section_alignment
         self._staleness = staleness
         self._task_router = task_router
+        self._prompt_writers = prompt_writers
+        self._trace_map_builder = trace_map_builder
+        self._traceability_writer = traceability_writer
 
     def run_implementation_loop(
         self,
@@ -102,7 +114,7 @@ class ImplementationCycle:
         impl_attempt = 0
 
         while True:
-            if check_early_abort(section.number, planspace):
+            if self._cycle_control.check_early_abort(section.number, planspace):
                 return None
 
             impl_attempt += 1
@@ -274,7 +286,7 @@ class ImplementationCycle:
         """
         artifacts = PathRegistry(planspace).artifacts
         policy = self._policies.load(planspace)
-        impl_prompt = write_strategic_impl_prompt(
+        impl_prompt = self._prompt_writers.write_strategic_impl_prompt(
             section,
             planspace,
             codespace,
@@ -361,7 +373,7 @@ class ImplementationCycle:
             planspace,
             f"pause:{signal}:{section_number}:{detail}",
         )
-        result = handle_pause_response(planspace, section_number, response)
+        result = self._cycle_control.handle_pause_response(planspace, section_number, response)
         if result == ACTION_ABORT:
             return _ABORT
         return _CONTINUE
@@ -380,7 +392,7 @@ class ImplementationCycle:
         artifacts = PathRegistry(planspace).artifacts
         policy = self._policies.load(planspace)
         self._logger.log(f"Section {section.number}: implementation alignment check")
-        impl_align_prompt = write_impl_alignment_prompt(
+        impl_align_prompt = self._prompt_writers.write_impl_alignment_prompt(
             section,
             planspace,
             codespace,
@@ -461,7 +473,7 @@ class ImplementationCycle:
         pre_hashes: dict[str, str],
     ) -> list[str]:
         """Verify changes, record traceability, build trace map, queue assessment."""
-        actually_changed = verify_changed_files(
+        actually_changed = self._change_verifier.verify_changed_files(
             planspace, codespace, section, pre_hashes,
         )
 
@@ -474,9 +486,9 @@ class ImplementationCycle:
                 "implementation change",
             )
 
-        write_traceability_index(planspace, section, actually_changed)
+        self._traceability_writer.write_traceability_index(planspace, section, actually_changed)
 
-        build_trace_map(
+        self._trace_map_builder.build_trace_map(
             planspace, codespace, section.number,
             actually_changed, list(section.related_files),
         )
@@ -491,7 +503,7 @@ class ImplementationCycle:
     ) -> None:
         """Queue a post-implementation governance assessment for a section."""
         paths = PathRegistry(planspace)
-        prompt_path = write_post_impl_assessment_prompt(
+        prompt_path = self._assessment_evaluator.write_post_impl_assessment_prompt(
             section_number,
             planspace,
         )
@@ -522,34 +534,3 @@ class ImplementationCycle:
                 )
             ],
         )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat free function wrapper
-# ---------------------------------------------------------------------------
-
-
-def run_implementation_loop(
-    section,
-    planspace: Path,
-    codespace: Path,
-    cycle_budget: dict,
-) -> list[str] | None:
-    """Run strategic implementation until aligned, then return changed files."""
-    from containers import Services
-    cycle = ImplementationCycle(
-        artifact_io=Services.artifact_io(),
-        communicator=Services.communicator(),
-        dispatcher=Services.dispatcher(),
-        dispatch_helpers=Services.dispatch_helpers(),
-        flow_ingestion=Services.flow_ingestion(),
-        logger=Services.logger(),
-        pipeline_control=Services.pipeline_control(),
-        policies=Services.policies(),
-        section_alignment=Services.section_alignment(),
-        staleness=Services.staleness(),
-        task_router=Services.task_router(),
-    )
-    return cycle.run_implementation_loop(
-        section, planspace, codespace, cycle_budget,
-    )

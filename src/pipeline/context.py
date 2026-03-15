@@ -91,30 +91,3 @@ class Context:
             policy=policy,
             paths=paths,
         )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_context() -> Context:
-    from containers import Services
-    return Context(policies=Services.policies())
-
-
-def build_context(
-    section: Section,
-    planspace: Path,
-    codespace: Path,
-    policy: dict | None = None,
-) -> PipelineContext:
-    """Build a :class:`PipelineContext` from the standard parameter set.
-
-    If *policy* is ``None``, loads it from *planspace*.
-    """
-    return _get_context().build_context(
-        section=section,
-        planspace=planspace,
-        codespace=codespace,
-        policy=policy,
-    )

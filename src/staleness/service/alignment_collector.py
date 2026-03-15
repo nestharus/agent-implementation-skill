@@ -85,26 +85,3 @@ def extract_problems(verdict: dict[str, object] | None) -> str | None:
     if isinstance(problems, str) and problems.strip():
         return problems.strip()
     return "Alignment judge reported misaligned (no details in verdict)"
-
-
-# --- Thin backward-compat wrappers (used by containers.py service classes) ---
-
-
-def _resolve_relative(
-    line: str, codespace_resolved: Path, codespace: Path,
-) -> str | None:
-    from containers import Services
-    return AlignmentCollector(logger=Services.logger())._resolve_relative(
-        line, codespace_resolved, codespace,
-    )
-
-
-def collect_modified_files(
-    planspace: Path,
-    section: Any,
-    codespace: Path,
-) -> list[str]:
-    from containers import Services
-    return AlignmentCollector(logger=Services.logger()).collect_modified_files(
-        planspace, section, codespace,
-    )

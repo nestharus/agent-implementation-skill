@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.dispatch.prompt.prompt_formatters import (
-    agent_mail_instructions,
+from containers import Services
+from dispatch.prompt.prompt_formatters import (
+    PromptFormatters,
     format_existing_file_listing,
     scoped_context_block,
     signal_instructions,
@@ -21,7 +22,7 @@ def test_signal_instructions_contains_signal_path(tmp_path: Path) -> None:
 
 
 def test_agent_mail_instructions_contains_db_send_command(tmp_path: Path) -> None:
-    instructions = agent_mail_instructions(
+    instructions = PromptFormatters(config=Services.config()).agent_mail_instructions(
         tmp_path,
         "impl-01",
         "impl-01-monitor",

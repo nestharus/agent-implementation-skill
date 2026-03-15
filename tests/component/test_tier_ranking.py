@@ -8,8 +8,17 @@ from dependency_injector import providers
 from containers import PromptGuard, Services
 from src.orchestrator.path_registry import PathRegistry
 from src.staleness.helpers.content_hasher import content_hash
-from src.scan.explore.tier_ranker import run_tier_ranking, validate_tier_file
+from src.scan.explore.tier_ranker import TierRanker
 from src.scan.codemap.cache import strip_scan_summaries
+
+
+def _make_ranker():
+    return TierRanker(
+        artifact_io=Services.artifact_io(),
+        hasher=Services.hasher(),
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+    )
 
 
 def test_validate_tier_file_accepts_required_shape(tmp_path) -> None:
@@ -19,7 +28,7 @@ def test_validate_tier_file_accepts_required_shape(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    assert validate_tier_file(tier_file) is True
+    assert _make_ranker().validate_tier_file(tier_file) is True
 
 
 def test_validate_tier_file_rejects_missing_scan_now(tmp_path) -> None:
@@ -29,7 +38,7 @@ def test_validate_tier_file_rejects_missing_scan_now(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    assert validate_tier_file(tier_file) is False
+    assert _make_ranker().validate_tier_file(tier_file) is False
 
 
 def test_run_tier_ranking_reuses_matching_existing_tier_file(
@@ -63,7 +72,7 @@ def test_run_tier_ranking_reuses_matching_existing_tier_file(
 
     monkeypatch.setattr("src.scan.explore.tier_ranker.dispatch_agent", fail_dispatch)
 
-    result = run_tier_ranking(
+    result = _make_ranker().run_tier_ranking(
         section_file,
         "section-01",
         related_files,
@@ -116,8 +125,15 @@ def test_run_tier_ranking_dispatches_and_writes_sidecar(
 
     monkeypatch.setattr("src.scan.explore.tier_ranker.dispatch_agent", fake_dispatch)
 
+    ranker = TierRanker(
+        artifact_io=Services.artifact_io(),
+        hasher=Services.hasher(),
+        prompt_guard=_NoopGuard(),
+        task_router=Services.task_router(),
+    )
+
     try:
-        result = run_tier_ranking(
+        result = ranker.run_tier_ranking(
             section_file,
             "section-01",
             ["src/main.py"],

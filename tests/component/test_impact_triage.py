@@ -8,7 +8,7 @@ from dependency_injector import providers
 
 from containers import AgentDispatcher, PromptGuard, SectionAlignmentService, Services
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
-from src.implementation.service.triage_orchestrator import run_impact_triage
+from implementation.service.triage_orchestrator import TriageOrchestrator
 from orchestrator.types import Section
 
 
@@ -31,6 +31,19 @@ class _NoOpGuard(PromptGuard):
 
     def validate_dynamic(self, content):
         return []
+
+
+def _make_triage_orchestrator() -> TriageOrchestrator:
+    return TriageOrchestrator(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        dispatcher=Services.dispatcher(),
+        logger=Services.logger(),
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        section_alignment=Services.section_alignment(),
+        task_router=Services.task_router(),
+    )
 
 
 def test_run_impact_triage_skips_when_notes_are_acknowledged_and_aligned(
@@ -70,7 +83,7 @@ def test_run_impact_triage_skips_when_notes_are_acknowledged_and_aligned(
     Services.section_alignment.override(providers.Object(_StubAlignment()))
 
     try:
-        status, modified_files = run_impact_triage(
+        status, modified_files = _make_triage_orchestrator().run_impact_triage(
             section,
             planspace,
             codespace,
@@ -120,7 +133,7 @@ def test_run_impact_triage_continues_when_not_all_notes_are_acknowledged(
     Services.section_alignment.override(providers.Object(_FailAlignment()))
 
     try:
-        status, modified_files = run_impact_triage(
+        status, modified_files = _make_triage_orchestrator().run_impact_triage(
             section,
             planspace,
             codespace,
@@ -166,7 +179,7 @@ def test_run_impact_triage_aborts_when_alignment_changes_mid_check(
     Services.section_alignment.override(providers.Object(_AbortAlignment()))
 
     try:
-        status, modified_files = run_impact_triage(
+        status, modified_files = _make_triage_orchestrator().run_impact_triage(
             section,
             planspace,
             codespace,

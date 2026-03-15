@@ -3,11 +3,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.orchestrator.repository.decisions import (
-    Decision,
-    load_decisions,
-    record_decision,
-)
+from containers import Services
+from src.orchestrator.repository.decisions import Decision, Decisions
+
+_decisions = Decisions(artifact_io=Services.artifact_io())
+
+
+def record_decision(decisions_dir, decision):
+    _decisions.record_decision(decisions_dir, decision)
+
+
+def load_decisions(decisions_dir, **kwargs):
+    return _decisions.load_decisions(decisions_dir, **kwargs)
 
 
 def test_record_decision_writes_json_and_prose(tmp_path: Path) -> None:

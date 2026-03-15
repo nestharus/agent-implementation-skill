@@ -6,12 +6,27 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
-from conftest import NoOpFlow, NoOpSectionAlignment, StubPolicies, make_dispatcher
+from conftest import NoOpFlow, NoOpSectionAlignment, StubPolicies, build_proposal_cycle, make_dispatcher
 from containers import CrossSectionService, Services
+from dispatch.prompt.writers import Writers as PromptWriters
 from pipeline.context import DispatchContext
-from src.proposal.engine.proposal_cycle import run_proposal_loop
+from reconciliation.repository.results import Results
 from src.intent.service.expansion_facade import run_expansion_cycle
 from src.orchestrator.types import Section
+
+
+class _StubTriager:
+    """Minimal IntentTriager stub returning injected triage result."""
+
+    def __init__(self, result: dict) -> None:
+        self._result = result
+
+    def load_triage_result(self, *_args, **_kwargs):
+        return self._result
+
+    def run_intent_triage(self, *_args, **_kwargs):
+        return self._result
+
 
 def _section(planspace: Path, number: str = "01") -> Section:
     section_path = planspace / "artifacts" / "sections" / f"section-{number}.md"
@@ -58,22 +73,22 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
     )
     expansion_calls: list[str] = []
 
-    monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_triage_result",
-        lambda *_args, **_kwargs: {"intent_mode": "full", "budgets": {}},
-    )
+    triage = {"intent_mode": "full", "budgets": {}}
+
     monkeypatch.setattr(
         Services.dispatch_helpers(),
         "write_model_choice_signal",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "proposal.service.proposal_prep.write_integration_proposal_prompt",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
+        PromptWriters,
+        "write_integration_proposal_prompt",
+        lambda self, *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "proposal.service.alignment_handler.write_integration_alignment_prompt",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
+        PromptWriters,
+        "write_integration_alignment_prompt",
+        lambda self, *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
 
     def _dispatch(*args, **kwargs):
@@ -99,11 +114,12 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "proposal.service.proposal_prep.load_reconciliation_result",
-        lambda *_args, **_kwargs: None,
+        Results,
+        "load_result",
+        lambda self, *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_alignment_surface",
+        "proposal.engine.proposal_cycle.write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -122,7 +138,8 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
     )
 
     try:
-        result = run_proposal_loop(
+        cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
+        result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
@@ -159,10 +176,13 @@ def test_run_expansion_cycle_merges_research_surfaces_into_pending_payload(
         },
     )
 
+    from intent.service.expanders import Expanders
+
     Services.policies.override(providers.Object(StubPolicies()))
     monkeypatch.setattr(
-        "intent.engine.expansion_orchestrator.run_problem_expander",
-        lambda *_args, **_kwargs: {
+        Expanders,
+        "run_problem_expander",
+        lambda self, *_args, **_kwargs: {
             "applied": {
                 "problem_definition_updated": False,
                 "problem_rubric_updated": False,
@@ -172,20 +192,6 @@ def test_run_expansion_cycle_merges_research_surfaces_into_pending_payload(
             "new_axes": [],
             "restart_required": False,
         },
-    )
-    monkeypatch.setattr(
-        "src.intent.engine.expansion_orchestrator.run_problem_expander",
-        lambda *_args, **_kwargs: {
-            "applied": {
-                "problem_definition_updated": False,
-                "problem_rubric_updated": False,
-            },
-            "applied_surface_ids": [],
-            "discarded_surface_ids": [],
-            "new_axes": [],
-            "restart_required": False,
-        },
-        raising=False,
     )
 
     try:

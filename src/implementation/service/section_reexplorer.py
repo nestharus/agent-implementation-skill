@@ -255,26 +255,3 @@ class SectionReexplorer:
             )
 
         return result
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ---------------------------------------------------------------------------
-
-
-def reexplore_section(
-    section: Section, planspace: Path, codespace: Path,
-    model: str,
-) -> str | None:
-    """Dispatch a re-explorer when a section has no related files."""
-    from containers import Services
-    explorer = SectionReexplorer(
-        communicator=Services.communicator(),
-        cross_section=Services.cross_section(),
-        dispatcher=Services.dispatcher(),
-        flow_ingestion=Services.flow_ingestion(),
-        logger=Services.logger(),
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-    )
-    return explorer.reexplore_section(section, planspace, codespace, model)

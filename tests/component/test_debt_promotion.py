@@ -6,7 +6,15 @@ import json
 from pathlib import Path
 
 from src.orchestrator.path_registry import PathRegistry
-from src.intake.service.assessment_evaluator import promote_debt_signals
+from src.containers import ArtifactIOService, PromptGuard
+from src.intake.service.assessment_evaluator import AssessmentEvaluator
+
+
+def _evaluator() -> AssessmentEvaluator:
+    return AssessmentEvaluator(
+        artifact_io=ArtifactIOService(),
+        prompt_guard=PromptGuard(),
+    )
 
 
 def _write_signal(signals_dir: Path, section: str, items: list[dict]) -> None:
@@ -38,12 +46,12 @@ def test_unchanged_debt_is_idempotent(tmp_path: Path) -> None:
     }
     _write_signal(signals, "01", [item])
 
-    first = promote_debt_signals(planspace)
+    first = _evaluator().promote_debt_signals(planspace)
     assert len(first) == 1
 
     # Write the same signal again
     _write_signal(signals, "01", [item])
-    second = promote_debt_signals(planspace)
+    second = _evaluator().promote_debt_signals(planspace)
     assert len(second) == 0
 
 
@@ -64,12 +72,12 @@ def test_materially_changed_debt_repromotes(tmp_path: Path) -> None:
     }
     _write_signal(signals, "01", [item])
 
-    first = promote_debt_signals(planspace)
+    first = _evaluator().promote_debt_signals(planspace)
     assert len(first) == 1
 
     # Change severity — material change
     item["severity"] = "high"
     _write_signal(signals, "01", [item])
-    second = promote_debt_signals(planspace)
+    second = _evaluator().promote_debt_signals(planspace)
     assert len(second) == 1
     assert second[0]["severity"] == "high"

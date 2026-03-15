@@ -76,26 +76,3 @@ class Metadata:
             self._artifact_io.rename_malformed(meta_path)
             return DispatchMetaResult(DispatchMetaStatus.CORRUPT)
         return DispatchMetaResult(DispatchMetaStatus.PRESENT, data)
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_metadata() -> Metadata:
-    from containers import Services
-    return Metadata(artifact_io=Services.artifact_io())
-
-
-def write_dispatch_metadata(
-    output_path: Path, *, returncode: int | None, timed_out: bool,
-) -> Path:
-    """Write the dispatch metadata sidecar next to the output file."""
-    return _get_metadata().write_dispatch_metadata(
-        output_path, returncode=returncode, timed_out=timed_out,
-    )
-
-
-def read_dispatch_metadata(meta_path: Path) -> DispatchMetaResult:
-    """Read a dispatch metadata sidecar with fail-closed semantics."""
-    return _get_metadata().read_dispatch_metadata(meta_path)

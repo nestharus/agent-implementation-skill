@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
-from src.dispatch.helpers.signal_checker import (
-    check_agent_signals,
-    summarize_output,
-    write_model_choice_signal,
-)
+from containers import Services
+from dispatch.helpers.signal_checker import SignalChecker, summarize_output
+
+
+def _checker() -> SignalChecker:
+    return SignalChecker(
+        artifact_io=Services.artifact_io(),
+        signals=Services.signals(),
+    )
 
 
 def test_summarize_output_prefers_summary_line() -> None:
@@ -25,7 +30,7 @@ def test_summarize_output_falls_back_and_truncates() -> None:
 
 
 def test_write_model_choice_signal_writes_structured_artifact(planspace: Path) -> None:
-    write_model_choice_signal(
+    _checker().write_model_choice_signal(
         planspace,
         "04",
         "alignment",
@@ -55,13 +60,13 @@ def test_check_agent_signals_reads_structured_signal_file(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    signal, detail = check_agent_signals(signal_path=signal_path)
+    signal, detail = _checker().check_agent_signals(signal_path=signal_path)
 
     assert signal == "dependency"
     assert "section 02" in detail
 
 
 def test_check_agent_signals_returns_none_when_signal_missing(tmp_path) -> None:
-    result = check_agent_signals(signal_path=tmp_path / "missing.json")
+    result = _checker().check_agent_signals(signal_path=tmp_path / "missing.json")
     assert result.signal_type is None
     assert result.detail == ""

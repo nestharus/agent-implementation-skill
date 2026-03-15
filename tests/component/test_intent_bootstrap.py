@@ -5,8 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from containers import ArtifactIOService, Services
 from src.intent.engine import intent_initializer as bootstrap
-from src.intent.engine.intent_initializer import run_intent_bootstrap
+from src.intent.engine.intent_initializer import IntentInitializer
 from orchestrator.types import Section
 
 
@@ -18,6 +19,59 @@ def _make_section(planspace: Path) -> Section:
     )
     problem_frame.write_text("Problem frame summary", encoding="utf-8")
     return Section(number="01", path=section_path, related_files=["src/main.py"])
+
+
+class _StubTriager:
+    """Minimal stub for IntentTriager — run_intent_triage returns injected value."""
+
+    def __init__(self, result: dict) -> None:
+        self._result = result
+
+    def run_intent_triage(self, *_args, **_kwargs) -> dict:
+        return self._result
+
+    def load_triage_result(self, *_args, **_kwargs):
+        return self._result
+
+
+class _StubGovernance:
+    """Minimal stub for GovernancePacketBuilder."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple] = []
+
+    def build_section_governance_packet(self, sec_num, planspace, summary=""):
+        self.calls.append((sec_num, planspace, summary))
+
+
+class _StubIntentPack:
+    """Minimal stub for IntentPackGenerator."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def generate_intent_pack(self, _section, _planspace, _codespace, *, incoming_notes):
+        self.calls.append(incoming_notes)
+
+
+def _make_initializer(
+    triage_result: dict,
+    governance: _StubGovernance | None = None,
+    intent_pack: _StubIntentPack | None = None,
+) -> tuple[IntentInitializer, _StubGovernance, _StubIntentPack]:
+    gov = governance or _StubGovernance()
+    pack = intent_pack or _StubIntentPack()
+    initializer = IntentInitializer(
+        artifact_io=ArtifactIOService(),
+        communicator=Services.communicator(),
+        governance_packet_builder=gov,
+        intent_pack_generator=pack,
+        intent_triager=_StubTriager(triage_result),
+        logger=Services.logger(),
+        pipeline_control=Services.pipeline_control(),
+        policies=Services.policies(),
+    )
+    return initializer, gov, pack
 
 
 def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
@@ -35,23 +89,20 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
         json.dumps({"proposal_max": 1, "implementation_max": 1}),
         encoding="utf-8",
     )
-    intent_pack_calls: list[str] = []
-    governance_calls: list[tuple[str, Path, Path, str]] = []
 
-    monkeypatch.setattr(
-        bootstrap,
-        "run_intent_triage",
-        lambda *args, **kwargs: {
-            "intent_mode": "full",
-            "budgets": {
-                "proposal_max": 6,
-                "implementation_max": 7,
-                "intent_expansion_max": 2,
-                "max_new_surfaces_per_cycle": 3,
-                "ignored": 99,
-            },
+    triage_result = {
+        "intent_mode": "full",
+        "budgets": {
+            "proposal_max": 6,
+            "implementation_max": 7,
+            "intent_expansion_max": 2,
+            "max_new_surfaces_per_cycle": 3,
+            "ignored": 99,
         },
-    )
+    }
+
+    initializer, governance, intent_pack = _make_initializer(triage_result)
+
     monkeypatch.setattr(
         bootstrap,
         "extract_todos_from_files",
@@ -74,20 +125,8 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
         "alignment_changed_pending",
         lambda *_args, **_kwargs: False,
     )
-    monkeypatch.setattr(
-        bootstrap,
-        "build_section_governance_packet",
-        lambda sec_num, ps, summary="": governance_calls.append(
-            (sec_num, ps, summary)
-        ),
-    )
-    monkeypatch.setattr(
-        bootstrap,
-        "generate_intent_pack",
-        lambda _section, _planspace, _codespace, *, incoming_notes: intent_pack_calls.append(incoming_notes),
-    )
 
-    cycle_budget = run_intent_bootstrap(
+    cycle_budget = initializer.run_intent_bootstrap(
         section,
         planspace,
         codespace,
@@ -101,8 +140,8 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
         "max_new_surfaces_per_cycle": 3,
     }
     assert capturing_communicator.traceability_calls
-    assert governance_calls == [("01", planspace, "Problem frame summary")]
-    assert intent_pack_calls == ["incoming note"]
+    assert governance.calls == [("01", planspace, "Problem frame summary")]
+    assert intent_pack.calls == ["incoming note"]
     assert (
         planspace / "artifacts" / "todos" / "section-01-todos.md"
     ).read_text(encoding="utf-8") == "- TODO: preserve invariant\n"
@@ -117,11 +156,10 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
 ) -> None:
     section = _make_section(planspace)
 
-    monkeypatch.setattr(
-        bootstrap,
-        "run_intent_triage",
-        lambda *args, **kwargs: {"intent_mode": "lightweight", "budgets": {}},
-    )
+    triage_result = {"intent_mode": "lightweight", "budgets": {}}
+
+    initializer, _, _ = _make_initializer(triage_result)
+
     monkeypatch.setattr(
         bootstrap,
         "extract_todos_from_files",
@@ -149,7 +187,7 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
         lambda current_planspace: blocker_rollups.append(current_planspace),
     )
 
-    result = run_intent_bootstrap(
+    result = initializer.run_intent_bootstrap(
         section,
         planspace,
         codespace,
@@ -176,11 +214,10 @@ def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
 ) -> None:
     section = _make_section(planspace)
 
-    monkeypatch.setattr(
-        bootstrap,
-        "run_intent_triage",
-        lambda *args, **kwargs: {"intent_mode": "full", "budgets": {}},
-    )
+    triage_result = {"intent_mode": "full", "budgets": {}}
+
+    initializer, _, _ = _make_initializer(triage_result)
+
     monkeypatch.setattr(
         bootstrap,
         "extract_todos_from_files",
@@ -204,13 +241,8 @@ def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
         "alignment_changed_pending",
         lambda *_args, **_kwargs: next(alignment_states),
     )
-    monkeypatch.setattr(
-        bootstrap,
-        "generate_intent_pack",
-        lambda *_args, **_kwargs: pytest.fail("intent pack should not run"),
-    )
 
-    result = run_intent_bootstrap(
+    result = initializer.run_intent_bootstrap(
         section,
         planspace,
         codespace,

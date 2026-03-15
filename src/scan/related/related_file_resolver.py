@@ -463,44 +463,7 @@ class ValidationHashes:
     combined_hash: str
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ------------------------------------------------------------------
-
-
-def _default_resolver() -> RelatedFileResolver:
-    from containers import Services
-    return RelatedFileResolver(
-        artifact_io=Services.artifact_io(),
-        hasher=Services.hasher(),
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-    )
-
-
-def apply_related_files_update(section_file: Path, signal_file: Path) -> bool:
-    """Apply additions/removals from a related-files update signal."""
-    return _default_resolver().apply_related_files_update(section_file, signal_file)
-
-
-def validate_existing_related_files(
-    *,
-    section_file: Path,
-    section_name: str,
-    ctx: ScanContext,
-    artifacts_dir: Path,
-) -> None:
-    """Check if codemap OR section changed; if so, dispatch validation."""
-    _default_resolver().validate_existing_related_files(
-        section_file=section_file,
-        section_name=section_name,
-        ctx=ctx,
-        artifacts_dir=artifacts_dir,
-    )
-
-
 __all__ = [
-    "apply_related_files_update",
     "list_section_files",
-    "validate_existing_related_files",
+    "RelatedFileResolver",
 ]

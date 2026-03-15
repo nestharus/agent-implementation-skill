@@ -7,7 +7,8 @@ import subprocess
 from dependency_injector import providers
 
 from containers import PromptGuard, Services
-from src.scan.explore.analyzer import analyze_file, safe_name
+from src.scan.explore.analyzer import Analyzer, safe_name
+from src.scan.related.match_updater import MatchUpdater
 from src.scan.codemap.cache import FileCardCache
 from src.scan.scan_context import ScanContext
 
@@ -25,7 +26,11 @@ def test_analyze_file_returns_false_when_source_missing(tmp_path) -> None:
     scan_log_dir = tmp_path / "scan-logs"
     scan_log_dir.mkdir()
 
-    ok = analyze_file(
+    analyzer = Analyzer(
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+    )
+    ok = analyzer.analyze_file(
         section_file,
         "section-01",
         "src/missing.py",
@@ -71,15 +76,12 @@ def test_analyze_file_uses_cached_response_and_feedback(
 
     calls: list[tuple[str, str]] = []
 
-    def fake_update_match(section_path, source_file, response_path):
-        calls.append((str(section_path), source_file))
-        assert response_path.read_text(encoding="utf-8") == "cached response"
-        return True
+    class _SpyUpdater(MatchUpdater):
+        def update_match(self, section_path, source_file, response_path):
+            calls.append((str(section_path), source_file))
+            assert response_path.read_text(encoding="utf-8") == "cached response"
+            return True
 
-    monkeypatch.setattr(
-        "src.scan.explore.analyzer.update_match",
-        fake_update_match,
-    )
     monkeypatch.setattr(
         "src.scan.explore.analyzer.dispatch_agent",
         lambda **_kwargs: (_ for _ in ()).throw(
@@ -87,7 +89,12 @@ def test_analyze_file_uses_cached_response_and_feedback(
         ),
     )
 
-    ok = analyze_file(
+    analyzer = Analyzer(
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+        match_updater=_SpyUpdater(artifact_io=Services.artifact_io()),
+    )
+    ok = analyzer.analyze_file(
         section_file,
         "section-01",
         "src/main.py",
@@ -133,10 +140,6 @@ def test_analyze_file_dispatches_and_caches_response(
             return True
 
     Services.prompt_guard.override(providers.Object(_NoopGuard()))
-    monkeypatch.setattr(
-        "src.scan.explore.analyzer.update_match",
-        lambda *_args, **_kwargs: True,
-    )
 
     def fake_dispatch(**kwargs):
         kwargs["stdout_file"].write_text("fresh response", encoding="utf-8")
@@ -155,8 +158,16 @@ def test_analyze_file_dispatches_and_caches_response(
         fake_dispatch,
     )
 
+    # Use a no-op match updater
+    match_updater = MatchUpdater(artifact_io=Services.artifact_io())
+
     try:
-        ok = analyze_file(
+        analyzer = Analyzer(
+            prompt_guard=_NoopGuard(),
+            task_router=Services.task_router(),
+            match_updater=match_updater,
+        )
+        ok = analyzer.analyze_file(
             section_file,
             "section-01",
             "src/main.py",

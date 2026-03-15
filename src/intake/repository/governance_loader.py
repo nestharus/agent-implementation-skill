@@ -480,37 +480,3 @@ class GovernanceLoader:
             return False
 
         return True
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers — used by tests and callers until they are
-# converted to receive GovernanceLoader via constructor injection.
-# ---------------------------------------------------------------------------
-
-def _get_loader() -> GovernanceLoader:
-    from containers import Services
-    return GovernanceLoader(artifact_io=Services.artifact_io())
-
-
-def parse_problem_index(codespace: Path) -> list[dict]:
-    return _get_loader().parse_problem_index(codespace)
-
-
-def parse_pattern_index(codespace: Path) -> list[dict]:
-    return _get_loader().parse_pattern_index(codespace)
-
-
-def parse_constraint_index(codespace: Path) -> list[dict]:
-    return _get_loader().parse_constraint_index(codespace)
-
-
-def parse_region_profile_map(codespace: Path) -> dict:
-    return _get_loader().parse_region_profile_map(codespace)
-
-
-def parse_synthesis_cues(codespace: Path) -> dict[str, list[str]]:
-    return _get_loader().parse_synthesis_cues(codespace)
-
-
-def build_governance_indexes(codespace: Path, planspace: Path) -> bool:
-    return _get_loader().build_governance_indexes(codespace, planspace)

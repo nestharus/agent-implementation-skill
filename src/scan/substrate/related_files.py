@@ -144,16 +144,3 @@ class RelatedFiles:
         return updated
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrapper
-# ------------------------------------------------------------------
-
-
-def _default_related_files() -> RelatedFiles:
-    from containers import Services
-    return RelatedFiles(artifact_io=Services.artifact_io())
-
-
-def apply_related_files_updates(planspace: Path) -> int:
-    """Apply all related-files-update signals to section specs."""
-    return _default_related_files().apply_related_files_updates(planspace)

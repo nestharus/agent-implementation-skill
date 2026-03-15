@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import json
 
+from containers import Services
 from coordination.problem_types import MisalignedProblem, Problem
-from src.coordination.service.planner import (
-    _parse_coordination_plan,
-    write_coordination_plan_prompt,
-)
+from coordination.service.planner import Planner
+
+
+def _make_planner() -> Planner:
+    return Planner(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        logger=Services.logger(),
+        prompt_guard=Services.prompt_guard(),
+    )
 
 
 def test_parse_coordination_plan_parses_fenced_json_and_coerces_bridge() -> None:
@@ -30,7 +37,8 @@ def test_parse_coordination_plan_parses_fenced_json_and_coerces_bridge() -> None
 ```
 """
 
-    plan = _parse_coordination_plan(agent_output, problems)
+    planner = _make_planner()
+    plan = planner._parse_coordination_plan(agent_output, problems)
 
     assert plan is not None
     assert plan["groups"][0]["bridge"] == {"needed": True}
@@ -47,7 +55,8 @@ def test_parse_coordination_plan_rejects_duplicate_problem_indices() -> None:
       ]
     }"""
 
-    assert _parse_coordination_plan(agent_output, problems) is None
+    planner = _make_planner()
+    assert planner._parse_coordination_plan(agent_output, problems) is None
 
 
 def test_write_coordination_plan_prompt_writes_artifacts_and_refs(planspace) -> None:
@@ -61,7 +70,8 @@ def test_write_coordination_plan_prompt_writes_artifacts_and_refs(planspace) -> 
     recurrence = artifacts / "coordination" / "recurrence.json"
     recurrence.write_text('{"recurring_sections": ["01"]}\n', encoding="utf-8")
 
-    prompt_path = write_coordination_plan_prompt(problems, planspace)
+    planner = _make_planner()
+    prompt_path = planner.write_coordination_plan_prompt(problems, planspace)
     prompt = prompt_path.read_text(encoding="utf-8")
     stored = json.loads(
         (artifacts / "coordination" / "problems.json").read_text(encoding="utf-8"),

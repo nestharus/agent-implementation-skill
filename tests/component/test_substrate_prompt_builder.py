@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from containers import Services
 from src.orchestrator.path_registry import PathRegistry
-from src.scan.substrate.prompt_builder import (
-    write_pruner_prompt,
-    write_seeder_prompt,
-    write_shard_prompt,
-)
+from src.scan.substrate.prompt_builder import PromptBuilder
+
+
+def _make_builder():
+    return PromptBuilder(prompt_guard=Services.prompt_guard())
 
 
 def test_write_shard_prompt_includes_optional_context_paths(tmp_path) -> None:
@@ -33,7 +34,7 @@ def test_write_shard_prompt_includes_optional_context_paths(tmp_path) -> None:
     corrections = artifacts / "signals" / "codemap-corrections.json"
     corrections.write_text("{}\n", encoding="utf-8")
 
-    prompt_path = write_shard_prompt("01", section_path, planspace, codespace)
+    prompt_path = _make_builder().write_shard_prompt("01", section_path, planspace, codespace)
     content = prompt_path.read_text(encoding="utf-8")
 
     assert prompt_path.name == "shard-01.md"
@@ -57,7 +58,7 @@ def test_write_pruner_prompt_lists_targets_and_available_refs(tmp_path) -> None:
     philosophy = artifacts / "intent" / "global" / "philosophy.md"
     philosophy.write_text("philosophy\n", encoding="utf-8")
 
-    prompt_path = write_pruner_prompt(planspace, codespace, ["01", "02", "03"])
+    prompt_path = _make_builder().write_pruner_prompt(planspace, codespace, ["01", "02", "03"])
     content = prompt_path.read_text(encoding="utf-8")
 
     assert prompt_path.name == "pruner.md"
@@ -80,7 +81,7 @@ def test_write_seeder_prompt_points_to_outputs_and_optional_codemap(
     corrections = artifacts / "signals" / "codemap-corrections.json"
     corrections.write_text("{}\n", encoding="utf-8")
 
-    prompt_path = write_seeder_prompt(planspace, codespace)
+    prompt_path = _make_builder().write_seeder_prompt(planspace, codespace)
     content = prompt_path.read_text(encoding="utf-8")
 
     assert prompt_path.name == "seeder.md"

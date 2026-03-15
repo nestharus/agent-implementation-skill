@@ -163,9 +163,19 @@ class TestMonitorPromptIntegration:
     ) -> None:
         from pathlib import Path
 
-        from dispatch.engine.section_dispatcher import _write_agent_monitor_prompt
+        from dispatch.engine.section_dispatcher import SectionDispatcher
+        from containers import Services
 
-        prompt_path = _write_agent_monitor_prompt(
+        dispatcher = SectionDispatcher(
+            config=Services.config(),
+            pipeline_control=Services.pipeline_control(),
+            logger=Services.logger(),
+            communicator=Services.communicator(),
+            task_router=Services.task_router(),
+            prompt_guard=Services.prompt_guard(),
+            artifact_io=Services.artifact_io(),
+        )
+        prompt_path = dispatcher._write_agent_monitor_prompt(
             planspace, "impl-01", "impl-01-monitor",
         )
         content = prompt_path.read_text()
@@ -192,19 +202,28 @@ class TestAdjudicatePromptIntegration:
         output_path = artifacts / "some-output.md"
         output_path.write_text("Agent produced this output.")
 
-        # We need to call adjudicate_agent_output but mock dispatch_agent
+        # We need to call adjudicate_agent_output but mock the dispatcher
         # so no actual agent runs.
         from dispatch.types import DispatchResult, DispatchStatus
-        with patch(
-            "dispatch.engine.section_dispatcher.dispatch_agent",
-            return_value=DispatchResult(
-                status=DispatchStatus.SUCCESS,
-                output='{"state": "ALIGNED", "detail": "all good"}',
-            ),
-        ):
-            from dispatch.service.output_adjudicator import adjudicate_agent_output
+        from dispatch.service.output_adjudicator import OutputAdjudicator
+        from containers import Services
 
-            adjudicate_agent_output(
+        mock_result = DispatchResult(
+            status=DispatchStatus.SUCCESS,
+            output='{"state": "ALIGNED", "detail": "all good"}',
+        )
+        with patch.object(
+            type(Services.dispatcher()),
+            "dispatch",
+            return_value=mock_result,
+        ):
+            adjudicator = OutputAdjudicator(
+                prompt_guard=Services.prompt_guard(),
+                logger=Services.logger(),
+                dispatcher=Services.dispatcher(),
+                task_router=Services.task_router(),
+            )
+            adjudicator.adjudicate_agent_output(
                 output_path, planspace,
                 model="glm",
             )

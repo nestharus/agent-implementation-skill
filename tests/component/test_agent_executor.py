@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from src.dispatch.engine import agent_executor
+from src.dispatch.engine.agent_executor import AgentExecutor
 from containers import TaskRouterService
 
 
@@ -35,7 +36,8 @@ def test_run_agent_invokes_agents_binary_with_expected_args(
     )
     monkeypatch.setattr(agent_executor.subprocess, "run", fake_run)
 
-    result = agent_executor.run_agent(
+    executor = AgentExecutor(task_router=TaskRouterService())
+    result = executor.run_agent(
         "test-model",
         prompt_path,
         agent_file="test-agent.md",
@@ -84,7 +86,8 @@ def test_run_agent_returns_timeout_result(
     )
     monkeypatch.setattr(agent_executor.subprocess, "run", fake_run)
 
-    result = agent_executor.run_agent(
+    executor = AgentExecutor(task_router=TaskRouterService())
+    result = executor.run_agent(
         "test-model",
         prompt_path,
         agent_file="test-agent.md",
@@ -105,8 +108,9 @@ def test_run_agent_requires_existing_agent_file(
         lambda self, name: (_ for _ in ()).throw(FileNotFoundError(name)),
     )
 
+    executor = AgentExecutor(task_router=TaskRouterService())
     with pytest.raises(FileNotFoundError):
-        agent_executor.run_agent(
+        executor.run_agent(
             "test-model",
             tmp_path / "prompt.md",
             agent_file="missing-agent.md",

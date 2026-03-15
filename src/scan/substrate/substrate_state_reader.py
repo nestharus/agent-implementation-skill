@@ -96,32 +96,3 @@ class SubstrateStateReader:
         self._artifact_io.write_json(status_dir / "status.json", status)
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ------------------------------------------------------------------
-
-
-def _default_reader() -> SubstrateStateReader:
-    from containers import Services
-    return SubstrateStateReader(artifact_io=Services.artifact_io())
-
-
-def read_project_mode(artifacts_dir: Path) -> str | None:
-    """Read project mode from scan-stage signals."""
-    return _default_reader().read_project_mode(artifacts_dir)
-
-
-def write_status(
-    artifacts_dir: Path,
-    state: str,
-    project_mode: str,
-    total_sections: int,
-    vacuum_sections: list[str],
-    notes: str,
-    threshold: int = 2,
-) -> None:
-    """Write ``artifacts/substrate/status.json``."""
-    _default_reader().write_status(
-        artifacts_dir, state, project_mode,
-        total_sections, vacuum_sections, notes, threshold,
-    )

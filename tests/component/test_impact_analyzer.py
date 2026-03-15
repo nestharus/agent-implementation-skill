@@ -7,8 +7,23 @@ from dependency_injector import providers
 from conftest import WritingGuard, make_dispatcher
 from containers import ContextAssemblyService, Services
 from src.implementation.service import impact_analyzer
+from src.implementation.service.impact_analyzer import ImpactAnalyzer
 from src.orchestrator.path_registry import PathRegistry
 from src.orchestrator.types import Section
+
+
+def _make_impact_analyzer() -> ImpactAnalyzer:
+    return ImpactAnalyzer(
+        communicator=Services.communicator(),
+        config=Services.config(),
+        context_assembly=Services.context_assembly(),
+        cross_section=Services.cross_section(),
+        dispatcher=Services.dispatcher(),
+        logger=Services.logger(),
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+    )
 
 def _write_section(path, summary: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -81,7 +96,7 @@ def test_analyze_impacts_parses_material_impacts_from_primary_output(
     Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     Services.context_assembly.override(providers.Object(_NoopContext()))
     try:
-        impacts = impact_analyzer.analyze_impacts(
+        impacts = _make_impact_analyzer().analyze_impacts(
             planspace,
             "01",
             "Source summary",
@@ -133,7 +148,7 @@ def test_analyze_impacts_falls_back_to_normalizer_when_primary_is_invalid(
     Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     Services.context_assembly.override(providers.Object(_NoopContext()))
     try:
-        impacts = impact_analyzer.analyze_impacts(
+        impacts = _make_impact_analyzer().analyze_impacts(
             planspace,
             "01",
             "Source summary",

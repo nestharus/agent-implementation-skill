@@ -28,9 +28,9 @@ class GovernanceBlockerState(str, Enum):
 from orchestrator.path_registry import PathRegistry
 from proposal.repository.state import (
     ProposalState,
+    State as ProposalStateRepo,
     extract_blockers,
     has_blocking_fields,
-    load_proposal_state,
 )
 
 
@@ -336,7 +336,7 @@ class ReadinessResolver:
         """
         paths = PathRegistry(planspace)
         proposal_state_path = paths.proposal_state(section_number)
-        state = load_proposal_state(proposal_state_path)
+        state = ProposalStateRepo(artifact_io=self._artifact_io).load_proposal_state(proposal_state_path)
 
         ready = state.execution_ready is True and not has_blocking_fields(state)
         blockers = extract_blockers(state)
@@ -376,27 +376,3 @@ class ReadinessResolver:
             rationale=rationale,
             artifact_path=artifact_path,
         )
-
-
-# Backward-compat wrappers
-
-def _get_readiness_resolver() -> ReadinessResolver:
-    from containers import Services
-    return ReadinessResolver(
-        artifact_io=Services.artifact_io(),
-    )
-
-
-def _validate_governance_identity(
-    state: ProposalState,
-    planspace: Path,
-    section_number: str,
-) -> list[dict]:
-    return _get_readiness_resolver()._validate_governance_identity(
-        state, planspace, section_number,
-    )
-
-
-def resolve_readiness(planspace: Path, section_number: str) -> ReadinessResult:
-    """Resolve whether *section_number* is ready for implementation."""
-    return _get_readiness_resolver().resolve_readiness(planspace, section_number)

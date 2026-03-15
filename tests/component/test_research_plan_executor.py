@@ -5,11 +5,16 @@ import sqlite3
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from _paths import DB_SH
+from containers import ArtifactIOService, HasherService, Services
 from src.orchestrator.path_registry import PathRegistry
 from src.signals.repository.artifact_io import write_json
-from src.research.engine.orchestrator import write_research_status
-from src.research.engine.research_plan_executor import execute_research_plan
+from src.research.engine.orchestrator import ResearchOrchestrator
+from src.research.engine.research_plan_executor import ResearchPlanExecutor
+from src.research.engine.research_branch_builder import ResearchBranchBuilder
+from src.research.prompt.writers import ResearchPromptWriter
 
 
 def _init_db(db_path: Path) -> None:
@@ -40,8 +45,40 @@ def _write_common_artifacts(planspace: Path, section_number: str = "03") -> None
     paths.intent_surfaces_signal(section_number).write_text("{}\n", encoding="utf-8")
 
 
+@pytest.fixture()
+def orchestrator() -> ResearchOrchestrator:
+    return ResearchOrchestrator(
+        hasher=HasherService(),
+        artifact_io=ArtifactIOService(),
+    )
+
+
+@pytest.fixture()
+def executor() -> ResearchPlanExecutor:
+    artifact_io = ArtifactIOService()
+    prompt_guard = Services.prompt_guard()
+    prompt_writer = ResearchPromptWriter(
+        prompt_guard=prompt_guard,
+        artifact_io=artifact_io,
+    )
+    return ResearchPlanExecutor(
+        freshness=Services.freshness(),
+        flow_ingestion=Services.flow_ingestion(),
+        orchestrator=ResearchOrchestrator(
+            hasher=HasherService(),
+            artifact_io=artifact_io,
+        ),
+        branch_builder=ResearchBranchBuilder(
+            prompt_guard=prompt_guard,
+            artifact_io=artifact_io,
+            prompt_writer=prompt_writer,
+        ),
+        prompt_writer=prompt_writer,
+    )
+
+
 def test_execute_research_plan_translates_semantic_plan_into_fanout(
-    tmp_path: Path,
+    tmp_path: Path, orchestrator: ResearchOrchestrator, executor: ResearchPlanExecutor,
 ) -> None:
     planspace = tmp_path / "planspace"
     codespace = tmp_path / "codespace"
@@ -76,7 +113,7 @@ def test_execute_research_plan_translates_semantic_plan_into_fanout(
             ],
         },
     )
-    write_research_status(
+    orchestrator.write_research_status(
         "03",
         planspace,
         "planned",
@@ -87,7 +124,7 @@ def test_execute_research_plan_translates_semantic_plan_into_fanout(
     plan_output = planspace / "artifacts" / "task-99-output.md"
     plan_output.write_text("planner output\n", encoding="utf-8")
 
-    assert execute_research_plan("03", planspace, codespace, plan_output) is True
+    assert executor.execute_research_plan("03", planspace, codespace, plan_output) is True
 
     tasks = _query_all(db_path, "SELECT * FROM tasks ORDER BY id")
     assert [task["task_type"] for task in tasks] == [
@@ -117,7 +154,7 @@ def test_execute_research_plan_translates_semantic_plan_into_fanout(
 
 
 def test_execute_research_plan_fails_closed_when_plan_is_schema_mismatched(
-    tmp_path: Path,
+    tmp_path: Path, orchestrator: ResearchOrchestrator, executor: ResearchPlanExecutor,
 ) -> None:
     planspace = tmp_path / "planspace"
     db_path = planspace / "run.db"
@@ -126,7 +163,7 @@ def test_execute_research_plan_fails_closed_when_plan_is_schema_mismatched(
     _init_db(db_path)
     paths = PathRegistry(planspace)
     write_json(paths.research_plan("03"), {"section": "03", "tickets": []})
-    write_research_status(
+    orchestrator.write_research_status(
         "03",
         planspace,
         "planned",
@@ -134,7 +171,7 @@ def test_execute_research_plan_fails_closed_when_plan_is_schema_mismatched(
         cycle_id="cycle-03",
     )
 
-    assert execute_research_plan("03", planspace, None, paths.research_plan("03")) is False
+    assert executor.execute_research_plan("03", planspace, None, paths.research_plan("03")) is False
     status = json.loads(paths.research_status("03").read_text(encoding="utf-8"))
     assert status["status"] == "failed"
     assert paths.research_plan("03").with_suffix(".malformed.json").exists()

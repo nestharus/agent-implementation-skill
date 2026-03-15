@@ -9,6 +9,7 @@ from dependency_injector import providers
 
 from conftest import StubPolicies, WritingGuard, make_dispatcher
 from containers import (
+    ArtifactIOService,
     PromptGuard,
     Services,
     SignalReader,
@@ -16,11 +17,28 @@ from containers import (
 from src.orchestrator.path_registry import PathRegistry
 from src.intent.service import intent_triager
 from src.intent.service.intent_triager import (
+    IntentTriager,
     _augment_risk_hints,
     _full_default,
-    load_triage_result,
-    run_intent_triage,
 )
+from src.risk.repository.history import RiskHistory
+
+
+def _make_triager() -> IntentTriager:
+    return IntentTriager(
+        communicator=Services.communicator(),
+        dispatcher=Services.dispatcher(),
+        logger=Services.logger(),
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        signals=Services.signals(),
+        task_router=Services.task_router(),
+        artifact_io=Services.artifact_io(),
+    )
+
+
+def _make_risk_history() -> RiskHistory:
+    return RiskHistory(artifact_io=ArtifactIOService())
 
 
 def test_full_default_is_fail_closed() -> None:
@@ -43,7 +61,7 @@ def test_load_triage_result_reads_signal_from_planspace(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    result = load_triage_result("01", tmp_path)
+    result = _make_triager().load_triage_result("01", tmp_path)
     assert result is not None
     assert result["intent_mode"] == "lightweight"
     assert result["confidence"] == "high"
@@ -63,6 +81,7 @@ def test_augment_risk_hints_passes_through_agent_risk_fields(tmp_path: Path) -> 
         },
         "01",
         tmp_path,
+        _make_risk_history(),
         related_files_count=8,
         incoming_notes_count=4,
         solve_count=2,
@@ -84,6 +103,7 @@ def test_augment_risk_hints_defaults_fail_closed_without_heuristics(
         },
         "01",
         tmp_path,
+        _make_risk_history(),
         related_files_count=0,
         incoming_notes_count=0,
         solve_count=0,
@@ -127,7 +147,7 @@ def test_run_intent_triage_returns_signal_from_agent(
     Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
 
     try:
-        result = run_intent_triage("01", planspace, codespace)
+        result = _make_triager().run_intent_triage("01", planspace, codespace)
 
         assert result["intent_mode"] == "lightweight"
         assert result["risk_mode"] == "light"
@@ -175,7 +195,7 @@ def test_triage_prompt_does_not_advertise_skip(
     Services.signals.override(providers.Object(_MockSignals()))
 
     try:
-        run_intent_triage("01", planspace, codespace)
+        _make_triager().run_intent_triage("01", planspace, codespace)
 
         assert len(written_prompts) == 1
         prompt = written_prompts[0]
@@ -203,7 +223,7 @@ def test_legacy_persisted_skip_artifact_normalizes_safely(
         encoding="utf-8",
     )
 
-    result = load_triage_result("01", tmp_path)
+    result = _make_triager().load_triage_result("01", tmp_path)
 
     assert result is not None
     # The signal passes through as-is (load_triage_result does not

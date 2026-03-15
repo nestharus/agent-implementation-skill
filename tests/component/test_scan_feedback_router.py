@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 
+from containers import Services
 from src.scan.service.feedback_router import (
+    FeedbackRouter,
     _append_to_log,
     _extract_section_number,
-    _is_valid_updater_signal,
-    _route_scope_deltas,
     _validate_feedback_schema,
 )
 
@@ -17,14 +17,16 @@ def test_is_valid_updater_signal_accepts_status_string(tmp_path) -> None:
     signal_path = tmp_path / "signal.json"
     signal_path.write_text(json.dumps({"status": "stale"}), encoding="utf-8")
 
-    assert _is_valid_updater_signal(signal_path) is True
+    router = FeedbackRouter(artifact_io=Services.artifact_io())
+    assert router._is_valid_updater_signal(signal_path) is True
 
 
 def test_is_valid_updater_signal_renames_malformed_json(tmp_path) -> None:
     signal_path = tmp_path / "signal.json"
     signal_path.write_text("{bad json", encoding="utf-8")
 
-    assert _is_valid_updater_signal(signal_path) is False
+    router = FeedbackRouter(artifact_io=Services.artifact_io())
+    assert router._is_valid_updater_signal(signal_path) is False
     assert not signal_path.exists()
     assert signal_path.with_suffix(".malformed.json").exists()
 
@@ -85,7 +87,8 @@ def test_route_scope_deltas_writes_pending_items(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    _route_scope_deltas(
+    router = FeedbackRouter(artifact_io=Services.artifact_io())
+    router._route_scope_deltas(
         section_files=[section_file],
         artifacts_dir=artifacts_dir,
         scan_log_dir=scan_log_dir,
@@ -133,7 +136,8 @@ def test_route_scope_deltas_skips_adjudicated_and_preserves_malformed(
     malformed_delta = scope_dir / "section-06-scope-delta.json"
     malformed_delta.write_text("{bad json", encoding="utf-8")
 
-    _route_scope_deltas(
+    router = FeedbackRouter(artifact_io=Services.artifact_io())
+    router._route_scope_deltas(
         section_files=[adjudicated_section, malformed_section],
         artifacts_dir=artifacts_dir,
         scan_log_dir=scan_log_dir,

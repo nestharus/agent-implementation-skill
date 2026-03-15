@@ -1,6 +1,18 @@
 import json
 
-from scan.service.project_mode import resolve_project_mode, write_mode_contract
+from containers import Services
+from scan.service.project_mode import ProjectModeResolver
+
+
+def _make_resolver(**overrides):
+    """Build a ProjectModeResolver with default or overridden services."""
+    return ProjectModeResolver(
+        artifact_io=overrides.get("artifact_io", Services.artifact_io()),
+        logger=overrides.get("logger", Services.logger()),
+        pipeline_control=overrides.get(
+            "pipeline_control", Services.pipeline_control(),
+        ),
+    )
 
 
 def test_resolve_project_mode_prefers_json_signal(planspace) -> None:
@@ -10,7 +22,8 @@ def test_resolve_project_mode_prefers_json_signal(planspace) -> None:
         encoding="utf-8",
     )
 
-    mode, constraints = resolve_project_mode(planspace)
+    resolver = _make_resolver()
+    mode, constraints = resolver.resolve_project_mode(planspace)
 
     assert mode == "greenfield"
     assert constraints == ["seed needed"]
@@ -24,7 +37,8 @@ def test_resolve_project_mode_uses_text_fallback_for_malformed_json(
     text_path = planspace / "artifacts" / "project-mode.txt"
     text_path.write_text("brownfield\n", encoding="utf-8")
 
-    mode, constraints = resolve_project_mode(planspace)
+    resolver = _make_resolver()
+    mode, constraints = resolver.resolve_project_mode(planspace)
 
     assert mode == "brownfield"
     assert constraints == []
@@ -43,7 +57,8 @@ def test_resolve_project_mode_pauses_and_rereads_after_resume(
 
     capturing_pipeline_control._pause_side_effect = _pause_side_effect
 
-    mode, constraints = resolve_project_mode(planspace)
+    resolver = _make_resolver(pipeline_control=capturing_pipeline_control)
+    mode, constraints = resolver.resolve_project_mode(planspace)
 
     assert mode == "brownfield"
     assert constraints == ["keep api"]
@@ -57,7 +72,8 @@ def test_resolve_project_mode_pauses_and_rereads_after_resume(
 
 
 def test_write_mode_contract_persists_expected_shape(planspace) -> None:
-    write_mode_contract(planspace, "greenfield", ["seed needed"])
+    resolver = _make_resolver()
+    resolver.write_mode_contract(planspace, "greenfield", ["seed needed"])
 
     written = json.loads(
         (planspace / "artifacts" / "mode-contract.json").read_text(

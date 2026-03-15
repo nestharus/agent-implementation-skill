@@ -149,30 +149,3 @@ class FeedbackRouter:
             )
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ------------------------------------------------------------------
-
-
-def _default_router() -> FeedbackRouter:
-    from containers import Services
-    return FeedbackRouter(artifact_io=Services.artifact_io())
-
-
-def _is_valid_updater_signal(signal_path: Path) -> bool:
-    """Check if an updater signal file contains valid JSON with status."""
-    return _default_router()._is_valid_updater_signal(signal_path)
-
-
-def _route_scope_deltas(
-    *,
-    section_files: list[Path],
-    artifacts_dir: Path,
-    scan_log_dir: Path,
-) -> None:
-    """Route out-of-scope findings into scope-delta artifacts."""
-    _default_router()._route_scope_deltas(
-        section_files=section_files,
-        artifacts_dir=artifacts_dir,
-        scan_log_dir=scan_log_dir,
-    )

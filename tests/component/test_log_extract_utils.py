@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
-from src.dispatch.helpers.log_extract_helpers import (
+from containers import Services
+from dispatch.helpers.log_extract_helpers import (
+    LogExtractHelpers,
     infer_section,
     parse_timestamp,
-    prompt_signature,
     summarize_text,
 )
+
+
+def _prompt_signature(text: str) -> str:
+    return LogExtractHelpers(hasher=Services.hasher()).prompt_signature(text)
 
 
 def test_parse_timestamp_accepts_iso_and_numeric_inputs() -> None:
@@ -21,7 +26,7 @@ def test_parse_timestamp_accepts_iso_and_numeric_inputs() -> None:
 
 
 def test_prompt_signature_normalizes_whitespace() -> None:
-    assert prompt_signature("hello   world") == prompt_signature(" hello world ")
+    assert _prompt_signature("hello   world") == _prompt_signature(" hello world ")
 
 
 def test_infer_section_returns_first_matching_candidate() -> None:

@@ -73,24 +73,3 @@ class ChangeVerifier:
                 f"{len(actually_changed)} actually changed (detected via diff)"
             )
         return actually_changed
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat free function wrapper
-# ---------------------------------------------------------------------------
-
-
-def verify_changed_files(
-    planspace: Path,
-    codespace: Path,
-    section: Section,
-    pre_hashes: dict[str, str],
-) -> list[str]:
-    """Return sorted list of files that actually changed during implementation."""
-    from containers import Services
-    verifier = ChangeVerifier(
-        logger=Services.logger(),
-        section_alignment=Services.section_alignment(),
-        staleness=Services.staleness(),
-    )
-    return verifier.verify_changed_files(planspace, codespace, section, pre_hashes)

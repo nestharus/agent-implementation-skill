@@ -266,7 +266,8 @@ class TestLegacySingleTaskCompatibility:
     ) -> None:
         """Legacy task enters queue, gets dispatched, completes, has result manifest."""
         # Submit via ingest_and_submit
-        from flow.service.task_request_ingestor import ingest_and_submit
+        from containers import Services
+        ingest_and_submit = Services.flow_ingestion().ingest_and_submit
 
         sig = planspace / "artifacts" / "signals" / "legacy-task.json"
         sig.write_text(json.dumps({
@@ -303,7 +304,8 @@ class TestLegacySingleTaskCompatibility:
         self, db_path: Path, planspace: Path,
     ) -> None:
         """Signal file is deleted after successful ingestion."""
-        from flow.service.task_request_ingestor import ingest_and_submit
+        from containers import Services
+        ingest_and_submit = Services.flow_ingestion().ingest_and_submit
 
         sig = planspace / "artifacts" / "signals" / "cleanup-test.json"
         sig.write_text(json.dumps({"task_type": "signals.impact_analysis"}))

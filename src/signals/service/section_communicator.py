@@ -90,7 +90,8 @@ def _record_traceability(
 ) -> None:
     """Append a traceability entry to artifacts/traceability.json."""
     from signals.repository.artifact_io import read_json, write_json
-    from proposal.repository.state import load_proposal_state
+    from proposal.repository.state import State as ProposalStateRepo
+    from containers import Services
 
     paths = PathRegistry(planspace)
     trace_path = paths.traceability()
@@ -101,7 +102,7 @@ def _record_traceability(
     governance: dict = {}
     state_path = paths.proposal_state(section)
     if state_path.exists():
-        ps = load_proposal_state(state_path)
+        ps = ProposalStateRepo(artifact_io=Services.artifact_io()).load_proposal_state(state_path)
         governance = {
             "problem_ids": ps.problem_ids,
             "pattern_ids": ps.pattern_ids,

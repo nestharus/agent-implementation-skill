@@ -9,8 +9,8 @@ from pathlib import Path
 from orchestrator.service.pipeline_control import (
     _section_inputs_hash,
     alignment_changed_pending,
-    check_pipeline_state,
 )
+from orchestrator.service.pipeline_state import check_pipeline_state
 from staleness.service.change_tracker import (
     invalidate_excerpts as _invalidate_excerpts,
 )
@@ -138,5 +138,5 @@ class TestSectionInputsHash:
 
 class TestCheckPipelineState:
     def test_default_is_running(self, planspace: Path) -> None:
-        state = check_pipeline_state(planspace)
+        state = check_pipeline_state(planspace, db_sh=Services.config().db_sh)
         assert state == "running"

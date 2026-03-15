@@ -6,20 +6,17 @@ from pathlib import Path
 
 import pytest
 
+from containers import ArtifactIOService
 from src.risk.repository.serialization import (
+    RiskSerializer,
     deserialize_assessment,
     deserialize_history_entry,
     deserialize_package,
     deserialize_plan,
-    load_risk_assessment,
-    load_risk_package,
-    load_risk_plan,
-    load_risk_artifact,
     serialize_assessment,
     serialize_history_entry,
     serialize_package,
     serialize_plan,
-    write_risk_artifact,
 )
 from risk.types import (
     DecisionClass,
@@ -41,6 +38,10 @@ from risk.types import (
     StepMitigation,
     UnderstandingInventory,
 )
+
+
+def _serializer() -> RiskSerializer:
+    return RiskSerializer(artifact_io=ArtifactIOService())
 
 
 def _sample_package() -> RiskPackage:
@@ -312,12 +313,13 @@ class TestSerialization:
         assert deserialize_history_entry(serialized) == entry
 
     def test_read_write_risk_artifact(self, tmp_path: Path) -> None:
+        s = _serializer()
         artifact_path = tmp_path / "risk" / "assessment.json"
         payload = {"assessment_id": "assess-1", "score": 10}
 
-        write_risk_artifact(artifact_path, payload)
+        s.write_risk_artifact(artifact_path, payload)
 
-        assert load_risk_artifact(artifact_path) == payload
+        assert s.load_risk_artifact(artifact_path) == payload
 
     def test_load_risk_artifact_returns_none_for_non_dict_json(
         self,
@@ -327,25 +329,25 @@ class TestSerialization:
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text("[1, 2, 3]\n", encoding="utf-8")
 
-        assert load_risk_artifact(artifact_path) is None
+        assert _serializer().load_risk_artifact(artifact_path) is None
 
     @pytest.mark.parametrize(
-        ("loader", "serializer", "artifact", "filename"),
+        ("loader_method", "serializer_fn", "artifact", "filename"),
         [
             (
-                load_risk_package,
+                "load_risk_package",
                 serialize_package,
                 _sample_package(),
                 "package.json",
             ),
             (
-                load_risk_assessment,
+                "load_risk_assessment",
                 serialize_assessment,
                 _sample_assessment(),
                 "assessment.json",
             ),
             (
-                load_risk_plan,
+                "load_risk_plan",
                 serialize_plan,
                 _sample_plan(),
                 "plan.json",
@@ -355,33 +357,34 @@ class TestSerialization:
     def test_typed_loaders_deserialize_valid_artifacts(
         self,
         tmp_path: Path,
-        loader,
-        serializer,
+        loader_method: str,
+        serializer_fn,
         artifact,
         filename: str,
     ) -> None:
+        s = _serializer()
         artifact_path = tmp_path / "risk" / filename
-        write_risk_artifact(artifact_path, serializer(artifact))
+        s.write_risk_artifact(artifact_path, serializer_fn(artifact))
 
-        assert loader(artifact_path) == artifact
+        assert getattr(s, loader_method)(artifact_path) == artifact
 
     @pytest.mark.parametrize(
-        ("loader", "payload", "filename", "message"),
+        ("loader_method", "payload", "filename", "message"),
         [
             (
-                load_risk_package,
+                "load_risk_package",
                 {"layer": "section"},
                 "package.json",
                 "Malformed risk package",
             ),
             (
-                load_risk_assessment,
+                "load_risk_assessment",
                 {"assessment_id": "assess-1"},
                 "assessment.json",
                 "Malformed risk assessment",
             ),
             (
-                load_risk_plan,
+                "load_risk_plan",
                 {"plan_id": "plan-1"},
                 "plan.json",
                 "Malformed risk plan",
@@ -392,16 +395,17 @@ class TestSerialization:
         self,
         tmp_path: Path,
         caplog,
-        loader,
+        loader_method: str,
         payload: dict[str, object],
         filename: str,
         message: str,
     ) -> None:
+        s = _serializer()
         artifact_path = tmp_path / "risk" / filename
-        write_risk_artifact(artifact_path, payload)
+        s.write_risk_artifact(artifact_path, payload)
 
         with caplog.at_level("WARNING"):
-            assert loader(artifact_path) is None
+            assert getattr(s, loader_method)(artifact_path) is None
 
         assert not artifact_path.exists()
         assert artifact_path.with_suffix(".malformed.json").exists()
@@ -409,17 +413,17 @@ class TestSerialization:
         assert str(artifact_path) in caplog.text
 
     @pytest.mark.parametrize(
-        ("loader", "filename"),
+        ("loader_method", "filename"),
         [
-            (load_risk_package, "package.json"),
-            (load_risk_assessment, "assessment.json"),
-            (load_risk_plan, "plan.json"),
+            ("load_risk_package", "package.json"),
+            ("load_risk_assessment", "assessment.json"),
+            ("load_risk_plan", "plan.json"),
         ],
     )
     def test_typed_loaders_return_none_for_missing_files(
         self,
         tmp_path: Path,
-        loader,
+        loader_method: str,
         filename: str,
     ) -> None:
-        assert loader(tmp_path / "risk" / filename) is None
+        assert getattr(_serializer(), loader_method)(tmp_path / "risk" / filename) is None

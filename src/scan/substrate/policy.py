@@ -87,26 +87,3 @@ class Policy:
         return DEFAULT_TRIGGER_THRESHOLD
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ------------------------------------------------------------------
-
-
-def _default_policy() -> Policy:
-    from containers import Services
-    return Policy(artifact_io=Services.artifact_io())
-
-
-def read_substrate_model_policy(artifacts_dir: Path) -> dict[str, str]:
-    """Read substrate model assignments from ``model-policy.json``."""
-    return _default_policy().read_substrate_model_policy(artifacts_dir)
-
-
-def read_trigger_signals(artifacts_dir: Path) -> list[str]:
-    """Read signal-driven SIS trigger requests."""
-    return _default_policy().read_trigger_signals(artifacts_dir)
-
-
-def read_trigger_threshold(artifacts_dir: Path) -> int:
-    """Read the vacuum section threshold from policy config."""
-    return _default_policy().read_trigger_threshold(artifacts_dir)

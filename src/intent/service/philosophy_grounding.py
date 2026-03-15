@@ -14,9 +14,8 @@ from orchestrator.path_registry import PathRegistry
 
 from intent.service.philosophy_bootstrap_state import (
     BOOTSTRAP_FAILED,
+    PhilosophyBootstrapState,
     bootstrap_status_path,
-    write_bootstrap_signal,
-    write_bootstrap_status,
 )
 from intent.service.philosophy_classifier import (
     SOURCE_MODE_REPO,
@@ -38,10 +37,12 @@ class PhilosophyGrounding:
     def __init__(
         self,
         artifact_io: ArtifactIOService,
+        bootstrap_state: PhilosophyBootstrapState,
         hasher: HasherService,
         logger: LogService,
     ) -> None:
         self._artifact_io = artifact_io
+        self._bootstrap_state = bootstrap_state
         self._hasher = hasher
         self._logger = logger
 
@@ -170,7 +171,7 @@ class PhilosophyGrounding:
         available_failure = _check_source_map_available(source_map_path)
         if available_failure is not None:
             detail, extras = available_failure
-            write_bootstrap_signal(
+            self._bootstrap_state.write_bootstrap_signal(
                 paths,
                 state=BLOCKING_NEEDS_PARENT,
                 detail=detail,
@@ -184,7 +185,7 @@ class PhilosophyGrounding:
                 ),
                 extras=extras,
             )
-            write_bootstrap_status(
+            self._bootstrap_state.write_bootstrap_status(
                 paths,
                 bootstrap_state=BOOTSTRAP_FAILED,
                 blocking_state=BLOCKING_NEEDS_PARENT,
@@ -199,7 +200,7 @@ class PhilosophyGrounding:
         if content_failure is not None:
             if not content_failure.detail:
                 return False
-            write_bootstrap_signal(
+            self._bootstrap_state.write_bootstrap_signal(
                 paths,
                 state=BLOCKING_NEEDS_PARENT,
                 detail=content_failure.detail,
@@ -213,7 +214,7 @@ class PhilosophyGrounding:
                 ),
                 extras=content_failure.extras,
             )
-            write_bootstrap_status(
+            self._bootstrap_state.write_bootstrap_status(
                 paths,
                 bootstrap_state=BOOTSTRAP_FAILED,
                 blocking_state=BLOCKING_NEEDS_PARENT,
@@ -251,50 +252,3 @@ class SourceMapValidationFailure:
     detail: str
     extras: dict[str, Any] | None = None
     source_mode: str = ""
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_philosophy_grounding() -> PhilosophyGrounding:
-    from containers import Services
-    return PhilosophyGrounding(
-        artifact_io=Services.artifact_io(),
-        hasher=Services.hasher(),
-        logger=Services.logger(),
-    )
-
-
-def sha256_file(path: Path) -> str:
-    """Return hex sha256 of file contents, or empty string on error."""
-    return _get_philosophy_grounding().sha256_file(path)
-
-
-def _grounding_failure_source_mode(
-    paths: PathRegistry,
-    source_map: dict[str, Any] | None,
-) -> str:
-    """Infer the correct source_mode for grounding failure metadata."""
-    return _get_philosophy_grounding()._grounding_failure_source_mode(paths, source_map)
-
-
-def _validate_source_map_content(
-    source_map_path: Path,
-    philosophy_path: Path,
-    paths: PathRegistry,
-) -> SourceMapValidationFailure | None:
-    return _get_philosophy_grounding()._validate_source_map_content(
-        source_map_path, philosophy_path, paths,
-    )
-
-
-def validate_philosophy_grounding(
-    philosophy_path: Path,
-    source_map_path: Path,
-    artifacts: Path,
-) -> bool:
-    """Validate that distilled philosophy is grounded in source files."""
-    return _get_philosophy_grounding().validate_philosophy_grounding(
-        philosophy_path, source_map_path, artifacts,
-    )

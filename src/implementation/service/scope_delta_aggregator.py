@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from orchestrator.repository.decisions import Decision, load_decisions, record_decision
+from orchestrator.repository.decisions import Decision, Decisions
 from orchestrator.path_registry import PathRegistry
 from implementation.service.scope_delta_parser import (
     normalize_section_id,
@@ -96,6 +96,7 @@ class ScopeDeltaAggregator:
         self._policies = policies
         self._prompt_guard = prompt_guard
         self._task_router = task_router
+        self._decisions = Decisions(artifact_io=artifact_io)
 
     def _load_pending_deltas(self, scope_deltas_dir: Path) -> tuple[list[Path], list[dict]]:
         delta_files = sorted(
@@ -266,9 +267,9 @@ class ScopeDeltaAggregator:
                 f"summary:scope-delta:{label}:{action}:{reason[:TRUNCATE_REASON]}",
             )
 
-            existing = load_decisions(decisions_dir, section=section)
+            existing = self._decisions.load_decisions(decisions_dir, section=section)
             next_num = len(existing) + 1
-            record_decision(
+            self._decisions.record_decision(
                 decisions_dir,
                 Decision(
                     id=f"d-{delta_id or section}-{next_num:03d}",
@@ -342,25 +343,3 @@ class ScopeDeltaAggregator:
             decisions,
         )
         return decisions
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat free function wrapper
-# ---------------------------------------------------------------------------
-
-
-def aggregate_scope_deltas(
-    planspace: Path,
-) -> list[dict]:
-    """Adjudicate any pending scope deltas and return the decisions."""
-    from containers import Services
-    aggregator = ScopeDeltaAggregator(
-        artifact_io=Services.artifact_io(),
-        communicator=Services.communicator(),
-        dispatcher=Services.dispatcher(),
-        logger=Services.logger(),
-        policies=Services.policies(),
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-    )
-    return aggregator.aggregate_scope_deltas(planspace)

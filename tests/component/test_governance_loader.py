@@ -4,14 +4,16 @@ import json
 from pathlib import Path
 
 from src.orchestrator.path_registry import PathRegistry
+from src.containers import ArtifactIOService
 from src.intake.repository.governance_loader import (
+    GovernanceLoader,
     bootstrap_governance_if_missing,
-    build_governance_indexes,
-    parse_pattern_index,
     parse_philosophy_profiles,
-    parse_problem_index,
-    parse_region_profile_map,
 )
+
+
+def _loader() -> GovernanceLoader:
+    return GovernanceLoader(artifact_io=ArtifactIOService())
 
 
 def test_governance_loader_parses_markdown_indexes(tmp_path: Path) -> None:
@@ -66,10 +68,11 @@ def test_governance_loader_parses_markdown_indexes(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    problems = parse_problem_index(codespace)
-    patterns = parse_pattern_index(codespace)
+    loader = _loader()
+    problems = loader.parse_problem_index(codespace)
+    patterns = loader.parse_pattern_index(codespace)
     profiles = parse_philosophy_profiles(codespace)
-    region_map = parse_region_profile_map(codespace)
+    region_map = loader.parse_region_profile_map(codespace)
 
     assert problems == [{
         "problem_id": "PRB-0001",
@@ -114,7 +117,7 @@ def test_build_governance_indexes_writes_empty_indexes_when_docs_missing(
     planspace.mkdir()
     PathRegistry(planspace).ensure_artifacts_tree()
 
-    result = build_governance_indexes(codespace, planspace)
+    result = _loader().build_governance_indexes(codespace, planspace)
 
     assert result is True
     assert json.loads(
@@ -196,7 +199,7 @@ def test_pattern_index_preserves_wrapped_bullets_and_numbered_templates(
         encoding="utf-8",
     )
 
-    patterns = parse_pattern_index(codespace)
+    patterns = _loader().parse_pattern_index(codespace)
 
     assert len(patterns) == 2
 
@@ -252,8 +255,9 @@ def test_bootstrap_governance_creates_scaffolding_for_greenfield(
     assert (codespace / "system-synthesis.md").exists()
 
     # Verify content is parseable by the loader
-    problems = parse_problem_index(codespace)
-    patterns = parse_pattern_index(codespace)
+    loader = _loader()
+    problems = loader.parse_problem_index(codespace)
+    patterns = loader.parse_pattern_index(codespace)
     assert problems == []
     assert patterns == []
 
@@ -293,7 +297,7 @@ def test_bootstrap_then_build_indexes_produces_valid_planspace(
     PathRegistry(planspace).ensure_artifacts_tree()
 
     bootstrap_governance_if_missing(codespace)
-    result = build_governance_indexes(codespace, planspace)
+    result = _loader().build_governance_indexes(codespace, planspace)
 
     assert result is True
     gov_dir = planspace / "artifacts" / "governance"

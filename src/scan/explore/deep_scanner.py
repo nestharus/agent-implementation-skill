@@ -7,15 +7,59 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scan.related.match_updater import deep_scan_related_files
-from scan.related.related_file_resolver import list_section_files
-from scan.related.section_iterator import scan_sections as _scan_sections
+from containers import Services
+from scan.explore.analyzer import Analyzer
+from scan.explore.tier_ranker import TierRanker
+from scan.related.match_updater import MatchUpdater, deep_scan_related_files
+from scan.related.related_file_resolver import RelatedFileResolver, list_section_files
+from scan.related.section_iterator import SectionIterator
 from scan.scan_context import ScanContext
 
 from scan.codemap.cache import FileCardCache
 from scan.scan_dispatcher import read_scan_model_policy
-from scan.service.feedback_collector import collect_and_route_feedback
+from scan.service.feedback_collector import FeedbackCollector
+from scan.service.feedback_router import FeedbackRouter
 _MAX_SCAN_PASSES = 2
+
+
+def _build_section_iterator() -> SectionIterator:
+    """Build a SectionIterator with all dependencies wired."""
+    artifact_io = Services.artifact_io()
+    prompt_guard = Services.prompt_guard()
+    task_router = Services.task_router()
+    hasher = Services.hasher()
+
+    match_updater = MatchUpdater(artifact_io=artifact_io)
+    analyzer = Analyzer(
+        prompt_guard=prompt_guard, task_router=task_router,
+        match_updater=match_updater,
+    )
+    tier_ranker = TierRanker(
+        artifact_io=artifact_io, hasher=hasher,
+        prompt_guard=prompt_guard, task_router=task_router,
+    )
+    return SectionIterator(
+        artifact_io=artifact_io, analyzer=analyzer, tier_ranker=tier_ranker,
+    )
+
+
+def _build_feedback_collector() -> FeedbackCollector:
+    """Build a FeedbackCollector with all dependencies wired."""
+    artifact_io = Services.artifact_io()
+    prompt_guard = Services.prompt_guard()
+    task_router = Services.task_router()
+    hasher = Services.hasher()
+
+    return FeedbackCollector(
+        artifact_io=artifact_io,
+        prompt_guard=prompt_guard,
+        task_router=task_router,
+        related_file_resolver=RelatedFileResolver(
+            artifact_io=artifact_io, hasher=hasher,
+            prompt_guard=prompt_guard, task_router=task_router,
+        ),
+        feedback_router=FeedbackRouter(artifact_io=artifact_io),
+    )
 
 
 def run_deep_scan(
@@ -53,6 +97,9 @@ def run_deep_scan(
     already_scanned: dict[str, set[str]] = {}
     any_failures = False
 
+    section_iterator = _build_section_iterator()
+    feedback_collector = _build_feedback_collector()
+
     for pass_num in range(1, _MAX_SCAN_PASSES + 1):
         if pass_num > 1:
             print(
@@ -60,7 +107,7 @@ def run_deep_scan(
                 "(scanning newly-added files) ===",
             )
 
-        phase_failed = _scan_sections(
+        phase_failed = section_iterator.scan_sections(
             section_files=section_files,
             ctx=ctx,
             artifacts_dir=artifacts_dir,
@@ -71,7 +118,7 @@ def run_deep_scan(
             any_failures = True
 
         # Collect feedback and route — may add files to sections
-        has_feedback = collect_and_route_feedback(
+        has_feedback = feedback_collector.collect_and_route_feedback(
             section_files=section_files,
             codemap_path=codemap_path,
             codespace=codespace,

@@ -5,18 +5,21 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from containers import ArtifactIOService
 from orchestrator.path_registry import PathRegistry
 from proposal.repository.state import ProposalState
 from risk.service.package_builder import (
+    PackageBuilder,
     _materialize_steps,
     _positional_assessment_class,
     build_package,
-    build_package_from_proposal,
-    read_package,
     refresh_package,
-    write_package,
 )
 from risk.types import PackageStep, StepClass
+
+
+def _builder() -> PackageBuilder:
+    return PackageBuilder(artifact_io=ArtifactIOService())
 
 
 def test_build_package_creates_expected_structure() -> None:
@@ -93,7 +96,7 @@ def test_build_package_from_proposal_with_minimal_proposal(tmp_path: Path) -> No
         encoding="utf-8",
     )
 
-    package = build_package_from_proposal("section-03", tmp_path)
+    package = _builder().build_package_from_proposal("section-03", tmp_path)
 
     assert package.layer == "implementation"
     assert [step.step_id for step in package.steps] == [
@@ -117,7 +120,7 @@ def test_build_package_from_proposal_with_microstrategy(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    package = build_package_from_proposal("section-03", tmp_path)
+    package = _builder().build_package_from_proposal("section-03", tmp_path)
 
     assert [step.summary for step in package.steps] == [
         "Inspect current behavior",
@@ -149,7 +152,7 @@ def test_build_package_from_proposal_consumes_typed_microstrategy_steps(
         encoding="utf-8",
     )
 
-    package = build_package_from_proposal("section-03", tmp_path)
+    package = _builder().build_package_from_proposal("section-03", tmp_path)
 
     assert [step.summary for step in package.steps] == [
         "Refresh local context",
@@ -174,7 +177,7 @@ def test_build_package_from_proposal_consumes_typed_microstrategy_steps(
 def test_build_package_from_empty_proposal_uses_generic_defaults(
     tmp_path: Path,
 ) -> None:
-    package = build_package_from_proposal("section-03", tmp_path)
+    package = _builder().build_package_from_proposal("section-03", tmp_path)
 
     assert [step.step_id for step in package.steps] == [
         "explore-01",
@@ -301,6 +304,7 @@ def test_refresh_package_removes_completed_steps() -> None:
 
 
 def test_write_and_read_package_round_trip(tmp_path: Path) -> None:
+    b = _builder()
     registry = PathRegistry(tmp_path)
     package = build_package(
         scope="section-03",
@@ -316,8 +320,8 @@ def test_write_and_read_package_round_trip(tmp_path: Path) -> None:
         ],
     )
 
-    path = write_package(registry, package)
-    restored = read_package(registry, "section-03")
+    path = b.write_package(registry, package)
+    restored = b.read_package(registry, "section-03")
 
     assert path == tmp_path / "artifacts" / "risk" / "section-03-risk-package.json"
     assert restored == package

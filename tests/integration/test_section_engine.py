@@ -11,8 +11,13 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from staleness.helpers.content_hasher import file_hash
-from orchestrator.engine.section_pipeline import run_section
+from containers import Services
+from orchestrator.engine.section_pipeline import build_section_pipeline
 from orchestrator.types import Section
+
+
+def run_section(*args, **kwargs):
+    return build_section_pipeline().run_section(*args, **kwargs)
 
 
 def _make_section(planspace: Path, codespace: Path) -> Section:

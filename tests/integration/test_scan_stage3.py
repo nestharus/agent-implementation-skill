@@ -72,7 +72,9 @@ class TestFeedbackSchemaEnforcement:
         self, scan_planspace: Path, scan_codespace: Path,
     ) -> None:
         """Feedback without 'relevant' is logged and skipped."""
-        from scan.service.feedback_collector import collect_and_route_feedback
+        from containers import Services
+        from scan.service.feedback_collector import FeedbackCollector
+        from scan.related.related_file_resolver import RelatedFileResolver
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"
@@ -91,7 +93,17 @@ class TestFeedbackSchemaEnforcement:
             json.dumps(fb),
         )
 
-        collect_and_route_feedback(
+        artifact_io = Services.artifact_io()
+        collector = FeedbackCollector(
+            artifact_io=artifact_io,
+            prompt_guard=Services.prompt_guard(),
+            task_router=Services.task_router(),
+            related_file_resolver=RelatedFileResolver(
+                artifact_io=artifact_io, hasher=Services.hasher(),
+                prompt_guard=Services.prompt_guard(), task_router=Services.task_router(),
+            ),
+        )
+        collector.collect_and_route_feedback(
             section_files=[sec_file],
             codemap_path=artifacts / "codemap.md",
             codespace=scan_codespace,
@@ -108,7 +120,9 @@ class TestFeedbackSchemaEnforcement:
         self, scan_planspace: Path, scan_codespace: Path,
     ) -> None:
         """Feedback without 'source_file' is logged and skipped."""
-        from scan.service.feedback_collector import collect_and_route_feedback
+        from containers import Services
+        from scan.service.feedback_collector import FeedbackCollector
+        from scan.related.related_file_resolver import RelatedFileResolver
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"
@@ -125,7 +139,17 @@ class TestFeedbackSchemaEnforcement:
             json.dumps(fb),
         )
 
-        collect_and_route_feedback(
+        artifact_io = Services.artifact_io()
+        collector = FeedbackCollector(
+            artifact_io=artifact_io,
+            prompt_guard=Services.prompt_guard(),
+            task_router=Services.task_router(),
+            related_file_resolver=RelatedFileResolver(
+                artifact_io=artifact_io, hasher=Services.hasher(),
+                prompt_guard=Services.prompt_guard(), task_router=Services.task_router(),
+            ),
+        )
+        collector.collect_and_route_feedback(
             section_files=[sec_file],
             codemap_path=artifacts / "codemap.md",
             codespace=scan_codespace,
@@ -141,7 +165,9 @@ class TestFeedbackSchemaEnforcement:
         self, scan_planspace: Path, scan_codespace: Path,
     ) -> None:
         """Feedback with all required fields is processed normally."""
-        from scan.service.feedback_collector import collect_and_route_feedback
+        from containers import Services
+        from scan.service.feedback_collector import FeedbackCollector
+        from scan.related.related_file_resolver import RelatedFileResolver
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"
@@ -164,7 +190,17 @@ class TestFeedbackSchemaEnforcement:
             json.dumps(fb),
         )
 
-        result = collect_and_route_feedback(
+        artifact_io = Services.artifact_io()
+        collector = FeedbackCollector(
+            artifact_io=artifact_io,
+            prompt_guard=Services.prompt_guard(),
+            task_router=Services.task_router(),
+            related_file_resolver=RelatedFileResolver(
+                artifact_io=artifact_io, hasher=Services.hasher(),
+                prompt_guard=Services.prompt_guard(), task_router=Services.task_router(),
+            ),
+        )
+        result = collector.collect_and_route_feedback(
             section_files=[sec_file],
             codemap_path=artifacts / "codemap.md",
             codespace=scan_codespace,
@@ -189,7 +225,9 @@ class TestCorrectionsInUpdaterPrompt:
         mock_scan_dispatch: MagicMock,
     ) -> None:
         """When corrections exist, updater prompt references them."""
-        from scan.service.feedback_collector import _apply_feedback
+        from containers import Services
+        from scan.service.feedback_collector import FeedbackCollector
+        from scan.related.related_file_resolver import RelatedFileResolver
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"
@@ -229,7 +267,17 @@ class TestCorrectionsInUpdaterPrompt:
         codemap = artifacts / "codemap.md"
         codemap.write_text("# Codemap")
 
-        _apply_feedback(
+        artifact_io = Services.artifact_io()
+        collector = FeedbackCollector(
+            artifact_io=artifact_io,
+            prompt_guard=Services.prompt_guard(),
+            task_router=Services.task_router(),
+            related_file_resolver=RelatedFileResolver(
+                artifact_io=artifact_io, hasher=Services.hasher(),
+                prompt_guard=Services.prompt_guard(), task_router=Services.task_router(),
+            ),
+        )
+        collector._apply_feedback(
             section_files=[sec_file],
             codemap_path=codemap,
             codespace=scan_codespace,
@@ -253,6 +301,9 @@ class TestCacheKeyIncludesCorrections:
         """Cache key must differ when corrections content changes."""
         from scan.codemap.cache import FileCardCache
 
+        cards_dir = tmp_path / "cards"
+        cache = FileCardCache(cards_dir)
+
         section = tmp_path / "section.md"
         source = tmp_path / "source.py"
         corrections = tmp_path / "corrections.json"
@@ -261,30 +312,33 @@ class TestCacheKeyIncludesCorrections:
         source.write_text("def foo(): pass")
 
         # Key without corrections (file doesn't exist)
-        k1 = FileCardCache.content_hash(section, source, corrections)
+        k1 = cache.content_hash(section, source, corrections)
 
         # Key with corrections
         corrections.write_text('{"fixes": []}')
-        k2 = FileCardCache.content_hash(section, source, corrections)
+        k2 = cache.content_hash(section, source, corrections)
         assert k1 != k2, "Corrections presence must change cache key"
 
         # Key with different corrections
         corrections.write_text('{"fixes": [{"path": "a.py"}]}')
-        k3 = FileCardCache.content_hash(section, source, corrections)
+        k3 = cache.content_hash(section, source, corrections)
         assert k2 != k3, "Corrections content change must change cache key"
 
     def test_no_corrections_matches_old_behavior(self, tmp_path: Path) -> None:
         """Without extra files, key matches the 2-file computation."""
         from scan.codemap.cache import FileCardCache
 
+        cards_dir = tmp_path / "cards"
+        cache = FileCardCache(cards_dir)
+
         section = tmp_path / "section.md"
         source = tmp_path / "source.py"
         section.write_text("# Section")
         source.write_text("code")
 
-        k_two = FileCardCache.content_hash(section, source)
+        k_two = cache.content_hash(section, source)
         nonexistent = tmp_path / "does-not-exist.json"
-        k_three = FileCardCache.content_hash(section, source, nonexistent)
+        k_three = cache.content_hash(section, source, nonexistent)
 
         # When extra file doesn't exist, it contributes nothing
         assert k_two == k_three
@@ -301,7 +355,8 @@ class TestCodemapReuseMissingFingerprint:
     ) -> None:
         """When codemap exists but fingerprint is missing, verifier is
         dispatched instead of blind reuse."""
-        from scan.codemap.codemap_builder import run_codemap_build
+        from containers import Services
+        from scan.codemap.codemap_builder import CodemapBuilder
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"
@@ -351,7 +406,12 @@ class TestCodemapReuseMissingFingerprint:
                  "HOME": str(scan_codespace), "PATH": "/usr/bin:/bin"},
         )
 
-        result = run_codemap_build(
+        builder = CodemapBuilder(
+            prompt_guard=Services.prompt_guard(),
+            task_router=Services.task_router(),
+            artifact_io=Services.artifact_io(),
+        )
+        result = builder.run_codemap_build(
             codemap_path=codemap,
             codespace=scan_codespace,
             artifacts_dir=artifacts,
@@ -371,7 +431,8 @@ class TestCodemapReuseMissingFingerprint:
         mock_scan_dispatch: MagicMock,
     ) -> None:
         """When verifier says reuse, codemap is kept and fingerprint stored."""
-        from scan.codemap.codemap_builder import run_codemap_build
+        from containers import Services
+        from scan.codemap.codemap_builder import CodemapBuilder
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"
@@ -411,7 +472,12 @@ class TestCodemapReuseMissingFingerprint:
                  "HOME": str(scan_codespace), "PATH": "/usr/bin:/bin"},
         )
 
-        result = run_codemap_build(
+        builder = CodemapBuilder(
+            prompt_guard=Services.prompt_guard(),
+            task_router=Services.task_router(),
+            artifact_io=Services.artifact_io(),
+        )
+        result = builder.run_codemap_build(
             codemap_path=codemap,
             codespace=scan_codespace,
             artifacts_dir=artifacts,
@@ -435,7 +501,8 @@ class TestScanSummaryIdempotency:
 
     def test_update_match_idempotent(self, tmp_path: Path) -> None:
         """Repeated update_match calls don't accumulate duplicate blocks."""
-        from scan.related.match_updater import update_match
+        from containers import Services
+        from scan.related.match_updater import MatchUpdater
 
         section = tmp_path / "section.md"
         section.write_text(
@@ -451,10 +518,12 @@ class TestScanSummaryIdempotency:
         response = tmp_path / "deep-response.md"
         response.write_text("analysis text")
 
+        updater = MatchUpdater(artifact_io=Services.artifact_io())
+
         # Apply twice
-        update_match(section, "src/main.py", response)
+        updater.update_match(section, "src/main.py", response)
         first_text = section.read_text()
-        update_match(section, "src/main.py", response)
+        updater.update_match(section, "src/main.py", response)
         second_text = section.read_text()
 
         assert first_text == second_text, (
@@ -466,13 +535,16 @@ class TestScanSummaryIdempotency:
         """Cache key is stable regardless of scan summary content."""
         from scan.codemap.cache import FileCardCache
 
+        cards_dir = tmp_path / "cards"
+        cache = FileCardCache(cards_dir)
+
         section = tmp_path / "section.md"
         source = tmp_path / "source.py"
         source.write_text("code")
 
         # Key without summary
         section.write_text("# Section\n### src/main.py\n")
-        k1 = FileCardCache.content_hash(section, source)
+        k1 = cache.content_hash(section, source)
 
         # Key with summary block
         section.write_text(
@@ -480,7 +552,7 @@ class TestScanSummaryIdempotency:
             "<!-- scan-summary:begin -->\n> summary\n"
             "<!-- scan-summary:end -->\n",
         )
-        k2 = FileCardCache.content_hash(section, source)
+        k2 = cache.content_hash(section, source)
 
         assert k1 == k2, (
             "Scan summaries must not change cache keys"
@@ -494,7 +566,7 @@ class TestCachedFeedbackValidation:
         self, tmp_path: Path,
     ) -> None:
         """Cache with invalid feedback falls through to fresh analysis."""
-        from scan.codemap.cache import FileCardCache, is_valid_cached_feedback
+        from scan.codemap.cache import FileCardCache
 
         cards_dir = tmp_path / "cards"
         cache = FileCardCache(cards_dir)
@@ -643,7 +715,10 @@ class TestScanLoopClosure:
         mock_scan_dispatch: MagicMock,
     ) -> None:
         """Files already in already_scanned set are not re-dispatched."""
-        from scan.explore.deep_scanner import _scan_sections
+        from containers import Services
+        from scan.related.section_iterator import SectionIterator
+        from scan.explore.analyzer import Analyzer
+        from scan.explore.tier_ranker import TierRanker
         from scan.codemap.cache import FileCardCache
 
         artifacts = scan_planspace / "artifacts"
@@ -678,8 +753,21 @@ class TestScanLoopClosure:
         tier_input = strip_scan_summaries(raw) + "\n" + "src/main.py"
         tier_sidecar.write_text(hashlib.sha256(tier_input.encode()).hexdigest())
 
+        artifact_io = Services.artifact_io()
+        prompt_guard = Services.prompt_guard()
+        task_router = Services.task_router()
+        hasher = Services.hasher()
+        analyzer = Analyzer(prompt_guard=prompt_guard, task_router=task_router)
+        tier_ranker = TierRanker(
+            artifact_io=artifact_io, hasher=hasher,
+            prompt_guard=prompt_guard, task_router=task_router,
+        )
+        iterator = SectionIterator(
+            artifact_io=artifact_io, analyzer=analyzer, tier_ranker=tier_ranker,
+        )
+
         from scan.scan_context import ScanContext
-        _scan_sections(
+        iterator.scan_sections(
             section_files=[sec_file],
             ctx=ScanContext(
                 codespace=scan_codespace,
@@ -716,9 +804,12 @@ class TestDeepScanTierRankingFailureUnit:
         scan_codespace: Path,
         mock_scan_dispatch: MagicMock,
     ) -> None:
-        """_scan_sections returns True (failure) when no tier ranking."""
+        """SectionIterator.scan_sections returns True (failure) when no tier ranking."""
+        from containers import Services
         from scan.codemap.cache import FileCardCache
-        from scan.explore.deep_scanner import _scan_sections
+        from scan.related.section_iterator import SectionIterator
+        from scan.explore.analyzer import Analyzer
+        from scan.explore.tier_ranker import TierRanker
 
         artifacts = scan_planspace / "artifacts"
         scan_log = scan_planspace / "scan-logs"
@@ -735,8 +826,21 @@ class TestDeepScanTierRankingFailureUnit:
             args=[], returncode=1, stdout="", stderr="tier failed",
         )
 
+        artifact_io = Services.artifact_io()
+        prompt_guard = Services.prompt_guard()
+        task_router = Services.task_router()
+        hasher = Services.hasher()
+        analyzer = Analyzer(prompt_guard=prompt_guard, task_router=task_router)
+        tier_ranker = TierRanker(
+            artifact_io=artifact_io, hasher=hasher,
+            prompt_guard=prompt_guard, task_router=task_router,
+        )
+        iterator = SectionIterator(
+            artifact_io=artifact_io, analyzer=analyzer, tier_ranker=tier_ranker,
+        )
+
         from scan.scan_context import ScanContext
-        result = _scan_sections(
+        result = iterator.scan_sections(
             section_files=[sec_file],
             ctx=ScanContext(
                 codespace=scan_codespace,
@@ -754,7 +858,7 @@ class TestDeepScanTierRankingFailureUnit:
         )
 
         assert result is True, (
-            "_scan_sections must return True (failure) when tier "
+            "scan_sections must return True (failure) when tier "
             "ranking is unavailable"
         )
         # Failure must be logged

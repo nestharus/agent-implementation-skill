@@ -5,9 +5,10 @@ from pathlib import Path
 
 from src.orchestrator.path_registry import PathRegistry
 from src.flow.service.task_db_client import db_cmd
+from containers import Services
 from src.flow.service.notifier import (
+    Notifier,
     notify_task_result,
-    record_qa_intercept,
     record_task_routing,
 )
 
@@ -68,7 +69,8 @@ def test_record_task_routing_updates_task_row(tmp_path: Path) -> None:
 def test_record_qa_intercept_logs_lifecycle_event(tmp_path: Path) -> None:
     planspace, db_path = _init_planspace(tmp_path)
 
-    record_qa_intercept(planspace, "22", "reason.md")
+    notifier = Notifier(logger=Services.logger())
+    notifier.record_qa_intercept(planspace, "22", "reason.md")
 
     rows = db_cmd(
         db_path,

@@ -15,20 +15,23 @@ from dispatch.prompt.context_assembler import (
 )
 from orchestrator.path_registry import PathRegistry
 from dispatch.prompt.prompt_formatters import (
-    agent_mail_instructions,
+    PromptFormatters,
     format_existing_file_listing,
     scoped_context_block,
     signal_instructions,
 )
 
-from dispatch.service.context_sidecar import materialize_context_sidecar
+from dispatch.service.context_sidecar import ContextSidecar
 from orchestrator.types import Section
-from dispatch.prompt.context_builder import build_prompt_context
+from dispatch.prompt.context_builder import ContextBuilder
 from pipeline.template import load_template, render
 
 if TYPE_CHECKING:
     from containers import (
+        ArtifactIOService,
         Communicator,
+        ConfigService,
+        CrossSectionService,
         LogService,
         PromptGuard,
         SectionAlignmentService,
@@ -50,12 +53,18 @@ class Writers:
         logger: LogService,
         communicator: Communicator,
         section_alignment: SectionAlignmentService,
+        artifact_io: ArtifactIOService,
+        cross_section: CrossSectionService,
+        config: ConfigService,
     ) -> None:
         self._task_router = task_router
         self._prompt_guard = prompt_guard
         self._logger = logger
         self._communicator = communicator
         self._section_alignment = section_alignment
+        self._artifact_io = artifact_io
+        self._cross_section = cross_section
+        self._config = config
 
     def _write_prompt(
         self,
@@ -93,13 +102,16 @@ class Writers:
         paths = PathRegistry(planspace)
         artifacts = paths.artifacts
 
-        ctx = build_prompt_context(section, planspace, codespace)
+        ctx = ContextBuilder(
+            artifact_io=self._artifact_io,
+            cross_section=self._cross_section,
+        ).build_prompt_context(section, planspace, codespace)
         ctx.update(context_builder(section, planspace, codespace))
 
         # Materialize sidecar BEFORE rendering so it exists at prompt-write time
         sidecar_path = None
         if sidecar_agent is not None:
-            sidecar_path = materialize_context_sidecar(
+            sidecar_path = ContextSidecar(self._artifact_io).materialize_context_sidecar(
                 str(self._task_router.resolve_agent_path(sidecar_agent)),
                 planspace, section=section.number,
             )
@@ -161,7 +173,7 @@ class Writers:
                 "signal_block": signal_instructions(
                     paths.setup_signal(sec),
                 ),
-                "mail_block": agent_mail_instructions(planspace, a_name, m_name),
+                "mail_block": PromptFormatters(config=self._config).agent_mail_instructions(planspace, a_name, m_name),
             }
 
         sec = section.number
@@ -212,11 +224,14 @@ class Writers:
                 "signal_block": signal_instructions(
                     paths.proposal_signal(sec),
                 ),
-                "mail_block": agent_mail_instructions(planspace, a_name, m_name),
+                "mail_block": PromptFormatters(config=self._config).agent_mail_instructions(planspace, a_name, m_name),
             }
 
             # Build base prompt context to pass to extras builder
-            base_ctx = build_prompt_context(section, planspace, codespace)
+            base_ctx = ContextBuilder(
+                artifact_io=self._artifact_io,
+                cross_section=self._cross_section,
+            ).build_prompt_context(section, planspace, codespace)
             base_ctx.update(ctx)
             ctx.update(
                 build_proposal_context_extras(
@@ -337,7 +352,10 @@ class Writers:
             a_name = f"impl-{sec}"
             m_name = f"{a_name}-monitor"
 
-            base_ctx = build_prompt_context(section, planspace, codespace)
+            base_ctx = ContextBuilder(
+                artifact_io=self._artifact_io,
+                cross_section=self._cross_section,
+            ).build_prompt_context(section, planspace, codespace)
             impl_extras = build_impl_context_extras(
                 section, planspace, alignment_problems, base_context=base_ctx,
             )
@@ -361,7 +379,7 @@ class Writers:
                 "signal_block": signal_instructions(
                     paths.impl_signal(sec),
                 ),
-                "mail_block": agent_mail_instructions(planspace, a_name, m_name),
+                "mail_block": PromptFormatters(config=self._config).agent_mail_instructions(planspace, a_name, m_name),
             }
             ctx.update(_build_strategic_optional_refs(sec, paths))
             return ctx
@@ -544,74 +562,3 @@ def _build_strategic_optional_refs(
     refs["research_ref"] = research_impl_ref
 
     return refs
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_writers() -> Writers:
-    from containers import Services
-    return Writers(
-        task_router=Services.task_router(),
-        prompt_guard=Services.prompt_guard(),
-        logger=Services.logger(),
-        communicator=Services.communicator(),
-        section_alignment=Services.section_alignment(),
-    )
-
-
-def write_section_setup_prompt(
-    section: Section,
-    planspace: Path,
-    codespace: Path,
-    global_proposal: Path,
-    global_alignment: Path,
-) -> Path:
-    """Write the prompt for extracting section-level excerpts from globals."""
-    return _get_writers().write_section_setup_prompt(
-        section, planspace, codespace, global_proposal, global_alignment,
-    )
-
-
-def write_integration_proposal_prompt(
-    section: Section,
-    planspace: Path,
-    codespace: Path,
-    alignment_problems: str | None = None,
-    incoming_notes: str | None = None,
-) -> Path:
-    """Write the prompt for creating an integration proposal."""
-    return _get_writers().write_integration_proposal_prompt(
-        section, planspace, codespace, alignment_problems, incoming_notes,
-    )
-
-
-def write_integration_alignment_prompt(
-    section: Section, planspace: Path, codespace: Path,
-) -> Path:
-    """Write the prompt for reviewing the integration proposal."""
-    return _get_writers().write_integration_alignment_prompt(
-        section, planspace, codespace,
-    )
-
-
-def write_strategic_impl_prompt(
-    section: Section,
-    planspace: Path,
-    codespace: Path,
-    alignment_problems: str | None = None,
-) -> Path:
-    """Write the prompt for strategic implementation."""
-    return _get_writers().write_strategic_impl_prompt(
-        section, planspace, codespace, alignment_problems,
-    )
-
-
-def write_impl_alignment_prompt(
-    section: Section, planspace: Path, codespace: Path,
-) -> Path:
-    """Write the prompt for verifying implementation alignment."""
-    return _get_writers().write_impl_alignment_prompt(
-        section, planspace, codespace,
-    )

@@ -166,35 +166,6 @@ class RiskSerializer:
             return None
 
 
-# ---------------------------------------------------------------------------
-# Backward-compat free-function wrappers
-# ---------------------------------------------------------------------------
-
-def _get_serializer() -> RiskSerializer:
-    from containers import Services
-    return RiskSerializer(artifact_io=Services.artifact_io())
-
-
-def write_risk_artifact(path: Path, data: dict[str, Any]) -> None:
-    _get_serializer().write_risk_artifact(path, data)
-
-
-def load_risk_artifact(path: Path) -> dict[str, Any] | None:
-    return _get_serializer().load_risk_artifact(path)
-
-
-def load_risk_package(path: Path) -> RiskPackage | None:
-    return _get_serializer().load_risk_package(path)
-
-
-def load_risk_assessment(path: Path) -> RiskAssessment | None:
-    return _get_serializer().load_risk_assessment(path)
-
-
-def load_risk_plan(path: Path) -> RiskPlan | None:
-    return _get_serializer().load_risk_plan(path)
-
-
 def _serialize_dataclass(value: Any) -> dict[str, Any]:
     return _serialize_value(asdict(value))
 

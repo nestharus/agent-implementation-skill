@@ -6,9 +6,19 @@ import pytest
 from dependency_injector import providers
 
 from conftest import StubPolicies, WritingGuard, make_dispatcher
-from containers import Services
+from containers import ArtifactIOService, Services
 from src.orchestrator.path_registry import PathRegistry
-from src.reconciliation.service import adjudicator
+from src.reconciliation.service.adjudicator import Adjudicator
+
+
+def _make_adjudicator() -> Adjudicator:
+    return Adjudicator(
+        artifact_io=ArtifactIOService(),
+        prompt_guard=Services.prompt_guard(),
+        policies=Services.policies(),
+        dispatcher=Services.dispatcher(),
+        task_router=Services.task_router(),
+    )
 
 
 def test_adjudicate_ungrouped_candidates_returns_empty_for_singleton(
@@ -18,7 +28,7 @@ def test_adjudicate_ungrouped_candidates_returns_empty_for_singleton(
     planspace.mkdir()
     PathRegistry(planspace).ensure_artifacts_tree()
 
-    result = adjudicator.adjudicate_ungrouped_candidates(
+    result = _make_adjudicator().adjudicate_ungrouped_candidates(
         [{"title": "solo", "source_section": "01"}],
         planspace,
         "new_section",
@@ -52,7 +62,7 @@ def test_adjudicate_ungrouped_candidates_writes_artifact_and_parses_json(
     Services.policies.override(providers.Object(StubPolicies({"reconciliation_adjudicate": "policy-model"})))
     Services.dispatcher.override(providers.Object(make_dispatcher(fake_dispatch)))
     try:
-        result = adjudicator.adjudicate_ungrouped_candidates(
+        result = _make_adjudicator().adjudicate_ungrouped_candidates(
             candidates,
             planspace,
             "shared_seam",
@@ -92,7 +102,7 @@ def test_adjudicate_ungrouped_candidates_returns_empty_on_bad_json(
     Services.policies.override(providers.Object(StubPolicies()))
     Services.dispatcher.override(providers.Object(make_dispatcher(lambda *_a, **_kw: "not json")))
     try:
-        result = adjudicator.adjudicate_ungrouped_candidates(
+        result = _make_adjudicator().adjudicate_ungrouped_candidates(
             candidates,
             planspace,
             "shared_seam",

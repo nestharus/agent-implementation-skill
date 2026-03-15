@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 
-from dispatch.service.model_policy import ModelPolicy, load_model_policy
+from containers import Services
+from dispatch.service.model_policy import ModelPolicy, ModelPolicyLoader
 from taskrouter import ensure_discovered, registry
 
 
@@ -27,7 +28,7 @@ def test_load_model_policy_overrides_research_keys(tmp_path) -> None:
         "research_verify": "policy-verify",
     }), encoding="utf-8")
 
-    policy = load_model_policy(tmp_path)
+    policy = ModelPolicyLoader(artifact_io=Services.artifact_io()).load_model_policy(tmp_path)
 
     assert policy.research_plan == "policy-plan"
     assert policy.research_domain_ticket == "policy-domain"

@@ -34,23 +34,3 @@ class SectionArtifacts:
         ref_path = input_dir / f"{artifact_path.stem}.ref"
         ref_path.write_text(str(artifact_path.resolve()), encoding="utf-8")
         return artifact_path
-
-
-# Backward-compat wrappers
-
-def _get_section_artifacts() -> SectionArtifacts:
-    from containers import Services
-    return SectionArtifacts(
-        artifact_io=Services.artifact_io(),
-    )
-
-
-def write_section_input_artifact(
-    paths: PathRegistry,
-    sec_num: str,
-    artifact_name: str,
-    payload: dict,
-) -> Path:
-    return _get_section_artifacts().write_section_input_artifact(
-        paths, sec_num, artifact_name, payload,
-    )

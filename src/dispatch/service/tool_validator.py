@@ -228,35 +228,3 @@ class ToolValidator:
             )
 
         return friction_signal_path
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_validator() -> ToolValidator:
-    from containers import Services
-    return ToolValidator(
-        artifact_io=Services.artifact_io(),
-        logger=Services.logger(),
-        policies=Services.policies(),
-        prompt_guard=Services.prompt_guard(),
-        dispatcher=Services.dispatcher(),
-        task_router=Services.task_router(),
-    )
-
-
-def validate_tool_registry_after_implementation(
-    *,
-    section_number: str,
-    pre_tool_total: int,
-    planspace: Path,
-    codespace: Path,
-) -> Path:
-    """Validate the tool registry after implementation and return the friction path."""
-    return _get_validator().validate_tool_registry_after_implementation(
-        section_number=section_number,
-        pre_tool_total=pre_tool_total,
-        planspace=planspace,
-        codespace=codespace,
-    )

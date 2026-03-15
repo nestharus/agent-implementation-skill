@@ -6,14 +6,23 @@ Uses real file I/O — no LLM mocks needed (prompts are string templates).
 
 from pathlib import Path
 
-from dispatch.prompt.writers import (
-    agent_mail_instructions,
-    signal_instructions,
-    write_integration_proposal_prompt,
-    write_section_setup_prompt,
-    write_strategic_impl_prompt,
-)
+from containers import Services
+from dispatch.prompt.prompt_formatters import PromptFormatters, signal_instructions
+from dispatch.prompt.writers import Writers as PromptWriters
 from orchestrator.types import Section
+
+
+def _make_writers() -> PromptWriters:
+    return PromptWriters(
+        task_router=Services.task_router(),
+        prompt_guard=Services.prompt_guard(),
+        logger=Services.logger(),
+        communicator=Services.communicator(),
+        section_alignment=Services.section_alignment(),
+        artifact_io=Services.artifact_io(),
+        cross_section=Services.cross_section(),
+        config=Services.config(),
+    )
 
 
 class TestSignalInstructions:
@@ -41,21 +50,21 @@ class TestSignalInstructions:
 
 class TestAgentMailInstructions:
     def test_contains_agent_name(self, planspace: Path) -> None:
-        instructions = agent_mail_instructions(
+        instructions = PromptFormatters(config=Services.config()).agent_mail_instructions(
             planspace, "impl-01", "impl-01-monitor",
         )
         assert "impl-01" in instructions
         assert "impl-01-monitor" in instructions
 
     def test_contains_db_sh_command(self, planspace: Path) -> None:
-        instructions = agent_mail_instructions(
+        instructions = PromptFormatters(config=Services.config()).agent_mail_instructions(
             planspace, "impl-01", "impl-01-monitor",
         )
         assert "db.sh" in instructions
         assert "send" in instructions
 
     def test_contains_loop_detection(self, planspace: Path) -> None:
-        instructions = agent_mail_instructions(
+        instructions = PromptFormatters(config=Services.config()).agent_mail_instructions(
             planspace, "impl-01", "impl-01-monitor",
         )
         assert "LOOP_DETECTED" in instructions
@@ -76,7 +85,7 @@ class TestWriteSectionSetupPrompt:
         global_proposal.write_text("# Global Proposal\nAll sections...")
         global_alignment.write_text("# Global Alignment\nConstraints...")
 
-        prompt_path = write_section_setup_prompt(
+        prompt_path = _make_writers().write_section_setup_prompt(
             section, planspace, codespace,
             global_proposal, global_alignment,
         )
@@ -110,7 +119,7 @@ class TestWriteSectionSetupPrompt:
         global_p.write_text("proposal")
         global_a.write_text("alignment")
 
-        prompt_path = write_section_setup_prompt(
+        prompt_path = _make_writers().write_section_setup_prompt(
             section, planspace, codespace, global_p, global_a,
         )
         content = prompt_path.read_text()
@@ -134,7 +143,7 @@ class TestSectionsAreConcernsInvariant:
         self, planspace: Path, codespace: Path,
     ) -> None:
         section = self._make_section(planspace)
-        prompt_path = write_integration_proposal_prompt(
+        prompt_path = _make_writers().write_integration_proposal_prompt(
             section, planspace, codespace,
         )
         content = prompt_path.read_text()
@@ -149,7 +158,7 @@ class TestSectionsAreConcernsInvariant:
         excerpt = (planspace / "artifacts" / "sections"
                    / "section-01-proposal-excerpt.md")
         excerpt.write_text("# Excerpt\nProposal summary.\n")
-        prompt_path = write_strategic_impl_prompt(
+        prompt_path = _make_writers().write_strategic_impl_prompt(
             section, planspace, codespace,
         )
         content = prompt_path.read_text()
@@ -179,7 +188,7 @@ class TestTodoExtractionInPrompt:
         todos_path.parent.mkdir(parents=True, exist_ok=True)
         todos_path.write_text("# TODOs\n\n- Fix auth module\n")
 
-        prompt_path = write_integration_proposal_prompt(
+        prompt_path = _make_writers().write_integration_proposal_prompt(
             section, planspace, codespace,
         )
         content = prompt_path.read_text()
@@ -193,7 +202,7 @@ class TestTodoExtractionInPrompt:
         section = self._make_section(planspace)
         # Do NOT create a TODO extraction file
 
-        prompt_path = write_integration_proposal_prompt(
+        prompt_path = _make_writers().write_integration_proposal_prompt(
             section, planspace, codespace,
         )
         content = prompt_path.read_text()
@@ -211,7 +220,7 @@ class TestTodoExtractionInPrompt:
         todos_path.parent.mkdir(parents=True, exist_ok=True)
         todos_path.write_text("# TODOs\n\n- Refactor handler\n")
 
-        prompt_path = write_integration_proposal_prompt(
+        prompt_path = _make_writers().write_integration_proposal_prompt(
             section, planspace, codespace,
         )
         content = prompt_path.read_text()
@@ -250,7 +259,7 @@ class TestStrategicImplementationRiskInputs:
         coordination_payload.write_text("# Bridge\n\nShared seam details.\n")
         (inputs_dir / "bridge-note.ref").write_text(str(coordination_payload))
 
-        prompt_path = write_strategic_impl_prompt(section, planspace, codespace)
+        prompt_path = _make_writers().write_strategic_impl_prompt(section, planspace, codespace)
         content = prompt_path.read_text()
 
         assert "### Risk Boundary" in content

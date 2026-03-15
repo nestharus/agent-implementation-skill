@@ -4,17 +4,22 @@ from __future__ import annotations
 
 import json
 
+from containers import Services
 from src.proposal.repository.state import (
     ProposalState,
+    State,
     extract_blockers,
     has_blocking_fields,
-    load_proposal_state,
-    save_proposal_state,
 )
 
 
+def _make_repo() -> State:
+    return State(artifact_io=Services.artifact_io())
+
+
 def test_load_proposal_state_returns_default_when_missing(tmp_path) -> None:
-    result = load_proposal_state(tmp_path / "missing.json")
+    repo = _make_repo()
+    result = repo.load_proposal_state(tmp_path / "missing.json")
     assert isinstance(result, ProposalState)
     assert result.execution_ready is False
     assert result.resolved_contracts == []
@@ -24,7 +29,8 @@ def test_load_proposal_state_renames_non_object_json_and_fails_closed(tmp_path) 
     path = tmp_path / "proposal-state.json"
     path.write_text(json.dumps(["bad"]), encoding="utf-8")
 
-    result = load_proposal_state(path)
+    repo = _make_repo()
+    result = repo.load_proposal_state(path)
 
     assert isinstance(result, ProposalState)
     assert result.execution_ready is False
@@ -38,7 +44,8 @@ def test_load_proposal_state_renames_missing_required_keys_and_fails_closed(tmp_
     del incomplete["execution_ready"]
     path.write_text(json.dumps(incomplete), encoding="utf-8")
 
-    result = load_proposal_state(path)
+    repo = _make_repo()
+    result = repo.load_proposal_state(path)
 
     assert isinstance(result, ProposalState)
     assert result.execution_ready is False
@@ -50,7 +57,8 @@ def test_save_proposal_state_writes_json(tmp_path) -> None:
     path = tmp_path / "nested" / "proposal-state.json"
     state = ProposalState(resolved_contracts=["auth"])
 
-    save_proposal_state(state, path)
+    repo = _make_repo()
+    repo.save_proposal_state(state, path)
 
     assert json.loads(path.read_text(encoding="utf-8"))["resolved_contracts"] == ["auth"]
 
@@ -60,7 +68,8 @@ def test_save_proposal_state_accepts_dict(tmp_path) -> None:
     state = ProposalState().to_dict()
     state["resolved_contracts"] = ["auth"]
 
-    save_proposal_state(state, path)
+    repo = _make_repo()
+    repo.save_proposal_state(state, path)
 
     assert json.loads(path.read_text(encoding="utf-8"))["resolved_contracts"] == ["auth"]
 

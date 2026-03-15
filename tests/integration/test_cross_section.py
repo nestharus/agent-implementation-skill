@@ -10,7 +10,8 @@ import pytest
 
 from _paths import SRC_DIR
 
-from coordination.service.decision_recorder import persist_decision
+from containers import Services
+from coordination.service.decision_recorder import DecisionRecorder
 from implementation.service.file_snapshotter import compute_text_diff
 from orchestrator.service.section_decision_store import (
     build_section_number_map,
@@ -97,14 +98,16 @@ class TestReadDecisions:
 
 class TestPersistDecision:
     def test_creates_decision_file(self, planspace: Path) -> None:
-        persist_decision(planspace, "01", "Use JWT tokens")
+        recorder = DecisionRecorder(communicator=Services.communicator())
+        recorder.persist_decision(planspace, "01", "Use JWT tokens")
         dec = planspace / "artifacts" / "decisions" / "section-01.md"
         assert dec.exists()
         assert "Use JWT tokens" in dec.read_text()
 
     def test_appends_to_existing(self, planspace: Path) -> None:
-        persist_decision(planspace, "01", "First decision")
-        persist_decision(planspace, "01", "Second decision")
+        recorder = DecisionRecorder(communicator=Services.communicator())
+        recorder.persist_decision(planspace, "01", "First decision")
+        recorder.persist_decision(planspace, "01", "Second decision")
         content = (planspace / "artifacts" / "decisions"
                    / "section-01.md").read_text()
         assert "First decision" in content

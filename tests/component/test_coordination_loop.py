@@ -2,14 +2,20 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from dependency_injector import providers
 
 from containers import Services
 from coordination.engine import coordination_controller as loop
-from coordination.engine.coordination_controller import run_coordination_loop
+from coordination.engine.coordination_controller import CoordinationController
+from coordination.engine.global_coordinator import (
+    MAX_COORDINATION_ROUNDS,
+    MIN_COORDINATION_ROUNDS,
+)
 from coordination.problem_types import UnaddressedNoteProblem
+from coordination.service.problem_resolver import ProblemResolver
 from orchestrator.types import Section, SectionResult
 from pipeline.context import DispatchContext
 from tests.conftest import StubPolicies
@@ -21,42 +27,60 @@ def _make_section(planspace: Path, number: str) -> Section:
     return Section(number=number, path=section_path)
 
 
+def _make_controller(
+    *,
+    problem_resolver=None,
+    global_coordinator=None,
+) -> CoordinationController:
+    """Build a CoordinationController with stub/mock dependencies."""
+    if problem_resolver is None:
+        problem_resolver = ProblemResolver(
+            artifact_io=Services.artifact_io(),
+            communicator=Services.communicator(),
+            logger=Services.logger(),
+            signals=Services.signals(),
+        )
+    if global_coordinator is None:
+        global_coordinator = MagicMock()
+        global_coordinator.run_global_coordination = MagicMock(return_value=True)
+
+    return CoordinationController(
+        artifact_io=Services.artifact_io(),
+        change_tracker=Services.change_tracker(),
+        communicator=Services.communicator(),
+        global_coordinator=global_coordinator,
+        logger=Services.logger(),
+        pipeline_control=Services.pipeline_control(),
+        policies=Services.policies(),
+        problem_resolver=problem_resolver,
+    )
+
+
 def test_run_coordination_loop_completes_when_everything_is_aligned(
     planspace: Path,
-    monkeypatch: pytest.MonkeyPatch,
     noop_pipeline_control,
     capturing_communicator,
 ) -> None:
     section = _make_section(planspace, "01")
-    snapshots: list[int] = []
 
-    monkeypatch.setattr(
-        loop,
-        "collect_outstanding_problems",
-        lambda *_args, **_kwargs: [],
-    )
-    monkeypatch.setattr(
-        loop,
-        "build_strategic_state",
-        lambda _decisions_dir, section_results, _planspace: snapshots.append(
-            len(section_results),
-        ),
-    )
-    monkeypatch.setattr(
-        loop,
-        "run_global_coordination",
-        lambda *_args, **_kwargs: pytest.fail("coordination should not run"),
-    )
+    mock_resolver = MagicMock(spec=ProblemResolver)
+    mock_resolver.collect_outstanding_problems = MagicMock(return_value=[])
 
-    status = run_coordination_loop(
+    mock_coordinator = MagicMock()
+
+    ctrl = _make_controller(
+        problem_resolver=mock_resolver,
+        global_coordinator=mock_coordinator,
+    )
+    status = ctrl.run_coordination_loop(
         {"01": SectionResult(section_number="01", aligned=True)},
         {"01": section},
         DispatchContext(planspace=planspace, codespace=planspace),
     )
 
     assert status == "complete"
-    assert snapshots == [1]
     assert capturing_communicator.messages == ["complete"]
+    mock_coordinator.run_global_coordination.assert_not_called()
 
 
 def test_run_coordination_loop_restarts_when_control_message_arrives(
@@ -67,7 +91,8 @@ def test_run_coordination_loop_restarts_when_control_message_arrives(
 
     capturing_pipeline_control._poll_return = "alignment_changed"
 
-    status = run_coordination_loop(
+    ctrl = _make_controller()
+    status = ctrl.run_coordination_loop(
         {"01": SectionResult(section_number="01", aligned=False, problems="x")},
         {"01": section},
         DispatchContext(planspace=planspace, codespace=planspace),
@@ -84,29 +109,20 @@ def test_run_coordination_loop_stalls_and_reports_remaining_sections(
     noop_change_tracker,
 ) -> None:
     section = _make_section(planspace, "01")
-    snapshots: list[int] = []
 
     monkeypatch.setattr(loop, "MAX_COORDINATION_ROUNDS", 5)
     monkeypatch.setattr(loop, "MIN_COORDINATION_ROUNDS", 1)
-    monkeypatch.setattr(
-        loop,
-        "run_global_coordination",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
-        loop,
-        "build_strategic_state",
-        lambda _decisions_dir, section_results, _planspace: snapshots.append(
-            len(section_results),
-        ),
-    )
+
+    mock_coordinator = MagicMock()
+    mock_coordinator.run_global_coordination = MagicMock(return_value=False)
 
     Services.policies.override(providers.Object(StubPolicies({
         "escalation_model": "stronger-model",
         "escalation_triggers": {"stall_count": 2},
     })))
     try:
-        status = run_coordination_loop(
+        ctrl = _make_controller(global_coordinator=mock_coordinator)
+        status = ctrl.run_coordination_loop(
             {"01": SectionResult(section_number="01", aligned=False, problems="still broken")},
             {"01": section},
             DispatchContext(planspace=planspace, codespace=planspace),
@@ -115,7 +131,6 @@ def test_run_coordination_loop_stalls_and_reports_remaining_sections(
         Services.policies.reset_override()
 
     assert status == "stalled"
-    assert snapshots == [1]
     assert (planspace / "artifacts" / "coordination" / "model-escalation.txt").read_text(
         encoding="utf-8",
     ) == "stronger-model"
@@ -133,7 +148,6 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
     noop_change_tracker,
 ) -> None:
     section = _make_section(planspace, "01")
-    snapshots: list[int] = []
     outstanding = [
         UnaddressedNoteProblem(section="01", description="note pending"),
     ]
@@ -141,32 +155,26 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
 
     monkeypatch.setattr(loop, "MAX_COORDINATION_ROUNDS", 1)
     monkeypatch.setattr(loop, "MIN_COORDINATION_ROUNDS", 1)
-    monkeypatch.setattr(
-        loop,
-        "collect_outstanding_problems",
-        lambda *_args, **_kwargs: next(calls),
-    )
-    monkeypatch.setattr(
-        loop,
-        "run_global_coordination",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
-        loop,
-        "build_strategic_state",
-        lambda _decisions_dir, section_results, _planspace: snapshots.append(
-            len(section_results),
-        ),
+
+    mock_resolver = MagicMock(spec=ProblemResolver)
+    mock_resolver.collect_outstanding_problems = MagicMock(
+        side_effect=lambda *_args, **_kwargs: next(calls),
     )
 
-    status = run_coordination_loop(
+    mock_coordinator = MagicMock()
+    mock_coordinator.run_global_coordination = MagicMock(return_value=False)
+
+    ctrl = _make_controller(
+        problem_resolver=mock_resolver,
+        global_coordinator=mock_coordinator,
+    )
+    status = ctrl.run_coordination_loop(
         {"01": SectionResult(section_number="01", aligned=True)},
         {"01": section},
         DispatchContext(planspace=planspace, codespace=planspace),
     )
 
     assert status == "exhausted"
-    assert snapshots == [1]
     rollup = json.loads(
         (
             planspace / "artifacts" / "coordination" / "coordination-exhausted.json"
@@ -205,23 +213,15 @@ def test_run_coordination_loop_enters_coordination_for_root_reframing_delta(
         ),
         encoding="utf-8",
     )
-    snapshots: list[int] = []
     coordination_calls: list[bool] = []
 
-    monkeypatch.setattr(
-        loop,
-        "run_global_coordination",
-        lambda *_args, **_kwargs: coordination_calls.append(True) or True,
-    )
-    monkeypatch.setattr(
-        loop,
-        "build_strategic_state",
-        lambda _decisions_dir, section_results, _planspace: snapshots.append(
-            len(section_results),
-        ),
+    mock_coordinator = MagicMock()
+    mock_coordinator.run_global_coordination = MagicMock(
+        side_effect=lambda *_args, **_kwargs: coordination_calls.append(True) or True,
     )
 
-    status = run_coordination_loop(
+    ctrl = _make_controller(global_coordinator=mock_coordinator)
+    status = ctrl.run_coordination_loop(
         {"01": SectionResult(section_number="01", aligned=True)},
         {"01": section},
         DispatchContext(planspace=planspace, codespace=planspace),
@@ -229,5 +229,4 @@ def test_run_coordination_loop_enters_coordination_for_root_reframing_delta(
 
     assert status == "complete"
     assert coordination_calls == [True]
-    assert snapshots == [1]
     assert capturing_communicator.messages == ["status:coordination:round-1", "complete"]

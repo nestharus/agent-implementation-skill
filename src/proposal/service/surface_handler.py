@@ -13,16 +13,13 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService, Communicator, LogService
+    from proposal.service.expansion_handler import ExpansionHandler
+    from intent.service.surface_registry import SurfaceRegistry
 
 from orchestrator.path_registry import PathRegistry
 from intent.service.surface_registry import (
-    load_combined_intent_surfaces,
-    load_surface_registry,
     merge_surfaces_into_registry,
-    normalize_surface_ids,
-    save_surface_registry,
 )
-from proposal.service.expansion_handler import run_aligned_expansion, run_misaligned_expansion
 from signals.types import ACTION_ABORT, ACTION_BREAK, ACTION_CONTINUE, INTENT_MODE_FULL
 
 
@@ -35,13 +32,8 @@ DEFINITION_GAP_KINDS = {
 
 
 # ---------------------------------------------------------------------------
-# Surface helpers
+# Surface helpers (pure — no Services usage)
 # ---------------------------------------------------------------------------
-
-def _load_combined_surfaces(section_number: str, planspace: Path) -> dict | None:
-    """Load and merge all surfaces that can trigger proposal expansion."""
-    return load_combined_intent_surfaces(section_number, planspace)
-
 
 def _has_definition_gap_surfaces(surfaces: dict | None) -> bool:
     """Return whether any surfaced issue implies definition growth."""
@@ -65,15 +57,6 @@ def _count_surfaces(surfaces: dict | None) -> int:
     )
 
 
-def _persist_surfaces(section_number: str, planspace: Path, surfaces: dict) -> dict:
-    """Normalize and persist discovered surfaces into the section registry."""
-    registry = load_surface_registry(section_number, planspace)
-    surfaces = normalize_surface_ids(surfaces, registry, section_number)
-    merge_surfaces_into_registry(registry, surfaces)
-    save_surface_registry(section_number, planspace, registry)
-    return surfaces
-
-
 @dataclass(frozen=True)
 class SurfaceActionResult:
     """Result of aligned/misaligned surface handling."""
@@ -89,10 +72,38 @@ class SurfaceHandler:
         logger: LogService,
         artifact_io: ArtifactIOService,
         communicator: Communicator,
+        expansion_handler: ExpansionHandler,
+        surface_registry: SurfaceRegistry,
     ) -> None:
         self._logger = logger
         self._artifact_io = artifact_io
         self._communicator = communicator
+        self._expansion_handler = expansion_handler
+        self._surface_registry = surface_registry
+
+    def _load_combined_surfaces(
+        self, section_number: str, planspace: Path,
+    ) -> dict | None:
+        """Load and merge all surfaces that can trigger proposal expansion."""
+        return self._surface_registry.load_combined_intent_surfaces(
+            section_number, planspace,
+        )
+
+    def _persist_surfaces(
+        self, section_number: str, planspace: Path, surfaces: dict,
+    ) -> dict:
+        """Normalize and persist discovered surfaces into the section registry."""
+        registry = self._surface_registry.load_surface_registry(
+            section_number, planspace,
+        )
+        surfaces = self._surface_registry.normalize_surface_ids(
+            surfaces, registry, section_number,
+        )
+        merge_surfaces_into_registry(registry, surfaces)
+        self._surface_registry.save_surface_registry(
+            section_number, planspace, registry,
+        )
+        return surfaces
 
     def _write_intent_escalation_signal(
         self,
@@ -129,15 +140,15 @@ class SurfaceHandler:
         """Handle surface processing when the proposal is aligned.
 
         Returns a ``SurfaceActionResult`` with action:
-            "break" — alignment accepted, exit loop
-            "continue" — re-propose needed (reproposal_reason has the message)
-            "abort" — caller should return None
+            "break" -- alignment accepted, exit loop
+            "continue" -- re-propose needed (reproposal_reason has the message)
+            "abort" -- caller should return None
         """
-        surfaces = _load_combined_surfaces(section_number, planspace)
+        surfaces = self._load_combined_surfaces(section_number, planspace)
         surface_count = _count_surfaces(surfaces)
         if surface_count:
             if intent_mode != INTENT_MODE_FULL:
-                _persist_surfaces(section_number, planspace, surfaces)
+                self._persist_surfaces(section_number, planspace, surfaces)
                 self._logger.log(
                     f"Section {section_number}: lightweight mode discovered "
                     f"{surface_count} structured surfaces — escalating to "
@@ -159,7 +170,7 @@ class SurfaceHandler:
                 )
 
             if intent_mode == INTENT_MODE_FULL:
-                action = run_aligned_expansion(
+                action = self._expansion_handler.run_aligned_expansion(
                     section_number, planspace, codespace,
                     intent_budgets, expansion_counts,
                 )
@@ -195,14 +206,14 @@ class SurfaceHandler:
 
         Returns the (possibly upgraded) intent_mode.
         """
-        misaligned_surfaces = _load_combined_surfaces(
+        misaligned_surfaces = self._load_combined_surfaces(
             section_number, planspace,
         )
         misaligned_surface_count = _count_surfaces(misaligned_surfaces)
         if not misaligned_surface_count:
             return intent_mode
 
-        misaligned_surfaces = _persist_surfaces(
+        misaligned_surfaces = self._persist_surfaces(
             section_number,
             planspace,
             misaligned_surfaces,
@@ -228,50 +239,9 @@ class SurfaceHandler:
         if intent_mode == INTENT_MODE_FULL and _has_definition_gap_surfaces(
             misaligned_surfaces,
         ):
-            run_misaligned_expansion(
+            self._expansion_handler.run_misaligned_expansion(
                 section_number, planspace, codespace,
                 intent_budgets, expansion_counts,
             )
 
         return intent_mode
-
-
-# Backward-compat wrappers
-
-def _get_surface_handler() -> SurfaceHandler:
-    from containers import Services
-    return SurfaceHandler(
-        logger=Services.logger(),
-        artifact_io=Services.artifact_io(),
-        communicator=Services.communicator(),
-    )
-
-
-def handle_aligned_surfaces(
-    section_number: str,
-    planspace: Path,
-    codespace: Path,
-    intent_mode: str,
-    intent_budgets: dict,
-    expansion_counts: dict[str, int],
-) -> SurfaceActionResult:
-    """Handle surface processing when the proposal is aligned."""
-    return _get_surface_handler().handle_aligned_surfaces(
-        section_number, planspace, codespace,
-        intent_mode, intent_budgets, expansion_counts,
-    )
-
-
-def handle_misaligned_surfaces(
-    section_number: str,
-    planspace: Path,
-    codespace: Path,
-    intent_mode: str,
-    intent_budgets: dict,
-    expansion_counts: dict[str, int],
-) -> str:
-    """Handle surface processing when the proposal is misaligned."""
-    return _get_surface_handler().handle_misaligned_surfaces(
-        section_number, planspace, codespace,
-        intent_mode, intent_budgets, expansion_counts,
-    )

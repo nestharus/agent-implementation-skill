@@ -27,8 +27,30 @@ from evals.harness import Check, Scenario
 # We import reconciliation machinery to run it mechanically during setup.
 # Modules live under src/ (containerized layout since R113+).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
-from proposal.repository.state import save_proposal_state  # noqa: E402
-from reconciliation.engine.cross_section_reconciler import run_reconciliation_loop  # noqa: E402
+from containers import Services  # noqa: E402
+from proposal.repository.state import State as ProposalStateRepo  # noqa: E402
+from reconciliation.engine.cross_section_reconciler import CrossSectionReconciler  # noqa: E402
+from reconciliation.repository.queue import Queue  # noqa: E402
+from reconciliation.repository.results import Results  # noqa: E402
+from reconciliation.service.adjudicator import Adjudicator  # noqa: E402
+
+
+def _make_reconciler() -> CrossSectionReconciler:
+    return CrossSectionReconciler(
+        artifact_io=Services.artifact_io(),
+        results=Results(
+            artifact_io=Services.artifact_io(),
+            hasher=Services.hasher(),
+        ),
+        queue=Queue(artifact_io=Services.artifact_io()),
+        adjudicator=Adjudicator(
+            artifact_io=Services.artifact_io(),
+            prompt_guard=Services.prompt_guard(),
+            policies=Services.policies(),
+            dispatcher=Services.dispatcher(),
+            task_router=Services.task_router(),
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -146,9 +168,9 @@ def _setup_shared_seam(planspace: Path, codespace: Path) -> Path:
         "governance_questions": [],
     }
 
-    save_proposal_state(state_11,
+    ProposalStateRepo(artifact_io=Services.artifact_io()).save_proposal_state(state_11,
                         proposals / "section-11-proposal-state.json")
-    save_proposal_state(state_12,
+    ProposalStateRepo(artifact_io=Services.artifact_io()).save_proposal_state(state_12,
                         proposals / "section-12-proposal-state.json")
 
     # Run reconciliation mechanically
@@ -156,7 +178,7 @@ def _setup_shared_seam(planspace: Path, codespace: Path) -> Path:
         {"section_number": "11"},
         {"section_number": "12"},
     ]
-    run_reconciliation_loop(planspace, proposal_results)
+    _make_reconciler().run_reconciliation_loop(planspace, proposal_results)
 
     # Codespace (minimal)
     (codespace / "payments").mkdir(parents=True, exist_ok=True)
@@ -240,9 +262,9 @@ def _setup_new_section(planspace: Path, codespace: Path) -> Path:
         "governance_questions": [],
     }
 
-    save_proposal_state(state_13,
+    ProposalStateRepo(artifact_io=Services.artifact_io()).save_proposal_state(state_13,
                         proposals / "section-13-proposal-state.json")
-    save_proposal_state(state_14,
+    ProposalStateRepo(artifact_io=Services.artifact_io()).save_proposal_state(state_14,
                         proposals / "section-14-proposal-state.json")
 
     # Run reconciliation mechanically
@@ -250,7 +272,7 @@ def _setup_new_section(planspace: Path, codespace: Path) -> Path:
         {"section_number": "13"},
         {"section_number": "14"},
     ]
-    run_reconciliation_loop(planspace, proposal_results)
+    _make_reconciler().run_reconciliation_loop(planspace, proposal_results)
 
     # Codespace (minimal)
     (codespace / "onboarding").mkdir(parents=True, exist_ok=True)
@@ -326,9 +348,9 @@ def _setup_contract_conflict(planspace: Path, codespace: Path) -> Path:
         "governance_questions": [],
     }
 
-    save_proposal_state(state_15,
+    ProposalStateRepo(artifact_io=Services.artifact_io()).save_proposal_state(state_15,
                         proposals / "section-15-proposal-state.json")
-    save_proposal_state(state_16,
+    ProposalStateRepo(artifact_io=Services.artifact_io()).save_proposal_state(state_16,
                         proposals / "section-16-proposal-state.json")
 
     # Run reconciliation mechanically
@@ -336,7 +358,7 @@ def _setup_contract_conflict(planspace: Path, codespace: Path) -> Path:
         {"section_number": "15"},
         {"section_number": "16"},
     ]
-    run_reconciliation_loop(planspace, proposal_results)
+    _make_reconciler().run_reconciliation_loop(planspace, proposal_results)
 
     # Codespace (minimal)
     (codespace / "orders").mkdir(parents=True, exist_ok=True)

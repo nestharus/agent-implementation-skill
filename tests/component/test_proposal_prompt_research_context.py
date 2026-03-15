@@ -4,11 +4,22 @@ from pathlib import Path
 
 import pytest
 
-from dispatch.prompt.writers import (
-    write_integration_proposal_prompt,
-    write_strategic_impl_prompt,
-)
+from containers import Services
+from dispatch.prompt.writers import Writers as PromptWriters
 from orchestrator.types import Section
+
+
+def _make_writers() -> PromptWriters:
+    return PromptWriters(
+        task_router=Services.task_router(),
+        prompt_guard=Services.prompt_guard(),
+        logger=Services.logger(),
+        communicator=Services.communicator(),
+        section_alignment=Services.section_alignment(),
+        artifact_io=Services.artifact_io(),
+        cross_section=Services.cross_section(),
+        config=Services.config(),
+    )
 
 def _section(planspace: Path, number: str = "01") -> Section:
     section_path = planspace / "artifacts" / "sections" / f"section-{number}.md"
@@ -49,7 +60,7 @@ def _write_research_artifacts(planspace: Path, number: str = "01") -> tuple[Path
 def _prompt_writer_isolation(monkeypatch: pytest.MonkeyPatch,
     noop_communicator) -> None:
     monkeypatch.setattr(
-        "dispatch.prompt.writers.materialize_context_sidecar",
+        "dispatch.prompt.writers.ContextSidecar.materialize_context_sidecar",
         lambda *_args, **_kwargs: None,
     )
 
@@ -61,7 +72,7 @@ def test_write_integration_proposal_prompt_includes_research_refs_when_present(
     _write_common_section_artifacts(planspace)
     addendum, dossier = _write_research_artifacts(planspace)
 
-    prompt_path = write_integration_proposal_prompt(section, planspace, codespace)
+    prompt_path = _make_writers().write_integration_proposal_prompt(section, planspace, codespace)
     prompt = prompt_path.read_text(encoding="utf-8")
 
     assert "Research addendum (domain knowledge)" in prompt
@@ -80,7 +91,7 @@ def test_write_integration_proposal_prompt_omits_research_refs_when_absent(
     section = _section(planspace)
     _write_common_section_artifacts(planspace)
 
-    prompt_path = write_integration_proposal_prompt(section, planspace, codespace)
+    prompt_path = _make_writers().write_integration_proposal_prompt(section, planspace, codespace)
     prompt = prompt_path.read_text(encoding="utf-8")
 
     assert "Research addendum (domain knowledge)" not in prompt
@@ -94,7 +105,7 @@ def test_write_strategic_impl_prompt_includes_research_refs_when_present(
     _write_common_section_artifacts(planspace)
     addendum, dossier = _write_research_artifacts(planspace)
 
-    prompt_path = write_strategic_impl_prompt(section, planspace, codespace)
+    prompt_path = _make_writers().write_strategic_impl_prompt(section, planspace, codespace)
     prompt = prompt_path.read_text(encoding="utf-8")
 
     assert "Research addendum (domain constraints)" in prompt

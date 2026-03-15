@@ -5,16 +5,23 @@ from pathlib import Path
 import pytest
 
 from _paths import DB_SH
+from containers import Services
 from orchestrator.types import PipelineAbortError
 from src.orchestrator.path_registry import PathRegistry
 from src.signals.service.database_client import DatabaseClient
 from src.signals.service.mailbox_service import MailboxService
 from src.orchestrator.service import pipeline_state
 from src.orchestrator.service.pipeline_state import (
+    PipelineState,
     check_pipeline_state,
-    pause_for_parent,
-    wait_if_paused,
 )
+
+
+def _make_pipeline_state() -> PipelineState:
+    return PipelineState(
+        logger=Services.logger(),
+        change_tracker=Services.change_tracker(),
+    )
 
 
 def _db(tmp_path: Path) -> tuple[Path, DatabaseClient]:
@@ -67,7 +74,8 @@ def test_wait_if_paused_replays_buffered_messages_after_resume(
         lambda _planspace, *, db_sh: next(states),
     )
 
-    wait_if_paused(
+    ps = _make_pipeline_state()
+    ps.wait_if_paused(
         planspace,
         "parent",
         db_sh=DB_SH,
@@ -93,7 +101,8 @@ def test_pause_for_parent_consumes_alignment_changed_before_resume(
     parent.send("section-loop", "alignment_changed")
     parent.send("section-loop", "resume:continue")
 
-    response = pause_for_parent(
+    ps = _make_pipeline_state()
+    response = ps.pause_for_parent(
         planspace,
         "parent",
         "pause:test",
@@ -112,8 +121,9 @@ def test_pause_for_parent_exits_on_abort(tmp_path: Path) -> None:
     _mailbox(client, "section-loop")
     parent.send("section-loop", "abort")
 
+    ps = _make_pipeline_state()
     with pytest.raises(PipelineAbortError):
-        pause_for_parent(
+        ps.pause_for_parent(
             planspace,
             "parent",
             "pause:test",

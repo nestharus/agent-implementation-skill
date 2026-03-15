@@ -6,7 +6,13 @@ import json
 from pathlib import Path
 
 from src.orchestrator.path_registry import PathRegistry
-from src.proposal.service.readiness_resolver import ReadinessResult, resolve_readiness
+from src.containers import ArtifactIOService
+from src.proposal.service.readiness_resolver import ReadinessResolver, ReadinessResult
+
+
+def _resolve_readiness(planspace, section):
+    """Test helper — create a ReadinessResolver and resolve."""
+    return ReadinessResolver(artifact_io=ArtifactIOService()).resolve_readiness(planspace, section)
 
 
 def test_resolve_readiness_writes_ready_artifact(tmp_path: Path) -> None:
@@ -37,7 +43,7 @@ def test_resolve_readiness_writes_ready_artifact(tmp_path: Path) -> None:
         "governance_questions": [],
     }), encoding="utf-8")
 
-    result = resolve_readiness(planspace, "03")
+    result = _resolve_readiness(planspace, "03")
 
     assert isinstance(result, ReadinessResult)
     assert result.ready is True
@@ -58,7 +64,7 @@ def test_resolve_readiness_fails_closed_when_artifact_missing(tmp_path: Path) ->
     planspace = tmp_path / "planspace"
     planspace.mkdir()
     PathRegistry(planspace).ensure_artifacts_tree()
-    result = resolve_readiness(planspace, "04")
+    result = _resolve_readiness(planspace, "04")
 
     assert isinstance(result, ReadinessResult)
     assert result.ready is False
@@ -121,7 +127,7 @@ def test_empty_identity_with_populated_packet_blocks(tmp_path: Path) -> None:
     _make_proposal_state(planspace, "10")
     _make_packet(planspace, "10")
 
-    result = resolve_readiness(planspace, "10")
+    result = _resolve_readiness(planspace, "10")
 
     assert result.ready is False
     blocker_states = [b["state"] for b in result.blockers]
@@ -139,7 +145,7 @@ def test_wrong_profile_id_blocks(tmp_path: Path) -> None:
     )
     _make_packet(planspace, "11")
 
-    result = resolve_readiness(planspace, "11")
+    result = _resolve_readiness(planspace, "11")
 
     assert result.ready is False
     blocker_states = [b["state"] for b in result.blockers]
@@ -157,7 +163,7 @@ def test_declared_ids_with_missing_packet_blocks(tmp_path: Path) -> None:
     )
     # No packet written
 
-    result = resolve_readiness(planspace, "12")
+    result = _resolve_readiness(planspace, "12")
 
     assert result.ready is False
     blocker_states = [b["state"] for b in result.blockers]
@@ -175,7 +181,7 @@ def test_correct_identity_with_packet_passes(tmp_path: Path) -> None:
     )
     _make_packet(planspace, "13")
 
-    result = resolve_readiness(planspace, "13")
+    result = _resolve_readiness(planspace, "13")
 
     assert result.ready is True
     assert result.blockers == []
@@ -197,7 +203,7 @@ def test_packet_ambiguity_without_proposal_questions_blocks(tmp_path: Path) -> N
         governance_questions=["Which patterns apply?"],
     )
 
-    result = resolve_readiness(planspace, "14")
+    result = _resolve_readiness(planspace, "14")
 
     assert result.ready is False
     blocker_states = [b["state"] for b in result.blockers]
@@ -220,7 +226,7 @@ def test_packet_ambiguity_with_proposal_questions_passes(tmp_path: Path) -> None
         governance_questions=["Which patterns apply?"],
     )
 
-    result = resolve_readiness(planspace, "15")
+    result = _resolve_readiness(planspace, "15")
 
     # Governance questions in proposal-state DO block via the existing
     # _validate_governance_identity check, but that's the correct behavior --

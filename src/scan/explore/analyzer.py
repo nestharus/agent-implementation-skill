@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 from scan.scan_context import ScanContext
 from scan.service.phase_failure_logger import log_phase_failure
 from scan.service.template_loader import load_scan_template
-from scan.related.match_updater import update_match
-from scan.codemap.cache import FileCardCache, is_valid_cached_feedback
+from scan.related.match_updater import MatchUpdater
+from scan.codemap.cache import FileCardCache
 from scan.scan_dispatcher import dispatch_agent
 
 if TYPE_CHECKING:
@@ -71,13 +71,14 @@ def _try_cached_response(
     response_file: Path,
     feedback_file: Path,
     scan_log_dir: Path,
+    match_updater: MatchUpdater | None = None,
 ) -> bool | None:
     cached_response = file_card_cache.get(content_key)
     if cached_response is None:
         return None
 
     cached_feedback = file_card_cache.get_feedback(content_key)
-    if cached_feedback is not None and not is_valid_cached_feedback(cached_feedback):
+    if cached_feedback is not None and not file_card_cache.is_valid_cached_feedback(cached_feedback):
         print(
             f"  {section_name}: {source_file} cached feedback "
             "invalid — re-dispatching",
@@ -89,14 +90,15 @@ def _try_cached_response(
     if cached_feedback is not None:
         shutil.copy2(cached_feedback, feedback_file)
 
-    if not update_match(section_file, source_file, response_file):
-        log_phase_failure(
-            "deep-update",
-            f"{section_name}:{source_file}",
-            "failed to update section file (cached)",
-            scan_log_dir,
-        )
-        return False
+    if match_updater is not None:
+        if not match_updater.update_match(section_file, source_file, response_file):
+            log_phase_failure(
+                "deep-update",
+                f"{section_name}:{source_file}",
+                "failed to update section file (cached)",
+                scan_log_dir,
+            )
+            return False
 
     print(f"[DEEP] {section_name} x {Path(source_file).name} (cached)")
     return True
@@ -137,9 +139,11 @@ class Analyzer:
         self,
         prompt_guard: PromptGuard,
         task_router: TaskRouterService,
+        match_updater: MatchUpdater | None = None,
     ) -> None:
         self._prompt_guard = prompt_guard
         self._task_router = task_router
+        self._match_updater = match_updater
 
     def _validate_and_write_prompt(
         self,
@@ -231,6 +235,7 @@ class Analyzer:
             file_card_cache, content_key,
             section_file, section_name, source_file,
             log_paths.response, log_paths.feedback, ctx.scan_log_dir,
+            match_updater=self._match_updater,
         )
         if cached is not None:
             return cached
@@ -258,40 +263,17 @@ class Analyzer:
             log_paths.feedback if log_paths.feedback.is_file() else None,
         )
 
-        if not update_match(section_file, source_file, log_paths.response):
-            log_phase_failure(
-                "deep-update",
-                f"{section_name}:{source_file}",
-                "failed to update section file",
-                ctx.scan_log_dir,
-            )
-            return False
+        if self._match_updater is not None:
+            if not self._match_updater.update_match(section_file, source_file, log_paths.response):
+                log_phase_failure(
+                    "deep-update",
+                    f"{section_name}:{source_file}",
+                    "failed to update section file",
+                    ctx.scan_log_dir,
+                )
+                return False
 
         print(f"[DEEP] {section_name} x {Path(source_file).name}")
         return True
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrapper
-# ------------------------------------------------------------------
-
-
-def _default_analyzer() -> Analyzer:
-    from containers import Services
-    return Analyzer(
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-    )
-
-
-def analyze_file(
-    section_file: Path,
-    section_name: str,
-    source_file: str,
-    ctx: ScanContext,
-    file_card_cache: FileCardCache,
-) -> bool:
-    """Run deep analysis on a single file."""
-    return _default_analyzer().analyze_file(
-        section_file, section_name, source_file, ctx, file_card_cache,
-    )

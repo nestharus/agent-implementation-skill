@@ -4,8 +4,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.staleness.service.alignment_collector import collect_modified_files, extract_problems
+from src.staleness.service.alignment_collector import AlignmentCollector, extract_problems
+from src.containers import LogService
 from src.orchestrator.types import Section
+
+
+class _NoOpLogger(LogService):
+    def log(self, msg: str) -> None:
+        pass
+
+
+def _collect_modified_files(planspace, section, codespace):
+    return AlignmentCollector(logger=_NoOpLogger()).collect_modified_files(
+        planspace, section, codespace,
+    )
 
 
 def _section(planspace: Path) -> Section:
@@ -32,7 +44,7 @@ def test_collect_modified_files_normalizes_relative_and_absolute_paths(
     )
 
     result = sorted(
-        collect_modified_files(planspace, _section(planspace), codespace),
+        _collect_modified_files(planspace, _section(planspace), codespace),
     )
 
     assert result == ["src/main.py", "src/util.py"]
@@ -45,7 +57,7 @@ def test_collect_modified_files_rejects_paths_outside_codespace(
     report = planspace / "artifacts" / "impl-01-modified.txt"
     report.write_text("/etc/passwd\nsrc/../../etc/shadow\n", encoding="utf-8")
 
-    result = collect_modified_files(
+    result = _collect_modified_files(
         planspace,
         _section(planspace),
         codespace,

@@ -139,29 +139,3 @@ class Adjudicator:
                 candidate_type,
             )
         return []
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_adjudicator() -> Adjudicator:
-    from containers import Services
-    return Adjudicator(
-        artifact_io=Services.artifact_io(),
-        prompt_guard=Services.prompt_guard(),
-        policies=Services.policies(),
-        dispatcher=Services.dispatcher(),
-        task_router=Services.task_router(),
-    )
-
-
-def adjudicate_ungrouped_candidates(
-    ungrouped: list[dict],
-    planspace: Path,
-    candidate_type: str,
-) -> list[dict]:
-    """Dispatch an adjudicator agent to merge semantically similar candidates."""
-    return _get_adjudicator().adjudicate_ungrouped_candidates(
-        ungrouped, planspace, candidate_type,
-    )

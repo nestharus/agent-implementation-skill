@@ -65,6 +65,7 @@ class AgentDispatcher:
             communicator=Services.communicator(),
             task_router=Services.task_router(),
             prompt_guard=Services.prompt_guard(),
+            artifact_io=Services.artifact_io(),
         )
 
     def dispatch(
@@ -149,6 +150,7 @@ class PipelineControlService:
         return PipelineControl(
             config=Services.config(),
             logger=Services.logger(),
+            change_tracker=Services.change_tracker(),
         )
 
     def pause_for_parent(self, planspace, message) -> str:
@@ -411,13 +413,23 @@ class FlowIngestionService:
 
     def _get_submitter(self):
         from flow.engine.flow_submitter import FlowSubmitter
-        return FlowSubmitter(freshness=Services.freshness())
+        from flow.repository.flow_context_store import FlowContextStore
+        return FlowSubmitter(
+            freshness=Services.freshness(),
+            flow_context_store=FlowContextStore(Services.artifact_io()),
+        )
 
     def _get_ingestor(self):
         from flow.service.task_request_ingestor import TaskRequestIngestor
+        from flow.service.flow_signal_parser import FlowSignalParser
         return TaskRequestIngestor(
             freshness=Services.freshness(),
             logger=Services.logger(),
+            flow_submitter=self._get_submitter(),
+            signal_parser=FlowSignalParser(
+                logger=Services.logger(),
+                artifact_io=Services.artifact_io(),
+            ),
         )
 
     def ingest_and_submit(self, planspace, submitted_by, signal_path, *, db_path=None, **kwargs):
@@ -432,7 +444,7 @@ class FlowIngestionService:
         return self._get_submitter().submit_fanout(env, branches, **kwargs)
 
     def new_flow_id(self) -> str:
-        from flow.engine.flow_submitter import new_flow_id
+        from flow.types.context import new_flow_id
         return new_flow_id()
 
 
@@ -484,11 +496,29 @@ class ResearchOrchestratorService:
             artifact_io=Services.artifact_io(),
         )
 
+    def _get_prompt_writer(self):
+        from research.prompt.writers import ResearchPromptWriter
+        return ResearchPromptWriter(
+            prompt_guard=Services.prompt_guard(),
+            artifact_io=Services.artifact_io(),
+        )
+
+    def _get_branch_builder(self):
+        from research.engine.research_branch_builder import ResearchBranchBuilder
+        return ResearchBranchBuilder(
+            prompt_guard=Services.prompt_guard(),
+            artifact_io=Services.artifact_io(),
+            prompt_writer=self._get_prompt_writer(),
+        )
+
     def _get_executor(self):
         from research.engine.research_plan_executor import ResearchPlanExecutor
         return ResearchPlanExecutor(
             freshness=Services.freshness(),
             flow_ingestion=Services.flow_ingestion(),
+            orchestrator=self._get_orchestrator(),
+            branch_builder=self._get_branch_builder(),
+            prompt_writer=self._get_prompt_writer(),
         )
 
     def load_status(self, section_number, planspace):
@@ -563,6 +593,8 @@ class SectionAlignmentService:
 
     def _get_rechecker(self):
         from staleness.service.global_alignment_rechecker import GlobalAlignmentRechecker
+        from coordination.service.completion_handler import CompletionHandler
+        from implementation.service.impact_analyzer import ImpactAnalyzer
         return GlobalAlignmentRechecker(
             logger=Services.logger(),
             policies=Services.policies(),
@@ -570,6 +602,24 @@ class SectionAlignmentService:
             communicator=Services.communicator(),
             dispatch_helpers=Services.dispatch_helpers(),
             alignment_checker=self._get_checker(),
+            completion_handler=CompletionHandler(
+                artifact_io=Services.artifact_io(),
+                change_tracker=Services.change_tracker(),
+                communicator=Services.communicator(),
+                hasher=Services.hasher(),
+                impact_analyzer=ImpactAnalyzer(
+                    communicator=Services.communicator(),
+                    config=Services.config(),
+                    context_assembly=Services.context_assembly(),
+                    cross_section=Services.cross_section(),
+                    dispatcher=Services.dispatcher(),
+                    logger=Services.logger(),
+                    policies=Services.policies(),
+                    prompt_guard=Services.prompt_guard(),
+                    task_router=Services.task_router(),
+                ),
+                logger=Services.logger(),
+            ),
         )
 
     def extract_problems(

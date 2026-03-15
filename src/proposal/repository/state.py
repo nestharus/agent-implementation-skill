@@ -125,22 +125,3 @@ def extract_blockers(state: ProposalState) -> list[dict]:
                 "description": str(item),
             })
     return blockers
-
-
-# Backward-compat wrappers
-
-def _get_state() -> State:
-    from containers import Services
-    return State(
-        artifact_io=Services.artifact_io(),
-    )
-
-
-def load_proposal_state(path: Path) -> ProposalState:
-    """Load and validate a proposal state JSON file."""
-    return _get_state().load_proposal_state(path)
-
-
-def save_proposal_state(state: ProposalState | dict, path: Path) -> None:
-    """Write a proposal state to JSON."""
-    _get_state().save_proposal_state(state, path)

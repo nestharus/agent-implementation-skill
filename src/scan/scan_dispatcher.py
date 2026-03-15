@@ -17,10 +17,27 @@ import subprocess
 from pathlib import Path
 
 from scan.service.scan_dispatch_config import (
+    ScanDispatchConfig,
     build_scan_dispatch_command,
-    read_scan_model_policy,
-    resolve_scan_agent_path,
 )
+
+
+def _get_config() -> ScanDispatchConfig:
+    from containers import Services
+    return ScanDispatchConfig(
+        artifact_io=Services.artifact_io(),
+        task_router=Services.task_router(),
+    )
+
+
+def read_scan_model_policy(artifacts_dir):
+    """Read scan-stage model policy from ``model-policy.json``."""
+    return _get_config().read_scan_model_policy(artifacts_dir)
+
+
+def resolve_scan_agent_path(agent_file: str):
+    """Resolve a scan agent definition path."""
+    return _get_config().resolve_scan_agent_path(agent_file)
 
 
 def dispatch_agent(

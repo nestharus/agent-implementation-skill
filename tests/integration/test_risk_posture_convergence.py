@@ -6,7 +6,8 @@ from unittest.mock import MagicMock
 
 from signals.repository.artifact_io import write_json
 from risk.engine.risk_assessor import run_risk_loop
-from risk.service.package_builder import build_package_from_proposal
+from containers import ArtifactIOService
+from risk.service.package_builder import PackageBuilder
 from risk.service.posture import select_posture
 from risk.repository.serialization import serialize_assessment, serialize_plan
 from risk.types import (
@@ -133,7 +134,7 @@ def test_convergence_when_risk_below_threshold(
     mock_dispatch: MagicMock,
 ) -> None:
     _write_risk_inputs(planspace, "01")
-    package = build_package_from_proposal("section-01", planspace)
+    package = PackageBuilder(artifact_io=ArtifactIOService()).build_package_from_proposal("section-01", planspace)
     assessment = RiskAssessment(
         assessment_id="assessment-section-01",
         layer="implementation",

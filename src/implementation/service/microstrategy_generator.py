@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
 from pipeline.template import TASK_SUBMISSION_SEMANTICS
-from dispatch.prompt.writers import agent_mail_instructions
-from implementation.service.microstrategy_decider import check_needs_microstrategy
+from dispatch.prompt.prompt_formatters import PromptFormatters
+from implementation.service.microstrategy_decider import MicrostrategyDecider
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from orchestrator.types import ControlSignal
 from signals.types import BLOCKING_NEEDS_PARENT
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
         AgentDispatcher,
         ArtifactIOService,
         Communicator,
+        ConfigService,
         FlowIngestionService,
         LogService,
         ModelPolicyService,
@@ -30,6 +31,7 @@ def _build_microstrategy_prompt(
     codespace: Path,
     planspace: Path,
     agent_name: str,
+    mail_block: str,
 ) -> str:
     paths = PathRegistry(planspace)
     file_list = "\n".join(
@@ -48,7 +50,7 @@ def _build_microstrategy_prompt(
     return _compose_microstrategy_text(
         section.number,
         todos_ref, governance_ref, file_list,
-        planspace, agent_name,
+        planspace, agent_name, mail_block,
     )
 
 
@@ -59,6 +61,7 @@ def _compose_microstrategy_text(
     file_list: str,
     planspace: Path,
     agent_name: str,
+    mail_block: str,
 ) -> str:
     """Return the full prompt text for microstrategy generation."""
     paths = PathRegistry(planspace)
@@ -102,7 +105,7 @@ Available task types: scan_deep_analyze, scan_explore
 Write a single JSON object (legacy format), or use the v2 envelope
 format with chain or fanout actions — see your agent file for the full
 v2 format reference. {TASK_SUBMISSION_SEMANTICS}
-{agent_mail_instructions(planspace, agent_name, f"{agent_name}-monitor")}
+{mail_block}
 """
 
 
@@ -116,9 +119,11 @@ class MicrostrategyGenerator:
         self,
         artifact_io: ArtifactIOService,
         communicator: Communicator,
+        config: ConfigService,
         dispatcher: AgentDispatcher,
         flow_ingestion: FlowIngestionService,
         logger: LogService,
+        microstrategy_decider: MicrostrategyDecider,
         policies: ModelPolicyService,
         pipeline_control: PipelineControlService,
         prompt_guard: PromptGuard,
@@ -126,9 +131,11 @@ class MicrostrategyGenerator:
     ) -> None:
         self._artifact_io = artifact_io
         self._communicator = communicator
+        self._config = config
         self._dispatcher = dispatcher
         self._flow_ingestion = flow_ingestion
         self._logger = logger
+        self._microstrategy_decider = microstrategy_decider
         self._policies = policies
         self._pipeline_control = pipeline_control
         self._prompt_guard = prompt_guard
@@ -231,7 +238,7 @@ class MicrostrategyGenerator:
         microstrategy_path = paths.microstrategy(section.number)
 
         needs_microstrategy = (
-            check_needs_microstrategy(
+            self._microstrategy_decider.check_needs_microstrategy(
                 integration_proposal, planspace, section.number,
                 codespace=codespace,
                 model=self._policies.resolve(policy, "microstrategy_decider"),
@@ -252,8 +259,11 @@ class MicrostrategyGenerator:
         agent_name = f"microstrategy-{section.number}"
         micro_prompt_path = paths.artifacts / f"microstrategy-{section.number}-prompt.md"
 
+        mail_block = PromptFormatters(config=self._config).agent_mail_instructions(
+            planspace, agent_name, f"{agent_name}-monitor",
+        )
         rendered = _build_microstrategy_prompt(
-            section, codespace, planspace, agent_name,
+            section, codespace, planspace, agent_name, mail_block,
         )
         violations = self._prompt_guard.validate_dynamic(rendered)
         if violations:
@@ -287,29 +297,3 @@ class MicrostrategyGenerator:
 
         self._handle_microstrategy_failure(section.number, planspace)
         return None
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat free function wrapper
-# ---------------------------------------------------------------------------
-
-
-def run_microstrategy(
-    section,
-    planspace: Path,
-    codespace: Path,
-) -> Path | None:
-    """Run the microstrategy decider and generation flow when needed."""
-    from containers import Services
-    generator = MicrostrategyGenerator(
-        artifact_io=Services.artifact_io(),
-        communicator=Services.communicator(),
-        dispatcher=Services.dispatcher(),
-        flow_ingestion=Services.flow_ingestion(),
-        logger=Services.logger(),
-        policies=Services.policies(),
-        pipeline_control=Services.pipeline_control(),
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-    )
-    return generator.run_microstrategy(section, planspace, codespace)

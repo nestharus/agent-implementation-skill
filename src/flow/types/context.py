@@ -2,9 +2,26 @@
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+
+
+def new_instance_id() -> str:
+    return f"inst_{uuid.uuid4()}"
+
+
+def new_flow_id() -> str:
+    return f"flow_{uuid.uuid4()}"
+
+
+def new_chain_id() -> str:
+    return f"chain_{uuid.uuid4()}"
+
+
+def new_gate_id() -> str:
+    return f"gate_{uuid.uuid4()}"
 
 
 class TaskStatus(str, Enum):

@@ -6,12 +6,27 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
-from conftest import NoOpFlow, NoOpSectionAlignment, make_dispatcher
+from conftest import NoOpFlow, NoOpSectionAlignment, build_proposal_cycle, make_dispatcher
 from containers import CrossSectionService, Services
+from dispatch.prompt.writers import Writers as PromptWriters
 from pipeline.context import DispatchContext
+from reconciliation.repository.results import Results
 from src.orchestrator.path_registry import PathRegistry
-from src.proposal.engine.proposal_cycle import run_proposal_loop
 from src.orchestrator.types import Section
+
+
+class _StubTriager:
+    """Minimal IntentTriager stub returning injected triage result."""
+
+    def __init__(self, result: dict) -> None:
+        self._result = result
+
+    def load_triage_result(self, *_args, **_kwargs):
+        return self._result
+
+    def run_intent_triage(self, *_args, **_kwargs):
+        return self._result
+
 
 def _section(planspace: Path) -> Section:
     artifacts = planspace / "artifacts"
@@ -47,21 +62,19 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
     alignment_written: list[str] = []
 
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_triage_result",
-        lambda *_args, **_kwargs: {"intent_mode": "lightweight", "budgets": {}},
-    )
-    monkeypatch.setattr(
         Services.dispatch_helpers(),
         "write_model_choice_signal",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "proposal.service.proposal_prep.write_integration_proposal_prompt",
-        lambda *_args, **_kwargs: prompt_path,
+        PromptWriters,
+        "write_integration_proposal_prompt",
+        lambda self, *_args, **_kwargs: prompt_path,
     )
     monkeypatch.setattr(
-        "proposal.service.alignment_handler.write_integration_alignment_prompt",
-        lambda *_args, **_kwargs: align_prompt_path,
+        PromptWriters,
+        "write_integration_alignment_prompt",
+        lambda self, *_args, **_kwargs: align_prompt_path,
     )
 
     def _dispatch(*args, **kwargs):
@@ -82,16 +95,20 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "proposal.service.proposal_prep.load_reconciliation_result",
-        lambda *_args, **_kwargs: None,
+        Results,
+        "load_result",
+        lambda self, *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_alignment_surface",
+        "proposal.engine.proposal_cycle.write_alignment_surface",
         lambda _planspace, _section: alignment_written.append("done"),
     )
 
+    triage = {"intent_mode": "lightweight", "budgets": {}}
+
     try:
-        result = run_proposal_loop(
+        cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
+        result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
@@ -117,22 +134,22 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
     )
     problems = iter(["missing anchor", None])
 
-    monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_triage_result",
-        lambda *_args, **_kwargs: {"intent_mode": "lightweight", "budgets": {}},
-    )
+    triage = {"intent_mode": "lightweight", "budgets": {}}
+
     monkeypatch.setattr(
         Services.dispatch_helpers(),
         "write_model_choice_signal",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "proposal.service.proposal_prep.write_integration_proposal_prompt",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
+        PromptWriters,
+        "write_integration_proposal_prompt",
+        lambda self, *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "proposal.service.alignment_handler.write_integration_alignment_prompt",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
+        PromptWriters,
+        "write_integration_alignment_prompt",
+        lambda self, *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
 
     def _dispatch(*_args, **kwargs):
@@ -155,16 +172,18 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
         lambda *_args, **_kwargs: next(problems),
     )
     monkeypatch.setattr(
-        "proposal.service.proposal_prep.load_reconciliation_result",
-        lambda *_args, **_kwargs: None,
+        Results,
+        "load_result",
+        lambda self, *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_alignment_surface",
+        "proposal.engine.proposal_cycle.write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
 
     try:
-        result = run_proposal_loop(
+        cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
+        result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
@@ -194,22 +213,22 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
 
     capturing_pipeline_control._pause_return = "resume:use new direction"
 
-    monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_triage_result",
-        lambda *_args, **_kwargs: {"intent_mode": "lightweight", "budgets": {}},
-    )
+    triage = {"intent_mode": "lightweight", "budgets": {}}
+
     monkeypatch.setattr(
         Services.dispatch_helpers(),
         "write_model_choice_signal",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "proposal.service.proposal_prep.write_integration_proposal_prompt",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
+        PromptWriters,
+        "write_integration_proposal_prompt",
+        lambda self, *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "proposal.service.alignment_handler.write_integration_alignment_prompt",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
+        PromptWriters,
+        "write_integration_alignment_prompt",
+        lambda self, *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
 
     def _dispatch(*args, **kwargs):
@@ -233,8 +252,9 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
     Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
     monkeypatch.setattr(Services.dispatch_helpers(), "check_agent_signals", _signals)
     monkeypatch.setattr(
-        "proposal.service.proposal_prep.load_reconciliation_result",
-        lambda *_args, **_kwargs: None,
+        Results,
+        "load_result",
+        lambda self, *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         "proposal.service.cycle_control.append_open_problem",
@@ -245,12 +265,13 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_alignment_surface",
+        "proposal.engine.proposal_cycle.write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
 
     try:
-        result = run_proposal_loop(
+        cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
+        result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},

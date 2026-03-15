@@ -6,9 +6,27 @@ from pathlib import Path
 import pytest
 
 from conftest import override_dispatcher_and_guard
+from containers import Services
 from src.proposal.service import problem_frame_gate
-from src.proposal.service.problem_frame_gate import validate_problem_frame
+from src.proposal.service.problem_frame_gate import ProblemFrameGate
+from dispatch.prompt.writers import Writers as PromptWriters
 from orchestrator.types import Section
+
+
+def _make_gate() -> ProblemFrameGate:
+    return ProblemFrameGate(
+        logger=Services.logger(),
+        policies=Services.policies(),
+        dispatcher=Services.dispatcher(),
+        task_router=Services.task_router(),
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        hasher=Services.hasher(),
+        prompt_guard=Services.prompt_guard(),
+        section_alignment=Services.section_alignment(),
+        cross_section=Services.cross_section(),
+        config=Services.config(),
+    )
 
 
 def _make_section(planspace: Path) -> Section:
@@ -42,7 +60,7 @@ def test_validate_problem_frame_blocks_when_retry_still_does_not_create_frame(
     )
 
     with override_dispatcher_and_guard(lambda *args, **kwargs: ""):
-        result = validate_problem_frame(
+        result = _make_gate().validate_problem_frame(
             section,
             planspace,
             codespace,
@@ -79,7 +97,7 @@ def test_validate_problem_frame_invalidates_existing_proposal_when_hash_changes(
     )
     hash_path.write_text("old-hash", encoding="utf-8")
 
-    result = validate_problem_frame(section, planspace, planspace)
+    result = _make_gate().validate_problem_frame(section, planspace, planspace)
 
     assert result == "ok"
     assert not proposal.exists()
@@ -104,7 +122,7 @@ def test_validate_problem_frame_records_traceability_when_excerpts_exist(
         encoding="utf-8",
     )
 
-    result = validate_problem_frame(section, planspace, planspace)
+    result = _make_gate().validate_problem_frame(section, planspace, planspace)
 
     assert result == "ok"
     assert len(capturing_communicator.traceability_calls) == 2

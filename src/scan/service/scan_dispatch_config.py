@@ -70,24 +70,3 @@ def build_scan_dispatch_command(
     ]
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ------------------------------------------------------------------
-
-
-def _default_config() -> ScanDispatchConfig:
-    from containers import Services
-    return ScanDispatchConfig(
-        artifact_io=Services.artifact_io(),
-        task_router=Services.task_router(),
-    )
-
-
-def read_scan_model_policy(artifacts_dir: Path) -> dict[str, str]:
-    """Read scan-stage model policy from ``model-policy.json``."""
-    return _default_config().read_scan_model_policy(artifacts_dir)
-
-
-def resolve_scan_agent_path(agent_file: str) -> Path:
-    """Resolve a scan agent definition path."""
-    return _default_config().resolve_scan_agent_path(agent_file)

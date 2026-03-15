@@ -22,19 +22,27 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from flow.service.flow_signal_parser import (
+    FlowSignalParser,
     find_first_section_scope,
-    ingest_task_requests as _ingest_task_requests,
-    parse_signal_file as _parse_signal_file,
 )
 from flow.types.schema import (
     ChainAction,
     FanoutAction,
 )
-from flow.engine.flow_submitter import new_flow_id
-from flow.types.context import FlowEnvelope
+from flow.types.context import FlowEnvelope, new_flow_id
 
 if TYPE_CHECKING:
     from containers import FreshnessService, LogService
+    from flow.engine.flow_submitter import FlowSubmitter
+
+
+def _make_signal_parser() -> FlowSignalParser:
+    """Create a FlowSignalParser wired from the DI container."""
+    from containers import Services
+    return FlowSignalParser(
+        logger=Services.logger(),
+        artifact_io=Services.artifact_io(),
+    )
 
 
 def ingest_task_requests(signal_path: Path) -> list[dict]:
@@ -58,7 +66,7 @@ def ingest_task_requests(signal_path: Path) -> list[dict]:
         Use :func:`ingest_and_submit` instead, which submits tasks into
         the queue with flow metadata rather than returning raw dicts.
     """
-    return _ingest_task_requests(signal_path)
+    return _make_signal_parser().ingest_task_requests(signal_path)
 
 
 def _submit_chain_action(
@@ -104,9 +112,17 @@ def _submit_fanout_action(
 
 
 class TaskRequestIngestor:
-    def __init__(self, freshness: FreshnessService, logger: LogService) -> None:
+    def __init__(
+        self,
+        freshness: FreshnessService,
+        logger: LogService,
+        flow_submitter: FlowSubmitter,
+        signal_parser: FlowSignalParser,
+    ) -> None:
         self._freshness = freshness
         self._logger = logger
+        self._flow_submitter = flow_submitter
+        self._signal_parser = signal_parser
 
     def ingest_and_submit(
         self,
@@ -123,8 +139,8 @@ class TaskRequestIngestor:
         """Submit agent-emitted task requests into the queue with flow metadata.
 
         Reads task-request JSON files, parses them via ``parse_flow_signal``,
-        and submits them through ``submit_chain``/``submit_fanout`` from
-        flow_facade.py.  The task_dispatcher.py poll loop handles actual dispatch.
+        and submits them through ``FlowSubmitter.submit_chain``/``submit_fanout``.
+        The task_dispatcher.py poll loop handles actual dispatch.
 
         For legacy v1 tasks: each is submitted as a single-step chain.
         For v2 declarations: chain/fanout actions are fully processed.
@@ -137,17 +153,9 @@ class TaskRequestIngestor:
         if db_path is None:
             from orchestrator.path_registry import PathRegistry
             db_path = PathRegistry(planspace).run_db()
-        decl = _parse_signal_file(signal_path)
+        decl = self._signal_parser.parse_signal_file(signal_path)
         if decl is None:
             return []
-
-        # Lazy import to break circular dependency:
-        # task_dispatcher -> flow_facade -> reconciler -> plan_executor
-        # -> section_pipeline -> section_reexplorer -> task_request_ingestor -> flow_facade
-        from flow.service.flow_facade import (
-            submit_chain,
-            submit_fanout,
-        )
 
         env = FlowEnvelope(
             db_path=db_path,
@@ -163,12 +171,12 @@ class TaskRequestIngestor:
         for action in decl.actions:
             if isinstance(action, ChainAction):
                 all_task_ids.extend(_submit_chain_action(
-                    action, env, submit_chain,
+                    action, env, self._flow_submitter.submit_chain,
                     chain_id=chain_id,
                     freshness=self._freshness,
                 ))
             elif isinstance(action, FanoutAction):
-                _submit_fanout_action(action, env, submit_fanout)
+                _submit_fanout_action(action, env, self._flow_submitter.submit_fanout)
             else:
                 self._logger.log(f"  task_ingestion: WARNING — unknown action type "
                     f"{type(action).__name__}, skipping")
@@ -178,31 +186,3 @@ class TaskRequestIngestor:
                 f"to queue (submitted_by={submitted_by})")
 
         return all_task_ids
-
-
-# Backward-compat wrappers
-
-def _get_ingestor() -> TaskRequestIngestor:
-    from containers import Services
-    return TaskRequestIngestor(
-        freshness=Services.freshness(),
-        logger=Services.logger(),
-    )
-
-
-def ingest_and_submit(
-    planspace: Path,
-    submitted_by: str,
-    signal_path: Path,
-    *,
-    db_path: Path | None = None,
-    flow_id: str | None = None,
-    chain_id: str | None = None,
-    declared_by_task_id: int | None = None,
-    origin_refs: list[str] | None = None,
-) -> list[int]:
-    return _get_ingestor().ingest_and_submit(
-        planspace, submitted_by, signal_path,
-        db_path=db_path, flow_id=flow_id, chain_id=chain_id,
-        declared_by_task_id=declared_by_task_id, origin_refs=origin_refs,
-    )

@@ -16,11 +16,11 @@ if TYPE_CHECKING:
         LogService,
         PipelineControlService,
     )
+    from proposal.service.cycle_control import CycleControl
 
 from orchestrator.path_registry import PathRegistry
 from intent.service.expansion_facade import handle_user_gate, run_expansion_cycle
 from orchestrator.types import PauseType
-from proposal.service.cycle_control import handle_pause_response
 from signals.types import ACTION_ABORT, ACTION_BREAK, ACTION_CONTINUE, RESUME_PREFIX
 
 
@@ -31,11 +31,13 @@ class ExpansionHandler:
         artifact_io: ArtifactIOService,
         communicator: Communicator,
         pipeline_control: PipelineControlService,
+        cycle_control: CycleControl,
     ) -> None:
         self._logger = logger
         self._artifact_io = artifact_io
         self._communicator = communicator
         self._pipeline_control = pipeline_control
+        self._cycle_control = cycle_control
 
     def _handle_budget_exhaustion(
         self,
@@ -116,7 +118,7 @@ class ExpansionHandler:
                 delta_result,
             )
             if gate_response:
-                result = handle_pause_response(planspace, section_number, gate_response)
+                result = self._cycle_control.handle_pause_response(planspace, section_number, gate_response)
                 if result == ACTION_ABORT:
                     return None
 
@@ -173,46 +175,6 @@ class ExpansionHandler:
                 delta_result,
             )
             if gate_response:
-                result = handle_pause_response(planspace, section_number, gate_response)
+                result = self._cycle_control.handle_pause_response(planspace, section_number, gate_response)
                 if result == ACTION_ABORT:
                     return
-
-
-# Backward-compat wrappers
-
-def _get_expansion_handler() -> ExpansionHandler:
-    from containers import Services
-    return ExpansionHandler(
-        logger=Services.logger(),
-        artifact_io=Services.artifact_io(),
-        communicator=Services.communicator(),
-        pipeline_control=Services.pipeline_control(),
-    )
-
-
-def run_aligned_expansion(
-    section_number: str,
-    planspace: Path,
-    codespace: Path,
-    intent_budgets: dict,
-    expansion_counts: dict[str, int],
-) -> str | None:
-    """Handle intent expansion when the proposal is aligned but surfaces exist."""
-    return _get_expansion_handler().run_aligned_expansion(
-        section_number, planspace, codespace,
-        intent_budgets, expansion_counts,
-    )
-
-
-def run_misaligned_expansion(
-    section_number: str,
-    planspace: Path,
-    codespace: Path,
-    intent_budgets: dict,
-    expansion_counts: dict[str, int],
-) -> None:
-    """Handle intent expansion on a misaligned pass with definition-gap surfaces."""
-    _get_expansion_handler().run_misaligned_expansion(
-        section_number, planspace, codespace,
-        intent_budgets, expansion_counts,
-    )

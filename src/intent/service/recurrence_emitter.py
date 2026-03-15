@@ -39,26 +39,3 @@ class RecurrenceEmitter:
             f"Section {section_number}: recurrence signal written "
             f"(attempt {solve_count})"
         )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_recurrence_emitter() -> RecurrenceEmitter:
-    from containers import Services
-    return RecurrenceEmitter(
-        artifact_io=Services.artifact_io(),
-        logger=Services.logger(),
-    )
-
-
-def emit_recurrence_signal(
-    planspace: Path,
-    section_number: str,
-    solve_count: int,
-) -> None:
-    """Write the recurrence signal for sections solved multiple times."""
-    _get_recurrence_emitter().emit_recurrence_signal(
-        planspace, section_number, solve_count,
-    )

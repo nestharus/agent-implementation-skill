@@ -6,15 +6,15 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from scan.explore.analyzer import analyze_file
 from scan.related.match_updater import deep_scan_related_files
 from scan.scan_context import ScanContext
 from scan.service.phase_failure_logger import log_phase_failure
-from scan.explore.tier_ranker import run_tier_ranking
 from scan.codemap.cache import FileCardCache
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService
+    from scan.explore.analyzer import Analyzer
+    from scan.explore.tier_ranker import TierRanker
 
 
 class SectionIterator:
@@ -23,8 +23,15 @@ class SectionIterator:
     All cross-cutting services are received via constructor injection.
     """
 
-    def __init__(self, artifact_io: ArtifactIOService) -> None:
+    def __init__(
+        self,
+        artifact_io: ArtifactIOService,
+        analyzer: Analyzer | None = None,
+        tier_ranker: TierRanker | None = None,
+    ) -> None:
         self._artifact_io = artifact_io
+        self._analyzer = analyzer
+        self._tier_ranker = tier_ranker
 
     def _get_scan_files(self, tier_file: Path) -> tuple[list[str], str]:
         """Read tier file and return (files_to_scan, tier_label)."""
@@ -70,7 +77,7 @@ class SectionIterator:
             if not related_files:
                 continue
 
-            tier_file = run_tier_ranking(
+            tier_file = self._tier_ranker.run_tier_ranking(
                 section_file,
                 section_name,
                 related_files,
@@ -78,7 +85,7 @@ class SectionIterator:
                 artifacts_dir,
                 ctx.scan_log_dir,
                 ctx.model_policy,
-            )
+            ) if self._tier_ranker else None
 
             scan_files: list[str] = []
             if tier_file is not None and tier_file.is_file():
@@ -108,13 +115,13 @@ class SectionIterator:
                 if not source_file.strip() or source_file in done:
                     continue
 
-                ok = analyze_file(
+                ok = self._analyzer.analyze_file(
                     section_file,
                     section_name,
                     source_file,
                     ctx,
                     file_card_cache,
-                )
+                ) if self._analyzer else False
                 done.add(source_file)
                 if not ok:
                     phase_failed = True
@@ -122,24 +129,3 @@ class SectionIterator:
         return phase_failed
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ------------------------------------------------------------------
-
-
-def _default_iterator() -> SectionIterator:
-    from containers import Services
-    return SectionIterator(artifact_io=Services.artifact_io())
-
-
-def scan_sections(
-    section_files: list[Path],
-    ctx: ScanContext,
-    artifacts_dir: Path,
-    file_card_cache: FileCardCache,
-    already_scanned: dict[str, set[str]],
-) -> bool:
-    """Run one pass of per-section tier ranking + per-file analysis."""
-    return _default_iterator().scan_sections(
-        section_files, ctx, artifacts_dir, file_card_cache, already_scanned,
-    )

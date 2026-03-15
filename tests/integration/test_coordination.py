@@ -7,10 +7,29 @@ P4: Coordination prompt writes to artifact file (no inline JSON)
 import json
 from pathlib import Path
 
+from containers import Services
 from coordination.problem_types import MisalignedProblem
-from coordination.service.problem_resolver import collect_outstanding_problems
-from coordination.service.planner import write_coordination_plan_prompt
+from coordination.service.planner import Planner
+from coordination.service.problem_resolver import ProblemResolver
 from orchestrator.types import Section, SectionResult
+
+
+def _make_problem_resolver() -> ProblemResolver:
+    return ProblemResolver(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        logger=Services.logger(),
+        signals=Services.signals(),
+    )
+
+
+def _make_planner() -> Planner:
+    return Planner(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        logger=Services.logger(),
+        prompt_guard=Services.prompt_guard(),
+    )
 
 
 class TestCollectOutstandingProblemsBlockerSignal:
@@ -51,7 +70,8 @@ class TestCollectOutstandingProblemsBlockerSignal:
             ),
         }
 
-        problems = collect_outstanding_problems(
+        resolver = _make_problem_resolver()
+        problems = resolver.collect_outstanding_problems(
             results, sections_by_num, planspace,
         )
 
@@ -92,7 +112,8 @@ class TestCollectOutstandingProblemsBlockerSignal:
             ),
         }
 
-        problems = collect_outstanding_problems(
+        resolver = _make_problem_resolver()
+        problems = resolver.collect_outstanding_problems(
             results, sections_by_num, planspace,
         )
 
@@ -123,7 +144,8 @@ class TestCollectOutstandingProblemsBlockerSignal:
             ),
         }
 
-        problems = collect_outstanding_problems(
+        resolver = _make_problem_resolver()
+        problems = resolver.collect_outstanding_problems(
             results, sections_by_num, planspace,
         )
 
@@ -161,7 +183,8 @@ class TestCollectOutstandingProblemsBlockerSignal:
             ),
         }
 
-        problems = collect_outstanding_problems(
+        resolver = _make_problem_resolver()
+        problems = resolver.collect_outstanding_problems(
             results, sections_by_num, planspace,
         )
 
@@ -182,7 +205,8 @@ class TestCoordinationPlanPromptArtifactFile:
             MisalignedProblem(section="02", description="DB schema mismatch", files=["src/db.py"]),
         ]
 
-        write_coordination_plan_prompt(problems, planspace)
+        planner = _make_planner()
+        planner.write_coordination_plan_prompt(problems, planspace)
 
         problems_path = (planspace / "artifacts" / "coordination"
                          / "problems.json")
@@ -199,7 +223,8 @@ class TestCoordinationPlanPromptArtifactFile:
             MisalignedProblem(section="01", description="drift", files=["f.py"]),
         ]
 
-        prompt_path = write_coordination_plan_prompt(problems, planspace)
+        planner = _make_planner()
+        prompt_path = planner.write_coordination_plan_prompt(problems, planspace)
         content = prompt_path.read_text()
 
         # Prompt should reference the artifact file path
@@ -212,7 +237,8 @@ class TestCoordinationPlanPromptArtifactFile:
             MisalignedProblem(section="01", description="Auth module drift", files=["src/auth.py"]),
         ]
 
-        prompt_path = write_coordination_plan_prompt(problems, planspace)
+        planner = _make_planner()
+        prompt_path = planner.write_coordination_plan_prompt(problems, planspace)
         content = prompt_path.read_text()
 
         # The prompt should NOT contain the actual problem descriptions

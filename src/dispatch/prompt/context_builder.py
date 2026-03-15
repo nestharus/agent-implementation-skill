@@ -364,27 +364,3 @@ class ContextBuilder:
         ctx.update(_build_governance_and_files_context(paths, sec, section, codespace))
         ctx.update(overrides)
         return ctx
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_builder() -> ContextBuilder:
-    from containers import Services
-    return ContextBuilder(
-        artifact_io=Services.artifact_io(),
-        cross_section=Services.cross_section(),
-    )
-
-
-def build_prompt_context(
-    section: Section,
-    planspace: Path,
-    codespace: Path,
-    **overrides: object,
-) -> dict:
-    """Build the shared context dict used by all prompt templates."""
-    return _get_builder().build_prompt_context(
-        section, planspace, codespace, **overrides,
-    )

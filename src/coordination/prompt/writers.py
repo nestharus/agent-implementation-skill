@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from coordination.problem_types import Problem
 from orchestrator.path_registry import PathRegistry
 from pipeline.template import SRC_TEMPLATE_DIR, TASK_SUBMISSION_SEMANTICS, load_template, render
-from dispatch.service.context_sidecar import materialize_context_sidecar
+from dispatch.service.context_sidecar import ContextSidecar
 
 if TYPE_CHECKING:
     from containers import (
@@ -84,7 +84,7 @@ class Writers:
                 f"violations: {violations}")
             return None
 
-        sidecar_path = materialize_context_sidecar(
+        sidecar_path = ContextSidecar(self._artifact_io).materialize_context_sidecar(
             str(self._task_router.resolve_agent_path("coordination-fixer.md")),
             planspace,
         )
@@ -277,35 +277,3 @@ def _compose_tools_block_text(malformed_path: Path) -> str:
         f"Consider dispatching tool-registrar repair before "
         f"relying on tool context.\n"
     )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_writers() -> Writers:
-    from containers import Services
-    return Writers(
-        artifact_io=Services.artifact_io(),
-        communicator=Services.communicator(),
-        logger=Services.logger(),
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-    )
-
-
-def write_fix_prompt(
-    group: list[Problem], planspace: Path, codespace: Path,
-    group_id: int,
-) -> Path | None:
-    return _get_writers().write_fix_prompt(group, planspace, codespace, group_id)
-
-
-def write_bridge_prompt(
-    group: list[Problem],
-    group_index: int,
-    group_sections: list[str],
-    planspace: Path,
-    bridge_reason: str,
-) -> Path | None:
-    return _get_writers().write_bridge_prompt(group, group_index, group_sections, planspace, bridge_reason)

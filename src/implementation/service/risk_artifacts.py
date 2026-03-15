@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
-from orchestrator.repository.section_artifacts import write_section_input_artifact
+from orchestrator.repository.section_artifacts import SectionArtifacts
 from risk.types import (
     PostureProfile,
     RiskPlan,
@@ -64,6 +64,7 @@ class RiskArtifacts:
     ) -> None:
         self._artifact_io = artifact_io
         self._freshness = freshness
+        self._section_artifacts = SectionArtifacts(artifact_io=artifact_io)
 
     def write_accepted_steps(
         self,
@@ -101,7 +102,7 @@ class RiskArtifacts:
             "dispatch_shape": dispatch_shapes,
             "dispatch_shapes": dispatch_shapes,
         }
-        return write_section_input_artifact(
+        return self._section_artifacts.write_section_input_artifact(
             paths,
             sec_num,
             paths.risk_accepted_steps(sec_num).name,
@@ -134,7 +135,7 @@ class RiskArtifacts:
                 list(risk_plan.expected_reassessment_inputs),
             ),
         }
-        return write_section_input_artifact(
+        return self._section_artifacts.write_section_input_artifact(
             paths,
             sec_num,
             paths.risk_deferred(sec_num).name,
@@ -282,7 +283,7 @@ class RiskArtifacts:
         modified_files: list[str],
     ) -> Path:
         paths = PathRegistry(planspace)
-        return write_section_input_artifact(
+        return self._section_artifacts.write_section_input_artifact(
             paths,
             sec_num,
             paths.modified_file_manifest(sec_num).name,
@@ -291,100 +292,3 @@ class RiskArtifacts:
                 "count": len(modified_files),
             },
         )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ---------------------------------------------------------------------------
-
-
-def write_accepted_steps(
-    planspace: Path,
-    sec_num: str,
-    risk_plan: RiskPlan,
-) -> Path:
-    from containers import Services
-    return RiskArtifacts(
-        artifact_io=Services.artifact_io(),
-        freshness=Services.freshness(),
-    ).write_accepted_steps(planspace, sec_num, risk_plan)
-
-
-def write_deferred_steps(
-    planspace: Path,
-    sec_num: str,
-    risk_plan: RiskPlan,
-) -> Path:
-    from containers import Services
-    return RiskArtifacts(
-        artifact_io=Services.artifact_io(),
-        freshness=Services.freshness(),
-    ).write_deferred_steps(planspace, sec_num, risk_plan)
-
-
-def write_reopen_blocker(
-    planspace: Path,
-    sec_num: str,
-    risk_plan: RiskPlan,
-) -> Path:
-    from containers import Services
-    return RiskArtifacts(
-        artifact_io=Services.artifact_io(),
-        freshness=Services.freshness(),
-    ).write_reopen_blocker(planspace, sec_num, risk_plan)
-
-
-def write_risk_review_failure_blocker(
-    planspace: Path,
-    sec_num: str,
-    reason: str,
-) -> Path:
-    from containers import Services
-    return RiskArtifacts(
-        artifact_io=Services.artifact_io(),
-        freshness=Services.freshness(),
-    ).write_risk_review_failure_blocker(planspace, sec_num, reason)
-
-
-def has_stale_freshness_token(
-    planspace: Path,
-    sec_num: str,
-    triage_signal: object,
-) -> bool:
-    from containers import Services
-    return RiskArtifacts(
-        artifact_io=Services.artifact_io(),
-        freshness=Services.freshness(),
-    ).has_stale_freshness_token(planspace, sec_num, triage_signal)
-
-
-def has_recent_loop_detected_signal(
-    planspace: Path,
-    sec_num: str,
-    scope: str,
-) -> bool:
-    from containers import Services
-    return RiskArtifacts(
-        artifact_io=Services.artifact_io(),
-        freshness=Services.freshness(),
-    ).has_recent_loop_detected_signal(planspace, sec_num, scope)
-
-
-def load_risk_hints(planspace: Path, sec_num: str) -> dict:
-    from containers import Services
-    return RiskArtifacts(
-        artifact_io=Services.artifact_io(),
-        freshness=Services.freshness(),
-    ).load_risk_hints(planspace, sec_num)
-
-
-def write_modified_file_manifest(
-    planspace: Path,
-    sec_num: str,
-    modified_files: list[str],
-) -> Path:
-    from containers import Services
-    return RiskArtifacts(
-        artifact_io=Services.artifact_io(),
-        freshness=Services.freshness(),
-    ).write_modified_file_manifest(planspace, sec_num, modified_files)

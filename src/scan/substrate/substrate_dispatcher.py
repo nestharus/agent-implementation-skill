@@ -78,25 +78,3 @@ class SubstrateDispatcher:
             return False
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrapper
-# ------------------------------------------------------------------
-
-
-def _default_dispatcher() -> SubstrateDispatcher:
-    from containers import Services
-    return SubstrateDispatcher(task_router=Services.task_router())
-
-
-def dispatch_substrate_agent(
-    model: str,
-    prompt_path: Path,
-    output_path: Path,
-    codespace: Path | None = None,
-    *,
-    agent_file: str,
-) -> bool:
-    """Run an agent via the ``agents`` binary and capture output."""
-    return _default_dispatcher().dispatch_substrate_agent(
-        model, prompt_path, output_path, codespace, agent_file=agent_file,
-    )

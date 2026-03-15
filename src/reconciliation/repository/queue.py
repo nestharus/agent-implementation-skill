@@ -73,29 +73,3 @@ class Queue:
                 )
                 self._artifact_io.rename_malformed(req_path)
         return requests
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_queue() -> Queue:
-    from containers import Services
-    return Queue(artifact_io=Services.artifact_io())
-
-
-def queue_reconciliation_request(
-    planspace: Path,
-    section_number: str,
-    unresolved_contracts: list[str],
-    unresolved_anchors: list[str],
-) -> Path:
-    """Write a reconciliation-request artifact for *section_number*."""
-    return _get_queue().queue_reconciliation_request(
-        planspace, section_number, unresolved_contracts, unresolved_anchors,
-    )
-
-
-def load_reconciliation_requests(planspace: Path) -> list[dict]:
-    """Load all reconciliation requests from a planspace directory."""
-    return _get_queue().load_reconciliation_requests(planspace)

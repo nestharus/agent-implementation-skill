@@ -22,7 +22,14 @@ import pytest
 from _paths import DB_SH
 from src.orchestrator.path_registry import PathRegistry
 
-from flow.service.task_request_ingestor import ingest_and_submit
+from containers import Services
+
+
+def ingest_and_submit(planspace, submitted_by, signal_path, **kwargs):
+    """Helper: create a TaskRequestIngestor from Services and call ingest_and_submit."""
+    return Services.flow_ingestion().ingest_and_submit(
+        planspace, submitted_by, signal_path, **kwargs,
+    )
 
 
 # ---------------------------------------------------------------------------

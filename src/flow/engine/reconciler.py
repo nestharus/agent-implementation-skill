@@ -12,24 +12,18 @@ from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
 from flow.service.task_db_client import task_db
-from flow.engine.flow_submitter import (
-    submit_chain,
-    submit_fanout,
-)
 from flow.types.context import FlowEnvelope, TaskStatus
 from flow.types.schema import ChainAction, FanoutAction, parse_flow_signal
 from research.engine.orchestrator import ResearchState
 from intake.service.assessment_evaluator import (
     AssessmentEvaluator,
     AssessmentVerdict,
-    record_assessment_governance,
 )
+from implementation.service.traceability_writer import TraceabilityWriter
 from flow.repository.gate_repository import (
     cancel_chain_descendants,
-    check_and_fire_gate as _check_and_fire_gate_impl,
     find_gate_for_chain,
     get_gate_member_leaf,
-    read_origin_refs,
     update_gate_member,
     update_gate_member_leaf,
 )
@@ -37,6 +31,8 @@ from signals.types import SIGNAL_NEEDS_PARENT
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService, PromptGuard, ResearchOrchestratorService
+    from flow.engine.flow_submitter import FlowSubmitter
+    from flow.repository.gate_repository import GateRepository
 
 logger = logging.getLogger(__name__)
 
@@ -104,10 +100,16 @@ class Reconciler:
         artifact_io: ArtifactIOService,
         research: ResearchOrchestratorService,
         prompt_guard: PromptGuard,
+        flow_submitter: FlowSubmitter,
+        gate_repository: GateRepository,
+        traceability_writer: TraceabilityWriter,
     ) -> None:
         self._artifact_io = artifact_io
         self._research = research
         self._prompt_guard = prompt_guard
+        self._flow_submitter = flow_submitter
+        self._gate_repository = gate_repository
+        self._traceability_writer = traceability_writer
 
     def _load_continuation(self, planspace: Path, continuation_path: str | None):
         """Try loading a continuation signal. Returns (continuation, is_malformed)."""
@@ -147,7 +149,7 @@ class Reconciler:
         )
         for action in continuation.actions:
             if isinstance(action, ChainAction) and action.steps:
-                new_ids = submit_chain(
+                new_ids = self._flow_submitter.submit_chain(
                     env,
                     action.steps,
                     chain_id=chain_id,
@@ -164,7 +166,7 @@ class Reconciler:
                         update_gate_member_leaf(db_path, gate_id, chain_id, new_ids[-1])
 
             elif isinstance(action, FanoutAction) and action.branches:
-                submit_fanout(
+                self._flow_submitter.submit_fanout(
                     env,
                     action.branches,
                     gate=action.gate,
@@ -328,7 +330,22 @@ class Reconciler:
         if assessment is None:
             return
 
-        record_assessment_governance(section_number, planspace, assessment)
+        problem_ids = assessment.get("problem_ids_addressed")
+        if not isinstance(problem_ids, list):
+            problem_ids = []
+        pattern_ids = assessment.get("pattern_ids_followed")
+        if not isinstance(pattern_ids, list):
+            pattern_ids = []
+        profile_id = assessment.get("profile_id")
+        if not isinstance(profile_id, str):
+            profile_id = ""
+        self._traceability_writer.update_trace_governance(
+            planspace,
+            section_number,
+            problem_ids=[str(item) for item in problem_ids if str(item).strip()],
+            pattern_ids=[str(item) for item in pattern_ids if str(item).strip()],
+            profile_id=profile_id,
+        )
 
         verdict = assessment.get("verdict", AssessmentVerdict.ACCEPT)
         if verdict == AssessmentVerdict.ACCEPT_WITH_DEBT:
@@ -432,7 +449,7 @@ class Reconciler:
         if result_manifest_path:
             self._artifact_io.write_json(planspace / result_manifest_path, manifest)
 
-        origin_refs = read_origin_refs(planspace, task_id)
+        origin_refs = self._gate_repository.read_origin_refs(planspace, task_id)
         self._handle_research_completion(
             db_path, planspace, task, status, output_path, error, origin_refs, codespace,
         )
@@ -477,45 +494,7 @@ class Reconciler:
         origin_refs: list[str],
     ) -> None:
         """Check if all gate members are terminal and fire the gate if so."""
-        _check_and_fire_gate_impl(
+        self._gate_repository.check_and_fire_gate(
             db_path, planspace, gate_id, flow_id, origin_refs,
             build_gate_aggregate_manifest,
         )
-
-
-# Backward-compat wrappers
-
-def _get_reconciler() -> Reconciler:
-    from containers import Services
-    return Reconciler(
-        artifact_io=Services.artifact_io(),
-        research=Services.research(),
-        prompt_guard=Services.prompt_guard(),
-    )
-
-
-def reconcile_task_completion(
-    db_path: Path,
-    planspace: Path,
-    task_id: int,
-    status: str,
-    output_path: str | None,
-    error: str | None = None,
-    codespace: Path | None = None,
-) -> None:
-    return _get_reconciler().reconcile_task_completion(
-        db_path, planspace, task_id, status, output_path,
-        error=error, codespace=codespace,
-    )
-
-
-def check_and_fire_gate(
-    db_path: Path,
-    planspace: Path,
-    gate_id: str,
-    flow_id: str,
-    origin_refs: list[str],
-) -> None:
-    return _get_reconciler().check_and_fire_gate(
-        db_path, planspace, gate_id, flow_id, origin_refs,
-    )

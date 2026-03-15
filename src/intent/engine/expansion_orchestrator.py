@@ -10,23 +10,16 @@ from orchestrator.types import PauseType
 from intent.service.surface_registry import (
     SurfaceStatus,
     find_discarded_recurrences,
-    load_combined_intent_surfaces,
-    load_surface_registry,
     mark_surfaces_applied,
     mark_surfaces_discarded,
     merge_surfaces_into_registry,
-    normalize_surface_ids,
-    save_surface_registry,
-)
-from intent.service.expanders import (
-    adjudicate_recurrence,
-    run_philosophy_expander,
-    run_problem_expander,
 )
 from signals.types import BLOCKING_NEED_DECISION
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService, LogService, PipelineControlService
+    from intent.service.expanders import Expanders
+    from intent.service.surface_registry import SurfaceRegistry
 
 _MAX_SURFACES_PER_CYCLE_DEFAULT = 8
 _MAX_AXES_TOTAL_DEFAULT = 6
@@ -79,100 +72,116 @@ def build_pending_surface_payload(worklist: list[dict], surfaces: dict) -> dict:
     }
 
 
-def _reopen_recurring_surfaces(
-    registry, duplicate_ids, section_number, planspace, codespace,
-):
-    recurrences = find_discarded_recurrences(registry, duplicate_ids)
-    if not recurrences:
-        return
-    reopened = adjudicate_recurrence(
-        section_number, planspace, codespace, recurrences,
-    )
-    if reopened:
-        for surface_id in reopened:
-            for entry in registry.get("surfaces", []):
-                if entry["id"] == surface_id:
-                    entry["status"] = SurfaceStatus.PENDING
-
-
-def _apply_problem_expansion(
-    delta, section_number, planspace, codespace,
-    pending_surfaces_path, remaining_axis_budget,
-    logger: LogService,
-):
-    problem_delta = run_problem_expander(
-        section_number, planspace, codespace,
-        pending_surfaces_path=pending_surfaces_path,
-        remaining_axis_budget=remaining_axis_budget,
-    )
-    if not problem_delta:
-        return
-    proposed_axes = problem_delta.get("new_axes", [])
-    if len(proposed_axes) > remaining_axis_budget:
-        logger.log(f"Section {section_number}: expander proposed "
-            f"{len(proposed_axes)} new axes (budget advisory: "
-            f"{remaining_axis_budget}) — accepting all")
-    delta["applied"]["problem_definition_updated"] = (
-        problem_delta.get("applied", {})
-        .get("problem_definition_updated", False)
-    )
-    delta["applied"]["problem_rubric_updated"] = (
-        problem_delta.get("applied", {})
-        .get("problem_rubric_updated", False)
-    )
-    delta["applied_surface_ids"].extend(
-        problem_delta.get("applied_surface_ids", []),
-    )
-    delta["discarded_surface_ids"].extend(
-        problem_delta.get("discarded_surface_ids", []),
-    )
-    delta["new_axes"].extend(proposed_axes)
-    if problem_delta.get("restart_required"):
-        delta["restart_required"] = True
-        delta["restart_reason"] = problem_delta.get(
-            "restart_reason", "Problem definition expanded",
-        )
-
-
-def _apply_philosophy_expansion(
-    delta, paths, section_number, codespace,
-    pending_surfaces_path,
-):
-    philosophy_delta = run_philosophy_expander(
-        section_number, paths.planspace, codespace,
-        pending_surfaces_path=pending_surfaces_path,
-    )
-    if not philosophy_delta:
-        return
-    delta["applied"]["philosophy_updated"] = (
-        philosophy_delta.get("applied", {})
-        .get("philosophy_updated", False)
-    )
-    delta["applied_surface_ids"].extend(
-        philosophy_delta.get("applied_surface_ids", []),
-    )
-    delta["discarded_surface_ids"].extend(
-        philosophy_delta.get("discarded_surface_ids", []),
-    )
-    if philosophy_delta.get("needs_user_input"):
-        delta["needs_user_input"] = True
-        delta["user_input_kind"] = "philosophy"
-        delta["user_input_path"] = str(paths.philosophy_decisions())
-        delta["restart_required"] = True
-
-
 class ExpansionOrchestrator:
     """Intent surface orchestration."""
 
     def __init__(
         self,
         artifact_io: ArtifactIOService,
+        expanders: Expanders,
         logger: LogService,
         pipeline_control: PipelineControlService,
+        surface_registry: SurfaceRegistry,
     ) -> None:
         self._artifact_io = artifact_io
+        self._expanders = expanders
         self._logger = logger
         self._pipeline_control = pipeline_control
+        self._surface_registry = surface_registry
+
+    def _reopen_recurring_surfaces(
+        self,
+        registry: dict,
+        duplicate_ids: list[str],
+        section_number: str,
+        planspace: Path,
+        codespace: Path,
+    ) -> None:
+        recurrences = find_discarded_recurrences(registry, duplicate_ids)
+        if not recurrences:
+            return
+        reopened = self._expanders.adjudicate_recurrence(
+            section_number, planspace, codespace, recurrences,
+        )
+        if reopened:
+            for surface_id in reopened:
+                for entry in registry.get("surfaces", []):
+                    if entry["id"] == surface_id:
+                        entry["status"] = SurfaceStatus.PENDING
+
+    def _apply_problem_expansion(
+        self,
+        delta: dict,
+        section_number: str,
+        planspace: Path,
+        codespace: Path,
+        pending_surfaces_path: Path,
+        remaining_axis_budget: int,
+    ) -> None:
+        problem_delta = self._expanders.run_problem_expander(
+            section_number, planspace, codespace,
+            pending_surfaces_path=pending_surfaces_path,
+            remaining_axis_budget=remaining_axis_budget,
+        )
+        if not problem_delta:
+            return
+        proposed_axes = problem_delta.get("new_axes", [])
+        if len(proposed_axes) > remaining_axis_budget:
+            self._logger.log(
+                f"Section {section_number}: expander proposed "
+                f"{len(proposed_axes)} new axes (budget advisory: "
+                f"{remaining_axis_budget}) — accepting all"
+            )
+        delta["applied"]["problem_definition_updated"] = (
+            problem_delta.get("applied", {})
+            .get("problem_definition_updated", False)
+        )
+        delta["applied"]["problem_rubric_updated"] = (
+            problem_delta.get("applied", {})
+            .get("problem_rubric_updated", False)
+        )
+        delta["applied_surface_ids"].extend(
+            problem_delta.get("applied_surface_ids", []),
+        )
+        delta["discarded_surface_ids"].extend(
+            problem_delta.get("discarded_surface_ids", []),
+        )
+        delta["new_axes"].extend(proposed_axes)
+        if problem_delta.get("restart_required"):
+            delta["restart_required"] = True
+            delta["restart_reason"] = problem_delta.get(
+                "restart_reason", "Problem definition expanded",
+            )
+
+    def _apply_philosophy_expansion(
+        self,
+        delta: dict,
+        paths: PathRegistry,
+        section_number: str,
+        codespace: Path,
+        pending_surfaces_path: Path,
+    ) -> None:
+        philosophy_delta = self._expanders.run_philosophy_expander(
+            section_number, paths.planspace, codespace,
+            pending_surfaces_path=pending_surfaces_path,
+        )
+        if not philosophy_delta:
+            return
+        delta["applied"]["philosophy_updated"] = (
+            philosophy_delta.get("applied", {})
+            .get("philosophy_updated", False)
+        )
+        delta["applied_surface_ids"].extend(
+            philosophy_delta.get("applied_surface_ids", []),
+        )
+        delta["discarded_surface_ids"].extend(
+            philosophy_delta.get("discarded_surface_ids", []),
+        )
+        if philosophy_delta.get("needs_user_input"):
+            delta["needs_user_input"] = True
+            delta["user_input_kind"] = "philosophy"
+            delta["user_input_path"] = str(paths.philosophy_decisions())
+            delta["restart_required"] = True
 
     def _finalize_expansion(
         self,
@@ -181,7 +190,9 @@ class ExpansionOrchestrator:
         mark_surfaces_applied(registry, delta["applied_surface_ids"])
         mark_surfaces_discarded(registry, delta["discarded_surface_ids"])
         registry["axes_added_so_far"] = axes_added + len(delta["new_axes"])
-        save_surface_registry(section_number, paths.planspace, registry)
+        self._surface_registry.save_surface_registry(
+            section_number, paths.planspace, registry,
+        )
 
         delta_path = paths.intent_delta_signal(section_number)
         self._artifact_io.write_json(delta_path, delta)
@@ -217,19 +228,25 @@ class ExpansionOrchestrator:
             "surfaces_found": 0,
         }
 
-        surfaces = load_combined_intent_surfaces(section_number, planspace)
+        surfaces = self._surface_registry.load_combined_intent_surfaces(
+            section_number, planspace,
+        )
         if not surfaces:
             return no_work
 
-        registry = load_surface_registry(section_number, planspace)
-        surfaces = normalize_surface_ids(surfaces, registry, section_number)
+        registry = self._surface_registry.load_surface_registry(
+            section_number, planspace,
+        )
+        surfaces = self._surface_registry.normalize_surface_ids(
+            surfaces, registry, section_number,
+        )
         new_surfaces, duplicate_ids = merge_surfaces_into_registry(registry, surfaces)
 
         surfaces_path = paths.intent_surfaces_signal(section_number)
         self._artifact_io.write_json(surfaces_path, surfaces)
 
         if not new_surfaces:
-            _reopen_recurring_surfaces(
+            self._reopen_recurring_surfaces(
                 registry, duplicate_ids, section_number, planspace, codespace,
             )
 
@@ -238,7 +255,9 @@ class ExpansionOrchestrator:
             if surface.get("status") == SurfaceStatus.PENDING
         ]
         if not worklist:
-            save_surface_registry(section_number, planspace, registry)
+            self._surface_registry.save_surface_registry(
+                section_number, planspace, registry,
+            )
             return no_work
 
         max_surfaces = budget_config.get("max_new_surfaces_per_cycle", _MAX_SURFACES_PER_CYCLE_DEFAULT)
@@ -273,14 +292,13 @@ class ExpansionOrchestrator:
         }
 
         if budgeted_surfaces["problem_surfaces"]:
-            _apply_problem_expansion(
+            self._apply_problem_expansion(
                 delta, section_number, planspace, codespace,
                 pending_surfaces_path, remaining_axis_budget,
-                self._logger,
             )
 
         if budgeted_surfaces["philosophy_surfaces"]:
-            _apply_philosophy_expansion(
+            self._apply_philosophy_expansion(
                 delta, paths, section_number, codespace,
                 pending_surfaces_path,
             )
@@ -350,41 +368,3 @@ class ExpansionOrchestrator:
             planspace,
             f"pause:{PauseType.NEED_DECISION}:{section_number}:{message['pause_summary']}",
         )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_expansion_orchestrator() -> ExpansionOrchestrator:
-    from containers import Services
-    return ExpansionOrchestrator(
-        artifact_io=Services.artifact_io(),
-        logger=Services.logger(),
-        pipeline_control=Services.pipeline_control(),
-    )
-
-
-def run_expansion_cycle(
-    section_number: str,
-    planspace: Path,
-    codespace: Path,
-    *,
-    budgets: dict | None = None,
-) -> dict:
-    """Run one expansion cycle: validate surfaces and expand definitions."""
-    return _get_expansion_orchestrator().run_expansion_cycle(
-        section_number, planspace, codespace,
-        budgets=budgets,
-    )
-
-
-def handle_user_gate(
-    section_number: str,
-    planspace: Path,
-    delta_result: dict,
-) -> str | None:
-    """Handle user gate pause if expansion needs a decision."""
-    return _get_expansion_orchestrator().handle_user_gate(
-        section_number, planspace, delta_result,
-    )

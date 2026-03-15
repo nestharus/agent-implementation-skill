@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
-from src.scan.related.section_iterator import scan_sections
+from containers import Services
+from src.scan.related.section_iterator import SectionIterator
 from src.scan.codemap.cache import FileCardCache
 from src.scan.scan_context import ScanContext
 
@@ -36,12 +38,17 @@ def test_scan_sections_returns_failure_when_tier_ranking_unavailable(
         "src.scan.related.section_iterator.deep_scan_related_files",
         lambda _section_file: ["src/main.py"],
     )
-    monkeypatch.setattr(
-        "src.scan.related.section_iterator.run_tier_ranking",
-        lambda *_args, **_kwargs: None,
+
+    # Tier ranker returns None (failure)
+    mock_tier_ranker = MagicMock()
+    mock_tier_ranker.run_tier_ranking = MagicMock(return_value=None)
+
+    iterator = SectionIterator(
+        artifact_io=Services.artifact_io(),
+        tier_ranker=mock_tier_ranker,
     )
 
-    failed = scan_sections(
+    failed = iterator.scan_sections(
         [section_file],
         _ctx(tmp_path),
         tmp_path / "artifacts",
@@ -68,18 +75,22 @@ def test_scan_sections_skips_already_scanned_files(
         "src.scan.related.section_iterator.deep_scan_related_files",
         lambda _section_file: ["src/main.py"],
     )
-    monkeypatch.setattr(
-        "src.scan.related.section_iterator.run_tier_ranking",
-        lambda *_args, **_kwargs: tier_file,
-    )
-    monkeypatch.setattr(
-        "src.scan.related.section_iterator.analyze_file",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("analyze_file should not run for already-scanned files"),
-        ),
+
+    mock_tier_ranker = MagicMock()
+    mock_tier_ranker.run_tier_ranking = MagicMock(return_value=tier_file)
+
+    mock_analyzer = MagicMock()
+    mock_analyzer.analyze_file = MagicMock(
+        side_effect=AssertionError("analyze_file should not run for already-scanned files"),
     )
 
-    failed = scan_sections(
+    iterator = SectionIterator(
+        artifact_io=Services.artifact_io(),
+        analyzer=mock_analyzer,
+        tier_ranker=mock_tier_ranker,
+    )
+
+    failed = iterator.scan_sections(
         [section_file],
         _ctx(tmp_path),
         tmp_path / "artifacts",
@@ -105,16 +116,22 @@ def test_scan_sections_analyzes_new_files_and_updates_state(
         "src.scan.related.section_iterator.deep_scan_related_files",
         lambda _section_file: ["src/main.py"],
     )
-    monkeypatch.setattr(
-        "src.scan.related.section_iterator.run_tier_ranking",
-        lambda *_args, **_kwargs: tier_file,
-    )
-    monkeypatch.setattr(
-        "src.scan.related.section_iterator.analyze_file",
-        lambda _section_file, _section_name, source_file, *_args, **_kwargs: calls.append(source_file) or True,
+
+    mock_tier_ranker = MagicMock()
+    mock_tier_ranker.run_tier_ranking = MagicMock(return_value=tier_file)
+
+    mock_analyzer = MagicMock()
+    mock_analyzer.analyze_file = MagicMock(
+        side_effect=lambda _sf, _sn, source_file, *_a, **_kw: calls.append(source_file) or True,
     )
 
-    failed = scan_sections(
+    iterator = SectionIterator(
+        artifact_io=Services.artifact_io(),
+        analyzer=mock_analyzer,
+        tier_ranker=mock_tier_ranker,
+    )
+
+    failed = iterator.scan_sections(
         [section_file],
         _ctx(tmp_path),
         tmp_path / "artifacts",

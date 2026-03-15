@@ -19,31 +19,21 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
-from scan.substrate.substrate_dispatcher import dispatch_substrate_agent as _dispatch_agent
 from scan.related.related_file_resolver import list_section_files as _list_section_files
 from scan.substrate.substrate_state_reader import (
+    SubstrateStateReader,
     count_existing_related as _count_existing_related,
-    read_project_mode as _read_project_mode,
     section_number as _section_number,
-    write_status as _write_status,
 )
-from scan.substrate.policy import (
-    read_substrate_model_policy as _read_model_policy,
-    read_trigger_signals as _read_trigger_signals,
-    read_trigger_threshold as _read_trigger_threshold,
-)
-
-from scan.substrate.prompt_builder import (
-    write_pruner_prompt,
-    write_seeder_prompt,
-    write_shard_prompt,
-)
-from scan.substrate.related_files import apply_related_files_updates
-from scan.substrate.schemas import read_seed_plan_failclosed, read_shard_failclosed
+from scan.substrate.policy import Policy
+from scan.substrate.prompt_builder import PromptBuilder
+from scan.substrate.related_files import RelatedFiles
+from scan.substrate.schemas import Schemas
+from scan.substrate.substrate_dispatcher import SubstrateDispatcher
 from signals.types import BLOCKING_NEEDS_PARENT
 
 if TYPE_CHECKING:
-    from containers import ArtifactIOService, TaskRouterService
+    from containers import ArtifactIOService, PromptGuard, TaskRouterService
 
 
 @dataclass(frozen=True)
@@ -66,145 +56,6 @@ class TargetingResult:
     trigger_threshold: int = 2
 
 
-# ---- Pure helpers (no Services usage) ----
-
-
-def _check_prerequisites(
-    artifacts_dir: Path,
-    sections_dir: Path,
-) -> PrerequisiteResult | None:
-    """Steps 1-2: read project mode and load section specs.
-
-    Returns a ``PrerequisiteResult`` on success,
-    or ``None`` after writing a NEEDS_PARENT status on failure.
-    """
-    # ---- Step 1: Read project mode ----
-    project_mode = _read_project_mode(artifacts_dir)
-    if project_mode is None:
-        print("[SUBSTRATE] No project-mode signal found -- writing NEEDS_PARENT")
-        _write_status(
-            artifacts_dir,
-            state=BLOCKING_NEEDS_PARENT,
-            project_mode="unknown",
-            total_sections=0,
-            vacuum_sections=[],
-            notes="No project-mode signal from scan stage",
-        )
-        return None
-
-    # ---- Step 2: Load section specs ----
-    if not sections_dir.is_dir():
-        print(f"[SUBSTRATE] Sections directory not found: {sections_dir}")
-        _write_status(
-            artifacts_dir,
-            state=BLOCKING_NEEDS_PARENT,
-            project_mode=project_mode,
-            total_sections=0,
-            vacuum_sections=[],
-            notes=f"Sections directory not found: {sections_dir}",
-        )
-        return None
-
-    section_files = _list_section_files(sections_dir)
-    total_sections = len(section_files)
-    if total_sections == 0:
-        print("[SUBSTRATE] No section files found")
-        _write_status(
-            artifacts_dir,
-            state=BLOCKING_NEEDS_PARENT,
-            project_mode=project_mode,
-            total_sections=0,
-            vacuum_sections=[],
-            notes="No section files found",
-        )
-        return None
-
-    return PrerequisiteResult(
-        project_mode=project_mode,
-        section_files=section_files,
-        total_sections=total_sections,
-    )
-
-
-def _find_target_sections(
-    section_files: list[Path],
-    artifacts_dir: Path,
-    codespace: Path,
-    project_mode: str,
-    total_sections: int,
-) -> TargetingResult | None:
-    """Steps 3-4: determine vacuum sections, read trigger signals, evaluate trigger rule.
-
-    Returns a ``TargetingResult`` on success, or ``None`` if
-    the trigger rule says to skip (after writing status and printing).
-    """
-    # ---- Step 3: Determine vacuum sections ----
-    vacuum_sections: list[str] = []
-    for sf in section_files:
-        num = _section_number(sf)
-        existing = _count_existing_related(sf, codespace)
-        if existing == 0:
-            vacuum_sections.append(num)
-
-    # V6/R68: Collect signal-driven trigger requests. Sections can
-    # request SIS via a trigger signal even when they have related
-    # files (e.g. friction signals from failed integration attempts).
-    signal_triggered: list[str] = _read_trigger_signals(artifacts_dir)
-
-    # ---- Step 4: Apply trigger rule ----
-    trigger_threshold = _read_trigger_threshold(artifacts_dir)
-
-    # Structural evidence drives SIS: vacuum sections + signal triggers.
-    # project_mode is telemetry only — not a routing key.
-    combined = list(dict.fromkeys(vacuum_sections + signal_triggered))
-    if len(vacuum_sections) >= trigger_threshold or signal_triggered:
-        target_sections = combined
-        target_paths = {
-            _section_number(sf): sf
-            for sf in section_files
-            if _section_number(sf) in combined
-        }
-        parts = []
-        if vacuum_sections:
-            parts.append(f"{len(vacuum_sections)} vacuum section(s)")
-        if signal_triggered:
-            parts.append(
-                f"{len(signal_triggered)} signal-triggered section(s)"
-            )
-        trigger_reason = (
-            f"{' + '.join(parts)} "
-            f"(threshold={trigger_threshold}) -- "
-            f"running for {len(target_sections)} sections"
-        )
-        return TargetingResult(
-            target_sections=target_sections,
-            target_paths=target_paths,
-            trigger_reason=trigger_reason,
-            vacuum_sections=vacuum_sections,
-            trigger_threshold=trigger_threshold,
-        )
-
-    # Not enough vacuum sections and no signals -- skip
-    print(
-        f"[SUBSTRATE] SKIPPED: {project_mode} project with "
-        f"{len(vacuum_sections)} vacuum section(s) "
-        f"(threshold={trigger_threshold})"
-    )
-    _write_status(
-        artifacts_dir,
-        state="SKIPPED",
-        project_mode=project_mode,
-        total_sections=total_sections,
-        vacuum_sections=vacuum_sections,
-        notes=(
-            f"{project_mode} project with {len(vacuum_sections)} "
-            f"vacuum section(s) -- below threshold of "
-            f"{trigger_threshold}"
-        ),
-        threshold=trigger_threshold,
-    )
-    return None
-
 
 class SubstrateDiscoverer:
     """Stage 3.5 Shared Integration Substrate (SIS) runner.
@@ -216,9 +67,138 @@ class SubstrateDiscoverer:
         self,
         artifact_io: ArtifactIOService,
         task_router: TaskRouterService,
+        prompt_guard: PromptGuard | None = None,
     ) -> None:
         self._artifact_io = artifact_io
         self._task_router = task_router
+        self._state_reader = SubstrateStateReader(artifact_io=artifact_io)
+        self._policy = Policy(artifact_io=artifact_io)
+        self._schemas = Schemas(artifact_io=artifact_io)
+        self._related_files = RelatedFiles(artifact_io=artifact_io)
+        self._dispatcher = SubstrateDispatcher(task_router=task_router)
+        if prompt_guard is not None:
+            self._prompt_builder = PromptBuilder(prompt_guard=prompt_guard)
+        else:
+            from containers import Services
+            self._prompt_builder = PromptBuilder(prompt_guard=Services.prompt_guard())
+
+    def _check_prerequisites(
+        self,
+        artifacts_dir: Path,
+        sections_dir: Path,
+    ) -> PrerequisiteResult | None:
+        """Steps 1-2: read project mode and load section specs."""
+        project_mode = self._state_reader.read_project_mode(artifacts_dir)
+        if project_mode is None:
+            print("[SUBSTRATE] No project-mode signal found -- writing NEEDS_PARENT")
+            self._state_reader.write_status(
+                artifacts_dir,
+                state=BLOCKING_NEEDS_PARENT,
+                project_mode="unknown",
+                total_sections=0,
+                vacuum_sections=[],
+                notes="No project-mode signal from scan stage",
+            )
+            return None
+
+        if not sections_dir.is_dir():
+            print(f"[SUBSTRATE] Sections directory not found: {sections_dir}")
+            self._state_reader.write_status(
+                artifacts_dir,
+                state=BLOCKING_NEEDS_PARENT,
+                project_mode=project_mode,
+                total_sections=0,
+                vacuum_sections=[],
+                notes=f"Sections directory not found: {sections_dir}",
+            )
+            return None
+
+        section_files = _list_section_files(sections_dir)
+        total_sections = len(section_files)
+        if total_sections == 0:
+            print("[SUBSTRATE] No section files found")
+            self._state_reader.write_status(
+                artifacts_dir,
+                state=BLOCKING_NEEDS_PARENT,
+                project_mode=project_mode,
+                total_sections=0,
+                vacuum_sections=[],
+                notes="No section files found",
+            )
+            return None
+
+        return PrerequisiteResult(
+            project_mode=project_mode,
+            section_files=section_files,
+            total_sections=total_sections,
+        )
+
+    def _find_target_sections(
+        self,
+        section_files: list[Path],
+        artifacts_dir: Path,
+        codespace: Path,
+        project_mode: str,
+        total_sections: int,
+    ) -> TargetingResult | None:
+        """Steps 3-4: determine vacuum sections, read trigger signals, evaluate trigger rule."""
+        vacuum_sections: list[str] = []
+        for sf in section_files:
+            num = _section_number(sf)
+            existing = _count_existing_related(sf, codespace)
+            if existing == 0:
+                vacuum_sections.append(num)
+
+        signal_triggered: list[str] = self._policy.read_trigger_signals(artifacts_dir)
+        trigger_threshold = self._policy.read_trigger_threshold(artifacts_dir)
+
+        combined = list(dict.fromkeys(vacuum_sections + signal_triggered))
+        if len(vacuum_sections) >= trigger_threshold or signal_triggered:
+            target_sections = combined
+            target_paths = {
+                _section_number(sf): sf
+                for sf in section_files
+                if _section_number(sf) in combined
+            }
+            parts = []
+            if vacuum_sections:
+                parts.append(f"{len(vacuum_sections)} vacuum section(s)")
+            if signal_triggered:
+                parts.append(
+                    f"{len(signal_triggered)} signal-triggered section(s)"
+                )
+            trigger_reason = (
+                f"{' + '.join(parts)} "
+                f"(threshold={trigger_threshold}) -- "
+                f"running for {len(target_sections)} sections"
+            )
+            return TargetingResult(
+                target_sections=target_sections,
+                target_paths=target_paths,
+                trigger_reason=trigger_reason,
+                vacuum_sections=vacuum_sections,
+                trigger_threshold=trigger_threshold,
+            )
+
+        print(
+            f"[SUBSTRATE] SKIPPED: {project_mode} project with "
+            f"{len(vacuum_sections)} vacuum section(s) "
+            f"(threshold={trigger_threshold})"
+        )
+        self._state_reader.write_status(
+            artifacts_dir,
+            state="SKIPPED",
+            project_mode=project_mode,
+            total_sections=total_sections,
+            vacuum_sections=vacuum_sections,
+            notes=(
+                f"{project_mode} project with {len(vacuum_sections)} "
+                f"vacuum section(s) -- below threshold of "
+                f"{trigger_threshold}"
+            ),
+            threshold=trigger_threshold,
+        )
+        return None
 
     def _run_shard_exploration(
         self,
@@ -243,12 +223,12 @@ class SubstrateDiscoverer:
             section_path = target_paths[section_num]
             print(f"[SUBSTRATE]   Shard explorer: section-{section_num}")
 
-            prompt_path = write_shard_prompt(
+            prompt_path = self._prompt_builder.write_shard_prompt(
                 section_num, section_path, registry.planspace, codespace,
             )
             output_path = logs_dir / f"shard-{section_num}-output.txt"
 
-            ok = _dispatch_agent(
+            ok = self._dispatcher.dispatch_substrate_agent(
                 model=model_policy["substrate_shard"],
                 prompt_path=prompt_path,
                 output_path=output_path,
@@ -258,7 +238,7 @@ class SubstrateDiscoverer:
 
             # Validate the shard was produced and is well-formed
             shard_path = shards_dir / f"shard-{section_num}.json"
-            shard = read_shard_failclosed(shard_path)
+            shard = self._schemas.read_shard_failclosed(shard_path)
             if not ok or shard is None:
                 shard_failures.append(section_num)
                 print(
@@ -302,17 +282,17 @@ class SubstrateDiscoverer:
             threshold=trigger_threshold,
         )
 
-        seed_plan = read_seed_plan_failclosed(seed_plan_path)
+        seed_plan = self._schemas.read_seed_plan_failclosed(seed_plan_path)
         if not pruner_ok or seed_plan is None:
             print("[SUBSTRATE] Pruner failed -- aborting")
-            _write_status(artifacts_dir, state="RAN",
+            self._state_reader.write_status(artifacts_dir, state="RAN",
                           notes="Pruner failed -- no seed plan produced",
                           **status_kwargs)
             return None
 
         if not substrate_md_path.is_file():
             print("[SUBSTRATE] Pruner did not write substrate.md -- aborting")
-            _write_status(artifacts_dir, state="RAN",
+            self._state_reader.write_status(artifacts_dir, state="RAN",
                           notes="Pruner completed but substrate.md missing",
                           **status_kwargs)
             return None
@@ -324,7 +304,7 @@ class SubstrateDiscoverer:
                 if status_val == BLOCKING_NEEDS_PARENT:
                     reason = prune_signal.get("reason", "no reason given")
                     print(f"[SUBSTRATE] Pruner signalled NEEDS_PARENT: {reason}")
-                    _write_status(artifacts_dir, state=BLOCKING_NEEDS_PARENT,
+                    self._state_reader.write_status(artifacts_dir, state=BLOCKING_NEEDS_PARENT,
                                   notes=f"Pruner deferred: {reason}",
                                   **status_kwargs)
                     return None
@@ -356,12 +336,12 @@ class SubstrateDiscoverer:
         artifacts_dir = registry.artifacts
         print("[SUBSTRATE] Phase B: Pruner (strategic merge)")
         logs_dir = registry.substrate_dir() / "logs"
-        pruner_prompt = write_pruner_prompt(
+        pruner_prompt = self._prompt_builder.write_pruner_prompt(
             planspace, codespace, valid_shards,
         )
         pruner_output = logs_dir / "pruner-output.txt"
 
-        pruner_ok = _dispatch_agent(
+        pruner_ok = self._dispatcher.dispatch_substrate_agent(
             model=model_policy["substrate_pruner"],
             prompt_path=pruner_prompt,
             output_path=pruner_output,
@@ -390,10 +370,10 @@ class SubstrateDiscoverer:
         # ---- Phase C: Seeding ----
         print("[SUBSTRATE] Phase C: Seeder (anchor creation + wiring)")
         logs_dir = registry.substrate_dir() / "logs"
-        seeder_prompt = write_seeder_prompt(planspace, codespace)
+        seeder_prompt = self._prompt_builder.write_seeder_prompt(planspace, codespace)
         seeder_output = logs_dir / "seeder-output.txt"
 
-        seeder_ok = _dispatch_agent(
+        seeder_ok = self._dispatcher.dispatch_substrate_agent(
             model=model_policy["substrate_seeder"],
             prompt_path=seeder_prompt,
             output_path=seeder_output,
@@ -436,7 +416,7 @@ class SubstrateDiscoverer:
 
         # ---- Apply related-files updates ----
         print("[SUBSTRATE] Applying related-files updates")
-        updated_count = apply_related_files_updates(planspace)
+        updated_count = self._related_files.apply_related_files_updates(planspace)
         print(f"[SUBSTRATE] Updated {updated_count} section spec(s)")
 
         return updated_count
@@ -470,12 +450,12 @@ class SubstrateDiscoverer:
         sections_dir = registry.sections_dir()
 
         # Steps 1-2: Read project mode and load section specs
-        prereqs = _check_prerequisites(artifacts_dir, sections_dir)
+        prereqs = self._check_prerequisites(artifacts_dir, sections_dir)
         if prereqs is None:
             return False
 
         # Steps 3-4: Determine targets and evaluate trigger rule
-        targeting = _find_target_sections(
+        targeting = self._find_target_sections(
             prereqs.section_files, artifacts_dir, codespace,
             prereqs.project_mode, prereqs.total_sections,
         )
@@ -485,7 +465,7 @@ class SubstrateDiscoverer:
         print(f"[SUBSTRATE] Triggered: {targeting.trigger_reason}")
 
         # Read model policy
-        model_policy = _read_model_policy(artifacts_dir)
+        model_policy = self._policy.read_substrate_model_policy(artifacts_dir)
 
         # Phase A: Shard exploration
         valid_shards = self._run_shard_exploration(
@@ -494,7 +474,7 @@ class SubstrateDiscoverer:
         )
         if not valid_shards:
             print("[SUBSTRATE] All shards failed -- aborting")
-            _write_status(
+            self._state_reader.write_status(
                 artifacts_dir,
                 state="RAN",
                 project_mode=prereqs.project_mode,
@@ -522,7 +502,7 @@ class SubstrateDiscoverer:
         )
 
         # Write final status
-        _write_status(
+        self._state_reader.write_status(
             artifacts_dir,
             state="RAN",
             project_mode=prereqs.project_mode,
@@ -540,9 +520,7 @@ class SubstrateDiscoverer:
         return True
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ------------------------------------------------------------------
+# ---- CLI ----
 
 
 def _default_discoverer() -> SubstrateDiscoverer:
@@ -550,6 +528,7 @@ def _default_discoverer() -> SubstrateDiscoverer:
     return SubstrateDiscoverer(
         artifact_io=Services.artifact_io(),
         task_router=Services.task_router(),
+        prompt_guard=Services.prompt_guard(),
     )
 
 
@@ -557,8 +536,6 @@ def run_substrate_discovery(planspace: Path, codespace: Path) -> bool:
     """Run the Stage 3.5 Shared Integration Substrate discovery."""
     return _default_discoverer().run_substrate_discovery(planspace, codespace)
 
-
-# ---- CLI ----
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point.  Returns 0 on success, 1 on failure.

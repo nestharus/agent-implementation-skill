@@ -181,17 +181,3 @@ def resolve(policy: Mapping[str, Any], key: str) -> str:
     if val is not None:
         return cast(str, val)
     return cast(str, getattr(_DEFAULTS, key))
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_loader() -> ModelPolicyLoader:
-    from containers import Services
-    return ModelPolicyLoader(artifact_io=Services.artifact_io())
-
-
-def load_model_policy(planspace: Path) -> ModelPolicy:
-    """Read ``artifacts/model-policy.json`` with current defaults."""
-    return _get_loader().load_model_policy(planspace)

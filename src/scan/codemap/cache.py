@@ -65,7 +65,7 @@ class FileCardCache:
     def content_hash(
         self,
         section_file: Path,
-        source_file: Path | None = None,
+        source_file: Path,
         *extra_files: Path,
     ) -> str:
         """Compute sha256 over concatenated file contents.
@@ -79,16 +79,7 @@ class FileCardCache:
         The section file (first arg) is normalized to exclude
         scan-generated summary blocks, preventing scan output from
         invalidating its own cache.
-
-        Also callable as ``FileCardCache.content_hash(section, source)``
-        for backward compatibility (uses service locator fallback).
         """
-        # Backward compat: called as FileCardCache.content_hash(path, path, ...)
-        # In that case, ``self`` is actually the first Path arg.
-        if isinstance(self, Path):
-            extra = (source_file, *extra_files) if source_file is not None else extra_files
-            return _static_content_hash(self, section_file, *extra)
-        assert source_file is not None, "source_file is required"
         parts: list[bytes] = []
         # Normalize section file: strip scan summaries so derived
         # annotations don't poison the cache key.
@@ -136,64 +127,30 @@ class FileCardCache:
         dst = self.cards_dir / f"{key}.md"
         shutil.copy2(response_file, dst)
         if feedback_file is not None and feedback_file.is_file():
-            if is_valid_cached_feedback(feedback_file, artifact_io=self._artifact_io):
+            if self.is_valid_cached_feedback(feedback_file):
                 fb_dst = self.cards_dir / f"{key}-feedback.json"
                 shutil.copy2(feedback_file, fb_dst)
 
+    def is_valid_cached_feedback(self, feedback_path: Path) -> bool:
+        """Check whether a cached feedback file is schema-valid.
 
-def _static_content_hash(
-    section_file: Path,
-    source_file: Path,
-    *extra_files: Path,
-) -> str:
-    """Backward-compat static variant of ``FileCardCache.content_hash``.
-
-    Used when callers invoke ``FileCardCache.content_hash(path, path)``
-    without an instance.
-    """
-    from containers import Services
-    hasher = Services.hasher()
-    parts: list[bytes] = []
-    try:
-        section_text = section_file.read_text()
-        parts.append(strip_scan_summaries(section_text).encode())
-    except OSError:
-        pass
-    for p in (source_file, *extra_files):
-        try:
-            parts.append(p.read_bytes())
-        except OSError:
-            pass
-    return hasher.content_hash(b"".join(parts))
-
-
-def is_valid_cached_feedback(
-    feedback_path: Path,
-    *,
-    artifact_io: ArtifactIOService | None = None,
-) -> bool:
-    """Check whether a cached feedback file is schema-valid.
-
-    Required fields: ``relevant`` (bool), ``source_file`` (str).
-    Returns ``True`` if valid, ``False`` if missing, malformed, or
-    missing required fields.
-    """
-    if not feedback_path.is_file():
-        return False
-    if artifact_io is None:
-        from containers import Services
-        artifact_io = Services.artifact_io()
-    data = artifact_io.read_json(feedback_path)
-    if data is None:
-        print(
-            f"[CACHE][WARN] Malformed cached feedback: "
-            f"{feedback_path}",
-        )
-        return False
-    if not isinstance(data, dict):
-        return False
-    if not isinstance(data.get("relevant"), bool):
-        return False
-    if not isinstance(data.get("source_file"), str):
-        return False
-    return True
+        Required fields: ``relevant`` (bool), ``source_file`` (str).
+        Returns ``True`` if valid, ``False`` if missing, malformed, or
+        missing required fields.
+        """
+        if not feedback_path.is_file():
+            return False
+        data = self._artifact_io.read_json(feedback_path)
+        if data is None:
+            print(
+                f"[CACHE][WARN] Malformed cached feedback: "
+                f"{feedback_path}",
+            )
+            return False
+        if not isinstance(data, dict):
+            return False
+        if not isinstance(data.get("relevant"), bool):
+            return False
+        if not isinstance(data.get("source_file"), str):
+            return False
+        return True

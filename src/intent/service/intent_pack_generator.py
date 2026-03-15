@@ -7,10 +7,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from intent.service.philosophy_bootstrap_state import BootstrapResult
-from intent.service.philosophy_bootstrapper import (
-    ensure_global_philosophy as _ensure_global_philosophy,
-)
-from intent.service.philosophy_grounding import sha256_file as _sha256_file
 from intent.service.philosophy_catalog import (
     _DEFAULT_CATALOG_MAX_DEPTH,
     _DEFAULT_CATALOG_MAX_FILES,
@@ -76,10 +72,43 @@ def ensure_global_philosophy(
     planspace: Path,
     codespace: Path,
 ) -> BootstrapResult:
-    return _ensure_global_philosophy(
-        planspace,
-        codespace,
+    from containers import Services
+    from intent.service.philosophy_bootstrap_state import PhilosophyBootstrapState
+    from intent.service.philosophy_classifier import PhilosophyClassifier
+    from intent.service.philosophy_dispatcher import PhilosophyDispatcher
+    from intent.service.philosophy_grounding import PhilosophyGrounding
+    from intent.service.philosophy_bootstrapper import PhilosophyBootstrapper
+    artifact_io = Services.artifact_io()
+    bootstrap_state = PhilosophyBootstrapState(artifact_io=artifact_io)
+    classifier = PhilosophyClassifier(artifact_io=artifact_io)
+    logger = Services.logger()
+    hasher = Services.hasher()
+    dispatcher_svc = Services.dispatcher()
+    grounding = PhilosophyGrounding(
+        artifact_io=artifact_io,
+        bootstrap_state=bootstrap_state,
+        hasher=hasher,
+        logger=logger,
     )
+    philosophy_dispatcher = PhilosophyDispatcher(
+        dispatcher=dispatcher_svc,
+        logger=logger,
+    )
+    bootstrapper = PhilosophyBootstrapper(
+        artifact_io=artifact_io,
+        bootstrap_state=bootstrap_state,
+        classifier=classifier,
+        communicator=Services.communicator(),
+        dispatcher=dispatcher_svc,
+        grounding=grounding,
+        hasher=hasher,
+        logger=logger,
+        philosophy_dispatcher=philosophy_dispatcher,
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+    )
+    return bootstrapper.ensure_global_philosophy(planspace, codespace)
 
 
 @dataclass(frozen=True)
@@ -283,14 +312,14 @@ class IntentPackGenerator:
         """Compute a combined hash over all intent pack input files."""
         sec = section.number
         parts = [
-            _sha256_file(section.path),
-            _sha256_file(paths.proposal_excerpt(sec)),
-            _sha256_file(paths.alignment_excerpt(sec)),
-            _sha256_file(paths.problem_frame(sec)),
-            _sha256_file(paths.codemap()),
-            _sha256_file(paths.corrections()),
-            _sha256_file(paths.philosophy()),
-            _sha256_file(paths.todos(sec)),
+            self._hasher.file_hash(section.path),
+            self._hasher.file_hash(paths.proposal_excerpt(sec)),
+            self._hasher.file_hash(paths.alignment_excerpt(sec)),
+            self._hasher.file_hash(paths.problem_frame(sec)),
+            self._hasher.file_hash(paths.codemap()),
+            self._hasher.file_hash(paths.corrections()),
+            self._hasher.file_hash(paths.philosophy()),
+            self._hasher.file_hash(paths.todos(sec)),
             self._hasher.content_hash(incoming_notes),
         ]
         combined = ":".join(parts)
@@ -388,58 +417,3 @@ class IntentPackGenerator:
             self._logger.log(f"Section {sec}: intent pack generation incomplete")
 
         return intent_sec
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_intent_pack_generator() -> IntentPackGenerator:
-    from containers import Services
-    return IntentPackGenerator(
-        artifact_io=Services.artifact_io(),
-        communicator=Services.communicator(),
-        dispatcher=Services.dispatcher(),
-        hasher=Services.hasher(),
-        logger=Services.logger(),
-        policies=Services.policies(),
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-    )
-
-
-def _compute_intent_pack_hash(
-    paths: PathRegistry,
-    section: Section,
-    incoming_notes: str,
-) -> str:
-    """Compute a combined hash over all intent pack input files."""
-    return _get_intent_pack_generator()._compute_intent_pack_hash(
-        paths, section, incoming_notes,
-    )
-
-
-def _check_pack_freshness(
-    problem_path: Path,
-    rubric_path: Path,
-    input_hash: str,
-    hash_file: Path,
-    sec: str,
-) -> bool | None:
-    return _get_intent_pack_generator()._check_pack_freshness(
-        problem_path, rubric_path, input_hash, hash_file, sec,
-    )
-
-
-def generate_intent_pack(
-    section: Section,
-    planspace: Path,
-    codespace: Path,
-    *,
-    incoming_notes: str = "",
-) -> Path:
-    """Generate the per-section intent pack (problem.md + rubric)."""
-    return _get_intent_pack_generator().generate_intent_pack(
-        section, planspace, codespace,
-        incoming_notes=incoming_notes,
-    )

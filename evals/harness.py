@@ -31,8 +31,8 @@ from typing import Callable
 # ---------------------------------------------------------------------------
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from dispatch.service.model_policy import load_model_policy, resolve  # noqa: E402
-from dispatch.engine.section_dispatcher import dispatch_agent  # noqa: E402
+from dispatch.service.model_policy import ModelPolicyLoader, resolve  # noqa: E402
+from containers import Services  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +148,7 @@ def _run_scenario(scenario: Scenario) -> ScenarioResult:
         _bootstrap_planspace(planspace)
 
         # Write a default model policy so load_model_policy works
-        policy = load_model_policy(planspace)
+        policy = ModelPolicyLoader(artifact_io=Services.artifact_io()).load_model_policy(planspace)
         model = resolve(policy, scenario.model_policy_key)
 
         # Run scenario setup -- creates fixtures and returns prompt path
@@ -159,14 +159,13 @@ def _run_scenario(scenario: Scenario) -> ScenarioResult:
 
         t0 = time.monotonic()
         try:
-            agent_output = dispatch_agent(
+            agent_output = Services.dispatcher().dispatch(
                 model,
                 prompt_path,
                 output_path,
                 # Skip planspace/parent to avoid DB/mailbox requirements.
                 # The agent still runs; we just skip pipeline integration.
                 planspace=None,
-                parent=None,
                 codespace=codespace,
                 agent_file=scenario.agent_file,
             )

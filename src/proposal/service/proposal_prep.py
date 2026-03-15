@@ -11,10 +11,10 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from containers import DispatchHelperService, LogService, ModelPolicyService
+    from dispatch.prompt.writers import Writers as PromptWriters
+    from reconciliation.repository.results import Results
 
 from orchestrator.path_registry import PathRegistry
-from dispatch.prompt.writers import write_integration_proposal_prompt
-from reconciliation.repository.results import load_result as load_reconciliation_result
 
 
 class ProposalPrep:
@@ -23,10 +23,14 @@ class ProposalPrep:
         logger: LogService,
         policies: ModelPolicyService,
         dispatch_helpers: DispatchHelperService,
+        reconciliation_results: Results,
+        prompt_writers: PromptWriters,
     ) -> None:
         self._logger = logger
         self._policies = policies
         self._dispatch_helpers = dispatch_helpers
+        self._reconciliation_results = reconciliation_results
+        self._prompt_writers = prompt_writers
 
     def resolve_proposal_model(
         self,
@@ -81,7 +85,7 @@ class ProposalPrep:
 
         Returns the prompt path, or None if blocked by template safety.
         """
-        intg_prompt = write_integration_proposal_prompt(
+        intg_prompt = self._prompt_writers.write_integration_proposal_prompt(
             section,
             planspace,
             codespace,
@@ -96,7 +100,7 @@ class ProposalPrep:
             return None
 
         paths = PathRegistry(planspace)
-        recon_result = load_reconciliation_result(planspace, section.number)
+        recon_result = self._reconciliation_results.load_result(planspace, section.number)
         if recon_result and recon_result.get("affected"):
             recon_path = paths.reconciliation_result(section.number)
             with intg_prompt.open("a", encoding="utf-8") as handle:
@@ -121,39 +125,4 @@ def _compose_proposal_text(recon_path: Path) -> str:
         "proposal to account for shared anchors, resolved "
         "conflicts, and seam decisions:\n"
         f"`{recon_path}`\n"
-    )
-
-
-# Backward-compat wrappers
-
-def _get_proposal_prep() -> ProposalPrep:
-    from containers import Services
-    return ProposalPrep(
-        logger=Services.logger(),
-        policies=Services.policies(),
-        dispatch_helpers=Services.dispatch_helpers(),
-    )
-
-
-def resolve_proposal_model(
-    section_number: str,
-    planspace: Path,
-    proposal_attempt: int,
-) -> str:
-    """Select the proposal model, escalating if stall conditions are met."""
-    return _get_proposal_prep().resolve_proposal_model(
-        section_number, planspace, proposal_attempt,
-    )
-
-
-def build_proposal_prompt(
-    section,
-    planspace: Path,
-    codespace: Path,
-    proposal_problems: str | None,
-    incoming_notes: str | None,
-) -> Path | None:
-    """Write the proposal prompt and append reconciliation context if needed."""
-    return _get_proposal_prep().build_proposal_prompt(
-        section, planspace, codespace, proposal_problems, incoming_notes,
     )

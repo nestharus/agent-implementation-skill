@@ -1,10 +1,9 @@
 """Orchestrator system: pipeline control, path registry, core types.
 
 Public API (import from submodules):
-    section_decision_store: Decision, load_decisions, record_decision
+    repository.decisions: Decisions, Decision
     path_registry: PathRegistry
-    pipeline_control: handle_pending_messages, pause_for_parent,
-        poll_control_messages, wait_if_paused
-    strategic_state_builder: build_strategic_state
+    service.pipeline_control: PipelineControl
+    engine.strategic_state_builder: StrategicStateBuilder
     types: ProposalPassResult, Section, SectionResult
 """

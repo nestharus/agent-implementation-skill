@@ -16,10 +16,12 @@ from pathlib import Path
 from orchestrator.path_registry import PathRegistry
 from scan.related.related_file_resolver import list_section_files
 
-from scan.codemap.codemap_builder import run_codemap_build
+from containers import Services
+from scan.codemap.codemap_builder import CodemapBuilder
 from scan.explore.deep_scanner import run_deep_scan
+from scan.explore.section_explorer import SectionExplorer
+from scan.related.related_file_resolver import RelatedFileResolver
 from scan.scan_dispatcher import read_scan_model_policy
-from scan.explore.section_explorer import run_section_exploration
 
 
 def validate_preflight(
@@ -65,7 +67,16 @@ def run_quick_scan(
     """Run quick scan: codemap exploration + per-section file identification."""
     print("=== Quick Scan: codemap exploration + per-section file identification ===")
 
-    if not run_codemap_build(
+    prompt_guard = Services.prompt_guard()
+    task_router = Services.task_router()
+    artifact_io = Services.artifact_io()
+
+    codemap_builder = CodemapBuilder(
+        prompt_guard=prompt_guard,
+        task_router=task_router,
+        artifact_io=artifact_io,
+    )
+    if not codemap_builder.run_codemap_build(
         codemap_path=codemap_path,
         codespace=codespace,
         artifacts_dir=artifacts_dir,
@@ -75,7 +86,17 @@ def run_quick_scan(
     ):
         return False
 
-    run_section_exploration(
+    explorer = SectionExplorer(
+        prompt_guard=prompt_guard,
+        task_router=task_router,
+        related_file_resolver=RelatedFileResolver(
+            artifact_io=artifact_io,
+            hasher=Services.hasher(),
+            prompt_guard=prompt_guard,
+            task_router=task_router,
+        ),
+    )
+    explorer.run_section_exploration(
         sections_dir=sections_dir,
         codemap_path=codemap_path,
         codespace=codespace,

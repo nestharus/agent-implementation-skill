@@ -80,27 +80,3 @@ class AgentExecutor:
                 returncode=-1,
                 timed_out=True,
             )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_executor() -> AgentExecutor:
-    from containers import Services
-    return AgentExecutor(task_router=Services.task_router())
-
-
-def run_agent(
-    model: str,
-    prompt_path: Path,
-    *,
-    agent_file: str,
-    codespace: Path | None = None,
-    timeout: int = _DEFAULT_AGENT_TIMEOUT_SECONDS,
-) -> AgentResult:
-    """Run the ``agents`` binary and return the raw process result."""
-    return _get_executor().run_agent(
-        model, prompt_path,
-        agent_file=agent_file, codespace=codespace, timeout=timeout,
-    )

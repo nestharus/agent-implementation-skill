@@ -236,6 +236,29 @@ Functions that accept parameters which could be computed from other parameters a
 
 ## OPEN
 
+### ~~178. Remove backward-compat free-function wrappers — phase 1 (10 review-flagged files)~~ DONE
+- **Category**: Anti-pattern / DI coupling
+- **Source**: External code review
+- **Problem**: Module-level free functions at the bottom of service files instantiate the DI container (`_get_*()` → `Services.*()`) and immediately delegate to the class method. This defeats constructor injection.
+- **Resolution**: Removed wrappers from all 10 flagged files; migrated callers to constructor DI: `section_alignment_checker.py`, `reconciliation_phase.py`, `implementation_phase.py`, `proposal_phase.py`, `readiness_resolver.py`, `cache.py`, `related_file_resolver.py`, `alignment_collector.py`, `mailbox_service.py`, `signals/types.py`. Pipeline orchestrator phase wrappers (`run_proposal_pass`, `run_implementation_pass`, `run_reconciliation_phase`) kept as they serve as the pipeline orchestrator's entry points.
+
+### ~~179. Raw SQL in flow_submitter.py — move to GateRepository~~ DONE
+- **Category**: Repository pattern violation
+- **Source**: External code review
+- **Resolution**: Moved `_insert_gate_record` to `gate_repository.py` as `insert_gate_record`. Added `update_task_flow_paths` to `flow/types/routing.py`. Moved ID generators (`new_instance_id`, `new_flow_id`, `new_chain_id`, `new_gate_id`) from `flow_submitter.py` to `flow/types/context.py` to break circular imports. No raw SQL remains in `flow_submitter.py`.
+
+### 180. Remove backward-compat free-function wrappers — phase 2 (remaining 105 files)
+- **Category**: Anti-pattern / DI coupling
+- **Source**: Rescan after #178 revealed full scale — 105 files across all domain packages still have backward-compat wrappers
+- **Problem**: Same pattern as #178 — `_get_*()` factory + free-function wrappers defeat constructor injection
+- **Scale**: 105 files across 16 domain packages:
+  - `coordination/` (8 files), `dispatch/` (12 files), `flow/` (6 files), `implementation/` (10 files)
+  - `intake/` (3 files), `intent/` (11 files), `orchestrator/` (6 files), `pipeline/` (1 file)
+  - `proposal/` (8 files), `reconciliation/` (4 files), `research/` (4 files), `risk/` (3 files)
+  - `scan/` (14 files)
+- **Fix**: For each file: find all callers of the free functions → migrate callers to inject the class via constructor → delete the wrappers. Work by package to manage cascading import changes.
+- **Status**: OPEN
+
 ### ~~177. Rescan Cycle 28 — dead imports, dead constant, redundant mkdirs, magic strings~~ DONE
 - **Category**: Multi-category rescan and cleanup
 - **Source**: Full rescan (Cycle 28)

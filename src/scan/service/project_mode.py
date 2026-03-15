@@ -141,29 +141,3 @@ class ProjectModeResolver:
         )
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ------------------------------------------------------------------
-
-
-def _default_resolver() -> ProjectModeResolver:
-    from containers import Services
-    return ProjectModeResolver(
-        artifact_io=Services.artifact_io(),
-        logger=Services.logger(),
-        pipeline_control=Services.pipeline_control(),
-    )
-
-
-def resolve_project_mode(planspace: Path) -> tuple[str, list[str]]:
-    """Resolve the current project mode, pausing fail-closed when needed."""
-    return _default_resolver().resolve_project_mode(planspace)
-
-
-def write_mode_contract(
-    planspace: Path,
-    mode: str,
-    constraints: list[str],
-) -> None:
-    """Write the formalized project-mode contract artifact."""
-    _default_resolver().write_mode_contract(planspace, mode, constraints)

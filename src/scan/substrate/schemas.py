@@ -161,29 +161,3 @@ class Schemas:
         return self._read_failclosed(path, validate_seed_plan, "Seed-plan")
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ------------------------------------------------------------------
-
-
-def _default_schemas() -> Schemas:
-    from containers import Services
-    return Schemas(artifact_io=Services.artifact_io())
-
-
-def read_shard_failclosed(path: Path) -> dict | None:
-    """Read and validate shard JSON.
-
-    Renames malformed files to ``.malformed.json``.
-    Returns ``None`` on failure.
-    """
-    return _default_schemas().read_shard_failclosed(path)
-
-
-def read_seed_plan_failclosed(path: Path) -> dict | None:
-    """Read and validate seed-plan JSON.
-
-    Renames malformed files to ``.malformed.json``.
-    Returns ``None`` on failure.
-    """
-    return _default_schemas().read_seed_plan_failclosed(path)

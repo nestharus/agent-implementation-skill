@@ -102,34 +102,6 @@ Be conservative. When uncertain, prefer `accept_with_debt` over silent acceptanc
 """
 
 
-def record_assessment_governance(
-    section_number: str,
-    planspace: Path,
-    assessment: dict,
-) -> None:
-    """Record governance IDs from an assessment into the trace index."""
-    problem_ids = assessment.get("problem_ids_addressed")
-    if not isinstance(problem_ids, list):
-        problem_ids = []
-
-    pattern_ids = assessment.get("pattern_ids_followed")
-    if not isinstance(pattern_ids, list):
-        pattern_ids = []
-
-    profile_id = assessment.get("profile_id")
-    if not isinstance(profile_id, str):
-        profile_id = ""
-
-    from implementation.service.traceability_writer import update_trace_governance
-    update_trace_governance(
-        planspace,
-        section_number,
-        problem_ids=[str(item) for item in problem_ids if str(item).strip()],
-        pattern_ids=[str(item) for item in pattern_ids if str(item).strip()],
-        profile_id=profile_id,
-    )
-
-
 def _debt_key(entry: dict) -> str:
     """Compute a stable key from the material payload of a debt entry.
 
@@ -330,32 +302,3 @@ class AssessmentEvaluator:
         self._artifact_io.write_json(receipts_path, receipt_list)
 
         return new_entries
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers — used by tests and callers until they are
-# converted to receive AssessmentEvaluator via constructor injection.
-# ---------------------------------------------------------------------------
-
-def _get_evaluator() -> AssessmentEvaluator:
-    from containers import Services
-    return AssessmentEvaluator(
-        artifact_io=Services.artifact_io(),
-        prompt_guard=Services.prompt_guard(),
-    )
-
-
-def write_post_impl_assessment_prompt(
-    section_number: str, planspace: Path,
-) -> Path | None:
-    return _get_evaluator().write_post_impl_assessment_prompt(section_number, planspace)
-
-
-def read_post_impl_assessment(
-    section_number: str, planspace: Path,
-) -> dict | None:
-    return _get_evaluator().read_post_impl_assessment(section_number, planspace)
-
-
-def promote_debt_signals(planspace: Path) -> list[dict]:
-    return _get_evaluator().promote_debt_signals(planspace)

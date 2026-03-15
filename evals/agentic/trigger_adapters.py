@@ -25,12 +25,26 @@ def readiness_route(planspace: Path, codespace: Path, project_root: Path, **kwar
 
     script = (
         "from types import SimpleNamespace; "
-        "from proposal.engine.readiness_gate import resolve_and_route; "
+        "from proposal.engine.readiness_gate import ReadinessGate; "
+        "from reconciliation.repository.queue import Queue; "
+        "from research.prompt.writers import ResearchPromptWriter; "
+        "from containers import Services; "
         "from pathlib import Path; "
-        f"resolve_and_route("
+        "gate = ReadinessGate("
+        "logger=Services.logger(), "
+        "artifact_io=Services.artifact_io(), "
+        "hasher=Services.hasher(), "
+        "communicator=Services.communicator(), "
+        "research=Services.research(), "
+        "freshness=Services.freshness(), "
+        "prompt_writer=ResearchPromptWriter("
+        "prompt_guard=Services.prompt_guard(), "
+        "artifact_io=Services.artifact_io()), "
+        "reconciliation_queue=Queue("
+        "artifact_io=Services.artifact_io())); "
+        f"gate.resolve_and_route("
         f"SimpleNamespace(number={section_number!r}), "
         f"Path({str(planspace)!r}), "
-        f"parent={parent!r}, "
         f"pass_mode={pass_mode!r}, "
         f"codespace=Path({str(codespace)!r}))"
     )
@@ -155,14 +169,14 @@ def qa_dispatch_intercept(
     model = kwargs.get("model", "glm")
     script = (
         "from pathlib import Path; "
-        "from dispatch.engine.section_dispatcher import dispatch_agent; "
+        "from containers import Services; "
         f"planspace = Path({str(planspace)!r}); "
         f"codespace = Path({str(codespace)!r}); "
         "prompt = planspace / 'artifacts' / 'qa-test-prompt.md'; "
         "prompt.parent.mkdir(parents=True, exist_ok=True); "
         "prompt.write_text('# Test prompt\\nReturn OK.\\n', encoding='utf-8'); "
         "output = planspace / 'artifacts' / 'qa-test-output.md'; "
-        f"dispatch_agent({model!r}, prompt, output, planspace, None, "
+        f"Services.dispatcher().dispatch({model!r}, prompt, output, planspace, "
         f"codespace=codespace, agent_file={agent_file!r})"
     )
     subprocess.run(

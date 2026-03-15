@@ -6,11 +6,18 @@ import sys
 from pathlib import Path
 
 from dispatch.helpers.log_extract_helpers import (
+    LogExtractHelpers,
     infer_section,
     parse_timestamp,
-    prompt_signature,
     summarize_text,
 )
+
+
+def prompt_signature(text: str) -> str:
+    """Stable hash of prompt text for correlation matching."""
+    from containers import Services
+
+    return LogExtractHelpers(hasher=Services.hasher()).prompt_signature(text)
 # ------------------------------------------------------------------
 # Model / backend map
 # ------------------------------------------------------------------

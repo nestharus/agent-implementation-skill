@@ -1,6 +1,6 @@
 """Tests for Stage 3.5 Shared Integration Substrate (SIS) discovery.
 
-Mock boundary: ``substrate.substrate_discoverer._dispatch_agent`` is mocked.
+Mock boundary: ``SubstrateDispatcher.dispatch_substrate_agent`` is mocked.
 Everything else — trigger detection, schema validation, related-files
 updates, prompt building — runs for real.
 
@@ -20,6 +20,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from scan.substrate.substrate_dispatcher import SubstrateDispatcher
 from src.orchestrator.path_registry import PathRegistry
 
 
@@ -231,7 +232,10 @@ class TestFailClosedReading:
     """Test fail-closed JSON reading behavior."""
 
     def test_read_valid_shard(self, tmp_path: Path) -> None:
-        from scan.substrate.schemas import read_shard_failclosed
+        from containers import Services
+        from scan.substrate.schemas import Schemas
+        _schemas = Schemas(artifact_io=Services.artifact_io())
+        read_shard_failclosed = _schemas.read_shard_failclosed
 
         shard = {
             "schema_version": 1,
@@ -248,7 +252,10 @@ class TestFailClosedReading:
         assert read_shard_failclosed(path) == shard
 
     def test_malformed_json_renames(self, tmp_path: Path) -> None:
-        from scan.substrate.schemas import read_shard_failclosed
+        from containers import Services
+        from scan.substrate.schemas import Schemas
+        _schemas = Schemas(artifact_io=Services.artifact_io())
+        read_shard_failclosed = _schemas.read_shard_failclosed
 
         path = tmp_path / "shard.json"
         path.write_text("{bad json")
@@ -257,7 +264,10 @@ class TestFailClosedReading:
         assert not path.exists()
 
     def test_invalid_shard_renames(self, tmp_path: Path) -> None:
-        from scan.substrate.schemas import read_shard_failclosed
+        from containers import Services
+        from scan.substrate.schemas import Schemas
+        _schemas = Schemas(artifact_io=Services.artifact_io())
+        read_shard_failclosed = _schemas.read_shard_failclosed
 
         path = tmp_path / "shard.json"
         path.write_text(json.dumps({"schema_version": 99}))
@@ -265,12 +275,18 @@ class TestFailClosedReading:
         assert (tmp_path / "shard.malformed.json").exists()
 
     def test_missing_file_returns_none(self, tmp_path: Path) -> None:
-        from scan.substrate.schemas import read_shard_failclosed
+        from containers import Services
+        from scan.substrate.schemas import Schemas
+        _schemas = Schemas(artifact_io=Services.artifact_io())
+        read_shard_failclosed = _schemas.read_shard_failclosed
 
         assert read_shard_failclosed(tmp_path / "nonexistent.json") is None
 
     def test_read_valid_seed_plan(self, tmp_path: Path) -> None:
-        from scan.substrate.schemas import read_seed_plan_failclosed
+        from containers import Services
+        from scan.substrate.schemas import Schemas
+        _schemas = Schemas(artifact_io=Services.artifact_io())
+        read_seed_plan_failclosed = _schemas.read_seed_plan_failclosed
 
         plan = {
             "schema_version": 1,
@@ -300,7 +316,7 @@ class TestTriggerDetection:
         _write_section(artifacts / "sections", "03")
 
         # We'll mock dispatch to track what gets called
-        with patch("scan.substrate.substrate_discoverer._dispatch_agent") as mock_dispatch:
+        with patch.object(SubstrateDispatcher, "dispatch_substrate_agent") as mock_dispatch:
             mock_dispatch.return_value = False  # all agents "fail"
             run_substrate_discovery(substrate_planspace, substrate_codespace)
 
@@ -323,7 +339,7 @@ class TestTriggerDetection:
         _write_section(artifacts / "sections", "02", ["src/nonexistent1.py"])
         _write_section(artifacts / "sections", "03", ["src/nonexistent2.py"])
 
-        with patch("scan.substrate.substrate_discoverer._dispatch_agent") as mock_dispatch:
+        with patch.object(SubstrateDispatcher, "dispatch_substrate_agent") as mock_dispatch:
             mock_dispatch.return_value = False
             run_substrate_discovery(substrate_planspace, substrate_codespace)
 
@@ -342,7 +358,7 @@ class TestTriggerDetection:
         _write_section(artifacts / "sections", "01", ["src/a.py"])
         _write_section(artifacts / "sections", "02", ["src/nonexistent.py"])
 
-        with patch("scan.substrate.substrate_discoverer._dispatch_agent") as mock_dispatch:
+        with patch.object(SubstrateDispatcher, "dispatch_substrate_agent") as mock_dispatch:
             result = run_substrate_discovery(
                 substrate_planspace, substrate_codespace,
             )
@@ -381,21 +397,24 @@ class TestTriggerDetection:
     def test_json_mode_preferred_over_txt(
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
-        from scan.substrate.substrate_discoverer import _read_project_mode
+        from containers import Services
+        from scan.substrate.substrate_state_reader import SubstrateStateReader
 
         artifacts = substrate_planspace / "artifacts"
         # Write conflicting modes
         _write_project_mode(artifacts, "brownfield")
         _write_project_mode_json(artifacts, "greenfield")
 
-        mode = _read_project_mode(artifacts)
+        reader = SubstrateStateReader(artifact_io=Services.artifact_io())
+        mode = reader.read_project_mode(artifacts)
         assert mode == "greenfield"
 
     def test_malformed_json_mode_renames_to_malformed(
         self, substrate_planspace: Path,
     ) -> None:
-        """_read_project_mode renames malformed JSON per corruption-preserving pattern."""
-        from scan.substrate.substrate_discoverer import _read_project_mode
+        """read_project_mode renames malformed JSON per corruption-preserving pattern."""
+        from containers import Services
+        from scan.substrate.substrate_state_reader import SubstrateStateReader
 
         artifacts = substrate_planspace / "artifacts"
         signals_dir = artifacts / "signals"
@@ -406,7 +425,8 @@ class TestTriggerDetection:
         # Also write txt fallback so we get a result
         (artifacts / "project-mode.txt").write_text("brownfield", encoding="utf-8")
 
-        mode = _read_project_mode(artifacts)
+        reader = SubstrateStateReader(artifact_io=Services.artifact_io())
+        mode = reader.read_project_mode(artifacts)
         assert mode == "brownfield"  # falls back to txt
         assert not json_path.exists()  # original removed
         assert (signals_dir / "project-mode.malformed.json").exists()
@@ -415,14 +435,14 @@ class TestTriggerDetection:
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
         """Section with no ## Related Files block is vacuum."""
-        from scan.substrate.substrate_discoverer import _count_existing_related
+        from scan.substrate.substrate_state_reader import count_existing_related
 
         sections_dir = substrate_planspace / "artifacts" / "sections"
         # Write a section without ## Related Files
         path = sections_dir / "section-01.md"
         path.write_text("# Section 01\n\nJust content.\n")
 
-        count = _count_existing_related(path, substrate_codespace)
+        count = count_existing_related(path, substrate_codespace)
         assert count == 0
 
 
@@ -435,33 +455,39 @@ class TestTriggerThreshold:
     def test_default_threshold_when_no_policy(
         self, substrate_planspace: Path,
     ) -> None:
-        from scan.substrate.substrate_discoverer import _read_trigger_threshold
+        from containers import Services
+        from scan.substrate.policy import Policy
 
+        _policy = Policy(artifact_io=Services.artifact_io())
         artifacts = substrate_planspace / "artifacts"
-        assert _read_trigger_threshold(artifacts) == 2
+        assert _policy.read_trigger_threshold(artifacts) == 2
 
     def test_reads_custom_threshold(
         self, substrate_planspace: Path,
     ) -> None:
-        from scan.substrate.substrate_discoverer import _read_trigger_threshold
+        from containers import Services
+        from scan.substrate.policy import Policy
 
+        _policy = Policy(artifact_io=Services.artifact_io())
         artifacts = substrate_planspace / "artifacts"
         (artifacts / "model-policy.json").write_text(
             json.dumps({"substrate_trigger_min_vacuum_sections": 5}),
         )
-        assert _read_trigger_threshold(artifacts) == 5
+        assert _policy.read_trigger_threshold(artifacts) == 5
 
     def test_ignores_invalid_threshold(
         self, substrate_planspace: Path,
     ) -> None:
-        from scan.substrate.substrate_discoverer import _read_trigger_threshold
+        from containers import Services
+        from scan.substrate.policy import Policy
 
+        _policy = Policy(artifact_io=Services.artifact_io())
         artifacts = substrate_planspace / "artifacts"
         (artifacts / "model-policy.json").write_text(
             json.dumps({"substrate_trigger_min_vacuum_sections": 0}),
         )
         # val < 1 => falls back to default
-        assert _read_trigger_threshold(artifacts) == 2
+        assert _policy.read_trigger_threshold(artifacts) == 2
 
     def test_custom_threshold_used_in_trigger(
         self, substrate_planspace: Path, substrate_codespace: Path,
@@ -481,7 +507,7 @@ class TestTriggerThreshold:
             json.dumps({"substrate_trigger_min_vacuum_sections": 5}),
         )
 
-        with patch("scan.substrate.substrate_discoverer._dispatch_agent") as mock_dispatch:
+        with patch.object(SubstrateDispatcher, "dispatch_substrate_agent") as mock_dispatch:
             result = run_substrate_discovery(
                 substrate_planspace, substrate_codespace,
             )
@@ -559,7 +585,7 @@ class TestPruneSignalHandling:
                 return True
             return False
 
-        with patch("scan.substrate.substrate_discoverer._dispatch_agent", side_effect=fake_dispatch):
+        with patch.object(SubstrateDispatcher, "dispatch_substrate_agent", side_effect=fake_dispatch):
             result = run_substrate_discovery(
                 substrate_planspace, substrate_codespace,
             )
@@ -604,7 +630,7 @@ class TestPruneSignalHandling:
                 return True
             return False
 
-        with patch("scan.substrate.substrate_discoverer._dispatch_agent", side_effect=fake_dispatch):
+        with patch.object(SubstrateDispatcher, "dispatch_substrate_agent", side_effect=fake_dispatch):
             result = run_substrate_discovery(
                 substrate_planspace, substrate_codespace,
             )
@@ -670,7 +696,7 @@ class TestSubstrateRefWriting:
                 return True
             return False
 
-        with patch("scan.substrate.substrate_discoverer._dispatch_agent", side_effect=fake_dispatch):
+        with patch.object(SubstrateDispatcher, "dispatch_substrate_agent", side_effect=fake_dispatch):
             result = run_substrate_discovery(
                 substrate_planspace, substrate_codespace,
             )
@@ -694,7 +720,10 @@ class TestRelatedFilesUpdates:
     def test_apply_adds_new_entries(
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
-        from scan.substrate.related_files import apply_related_files_updates
+        from containers import Services
+        from scan.substrate.related_files import RelatedFiles
+        _rf = RelatedFiles(artifact_io=Services.artifact_io())
+        apply_related_files_updates = _rf.apply_related_files_updates
 
         artifacts = substrate_planspace / "artifacts"
         _write_section(artifacts / "sections", "01")
@@ -716,7 +745,10 @@ class TestRelatedFilesUpdates:
     def test_deduplicates_existing_entries(
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
-        from scan.substrate.related_files import apply_related_files_updates
+        from containers import Services
+        from scan.substrate.related_files import RelatedFiles
+        _rf = RelatedFiles(artifact_io=Services.artifact_io())
+        apply_related_files_updates = _rf.apply_related_files_updates
 
         artifacts = substrate_planspace / "artifacts"
         _write_section(
@@ -737,7 +769,10 @@ class TestRelatedFilesUpdates:
     def test_malformed_signal_renamed(
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
-        from scan.substrate.related_files import apply_related_files_updates
+        from containers import Services
+        from scan.substrate.related_files import RelatedFiles
+        _rf = RelatedFiles(artifact_io=Services.artifact_io())
+        apply_related_files_updates = _rf.apply_related_files_updates
 
         artifacts = substrate_planspace / "artifacts"
         _write_section(artifacts / "sections", "01")
@@ -753,7 +788,10 @@ class TestRelatedFilesUpdates:
     def test_no_signals_dir_returns_zero(
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
-        from scan.substrate.related_files import apply_related_files_updates
+        from containers import Services
+        from scan.substrate.related_files import RelatedFiles
+        _rf = RelatedFiles(artifact_io=Services.artifact_io())
+        apply_related_files_updates = _rf.apply_related_files_updates
 
         count = apply_related_files_updates(substrate_planspace)
         assert count == 0
@@ -768,7 +806,10 @@ class TestPromptBuilding:
     def test_shard_prompt_written(
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
-        from scan.substrate.prompt_builder import write_shard_prompt
+        from containers import Services
+        from scan.substrate.prompt_builder import PromptBuilder
+        _pb = PromptBuilder(prompt_guard=Services.prompt_guard())
+        write_shard_prompt = _pb.write_shard_prompt
 
         artifacts = substrate_planspace / "artifacts"
         section_path = artifacts / "sections" / "section-01.md"
@@ -785,7 +826,10 @@ class TestPromptBuilding:
     def test_pruner_prompt_lists_sections(
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
-        from scan.substrate.prompt_builder import write_pruner_prompt
+        from containers import Services
+        from scan.substrate.prompt_builder import PromptBuilder
+        _pb = PromptBuilder(prompt_guard=Services.prompt_guard())
+        write_pruner_prompt = _pb.write_pruner_prompt
 
         prompt_path = write_pruner_prompt(
             substrate_planspace,
@@ -801,7 +845,10 @@ class TestPromptBuilding:
     def test_shard_prompt_includes_codemap_corrections(
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
-        from scan.substrate.prompt_builder import write_shard_prompt
+        from containers import Services
+        from scan.substrate.prompt_builder import PromptBuilder
+        _pb = PromptBuilder(prompt_guard=Services.prompt_guard())
+        write_shard_prompt = _pb.write_shard_prompt
 
         artifacts = substrate_planspace / "artifacts"
         section_path = artifacts / "sections" / "section-01.md"
@@ -822,7 +869,10 @@ class TestPromptBuilding:
     def test_pruner_prompt_includes_codemap_corrections(
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
-        from scan.substrate.prompt_builder import write_pruner_prompt
+        from containers import Services
+        from scan.substrate.prompt_builder import PromptBuilder
+        _pb = PromptBuilder(prompt_guard=Services.prompt_guard())
+        write_pruner_prompt = _pb.write_pruner_prompt
 
         artifacts = substrate_planspace / "artifacts"
         (artifacts / "codemap.md").write_text("# Codemap\n")
@@ -839,7 +889,10 @@ class TestPromptBuilding:
     def test_seeder_prompt_includes_codemap_corrections(
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
-        from scan.substrate.prompt_builder import write_seeder_prompt
+        from containers import Services
+        from scan.substrate.prompt_builder import PromptBuilder
+        _pb = PromptBuilder(prompt_guard=Services.prompt_guard())
+        write_seeder_prompt = _pb.write_seeder_prompt
 
         artifacts = substrate_planspace / "artifacts"
         (artifacts / "codemap.md").write_text("# Codemap\n")
@@ -856,7 +909,10 @@ class TestPromptBuilding:
     def test_seeder_prompt_written(
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
-        from scan.substrate.prompt_builder import write_seeder_prompt
+        from containers import Services
+        from scan.substrate.prompt_builder import PromptBuilder
+        _pb = PromptBuilder(prompt_guard=Services.prompt_guard())
+        write_seeder_prompt = _pb.write_seeder_prompt
 
         prompt_path = write_seeder_prompt(
             substrate_planspace, substrate_codespace,
@@ -970,7 +1026,7 @@ class TestRunnerOrchestration:
                 return True
             return False
 
-        with patch("scan.substrate.substrate_discoverer._dispatch_agent", side_effect=fake_dispatch):
+        with patch.object(SubstrateDispatcher, "dispatch_substrate_agent", side_effect=fake_dispatch):
             result = run_substrate_discovery(
                 substrate_planspace, substrate_codespace,
             )
@@ -995,7 +1051,7 @@ class TestRunnerOrchestration:
         _write_section(artifacts / "sections", "01")
         _write_section(artifacts / "sections", "02")
 
-        with patch("scan.substrate.substrate_discoverer._dispatch_agent", return_value=False):
+        with patch.object(SubstrateDispatcher, "dispatch_substrate_agent", return_value=False):
             result = run_substrate_discovery(
                 substrate_planspace, substrate_codespace,
             )
@@ -1030,7 +1086,7 @@ class TestRunnerOrchestration:
                 return True
             return False
 
-        with patch("scan.substrate.substrate_discoverer._dispatch_agent", side_effect=fake_dispatch):
+        with patch.object(SubstrateDispatcher, "dispatch_substrate_agent", side_effect=fake_dispatch):
             result = run_substrate_discovery(
                 substrate_planspace, substrate_codespace,
             )
@@ -1072,7 +1128,10 @@ class TestShardPromptNoSchemaRedefinition:
     def test_no_schema_fields_in_shard_prompt(
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
-        from scan.substrate.prompt_builder import write_shard_prompt
+        from containers import Services
+        from scan.substrate.prompt_builder import PromptBuilder
+        _pb = PromptBuilder(prompt_guard=Services.prompt_guard())
+        write_shard_prompt = _pb.write_shard_prompt
 
         artifacts = substrate_planspace / "artifacts"
         section_path = artifacts / "sections" / "section-01.md"

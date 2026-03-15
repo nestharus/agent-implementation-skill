@@ -6,11 +6,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from orchestrator.path_registry import PathRegistry
-from risk.repository.history import compute_history_adjustment, pattern_signature, read_history
+from risk.repository.history import RiskHistory, pattern_signature
 from risk.repository.serialization import (
+    RiskSerializer,
     serialize_assessment,
     serialize_plan,
-    write_risk_artifact,
 )
 from risk.service.threshold import enforce_thresholds, load_default_parameters, validate_risk_plan
 from risk.types import (
@@ -25,7 +25,7 @@ from risk.types import (
     clamp_float,
     clamp_int,
 )
-from risk.service.package_builder import write_package
+from risk.service.package_builder import PackageBuilder
 from risk.prompt.writers import write_risk_assessment_prompt, write_optimization_prompt
 from risk.service.response_parser import parse_risk_assessment, parse_risk_plan
 from risk.service.posture_hysteresis import apply_posture_hysteresis, history_signature
@@ -55,6 +55,9 @@ class RiskAssessor:
         self._task_router = task_router
         self._prompt_guard = prompt_guard
         self._artifact_io = artifact_io
+        self._risk_history = RiskHistory(artifact_io=artifact_io)
+        self._serializer = RiskSerializer(artifact_io=artifact_io)
+        self._package_builder = PackageBuilder(artifact_io=artifact_io)
 
     def run_risk_loop(
         self,
@@ -67,9 +70,9 @@ class RiskAssessor:
     ) -> RiskPlan:
         """Run the full ROAL loop for a package."""
         paths = PathRegistry(planspace)
-        write_package(paths, package)
+        self._package_builder.write_package(paths, package)
         parameters = self._load_parameters(paths)
-        history_entries = read_history(paths.risk_history())
+        history_entries = self._risk_history.read_history(paths.risk_history())
         last_assessment: RiskAssessment | None = None
         last_plan: RiskPlan | None = None
 
@@ -82,11 +85,12 @@ class RiskAssessor:
                     paths, scope, package, layer,
                     assessment_id=f"{package.package_id}-assessment-fallback",
                     reason="fail-closed: risk assessment prompt failed safety validation or could not be parsed",
+                    serializer=self._serializer,
                 )
 
-            _apply_history_adjustment(assessment, paths.risk_history(), history_entries, parameters)
+            _apply_history_adjustment(assessment, paths.risk_history(), history_entries, parameters, self._risk_history)
             last_assessment = assessment
-            write_risk_artifact(paths.risk_assessment(scope), serialize_assessment(assessment))
+            self._serializer.write_risk_artifact(paths.risk_assessment(scope), serialize_assessment(assessment))
 
             plan = self._validate_and_dispatch_optimization(
                 planspace, scope,
@@ -97,6 +101,7 @@ class RiskAssessor:
                     paths, scope, package, layer,
                     assessment_id=assessment.assessment_id,
                     reason="fail-closed: execution optimizer prompt failed safety validation or could not be parsed",
+                    serializer=self._serializer,
                 )
 
             apply_posture_hysteresis(
@@ -105,7 +110,7 @@ class RiskAssessor:
             )
             enforced_plan, violations = _enforce_and_validate(plan, assessment, parameters)
             if not violations:
-                write_risk_artifact(paths.risk_plan(scope), serialize_plan(enforced_plan))
+                self._serializer.write_risk_artifact(paths.risk_plan(scope), serialize_plan(enforced_plan))
                 return enforced_plan
 
             last_plan = enforced_plan
@@ -119,6 +124,7 @@ class RiskAssessor:
             paths, scope, package, layer,
             assessment_id=fallback_assessment_id,
             reason="fail-closed: risk loop exhausted without a threshold-compliant plan",
+            serializer=self._serializer,
         )
 
     def run_lightweight_risk_check(
@@ -131,7 +137,7 @@ class RiskAssessor:
     ) -> RiskPlan:
         """Run a lightweight risk check (single assessment, no full loop)."""
         paths = PathRegistry(planspace)
-        write_package(paths, package)
+        self._package_builder.write_package(paths, package)
 
         assessment = self._validate_and_dispatch_assessment(
             planspace, scope, package, prefix="light",
@@ -141,12 +147,13 @@ class RiskAssessor:
                 paths, scope, package, layer,
                 assessment_id=f"{package.package_id}-assessment-fallback",
                 reason="fail-closed: lightweight risk assessment prompt failed safety validation or could not be parsed",
+                serializer=self._serializer,
             )
 
         parameters = self._load_parameters(paths)
-        history_entries = read_history(paths.risk_history())
-        _apply_history_adjustment(assessment, paths.risk_history(), history_entries, parameters)
-        write_risk_artifact(paths.risk_assessment(scope), serialize_assessment(assessment))
+        history_entries = self._risk_history.read_history(paths.risk_history())
+        _apply_history_adjustment(assessment, paths.risk_history(), history_entries, parameters, self._risk_history)
+        self._serializer.write_risk_artifact(paths.risk_assessment(scope), serialize_assessment(assessment))
 
         plan = self._validate_and_dispatch_lightweight_optimization(
             planspace, scope,
@@ -156,6 +163,7 @@ class RiskAssessor:
                 paths, scope, package, layer,
                 assessment_id=assessment.assessment_id,
                 reason="fail-closed: lightweight execution optimizer failed",
+                serializer=self._serializer,
             )
 
         apply_posture_hysteresis(
@@ -168,9 +176,10 @@ class RiskAssessor:
                 paths, scope, package, layer,
                 assessment_id=assessment.assessment_id,
                 reason="fail-closed: lightweight execution optimizer produced invalid plan",
+                serializer=self._serializer,
             )
 
-        write_risk_artifact(paths.risk_plan(scope), serialize_plan(enforced_plan))
+        self._serializer.write_risk_artifact(paths.risk_plan(scope), serialize_plan(enforced_plan))
         return enforced_plan
 
     # -----------------------------------------------------------------------
@@ -416,10 +425,11 @@ def _write_and_return_fallback(
     *,
     assessment_id: str,
     reason: str,
+    serializer: RiskSerializer,
 ) -> RiskPlan:
     """Build a fallback plan, persist it, and return it."""
     fb = fallback_plan(package, layer, assessment_id=assessment_id, reason=reason)
-    write_risk_artifact(paths.risk_plan(scope), serialize_plan(fb))
+    serializer.write_risk_artifact(paths.risk_plan(scope), serialize_plan(fb))
     return fb
 
 
@@ -431,12 +441,13 @@ def _write_and_return_lightweight_fallback(
     *,
     assessment_id: str,
     reason: str,
+    serializer: RiskSerializer,
 ) -> RiskPlan:
     """Build a lightweight fallback plan, persist it, and return it."""
     fb = lightweight_fallback_plan(
         package, layer, assessment_id=assessment_id, reason=reason,
     )
-    write_risk_artifact(paths.risk_plan(scope), serialize_plan(fb))
+    serializer.write_risk_artifact(paths.risk_plan(scope), serialize_plan(fb))
     return fb
 
 
@@ -445,6 +456,7 @@ def _apply_history_adjustment(
     history_path: Path,
     history_entries: list[RiskHistoryEntry],
     parameters: dict,
+    risk_history: RiskHistory,
 ) -> None:
     primary_step = _primary_step_assessment(assessment)
     if primary_step is None:
@@ -460,7 +472,7 @@ def _apply_history_adjustment(
         for entry in history_entries
         if history_signature(entry) == signature
     ]
-    adjustment = compute_history_adjustment(
+    adjustment = risk_history.compute_history_adjustment(
         history_path,
         primary_step.assessment_class,
         primary_step.dominant_risks,

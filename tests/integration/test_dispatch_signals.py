@@ -8,11 +8,11 @@ import json
 from pathlib import Path
 
 from dispatch.helpers.signal_checker import (
-    check_agent_signals,
+    SignalChecker,
     summarize_output,
-    write_model_choice_signal,
 )
-from dispatch.service.model_policy import load_model_policy as read_model_policy
+from dispatch.service.model_policy import ModelPolicyLoader
+from containers import Services
 from signals.repository.signal_reader import read_agent_signal, read_signal_tuple
 
 
@@ -146,9 +146,16 @@ class TestReadAgentSignal:
         assert read_agent_signal(p) is None
 
 
+def _make_checker() -> SignalChecker:
+    return SignalChecker(
+        artifact_io=Services.artifact_io(),
+        signals=Services.signals(),
+    )
+
+
 class TestWriteModelChoiceSignal:
     def test_writes_correct_json(self, planspace: Path) -> None:
-        write_model_choice_signal(
+        _make_checker().write_model_choice_signal(
             planspace, "03", "integration-proposal",
             "gpt-high", "first attempt, default model",
         )
@@ -162,7 +169,7 @@ class TestWriteModelChoiceSignal:
         assert data["escalated_from"] is None
 
     def test_writes_escalation(self, planspace: Path) -> None:
-        write_model_choice_signal(
+        _make_checker().write_model_choice_signal(
             planspace, "01", "alignment",
             "gpt-xhigh", "escalated after 2 failures",
             escalated_from="gpt-high",
@@ -180,7 +187,7 @@ class TestCheckAgentSignals:
             "state": "dependency",
             "detail": "needs section 02",
         }))
-        sig, detail = check_agent_signals(
+        sig, detail = _make_checker().check_agent_signals(
             signal_path=sig_path,
         )
         assert sig == "dependency"
@@ -188,7 +195,7 @@ class TestCheckAgentSignals:
     def test_no_signal_no_adjudicator_returns_none(
         self, tmp_path: Path,
     ) -> None:
-        sig, detail = check_agent_signals(
+        sig, detail = _make_checker().check_agent_signals(
             signal_path=tmp_path / "missing.json",
         )
         assert sig is None
@@ -202,7 +209,7 @@ class TestCheckAgentSignals:
             "state": "out_of_scope",
             "detail": "belongs to infrastructure team",
         }))
-        sig, detail = check_agent_signals(
+        sig, detail = _make_checker().check_agent_signals(
             signal_path=sig_path,
         )
         assert sig == "out_of_scope"
@@ -216,7 +223,7 @@ class TestCheckAgentSignals:
             "state": "needs_parent",
             "detail": "architecture decision required at project level",
         }))
-        sig, detail = check_agent_signals(
+        sig, detail = _make_checker().check_agent_signals(
             signal_path=sig_path,
         )
         assert sig == "needs_parent"
@@ -242,7 +249,7 @@ class TestSummarizeOutput:
 
 class TestReadModelPolicy:
     def test_defaults_when_no_file(self, planspace: Path) -> None:
-        policy = read_model_policy(planspace)
+        policy = ModelPolicyLoader(artifact_io=Services.artifact_io()).load_model_policy(planspace)
         assert policy["setup"] == "claude-opus"
         assert policy["proposal"] == "gpt-high"
         assert policy["alignment"] == "claude-opus"
@@ -256,7 +263,7 @@ class TestReadModelPolicy:
             "proposal": "gpt-xhigh",
             "alignment": "gpt-high",
         }))
-        policy = read_model_policy(planspace)
+        policy = ModelPolicyLoader(artifact_io=Services.artifact_io()).load_model_policy(planspace)
         assert policy["proposal"] == "gpt-xhigh"
         assert policy["alignment"] == "gpt-high"
         # Defaults preserved for unset keys
@@ -267,7 +274,7 @@ class TestReadModelPolicy:
         policy_path.write_text(json.dumps({
             "escalation_triggers": {"stall_count": 5},
         }))
-        policy = read_model_policy(planspace)
+        policy = ModelPolicyLoader(artifact_io=Services.artifact_io()).load_model_policy(planspace)
         assert policy["escalation_triggers"]["stall_count"] == 5
         # Default preserved
         assert policy["escalation_triggers"]["max_attempts_before_escalation"] == 3
@@ -275,5 +282,5 @@ class TestReadModelPolicy:
     def test_malformed_json_uses_defaults(self, planspace: Path) -> None:
         policy_path = planspace / "artifacts" / "model-policy.json"
         policy_path.write_text("not json {{{")
-        policy = read_model_policy(planspace)
+        policy = ModelPolicyLoader(artifact_io=Services.artifact_io()).load_model_policy(planspace)
         assert policy["setup"] == "claude-opus"

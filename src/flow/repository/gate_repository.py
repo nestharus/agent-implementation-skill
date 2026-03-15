@@ -16,29 +16,19 @@ from flow.types.context import TaskStatus
 
 _GATE_FAILURE_POLICY_BLOCK = "block"
 from flow.repository.flow_context_store import (
+    FlowContextStore,
     FlowReadStatus,
     continuation_relpath,
     flow_context_relpath,
     gate_aggregate_relpath,
-    read_flow_json,
     result_manifest_relpath,
-    write_flow_context,
 )
-from flow.engine.flow_submitter import new_chain_id, new_instance_id
-from flow.types.context import FlowTask
-from flow.types.routing import Task, submit_task
+from flow.types.context import FlowTask, new_chain_id, new_instance_id
+from flow.types.routing import Task, submit_task, update_task_flow_paths
+from flow.types.schema import GateSpec
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService
-
-
-def read_origin_refs(planspace: Path, task_id: int) -> list[str]:
-    """Read origin_refs from a task's flow context file."""
-    ctx_file = planspace / flow_context_relpath(task_id)
-    status, data = read_flow_json(ctx_file)
-    if status == FlowReadStatus.OK and isinstance(data, dict):
-        return data.get("origin_refs", [])
-    return []
 
 
 def find_gate_for_chain(db_path: Path, chain_id: str) -> str | None:
@@ -119,78 +109,123 @@ def update_gate_member(
         conn.commit()
 
 
-def _fire_synthesis_task(
-    conn: sqlite3.Connection,
+def insert_gate_record(
     db_path: Path,
-    planspace: Path,
-    gate: dict,
     gate_id: str,
     flow_id: str,
-    agg_relpath: str,
-    origin_refs: list[str],
+    declared_by_task_id: int | None,
+    gate: GateSpec,
+    branch_info: list[tuple[str, int, str]],
 ) -> None:
-    """Create and submit the synthesis task when a gate fires."""
-    syn_chain_id = new_chain_id()
-    syn_instance_id = new_instance_id()
-
-    syn_tid = submit_task(
-        db_path,
-        Task(
-            task_type=gate["synthesis_task_type"],
-            submitted_by="reconciler",
-            problem_id=gate["synthesis_problem_id"],
-            concern_scope=gate["synthesis_concern_scope"],
-            payload_path=gate["synthesis_payload_path"],
-            priority=gate["synthesis_priority"] or "normal",
-            instance_id=syn_instance_id,
-            flow_id=flow_id,
-            chain_id=syn_chain_id,
-            trigger_gate_id=gate_id,
-            flow_context_path=agg_relpath,
-            result_manifest_path=result_manifest_relpath(0),
-        ),
-    )
-
-    syn_ctx_path = flow_context_relpath(syn_tid)
-    syn_cont_path = continuation_relpath(syn_tid)
-    syn_res_path = result_manifest_relpath(syn_tid)
-
-    conn.execute(
-        """UPDATE tasks
-           SET flow_context_path=?, continuation_path=?,
-               result_manifest_path=?
-           WHERE id=?""",
-        (syn_ctx_path, syn_cont_path, syn_res_path, syn_tid),
-    )
-    conn.execute(
-        """UPDATE gates
-           SET status='fired', fired_task_id=?,
-               fired_at=datetime('now')
-           WHERE gate_id=?""",
-        (syn_tid, gate_id),
-    )
-    conn.commit()
-
-    write_flow_context(
-        planspace=planspace,
-        task=FlowTask(
-            task_id=syn_tid,
-            instance_id=syn_instance_id,
-            flow_id=flow_id,
-            chain_id=syn_chain_id,
-            task_type=gate["synthesis_task_type"],
-            declared_by_task_id=None,
-            depends_on=None,
-            trigger_gate_id=gate_id,
-        ),
-        origin_refs=origin_refs,
-        previous_task_id=None,
-    )
+    """Insert a gate and its members into the task database."""
+    synthesis = gate.synthesis if gate else None
+    with task_db(db_path) as conn:
+        conn.execute(
+            """INSERT INTO gates(
+                   gate_id, flow_id, created_by_task_id, mode,
+                   failure_policy, expected_count,
+                   synthesis_task_type, synthesis_problem_id,
+                   synthesis_concern_scope, synthesis_payload_path,
+                   synthesis_priority)
+               VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                gate_id, flow_id, declared_by_task_id,
+                gate.mode, gate.failure_policy, len(branch_info),
+                synthesis.task_type if synthesis else None,
+                synthesis.problem_id if synthesis else None,
+                synthesis.concern_scope if synthesis else None,
+                synthesis.payload_path if synthesis else None,
+                synthesis.priority if synthesis else None,
+            ),
+        )
+        for child_chain_id, leaf_tid, label in branch_info:
+            conn.execute(
+                """INSERT INTO gate_members(
+                       gate_id, chain_id, slot_label, leaf_task_id)
+                   VALUES(?, ?, ?, ?)""",
+                (gate_id, child_chain_id, label or None, leaf_tid),
+            )
+        conn.commit()
 
 
 class GateRepository:
     def __init__(self, artifact_io: ArtifactIOService) -> None:
         self._artifact_io = artifact_io
+        self._flow_store = FlowContextStore(artifact_io)
+
+    def read_origin_refs(self, planspace: Path, task_id: int) -> list[str]:
+        """Read origin_refs from a task's flow context file."""
+        ctx_file = planspace / flow_context_relpath(task_id)
+        status, data = self._flow_store.read_flow_json(ctx_file)
+        if status == FlowReadStatus.OK and isinstance(data, dict):
+            return data.get("origin_refs", [])
+        return []
+
+    def _fire_synthesis_task(
+        self,
+        conn: sqlite3.Connection,
+        db_path: Path,
+        planspace: Path,
+        gate: dict,
+        gate_id: str,
+        flow_id: str,
+        agg_relpath: str,
+        origin_refs: list[str],
+    ) -> None:
+        """Create and submit the synthesis task when a gate fires."""
+        syn_chain_id = new_chain_id()
+        syn_instance_id = new_instance_id()
+
+        syn_tid = submit_task(
+            db_path,
+            Task(
+                task_type=gate["synthesis_task_type"],
+                submitted_by="reconciler",
+                problem_id=gate["synthesis_problem_id"],
+                concern_scope=gate["synthesis_concern_scope"],
+                payload_path=gate["synthesis_payload_path"],
+                priority=gate["synthesis_priority"] or "normal",
+                instance_id=syn_instance_id,
+                flow_id=flow_id,
+                chain_id=syn_chain_id,
+                trigger_gate_id=gate_id,
+                flow_context_path=agg_relpath,
+                result_manifest_path=result_manifest_relpath(0),
+            ),
+        )
+
+        syn_ctx_path = flow_context_relpath(syn_tid)
+        syn_cont_path = continuation_relpath(syn_tid)
+        syn_res_path = result_manifest_relpath(syn_tid)
+
+        update_task_flow_paths(
+            db_path, syn_tid, syn_ctx_path, syn_cont_path, syn_res_path,
+        )
+
+        conn.execute(
+            """UPDATE gates
+               SET status='fired', fired_task_id=?,
+                   fired_at=datetime('now')
+               WHERE gate_id=?""",
+            (syn_tid, gate_id),
+        )
+        conn.commit()
+
+        self._flow_store.write_flow_context(
+            planspace=planspace,
+            task=FlowTask(
+                task_id=syn_tid,
+                instance_id=syn_instance_id,
+                flow_id=flow_id,
+                chain_id=syn_chain_id,
+                task_type=gate["synthesis_task_type"],
+                declared_by_task_id=None,
+                depends_on=None,
+                trigger_gate_id=gate_id,
+            ),
+            origin_refs=origin_refs,
+            previous_task_id=None,
+        )
 
     def check_and_fire_gate(
         self,
@@ -270,30 +305,7 @@ class GateRepository:
             conn.commit()
 
             if gate["synthesis_task_type"]:
-                _fire_synthesis_task(
+                self._fire_synthesis_task(
                     conn, db_path, planspace, gate, gate_id,
                     flow_id, agg_relpath, origin_refs,
                 )
-
-
-# Backward-compat wrappers
-
-def _get_repository() -> GateRepository:
-    from containers import Services
-    return GateRepository(
-        artifact_io=Services.artifact_io(),
-    )
-
-
-def check_and_fire_gate(
-    db_path: Path,
-    planspace: Path,
-    gate_id: str,
-    flow_id: str,
-    origin_refs: list[str],
-    build_gate_aggregate_manifest,
-) -> None:
-    return _get_repository().check_and_fire_gate(
-        db_path, planspace, gate_id, flow_id, origin_refs,
-        build_gate_aggregate_manifest,
-    )

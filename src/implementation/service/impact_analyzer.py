@@ -458,35 +458,3 @@ class ImpactAnalyzer:
             impact_result.output, section_number, normalizer_model,
             planspace, codespace, sec_num_map,
         )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ---------------------------------------------------------------------------
-
-
-def analyze_impacts(
-    planspace: Path,
-    section_number: str,
-    section_summary: str,
-    modified_files: list[str],
-    all_sections: list[Section],
-    codespace: Path,
-) -> list[MaterialImpact]:
-    """Run the full impact analysis pipeline and return material impacts."""
-    from containers import Services
-    analyzer = ImpactAnalyzer(
-        communicator=Services.communicator(),
-        config=Services.config(),
-        context_assembly=Services.context_assembly(),
-        cross_section=Services.cross_section(),
-        dispatcher=Services.dispatcher(),
-        logger=Services.logger(),
-        policies=Services.policies(),
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-    )
-    return analyzer.analyze_impacts(
-        planspace, section_number, section_summary,
-        modified_files, all_sections, codespace,
-    )

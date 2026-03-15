@@ -95,36 +95,3 @@ class SignalChecker:
             if result.signal_type:
                 return result
         return SignalResult(signal_type=None, detail="")
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers — used by tests
-# ---------------------------------------------------------------------------
-
-def _get_checker() -> SignalChecker:
-    from containers import Services
-    return SignalChecker(
-        artifact_io=Services.artifact_io(),
-        signals=Services.signals(),
-    )
-
-
-def write_model_choice_signal(
-    planspace: Path,
-    section: str,
-    step: str,
-    model: str,
-    reason: str,
-    escalated_from: str | None = None,
-) -> None:
-    """Write a structured model-choice signal for auditability."""
-    return _get_checker().write_model_choice_signal(
-        planspace, section, step, model, reason, escalated_from,
-    )
-
-
-def check_agent_signals(
-    signal_path: Path | None = None,
-) -> SignalResult:
-    """Check for agent signals via the structured JSON file."""
-    return _get_checker().check_agent_signals(signal_path)

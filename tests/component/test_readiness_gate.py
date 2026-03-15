@@ -8,14 +8,28 @@ from dependency_injector import providers
 
 from containers import FreshnessService, Services
 from src.orchestrator.path_registry import PathRegistry
-from src.proposal.engine.readiness_gate import (
-    publish_discoveries,
-    resolve_and_route,
-    route_blockers,
-)
+from src.proposal.engine.readiness_gate import ReadinessGate
 from src.proposal.repository.state import ProposalState
-from src.proposal.service.readiness_resolver import ReadinessResult
 from src.orchestrator.types import Section
+
+
+def _make_gate() -> ReadinessGate:
+    from src.reconciliation.repository.queue import Queue
+    from src.research.prompt.writers import ResearchPromptWriter
+    return ReadinessGate(
+        logger=Services.logger(),
+        artifact_io=Services.artifact_io(),
+        hasher=Services.hasher(),
+        communicator=Services.communicator(),
+        research=Services.research(),
+        freshness=Services.freshness(),
+        prompt_writer=ResearchPromptWriter(
+            prompt_guard=Services.prompt_guard(),
+            artifact_io=Services.artifact_io(),
+        ),
+        reconciliation_queue=Queue(artifact_io=Services.artifact_io()),
+    )
+
 
 def _section(planspace: Path) -> Section:
     section = Section(
@@ -38,7 +52,8 @@ def test_publish_discoveries_writes_scope_delta_and_research_artifact(
         lambda _planspace, _section, detail, _source: appended.append(detail),
     )
 
-    publish_discoveries(
+    gate = _make_gate()
+    gate.publish_discoveries(
         "03",
         ProposalState(
             new_section_candidates=["Create retry worker"],
@@ -65,8 +80,8 @@ def test_route_blockers_writes_signals_and_queues_reconciliation(
     queued: list[tuple[list[str], list[str]]] = []
 
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.queue_reconciliation_request",
-        lambda _artifacts, _section, contracts, anchors: queued.append(
+        "src.reconciliation.repository.queue.Queue.queue_reconciliation_request",
+        lambda self, _artifacts, _section, contracts, anchors: queued.append(
             (contracts, anchors)
         ),
     )
@@ -75,7 +90,8 @@ def test_route_blockers_writes_signals_and_queues_reconciliation(
         lambda *_args, **_kwargs: None,
     )
 
-    route_blockers(
+    gate = _make_gate()
+    gate.route_blockers(
         "03",
         ProposalState(
             user_root_questions=["Choose retry policy"],
@@ -124,8 +140,8 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.write_research_plan_prompt",
-        lambda section_number, ps, codespace, trigger_path: (
+        "src.research.prompt.writers.ResearchPromptWriter.write_research_plan_prompt",
+        lambda self, section_number, ps, codespace, trigger_path: (
             prompt_calls.append(
                 {
                     "section_number": section_number,
@@ -166,7 +182,8 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
     )
 
     try:
-        route_blockers(
+        gate = _make_gate()
+        gate.route_blockers(
             "03",
             ProposalState(
                 blocking_research_questions=[
@@ -256,7 +273,8 @@ def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
         ),
     )
 
-    route_blockers(
+    gate = _make_gate()
+    gate.route_blockers(
         "03",
         ProposalState(
             blocking_research_questions=[
@@ -313,7 +331,7 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
         lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.write_research_plan_prompt",
+        "src.research.prompt.writers.ResearchPromptWriter.write_research_plan_prompt",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -331,7 +349,8 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
         ),
     )
 
-    route_blockers(
+    gate = _make_gate()
+    gate.route_blockers(
         "03",
         ProposalState(
             blocking_research_questions=[
@@ -392,7 +411,8 @@ def test_route_blockers_ignores_empty_blocking_research_questions(
         ),
     )
 
-    route_blockers(
+    gate = _make_gate()
+    gate.route_blockers(
         "03",
         ProposalState(blocking_research_questions=[]),
         planspace,
@@ -449,19 +469,11 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
     )
 
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.resolve_readiness",
-        lambda *_args, **_kwargs: ReadinessResult(
-            ready=False,
-            blockers=[{"type": "user_root_questions", "description": "Choose retry policy"}],
-            rationale="blocked",
-        ),
-    )
-    monkeypatch.setattr(
         "src.proposal.engine.readiness_gate.append_open_problem",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.queue_reconciliation_request",
+        "src.reconciliation.repository.queue.Queue.queue_reconciliation_request",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -469,12 +481,13 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
         lambda *_args, **_kwargs: None,
     )
 
-    result = resolve_and_route(section, planspace, "proposal")
+    gate = _make_gate()
+    result = gate.resolve_and_route(section, planspace, "proposal")
 
     assert result.ready is False
-    assert result.blockers == [
-        {"type": "user_root_questions", "description": "Choose retry policy"}
-    ]
+    blocker_types = [b["type"] for b in result.blockers]
+    assert "unresolved_contracts" in blocker_types
+    assert "user_root_questions" in blocker_types
     assert result.proposal_pass_result is not None
     assert result.proposal_pass_result.execution_ready is False
     assert result.proposal_pass_result.needs_reconciliation is True

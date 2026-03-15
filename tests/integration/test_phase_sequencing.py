@@ -16,14 +16,24 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from dependency_injector import providers
+
+from conftest import NoOpChangeTracker
+from containers import ArtifactIOService, ChangeTrackerService, FreshnessService, Services
 from signals.repository.artifact_io import write_json
 from orchestrator.path_registry import PathRegistry
 from implementation.engine.implementation_phase import (
     ImplementationPassRestart,
-    run_implementation_pass,
+    ImplementationPhase,
 )
+from implementation.repository.roal_index import RoalIndex
+from implementation.service.risk_artifacts import RiskArtifacts
 from proposal.engine.proposal_phase import ProposalPassExit, run_proposal_pass
-from reconciliation.engine.reconciliation_phase import run_reconciliation_phase
+from reconciliation.engine.cross_section_reconciler import CrossSectionReconciler
+from reconciliation.engine.reconciliation_phase import ReconciliationPhase
+from reconciliation.repository.queue import Queue
+from reconciliation.repository.results import Results
+from reconciliation.service.adjudicator import Adjudicator
 from orchestrator.types import ProposalPassResult, Section, SectionResult
 from signals.types import PASS_MODE_FULL
 
@@ -31,6 +41,79 @@ from signals.types import PASS_MODE_FULL
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _make_reconciliation_phase() -> ReconciliationPhase:
+    """Construct a ReconciliationPhase with real services from the container."""
+    return ReconciliationPhase(
+        logger=Services.logger(),
+        artifact_io=Services.artifact_io(),
+        pipeline_control=Services.pipeline_control(),
+        change_tracker=Services.change_tracker(),
+        cross_section_reconciler=CrossSectionReconciler(
+            artifact_io=Services.artifact_io(),
+            results=Results(
+                artifact_io=Services.artifact_io(),
+                hasher=Services.hasher(),
+            ),
+            queue=Queue(artifact_io=Services.artifact_io()),
+            adjudicator=Adjudicator(
+                artifact_io=Services.artifact_io(),
+                prompt_guard=Services.prompt_guard(),
+                policies=Services.policies(),
+                dispatcher=Services.dispatcher(),
+                task_router=Services.task_router(),
+            ),
+        ),
+    )
+
+
+def _run_reconciliation_phase(
+    proposal_results,
+    sections_by_num,
+    all_sections,
+    planspace,
+    codespace,
+):
+    """Convenience wrapper: construct and run reconciliation phase."""
+    return _make_reconciliation_phase().run_reconciliation_phase(
+        proposal_results,
+        sections_by_num,
+        all_sections,
+        planspace,
+        codespace,
+    )
+
+
+def _make_implementation_phase(
+    change_tracker: ChangeTrackerService | None = None,
+) -> ImplementationPhase:
+    ct = change_tracker or NoOpChangeTracker()
+    return ImplementationPhase(
+        artifact_io=Services.artifact_io(),
+        change_tracker=ct,
+        communicator=Services.communicator(),
+        logger=Services.logger(),
+        pipeline_control=Services.pipeline_control(),
+        risk_assessment=Services.risk_assessment(),
+        risk_artifacts=RiskArtifacts(
+            artifact_io=Services.artifact_io(),
+            freshness=FreshnessService(),
+        ),
+        roal_index=RoalIndex(artifact_io=Services.artifact_io()),
+    )
+
+
+def run_implementation_pass(
+    proposal_results, sections_by_num, planspace, codespace,
+    *, change_tracker=None,
+):
+    """Test helper: instantiate ImplementationPhase and call run_implementation_pass."""
+    return _make_implementation_phase(
+        change_tracker=change_tracker,
+    ).run_implementation_pass(
+        proposal_results, sections_by_num, planspace, codespace,
+    )
+
 
 def _make_section(
     planspace: Path,
@@ -154,7 +237,7 @@ class TestProposalResultsValidForReconciliation:
         # Write the proposal-state artifact that reconciliation loads
         _write_proposal_state(planspace, "01", execution_ready=True)
 
-        result = run_reconciliation_phase(
+        result = _run_reconciliation_phase(
             proposal_results,
             sections_by_num,
             all_sections,
@@ -190,7 +273,7 @@ class TestProposalResultsValidForReconciliation:
         _write_proposal_state(planspace, "01", execution_ready=True)
         _write_proposal_state(planspace, "02", execution_ready=False)
 
-        result = run_reconciliation_phase(
+        result = _run_reconciliation_phase(
             proposal_results,
             sections_by_num,
             all_sections,
@@ -278,10 +361,10 @@ class TestBlockedSectionsExcludedFromImplementation:
             return ["src/main.py"]  # modified files
 
         with patch(
-            "implementation.engine.implementation_phase.run_section",
+            "orchestrator.engine.section_pipeline.SectionPipeline.run_section",
             side_effect=track_run_section,
         ), patch(
-            "implementation.engine.implementation_phase._run_risk_review",
+            "implementation.engine.implementation_phase.ImplementationPhase._run_risk_review",
             return_value=None,
         ):
             results = run_implementation_pass(
@@ -335,10 +418,10 @@ class TestBlockedSectionsExcludedFromImplementation:
             return _make_proposal_result(sec.number, execution_ready=True)
 
         with patch(
-            "reconciliation.engine.reconciliation_phase.run_section",
+            "orchestrator.engine.section_pipeline.SectionPipeline.run_section",
             side_effect=mock_run_section,
         ):
-            result = run_reconciliation_phase(
+            result = _run_reconciliation_phase(
                 proposal_results,
                 sections_by_num,
                 all_sections,
@@ -382,17 +465,24 @@ class TestImplementationPassRestartOnAlignmentChange:
 
         # Configure pipeline control to report alignment changed
         capturing_pipeline_control._alignment_changed_return = True
-        with patch(
-            "implementation.engine.implementation_phase._check_and_clear_alignment_changed",
-            return_value=True,
-        ):
+
+        class _AlwaysChangedTracker(NoOpChangeTracker):
+            def make_alignment_checker(self):
+                return lambda _planspace: True
+
+        tracker = _AlwaysChangedTracker()
+        Services.change_tracker.override(providers.Object(tracker))
+        try:
             with pytest.raises(ImplementationPassRestart):
                 run_implementation_pass(
                     proposal_results,
                     sections_by_num,
                     planspace,
                     codespace,
+                    change_tracker=tracker,
                 )
+        finally:
+            Services.change_tracker.reset_override()
 
 
 # ---------------------------------------------------------------------------
@@ -425,7 +515,7 @@ class TestFullPhaseSequence:
         _write_proposal_state(planspace, "02", execution_ready=True)
 
         # --- Phase 1b: Reconciliation ---
-        reconciliation = run_reconciliation_phase(
+        reconciliation = _run_reconciliation_phase(
             proposal_results,
             sections_by_num,
             all_sections,
@@ -449,10 +539,10 @@ class TestFullPhaseSequence:
             return [f"src/feature_{section.number}.py"]
 
         with patch(
-            "implementation.engine.implementation_phase.run_section",
+            "orchestrator.engine.section_pipeline.SectionPipeline.run_section",
             side_effect=mock_run_section,
         ), patch(
-            "implementation.engine.implementation_phase._run_risk_review",
+            "implementation.engine.implementation_phase.ImplementationPhase._run_risk_review",
             return_value=None,
         ):
             section_results = run_implementation_pass(
@@ -495,7 +585,7 @@ class TestFullPhaseSequence:
         _write_proposal_state(planspace, "02", execution_ready=False)
 
         # Reconciliation
-        reconciliation = run_reconciliation_phase(
+        reconciliation = _run_reconciliation_phase(
             proposal_results,
             sections_by_num,
             all_sections,
@@ -514,10 +604,10 @@ class TestFullPhaseSequence:
             return [f"src/feature_{section.number}.py"]
 
         with patch(
-            "implementation.engine.implementation_phase.run_section",
+            "orchestrator.engine.section_pipeline.SectionPipeline.run_section",
             side_effect=mock_run_section,
         ), patch(
-            "implementation.engine.implementation_phase._run_risk_review",
+            "implementation.engine.implementation_phase.ImplementationPhase._run_risk_review",
             return_value=None,
         ):
             section_results = run_implementation_pass(
@@ -551,10 +641,10 @@ class TestFullPhaseSequence:
             return None  # implementation failed
 
         with patch(
-            "implementation.engine.implementation_phase.run_section",
+            "orchestrator.engine.section_pipeline.SectionPipeline.run_section",
             side_effect=mock_run_section,
         ), patch(
-            "implementation.engine.implementation_phase._run_risk_review",
+            "implementation.engine.implementation_phase.ImplementationPhase._run_risk_review",
             return_value=None,
         ):
             section_results = run_implementation_pass(
@@ -583,7 +673,7 @@ class TestFullPhaseSequence:
         }
         _write_proposal_state(planspace, "01", execution_ready=True)
 
-        run_reconciliation_phase(
+        _run_reconciliation_phase(
             proposal_results,
             sections_by_num,
             all_sections,
@@ -617,7 +707,7 @@ class TestFullPhaseSequence:
         }
         _write_proposal_state(planspace, "01", execution_ready=True)
 
-        run_reconciliation_phase(
+        _run_reconciliation_phase(
             proposal_results,
             sections_by_num,
             all_sections,

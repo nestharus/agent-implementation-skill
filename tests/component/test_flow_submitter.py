@@ -8,14 +8,22 @@ from _paths import DB_SH
 from flow.types.context import FlowEnvelope
 from src.orchestrator.path_registry import PathRegistry
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
-from src.flow.engine.flow_submitter import (
+from src.flow.engine.flow_submitter import FlowSubmitter
+from flow.types.context import (
     new_chain_id,
     new_flow_id,
     new_gate_id,
     new_instance_id,
-    submit_chain,
-    submit_fanout,
 )
+from containers import Services
+
+
+def submit_chain(env, steps, **kwargs):
+    return Services.flow_ingestion().submit_chain(env, steps, **kwargs)
+
+
+def submit_fanout(env, branches, **kwargs):
+    return Services.flow_ingestion().submit_fanout(env, branches, **kwargs)
 
 
 def _init_db(db_path: Path) -> None:

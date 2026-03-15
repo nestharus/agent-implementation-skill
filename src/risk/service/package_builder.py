@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
-from proposal.repository.state import ProposalState, load_proposal_state
+from proposal.repository.state import ProposalState, State as ProposalStateRepo
 from risk.repository.serialization import serialize_package
 from risk.types import AssessmentClass, DecisionClass, PackageStep, RiskPackage, StepClass
 
@@ -64,7 +64,7 @@ class PackageBuilder:
         proposal_excerpt = read_text(proposal_excerpt_path)
         problem_frame = read_text(problem_frame_path)
         microstrategy = read_text(microstrategy_path)
-        proposal_state = load_proposal_state(proposal_state_path)
+        proposal_state = ProposalStateRepo(artifact_io=self._artifact_io).load_proposal_state(proposal_state_path)
         readiness = self._artifact_io.read_json(readiness_path)
 
         microstrategy_steps = (
@@ -116,23 +116,6 @@ class PackageBuilder:
         return serializer.load_risk_package(paths.risk_package(scope))
 
 
-# ---------------------------------------------------------------------------
-# Backward-compat free-function wrappers
-# ---------------------------------------------------------------------------
-
-def _get_builder() -> PackageBuilder:
-    from containers import Services
-    return PackageBuilder(artifact_io=Services.artifact_io())
-
-
-def build_package_from_proposal(
-    scope: str,
-    planspace: Path,
-) -> RiskPackage:
-    """Build a package from proposal-state and microstrategy artifacts."""
-    return _get_builder().build_package_from_proposal(scope, planspace)
-
-
 def refresh_package(
     existing: RiskPackage,
     completed_steps: list[str],
@@ -173,16 +156,6 @@ def refresh_package(
         origin_source=existing.origin_source,
         steps=refreshed_steps,
     )
-
-
-def write_package(paths: PathRegistry, package: RiskPackage) -> Path:
-    """Persist a package to the risk directory."""
-    return _get_builder().write_package(paths, package)
-
-
-def read_package(paths: PathRegistry, scope: str) -> RiskPackage | None:
-    """Read an existing package from the risk directory."""
-    return _get_builder().read_package(paths, scope)
 
 
 def _package_id(scope: str, layer: str) -> str:

@@ -9,12 +9,32 @@ from pathlib import Path
 from unittest.mock import patch
 
 from conftest import override_dispatcher_and_guard
+from containers import LogService, Services
+from staleness.service.alignment_collector import AlignmentCollector
 from staleness.service.section_alignment_checker import (
-    _extract_problems,
+    SectionAlignmentChecker,
     _parse_alignment_verdict,
-    collect_modified_files,
 )
 from orchestrator.types import Section
+
+
+class _NoOpLogger(LogService):
+    def log(self, msg: str) -> None:
+        pass
+
+
+def _do_collect_modified_files(planspace, section, codespace):
+    return AlignmentCollector(logger=_NoOpLogger()).collect_modified_files(
+        planspace, section, codespace,
+    )
+
+
+def _extract_problems(result, output_path=None, planspace=None, codespace=None, *, adjudicator_model):
+    checker = Services.section_alignment()._get_checker()
+    return checker.extract_problems(
+        result, output_path, planspace, codespace,
+        adjudicator_model=adjudicator_model,
+    )
 
 
 class TestCollectModifiedFiles:
@@ -26,14 +46,14 @@ class TestCollectModifiedFiles:
 
     def test_no_report_file(self, planspace: Path, codespace: Path) -> None:
         section = self._make_section(planspace)
-        result = collect_modified_files(planspace, section, codespace)
+        result = _do_collect_modified_files(planspace, section, codespace)
         assert result == []
 
     def test_relative_paths(self, planspace: Path, codespace: Path) -> None:
         section = self._make_section(planspace)
         report = planspace / "artifacts" / "impl-01-modified.txt"
         report.write_text("src/main.py\nsrc/utils.py\n")
-        result = collect_modified_files(planspace, section, codespace)
+        result = _do_collect_modified_files(planspace, section, codespace)
         assert sorted(result) == ["src/main.py", "src/utils.py"]
 
     def test_absolute_path_under_codespace(
@@ -43,7 +63,7 @@ class TestCollectModifiedFiles:
         report = planspace / "artifacts" / "impl-01-modified.txt"
         abs_path = str(codespace / "src" / "main.py")
         report.write_text(f"{abs_path}\n")
-        result = collect_modified_files(planspace, section, codespace)
+        result = _do_collect_modified_files(planspace, section, codespace)
         assert result == ["src/main.py"]
 
     def test_path_outside_codespace_rejected(
@@ -52,7 +72,7 @@ class TestCollectModifiedFiles:
         section = self._make_section(planspace)
         report = planspace / "artifacts" / "impl-01-modified.txt"
         report.write_text("/etc/passwd\n")
-        result = collect_modified_files(planspace, section, codespace)
+        result = _do_collect_modified_files(planspace, section, codespace)
         assert result == []
 
     def test_dotdot_escape_rejected(
@@ -61,7 +81,7 @@ class TestCollectModifiedFiles:
         section = self._make_section(planspace)
         report = planspace / "artifacts" / "impl-01-modified.txt"
         report.write_text("src/../../etc/passwd\n")
-        result = collect_modified_files(planspace, section, codespace)
+        result = _do_collect_modified_files(planspace, section, codespace)
         assert result == []
 
     def test_empty_lines_skipped(
@@ -70,7 +90,7 @@ class TestCollectModifiedFiles:
         section = self._make_section(planspace)
         report = planspace / "artifacts" / "impl-01-modified.txt"
         report.write_text("\n  \nsrc/main.py\n\n")
-        result = collect_modified_files(planspace, section, codespace)
+        result = _do_collect_modified_files(planspace, section, codespace)
         assert result == ["src/main.py"]
 
     def test_deduplication(
@@ -79,7 +99,7 @@ class TestCollectModifiedFiles:
         section = self._make_section(planspace)
         report = planspace / "artifacts" / "impl-01-modified.txt"
         report.write_text("src/main.py\nsrc/main.py\n")
-        result = collect_modified_files(planspace, section, codespace)
+        result = _do_collect_modified_files(planspace, section, codespace)
         assert result == ["src/main.py"]
 
 

@@ -5,18 +5,22 @@ import json
 import pytest
 
 from flow.exceptions import FlowCorruptionError
+from containers import Services
 from flow.repository.flow_context_store import (
-    build_flow_context,
+    FlowContextStore,
     continuation_relpath,
     dispatch_prompt_relpath,
     flow_context_relpath,
     gate_aggregate_relpath,
     result_manifest_relpath,
     write_dispatch_prompt,
-    write_flow_context,
 )
 from flow.types.context import FlowTask
 from orchestrator.path_registry import PathRegistry
+
+
+def _make_store() -> FlowContextStore:
+    return FlowContextStore(Services.artifact_io())
 
 
 def test_relpath_helpers_match_existing_layout() -> None:
@@ -32,7 +36,7 @@ def test_write_flow_context_writes_expected_json(tmp_path) -> None:
     planspace.mkdir()
     PathRegistry(planspace).ensure_artifacts_tree()
 
-    write_flow_context(
+    _make_store().write_flow_context(
         planspace=planspace,
         task=FlowTask(
             task_id=11,
@@ -58,7 +62,7 @@ def test_write_flow_context_writes_expected_json(tmp_path) -> None:
 
 def test_build_flow_context_raises_on_missing_file(tmp_path) -> None:
     with pytest.raises(FlowCorruptionError, match="missing"):
-        build_flow_context(
+        _make_store().build_flow_context(
             tmp_path,
             flow_context_path=flow_context_relpath(11),
         )
@@ -80,7 +84,7 @@ def test_build_flow_context_enriches_gate_aggregate(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    ctx = build_flow_context(
+    ctx = _make_store().build_flow_context(
         planspace,
         flow_context_path=flow_context_relpath(11),
         trigger_gate_id=gate_id,

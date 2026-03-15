@@ -9,10 +9,9 @@ from coordination.types import CoordinationStatus
 from orchestrator.path_registry import PathRegistry
 from staleness.service.section_alignment_checker import (
     SectionAlignmentChecker,
-    _extract_problems,
-    _run_alignment_check_with_retries,
 )
-from coordination.service.completion_handler import read_incoming_notes
+from coordination.service.completion_handler import CompletionHandler
+from implementation.service.impact_analyzer import ImpactAnalyzer
 from orchestrator.types import Section, SectionResult, ControlSignal
 from signals.types import ALIGNMENT_INVALID_FRAME
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
@@ -58,6 +57,7 @@ class GlobalAlignmentRechecker:
         communicator: Communicator,
         dispatch_helpers: DispatchHelperService,
         alignment_checker: SectionAlignmentChecker,
+        completion_handler: CompletionHandler,
     ) -> None:
         self._logger = logger
         self._policies = policies
@@ -65,6 +65,7 @@ class GlobalAlignmentRechecker:
         self._communicator = communicator
         self._dispatch_helpers = dispatch_helpers
         self._alignment_checker = alignment_checker
+        self._completion_handler = completion_handler
 
     def _recheck_section(
         self,
@@ -101,7 +102,7 @@ class GlobalAlignmentRechecker:
             self._logger.log("Alignment changed during Phase 2 — restarting from Phase 1")
             return CoordinationStatus.RESTART_PHASE1
 
-        notes = read_incoming_notes(section, planspace, codespace)
+        notes = self._completion_handler.read_incoming_notes(section, planspace, codespace)
         if notes:
             self._logger.log(f"Section {sec_num}: has incoming notes for global alignment check")
 
@@ -231,11 +232,30 @@ def _compat_recheck_section(
         Services.logger().log("Alignment changed during Phase 2 — restarting from Phase 1")
         return CoordinationStatus.RESTART_PHASE1
 
-    notes = read_incoming_notes(section, planspace, codespace)
+    _ch = CompletionHandler(
+        artifact_io=Services.artifact_io(),
+        change_tracker=Services.change_tracker(),
+        communicator=Services.communicator(),
+        hasher=Services.hasher(),
+        impact_analyzer=ImpactAnalyzer(
+            communicator=Services.communicator(),
+            config=Services.config(),
+            context_assembly=Services.context_assembly(),
+            cross_section=Services.cross_section(),
+            dispatcher=Services.dispatcher(),
+            logger=Services.logger(),
+            policies=Services.policies(),
+            prompt_guard=Services.prompt_guard(),
+            task_router=Services.task_router(),
+        ),
+        logger=Services.logger(),
+    )
+    notes = _ch.read_incoming_notes(section, planspace, codespace)
     if notes:
         Services.logger().log(f"Section {sec_num}: has incoming notes for global alignment check")
 
-    align_result = _run_alignment_check_with_retries(
+    checker = Services.section_alignment()._get_checker()
+    align_result = checker.run_alignment_check_with_retries(
         section, planspace, codespace,
         output_prefix="global-align",
         model=Services.policies().resolve(policy, "alignment"),
@@ -276,7 +296,8 @@ def _compat_apply_alignment_outcome(
     paths = PathRegistry(planspace)
     policy = Services.policies().load(planspace)
     global_align_output = paths.artifacts / f"global-align-{sec_num}-output.md"
-    problems = _extract_problems(
+    checker = Services.section_alignment()._get_checker()
+    problems = checker.extract_problems(
         align_result, output_path=global_align_output,
         planspace=planspace, codespace=codespace,
         adjudicator_model=Services.policies().resolve(policy, "adjudicator"),

@@ -7,8 +7,20 @@ from conftest import WritingGuard, make_dispatcher
 from containers import Services
 from implementation.service.scope_delta_aggregator import (
     ScopeDeltaAggregationExit,
-    aggregate_scope_deltas,
+    ScopeDeltaAggregator,
 )
+
+
+def _make_aggregator() -> ScopeDeltaAggregator:
+    return ScopeDeltaAggregator(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        dispatcher=Services.dispatcher(),
+        logger=Services.logger(),
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+    )
 
 
 def test_aggregate_scope_deltas_adjudicates_and_records_decisions(
@@ -38,7 +50,7 @@ def test_aggregate_scope_deltas_adjudicates_and_records_decisions(
     Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     Services.prompt_guard.override(providers.Object(WritingGuard()))
     try:
-        decisions = aggregate_scope_deltas(
+        decisions = _make_aggregator().aggregate_scope_deltas(
             planspace,
         )
 
@@ -90,7 +102,7 @@ def test_aggregate_scope_deltas_retries_then_fails_closed_on_bad_output(
 
     try:
         with pytest.raises(ScopeDeltaAggregationExit):
-            aggregate_scope_deltas(
+            _make_aggregator().aggregate_scope_deltas(
                 planspace,
             )
 
@@ -151,7 +163,7 @@ def test_aggregate_scope_deltas_includes_root_reframing_in_prompt_payload(
     Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     Services.prompt_guard.override(providers.Object(WritingGuard()))
     try:
-        aggregate_scope_deltas(
+        _make_aggregator().aggregate_scope_deltas(
             planspace,
         )
     finally:

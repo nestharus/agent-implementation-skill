@@ -13,16 +13,16 @@ if TYPE_CHECKING:
         PipelineControlService,
         TaskRouterService,
     )
+    from dispatch.prompt.writers import Writers as PromptWriters
+    from proposal.service.cycle_control import CycleControl
 
 from proposal.repository.excerpts import EXCERPT_PROPOSAL, exists as excerpt_exists
 from orchestrator.path_registry import PathRegistry
-from dispatch.prompt.writers import write_section_setup_prompt
 from signals.service.blocker_manager import (
     append_open_problem,
     update_blocker_rollup,
 )
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
-from proposal.service.cycle_control import handle_pause_response, write_scope_delta
 from signals.types import ACTION_ABORT, SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE, TRUNCATE_DETAIL
 
 
@@ -36,6 +36,8 @@ class ExcerptExtractor:
         communicator: Communicator,
         pipeline_control: PipelineControlService,
         task_router: TaskRouterService,
+        cycle_control: CycleControl,
+        prompt_writers: PromptWriters,
     ) -> None:
         self._logger = logger
         self._policies = policies
@@ -44,6 +46,8 @@ class ExcerptExtractor:
         self._communicator = communicator
         self._pipeline_control = pipeline_control
         self._task_router = task_router
+        self._cycle_control = cycle_control
+        self._prompt_writers = prompt_writers
 
     def _handle_setup_signal(
         self,
@@ -59,13 +63,13 @@ class ExcerptExtractor:
             )
         if signal == SIGNAL_OUT_OF_SCOPE:
             sig_path = PathRegistry(planspace).signals_dir() / f"setup-{section_number}-signal.json"
-            write_scope_delta(planspace, sig_path, section_number, detail, "setup")
+            self._cycle_control.write_scope_delta(planspace, sig_path, section_number, detail, "setup")
         update_blocker_rollup(planspace)
         response = self._pipeline_control.pause_for_parent(
             planspace,
             f"pause:{signal}:{section_number}:{detail}",
         )
-        return handle_pause_response(planspace, section_number, response)
+        return self._cycle_control.handle_pause_response(planspace, section_number, response)
 
     def extract_excerpts(
         self,
@@ -83,7 +87,7 @@ class ExcerptExtractor:
             or not excerpt_exists(planspace, section.number, "alignment")
         ):
             self._logger.log(f"Section {section.number}: setup — extracting excerpts")
-            setup_prompt = write_section_setup_prompt(
+            setup_prompt = self._prompt_writers.write_section_setup_prompt(
                 section, planspace, codespace,
                 section.global_proposal_path, section.global_alignment_path,
             )
@@ -131,29 +135,3 @@ class ExcerptExtractor:
             break
 
         return "ok"
-
-
-# Backward-compat wrappers
-
-def _get_excerpt_extractor() -> ExcerptExtractor:
-    from containers import Services
-    return ExcerptExtractor(
-        logger=Services.logger(),
-        policies=Services.policies(),
-        dispatcher=Services.dispatcher(),
-        dispatch_helpers=Services.dispatch_helpers(),
-        communicator=Services.communicator(),
-        pipeline_control=Services.pipeline_control(),
-        task_router=Services.task_router(),
-    )
-
-
-def extract_excerpts(
-    section,
-    planspace: Path,
-    codespace: Path,
-) -> str | None:
-    """Run the setup loop until both proposal and alignment excerpts exist."""
-    return _get_excerpt_extractor().extract_excerpts(
-        section, planspace, codespace,
-    )

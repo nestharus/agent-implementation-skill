@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
 from coordination.repository.notes import read_incoming_notes
-from proposal.repository.state import load_proposal_state
+from proposal.repository.state import State as ProposalStateRepo
 from risk.service.engagement import determine_engagement
-from risk.service.package_builder import build_package_from_proposal, read_package, refresh_package
+from risk.service.package_builder import PackageBuilder, refresh_package
 from risk.types import (
     EngagementContext,
     RiskMode,
@@ -18,22 +18,14 @@ from risk.types import (
     RiskPlan,
     StepDecision,
 )
-from proposal.service.readiness_resolver import resolve_readiness
-from orchestrator.engine.section_pipeline import run_section
+from orchestrator.engine.section_pipeline import SectionPipeline
 from implementation.repository.roal_index import (
     IMPLEMENTATION_ROAL_KINDS,
-    refresh_roal_input_index,
+    RoalIndex,
 )
 from implementation.service.risk_artifacts import (
+    RiskArtifacts,
     blocking_risk_plan,
-    has_recent_loop_detected_signal,
-    has_stale_freshness_token,
-    load_risk_hints,
-    write_accepted_steps,
-    write_deferred_steps,
-    write_modified_file_manifest,
-    write_reopen_blocker,
-    write_risk_review_failure_blocker,
 )
 from implementation.service.risk_history_recorder import (
     append_risk_history,
@@ -136,9 +128,10 @@ def _build_deferred_reassessment_package(
     planspace: Path,
     sec_num: str,
     risk_plan: RiskPlan,
+    artifact_io: ArtifactIOService,
 ) -> RiskPackage | None:
     scope = f"section-{sec_num}"
-    package = read_package(PathRegistry(planspace), scope)
+    package = PackageBuilder(artifact_io=artifact_io).read_package(PathRegistry(planspace), scope)
     if package is None:
         return None
 
@@ -180,12 +173,22 @@ class ImplementationPhase:
         logger: LogService,
         pipeline_control: PipelineControlService,
         risk_assessment: RiskAssessmentService,
+        risk_artifacts: RiskArtifacts,
+        roal_index: RoalIndex,
     ) -> None:
         self._artifact_io = artifact_io
         self._communicator = communicator
         self._logger = logger
         self._pipeline_control = pipeline_control
         self._risk_assessment = risk_assessment
+        self._risk_artifacts = risk_artifacts
+        self._roal_index = roal_index
+        self._package_builder = PackageBuilder(artifact_io=artifact_io)
+        self._section_pipeline = SectionPipeline(
+            logger=logger,
+            artifact_io=artifact_io,
+            pipeline_control=pipeline_control,
+        )
         self._check_and_clear_alignment_changed = change_tracker.make_alignment_checker()
 
     def _persist_roal_artifacts(
@@ -196,7 +199,7 @@ class ImplementationPhase:
     ) -> None:
         entries: list[dict] = []
         if risk_plan.accepted_frontier:
-            accepted_artifact = write_accepted_steps(planspace, sec_num, risk_plan)
+            accepted_artifact = self._risk_artifacts.write_accepted_steps(planspace, sec_num, risk_plan)
             entries.append({
                 "kind": "accepted_frontier",
                 "path": str(accepted_artifact),
@@ -207,7 +210,7 @@ class ImplementationPhase:
                 f"to {accepted_artifact}",
             )
         if risk_plan.deferred_steps:
-            deferred_artifact = write_deferred_steps(planspace, sec_num, risk_plan)
+            deferred_artifact = self._risk_artifacts.write_deferred_steps(planspace, sec_num, risk_plan)
             entries.append({
                 "kind": "deferred",
                 "path": str(deferred_artifact),
@@ -218,7 +221,7 @@ class ImplementationPhase:
                 f"in {deferred_artifact}",
             )
         if risk_plan.reopen_steps:
-            blocker_path = write_reopen_blocker(planspace, sec_num, risk_plan)
+            blocker_path = self._risk_artifacts.write_reopen_blocker(planspace, sec_num, risk_plan)
             entries.append({
                 "kind": "reopen",
                 "path": str(blocker_path),
@@ -228,7 +231,7 @@ class ImplementationPhase:
                 f"Section {sec_num}: persisted ROAL reopen blocker "
                 f"via {blocker_path}",
             )
-        refresh_roal_input_index(
+        self._roal_index.refresh_roal_input_index(
             planspace,
             sec_num,
             replace_kinds=IMPLEMENTATION_ROAL_KINDS,
@@ -256,11 +259,12 @@ class ImplementationPhase:
             planspace,
             sec_num,
             risk_plan,
+            artifact_io=self._artifact_io,
         )
         if reassessment_package is None:
             return None
 
-        hints = load_risk_hints(planspace, sec_num)
+        hints = self._risk_artifacts.load_risk_hints(planspace, sec_num)
         return self._risk_assessment.run_risk_loop(
             planspace,
             scope,
@@ -285,13 +289,13 @@ class ImplementationPhase:
         package: RiskPackage | None = None
 
         try:
-            package = build_package_from_proposal(scope, planspace)
-            proposal_state = load_proposal_state(paths.proposal_state(sec_num))
-            hints = load_risk_hints(planspace, sec_num)
+            package = self._package_builder.build_package_from_proposal(scope, planspace)
+            proposal_state = ProposalStateRepo(artifact_io=self._artifact_io).load_proposal_state(paths.proposal_state(sec_num))
+            hints = self._risk_artifacts.load_risk_hints(planspace, sec_num)
             triage_signal = hints["signal"]
             triage_confidence = hints["triage_confidence"]
-            stale_inputs = has_stale_freshness_token(planspace, sec_num, triage_signal)
-            recent_loop_signal = has_recent_loop_detected_signal(
+            stale_inputs = self._risk_artifacts.has_stale_freshness_token(planspace, sec_num, triage_signal)
+            recent_loop_signal = self._risk_artifacts.has_recent_loop_detected_signal(
                 planspace,
                 sec_num,
                 scope,
@@ -336,7 +340,7 @@ class ImplementationPhase:
         except Exception as exc:  # noqa: BLE001
             reason = str(exc) or exc.__class__.__name__
             append_risk_review_failure_history(planspace, package, reason)
-            write_risk_review_failure_blocker(planspace, sec_num, reason)
+            self._risk_artifacts.write_risk_review_failure_blocker(planspace, sec_num, reason)
             self._logger.log(
                 f"Section {sec_num}: ROAL review failed ({reason}) "
                 "— wrote risk_review_failure blocker and skipped implementation",
@@ -358,9 +362,7 @@ class ImplementationPhase:
             raise ImplementationPassExit
 
         if self._pipeline_control.alignment_changed_pending(planspace):
-            # Use module-level _check_and_clear_alignment_changed so
-            # monkeypatch targets work.
-            if _check_and_clear_alignment_changed(planspace):
+            if self._check_and_clear_alignment_changed(planspace):
                 self._logger.log("Alignment changed during implementation pass "
                     "— restarting from Phase 1")
                 raise ImplementationPassRestart
@@ -380,7 +382,7 @@ class ImplementationPhase:
         Raises ImplementationPassRestart on alignment change.
         """
         sec_num = section.number
-        manifest_path = write_modified_file_manifest(
+        manifest_path = self._risk_artifacts.write_modified_file_manifest(
             planspace,
             sec_num,
             all_modified_files,
@@ -390,9 +392,7 @@ class ImplementationPhase:
             f"to {manifest_path}",
         )
 
-        # Use module-level _maybe_reassess_deferred_steps so monkeypatch
-        # targets work.
-        reassessed_plan = _maybe_reassess_deferred_steps(
+        reassessed_plan = self._maybe_reassess_deferred_steps(
             planspace,
             sec_num,
             current_risk_plan,
@@ -416,7 +416,7 @@ class ImplementationPhase:
             f"(iteration {frontier_iterations}, "
             f"accepted={len(reassessed_plan.accepted_frontier)})",
         )
-        deferred_modified = run_section(
+        deferred_modified = self._section_pipeline.run_section(
             planspace,
             codespace,
             section,
@@ -426,7 +426,7 @@ class ImplementationPhase:
 
         self._pipeline_control.check_alignment_and_raise(
             planspace,
-            _check_and_clear_alignment_changed,
+            self._check_and_clear_alignment_changed,
             ImplementationPassRestart,
             "Alignment changed during deferred frontier execution "
             "— restarting from Phase 1",
@@ -440,6 +440,7 @@ class ImplementationPhase:
                 reassessed_plan,
                 None,
                 implementation_failed=True,
+                artifact_io=self._artifact_io,
             )
             return FrontierSliceResult(
                 failed=True,
@@ -456,6 +457,7 @@ class ImplementationPhase:
             sec_num,
             reassessed_plan,
             list(deferred_modified or []),
+            artifact_io=self._artifact_io,
         )
 
         should_break = bool(reassessed_plan.reopen_steps) or not reassessed_plan.deferred_steps
@@ -535,10 +537,9 @@ class ImplementationPhase:
         Returns (risk_plan, should_skip).
         """
         sec_num = section.number
-        # Use module-level _run_risk_review so monkeypatch targets work.
-        risk_plan = _run_risk_review(planspace, section)
+        risk_plan = self._run_risk_review(planspace, section)
         if risk_plan is None:
-            refresh_roal_input_index(
+            self._roal_index.refresh_roal_input_index(
                 planspace, sec_num,
                 replace_kinds=IMPLEMENTATION_ROAL_KINDS, new_entries=[],
             )
@@ -567,6 +568,7 @@ class ImplementationPhase:
             append_risk_history(
                 planspace, sec_num, risk_plan, None,
                 implementation_failed=True,
+                artifact_io=self._artifact_io,
             )
 
     def _implement_section(
@@ -585,7 +587,10 @@ class ImplementationPhase:
         self._logger.log(f"=== Section {sec_num} implementation pass ===")
         self._logger.log_lifecycle(planspace, f"start:section:{sec_num}:impl", f"round {section.solve_count}")
 
-        readiness = resolve_readiness(planspace, sec_num)
+        from proposal.service.readiness_resolver import ReadinessResolver
+        readiness = ReadinessResolver(
+            artifact_io=self._artifact_io,
+        ).resolve_readiness(planspace, sec_num)
         if not readiness.ready:
             self._logger.log(
                 f"Section {sec_num}: implementation pass skipped — "
@@ -597,7 +602,7 @@ class ImplementationPhase:
         if should_skip:
             return None
 
-        modified_files = run_section(
+        modified_files = self._section_pipeline.run_section(
             planspace, codespace, section,
             all_sections=list(sections_by_num.values()),
             pass_mode=PASS_MODE_IMPLEMENTATION,
@@ -605,7 +610,7 @@ class ImplementationPhase:
 
         self._pipeline_control.check_alignment_and_raise(
             planspace,
-            _check_and_clear_alignment_changed,
+            self._check_and_clear_alignment_changed,
             ImplementationPassRestart,
             "Alignment changed during implementation — restarting from Phase 1",
         )
@@ -617,7 +622,7 @@ class ImplementationPhase:
         all_modified_files = list(modified_files)
         final_problem: str | None = None
         if risk_plan is not None:
-            append_risk_history(planspace, sec_num, risk_plan, all_modified_files)
+            append_risk_history(planspace, sec_num, risk_plan, all_modified_files, artifact_io=self._artifact_io)
             final_problem = self._run_frontier_iterations(
                 planspace, codespace, section,
                 sections_by_num, risk_plan, all_modified_files,
@@ -667,75 +672,3 @@ class ImplementationPhase:
                 section_results[sec_num] = result
 
         return section_results
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ---------------------------------------------------------------------------
-
-
-def _run_risk_review(
-    planspace: Path,
-    section: Section,
-) -> RiskPlan | None:
-    """Run ROAL risk review for a section before implementation."""
-    from containers import Services
-    phase = ImplementationPhase(
-        artifact_io=Services.artifact_io(),
-        change_tracker=Services.change_tracker(),
-        communicator=Services.communicator(),
-        logger=Services.logger(),
-        pipeline_control=Services.pipeline_control(),
-        risk_assessment=Services.risk_assessment(),
-    )
-    return phase._run_risk_review(planspace, section)
-
-
-def _check_and_clear_alignment_changed(planspace: Path) -> bool:
-    """Module-level alignment checker for backward compatibility.
-
-    Tests monkeypatch this name directly.  In production the function
-    lazily creates a fresh checker from the container.
-    """
-    from containers import Services
-    checker = Services.change_tracker().make_alignment_checker()
-    return checker(planspace)
-
-
-def _maybe_reassess_deferred_steps(
-    planspace: Path,
-    sec_num: str,
-    risk_plan: RiskPlan,
-) -> RiskPlan | None:
-    """Reassess deferred ROAL steps if inputs are ready."""
-    from containers import Services
-    phase = ImplementationPhase(
-        artifact_io=Services.artifact_io(),
-        change_tracker=Services.change_tracker(),
-        communicator=Services.communicator(),
-        logger=Services.logger(),
-        pipeline_control=Services.pipeline_control(),
-        risk_assessment=Services.risk_assessment(),
-    )
-    return phase._maybe_reassess_deferred_steps(planspace, sec_num, risk_plan)
-
-
-def run_implementation_pass(
-    proposal_results: dict[str, ProposalPassResult],
-    sections_by_num: dict[str, Section],
-    planspace: Path,
-    codespace: Path,
-) -> dict[str, SectionResult]:
-    """Run the implementation pass for execution-ready sections."""
-    from containers import Services
-    phase = ImplementationPhase(
-        artifact_io=Services.artifact_io(),
-        change_tracker=Services.change_tracker(),
-        communicator=Services.communicator(),
-        logger=Services.logger(),
-        pipeline_control=Services.pipeline_control(),
-        risk_assessment=Services.risk_assessment(),
-    )
-    return phase.run_implementation_pass(
-        proposal_results, sections_by_num, planspace, codespace,
-    )

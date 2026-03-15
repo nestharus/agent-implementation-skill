@@ -222,37 +222,3 @@ class TierRanker:
         return tier_file if tier_file.is_file() else None
 
 
-# ------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ------------------------------------------------------------------
-
-
-def _default_ranker() -> TierRanker:
-    from containers import Services
-    return TierRanker(
-        artifact_io=Services.artifact_io(),
-        hasher=Services.hasher(),
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-    )
-
-
-def validate_tier_file(tier_file: Path) -> bool:
-    """Validate tier file structure: valid JSON with required fields."""
-    return _default_ranker().validate_tier_file(tier_file)
-
-
-def run_tier_ranking(
-    section_file: Path,
-    section_name: str,
-    related_files: list[str],
-    codespace: Path,
-    artifacts_dir: Path,
-    scan_log_dir: Path,
-    model_policy: dict[str, str],
-) -> Path | None:
-    """Dispatch tier ranking and return the tier file path on success."""
-    return _default_ranker().run_tier_ranking(
-        section_file, section_name, related_files,
-        codespace, artifacts_dir, scan_log_dir, model_policy,
-    )

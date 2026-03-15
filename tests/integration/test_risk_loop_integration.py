@@ -4,21 +4,20 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 from dependency_injector import providers
 
-from conftest import make_dispatcher
-from containers import Services
+from conftest import make_dispatcher, NoOpChangeTracker, NoOpCommunicator, NoOpPipelineControl
+from containers import ArtifactIOService, ChangeTrackerService, FreshnessService, Services
 from signals.repository.artifact_io import read_json, write_json
-from implementation.engine.implementation_phase import (
-    _run_risk_review,
-    run_implementation_pass,
-)
-from implementation.repository.roal_index import read_roal_input_index
+from implementation.engine.implementation_phase import ImplementationPhase
+from implementation.repository.roal_index import RoalIndex
+from implementation.service.risk_artifacts import RiskArtifacts
 from implementation.service.risk_history_recorder import append_risk_history
 from proposal.service.readiness_resolver import ReadinessResult
-from risk.repository.history import append_history_entry, read_history
+from risk.repository.history import RiskHistory, append_history_entry
 from risk.engine.risk_assessor import run_lightweight_risk_check, run_risk_loop
-from risk.service.package_builder import build_package_from_proposal
+from risk.service.package_builder import PackageBuilder
 from risk.repository.serialization import serialize_assessment, serialize_plan
 from risk.types import (
     PackageStep,
@@ -37,6 +36,57 @@ from risk.types import (
     UnderstandingInventory,
 )
 from orchestrator.types import ProposalPassResult, Section
+
+
+@pytest.fixture(autouse=True)
+def _reset_change_tracker():
+    """Ensure Services.change_tracker override is reset after each test."""
+    yield
+    Services.change_tracker.reset_override()
+
+
+def _make_phase() -> ImplementationPhase:
+    """Create an ImplementationPhase with mock services for direct method calls."""
+    return ImplementationPhase(
+        artifact_io=Services.artifact_io(),
+        change_tracker=NoOpChangeTracker(),
+        communicator=NoOpCommunicator(),
+        logger=Services.logger(),
+        pipeline_control=NoOpPipelineControl(),
+        risk_assessment=Services.risk_assessment(),
+        risk_artifacts=RiskArtifacts(
+            artifact_io=Services.artifact_io(),
+            freshness=FreshnessService(),
+        ),
+        roal_index=RoalIndex(artifact_io=Services.artifact_io()),
+    )
+
+
+def _read_roal_input_index(planspace: Path, sec_num: str) -> list[dict]:
+    return RoalIndex(artifact_io=ArtifactIOService()).read_roal_input_index(planspace, sec_num)
+
+
+def run_implementation_pass(proposal_results, sections_by_num, planspace, codespace):
+    """Test helper: instantiate ImplementationPhase and call run_implementation_pass."""
+    return _make_phase().run_implementation_pass(
+        proposal_results, sections_by_num, planspace, codespace,
+    )
+
+
+class _StubChangeTracker(ChangeTrackerService):
+    """Test double whose make_alignment_checker returns a configurable callable."""
+
+    def __init__(self, checker_fn):
+        self._checker_fn = checker_fn
+
+    def set_flag(self, planspace) -> None:
+        pass
+
+    def make_alignment_checker(self):
+        return self._checker_fn
+
+    def invalidate_excerpts(self, planspace) -> None:
+        pass
 
 
 def _write_risk_inputs(
@@ -235,7 +285,7 @@ def test_full_risk_loop_single_step(
         microstrategy_lines=["Apply the approved change"],
     )
     section = _make_section(planspace, "01")
-    package = build_package_from_proposal("section-01", planspace)
+    package = PackageBuilder(artifact_io=ArtifactIOService()).build_package_from_proposal("section-01", planspace)
     assessment = _assessment_for(package, raw_risks=[20])
     plan = _plan_for(
         package,
@@ -256,7 +306,7 @@ def test_full_risk_loop_single_step(
         json.dumps(serialize_plan(plan)),
     ]
 
-    result = _run_risk_review(planspace, section)
+    result = _make_phase()._run_risk_review(planspace, section)
 
     assert result is not None
     assert result.accepted_frontier == [package.steps[0].step_id]
@@ -274,7 +324,7 @@ def test_full_risk_loop_multi_step_with_defer(
         microstrategy_lines=["Refresh understanding", "Apply the approved change"],
     )
     section = _make_section(planspace, "01", related_files=["src/main.py", "src/utils.py"])
-    package = build_package_from_proposal("section-01", planspace)
+    package = PackageBuilder(artifact_io=ArtifactIOService()).build_package_from_proposal("section-01", planspace)
     assessment = _assessment_for(package, raw_risks=[25, 75])
     plan = _plan_for(
         package,
@@ -304,7 +354,7 @@ def test_full_risk_loop_multi_step_with_defer(
         json.dumps(serialize_plan(plan)),
     ]
 
-    result = _run_risk_review(planspace, section)
+    result = _make_phase()._run_risk_review(planspace, section)
 
     assert result is not None
     assert result.accepted_frontier == [package.steps[0].step_id]
@@ -322,10 +372,10 @@ def test_risk_loop_fallback_on_parse_failure(
         microstrategy_lines=["Apply the approved change"],
     )
     section = _make_section(planspace, "01")
-    package = build_package_from_proposal("section-01", planspace)
+    package = PackageBuilder(artifact_io=ArtifactIOService()).build_package_from_proposal("section-01", planspace)
     mock_dispatch.return_value = "not valid json"
 
-    result = _run_risk_review(planspace, section)
+    result = _make_phase()._run_risk_review(planspace, section)
 
     assert result is not None
     assert result.accepted_frontier == []
@@ -344,7 +394,7 @@ def test_risk_loop_respects_threshold_enforcement(
         microstrategy_lines=["Apply the approved change"],
     )
     section = _make_section(planspace, "01")
-    package = build_package_from_proposal("section-01", planspace)
+    package = PackageBuilder(artifact_io=ArtifactIOService()).build_package_from_proposal("section-01", planspace)
     assessment = _assessment_for(package, raw_risks=[70])
     over_threshold_plan = _plan_for(
         package,
@@ -365,7 +415,7 @@ def test_risk_loop_respects_threshold_enforcement(
         json.dumps(serialize_plan(over_threshold_plan)),
     ]
 
-    result = _run_risk_review(planspace, section)
+    result = _make_phase()._run_risk_review(planspace, section)
 
     assert result is not None
     assert result.accepted_frontier == []
@@ -387,8 +437,8 @@ def test_risk_history_accumulates(
 
     first_section = _make_section(planspace, "01")
     second_section = _make_section(planspace, "02")
-    first_package = build_package_from_proposal("section-01", planspace)
-    second_package = build_package_from_proposal("section-02", planspace)
+    first_package = PackageBuilder(artifact_io=ArtifactIOService()).build_package_from_proposal("section-01", planspace)
+    second_package = PackageBuilder(artifact_io=ArtifactIOService()).build_package_from_proposal("section-02", planspace)
     first_assessment = _assessment_for(first_package, raw_risks=[20])
     second_assessment = _assessment_for(second_package, raw_risks=[22])
     first_plan = _plan_for(
@@ -426,14 +476,16 @@ def test_risk_history_accumulates(
         json.dumps(serialize_plan(second_plan)),
     ]
 
-    first_result = _run_risk_review(planspace, first_section)
-    second_result = _run_risk_review(planspace, second_section)
+    phase = _make_phase()
+    first_result = phase._run_risk_review(planspace, first_section)
+    second_result = phase._run_risk_review(planspace, second_section)
     assert first_result is not None
     assert second_result is not None
 
-    append_risk_history(planspace, "01", first_result, ["src/main.py"])
-    append_risk_history(planspace, "02", second_result, ["src/utils.py"])
-    history = read_history(planspace / "artifacts" / "risk" / "risk-history.jsonl")
+    _aio = ArtifactIOService()
+    append_risk_history(planspace, "01", first_result, ["src/main.py"], artifact_io=_aio)
+    append_risk_history(planspace, "02", second_result, ["src/utils.py"], artifact_io=_aio)
+    history = RiskHistory(artifact_io=ArtifactIOService()).read_history(planspace / "artifacts" / "risk" / "risk-history.jsonl")
 
     assert len(history) == 2
     assert {entry.package_id for entry in history} == {
@@ -452,7 +504,7 @@ def test_lightweight_risk_check(
         triage_confidence="medium",
         microstrategy_lines=["Apply the approved change"],
     )
-    package = build_package_from_proposal("section-01", planspace)
+    package = PackageBuilder(artifact_io=ArtifactIOService()).build_package_from_proposal("section-01", planspace)
     assessment = _assessment_for(package, raw_risks=[20])
     plan_payload = _plan_for(
         package,
@@ -632,7 +684,7 @@ def test_full_adaptive_cycle_relaxes_only_one_posture_level(
             "implementation",
             package,
         )
-        append_risk_history(planspace, "01", first_plan, ["src/main.py"])
+        append_risk_history(planspace, "01", first_plan, ["src/main.py"], artifact_io=ArtifactIOService())
         second_plan = run_risk_loop(
             planspace,
             "section-01",
@@ -660,7 +712,7 @@ def test_reassessment_executes_newly_accepted_frontier_end_to_end(
         microstrategy_lines=["Apply the approved change", "Verify the change"],
     )
     section = _make_section(planspace, "01")
-    package = build_package_from_proposal("section-01", planspace)
+    package = PackageBuilder(artifact_io=ArtifactIOService()).build_package_from_proposal("section-01", planspace)
     initial_plan = _plan_for(
         package,
         "assessment-initial",
@@ -705,11 +757,12 @@ def test_reassessment_executes_newly_accepted_frontier_end_to_end(
     reassessment_packages: list[list[str]] = []
     run_calls: list[list[str]] = []
 
-    monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
-    monkeypatch.setattr("implementation.engine.implementation_phase._run_risk_review", lambda *_args, **_kwargs: initial_plan)
+    ct = _StubChangeTracker(lambda *args: False)
+    Services.change_tracker.override(providers.Object(ct))
+    monkeypatch.setattr("proposal.service.readiness_resolver.ReadinessResolver.resolve_readiness", lambda self, *_args, **_kwargs: ReadinessResult(ready=True))
+    monkeypatch.setattr(ImplementationPhase, "_run_risk_review", lambda self, *_args, **_kwargs: initial_plan)
     monkeypatch.setattr("implementation.engine.implementation_phase.append_risk_history", lambda *args, **kwargs: None)
-    monkeypatch.setattr("implementation.engine.implementation_phase.read_package", lambda *_args, **_kwargs: package)
+    monkeypatch.setattr("risk.service.package_builder.PackageBuilder.read_package", lambda *_args, **_kwargs: package)
     monkeypatch.setattr("containers.LogService.log_lifecycle", lambda *args, **kwargs: None)
 
     def _run_section(*_args, **_kwargs) -> list[str]:
@@ -729,8 +782,7 @@ def test_reassessment_executes_newly_accepted_frontier_end_to_end(
         reassessment_packages.append([step.step_id for step in package.steps])
         return reassessed_plan
 
-    monkeypatch.setattr("orchestrator.engine.section_pipeline.run_section", _run_section)
-    monkeypatch.setattr("implementation.engine.implementation_phase.run_section", _run_section)
+    monkeypatch.setattr("orchestrator.engine.section_pipeline.SectionPipeline.run_section", _run_section)
     monkeypatch.setattr("containers.RiskAssessmentService.run_risk_loop", _reassess)
 
     results = run_implementation_pass(
@@ -769,7 +821,7 @@ def test_reassessment_executes_newly_accepted_frontier_end_to_end(
     assert not deferred_ref.exists()
     assert results["01"].aligned is True
     assert results["01"].modified_files == ["src/main.py", "tests/test_main.py"]
-    assert read_roal_input_index(planspace, "01") == [
+    assert _read_roal_input_index(planspace, "01") == [
         {
             "kind": "accepted_frontier",
             "path": str(

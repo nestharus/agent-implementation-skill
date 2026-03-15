@@ -19,22 +19,23 @@ if TYPE_CHECKING:
 
 from intake.service.assessment_evaluator import AssessmentEvaluator
 from intake.repository.governance_loader import bootstrap_governance_if_missing, GovernanceLoader
-from coordination.engine.coordination_controller import run_coordination_loop
+from coordination.engine.coordination_controller import CoordinationController
 from coordination.types import CoordinationStatus
 from implementation.engine.implementation_phase import (
     ImplementationPassExit,
     ImplementationPassRestart,
-    run_implementation_pass,
+    ImplementationPhase,
 )
 from orchestrator.path_registry import PathRegistry
-from scan.service.project_mode import resolve_project_mode, write_mode_contract
+from scan.service.project_mode import ProjectModeResolver
 from proposal.engine.proposal_phase import ProposalPassExit, run_proposal_pass
-from reconciliation.engine.reconciliation_phase import ReconciliationPhaseExit, run_reconciliation_phase
+from reconciliation.engine.cross_section_reconciler import CrossSectionReconciler
+from reconciliation.engine.reconciliation_phase import ReconciliationPhase, ReconciliationPhaseExit
 from scan.service.section_loader import load_sections
 from flow.service.task_db_client import init_db
 from pipeline.context import DispatchContext
 from signals.types import TRUNCATE_SUMMARY
-from orchestrator.engine.strategic_state_builder import build_strategic_state
+from orchestrator.engine.strategic_state_builder import StrategicStateBuilder
 from orchestrator.repository.cycle_state import CycleState
 from orchestrator.types import PipelineAbortError, SectionResult
 
@@ -58,6 +59,9 @@ class PipelineOrchestrator:
         section_alignment: SectionAlignmentService,
         change_tracker: ChangeTrackerService,
         pipeline_control: PipelineControlService,
+        coordination_controller: CoordinationController,
+        implementation_phase: ImplementationPhase,
+        reconciliation_phase: ReconciliationPhase,
     ) -> None:
         self._communicator = communicator
         self._logger = logger
@@ -67,6 +71,10 @@ class PipelineOrchestrator:
         self._section_alignment = section_alignment
         self._change_tracker = change_tracker
         self._pipeline_control = pipeline_control
+        self._coordination_controller = coordination_controller
+        self._implementation_phase = implementation_phase
+        self._reconciliation_phase = reconciliation_phase
+        self._strategic_state_builder = StrategicStateBuilder(artifact_io=artifact_io)
         self._check_and_clear_alignment_changed = change_tracker.make_alignment_checker()
 
     def main(self) -> None:
@@ -129,7 +137,7 @@ class PipelineOrchestrator:
     ) -> CoordinationStatus | str:
         """Run Phase 2: strategic state, global recheck, and coordination."""
         section_results = cycle.section_results
-        build_strategic_state(PathRegistry(ctx.planspace).decisions_dir(), section_results, ctx.planspace)
+        self._strategic_state_builder.build_strategic_state(PathRegistry(ctx.planspace).decisions_dir(), section_results, ctx.planspace)
 
         evaluator = AssessmentEvaluator(
             artifact_io=self._artifact_io,
@@ -145,7 +153,7 @@ class PipelineOrchestrator:
         if phase2_status == CoordinationStatus.RESTART_PHASE1:
             return CoordinationStatus.RESTART_PHASE1
 
-        coordination_status = run_coordination_loop(
+        coordination_status = self._coordination_controller.run_coordination_loop(
             section_results, sections_by_num, ctx,
         )
         return coordination_status or CoordinationStatus.COMPLETE
@@ -156,8 +164,13 @@ class PipelineOrchestrator:
         bootstrap_governance_if_missing(ctx.codespace)
         governance_loader = GovernanceLoader(artifact_io=self._artifact_io)
         governance_loader.build_governance_indexes(ctx.codespace, ctx.planspace)
-        project_mode, mode_constraints = resolve_project_mode(ctx.planspace)
-        write_mode_contract(ctx.planspace, project_mode, mode_constraints)
+        _mode_resolver = ProjectModeResolver(
+            artifact_io=self._artifact_io,
+            logger=self._logger,
+            pipeline_control=self._pipeline_control,
+        )
+        project_mode, mode_constraints = _mode_resolver.resolve_project_mode(ctx.planspace)
+        _mode_resolver.write_mode_contract(ctx.planspace, project_mode, mode_constraints)
 
         all_sections = load_sections(sections_dir)
         for sec in all_sections:
@@ -184,7 +197,7 @@ class PipelineOrchestrator:
             cycle.update_proposals(proposal_results)
 
             try:
-                reconciliation = run_reconciliation_phase(
+                reconciliation = self._reconciliation_phase.run_reconciliation_phase(
                     cycle.proposal_results, sections_by_num, all_sections,
                     ctx.planspace, ctx.codespace,
                 )
@@ -199,7 +212,7 @@ class PipelineOrchestrator:
 
             try:
                 cycle.update_sections(
-                    run_implementation_pass(
+                    self._implementation_phase.run_implementation_pass(
                         cycle.proposal_results, sections_by_num,
                         ctx.planspace, ctx.codespace,
                     ),
@@ -250,11 +263,156 @@ def _record_blocked_sections(
         ))
 
 
-# Backward-compat wrappers
-
-def _get_orchestrator() -> PipelineOrchestrator:
+def _build_coordination_controller():
+    """Build the full CoordinationController dependency chain."""
     from containers import Services
-    return PipelineOrchestrator(
+    from coordination.engine.global_coordinator import GlobalCoordinator
+    from coordination.engine.plan_executor import PlanExecutor
+    from coordination.prompt.writers import Writers
+    from coordination.service.completion_handler import CompletionHandler
+    from coordination.service.planner import Planner
+    from coordination.service.problem_resolver import ProblemResolver
+    from implementation.service.impact_analyzer import ImpactAnalyzer
+    from implementation.service.scope_delta_aggregator import ScopeDeltaAggregator
+
+    problem_resolver = ProblemResolver(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        logger=Services.logger(),
+        signals=Services.signals(),
+    )
+    completion_handler = CompletionHandler(
+        artifact_io=Services.artifact_io(),
+        change_tracker=Services.change_tracker(),
+        communicator=Services.communicator(),
+        hasher=Services.hasher(),
+        impact_analyzer=ImpactAnalyzer(
+            communicator=Services.communicator(),
+            config=Services.config(),
+            context_assembly=Services.context_assembly(),
+            cross_section=Services.cross_section(),
+            dispatcher=Services.dispatcher(),
+            logger=Services.logger(),
+            policies=Services.policies(),
+            prompt_guard=Services.prompt_guard(),
+            task_router=Services.task_router(),
+        ),
+        logger=Services.logger(),
+    )
+    writers = Writers(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        logger=Services.logger(),
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+    )
+    plan_executor = PlanExecutor(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        dispatch_helpers=Services.dispatch_helpers(),
+        dispatcher=Services.dispatcher(),
+        flow_ingestion=Services.flow_ingestion(),
+        hasher=Services.hasher(),
+        logger=Services.logger(),
+        pipeline_control=Services.pipeline_control(),
+        task_router=Services.task_router(),
+        writers=writers,
+    )
+    planner = Planner(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        logger=Services.logger(),
+        prompt_guard=Services.prompt_guard(),
+    )
+    scope_delta_aggregator = ScopeDeltaAggregator(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        dispatcher=Services.dispatcher(),
+        logger=Services.logger(),
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+    )
+    global_coordinator = GlobalCoordinator(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        completion_handler=completion_handler,
+        dispatch_helpers=Services.dispatch_helpers(),
+        dispatcher=Services.dispatcher(),
+        logger=Services.logger(),
+        plan_executor=plan_executor,
+        planner=planner,
+        pipeline_control=Services.pipeline_control(),
+        policies=Services.policies(),
+        problem_resolver=problem_resolver,
+        scope_delta_aggregator=scope_delta_aggregator,
+        section_alignment=Services.section_alignment(),
+        task_router=Services.task_router(),
+    )
+    return CoordinationController(
+        artifact_io=Services.artifact_io(),
+        change_tracker=Services.change_tracker(),
+        communicator=Services.communicator(),
+        global_coordinator=global_coordinator,
+        logger=Services.logger(),
+        pipeline_control=Services.pipeline_control(),
+        policies=Services.policies(),
+        problem_resolver=problem_resolver,
+    )
+
+
+def _build_reconciliation_phase() -> ReconciliationPhase:
+    """Build the ReconciliationPhase with its full dependency chain."""
+    from containers import Services
+    from reconciliation.repository.queue import Queue
+    from reconciliation.repository.results import Results
+    from reconciliation.service.adjudicator import Adjudicator
+    return ReconciliationPhase(
+        logger=Services.logger(),
+        artifact_io=Services.artifact_io(),
+        pipeline_control=Services.pipeline_control(),
+        change_tracker=Services.change_tracker(),
+        cross_section_reconciler=CrossSectionReconciler(
+            artifact_io=Services.artifact_io(),
+            results=Results(
+                artifact_io=Services.artifact_io(),
+                hasher=Services.hasher(),
+            ),
+            queue=Queue(artifact_io=Services.artifact_io()),
+            adjudicator=Adjudicator(
+                artifact_io=Services.artifact_io(),
+                prompt_guard=Services.prompt_guard(),
+                policies=Services.policies(),
+                dispatcher=Services.dispatcher(),
+                task_router=Services.task_router(),
+            ),
+        ),
+    )
+
+
+def _build_implementation_phase() -> ImplementationPhase:
+    """Build the ImplementationPhase with its full dependency chain."""
+    from containers import FreshnessService, Services
+    from implementation.repository.roal_index import RoalIndex
+    from implementation.service.risk_artifacts import RiskArtifacts
+    return ImplementationPhase(
+        artifact_io=Services.artifact_io(),
+        change_tracker=Services.change_tracker(),
+        communicator=Services.communicator(),
+        logger=Services.logger(),
+        pipeline_control=Services.pipeline_control(),
+        risk_assessment=Services.risk_assessment(),
+        risk_artifacts=RiskArtifacts(
+            artifact_io=Services.artifact_io(),
+            freshness=FreshnessService(),
+        ),
+        roal_index=RoalIndex(artifact_io=Services.artifact_io()),
+    )
+
+
+def main() -> None:
+    from containers import Services
+    PipelineOrchestrator(
         communicator=Services.communicator(),
         logger=Services.logger(),
         config=Services.config(),
@@ -263,11 +421,10 @@ def _get_orchestrator() -> PipelineOrchestrator:
         section_alignment=Services.section_alignment(),
         change_tracker=Services.change_tracker(),
         pipeline_control=Services.pipeline_control(),
-    )
-
-
-def main() -> None:
-    _get_orchestrator().main()
+        coordination_controller=_build_coordination_controller(),
+        implementation_phase=_build_implementation_phase(),
+        reconciliation_phase=_build_reconciliation_phase(),
+    ).main()
 
 
 if __name__ == "__main__":

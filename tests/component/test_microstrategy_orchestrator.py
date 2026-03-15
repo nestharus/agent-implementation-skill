@@ -7,7 +7,7 @@ from dependency_injector import providers
 
 from conftest import NoOpFlow, WritingGuard, make_dispatcher
 from containers import Services
-from src.implementation.service.microstrategy_generator import run_microstrategy
+from implementation.service.microstrategy_generator import MicrostrategyGenerator
 from src.orchestrator.path_registry import PathRegistry
 from src.orchestrator.types import Section
 
@@ -39,19 +39,43 @@ def env(tmp_path: Path) -> tuple[Path, Path]:
     (codespace / "src" / "main.py").write_text("def main():\n    pass\n", encoding="utf-8")
     return planspace, codespace
 
+
+class _SkippingDecider:
+    """Decider that always says no microstrategy needed."""
+    def check_needs_microstrategy(self, *_args, **_kwargs) -> bool:
+        return False
+
+
+class _RequestingDecider:
+    """Decider that always says microstrategy is needed."""
+    def check_needs_microstrategy(self, *_args, **_kwargs) -> bool:
+        return True
+
+
+def _make_generator(decider: MicrostrategyDecider) -> MicrostrategyGenerator:
+    return MicrostrategyGenerator(
+        artifact_io=Services.artifact_io(),
+        communicator=Services.communicator(),
+        config=Services.config(),
+        dispatcher=Services.dispatcher(),
+        flow_ingestion=Services.flow_ingestion(),
+        logger=Services.logger(),
+        microstrategy_decider=decider,
+        policies=Services.policies(),
+        pipeline_control=Services.pipeline_control(),
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+    )
+
+
 def test_run_microstrategy_returns_none_when_decider_skips(
     env: tuple[Path, Path],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     planspace, codespace = env
     section = _section(planspace)
 
-    monkeypatch.setattr(
-        "src.implementation.service.microstrategy_generator.check_needs_microstrategy",
-        lambda *_args, **_kwargs: False,
-    )
-
-    result = run_microstrategy(
+    generator = _make_generator(_SkippingDecider())
+    result = generator.run_microstrategy(
         section,
         planspace,
         codespace,
@@ -61,18 +85,12 @@ def test_run_microstrategy_returns_none_when_decider_skips(
 
 def test_run_microstrategy_retries_with_escalation_and_returns_path(
     env: tuple[Path, Path],
-    monkeypatch: pytest.MonkeyPatch,
     noop_communicator,
     noop_pipeline_control) -> None:
     planspace, codespace = env
     section = _section(planspace)
     micro_path = planspace / "artifacts" / "proposals" / "section-05-microstrategy.md"
     dispatch_calls: list[str] = []
-
-    monkeypatch.setattr(
-        "src.implementation.service.microstrategy_generator.check_needs_microstrategy",
-        lambda *_args, **_kwargs: True,
-    )
 
     def _dispatch(model, *_args, **_kwargs):
         dispatch_calls.append(model)
@@ -85,7 +103,8 @@ def test_run_microstrategy_retries_with_escalation_and_returns_path(
     Services.flow_ingestion.override(providers.Object(NoOpFlow()))
 
     try:
-        result = run_microstrategy(
+        generator = _make_generator(_RequestingDecider())
+        result = generator.run_microstrategy(
             section,
             planspace,
             codespace,

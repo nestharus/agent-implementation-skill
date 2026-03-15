@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 from staleness.service.alignment_collector import (
     AlignmentCollector,
-    collect_modified_files as _collect_modified_files_free,
     extract_problems,
 )
 from orchestrator.path_registry import PathRegistry
@@ -93,19 +92,20 @@ class SectionAlignmentChecker:
         task_router: TaskRouterService,
         pipeline_control: PipelineControlService,
         prompt_guard: PromptGuard,
+        alignment_collector: AlignmentCollector | None = None,
     ) -> None:
         self._logger = logger
         self._dispatcher = dispatcher
         self._task_router = task_router
         self._pipeline_control = pipeline_control
         self._prompt_guard = prompt_guard
+        self._alignment_collector = alignment_collector or AlignmentCollector(logger=logger)
 
     def collect_modified_files(
         self, planspace: Path, section: Section, codespace: Path,
     ) -> list[str]:
         """Collect modified files from the implementation report."""
-        collector = AlignmentCollector(logger=self._logger)
-        return collector.collect_modified_files(planspace, section, codespace)
+        return self._alignment_collector.collect_modified_files(planspace, section, codespace)
 
     def extract_problems(
         self,
@@ -167,7 +167,19 @@ class SectionAlignmentChecker:
         If the agent times out, retries up to max_retries times. Returns the
         alignment result text, or None if all retries exhausted.
         """
-        from dispatch.prompt.writers import write_impl_alignment_prompt
+        from dispatch.prompt.writers import Writers as PromptWriters
+        from containers import Services
+
+        prompt_writers = PromptWriters(
+            task_router=Services.task_router(),
+            prompt_guard=Services.prompt_guard(),
+            logger=Services.logger(),
+            communicator=Services.communicator(),
+            section_alignment=Services.section_alignment(),
+            artifact_io=Services.artifact_io(),
+            cross_section=Services.cross_section(),
+            config=Services.config(),
+        )
 
         sec_num = section.number
         paths = PathRegistry(planspace)
@@ -176,7 +188,7 @@ class SectionAlignmentChecker:
                 planspace, current_section=sec_num)
             if ctrl == ControlSignal.ALIGNMENT_CHANGED:
                 return ALIGNMENT_CHANGED_PENDING
-            align_prompt = write_impl_alignment_prompt(
+            align_prompt = prompt_writers.write_impl_alignment_prompt(
                 section, planspace, codespace,
             )
             align_output = paths.artifacts / f"{output_prefix}-{sec_num}-output.md"
@@ -204,57 +216,3 @@ class SectionAlignmentChecker:
             self._logger.log(f"  alignment check for section {sec_num} timed out "
                 f"(attempt {attempt}/{max_retries + 1})")
         return None
-
-
-# --- Thin backward-compat wrappers (used by containers.py service classes) ---
-
-
-def collect_modified_files(
-    planspace: Path, section: Section, codespace: Path,
-) -> list[str]:
-    """Collect modified files from the implementation report."""
-    return _collect_modified_files_free(planspace, section, codespace)
-
-
-def _extract_problems(
-    result: str,
-    output_path: Path | None = None,
-    planspace: Path | None = None,
-    codespace: Path | None = None,
-    *,
-    adjudicator_model: str,
-) -> str | None:
-    from containers import Services
-    checker = SectionAlignmentChecker(
-        logger=Services.logger(),
-        dispatcher=Services.dispatcher(),
-        task_router=Services.task_router(),
-        pipeline_control=Services.pipeline_control(),
-        prompt_guard=Services.prompt_guard(),
-    )
-    return checker.extract_problems(
-        result, output_path, planspace, codespace,
-        adjudicator_model=adjudicator_model,
-    )
-
-
-def _run_alignment_check_with_retries(
-    section: Section, planspace: Path, codespace: Path,
-    output_prefix: str = "align",
-    max_retries: int = 2,
-    *,
-    model: str,
-) -> str | None:
-    from containers import Services
-    checker = SectionAlignmentChecker(
-        logger=Services.logger(),
-        dispatcher=Services.dispatcher(),
-        task_router=Services.task_router(),
-        pipeline_control=Services.pipeline_control(),
-        prompt_guard=Services.prompt_guard(),
-    )
-    return checker.run_alignment_check_with_retries(
-        section, planspace, codespace,
-        output_prefix, max_retries,
-        model=model,
-    )

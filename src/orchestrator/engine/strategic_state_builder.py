@@ -13,12 +13,9 @@ from orchestrator.path_registry import PathRegistry
 from orchestrator.repository.decisions import (
     DECISION_SCOPE_GLOBAL,
     DECISION_STATUS_DECIDED,
-    load_decisions,
+    Decisions,
 )
-from risk.repository.serialization import (
-    load_risk_assessment,
-    load_risk_plan,
-)
+from risk.repository.serialization import RiskSerializer
 from risk.types import StepDecision
 from signals.types import SIGNAL_NEEDS_PARENT, TRUNCATE_DETAIL
 
@@ -48,6 +45,8 @@ class _SectionTally:
 class StrategicStateBuilder:
     def __init__(self, artifact_io: ArtifactIOService) -> None:
         self._artifact_io = artifact_io
+        self._decisions = Decisions(artifact_io=artifact_io)
+        self._serializer = RiskSerializer(artifact_io=artifact_io)
 
     def build_strategic_state(
         self,
@@ -57,7 +56,7 @@ class StrategicStateBuilder:
     ) -> dict[str, Any]:
         """Derive the current strategic-state snapshot."""
         decision_warnings: list[str] = []
-        decisions = load_decisions(decisions_dir, warnings=decision_warnings)
+        decisions = self._decisions.load_decisions(decisions_dir, warnings=decision_warnings)
 
         research_questions = self._load_research_questions(planspace)
 
@@ -112,7 +111,7 @@ class StrategicStateBuilder:
                 aligned = getattr(result, "aligned", False)
                 problems = getattr(result, "problems", None)
 
-            _accumulate_risk(planspace, sec_num, tally)
+            _accumulate_risk(planspace, sec_num, tally, self._serializer)
 
             if aligned:
                 tally.completed.append(sec_num)
@@ -193,9 +192,10 @@ def _accumulate_risk(
     planspace: Path,
     sec_num: str,
     tally: _SectionTally,
+    serializer: RiskSerializer,
 ) -> None:
     """Read risk artifacts for *sec_num* and update *tally* in-place."""
-    risk_summary = _read_risk_summary(planspace, sec_num)
+    risk_summary = _read_risk_summary(planspace, sec_num, serializer)
     if risk_summary.posture is not None:
         tally.risk_posture[sec_num] = risk_summary.posture
     if risk_summary.mitigations:
@@ -243,11 +243,12 @@ def _derive_next_action(
 def _read_risk_summary(
     planspace: Path,
     sec_num: str,
+    serializer: RiskSerializer,
 ) -> RiskSummary:
     paths = PathRegistry(planspace)
     scope = f"section-{sec_num}"
-    assessment = load_risk_assessment(paths.risk_assessment(scope))
-    plan = load_risk_plan(paths.risk_plan(scope))
+    assessment = serializer.load_risk_assessment(paths.risk_assessment(scope))
+    plan = serializer.load_risk_plan(paths.risk_plan(scope))
 
     posture = None
     blocked_by_risk = False
@@ -270,20 +271,3 @@ def _read_risk_summary(
         else []
     )
     return RiskSummary(posture=posture, mitigations=dominant_risks, has_plan=blocked_by_risk)
-
-
-# Backward-compat wrappers
-
-def _get_builder() -> StrategicStateBuilder:
-    from containers import Services
-    return StrategicStateBuilder(
-        artifact_io=Services.artifact_io(),
-    )
-
-
-def build_strategic_state(
-    decisions_dir: Path,
-    section_results: dict[str, Any],
-    planspace: Path,
-) -> dict[str, Any]:
-    return _get_builder().build_strategic_state(decisions_dir, section_results, planspace)

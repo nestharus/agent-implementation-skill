@@ -7,13 +7,20 @@ from pathlib import Path
 
 import pytest
 
+from containers import Services
 from src.orchestrator.path_registry import PathRegistry
 from src.scan.service.scan_dispatch_config import (
     DEFAULT_SCAN_MODELS,
+    ScanDispatchConfig,
     build_scan_dispatch_command,
-    read_scan_model_policy,
-    resolve_scan_agent_path,
 )
+
+
+def _make_config():
+    return ScanDispatchConfig(
+        artifact_io=Services.artifact_io(),
+        task_router=Services.task_router(),
+    )
 
 
 def test_read_scan_model_policy_uses_defaults_and_overrides(tmp_path) -> None:
@@ -28,7 +35,7 @@ def test_read_scan_model_policy_uses_defaults_and_overrides(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    policy = read_scan_model_policy(artifacts_dir)
+    policy = _make_config().read_scan_model_policy(artifacts_dir)
 
     assert policy["tier_ranking"] == "custom-model"
     assert policy["codemap_build"] == DEFAULT_SCAN_MODELS["codemap_build"]
@@ -43,7 +50,7 @@ def test_read_scan_model_policy_renames_malformed_json(tmp_path) -> None:
     policy_path = artifacts_dir / "model-policy.json"
     policy_path.write_text("{bad json", encoding="utf-8")
 
-    policy = read_scan_model_policy(artifacts_dir)
+    policy = _make_config().read_scan_model_policy(artifacts_dir)
 
     assert policy == DEFAULT_SCAN_MODELS
     assert not policy_path.exists()
@@ -61,10 +68,11 @@ def test_resolve_scan_agent_path_validates_presence(tmp_path, monkeypatch) -> No
         lambda self, name: agent_path if name == "scan-test.md" else (_ for _ in ()).throw(FileNotFoundError(name)),
     )
 
-    assert resolve_scan_agent_path("scan-test.md") == agent_path
+    config = _make_config()
+    assert config.resolve_scan_agent_path("scan-test.md") == agent_path
 
     with pytest.raises(FileNotFoundError):
-        resolve_scan_agent_path("missing.md")
+        config.resolve_scan_agent_path("missing.md")
 
 
 def test_build_scan_dispatch_command_matches_agents_invocation(tmp_path) -> None:

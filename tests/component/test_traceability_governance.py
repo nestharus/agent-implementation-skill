@@ -3,12 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from containers import Services
 from orchestrator.types import Section
 from src.orchestrator.path_registry import PathRegistry
-from src.implementation.service.traceability_writer import (
-    write_traceability_index,
-    update_trace_governance,
-)
+from src.implementation.service.traceability_writer import TraceabilityWriter
 
 
 def _section(planspace: Path) -> Section:
@@ -41,7 +39,13 @@ def testwrite_traceability_index_includes_governance_block(tmp_path: Path) -> No
     )
     governance_packet.write_text('{"section": "01"}\n', encoding="utf-8")
 
-    write_traceability_index(planspace, section, ["src/main.py"])
+    writer = TraceabilityWriter(
+        artifact_io=Services.artifact_io(),
+        hasher=Services.hasher(),
+        logger=Services.logger(),
+        section_alignment=Services.section_alignment(),
+    )
+    writer.write_traceability_index(planspace, section, ["src/main.py"])
 
     trace = json.loads(
         (artifacts / "trace" / "section-01.json").read_text(encoding="utf-8")
@@ -74,7 +78,13 @@ def test_update_trace_governance_merges_without_duplicates(tmp_path: Path) -> No
         encoding="utf-8",
     )
 
-    updated = update_trace_governance(
+    writer = TraceabilityWriter(
+        artifact_io=Services.artifact_io(),
+        hasher=Services.hasher(),
+        logger=Services.logger(),
+        section_alignment=Services.section_alignment(),
+    )
+    updated = writer.update_trace_governance(
         planspace,
         "01",
         problem_ids=["PRB-0001", "PRB-0009"],

@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from dependency_injector import providers
 
-from containers import Services
+from implementation.service.section_reexplorer import SectionReexplorer
+from orchestrator.engine.section_pipeline import SectionPipeline
 from src.orchestrator.path_registry import PathRegistry
 from src.proposal.engine import proposal_phase as proposal_pass
 from src.proposal.engine.proposal_phase import ProposalPassExit, run_proposal_pass
@@ -23,6 +23,7 @@ def test_run_proposal_pass_reexplores_then_records_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     noop_pipeline_control,
+    noop_change_tracker,
     capturing_communicator,
 ) -> None:
     planspace = _planspace(tmp_path)
@@ -31,19 +32,9 @@ def test_run_proposal_pass_reexplores_then_records_result(
     section = Section(number="01", path=section_path, related_files=[])
 
     monkeypatch.setattr(
-        proposal_pass,
-        "_check_and_clear_alignment_changed",
-        lambda *args: False,
-    )
-    monkeypatch.setattr(
-        proposal_pass,
-        "_risk_check_proposal",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        proposal_pass,
+        SectionReexplorer,
         "reexplore_section",
-        lambda *args, **kwargs: "ok",
+        lambda self, *args, **kwargs: "ok",
     )
     monkeypatch.setattr(
         proposal_pass,
@@ -51,9 +42,9 @@ def test_run_proposal_pass_reexplores_then_records_result(
         lambda path: ["src/app.py"],
     )
     monkeypatch.setattr(
-        proposal_pass,
+        SectionPipeline,
         "run_section",
-        lambda *args, **kwargs: ProposalPassResult(
+        lambda self, *args, **kwargs: ProposalPassResult(
             section_number="01",
             execution_ready=True,
         ),
@@ -78,6 +69,7 @@ def test_run_proposal_pass_raises_on_abort(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capturing_pipeline_control,
+    noop_change_tracker,
     capturing_communicator,
 ) -> None:
     planspace = _planspace(tmp_path)

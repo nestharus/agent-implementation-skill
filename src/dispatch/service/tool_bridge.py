@@ -364,39 +364,3 @@ class ToolBridge:
                 f"Section {section_number}: could not acknowledge "
                 f"friction signal — file write failed"
             )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_bridge() -> ToolBridge:
-    from containers import Services
-    return ToolBridge(
-        artifact_io=Services.artifact_io(),
-        logger=Services.logger(),
-        policies=Services.policies(),
-        prompt_guard=Services.prompt_guard(),
-        dispatcher=Services.dispatcher(),
-        task_router=Services.task_router(),
-        cross_section=Services.cross_section(),
-        hasher=Services.hasher(),
-    )
-
-
-def handle_tool_friction(
-    *,
-    section_number: str,
-    section_path: str | Path,
-    all_sections: list[Any] | None,
-    planspace: Path,
-    codespace: Path,
-) -> None:
-    """Handle tool-friction signals and dispatch bridge-tools when needed."""
-    return _get_bridge().handle_tool_friction(
-        section_number=section_number,
-        section_path=section_path,
-        all_sections=all_sections,
-        planspace=planspace,
-        codespace=codespace,
-    )

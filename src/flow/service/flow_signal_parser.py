@@ -121,25 +121,3 @@ class FlowSignalParser:
             valid.append(entry)
 
         return valid
-
-
-# Backward-compat wrappers
-
-def _get_parser() -> FlowSignalParser:
-    from containers import Services
-    return FlowSignalParser(
-        logger=Services.logger(),
-        artifact_io=Services.artifact_io(),
-    )
-
-
-def parse_signal_file(
-    signal_path: Path,
-) -> FlowDeclaration | None:
-    return _get_parser().parse_signal_file(signal_path)
-
-
-def ingest_task_requests(
-    signal_path: Path,
-) -> list[dict]:
-    return _get_parser().ingest_task_requests(signal_path)

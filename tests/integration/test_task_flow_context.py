@@ -537,7 +537,8 @@ class TestContextAssemblyFlowContext:
         self, planspace: Path, tmp_path: Path,
     ) -> None:
         """An agent file declaring flow_context gets it resolved."""
-        from dispatch.service.context_sidecar import resolve_context
+        from containers import Services
+        from dispatch.service.context_sidecar import ContextSidecar
 
         # Create an agent file with flow_context in its context list.
         agent_file = tmp_path / "test-agent.md"
@@ -551,7 +552,7 @@ class TestContextAssemblyFlowContext:
         ctx_data = {"task": {"task_id": 7}}
         (flows_dir / "task-7-context.json").write_text(json.dumps(ctx_data))
 
-        result = resolve_context(str(agent_file), planspace)
+        result = ContextSidecar(artifact_io=Services.artifact_io()).resolve_context(str(agent_file), planspace)
         assert "flow_context" in result
         parsed = json.loads(result["flow_context"])
         assert parsed["task"]["task_id"] == 7

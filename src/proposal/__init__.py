@@ -1,11 +1,11 @@
 """Proposal system: problem framing, proposal generation, readiness.
 
 Public API (import from submodules):
-    excerpt_extractor: extract_excerpts
-    excerpt_repository: invalidate_all
-    problem_frame_gate: validate_problem_frame
-    proposal_cycle: run_proposal_loop
-    proposal_phase: ProposalPassExit, run_proposal_pass
-    state (repository): load_proposal_state
-    readiness_resolver: ReadinessResult, resolve_readiness
+    excerpt_extractor: ExcerptExtractor
+    problem_frame_gate: ProblemFrameGate
+    proposal_cycle: ProposalCycle
+    proposal_phase: ProposalPassExit, ProposalPhase
+    state (repository): ProposalState, State
+    readiness_gate: ReadinessGate
+    readiness_resolver: ReadinessResult, ReadinessResolver
 """

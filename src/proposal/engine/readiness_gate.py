@@ -13,12 +13,12 @@ if TYPE_CHECKING:
         LogService,
         ResearchOrchestratorService,
     )
+    from research.prompt.writers import ResearchPromptWriter
 
 from orchestrator.path_registry import PathRegistry
-from research.prompt.writers import write_research_plan_prompt
-from proposal.repository.state import ProposalState, load_proposal_state
-from proposal.service.readiness_resolver import resolve_readiness
-from reconciliation.repository.queue import queue_reconciliation_request
+from proposal.repository.state import ProposalState, State as ProposalStateRepo
+from proposal.service.readiness_resolver import ReadinessResolver
+from reconciliation.repository.queue import Queue as ReconciliationQueue
 from research.engine.orchestrator import ResearchState
 from signals.service.blocker_manager import (
     append_open_problem,
@@ -48,6 +48,9 @@ class ReadinessGate:
         communicator: Communicator,
         research: ResearchOrchestratorService,
         freshness: FreshnessService,
+        prompt_writer: ResearchPromptWriter,
+        reconciliation_queue: ReconciliationQueue,
+        readiness_resolver: ReadinessResolver | None = None,
     ) -> None:
         self._logger = logger
         self._artifact_io = artifact_io
@@ -55,6 +58,9 @@ class ReadinessGate:
         self._communicator = communicator
         self._research = research
         self._freshness = freshness
+        self._prompt_writer = prompt_writer
+        self._reconciliation_queue = reconciliation_queue
+        self._readiness_resolver = readiness_resolver or ReadinessResolver(artifact_io=artifact_io)
 
     def _emit_needs_parent_research_signals(
         self,
@@ -169,7 +175,7 @@ class ReadinessGate:
             "cycle_id": cycle_id,
         }
         self._artifact_io.write_json(trigger_path, trigger)
-        prompt_path = write_research_plan_prompt(
+        prompt_path = self._prompt_writer.write_research_plan_prompt(
             section_number, planspace, codespace, trigger_path,
         )
         if prompt_path is None:
@@ -282,7 +288,7 @@ class ReadinessGate:
         ]
         if not unresolved_contracts and not unresolved_anchors:
             return
-        queue_reconciliation_request(
+        self._reconciliation_queue.queue_reconciliation_request(
             planspace, section_number,
             unresolved_contracts, unresolved_anchors,
         )
@@ -329,11 +335,11 @@ class ReadinessGate:
         """Resolve readiness, publish discoveries, and route blockers."""
         registry = PathRegistry(planspace)
         proposal_state_path = registry.proposal_state(section.number)
-        proposal_state = load_proposal_state(proposal_state_path)
+        proposal_state = ProposalStateRepo(artifact_io=self._artifact_io).load_proposal_state(proposal_state_path)
 
         self.publish_discoveries(section.number, proposal_state, planspace)
 
-        readiness = resolve_readiness(planspace, section.number)
+        readiness = self._readiness_resolver.resolve_readiness(planspace, section.number)
         if not readiness.ready:
             blockers = readiness.blockers
             rationale = readiness.rationale or "unknown"
@@ -410,53 +416,4 @@ def _build_proposal_pass_result(
         blockers=blockers,
         needs_reconciliation=needs_reconciliation,
         proposal_state_path=str(proposal_state_path),
-    )
-
-
-# Backward-compat wrappers
-
-def _get_readiness_gate() -> ReadinessGate:
-    from containers import Services
-    return ReadinessGate(
-        logger=Services.logger(),
-        artifact_io=Services.artifact_io(),
-        hasher=Services.hasher(),
-        communicator=Services.communicator(),
-        research=Services.research(),
-        freshness=Services.freshness(),
-    )
-
-
-def publish_discoveries(
-    section_number: str,
-    proposal_state: ProposalState,
-    planspace: Path,
-) -> None:
-    """Publish durable discovery artifacts from proposal state."""
-    _get_readiness_gate().publish_discoveries(
-        section_number, proposal_state, planspace,
-    )
-
-
-def route_blockers(
-    section_number: str,
-    proposal_state: ProposalState,
-    planspace: Path,
-    codespace: Path | None = None,
-) -> None:
-    """Route proposal blockers to their downstream consumers."""
-    _get_readiness_gate().route_blockers(
-        section_number, proposal_state, planspace, codespace=codespace,
-    )
-
-
-def resolve_and_route(
-    section,
-    planspace: Path,
-    pass_mode: str,
-    codespace: Path | None = None,
-) -> GateResult:
-    """Resolve readiness, publish discoveries, and route blockers."""
-    return _get_readiness_gate().resolve_and_route(
-        section, planspace, pass_mode, codespace=codespace,
     )

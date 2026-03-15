@@ -2,17 +2,20 @@ from pathlib import Path
 from typing import Callable
 
 import pytest
+from dependency_injector import providers
 
 from signals.repository.artifact_io import read_json, write_json
+from containers import ArtifactIOService, ChangeTrackerService, FreshnessService, Services
 from implementation.engine.implementation_phase import (
     ImplementationPassExit,
     ImplementationPassRestart,
-    run_implementation_pass,
+    ImplementationPhase,
 )
-from implementation.repository.roal_index import read_roal_input_index
+from implementation.repository.roal_index import RoalIndex
+from implementation.service.risk_artifacts import RiskArtifacts
 from implementation.service.risk_history_recorder import append_risk_history
 from proposal.service.readiness_resolver import ReadinessResult
-from risk.repository.history import read_history
+from risk.repository.history import RiskHistory
 from risk.repository.serialization import serialize_assessment, serialize_package
 from risk.types import (
     PackageStep,
@@ -30,6 +33,14 @@ from risk.types import (
     UnderstandingInventory,
 )
 from orchestrator.types import ProposalPassResult, Section
+
+
+@pytest.fixture(autouse=True)
+def _reset_change_tracker():
+    """Ensure Services.change_tracker override is reset after each test."""
+    yield
+    Services.change_tracker.reset_override()
+
 
 def _make_section(planspace: Path, number: str) -> Section:
     path = planspace / "artifacts" / "sections" / f"section-{number}.md"
@@ -147,6 +158,59 @@ def _write_risk_context(planspace: Path, sec_num: str) -> None:
         assessment,
     )
 
+
+class _StubChangeTracker(ChangeTrackerService):
+    """Test double whose make_alignment_checker returns a configurable callable."""
+
+    def __init__(self, checker_fn):
+        self._checker_fn = checker_fn
+
+    def set_flag(self, planspace) -> None:
+        pass
+
+    def make_alignment_checker(self):
+        return self._checker_fn
+
+    def invalidate_excerpts(self, planspace) -> None:
+        pass
+
+
+def _read_roal_input_index(planspace: Path, sec_num: str) -> list[dict]:
+    return RoalIndex(artifact_io=ArtifactIOService()).read_roal_input_index(planspace, sec_num)
+
+
+def _make_phase(
+    change_tracker: ChangeTrackerService | None = None,
+) -> ImplementationPhase:
+    if change_tracker is not None:
+        ct = change_tracker
+    else:
+        try:
+            ct = Services.change_tracker()
+        except Exception:
+            ct = _StubChangeTracker(lambda *args: False)
+    return ImplementationPhase(
+        artifact_io=Services.artifact_io(),
+        change_tracker=ct,
+        communicator=Services.communicator(),
+        logger=Services.logger(),
+        pipeline_control=Services.pipeline_control(),
+        risk_assessment=Services.risk_assessment(),
+        risk_artifacts=RiskArtifacts(
+            artifact_io=Services.artifact_io(),
+            freshness=FreshnessService(),
+        ),
+        roal_index=RoalIndex(artifact_io=Services.artifact_io()),
+    )
+
+
+def run_implementation_pass(proposal_results, sections_by_num, planspace, codespace):
+    """Test helper: instantiate ImplementationPhase and call run_implementation_pass."""
+    return _make_phase().run_implementation_pass(
+        proposal_results, sections_by_num, planspace, codespace,
+    )
+
+
 def _patch_implementation_pass_basics(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -157,10 +221,7 @@ def _patch_implementation_pass_basics(
     alignment_checks: list[bool] | None = None,
 ) -> None:
     if alignment_checks is None:
-        monkeypatch.setattr(
-            "implementation.engine.implementation_phase._check_and_clear_alignment_changed",
-            lambda *args: False,
-        )
+        ct = _StubChangeTracker(lambda *args: False)
     else:
         remaining = list(alignment_checks)
 
@@ -169,20 +230,18 @@ def _patch_implementation_pass_basics(
                 return remaining.pop(0)
             return False
 
-        monkeypatch.setattr(
-            "implementation.engine.implementation_phase._check_and_clear_alignment_changed",
-            _check_alignment,
-        )
+        ct = _StubChangeTracker(_check_alignment)
+    Services.change_tracker.override(providers.Object(ct))
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase.resolve_readiness",
-        lambda *_args, **_kwargs: ReadinessResult(ready=True),
+        "proposal.service.readiness_resolver.ReadinessResolver.resolve_readiness",
+        lambda self, *_args, **_kwargs: ReadinessResult(ready=True),
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase._run_risk_review",
-        lambda *_args, **_kwargs: risk_plan,
+        ImplementationPhase, "_run_risk_review",
+        lambda self, *_args, **_kwargs: risk_plan,
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase.run_section",
+        "orchestrator.engine.section_pipeline.SectionPipeline.run_section",
         run_section_fn,
     )
     monkeypatch.setattr(
@@ -191,7 +250,7 @@ def _patch_implementation_pass_basics(
     )
     if reassess_fn is not None:
         monkeypatch.setattr(
-            "implementation.engine.implementation_phase._maybe_reassess_deferred_steps",
+            ImplementationPhase, "_maybe_reassess_deferred_steps",
             reassess_fn,
         )
     if append_history_fn is not None:
@@ -206,20 +265,18 @@ def test_run_implementation_pass_records_results_and_hashes(
     section = _make_section(planspace, "01")
 
     noop_pipeline_control.section_inputs_hash = lambda *args: "hash-123"
+    ct = _StubChangeTracker(lambda *args: False)
+    Services.change_tracker.override(providers.Object(ct))
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase._check_and_clear_alignment_changed",
-        lambda *args: False,
+        "proposal.service.readiness_resolver.ReadinessResolver.resolve_readiness",
+        lambda self, *_args, **_kwargs: ReadinessResult(ready=True),
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase.resolve_readiness",
-        lambda *_args, **_kwargs: ReadinessResult(ready=True),
+        ImplementationPhase, "_run_risk_review",
+        lambda self, *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase._run_risk_review",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        "implementation.engine.implementation_phase.run_section",
+        "orchestrator.engine.section_pipeline.SectionPipeline.run_section",
         lambda *args, **kwargs: ["src/app.py"],
     )
     monkeypatch.setattr(
@@ -267,10 +324,11 @@ def test_run_implementation_pass_writes_accepted_steps_artifact(
             ),
         ],
     )
-    monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
-    monkeypatch.setattr("implementation.engine.implementation_phase._run_risk_review", lambda *_args, **_kwargs: plan)
-    monkeypatch.setattr("implementation.engine.implementation_phase.run_section", lambda *args, **kwargs: ["src/app.py"])
+    ct = _StubChangeTracker(lambda *args: False)
+    Services.change_tracker.override(providers.Object(ct))
+    monkeypatch.setattr("proposal.service.readiness_resolver.ReadinessResolver.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
+    monkeypatch.setattr(ImplementationPhase, "_run_risk_review", lambda self, *_args, **_kwargs: plan)
+    monkeypatch.setattr("orchestrator.engine.section_pipeline.SectionPipeline.run_section", lambda *args, **kwargs: ["src/app.py"])
     monkeypatch.setattr("containers.LogService.log_lifecycle", lambda *args, **kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_phase.append_risk_history", lambda *args, **kwargs: None)
 
@@ -305,7 +363,7 @@ def test_run_implementation_pass_writes_accepted_steps_artifact(
     assert accepted["dispatch_shapes"] == accepted["dispatch_shape"]
     ref_path = accepted_path.with_suffix(".ref")
     assert ref_path.read_text(encoding="utf-8").strip() == str(accepted_path.resolve())
-    assert read_roal_input_index(planspace, "01") == [
+    assert _read_roal_input_index(planspace, "01") == [
         {
             "kind": "accepted_frontier",
             "path": str(accepted_path),
@@ -336,10 +394,11 @@ def test_run_implementation_pass_writes_deferred_steps_artifact(
             ),
         ],
     )
-    monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
-    monkeypatch.setattr("implementation.engine.implementation_phase._run_risk_review", lambda *_args, **_kwargs: plan)
-    monkeypatch.setattr("implementation.engine.implementation_phase.run_section", lambda *args, **kwargs: ["src/app.py"])
+    ct = _StubChangeTracker(lambda *args: False)
+    Services.change_tracker.override(providers.Object(ct))
+    monkeypatch.setattr("proposal.service.readiness_resolver.ReadinessResolver.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
+    monkeypatch.setattr(ImplementationPhase, "_run_risk_review", lambda self, *_args, **_kwargs: plan)
+    monkeypatch.setattr("orchestrator.engine.section_pipeline.SectionPipeline.run_section", lambda *args, **kwargs: ["src/app.py"])
     monkeypatch.setattr("containers.LogService.log_lifecycle", lambda *args, **kwargs: None)
     monkeypatch.setattr("implementation.engine.implementation_phase.append_risk_history", lambda *args, **kwargs: None)
 
@@ -365,7 +424,7 @@ def test_run_implementation_pass_writes_deferred_steps_artifact(
             "alignment-check-result",
         ],
     }
-    assert read_roal_input_index(planspace, "01") == [
+    assert _read_roal_input_index(planspace, "01") == [
         {
             "kind": "accepted_frontier",
             "path": str(
@@ -408,11 +467,12 @@ def test_run_implementation_pass_writes_reopen_blocker_and_skips(
             ),
         ],
     )
-    monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
-    monkeypatch.setattr("implementation.engine.implementation_phase._run_risk_review", lambda *_args, **_kwargs: plan)
+    ct = _StubChangeTracker(lambda *args: False)
+    Services.change_tracker.override(providers.Object(ct))
+    monkeypatch.setattr("proposal.service.readiness_resolver.ReadinessResolver.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
+    monkeypatch.setattr(ImplementationPhase, "_run_risk_review", lambda self, *_args, **_kwargs: plan)
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase.run_section",
+        "orchestrator.engine.section_pipeline.SectionPipeline.run_section",
         lambda *args, **kwargs: run_calls.append("run") or ["src/app.py"],
     )
     monkeypatch.setattr("containers.LogService.log_lifecycle", lambda *args, **kwargs: None)
@@ -425,7 +485,7 @@ def test_run_implementation_pass_writes_reopen_blocker_and_skips(
     )
 
     blocker = read_json(planspace / "artifacts" / "signals" / "section-01-blocker.json")
-    assert read_roal_input_index(planspace, "01") == [
+    assert _read_roal_input_index(planspace, "01") == [
         {
             "kind": "reopen",
             "path": str(
@@ -458,14 +518,15 @@ def test_run_implementation_pass_fail_closed_on_roal_failure(
     noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
     run_calls: list[str] = []
-    monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
+    ct = _StubChangeTracker(lambda *args: False)
+    Services.change_tracker.override(providers.Object(ct))
+    monkeypatch.setattr("proposal.service.readiness_resolver.ReadinessResolver.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase._run_risk_review",
-        lambda *_args, **_kwargs: _plan(accepted_frontier=[]),
+        ImplementationPhase, "_run_risk_review",
+        lambda self, *_args, **_kwargs: _plan(accepted_frontier=[]),
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase.run_section",
+        "orchestrator.engine.section_pipeline.SectionPipeline.run_section",
         lambda *args, **kwargs: run_calls.append("run") or ["src/app.py"],
     )
     monkeypatch.setattr("containers.LogService.log_lifecycle", lambda *args, **kwargs: None)
@@ -484,10 +545,11 @@ def test_run_implementation_pass_skip_mode_proceeds_without_risk_artifacts(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
     noop_communicator, noop_pipeline_control) -> None:
     section = _make_section(planspace, "01")
-    monkeypatch.setattr("implementation.engine.implementation_phase._check_and_clear_alignment_changed", lambda *args: False)
-    monkeypatch.setattr("implementation.engine.implementation_phase.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
-    monkeypatch.setattr("implementation.engine.implementation_phase._run_risk_review", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("implementation.engine.implementation_phase.run_section", lambda *args, **kwargs: ["src/app.py"])
+    ct = _StubChangeTracker(lambda *args: False)
+    Services.change_tracker.override(providers.Object(ct))
+    monkeypatch.setattr("proposal.service.readiness_resolver.ReadinessResolver.resolve_readiness", lambda *_args, **_kwargs: ReadinessResult(ready=True))
+    monkeypatch.setattr(ImplementationPhase, "_run_risk_review", lambda self, *_args, **_kwargs: None)
+    monkeypatch.setattr("orchestrator.engine.section_pipeline.SectionPipeline.run_section", lambda *args, **kwargs: ["src/app.py"])
     monkeypatch.setattr("containers.LogService.log_lifecycle", lambda *args, **kwargs: None)
 
     results = run_implementation_pass(
@@ -498,7 +560,7 @@ def test_run_implementation_pass_skip_mode_proceeds_without_risk_artifacts(
     )
 
     assert results["01"].modified_files == ["src/app.py"]
-    assert read_roal_input_index(planspace, "01") == []
+    assert _read_roal_input_index(planspace, "01") == []
     assert not (planspace / "artifacts" / "signals" / "section-01-blocker.json").exists()
 
 def test_run_implementation_pass_restarts_on_alignment_change(
@@ -506,10 +568,8 @@ def test_run_implementation_pass_restarts_on_alignment_change(
     noop_communicator, capturing_pipeline_control) -> None:
     section = _make_section(planspace, "01")
     capturing_pipeline_control._alignment_changed_return = True
-    monkeypatch.setattr(
-        "implementation.engine.implementation_phase._check_and_clear_alignment_changed",
-        lambda *args: True,
-    )
+    ct = _StubChangeTracker(lambda *args: True)
+    Services.change_tracker.override(providers.Object(ct))
 
     with pytest.raises(ImplementationPassRestart):
         run_implementation_pass(
@@ -557,15 +617,17 @@ def testappend_risk_history_records_enriched_outcomes(planspace: Path) -> None:
         expected_reassessment_inputs=["alignment-check-result"],
     )
 
+    _aio = ArtifactIOService()
     append_risk_history(
         planspace,
         "01",
         plan,
         None,
         implementation_failed=True,
+        artifact_io=_aio,
     )
 
-    history = read_history(planspace / "artifacts" / "risk" / "risk-history.jsonl")
+    history = RiskHistory(artifact_io=_aio).read_history(planspace / "artifacts" / "risk" / "risk-history.jsonl")
 
     assert {entry.step_id: entry.actual_outcome for entry in history} == {
         "edit-01": "failure",
@@ -620,11 +682,11 @@ def test_run_implementation_pass_dispatches_reassessed_frontier_slice(
         run_calls.append(files)
         return files
 
-    def _reassess(*_args, **_kwargs) -> RiskPlan | None:
+    def _reassess(self, *_args, **_kwargs) -> RiskPlan | None:
         reassess_calls.append("reassess")
         return reassessed_plan if len(reassess_calls) == 1 else None
 
-    def _append_history(_planspace, _sec_num, plan, modified, *, implementation_failed=False) -> None:
+    def _append_history(_planspace, _sec_num, plan, modified, *, implementation_failed=False, artifact_io=None) -> None:
         history_calls.append(
             (plan.plan_id, list(modified) if modified is not None else None, implementation_failed),
         )
@@ -652,7 +714,7 @@ def test_run_implementation_pass_dispatches_reassessed_frontier_slice(
     ]
     assert results["01"].aligned is True
     assert results["01"].modified_files == ["src/app.py", "tests/app_test.py"]
-    assert read_roal_input_index(planspace, "01") == [
+    assert _read_roal_input_index(planspace, "01") == [
         {
             "kind": "accepted_frontier",
             "path": str(
@@ -721,13 +783,13 @@ def test_run_implementation_pass_bounds_frontier_iterations(
         run_calls.append(files)
         return files
 
-    def _reassess(*_args, **_kwargs) -> RiskPlan | None:
+    def _reassess(self, *_args, **_kwargs) -> RiskPlan | None:
         nonlocal reassess_count
         plan = frontier_plans[reassess_count]
         reassess_count += 1
         return plan
 
-    def _append_history(_planspace, _sec_num, _plan, modified, *, implementation_failed=False) -> None:
+    def _append_history(_planspace, _sec_num, _plan, modified, *, implementation_failed=False, artifact_io=None) -> None:
         assert implementation_failed is False
         history_calls.append(list(modified) if modified is not None else None)
 
@@ -800,7 +862,7 @@ def test_run_implementation_pass_stops_when_reassessment_accepts_nothing(
         monkeypatch,
         risk_plan=initial_plan,
         run_section_fn=_run_section,
-        reassess_fn=lambda *_args, **_kwargs: deferred_only_plan,
+        reassess_fn=lambda self, *_args, **_kwargs: deferred_only_plan,
         append_history_fn=lambda *args, **kwargs: None,
     )
 
@@ -851,7 +913,7 @@ def test_run_implementation_pass_stops_on_reopen_outcome(
         monkeypatch,
         risk_plan=initial_plan,
         run_section_fn=_run_section,
-        reassess_fn=lambda *_args, **_kwargs: reopened_plan,
+        reassess_fn=lambda self, *_args, **_kwargs: reopened_plan,
         append_history_fn=lambda *args, **kwargs: None,
     )
 
@@ -903,7 +965,7 @@ def test_run_implementation_pass_marks_frontier_failure_in_section_result(
     def _run_section(*_args, **_kwargs) -> list[str] | None:
         return next(run_results)
 
-    def _append_history(_planspace, _sec_num, _plan, modified, *, implementation_failed=False) -> None:
+    def _append_history(_planspace, _sec_num, _plan, modified, *, implementation_failed=False, artifact_io=None) -> None:
         history_calls.append(
             (list(modified) if modified is not None else None, implementation_failed),
         )
@@ -912,7 +974,7 @@ def test_run_implementation_pass_marks_frontier_failure_in_section_result(
         monkeypatch,
         risk_plan=initial_plan,
         run_section_fn=_run_section,
-        reassess_fn=lambda *_args, **_kwargs: frontier_plan,
+        reassess_fn=lambda self, *_args, **_kwargs: frontier_plan,
         append_history_fn=_append_history,
     )
 
@@ -960,7 +1022,7 @@ def test_run_implementation_pass_restarts_on_alignment_change_during_frontier_ex
         monkeypatch,
         risk_plan=initial_plan,
         run_section_fn=_run_section,
-        reassess_fn=lambda *_args, **_kwargs: frontier_plan,
+        reassess_fn=lambda self, *_args, **_kwargs: frontier_plan,
         append_history_fn=lambda *args, **kwargs: None,
         alignment_checks=[False, True],
     )
@@ -1000,22 +1062,20 @@ def test_run_implementation_pass_invokes_roal_when_section_is_ready(
     section = _make_section(planspace, "01")
     risk_plans: list[tuple[str, str]] = []
 
+    ct = _StubChangeTracker(lambda *args: False)
+    Services.change_tracker.override(providers.Object(ct))
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase._check_and_clear_alignment_changed",
-        lambda *args: False,
+        "proposal.service.readiness_resolver.ReadinessResolver.resolve_readiness",
+        lambda self, *_args, **_kwargs: ReadinessResult(ready=True),
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase.resolve_readiness",
-        lambda *_args, **_kwargs: ReadinessResult(ready=True),
-    )
-    monkeypatch.setattr(
-        "implementation.engine.implementation_phase._run_risk_review",
-        lambda planspace_arg, section_arg: (
+        ImplementationPhase, "_run_risk_review",
+        lambda self, planspace_arg, section_arg: (
             risk_plans.append((section_arg.number, section_arg.number)) or None
         ),
     )
     monkeypatch.setattr(
-        "implementation.engine.implementation_phase.run_section",
+        "orchestrator.engine.section_pipeline.SectionPipeline.run_section",
         lambda *args, **kwargs: ["src/app.py"],
     )
     monkeypatch.setattr(

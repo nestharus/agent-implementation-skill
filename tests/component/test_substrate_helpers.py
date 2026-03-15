@@ -5,14 +5,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from containers import Services
 from scan.related.related_file_resolver import list_section_files
 from src.orchestrator.path_registry import PathRegistry
 from src.scan.substrate.substrate_state_reader import (
+    SubstrateStateReader,
     count_existing_related,
-    read_project_mode,
     section_number,
-    write_status,
 )
+
+
+def _make_reader():
+    return SubstrateStateReader(artifact_io=Services.artifact_io())
 
 
 def test_read_project_mode_prefers_json_signal(tmp_path: Path) -> None:
@@ -25,7 +29,7 @@ def test_read_project_mode_prefers_json_signal(tmp_path: Path) -> None:
     )
     (artifacts_dir / "project-mode.txt").write_text("greenfield", encoding="utf-8")
 
-    assert read_project_mode(artifacts_dir) == "brownfield"
+    assert _make_reader().read_project_mode(artifacts_dir) == "brownfield"
 
 
 def test_read_project_mode_falls_back_to_text_after_malformed_json(tmp_path: Path) -> None:
@@ -36,7 +40,7 @@ def test_read_project_mode_falls_back_to_text_after_malformed_json(tmp_path: Pat
     json_path.write_text("{bad json", encoding="utf-8")
     (artifacts_dir / "project-mode.txt").write_text("hybrid", encoding="utf-8")
 
-    assert read_project_mode(artifacts_dir) == "hybrid"
+    assert _make_reader().read_project_mode(artifacts_dir) == "hybrid"
     assert not json_path.exists()
     assert json_path.with_suffix(".malformed.json").exists()
 
@@ -75,7 +79,7 @@ def test_write_status_writes_expected_payload(tmp_path: Path) -> None:
     PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts_dir = tmp_path / "artifacts"
 
-    write_status(
+    _make_reader().write_status(
         artifacts_dir,
         state="SKIPPED",
         project_mode="greenfield",

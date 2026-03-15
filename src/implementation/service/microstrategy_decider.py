@@ -257,29 +257,3 @@ class MicrostrategyDecider:
             ),
         })
         return True
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat free function wrappers
-# ---------------------------------------------------------------------------
-
-
-def check_needs_microstrategy(
-    proposal_path: Path, planspace: Path, section_number: str,
-    codespace: Path | None = None,
-    *,
-    model: str,
-    escalation_model: str,
-) -> bool:
-    """Check if the microstrategy decider requests a microstrategy."""
-    from containers import Services
-    decider = MicrostrategyDecider(
-        artifact_io=Services.artifact_io(),
-        dispatcher=Services.dispatcher(),
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-    )
-    return decider.check_needs_microstrategy(
-        proposal_path, planspace, section_number, codespace,
-        model=model, escalation_model=escalation_model,
-    )

@@ -27,9 +27,38 @@ from evals.harness import Check, Scenario
 # Import the readiness and proposal-state machinery for mechanical setup.
 # Modules live under src/ (containerized layout since R113+).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
-from proposal.repository.state import save_proposal_state  # noqa: E402
-from proposal.service.readiness_resolver import resolve_readiness  # noqa: E402
-from reconciliation.engine.cross_section_reconciler import run_reconciliation_loop  # noqa: E402
+from proposal.repository.state import State as ProposalStateRepo  # noqa: E402
+from containers import ArtifactIOService, Services  # noqa: E402
+from proposal.service.readiness_resolver import ReadinessResolver  # noqa: E402
+from reconciliation.engine.cross_section_reconciler import CrossSectionReconciler  # noqa: E402
+from reconciliation.repository.queue import Queue  # noqa: E402
+from reconciliation.repository.results import Results  # noqa: E402
+from reconciliation.service.adjudicator import Adjudicator  # noqa: E402
+
+
+_readiness_resolver = ReadinessResolver(artifact_io=ArtifactIOService())
+
+
+def _make_reconciler() -> CrossSectionReconciler:
+    return CrossSectionReconciler(
+        artifact_io=Services.artifact_io(),
+        results=Results(
+            artifact_io=Services.artifact_io(),
+            hasher=Services.hasher(),
+        ),
+        queue=Queue(artifact_io=Services.artifact_io()),
+        adjudicator=Adjudicator(
+            artifact_io=Services.artifact_io(),
+            prompt_guard=Services.prompt_guard(),
+            policies=Services.policies(),
+            dispatcher=Services.dispatcher(),
+            task_router=Services.task_router(),
+        ),
+    )
+
+
+def resolve_readiness(planspace, section):
+    return _readiness_resolver.resolve_readiness(planspace, section)
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +134,7 @@ def _setup_blocked(planspace: Path, codespace: Path) -> Path:
         "pattern_deviations": [],
         "governance_questions": [],
     }
-    save_proposal_state(state,
+    ProposalStateRepo(artifact_io=ArtifactIOService()).save_proposal_state(state,
                         proposals / "section-20-proposal-state.json")
 
     # Run readiness resolver mechanically
@@ -159,7 +188,7 @@ def _setup_user_decision(planspace: Path, codespace: Path) -> Path:
         "pattern_deviations": [],
         "governance_questions": [],
     }
-    save_proposal_state(state,
+    ProposalStateRepo(artifact_io=ArtifactIOService()).save_proposal_state(state,
                         proposals / "section-21-proposal-state.json")
 
     # Run readiness resolver mechanically
@@ -207,7 +236,7 @@ def _setup_stale_reopen(planspace: Path, codespace: Path) -> Path:
         "pattern_deviations": [],
         "governance_questions": [],
     }
-    save_proposal_state(state_22_initial,
+    ProposalStateRepo(artifact_io=ArtifactIOService()).save_proposal_state(state_22_initial,
                         proposals / "section-22-proposal-state.json")
 
     # First readiness check: should be ready
@@ -234,7 +263,7 @@ def _setup_stale_reopen(planspace: Path, codespace: Path) -> Path:
         "pattern_deviations": [],
         "governance_questions": [],
     }
-    save_proposal_state(state_23,
+    ProposalStateRepo(artifact_io=ArtifactIOService()).save_proposal_state(state_23,
                         proposals / "section-23-proposal-state.json")
 
     # Also add shared_seam_candidates to section 22 to simulate
@@ -259,7 +288,7 @@ def _setup_stale_reopen(planspace: Path, codespace: Path) -> Path:
         "pattern_deviations": [],
         "governance_questions": [],
     }
-    save_proposal_state(state_22_updated,
+    ProposalStateRepo(artifact_io=ArtifactIOService()).save_proposal_state(state_22_updated,
                         proposals / "section-22-proposal-state.json")
 
     # Step 3: Run reconciliation
@@ -267,7 +296,7 @@ def _setup_stale_reopen(planspace: Path, codespace: Path) -> Path:
         {"section_number": "22"},
         {"section_number": "23"},
     ]
-    run_reconciliation_loop(planspace, proposal_results)
+    _make_reconciler().run_reconciliation_loop(planspace, proposal_results)
 
     # Step 4: Re-resolve readiness for section 22
     readiness_2 = resolve_readiness(planspace, "22")
@@ -590,7 +619,7 @@ def _setup_blocking_research(planspace: Path, codespace: Path) -> Path:
         "pattern_deviations": [],
         "governance_questions": [],
     }
-    save_proposal_state(state,
+    ProposalStateRepo(artifact_io=ArtifactIOService()).save_proposal_state(state,
                         proposals / "section-25-proposal-state.json")
     resolve_readiness(planspace, "25")
 

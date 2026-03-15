@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import json
 
+from containers import Services
 from src.orchestrator.path_registry import PathRegistry
 from src.scan.substrate.policy import (
     DEFAULT_SUBSTRATE_MODELS,
     DEFAULT_TRIGGER_THRESHOLD,
-    read_substrate_model_policy,
-    read_trigger_signals,
-    read_trigger_threshold,
+    Policy,
 )
+
+
+def _make_policy():
+    return Policy(artifact_io=Services.artifact_io())
 
 
 def test_read_substrate_model_policy_uses_defaults_and_overrides(tmp_path) -> None:
@@ -23,7 +26,7 @@ def test_read_substrate_model_policy_uses_defaults_and_overrides(tmp_path) -> No
         encoding="utf-8",
     )
 
-    policy = read_substrate_model_policy(artifacts_dir)
+    policy = _make_policy().read_substrate_model_policy(artifacts_dir)
 
     assert policy["substrate_shard"] == "custom-shard"
     assert policy["substrate_pruner"] == DEFAULT_SUBSTRATE_MODELS["substrate_pruner"]
@@ -35,7 +38,7 @@ def test_read_substrate_model_policy_renames_malformed_json(tmp_path) -> None:
     policy_path = artifacts_dir / "model-policy.json"
     policy_path.write_text("{bad json", encoding="utf-8")
 
-    policy = read_substrate_model_policy(artifacts_dir)
+    policy = _make_policy().read_substrate_model_policy(artifacts_dir)
 
     assert policy == DEFAULT_SUBSTRATE_MODELS
     assert not policy_path.exists()
@@ -56,7 +59,7 @@ def test_read_trigger_signals_reads_single_and_multi_section_signals(tmp_path) -
     )
     (signals_dir / "ignore.json").write_text(json.dumps({"section": "99"}), encoding="utf-8")
 
-    assert read_trigger_signals(artifacts_dir) == ["01", "02", "3"]
+    assert _make_policy().read_trigger_signals(artifacts_dir) == ["01", "02", "3"]
 
 
 def test_read_trigger_signals_renames_malformed_json(tmp_path) -> None:
@@ -66,7 +69,7 @@ def test_read_trigger_signals_renames_malformed_json(tmp_path) -> None:
     signal_path = signals_dir / "substrate-trigger-01.json"
     signal_path.write_text("{bad json", encoding="utf-8")
 
-    assert read_trigger_signals(artifacts_dir) == []
+    assert _make_policy().read_trigger_signals(artifacts_dir) == []
     assert not signal_path.exists()
     assert signal_path.with_suffix(".malformed.json").exists()
 
@@ -75,17 +78,17 @@ def test_read_trigger_threshold_defaults_and_validates(tmp_path) -> None:
     PathRegistry(tmp_path).ensure_artifacts_tree()
     artifacts_dir = tmp_path / "artifacts"
 
-    assert read_trigger_threshold(artifacts_dir) == DEFAULT_TRIGGER_THRESHOLD
+    assert _make_policy().read_trigger_threshold(artifacts_dir) == DEFAULT_TRIGGER_THRESHOLD
 
     policy_path = artifacts_dir / "model-policy.json"
     policy_path.write_text(
         json.dumps({"substrate_trigger_min_vacuum_sections": 5}),
         encoding="utf-8",
     )
-    assert read_trigger_threshold(artifacts_dir) == 5
+    assert _make_policy().read_trigger_threshold(artifacts_dir) == 5
 
     policy_path.write_text(
         json.dumps({"substrate_trigger_min_vacuum_sections": 0}),
         encoding="utf-8",
     )
-    assert read_trigger_threshold(artifacts_dir) == DEFAULT_TRIGGER_THRESHOLD
+    assert _make_policy().read_trigger_threshold(artifacts_dir) == DEFAULT_TRIGGER_THRESHOLD

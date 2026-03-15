@@ -3,8 +3,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from containers import ArtifactIOService, HasherService, LogService, SignalReader
 from src.orchestrator.path_registry import PathRegistry
-from src.intent.service.surface_registry import load_research_derived_surfaces
+from src.intent.service.surface_registry import SurfaceRegistry
+
+
+def _make_registry() -> SurfaceRegistry:
+    return SurfaceRegistry(
+        artifact_io=ArtifactIOService(),
+        hasher=HasherService(),
+        logger=LogService(),
+        signals=SignalReader(),
+    )
 
 
 def test_load_research_derived_surfaces_preserves_schema_mismatch(
@@ -24,7 +34,7 @@ def test_load_research_derived_surfaces_preserves_schema_mismatch(
     research_path.parent.mkdir(parents=True, exist_ok=True)
     research_path.write_text(json.dumps({"stage": "research"}), encoding="utf-8")
 
-    assert load_research_derived_surfaces("01", planspace) is None
+    assert _make_registry().load_research_derived_surfaces("01", planspace) is None
     assert research_path.with_suffix(".malformed.json").exists()
 
 
@@ -48,7 +58,7 @@ def test_load_research_derived_surfaces_accepts_expected_shape(
         encoding="utf-8",
     )
 
-    assert load_research_derived_surfaces("01", planspace) == {
+    assert _make_registry().load_research_derived_surfaces("01", planspace) == {
         "problem_surfaces": [],
         "philosophy_surfaces": [],
     }

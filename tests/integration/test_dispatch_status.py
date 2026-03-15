@@ -23,8 +23,8 @@ from conftest import override_dispatcher_and_guard
 
 import dispatch.engine.agent_executor as executor_mod
 import dispatch.engine.section_dispatcher as dispatch_mod
-from dispatch.engine.section_dispatcher import dispatch_agent
-from containers import TaskRouterService
+from dispatch.engine.section_dispatcher import SectionDispatcher
+from containers import Services, TaskRouterService
 
 
 # ---------------------------------------------------------------------------
@@ -39,6 +39,19 @@ def _init_db(db_path: Path) -> None:
         check=True,
         capture_output=True,
         text=True,
+    )
+
+
+def _make_dispatcher() -> SectionDispatcher:
+    """Create a SectionDispatcher via the container."""
+    return SectionDispatcher(
+        config=Services.config(),
+        pipeline_control=Services.pipeline_control(),
+        logger=Services.logger(),
+        communicator=Services.communicator(),
+        task_router=Services.task_router(),
+        prompt_guard=Services.prompt_guard(),
+        artifact_io=Services.artifact_io(),
     )
 
 
@@ -78,7 +91,7 @@ class TestDispatchWritesMeta:
         )
         monkeypatch.setattr(executor_mod.subprocess, "run", lambda *a, **kw: fake_result)
 
-        dispatch_agent(
+        _make_dispatcher().dispatch_agent(
             "test-model", prompt_path, output_path,
             agent_file="test-agent.md",
         )
@@ -102,7 +115,7 @@ class TestDispatchWritesMeta:
         )
         monkeypatch.setattr(executor_mod.subprocess, "run", lambda *a, **kw: fake_result)
 
-        dispatch_agent(
+        _make_dispatcher().dispatch_agent(
             "test-model", prompt_path, output_path,
             agent_file="test-agent.md",
         )
@@ -126,7 +139,7 @@ class TestDispatchWritesMeta:
 
         monkeypatch.setattr(executor_mod.subprocess, "run", _raise_timeout)
 
-        dispatch_agent(
+        _make_dispatcher().dispatch_agent(
             "test-model", prompt_path, output_path,
             agent_file="test-agent.md",
         )

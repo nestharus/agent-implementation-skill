@@ -8,7 +8,11 @@ from dependency_injector import providers
 
 from conftest import NoOpFlow, NoOpSectionAlignment, StubPolicies, make_dispatcher
 from containers import DispatchHelperService, Services
-from src.implementation.engine.implementation_cycle import run_implementation_loop
+from implementation.engine.implementation_cycle import ImplementationCycle
+from implementation.service.change_verifier import ChangeVerifier
+from implementation.service.trace_map_builder import TraceMapBuilder
+from implementation.service.traceability_writer import TraceabilityWriter
+from proposal.service.cycle_control import CycleControl
 from src.orchestrator.path_registry import PathRegistry
 from src.orchestrator.types import Section
 
@@ -42,6 +46,76 @@ def env(tmp_path: Path) -> tuple[Path, Path]:
     return planspace, codespace
 
 
+class _StubPromptWriters:
+    """Stub prompt writers that return fixed paths."""
+
+    def __init__(self, planspace: Path) -> None:
+        self._planspace = planspace
+
+    def write_strategic_impl_prompt(self, *_args, **_kwargs):
+        return self._planspace / "artifacts" / "impl-prompt.md"
+
+    def write_impl_alignment_prompt(self, *_args, **_kwargs):
+        return self._planspace / "artifacts" / "impl-align-prompt.md"
+
+
+class _StubAssessmentEvaluator:
+    """Stub assessment evaluator that returns a fixed path."""
+
+    def __init__(self, planspace: Path) -> None:
+        self._planspace = planspace
+
+    def write_post_impl_assessment_prompt(self, *_args, **_kwargs):
+        return self._planspace / "artifacts" / "post-impl-09-prompt.md"
+
+
+class _NoopTraceabilityWriter:
+    """Stub traceability writer that does nothing."""
+
+    def write_traceability_index(self, *_args, **_kwargs):
+        return None
+
+
+def _make_cycle(planspace: Path) -> ImplementationCycle:
+    return ImplementationCycle(
+        artifact_io=Services.artifact_io(),
+        assessment_evaluator=_StubAssessmentEvaluator(planspace),
+        change_verifier=ChangeVerifier(
+            logger=Services.logger(),
+            section_alignment=Services.section_alignment(),
+            staleness=Services.staleness(),
+        ),
+        communicator=Services.communicator(),
+        cycle_control=CycleControl(
+            logger=Services.logger(),
+            artifact_io=Services.artifact_io(),
+            communicator=Services.communicator(),
+            pipeline_control=Services.pipeline_control(),
+            cross_section=Services.cross_section(),
+            dispatcher=Services.dispatcher(),
+            dispatch_helpers=Services.dispatch_helpers(),
+            task_router=Services.task_router(),
+            flow_ingestion=Services.flow_ingestion(),
+        ),
+        dispatcher=Services.dispatcher(),
+        dispatch_helpers=Services.dispatch_helpers(),
+        flow_ingestion=Services.flow_ingestion(),
+        logger=Services.logger(),
+        pipeline_control=Services.pipeline_control(),
+        policies=Services.policies(),
+        section_alignment=Services.section_alignment(),
+        staleness=Services.staleness(),
+        task_router=Services.task_router(),
+        prompt_writers=_StubPromptWriters(planspace),
+        trace_map_builder=TraceMapBuilder(
+            artifact_io=Services.artifact_io(),
+            hasher=Services.hasher(),
+            logger=Services.logger(),
+        ),
+        traceability_writer=_NoopTraceabilityWriter(),
+    )
+
+
 def test_run_implementation_loop_returns_changed_files_and_trace_map(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
@@ -51,15 +125,6 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
     planspace, codespace = env
     section = _section(planspace)
     impl_modified = planspace / "artifacts" / "impl-09-modified.txt"
-
-    monkeypatch.setattr(
-        "src.implementation.engine.implementation_cycle.write_strategic_impl_prompt",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "impl-prompt.md",
-    )
-    monkeypatch.setattr(
-        "src.implementation.engine.implementation_cycle.write_impl_alignment_prompt",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "impl-align-prompt.md",
-    )
 
     def _dispatch(*args, **kwargs):
         if kwargs.get("agent_file") == "implementation-strategist.md":
@@ -80,17 +145,10 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
     Services.flow_ingestion.override(providers.Object(NoOpFlow()))
     Services.section_alignment.override(providers.Object(NoOpSectionAlignment()))
     Services.policies.override(providers.Object(StubPolicies()))
-    monkeypatch.setattr(
-        "src.implementation.engine.implementation_cycle.write_traceability_index",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        "src.implementation.engine.implementation_cycle.write_post_impl_assessment_prompt",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "post-impl-09-prompt.md",
-    )
 
     try:
-        result = run_implementation_loop(
+        cycle = _make_cycle(planspace)
+        result = cycle.run_implementation_loop(
             section,
             planspace,
             codespace,
@@ -125,15 +183,6 @@ def test_run_implementation_loop_retries_after_alignment_problems(
     problems = iter(["fix edge case", None])
     impl_calls = {"count": 0}
 
-    monkeypatch.setattr(
-        "src.implementation.engine.implementation_cycle.write_strategic_impl_prompt",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "impl-prompt.md",
-    )
-    monkeypatch.setattr(
-        "src.implementation.engine.implementation_cycle.write_impl_alignment_prompt",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "impl-align-prompt.md",
-    )
-
     def _dispatch(*args, **kwargs):
         if kwargs.get("agent_file") == "implementation-strategist.md":
             impl_calls["count"] += 1
@@ -159,17 +208,10 @@ def test_run_implementation_loop_retries_after_alignment_problems(
         sa, "extract_problems",
         lambda *_args, **_kwargs: next(problems),
     )
-    monkeypatch.setattr(
-        "src.implementation.engine.implementation_cycle.write_traceability_index",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        "src.implementation.engine.implementation_cycle.write_post_impl_assessment_prompt",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "post-impl-09-prompt.md",
-    )
 
     try:
-        result = run_implementation_loop(
+        cycle = _make_cycle(planspace)
+        result = cycle.run_implementation_loop(
             section,
             planspace,
             codespace,

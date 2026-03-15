@@ -12,8 +12,7 @@ from coordination.types import ProblemGroup
 from orchestrator.path_registry import PathRegistry
 from orchestrator.types import PauseType
 from pipeline.context import DispatchContext
-from coordination.prompt.writers import write_bridge_prompt, write_fix_prompt
-from flow.service.task_request_ingestor import ingest_and_submit
+from coordination.prompt.writers import Writers
 from orchestrator.types import Section, ControlSignal
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
@@ -28,6 +27,7 @@ if TYPE_CHECKING:
         ArtifactIOService,
         Communicator,
         DispatchHelperService,
+        FlowIngestionService,
         HasherService,
         LogService,
         ModelPolicyService,
@@ -50,19 +50,23 @@ class PlanExecutor:
         communicator: Communicator,
         dispatch_helpers: DispatchHelperService,
         dispatcher: AgentDispatcher,
+        flow_ingestion: FlowIngestionService,
         hasher: HasherService,
         logger: LogService,
         pipeline_control: PipelineControlService,
         task_router: TaskRouterService,
+        writers: Writers,
     ) -> None:
         self._artifact_io = artifact_io
         self._communicator = communicator
         self._dispatch_helpers = dispatch_helpers
         self._dispatcher = dispatcher
+        self._flow_ingestion = flow_ingestion
         self._hasher = hasher
         self._logger = logger
         self._pipeline_control = pipeline_control
         self._task_router = task_router
+        self._writers = writers
 
     def _build_execution_batches(
         self,
@@ -231,7 +235,7 @@ class PlanExecutor:
         notes_dir = ctx.paths.notes_dir()
         bridge_output = ctx.paths.coordination_bridge_output(group_index)
 
-        bridge_prompt = write_bridge_prompt(
+        bridge_prompt = self._writers.write_bridge_prompt(
             group, group_index, group_sections,
             ctx.planspace, bridge_reason,
         )
@@ -285,7 +289,7 @@ class PlanExecutor:
         Returns (group_id, None) if ALIGNMENT_CHANGED_PENDING sentinel received.
         """
         coord_dir = ctx.paths.coordination_dir()
-        fix_prompt = write_fix_prompt(group, ctx.planspace, ctx.codespace, group_id)
+        fix_prompt = self._writers.write_fix_prompt(group, ctx.planspace, ctx.codespace, group_id)
         if fix_prompt is None:
             self._logger.log(f"  coordinator: fix group {group_id} prompt blocked "
                 f"by template safety \u2014 skipping dispatch")
@@ -321,7 +325,7 @@ class PlanExecutor:
         if result == ALIGNMENT_CHANGED_PENDING:
             return group_id, None
 
-        ingest_and_submit(
+        self._flow_ingestion.ingest_and_submit(
             ctx.planspace,
             submitted_by=f"coordination-fix-{group_id}",
             signal_path=ctx.paths.coordination_task_request(group_id),
@@ -520,38 +524,3 @@ def _try_place_in_batch(
             batch.append(group_index)
             return
     batches.append([group_index])
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_plan_executor() -> PlanExecutor:
-    from containers import Services
-    return PlanExecutor(
-        artifact_io=Services.artifact_io(),
-        communicator=Services.communicator(),
-        dispatch_helpers=Services.dispatch_helpers(),
-        dispatcher=Services.dispatcher(),
-        hasher=Services.hasher(),
-        logger=Services.logger(),
-        pipeline_control=Services.pipeline_control(),
-        task_router=Services.task_router(),
-    )
-
-
-def execute_coordination_plan(
-    groups: list[ProblemGroup],
-    sections_by_num: dict[str, Section],
-    ctx: DispatchContext,
-    agent_batches: list[list[int]] | None = None,
-) -> list[str]:
-    """Execute the coordination plan and return affected section numbers."""
-    return _get_plan_executor().execute_coordination_plan(
-        groups, sections_by_num, ctx, agent_batches=agent_batches,
-    )
-
-
-def read_execution_modified_files(planspace: Path) -> list[str]:
-    """Read the persisted list of files modified during coordination."""
-    return _get_plan_executor().read_execution_modified_files(planspace)

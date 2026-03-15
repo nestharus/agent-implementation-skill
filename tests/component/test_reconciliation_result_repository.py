@@ -5,20 +5,24 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.reconciliation.repository.results import (
-    load_result,
-    was_section_affected,
-    write_result,
-    write_scope_delta,
-    write_substrate_trigger,
-)
+from containers import ArtifactIOService, HasherService
+from reconciliation.repository.results import Results
+
+
+def _make_results() -> Results:
+    """Construct a Results instance with real services."""
+    return Results(
+        artifact_io=ArtifactIOService(),
+        hasher=HasherService(),
+    )
 
 
 def test_write_result_and_load_result_round_trip(tmp_path: Path) -> None:
-    write_result(tmp_path, "03", {"section": "03", "affected": True})
+    results = _make_results()
+    results.write_result(tmp_path, "03", {"section": "03", "affected": True})
 
-    assert load_result(tmp_path, "03") == {"section": "03", "affected": True}
-    assert was_section_affected(tmp_path, "03") is True
+    assert results.load_result(tmp_path, "03") == {"section": "03", "affected": True}
+    assert results.was_section_affected(tmp_path, "03") is True
 
 
 def test_load_result_renames_non_object_json(tmp_path: Path) -> None:
@@ -31,14 +35,15 @@ def test_load_result_renames_non_object_json(tmp_path: Path) -> None:
     result_path.parent.mkdir(parents=True)
     result_path.write_text(json.dumps(["bad"]), encoding="utf-8")
 
-    assert load_result(tmp_path, "04") is None
+    results = _make_results()
+    assert results.load_result(tmp_path, "04") is None
     assert not result_path.exists()
     assert result_path.with_suffix(".malformed.json").exists()
-    assert was_section_affected(tmp_path, "04") is False
+    assert results.was_section_affected(tmp_path, "04") is False
 
 
 def test_write_scope_delta_preserves_adjudicated_flag(tmp_path: Path) -> None:
-    path = write_scope_delta(
+    path = _make_results().write_scope_delta(
         tmp_path,
         {
             "title": "Shared cache subsystem",
@@ -58,7 +63,7 @@ def test_write_scope_delta_preserves_adjudicated_flag(tmp_path: Path) -> None:
 
 
 def test_write_scope_delta_defaults_root_reframing_to_false(tmp_path: Path) -> None:
-    path = write_scope_delta(
+    path = _make_results().write_scope_delta(
         tmp_path,
         {
             "title": "Shared cache subsystem",
@@ -72,7 +77,7 @@ def test_write_scope_delta_defaults_root_reframing_to_false(tmp_path: Path) -> N
 
 
 def test_write_substrate_trigger_writes_signal_payload(tmp_path: Path) -> None:
-    path = write_substrate_trigger(
+    path = _make_results().write_substrate_trigger(
         tmp_path,
         {"seam": "shared auth", "sections": ["01", "05"]},
     )

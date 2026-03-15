@@ -69,23 +69,3 @@ def scoped_context_block(sidecar_path: Path | str | None) -> str:
         f"Agent context sidecar with resolved inputs: "
         f"`{sidecar_path}`\n"
     )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_formatters() -> PromptFormatters:
-    from containers import Services
-    return PromptFormatters(config=Services.config())
-
-
-def agent_mail_instructions(
-    planspace: Path,
-    agent_name: str,
-    monitor_name: str,
-) -> str:
-    """Return narration-via-mailbox instructions for an agent."""
-    return _get_formatters().agent_mail_instructions(
-        planspace, agent_name, monitor_name,
-    )

@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 
 from flow.types.schema import BranchSpec, TaskSpec
 from orchestrator.path_registry import PathRegistry
-from research.prompt.writers import write_research_ticket_prompt
 from signals.service.blocker_manager import update_blocker_rollup
 from signals.types import (
     RESEARCH_TYPE_BOTH,
@@ -23,6 +22,7 @@ from signals.types import (
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService, PromptGuard
+    from research.prompt.writers import ResearchPromptWriter
 
 
 def ordered_ticket_ids(plan: dict) -> list[str]:
@@ -58,9 +58,11 @@ class ResearchBranchBuilder:
         self,
         prompt_guard: PromptGuard,
         artifact_io: ArtifactIOService,
+        prompt_writer: ResearchPromptWriter,
     ) -> None:
         self._prompt_guard = prompt_guard
         self._artifact_io = artifact_io
+        self._prompt_writer = prompt_writer
 
     def _write_research_scan_prompt(
         self,
@@ -189,7 +191,7 @@ class ResearchBranchBuilder:
         ticket_id = str(ticket.get("ticket_id", f"T-{ticket_index:02d}"))
         concern_scope = f"section-{section_number}"
         problem_id = f"research-{section_number}-{ticket_id}"
-        prompt_path = write_research_ticket_prompt(
+        prompt_path = self._prompt_writer.write_research_ticket_prompt(
             section_number, planspace, codespace, ticket, ticket_index,
         )
         if prompt_path is None:
@@ -219,7 +221,7 @@ class ResearchBranchBuilder:
         scan_prompt = self._write_research_scan_prompt(
             section_number, planspace, codespace, ticket, ticket_index,
         )
-        ticket_prompt = write_research_ticket_prompt(
+        ticket_prompt = self._prompt_writer.write_research_ticket_prompt(
             section_number, planspace, codespace, ticket, ticket_index,
         )
         if scan_prompt is None or ticket_prompt is None:
@@ -255,13 +257,13 @@ class ResearchBranchBuilder:
             )
         )
         web_ticket["_phase"] = RESEARCH_TYPE_WEB
-        web_prompt = write_research_ticket_prompt(
+        web_prompt = self._prompt_writer.write_research_ticket_prompt(
             section_number, planspace, codespace, web_ticket, ticket_index,
         )
         scan_prompt = self._write_research_scan_prompt(
             section_number, planspace, codespace, ticket, ticket_index,
         )
-        final_prompt = write_research_ticket_prompt(
+        final_prompt = self._prompt_writer.write_research_ticket_prompt(
             section_number, planspace, codespace, ticket, ticket_index,
         )
         if web_prompt is None or scan_prompt is None or final_prompt is None:
@@ -289,39 +291,3 @@ class ResearchBranchBuilder:
                 ),
             ],
         )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers — used by research_plan_executor.py and
-# containers.py until they are converted.
-# ---------------------------------------------------------------------------
-
-def _get_builder() -> ResearchBranchBuilder:
-    from containers import Services
-    return ResearchBranchBuilder(
-        prompt_guard=Services.prompt_guard(),
-        artifact_io=Services.artifact_io(),
-    )
-
-
-def emit_not_researchable_signals(
-    section_number: str, planspace: Path, items: list[dict],
-) -> None:
-    _get_builder().emit_not_researchable_signals(section_number, planspace, items)
-
-
-def build_branch(
-    *,
-    section_number: str,
-    planspace: Path,
-    codespace: Path | None,
-    ticket: dict,
-    ticket_index: int,
-) -> BranchSpec | None:
-    return _get_builder().build_branch(
-        section_number=section_number,
-        planspace=planspace,
-        codespace=codespace,
-        ticket=ticket,
-        ticket_index=ticket_index,
-    )

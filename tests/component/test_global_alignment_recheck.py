@@ -5,8 +5,9 @@ from pathlib import Path
 import pytest
 from dependency_injector import providers
 
-from conftest import StubPolicies
+from conftest import StubPolicies, NoOpSectionAlignment
 from containers import Services
+from coordination.service.completion_handler import CompletionHandler
 from src.staleness.service import global_alignment_rechecker
 from src.staleness.service.global_alignment_rechecker import run_global_alignment_recheck
 from orchestrator.types import Section, SectionResult
@@ -28,7 +29,6 @@ def _make_section(planspace: Path, number: str) -> Section:
 def test_run_global_alignment_recheck_skips_unchanged_aligned_sections(
     planspace: Path,
     codespace: Path,
-    monkeypatch: pytest.MonkeyPatch,
     noop_pipeline_control,
 ) -> None:
     section = _make_section(planspace, "01")
@@ -38,18 +38,21 @@ def test_run_global_alignment_recheck_skips_unchanged_aligned_sections(
     hash_path.write_text("hash-1", encoding="utf-8")
 
     noop_pipeline_control.section_inputs_hash = lambda *_args, **_kwargs: "hash-1"
-    monkeypatch.setattr(
-        global_alignment_rechecker,
-        "_run_alignment_check_with_retries",
-        lambda *_args, **_kwargs: pytest.fail("alignment check should not run"),
-    )
 
-    status = run_global_alignment_recheck(
-        {"01": section},
-        section_results,
-        planspace,
-        codespace,
-    )
+    class _FailAlignment(NoOpSectionAlignment):
+        def run_alignment_check(self, *_args, **_kwargs):
+            pytest.fail("alignment check should not run")
+
+    Services.section_alignment.override(providers.Object(_FailAlignment()))
+    try:
+        status = run_global_alignment_recheck(
+            {"01": section},
+            section_results,
+            planspace,
+            codespace,
+        )
+    finally:
+        Services.section_alignment.reset_override()
 
     assert status == "all_aligned"
 
@@ -61,6 +64,8 @@ def test_run_global_alignment_recheck_marks_invalid_frame_and_preserves_files(
     noop_pipeline_control,
     capturing_communicator,
 ) -> None:
+    from src.containers import SectionAlignmentService
+
     section = _make_section(planspace, "01")
     section_results = {
         "01": SectionResult(
@@ -72,22 +77,31 @@ def test_run_global_alignment_recheck_marks_invalid_frame_and_preserves_files(
 
     noop_pipeline_control.section_inputs_hash = lambda *_args, **_kwargs: "hash-1"
     monkeypatch.setattr(
-        global_alignment_rechecker,
+        CompletionHandler,
         "read_incoming_notes",
-        lambda *_args, **_kwargs: "",
-    )
-    monkeypatch.setattr(
-        global_alignment_rechecker,
-        "_run_alignment_check_with_retries",
-        lambda *_args, **_kwargs: "INVALID_FRAME",
+        lambda self, *_args, **_kwargs: "",
     )
 
-    status = run_global_alignment_recheck(
-        {"01": section},
-        section_results,
-        planspace,
-        codespace,
-    )
+    class _InvalidFrameChecker:
+        def run_alignment_check_with_retries(self, *_args, **_kwargs):
+            return "INVALID_FRAME"
+        def extract_problems(self, *_args, **_kwargs):
+            return None
+
+    class _InvalidFrameAlignment(SectionAlignmentService):
+        def _get_checker(self):
+            return _InvalidFrameChecker()
+
+    Services.section_alignment.override(providers.Object(_InvalidFrameAlignment()))
+    try:
+        status = run_global_alignment_recheck(
+            {"01": section},
+            section_results,
+            planspace,
+            codespace,
+        )
+    finally:
+        Services.section_alignment.reset_override()
 
     assert status == "has_problems"
     assert capturing_communicator.messages == ["fail:invalid_alignment_frame:01"]

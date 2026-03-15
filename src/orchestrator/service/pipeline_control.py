@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from containers import ConfigService, LogService
+    from containers import ChangeTrackerService, ConfigService, LogService
 
 from staleness.service.change_tracker import (
     check_pending as alignment_changed_pending_flag,
@@ -16,9 +16,8 @@ from signals.service.message_poller import (
 )
 from orchestrator.path_registry import PathRegistry
 from orchestrator.service.pipeline_state import (
+    PipelineState,
     check_pipeline_state as query_pipeline_state,
-    pause_for_parent as wait_for_parent,
-    wait_if_paused as block_if_paused,
 )
 from staleness.service.input_hasher import section_inputs_hash
 
@@ -26,9 +25,11 @@ _section_inputs_hash = section_inputs_hash
 
 
 class PipelineControl:
-    def __init__(self, config: ConfigService, logger: LogService) -> None:
+    def __init__(self, config: ConfigService, logger: LogService, change_tracker: ChangeTrackerService) -> None:
         self._config = config
         self._logger = logger
+        self._change_tracker = change_tracker
+        self._pipeline_state = PipelineState(logger=logger, change_tracker=change_tracker)
         self._parent: str = ""
 
     def set_parent(self, parent: str) -> None:
@@ -83,7 +84,7 @@ class PipelineControl:
         after resume (avoids the re-send-to-self infinite loop).
         """
         cfg = self._config
-        block_if_paused(
+        self._pipeline_state.wait_if_paused(
             planspace,
             self._parent,
             db_sh=cfg.db_sh,
@@ -93,7 +94,7 @@ class PipelineControl:
     def pause_for_parent(self, planspace: Path, signal: str) -> str:
         """Send a pause signal to parent and block until we get a response."""
         cfg = self._config
-        return wait_for_parent(
+        return self._pipeline_state.pause_for_parent(
             planspace,
             self._parent,
             signal,
@@ -149,17 +150,3 @@ def alignment_changed_pending(planspace: Path) -> bool:
     """Check if alignment_changed flag is set (non-clearing)."""
     return alignment_changed_pending_flag(planspace)
 
-
-
-# Backward-compat wrappers — used by tests
-
-def _get_pipeline_control() -> PipelineControl:
-    from containers import Services
-    return PipelineControl(
-        config=Services.config(),
-        logger=Services.logger(),
-    )
-
-
-def check_pipeline_state(planspace: Path) -> str:
-    return _get_pipeline_control().check_pipeline_state(planspace)

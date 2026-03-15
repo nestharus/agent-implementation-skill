@@ -5,19 +5,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from dispatch.engine import agent_executor
+from dispatch.engine.agent_executor import AgentExecutor
 from dispatch.types import DispatchResult, DispatchStatus
 from signals.service.database_client import DatabaseClient
-from dispatch.repository.metadata import write_dispatch_metadata
+from dispatch.repository.metadata import Metadata
 from dispatch.service.monitor_service import MonitorService
 from orchestrator.path_registry import PathRegistry
 
 from pipeline.template import SRC_TEMPLATE_DIR, load_template, render, render_template
 
-from dispatch.service.context_sidecar import materialize_context_sidecar
+from dispatch.service.context_sidecar import ContextSidecar
 
 if TYPE_CHECKING:
     from containers import (
+        ArtifactIOService,
         Communicator,
         ConfigService,
         LogService,
@@ -40,6 +41,7 @@ class SectionDispatcher:
         communicator: Communicator,
         task_router: TaskRouterService,
         prompt_guard: PromptGuard,
+        artifact_io: ArtifactIOService,
     ) -> None:
         self._config = config
         self._pipeline_control = pipeline_control
@@ -47,6 +49,7 @@ class SectionDispatcher:
         self._communicator = communicator
         self._task_router = task_router
         self._prompt_guard = prompt_guard
+        self._artifact_io = artifact_io
 
     def _monitor_service(self, planspace: Path) -> MonitorService:
         return MonitorService(
@@ -116,7 +119,7 @@ class SectionDispatcher:
         if planspace is not None:
             self._communicator.log_artifact(planspace, f"output:{output_path.stem}")
 
-        write_dispatch_metadata(
+        Metadata(self._artifact_io).write_dispatch_metadata(
             output_path,
             returncode=run_result.returncode if not run_result.timed_out else None,
             timed_out=run_result.timed_out,
@@ -188,7 +191,7 @@ class SectionDispatcher:
             return early
 
         if planspace:
-            materialize_context_sidecar(
+            ContextSidecar(self._artifact_io).materialize_context_sidecar(
                 str(agent_path), planspace, section=section_number,
             )
 
@@ -220,48 +223,9 @@ class SectionDispatcher:
                 check=False,
             )
 
-        run_result = agent_executor.run_agent(
+        executor = AgentExecutor(task_router=self._task_router)
+        run_result = executor.run_agent(
             model, prompt_path,
             agent_file=agent_file, codespace=codespace, timeout=_SECTION_DISPATCH_TIMEOUT_SECONDS,
         )
         return self._finalize_dispatch(run_result, output_path, planspace, monitor_handle)
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_dispatcher() -> SectionDispatcher:
-    from containers import Services
-    return SectionDispatcher(
-        config=Services.config(),
-        pipeline_control=Services.pipeline_control(),
-        logger=Services.logger(),
-        communicator=Services.communicator(),
-        task_router=Services.task_router(),
-        prompt_guard=Services.prompt_guard(),
-    )
-
-
-def dispatch_agent(model: str, prompt_path: Path, output_path: Path,
-                   planspace: Path | None = None,
-                   agent_name: str | None = None,
-                   codespace: Path | None = None,
-                   section_number: str | None = None,
-                   *,
-                   agent_file: str) -> DispatchResult:
-    """Run an agent via the agents binary and return the output text."""
-    return _get_dispatcher().dispatch_agent(
-        model, prompt_path, output_path, planspace,
-        agent_name, codespace, section_number,
-        agent_file=agent_file,
-    )
-
-
-def _write_agent_monitor_prompt(
-    planspace: Path, agent_name: str, monitor_name: str,
-) -> Path:
-    """Write the prompt file for a per-agent GLM monitor."""
-    return _get_dispatcher()._write_agent_monitor_prompt(
-        planspace, agent_name, monitor_name,
-    )

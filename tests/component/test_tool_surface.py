@@ -7,12 +7,47 @@ from unittest.mock import MagicMock
 from dependency_injector import providers
 
 from containers import Services
-from src.orchestrator.path_registry import PathRegistry
+from orchestrator.path_registry import PathRegistry
 from tests.conftest import WritingGuard, make_dispatcher, StubPolicies
 
-from src.dispatch.service.tool_surface_writer import surface_tool_registry, write_tool_surface
-from src.dispatch.service.tool_validator import validate_tool_registry_after_implementation
-from src.dispatch.service.tool_bridge import handle_tool_friction
+from dispatch.service.tool_surface_writer import ToolSurfaceWriter, write_tool_surface
+from dispatch.service.tool_validator import ToolValidator
+from dispatch.service.tool_bridge import ToolBridge
+
+
+def _make_surface_writer() -> ToolSurfaceWriter:
+    return ToolSurfaceWriter(
+        artifact_io=Services.artifact_io(),
+        logger=Services.logger(),
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        dispatcher=Services.dispatcher(),
+        task_router=Services.task_router(),
+    )
+
+
+def _make_validator() -> ToolValidator:
+    return ToolValidator(
+        artifact_io=Services.artifact_io(),
+        logger=Services.logger(),
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        dispatcher=Services.dispatcher(),
+        task_router=Services.task_router(),
+    )
+
+
+def _make_bridge() -> ToolBridge:
+    return ToolBridge(
+        artifact_io=Services.artifact_io(),
+        logger=Services.logger(),
+        policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
+        dispatcher=Services.dispatcher(),
+        task_router=Services.task_router(),
+        cross_section=Services.cross_section(),
+        hasher=Services.hasher(),
+    )
 
 
 def test_write_tool_surface_filters_cross_section_and_local_tools(tmp_path) -> None:
@@ -68,7 +103,7 @@ def test_surface_tool_registry_repairs_malformed_registry(tmp_path) -> None:
     Services.policies.override(providers.Object(StubPolicies()))
     Services.logger.override(providers.Object(MagicMock()))
     try:
-        total = surface_tool_registry(
+        total = _make_surface_writer().surface_tool_registry(
             section_number="03",
             planspace=planspace,
             codespace=tmp_path / "codespace",
@@ -112,7 +147,7 @@ def test_validate_tool_registry_after_implementation_dispatches_validator(tmp_pa
     Services.policies.override(providers.Object(StubPolicies()))
     Services.logger.override(providers.Object(MagicMock()))
     try:
-        friction_path = validate_tool_registry_after_implementation(
+        friction_path = _make_validator().validate_tool_registry_after_implementation(
             section_number="03",
             pre_tool_total=1,
             planspace=planspace,
@@ -166,7 +201,7 @@ def test_handle_tool_friction_bridges_and_acknowledges_signal(tmp_path) -> None:
     Services.logger.override(providers.Object(MagicMock()))
     Services.cross_section.override(providers.Object(mock_cross_section))
     try:
-        handle_tool_friction(
+        _make_bridge().handle_tool_friction(
             section_number="03",
             section_path="spec.md",
             all_sections=None,

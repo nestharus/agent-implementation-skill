@@ -17,12 +17,12 @@ if TYPE_CHECKING:
         ModelPolicyService,
         PipelineControlService,
     )
+    from dispatch.prompt.writers import Writers as PromptWriters
+    from proposal.service.cycle_control import CycleControl
 
 from orchestrator.path_registry import PathRegistry
 from orchestrator.types import PauseType
-from dispatch.prompt.writers import write_integration_alignment_prompt
 from dispatch.types import ALIGNMENT_CHANGED_PENDING, DispatchResult
-from proposal.service.cycle_control import handle_pause_response
 from signals.types import SIGNAL_UNDERSPEC
 
 
@@ -34,12 +34,16 @@ class AlignmentHandler:
         dispatcher: AgentDispatcher,
         dispatch_helpers: DispatchHelperService,
         pipeline_control: PipelineControlService,
+        cycle_control: CycleControl,
+        prompt_writers: PromptWriters,
     ) -> None:
         self._logger = logger
         self._policies = policies
         self._dispatcher = dispatcher
         self._dispatch_helpers = dispatch_helpers
         self._pipeline_control = pipeline_control
+        self._cycle_control = cycle_control
+        self._prompt_writers = prompt_writers
 
     def run_alignment_check(
         self,
@@ -56,7 +60,7 @@ class AlignmentHandler:
         section_number = section.number
         artifacts = paths.artifacts
         self._logger.log(f"Section {section_number}: proposal alignment check")
-        align_prompt = write_integration_alignment_prompt(
+        align_prompt = self._prompt_writers.write_integration_alignment_prompt(
             section,
             planspace,
             codespace,
@@ -112,38 +116,4 @@ class AlignmentHandler:
             planspace,
             f"pause:{PauseType.UNDERSPEC}:{section_number}:{detail}",
         )
-        return handle_pause_response(planspace, section_number, response)
-
-
-# Backward-compat wrappers
-
-def _get_alignment_handler() -> AlignmentHandler:
-    from containers import Services
-    return AlignmentHandler(
-        logger=Services.logger(),
-        policies=Services.policies(),
-        dispatcher=Services.dispatcher(),
-        dispatch_helpers=Services.dispatch_helpers(),
-        pipeline_control=Services.pipeline_control(),
-    )
-
-
-def run_alignment_check(
-    section,
-    planspace: Path,
-    codespace: Path,
-) -> tuple[DispatchResult, Path] | None:
-    """Dispatch the alignment judge and return (result, output_path)."""
-    return _get_alignment_handler().run_alignment_check(
-        section, planspace, codespace,
-    )
-
-
-def handle_alignment_signals(
-    section_number: str,
-    planspace: Path,
-) -> str | None:
-    """Check alignment-judge signals for underspec."""
-    return _get_alignment_handler().handle_alignment_signals(
-        section_number, planspace,
-    )
+        return self._cycle_control.handle_pause_response(planspace, section_number, response)

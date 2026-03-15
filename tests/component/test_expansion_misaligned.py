@@ -4,12 +4,27 @@ from pathlib import Path
 
 import pytest
 
-from conftest import override_dispatcher_and_guard
+from conftest import override_dispatcher_and_guard, build_proposal_cycle
 from containers import Services
+from dispatch.prompt.writers import Writers as PromptWriters
 from pipeline.context import DispatchContext
+from reconciliation.repository.results import Results
 from src.orchestrator.path_registry import PathRegistry
-from src.proposal.engine.proposal_cycle import run_proposal_loop
 from src.orchestrator.types import Section
+
+
+class _StubTriager:
+    """Minimal IntentTriager stub returning injected triage result."""
+
+    def __init__(self, result: dict) -> None:
+        self._result = result
+
+    def load_triage_result(self, *_args, **_kwargs):
+        return self._result
+
+    def run_intent_triage(self, *_args, **_kwargs):
+        return self._result
+
 
 def _section(planspace: Path) -> Section:
     section = Section(
@@ -35,24 +50,19 @@ def _install_common_patches(
     proposal_path: Path,
 ) -> None:
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_triage_result",
-        lambda *_args, **_kwargs: {
-            "intent_mode": "full",
-            "budgets": {"intent_expansion_max": 2},
-        },
-    )
-    monkeypatch.setattr(
         Services.dispatch_helpers(),
         "write_model_choice_signal",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "proposal.service.proposal_prep.write_integration_proposal_prompt",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
+        PromptWriters,
+        "write_integration_proposal_prompt",
+        lambda self, *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
     monkeypatch.setattr(
-        "proposal.service.alignment_handler.write_integration_alignment_prompt",
-        lambda *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
+        PromptWriters,
+        "write_integration_alignment_prompt",
+        lambda self, *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
     )
     monkeypatch.setattr(
         Services.dispatch_helpers(),
@@ -60,11 +70,12 @@ def _install_common_patches(
         lambda *_args, **_kwargs: (None, ""),
     )
     monkeypatch.setattr(
-        "proposal.service.proposal_prep.load_reconciliation_result",
-        lambda *_args, **_kwargs: None,
+        Results,
+        "load_result",
+        lambda self, *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.write_alignment_surface",
+        "proposal.engine.proposal_cycle.write_alignment_surface",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
@@ -108,9 +119,11 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
     ])
     expansion_calls: list[str] = []
 
+    from intent.service.surface_registry import SurfaceRegistry
     monkeypatch.setattr(
-        "proposal.service.surface_handler.load_combined_intent_surfaces",
-        lambda *_args, **_kwargs: next(combined_surfaces),
+        SurfaceRegistry,
+        "load_combined_intent_surfaces",
+        lambda self, *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
         "proposal.service.expansion_handler.run_expansion_cycle",
@@ -120,12 +133,18 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
         },
     )
 
+    triage = {
+        "intent_mode": "full",
+        "budgets": {"intent_expansion_max": 2},
+    }
+
     with override_dispatcher_and_guard(_dispatch):
         monkeypatch.setattr(
             Services.section_alignment(), "extract_problems",
             lambda *_args, **_kwargs: next(problems),
         )
-        result = run_proposal_loop(
+        cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
+        result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
@@ -164,9 +183,11 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
     ])
     expansion_calls: list[str] = []
 
+    from intent.service.surface_registry import SurfaceRegistry
     monkeypatch.setattr(
-        "proposal.service.surface_handler.load_combined_intent_surfaces",
-        lambda *_args, **_kwargs: next(combined_surfaces),
+        SurfaceRegistry,
+        "load_combined_intent_surfaces",
+        lambda self, *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
         "proposal.service.expansion_handler.run_expansion_cycle",
@@ -176,12 +197,18 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
         },
     )
 
+    triage = {
+        "intent_mode": "full",
+        "budgets": {"intent_expansion_max": 2},
+    }
+
     with override_dispatcher_and_guard(_dispatch):
         monkeypatch.setattr(
             Services.section_alignment(), "extract_problems",
             lambda *_args, **_kwargs: next(problems),
         )
-        result = run_proposal_loop(
+        cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
+        result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},
@@ -220,16 +247,11 @@ def test_misaligned_definition_gap_expansion_respects_budget(
     ])
     expansion_calls: list[str] = []
 
+    from intent.service.surface_registry import SurfaceRegistry
     monkeypatch.setattr(
-        "src.proposal.engine.proposal_cycle.load_triage_result",
-        lambda *_args, **_kwargs: {
-            "intent_mode": "full",
-            "budgets": {"intent_expansion_max": 0},
-        },
-    )
-    monkeypatch.setattr(
-        "proposal.service.surface_handler.load_combined_intent_surfaces",
-        lambda *_args, **_kwargs: next(combined_surfaces),
+        SurfaceRegistry,
+        "load_combined_intent_surfaces",
+        lambda self, *_args, **_kwargs: next(combined_surfaces),
     )
     monkeypatch.setattr(
         "proposal.service.expansion_handler.run_expansion_cycle",
@@ -239,12 +261,18 @@ def test_misaligned_definition_gap_expansion_respects_budget(
         },
     )
 
+    triage = {
+        "intent_mode": "full",
+        "budgets": {"intent_expansion_max": 0},
+    }
+
     with override_dispatcher_and_guard(_dispatch):
         monkeypatch.setattr(
             Services.section_alignment(), "extract_problems",
             lambda *_args, **_kwargs: next(problems),
         )
-        result = run_proposal_loop(
+        cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
+        result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace),
             {"proposal_max": 3, "implementation_max": 3},

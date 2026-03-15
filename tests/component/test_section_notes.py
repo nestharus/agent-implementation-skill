@@ -7,10 +7,33 @@ from dependency_injector import providers
 
 from conftest import NoOpChangeTracker
 from containers import ChangeTrackerService, Services
+from coordination.service.completion_handler import CompletionHandler
+from implementation.service.impact_analyzer import ImpactAnalyzer
 from orchestrator.types import Section
 
 from src.coordination.service import completion_handler as section_notes
 from src.orchestrator.path_registry import PathRegistry
+
+
+def _make_completion_handler() -> CompletionHandler:
+    return CompletionHandler(
+        artifact_io=Services.artifact_io(),
+        change_tracker=Services.change_tracker(),
+        communicator=Services.communicator(),
+        hasher=Services.hasher(),
+        impact_analyzer=ImpactAnalyzer(
+            communicator=Services.communicator(),
+            config=Services.config(),
+            context_assembly=Services.context_assembly(),
+            cross_section=Services.cross_section(),
+            dispatcher=Services.dispatcher(),
+            logger=Services.logger(),
+            policies=Services.policies(),
+            prompt_guard=Services.prompt_guard(),
+            task_router=Services.task_router(),
+        ),
+        logger=Services.logger(),
+    )
 
 
 def _make_section(tmp_path: Path, number: str = "01") -> tuple[Path, Path, Section]:
@@ -54,7 +77,7 @@ def test_read_incoming_notes_filters_resolved_notes_and_includes_diff(
     current_file.parent.mkdir(parents=True, exist_ok=True)
     current_file.write_text("new line\n", encoding="utf-8")
 
-    notes = section_notes.read_incoming_notes(section, planspace, codespace)
+    notes = _make_completion_handler().read_incoming_notes(section, planspace, codespace)
 
     assert "Active note" in notes
     assert "Resolved note" not in notes
@@ -74,7 +97,7 @@ def test_read_incoming_notes_renames_malformed_ack_file(
     ack_path = planspace / "artifacts" / "signals" / "note-ack-01.json"
     ack_path.write_text("not json", encoding="utf-8")
 
-    notes = section_notes.read_incoming_notes(section, planspace, codespace)
+    notes = _make_completion_handler().read_incoming_notes(section, planspace, codespace)
 
     assert "Active note" in notes
     assert not ack_path.exists()
@@ -110,16 +133,16 @@ def test_post_section_completion_writes_note_and_contract_artifact(
         lambda *args, **kwargs: planspace / "artifacts" / "snapshots" / "section-01",
     )
     monkeypatch.setattr(
-        section_notes,
+        ImpactAnalyzer,
         "analyze_impacts",
-        lambda *args, **kwargs: [
+        lambda self, *args, **kwargs: [
             ("02", "Shared contract changed", True, "## Contract Delta\nChanged")
         ],
     )
     Services.change_tracker.override(providers.Object(_CapturingChangeTracker()))
 
     try:
-        section_notes.post_section_completion(
+        _make_completion_handler().post_section_completion(
             section,
             ["src/app.py"],
             [section, target],

@@ -6,7 +6,7 @@ be expressed as a declared list of steps rather than inlining
 cross-cutting concerns alongside business logic.
 """
 
-from pipeline.context import PipelineContext, build_context
+from pipeline.context import PipelineContext
 from pipeline.engine import HALT, Pipeline, Step
 from pipeline.middleware import AlignmentGuard, StepLogger
 
@@ -17,5 +17,4 @@ __all__ = [
     "PipelineContext",
     "Step",
     "StepLogger",
-    "build_context",
 ]

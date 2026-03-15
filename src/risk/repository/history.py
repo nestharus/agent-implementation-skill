@@ -142,32 +142,6 @@ class RiskHistory:
         )
 
 
-# ---------------------------------------------------------------------------
-# Backward-compat free-function wrappers
-# ---------------------------------------------------------------------------
-
-def _get_risk_history() -> RiskHistory:
-    from containers import Services
-    return RiskHistory(artifact_io=Services.artifact_io())
-
-
-def read_history(history_path: Path) -> list[RiskHistoryEntry]:
-    """Read all history entries."""
-    return _get_risk_history().read_history(history_path)
-
-
-def compute_history_adjustment(
-    history_path: Path,
-    assessment_class: AssessmentClass,
-    dominant_risks: list[RiskType],
-    blast_radius_band: int,
-) -> float:
-    """Compute a bounded risk adjustment from similar historical outcomes."""
-    return _get_risk_history().compute_history_adjustment(
-        history_path, assessment_class, dominant_risks, blast_radius_band,
-    )
-
-
 def pattern_signature(
     assessment_class: AssessmentClass,
     dominant_risks: list[RiskType],

@@ -126,29 +126,3 @@ class OutputAdjudicator:
                 f"({exc}) — treating as unrecognized signal",
             )
         return None, ""
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_adjudicator() -> OutputAdjudicator:
-    from containers import Services
-    return OutputAdjudicator(
-        prompt_guard=Services.prompt_guard(),
-        logger=Services.logger(),
-        dispatcher=Services.dispatcher(),
-        task_router=Services.task_router(),
-    )
-
-
-def adjudicate_agent_output(
-    output_path: Path, planspace: Path,
-    codespace: Path | None = None,
-    *,
-    model: str,
-) -> tuple[str | None, str]:
-    """Dispatch state-adjudicator to classify ambiguous agent output."""
-    return _get_adjudicator().adjudicate_agent_output(
-        output_path, planspace, codespace, model=model,
-    )

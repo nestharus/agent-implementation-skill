@@ -23,7 +23,7 @@ from coordination.repository.notes import (
     read_incoming_notes as load_incoming_notes,
     write_consequence_note,
 )
-from implementation.service.impact_analyzer import analyze_impacts
+from implementation.service.impact_analyzer import ImpactAnalyzer
 from orchestrator.path_registry import PathRegistry
 from orchestrator.service.section_decision_store import extract_section_summary
 from implementation.service.file_snapshotter import compute_text_diff, snapshot_modified_files
@@ -43,12 +43,14 @@ class CompletionHandler:
         change_tracker: ChangeTrackerService,
         communicator: Communicator,
         hasher: HasherService,
+        impact_analyzer: ImpactAnalyzer,
         logger: LogService,
     ) -> None:
         self._artifact_io = artifact_io
         self._change_tracker = change_tracker
         self._communicator = communicator
         self._hasher = hasher
+        self._impact_analyzer = impact_analyzer
         self._logger = logger
 
     def _compute_files_fingerprint(
@@ -132,7 +134,7 @@ class CompletionHandler:
         self._communicator.log_artifact(planspace, f"snapshot:section-{sec_num}")
 
         section_summary = extract_section_summary(section.path)
-        impacted_sections = analyze_impacts(
+        impacted_sections = self._impact_analyzer.analyze_impacts(
             planspace, sec_num, section_summary, modified_files, all_sections,
             codespace,
         )
@@ -323,40 +325,3 @@ def _build_source_diffs(
         f"### File Diffs Since Section {source_num}\n\n"
         + "\n\n".join(diff_parts)
     )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_completion_handler() -> CompletionHandler:
-    from containers import Services
-    return CompletionHandler(
-        artifact_io=Services.artifact_io(),
-        change_tracker=Services.change_tracker(),
-        communicator=Services.communicator(),
-        hasher=Services.hasher(),
-        logger=Services.logger(),
-    )
-
-
-def post_section_completion(
-    section: Section,
-    modified_files: list[str],
-    all_sections: list[Section],
-    planspace: Path,
-    codespace: Path,
-) -> None:
-    """Post-completion steps after a section is aligned."""
-    return _get_completion_handler().post_section_completion(
-        section, modified_files, all_sections, planspace, codespace,
-    )
-
-
-def read_incoming_notes(
-    section: Section,
-    planspace: Path,
-    codespace: Path,
-) -> str:
-    """Read incoming consequence notes from other sections."""
-    return _get_completion_handler().read_incoming_notes(section, planspace, codespace)

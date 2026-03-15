@@ -10,15 +10,19 @@ if TYPE_CHECKING:
         AgentDispatcher,
         ArtifactIOService,
         Communicator,
+        ConfigService,
         HasherService,
         LogService,
         ModelPolicyService,
+        PromptGuard,
+        SectionAlignmentService,
+        CrossSectionService,
         TaskRouterService,
     )
 
 from proposal.repository.excerpts import EXCERPT_PROPOSAL, exists as excerpt_exists
 from orchestrator.path_registry import PathRegistry
-from dispatch.prompt.writers import write_section_setup_prompt
+from dispatch.prompt.writers import Writers as PromptWriters
 from signals.service.blocker_manager import update_blocker_rollup
 from implementation.service.section_reexplorer import write_alignment_surface
 from orchestrator.types import PauseType, Section
@@ -36,6 +40,10 @@ class ProblemFrameGate:
         artifact_io: ArtifactIOService,
         communicator: Communicator,
         hasher: HasherService,
+        prompt_guard: PromptGuard,
+        section_alignment: SectionAlignmentService,
+        cross_section: CrossSectionService,
+        config: ConfigService,
     ) -> None:
         self._logger = logger
         self._policies = policies
@@ -44,6 +52,10 @@ class ProblemFrameGate:
         self._artifact_io = artifact_io
         self._communicator = communicator
         self._hasher = hasher
+        self._prompt_guard = prompt_guard
+        self._section_alignment = section_alignment
+        self._cross_section = cross_section
+        self._config = config
 
     def validate_problem_frame(
         self,
@@ -57,7 +69,17 @@ class ProblemFrameGate:
         problem_frame_path = paths.problem_frame(section.number)
         if not problem_frame_path.exists():
             self._logger.log(f"Section {section.number}: problem frame missing — retrying setup once")
-            retry_prompt = write_section_setup_prompt(
+            prompt_writers = PromptWriters(
+                task_router=self._task_router,
+                prompt_guard=self._prompt_guard,
+                logger=self._logger,
+                communicator=self._communicator,
+                section_alignment=self._section_alignment,
+                artifact_io=self._artifact_io,
+                cross_section=self._cross_section,
+                config=self._config,
+            )
+            retry_prompt = prompt_writers.write_section_setup_prompt(
                 section,
                 planspace,
                 codespace,
@@ -205,29 +227,3 @@ class ProblemFrameGate:
     def _write_problem_frame_signal(self, signal_path: Path, payload: dict) -> None:
         signal_path.parent.mkdir(parents=True, exist_ok=True)
         self._artifact_io.write_json(signal_path, payload)
-
-
-# Backward-compat wrappers
-
-def _get_problem_frame_gate() -> ProblemFrameGate:
-    from containers import Services
-    return ProblemFrameGate(
-        logger=Services.logger(),
-        policies=Services.policies(),
-        dispatcher=Services.dispatcher(),
-        task_router=Services.task_router(),
-        artifact_io=Services.artifact_io(),
-        communicator=Services.communicator(),
-        hasher=Services.hasher(),
-    )
-
-
-def validate_problem_frame(
-    section: Section,
-    planspace: Path,
-    codespace: Path,
-) -> str | None:
-    """Ensure the problem frame exists, has content, and is tracked."""
-    return _get_problem_frame_gate().validate_problem_frame(
-        section, planspace, codespace,
-    )

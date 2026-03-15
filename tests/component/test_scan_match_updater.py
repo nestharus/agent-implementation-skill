@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from containers import Services
 from src.scan.related.match_updater import (
+    MatchUpdater,
     SUMMARY_BEGIN,
     SUMMARY_END,
     deep_scan_related_files,
-    update_match,
 )
 
 
@@ -32,7 +33,8 @@ def test_update_match_inserts_summary_block(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    assert update_match(section_file, "src/main.py", details_file) is True
+    updater = MatchUpdater(artifact_io=Services.artifact_io())
+    assert updater.update_match(section_file, "src/main.py", details_file) is True
 
     text = section_file.read_text(encoding="utf-8")
     assert SUMMARY_BEGIN in text
@@ -53,6 +55,7 @@ def test_update_match_renames_malformed_feedback(tmp_path) -> None:
     feedback_file = tmp_path / "deep-src_foo_py-feedback.json"
     feedback_file.write_text("{bad json", encoding="utf-8")
 
-    assert update_match(section_file, "src/foo.py", details_file) is True
+    updater = MatchUpdater(artifact_io=Services.artifact_io())
+    assert updater.update_match(section_file, "src/foo.py", details_file) is True
     assert not feedback_file.exists()
     assert feedback_file.with_suffix(".malformed.json").exists()

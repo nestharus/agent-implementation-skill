@@ -4,8 +4,17 @@ import json
 from pathlib import Path
 
 from src.orchestrator.path_registry import PathRegistry
-from src.intake.repository.governance_loader import build_governance_indexes
-from src.intake.service.governance_packet_builder import build_section_governance_packet
+from src.containers import ArtifactIOService
+from src.intake.repository.governance_loader import GovernanceLoader
+from src.intake.service.governance_packet_builder import GovernancePacketBuilder
+
+
+def _loader() -> GovernanceLoader:
+    return GovernanceLoader(artifact_io=ArtifactIOService())
+
+
+def _builder() -> GovernancePacketBuilder:
+    return GovernancePacketBuilder(artifact_io=ArtifactIOService())
 
 
 def test_build_section_governance_packet_uses_indexes_and_default_profile(
@@ -42,11 +51,11 @@ def test_build_section_governance_packet_uses_indexes_and_default_profile(
         encoding="utf-8",
     )
 
-    build_governance_indexes(codespace, planspace)
+    _loader().build_governance_indexes(codespace, planspace)
 
     # Pass a section summary that keyword-matches "governance" in the
     # problem's regions, so _filter_by_regions() can match
-    packet_path = build_section_governance_packet(
+    packet_path = _builder().build_section_governance_packet(
         "01", planspace,
         section_summary="governance layer traceability",
     )
@@ -106,10 +115,10 @@ def test_build_section_governance_packet_filters_patterns_by_regions(
         encoding="utf-8",
     )
 
-    build_governance_indexes(codespace, planspace)
+    _loader().build_governance_indexes(codespace, planspace)
 
     # Section summary about "governance" — should not match "research" pattern
-    packet_path = build_section_governance_packet(
+    packet_path = _builder().build_section_governance_packet(
         "01", planspace,
         section_summary="governance packet builder for advisory context",
     )
@@ -141,7 +150,7 @@ def test_build_section_governance_packet_handles_missing_indexes(
     PathRegistry(planspace).ensure_artifacts_tree()
     codespace.mkdir()
 
-    packet_path = build_section_governance_packet("02", planspace)
+    packet_path = _builder().build_section_governance_packet("02", planspace)
     packet = json.loads(packet_path.read_text(encoding="utf-8"))
 
     assert packet["section"] == "02"

@@ -241,33 +241,3 @@ class ToolSurfaceWriter:
             section_number=section_number,
             planspace=planspace,
         )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_writer() -> ToolSurfaceWriter:
-    from containers import Services
-    return ToolSurfaceWriter(
-        artifact_io=Services.artifact_io(),
-        logger=Services.logger(),
-        policies=Services.policies(),
-        prompt_guard=Services.prompt_guard(),
-        dispatcher=Services.dispatcher(),
-        task_router=Services.task_router(),
-    )
-
-
-def surface_tool_registry(
-    *,
-    section_number: str,
-    planspace: Path,
-    codespace: Path,
-) -> int:
-    """Load the tool registry, repair if needed, and write the tool surface."""
-    return _get_writer().surface_tool_registry(
-        section_number=section_number,
-        planspace=planspace,
-        codespace=codespace,
-    )

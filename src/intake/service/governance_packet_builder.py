@@ -403,23 +403,3 @@ class GovernancePacketBuilder:
         except OSError:
             return None
         return packet_path
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers — used by tests and callers until they are
-# converted to receive GovernancePacketBuilder via constructor injection.
-# ---------------------------------------------------------------------------
-
-def _get_builder() -> GovernancePacketBuilder:
-    from containers import Services
-    return GovernancePacketBuilder(artifact_io=Services.artifact_io())
-
-
-def build_section_governance_packet(
-    section_number: str,
-    planspace: Path,
-    section_summary: str = "",
-) -> Path | None:
-    return _get_builder().build_section_governance_packet(
-        section_number, planspace, section_summary,
-    )

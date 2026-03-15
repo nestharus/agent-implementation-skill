@@ -20,12 +20,9 @@ from intent.service.philosophy_classifier import (
     SOURCE_MODE_REPO,
     SOURCE_MODE_USER,
     ClassifierState,
+    PhilosophyClassifier,
     STATE_VALID_EMPTY,
     STATE_VALID_NONEMPTY,
-    _classify_distiller_result,
-    _classify_guidance_result,
-    _classify_selector_result,
-    _classify_verifier_result,
     _manifest_source_mode,
     _user_source_is_substantive,
 )
@@ -33,8 +30,7 @@ from intent.service.philosophy_catalog import (
     build_philosophy_catalog,
 )
 from intent.service.philosophy_grounding import (
-    sha256_file,
-    validate_philosophy_grounding,
+    PhilosophyGrounding,
 )
 from intent.service.philosophy_bootstrap_state import (
     BOOTSTRAP_DISCOVERING,
@@ -43,18 +39,15 @@ from intent.service.philosophy_bootstrap_state import (
     BOOTSTRAP_NEEDS_USER_INPUT,
     BOOTSTRAP_READY,
     BootstrapResult,
+    PhilosophyBootstrapState,
     bootstrap_decisions_path as _bootstrap_decisions_path,
     bootstrap_guidance_path as _bootstrap_guidance_path,
     bootstrap_result as _bootstrap_result,
-    block_bootstrap as _block_bootstrap,
-    clear_bootstrap_signal as _clear_bootstrap_signal,
     user_source_path as _user_source_path,
-    write_bootstrap_diagnostics as _write_bootstrap_diagnostics,
-    write_bootstrap_status as _write_bootstrap_status,
 )
 from intent.service.philosophy_dispatcher import (
+    PhilosophyDispatcher,
     _attempt_output_path,
-    _dispatch_classified_signal_stage,
 )
 from intent.service.philosophy_prompts import (
     compose_bootstrap_guidance_text as _compose_bootstrap_guidance_text,
@@ -246,19 +239,27 @@ class PhilosophyBootstrapper:
     def __init__(
         self,
         artifact_io: ArtifactIOService,
+        bootstrap_state: PhilosophyBootstrapState,
+        classifier: PhilosophyClassifier,
         communicator: Communicator,
         dispatcher: AgentDispatcher,
+        grounding: PhilosophyGrounding,
         hasher: HasherService,
         logger: LogService,
+        philosophy_dispatcher: PhilosophyDispatcher,
         policies: ModelPolicyService,
         prompt_guard: PromptGuard,
         task_router: TaskRouterService,
     ) -> None:
         self._artifact_io = artifact_io
+        self._bootstrap_state = bootstrap_state
+        self._classifier = classifier
         self._communicator = communicator
         self._dispatcher = dispatcher
+        self._grounding = grounding
         self._hasher = hasher
         self._logger = logger
+        self._philosophy_dispatcher = philosophy_dispatcher
         self._policies = policies
         self._prompt_guard = prompt_guard
         self._task_router = task_router
@@ -307,7 +308,7 @@ class PhilosophyBootstrapper:
         if result == ALIGNMENT_CHANGED_PENDING:
             return None
 
-        classification = _classify_guidance_result(guidance_path)
+        classification = self._classifier._classify_guidance_result(guidance_path)
         if classification["state"] == STATE_VALID_NONEMPTY:
             return classification["data"]
 
@@ -349,7 +350,7 @@ class PhilosophyBootstrapper:
                 "guidance_path",
                 str(_bootstrap_guidance_path(paths)),
             )
-        return _block_bootstrap(
+        return self._bootstrap_state.block_bootstrap(
             paths,
             bootstrap_state=BOOTSTRAP_NEEDS_USER_INPUT,
             blocking_state=BLOCKING_NEED_DECISION,
@@ -375,9 +376,9 @@ class PhilosophyBootstrapper:
 
         manifest_path = ctx.intent_global / "philosophy-source-manifest.json"
         if not manifest_path.exists():
-            _clear_bootstrap_signal(ctx.paths)
+            self._bootstrap_state.clear_bootstrap_signal(ctx.paths)
             ready_detail = "Operational philosophy already exists."
-            _write_bootstrap_status(
+            self._bootstrap_state.write_bootstrap_status(
                 ctx.paths,
                 bootstrap_state=BOOTSTRAP_READY,
                 blocking_state=None,
@@ -399,7 +400,7 @@ class PhilosophyBootstrapper:
 
         sources_changed = any(
             not Path(entry.get("path", "")).exists()
-            or sha256_file(Path(entry.get("path", ""))) != entry.get("hash", "")
+            or self._grounding.sha256_file(Path(entry.get("path", ""))) != entry.get("hash", "")
             for entry in manifest.get("sources", [])
         )
 
@@ -423,10 +424,10 @@ class PhilosophyBootstrapper:
         if catalog_changed:
             return None
 
-        _clear_bootstrap_signal(ctx.paths)
+        self._bootstrap_state.clear_bootstrap_signal(ctx.paths)
         ready_detail = "Operational philosophy is ready and source inputs are unchanged."
         source_mode = _manifest_source_mode(manifest)
-        _write_bootstrap_status(
+        self._bootstrap_state.write_bootstrap_status(
             ctx.paths,
             bootstrap_state=BOOTSTRAP_READY,
             blocking_state=None,
@@ -480,8 +481,8 @@ class PhilosophyBootstrapper:
                 ),
             )
 
-        _clear_bootstrap_signal(ctx.paths)
-        _write_bootstrap_status(
+        self._bootstrap_state.clear_bootstrap_signal(ctx.paths)
+        self._bootstrap_state.write_bootstrap_status(
             ctx.paths,
             bootstrap_state=BOOTSTRAP_DISCOVERING,
             blocking_state=None,
@@ -500,7 +501,7 @@ class PhilosophyBootstrapper:
         """Handle selector returning valid-empty (no philosophy files found)."""
         self._logger.log("Intent bootstrap: source selector found no philosophy "
             "files in the repository catalog")
-        _write_bootstrap_diagnostics(
+        self._bootstrap_state.write_bootstrap_diagnostics(
             ctx.paths,
             stage="selector",
             attempts=selector_run["attempts"],
@@ -535,7 +536,7 @@ class PhilosophyBootstrapper:
         selected_classification: dict[str, Any],
     ) -> dict[str, Any]:
         """Handle selector agent failure (malformed or missing signal)."""
-        _write_bootstrap_diagnostics(
+        self._bootstrap_state.write_bootstrap_diagnostics(
             ctx.paths,
             stage="selector",
             attempts=selector_run["attempts"],
@@ -556,7 +557,7 @@ class PhilosophyBootstrapper:
         preserved = selected_classification.get("preserved")
         if preserved:
             extras["preserved_signal"] = preserved
-        return _block_bootstrap(
+        return self._bootstrap_state.block_bootstrap(
             ctx.paths,
             bootstrap_state=BOOTSTRAP_FAILED,
             blocking_state=BLOCKING_NEEDS_PARENT,
@@ -584,7 +585,7 @@ class PhilosophyBootstrapper:
 
         selector_prompt_text = _compose_source_selector_text(catalog_path, selected_signal)
         if not self._prompt_guard.write_validated(selector_prompt_text, selector_prompt):
-            return _block_bootstrap(
+            return self._bootstrap_state.block_bootstrap(
                 ctx.paths,
                 status="failed",
                 bootstrap_state=BOOTSTRAP_FAILED,
@@ -607,13 +608,13 @@ class PhilosophyBootstrapper:
             self._policies.resolve(ctx.policy, "intent_philosophy_selector"),
             self._policies.resolve(ctx.policy, "intent_philosophy_selector_escalation"),
         ]
-        selector_run = _dispatch_classified_signal_stage(
+        selector_run = self._philosophy_dispatcher._dispatch_classified_signal_stage(
             stage_name="selector",
             prompt_path=selector_prompt,
             output_path=selector_output,
             signal_path=selected_signal,
             models=ctx.selector_models,
-            classifier=_classify_selector_result,
+            classifier=self._classifier._classify_selector_result,
             ctx=DispatchContext(ctx.planspace, ctx.codespace),
             agent_file=self._task_router.agent_for("intent.philosophy_selector"),
         )
@@ -621,7 +622,7 @@ class PhilosophyBootstrapper:
 
         if selected_classification["state"] == STATE_VALID_NONEMPTY:
             ctx.selected = selected_classification["data"]
-            _write_bootstrap_diagnostics(
+            self._bootstrap_state.write_bootstrap_diagnostics(
                 ctx.paths,
                 stage="selector",
                 attempts=selector_run["attempts"],
@@ -661,13 +662,13 @@ class PhilosophyBootstrapper:
         self._artifact_io.write_json(catalog_path, ctx.catalog)
 
         selected_signal = ctx.paths.signals_dir() / "philosophy-selected-sources.json"
-        expanded_run = _dispatch_classified_signal_stage(
+        expanded_run = self._philosophy_dispatcher._dispatch_classified_signal_stage(
             stage_name="selector-extension-pass",
             prompt_path=ctx.paths.philosophy_select_prompt(),
             output_path=ctx.paths.philosophy_select_output_extensions(),
             signal_path=selected_signal,
             models=ctx.selector_models,
-            classifier=_classify_selector_result,
+            classifier=self._classifier._classify_selector_result,
             ctx=DispatchContext(ctx.planspace, ctx.codespace),
             agent_file=self._task_router.agent_for("intent.philosophy_selector"),
         )
@@ -722,7 +723,7 @@ class PhilosophyBootstrapper:
         preserved = verified_classification.get("preserved")
         if preserved:
             extras["preserved_signal"] = preserved
-        return _block_bootstrap(
+        return self._bootstrap_state.block_bootstrap(
             ctx.paths,
             bootstrap_state=BOOTSTRAP_FAILED,
             blocking_state=BLOCKING_NEEDS_PARENT,
@@ -760,7 +761,7 @@ class PhilosophyBootstrapper:
         )
         verify_prompt_text = _compose_verify_sources_text(candidates_block, verify_signal)
         if not self._prompt_guard.write_validated(verify_prompt_text, verify_prompt):
-            return _block_bootstrap(
+            return self._bootstrap_state.block_bootstrap(
                 ctx.paths,
                 status="failed",
                 bootstrap_state=BOOTSTRAP_FAILED,
@@ -779,7 +780,7 @@ class PhilosophyBootstrapper:
         self._communicator.log_artifact(ctx.planspace, "prompt:philosophy-verify")
 
         verifier_model = self._policies.resolve(ctx.policy, "intent_philosophy_verifier")
-        verify_run = _dispatch_classified_signal_stage(
+        verify_run = self._philosophy_dispatcher._dispatch_classified_signal_stage(
             stage_name="verifier",
             prompt_path=verify_prompt,
             output_path=verify_output,
@@ -789,7 +790,7 @@ class PhilosophyBootstrapper:
                 verifier_model,
                 self._policies.resolve(ctx.policy, "intent_philosophy_selector_escalation"),
             ],
-            classifier=_classify_verifier_result,
+            classifier=self._classifier._classify_verifier_result,
             ctx=DispatchContext(ctx.planspace, ctx.codespace),
             agent_file=self._task_router.agent_for("intent.philosophy_verifier"),
         )
@@ -814,7 +815,7 @@ class PhilosophyBootstrapper:
                 or not ctx.selected["sources"]):
             self._logger.log("Intent bootstrap: selector stage ended without a usable "
                 "source set — blocking section (fail-closed)")
-            return _block_bootstrap(
+            return self._bootstrap_state.block_bootstrap(
                 ctx.paths,
                 status="failed",
                 bootstrap_state=BOOTSTRAP_FAILED,
@@ -846,7 +847,7 @@ class PhilosophyBootstrapper:
         if not ctx.sources:
             self._logger.log("Intent bootstrap: selected source paths do not exist — "
                 "skipping distillation (fail-closed)")
-            return _block_bootstrap(
+            return self._bootstrap_state.block_bootstrap(
                 ctx.paths,
                 status="failed",
                 bootstrap_state=BOOTSTRAP_FAILED,
@@ -873,8 +874,8 @@ class PhilosophyBootstrapper:
             f"{'user-provided' if ctx.source_mode == SOURCE_MODE_USER else 'selected'} "
             "source(s)",
         )
-        _clear_bootstrap_signal(ctx.paths)
-        _write_bootstrap_status(
+        self._bootstrap_state.clear_bootstrap_signal(ctx.paths)
+        self._bootstrap_state.write_bootstrap_status(
             ctx.paths,
             bootstrap_state=BOOTSTRAP_DISTILLING,
             blocking_state=None,
@@ -897,7 +898,7 @@ class PhilosophyBootstrapper:
             decisions_path=_bootstrap_decisions_path(ctx.paths),
         )
         if not self._prompt_guard.write_validated(distill_prompt_text, prompt_path):
-            return _block_bootstrap(
+            return self._bootstrap_state.block_bootstrap(
                 ctx.paths,
                 status="failed",
                 bootstrap_state=BOOTSTRAP_FAILED,
@@ -935,7 +936,7 @@ class PhilosophyBootstrapper:
                     detail="Alignment changed while philosophy bootstrap was running.",
                 )
 
-            distill_classification = _classify_distiller_result(
+            distill_classification = self._classifier._classify_distiller_result(
                 ctx.philosophy_path, source_map_path,
             )
             if distill_classification["state"] == STATE_VALID_NONEMPTY:
@@ -960,7 +961,7 @@ class PhilosophyBootstrapper:
         decisions_path = _bootstrap_decisions_path(ctx.paths)
         if not decisions_path.exists() or decisions_path.stat().st_size == 0:
             guidance = None
-            guidance_classification = _classify_guidance_result(
+            guidance_classification = self._classifier._classify_guidance_result(
                 _bootstrap_guidance_path(ctx.paths),
             )
             if guidance_classification["state"] == STATE_VALID_NONEMPTY:
@@ -1059,7 +1060,7 @@ class PhilosophyBootstrapper:
         preserved = classification.get("preserved")
         if preserved:
             extras["preserved_signal"] = preserved
-        return _block_bootstrap(
+        return self._bootstrap_state.block_bootstrap(
             ctx.paths,
             bootstrap_state=BOOTSTRAP_FAILED,
             blocking_state=BLOCKING_NEEDS_PARENT,
@@ -1076,7 +1077,7 @@ class PhilosophyBootstrapper:
     def _finalize_philosophy(self, ctx: _BootstrapContext) -> dict[str, Any]:
         """Validate grounding, write manifest and fingerprint, return result."""
         source_map_path = ctx.intent_global / "philosophy-source-map.json"
-        grounding_ok = validate_philosophy_grounding(
+        grounding_ok = self._grounding.validate_philosophy_grounding(
             ctx.philosophy_path, source_map_path, ctx.paths.artifacts,
         )
         if not grounding_ok:
@@ -1097,7 +1098,7 @@ class PhilosophyBootstrapper:
             "sources": [
                 {
                     "path": str(source["path"]),
-                    "hash": sha256_file(source["path"]),
+                    "hash": self._grounding.sha256_file(source["path"]),
                     "source_type": source["source_type"],
                 }
                 for source in ctx.sources
@@ -1108,9 +1109,9 @@ class PhilosophyBootstrapper:
         catalog_fp = self._hasher.content_hash(json.dumps(ctx.catalog, sort_keys=True))
         catalog_fp_path.write_text(catalog_fp, encoding="utf-8")
 
-        _clear_bootstrap_signal(ctx.paths)
+        self._bootstrap_state.clear_bootstrap_signal(ctx.paths)
         ready_detail = "Operational philosophy distilled and validated."
-        _write_bootstrap_status(
+        self._bootstrap_state.write_bootstrap_status(
             ctx.paths,
             bootstrap_state=BOOTSTRAP_READY,
             blocking_state=None,
@@ -1145,7 +1146,7 @@ class PhilosophyBootstrapper:
             philosophy_path=paths.philosophy(),
         )
 
-        _write_bootstrap_status(
+        self._bootstrap_state.write_bootstrap_status(
             paths,
             bootstrap_state=BOOTSTRAP_DISCOVERING,
             blocking_state=None,
@@ -1204,40 +1205,3 @@ def _build_verification_shortlist(ctx: _BootstrapContext) -> list[dict[str, Any]
             })
     return shortlisted
 
-
-# ---------------------------------------------------------------------------
-# Backward-compat wrappers
-# ---------------------------------------------------------------------------
-
-def _get_philosophy_bootstrapper() -> PhilosophyBootstrapper:
-    from containers import Services
-    return PhilosophyBootstrapper(
-        artifact_io=Services.artifact_io(),
-        communicator=Services.communicator(),
-        dispatcher=Services.dispatcher(),
-        hasher=Services.hasher(),
-        logger=Services.logger(),
-        policies=Services.policies(),
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-    )
-
-
-def ensure_global_philosophy(
-    planspace: Path,
-    codespace: Path,
-) -> BootstrapResult:
-    """Ensure the operational philosophy exists; distill if missing."""
-    return _get_philosophy_bootstrapper().ensure_global_philosophy(
-        planspace, codespace,
-    )
-
-
-def validate_philosophy_grounding(
-    philosophy_path: Path,
-    source_map_path: Path,
-    artifacts: Path,
-) -> bool:
-    """Validate that distilled philosophy is grounded in source files."""
-    from intent.service.philosophy_grounding import validate_philosophy_grounding as _validate
-    return _validate(philosophy_path, source_map_path, artifacts)

@@ -453,3 +453,126 @@ def mock_dispatch() -> MagicMock:
     Services.dispatcher.override(providers.Object(mock_disp))
     yield mock_disp.mock
     Services.dispatcher.reset_override()
+
+
+def build_proposal_cycle(*, intent_triager=None):
+    """Build a ProposalCycle with all dependencies resolved from Services.
+
+    Used by component tests that exercise the proposal loop directly.
+    Pass *intent_triager* to supply a test stub (e.g. for load_triage_result).
+    """
+    from dispatch.prompt.writers import Writers as PromptWriters
+    from intent.service.intent_triager import IntentTriager
+    from intent.service.surface_registry import SurfaceRegistry
+    from proposal.engine.proposal_cycle import ProposalCycle
+    from proposal.service.alignment_handler import AlignmentHandler
+    from proposal.service.cycle_control import CycleControl
+    from proposal.service.expansion_handler import ExpansionHandler
+    from proposal.service.proposal_prep import ProposalPrep
+    from proposal.service.surface_handler import SurfaceHandler
+    from reconciliation.repository.results import Results
+
+    logger = Services.logger()
+    artifact_io = Services.artifact_io()
+    communicator = Services.communicator()
+    pipeline_control = Services.pipeline_control()
+    dispatcher = Services.dispatcher()
+    dispatch_helpers = Services.dispatch_helpers()
+    policies = Services.policies()
+    task_router = Services.task_router()
+    prompt_guard = Services.prompt_guard()
+    cross_section = Services.cross_section()
+    hasher = Services.hasher()
+    signals = Services.signals()
+
+    prompt_writers = PromptWriters(
+        task_router=task_router,
+        prompt_guard=prompt_guard,
+        logger=logger,
+        communicator=communicator,
+        section_alignment=Services.section_alignment(),
+        artifact_io=artifact_io,
+        cross_section=cross_section,
+        config=Services.config(),
+    )
+
+    cycle_control = CycleControl(
+        logger=logger,
+        artifact_io=artifact_io,
+        communicator=communicator,
+        pipeline_control=pipeline_control,
+        cross_section=cross_section,
+        dispatcher=dispatcher,
+        dispatch_helpers=dispatch_helpers,
+        task_router=task_router,
+        flow_ingestion=Services.flow_ingestion(),
+    )
+
+    reconciliation_results = Results(
+        artifact_io=artifact_io,
+        hasher=hasher,
+    )
+
+    proposal_prep = ProposalPrep(
+        logger=logger,
+        policies=policies,
+        dispatch_helpers=dispatch_helpers,
+        reconciliation_results=reconciliation_results,
+        prompt_writers=prompt_writers,
+    )
+
+    alignment_handler = AlignmentHandler(
+        logger=logger,
+        policies=policies,
+        dispatcher=dispatcher,
+        dispatch_helpers=dispatch_helpers,
+        pipeline_control=pipeline_control,
+        cycle_control=cycle_control,
+        prompt_writers=prompt_writers,
+    )
+
+    expansion_handler = ExpansionHandler(
+        logger=logger,
+        artifact_io=artifact_io,
+        communicator=communicator,
+        pipeline_control=pipeline_control,
+        cycle_control=cycle_control,
+    )
+
+    surface_registry = SurfaceRegistry(
+        artifact_io=artifact_io,
+        hasher=hasher,
+        logger=logger,
+        signals=signals,
+    )
+
+    surface_handler = SurfaceHandler(
+        logger=logger,
+        artifact_io=artifact_io,
+        communicator=communicator,
+        expansion_handler=expansion_handler,
+        surface_registry=surface_registry,
+    )
+
+    if intent_triager is None:
+        intent_triager = IntentTriager(
+            communicator=communicator,
+            dispatcher=dispatcher,
+            logger=logger,
+            policies=policies,
+            prompt_guard=prompt_guard,
+            signals=signals,
+            task_router=task_router,
+            artifact_io=artifact_io,
+        )
+
+    return ProposalCycle(
+        logger=logger,
+        communicator=communicator,
+        intent_triager=intent_triager,
+        section_alignment=Services.section_alignment(),
+        cycle_control=cycle_control,
+        proposal_prep=proposal_prep,
+        alignment_handler=alignment_handler,
+        surface_handler=surface_handler,
+    )

@@ -6,11 +6,26 @@ import json
 
 from flow.types.schema import ChainAction, FlowDeclaration, TaskSpec
 from src.flow.service.flow_signal_parser import (
+    FlowSignalParser,
     extract_legacy_tasks,
     find_first_section_scope,
-    ingest_task_requests,
-    parse_signal_file,
 )
+from containers import Services
+
+
+def _make_parser() -> FlowSignalParser:
+    return FlowSignalParser(
+        logger=Services.logger(),
+        artifact_io=Services.artifact_io(),
+    )
+
+
+def parse_signal_file(signal_path):
+    return _make_parser().parse_signal_file(signal_path)
+
+
+def ingest_task_requests(signal_path):
+    return _make_parser().ingest_task_requests(signal_path)
 
 
 def test_parse_signal_file_consumes_legacy_signal(tmp_path) -> None:

@@ -26,14 +26,48 @@ from src.orchestrator.path_registry import PathRegistry
 from flow.types.context import FlowEnvelope
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from flow.exceptions import FlowCorruptionError
-from flow.repository.flow_context_store import read_flow_json as _read_flow_json
-from flow.repository.gate_repository import read_origin_refs as _read_origin_refs
-from flow.service.flow_facade import (
-    build_flow_context,
-    reconcile_task_completion,
-    submit_chain,
-    submit_fanout,
-)
+from containers import Services
+from flow.repository.flow_context_store import FlowContextStore
+from flow.repository.gate_repository import GateRepository
+
+
+# ---------------------------------------------------------------------------
+# Service factories
+# ---------------------------------------------------------------------------
+
+def _make_flow_context_store() -> FlowContextStore:
+    return FlowContextStore(Services.artifact_io())
+
+
+def _make_gate_repository() -> GateRepository:
+    return GateRepository(Services.artifact_io())
+
+
+def _read_flow_json(path):
+    return _make_flow_context_store().read_flow_json(path)
+
+
+def _read_origin_refs(planspace, task_id):
+    return _make_gate_repository().read_origin_refs(planspace, task_id)
+
+
+def build_flow_context(planspace, flow_context_path=None, **kwargs):
+    return _make_flow_context_store().build_flow_context(
+        planspace, flow_context_path=flow_context_path, **kwargs,
+    )
+
+
+def submit_chain(env, steps, **kwargs):
+    return Services.flow_ingestion().submit_chain(env, steps, **kwargs)
+
+
+def submit_fanout(env, branches, **kwargs):
+    return Services.flow_ingestion().submit_fanout(env, branches, **kwargs)
+
+
+def reconcile_task_completion(db_path, planspace, task_id, status, output_path, **kwargs):
+    from flow.service.flow_facade import reconcile_task_completion as _reconcile
+    return _reconcile(db_path, planspace, task_id, status, output_path, **kwargs)
 
 
 # ---------------------------------------------------------------------------
