@@ -10,7 +10,7 @@
 #
 # What it does:
 #   1. Creates a fresh planspace at ~/.claude/workspaces/<slug>/
-#   2. Launches the workflow agent (claude -p) against the codespace
+#   2. Launches the pipeline runner as a direct subprocess
 #   3. Launches a QA monitor that polls run.db for problems
 #   4. Waits for the workflow to complete (or fail/timeout)
 #   5. Runs logex to extract the unified timeline
@@ -37,7 +37,7 @@ export WORKFLOW_HOME
 # Slug contract: the harness passes --slug to the runner, which forces the
 # planspace path to ~/.claude/workspaces/$SLUG.  run-metadata.json written by
 # the runner is the machine-readable contract confirming the slug was honored.
-DB_SH="$SCRIPT_DIR/db.sh"
+DB_SH="$WORKFLOW_HOME/scripts/db.sh"
 PLANSPACE="$HOME/.claude/workspaces/$SLUG"
 DB_PATH="$PLANSPACE/run.db"
 
@@ -86,11 +86,6 @@ if [ ! -f "$ANSWER_KEY/score.sh" ]; then
   exit 1
 fi
 
-if ! command -v claude >/dev/null 2>&1; then
-  echo "ERROR: claude CLI not found"
-  exit 1
-fi
-
 mkdir -p "$RUN_DIR"
 
 # ── Phase 1: Launch workflow agent ────────────────────────────────────
@@ -102,19 +97,12 @@ echo "  Started at: $(date -Iseconds)"
 WORKFLOW_LOG="$RUN_DIR/workflow.log"
 WORKFLOW_PID_FILE="$RUN_DIR/workflow.pid"
 
-# The workflow skill is invoked via /workflow in a claude session.
-# We use claude -p (print mode) with bypassPermissions so it runs unattended.
+# Launch the pipeline runner directly as a subprocess
 (
-  cd "$CODESPACE"
-  unset CLAUDECODE
-  claude -p \
-    --permission-mode bypassPermissions \
-    --max-budget-usd 50 \
-    "Run the implementation pipeline via the canonical runner:
-
-python -m pipeline ~/.claude/workspaces/$SLUG $CODESPACE --spec $SPEC_PATH --slug $SLUG --qa-mode
-
-Do not use /workflow. Execute the command above directly." \
+  cd "$WORKFLOW_HOME" && \
+  PYTHONPATH="$WORKFLOW_HOME" python3 -m pipeline \
+    "$PLANSPACE" "$CODESPACE" \
+    --spec "$SPEC_PATH" --slug "$SLUG" --qa-mode \
     > "$WORKFLOW_LOG" 2>&1
   echo $? > "$RUN_DIR/workflow.exit"
 ) &
@@ -344,9 +332,9 @@ for sec, cnt in counts.items():
 
     # ── Heartbeat (every 20th cycle = ~5 min) ──
     if [ $((CYCLE % 20)) -eq 0 ]; then
-      EVT_COUNT=$(bash "$DB_SH" tail "$DB_PATH" summary 2>/dev/null | wc -l || echo 0)
-      AGENT_COUNT=$(bash "$DB_SH" agents "$DB_PATH" 2>/dev/null | wc -l || echo 0)
-      FINDING_COUNT=$(bash "$DB_SH" tail "$DB_PATH" qa-finding 2>/dev/null | wc -l || echo 0)
+      EVT_COUNT=$(bash "$DB_SH" tail "$DB_PATH" 2>/dev/null | wc -l) || EVT_COUNT=0
+      AGENT_COUNT=$(bash "$DB_SH" agents "$DB_PATH" 2>/dev/null | wc -l) || AGENT_COUNT=0
+      FINDING_COUNT=$(bash "$DB_SH" tail "$DB_PATH" qa-finding 2>/dev/null | wc -l) || FINDING_COUNT=0
       ELAPSED=$(( $(date +%s) - START_TIME ))
       log_finding "HEARTBEAT" "-" "events:$EVT_COUNT agents:$AGENT_COUNT findings:$FINDING_COUNT elapsed:${ELAPSED}s"
     fi
@@ -371,8 +359,8 @@ for sec, cnt in counts.items():
 
 - **End time**: $(date -Iseconds)
 - **Duration**: ${ELAPSED:-0}s
-- **Total events**: $(bash "$DB_SH" tail "$DB_PATH" summary 2>/dev/null | wc -l || echo 0)
-- **Total findings**: $(bash "$DB_SH" tail "$DB_PATH" qa-finding 2>/dev/null | wc -l || echo 0)
+- **Total events**: $(bash "$DB_SH" tail "$DB_PATH" 2>/dev/null | wc -l)
+- **Total findings**: $(bash "$DB_SH" tail "$DB_PATH" qa-finding 2>/dev/null | wc -l)
 SEOF
 
 ) > "$QA_LOG" 2>&1 &

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from containers import Communicator, LogService, SectionAlignmentService
+    from intent.service.intent_pack_generator import IntentPackGenerator
     from intent.service.intent_triager import IntentTriager
     from proposal.service.cycle_control import CycleControl
     from proposal.service.proposal_prep import ProposalPrep
@@ -26,6 +27,7 @@ class AlignmentPhaseResult:
     action: str
     problems: str | None = None
     intent_mode: str = ""
+    intent_pack_stale: bool = False
 
 
 class ProposalCycle:
@@ -39,6 +41,7 @@ class ProposalCycle:
         proposal_prep: ProposalPrep,
         alignment_handler: AlignmentHandler,
         surface_handler: SurfaceHandler,
+        intent_pack_generator: IntentPackGenerator | None = None,
     ) -> None:
         self._logger = logger
         self._communicator = communicator
@@ -48,6 +51,7 @@ class ProposalCycle:
         self._proposal_prep = proposal_prep
         self._alignment_handler = alignment_handler
         self._surface_handler = surface_handler
+        self._intent_pack_generator = intent_pack_generator
 
     def _check_proposal_written(
         self,
@@ -156,15 +160,19 @@ class ProposalCycle:
                 return AlignmentPhaseResult(
                     ACTION_CONTINUE, surface_result.reproposal_reason,
                     surface_result.intent_mode,
+                    intent_pack_stale=surface_result.intent_pack_stale,
                 )
             write_alignment_surface(ctx.planspace, section)
             return AlignmentPhaseResult(ACTION_BREAK, intent_mode=surface_result.intent_mode)
 
-        intent_mode = self._surface_handler.handle_misaligned_surfaces(
+        misaligned_result = self._surface_handler.handle_misaligned_surfaces(
             section.number, ctx.planspace, ctx.codespace,
             intent_mode, intent_budgets, expansion_counts,
         )
-        return AlignmentPhaseResult(ACTION_CONTINUE, problems, intent_mode)
+        return AlignmentPhaseResult(
+            ACTION_CONTINUE, problems, misaligned_result.intent_mode,
+            intent_pack_stale=misaligned_result.intent_pack_stale,
+        )
 
     def _dispatch_and_validate_proposal(
         self,
@@ -277,6 +285,17 @@ class ProposalCycle:
             if phase.action == ACTION_BREAK:
                 break
             # action == ACTION_CONTINUE
+            if phase.intent_pack_stale and self._intent_pack_generator is not None:
+                self._logger.log(
+                    f"Section {section.number}: regenerating intent pack "
+                    "after mode escalation"
+                )
+                self._intent_pack_generator.generate_intent_pack(
+                    section,
+                    ctx.planspace,
+                    ctx.codespace,
+                    incoming_notes=incoming_notes or "",
+                )
             proposal_problems = phase.problems
             if phase.problems is not None:
                 self._log_misalignment_problems(

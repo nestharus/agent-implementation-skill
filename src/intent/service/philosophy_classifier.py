@@ -20,6 +20,7 @@ VALID_SOURCE_TYPES = frozenset({"repo_source", "user_source"})
 # ── Source modes ──────────────────────────────────────────────────────
 SOURCE_MODE_USER = "user_source"
 SOURCE_MODE_REPO = "repo_sources"
+SOURCE_MODE_SPEC = "spec_source"
 SOURCE_MODE_NONE = "none"
 
 
@@ -42,6 +43,17 @@ STATE_VALID_EMPTY = ClassifierState.VALID_EMPTY
 
 # ── Minimum byte threshold for user-provided philosophy source ────────
 MIN_USER_SOURCE_BYTES = 100
+
+# ── Scaffold template markers ─────────────────────────────────────────
+# Lines that appear in the default scaffold template written by
+# ``_write_user_source_template``.  If the file contains *only* these
+# markers (and whitespace), it is an untouched scaffold — not
+# substantive user input.
+_SCAFFOLD_MARKERS = frozenset({
+    "# Philosophy Source — User",
+    "Describe in your own words how you want this system to think and decide.",
+    "## Your Philosophy",
+})
 
 
 class PhilosophyClassifier:
@@ -314,11 +326,24 @@ def _guidance_schema_error(payload: Any) -> str | None:
 
 
 def _user_source_is_substantive(user_source: Path) -> bool:
-    return (
-        user_source.exists()
-        and user_source.is_file()
-        and user_source.stat().st_size > MIN_USER_SOURCE_BYTES
-    )
+    if not user_source.exists() or not user_source.is_file():
+        return False
+    if user_source.stat().st_size <= MIN_USER_SOURCE_BYTES:
+        return False
+    # Reject untouched scaffold templates: if every non-blank line is a
+    # known scaffold marker, the user has not written anything yet.
+    try:
+        text = user_source.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    content_lines = [
+        line.strip() for line in text.splitlines() if line.strip()
+    ]
+    if not content_lines:
+        return False
+    if all(line in _SCAFFOLD_MARKERS for line in content_lines):
+        return False
+    return True
 
 
 def _manifest_source_mode(manifest: dict[str, Any] | None) -> str:

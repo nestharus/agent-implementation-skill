@@ -20,6 +20,7 @@ from proposal.repository.state import ProposalState, State as ProposalStateRepo
 from proposal.service.readiness_resolver import ReadinessResolver
 from reconciliation.repository.queue import Queue as ReconciliationQueue
 from research.engine.orchestrator import ResearchState
+from risk.service.readiness_risk_bridge import ReadinessRiskBridge
 from signals.service.blocker_manager import (
     append_open_problem,
     update_blocker_rollup,
@@ -51,6 +52,7 @@ class ReadinessGate:
         prompt_writer: ResearchPromptWriter,
         reconciliation_queue: ReconciliationQueue,
         readiness_resolver: ReadinessResolver | None = None,
+        readiness_risk_bridge: ReadinessRiskBridge | None = None,
     ) -> None:
         self._logger = logger
         self._artifact_io = artifact_io
@@ -61,6 +63,9 @@ class ReadinessGate:
         self._prompt_writer = prompt_writer
         self._reconciliation_queue = reconciliation_queue
         self._readiness_resolver = readiness_resolver or ReadinessResolver(artifact_io=artifact_io)
+        self._readiness_risk_bridge = readiness_risk_bridge or ReadinessRiskBridge(
+            artifact_io=artifact_io, logger=logger,
+        )
 
     def _emit_needs_parent_research_signals(
         self,
@@ -363,6 +368,12 @@ class ReadinessGate:
                 proposal_state,
                 planspace,
                 codespace=codespace,
+            )
+
+            # I5: Persist advisory risk package for blocked sections so
+            # artifacts/risk/ has visibility even before execution_ready.
+            self._readiness_risk_bridge.persist_readiness_risk(
+                section.number, blockers, planspace,
             )
 
             proposal_pass_result = None

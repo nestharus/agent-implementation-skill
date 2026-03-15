@@ -601,6 +601,7 @@ def _build_intent_collaborators(s, shared):
     )
     return {
         "intent_initializer": intent_initializer,
+        "intent_pack_generator": intent_pack_generator,
         "intent_triager": intent_triager,
         "recurrence_emitter": recurrence_emitter,
         "surface_registry": surface_registry,
@@ -685,6 +686,7 @@ def _build_proposal_collaborators(s, shared, intent_collab):
         proposal_prep=proposal_prep,
         alignment_handler=alignment_handler,
         surface_handler=surface_handler,
+        intent_pack_generator=intent_collab["intent_pack_generator"],
     )
     research_prompt_writer = ResearchPromptWriter(
         prompt_guard=s.prompt_guard(),

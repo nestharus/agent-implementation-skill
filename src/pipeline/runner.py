@@ -14,6 +14,7 @@ import argparse
 import json
 import logging
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -44,6 +45,49 @@ def _init_planspace(
     init_db(registry.run_db())
     logger.info("Initialized planspace: %s", planspace)
     return registry
+
+
+def _run_task_dispatcher(
+    stop_event: threading.Event,
+    planspace: Path,
+    codespace: Path | None,
+    poll_interval: float = 3.0,
+) -> None:
+    """Background polling loop for the task dispatcher.
+
+    Runs in a daemon thread alongside the orchestrator.  Polls run.db
+    for pending tasks and dispatches them until *stop_event* is set.
+    """
+    from flow.engine.task_dispatcher import _get_dispatcher, log
+    from flow.service.task_db_client import next_task as _db_next_task
+
+    dispatcher = _get_dispatcher()
+    db_path = str(PathRegistry(planspace).run_db())
+
+    if not Path(db_path).exists():
+        log(f"WARNING: run.db not found at {db_path} — dispatcher thread exiting")
+        return
+
+    log(f"Starting dispatcher thread (planspace={planspace}, poll={poll_interval}s)")
+
+    while not stop_event.is_set():
+        try:
+            model_policy = dispatcher._policies.load(planspace)
+            task = _db_next_task(db_path)
+
+            if task:
+                dispatcher.dispatch_task(
+                    db_path, planspace, task,
+                    codespace=codespace,
+                    model_policy=model_policy,
+                )
+            else:
+                stop_event.wait(timeout=poll_interval)
+        except Exception as e:  # noqa: BLE001 — daemon loop, must not crash
+            log(f"ERROR in dispatcher thread: {e}")
+            stop_event.wait(timeout=poll_interval)
+
+    log("Dispatcher thread stopped")
 
 
 def _handoff(
@@ -91,7 +135,23 @@ def _handoff(
     ctx = DispatchContext(
         planspace=planspace, codespace=codespace, _policies=Services.policies(),
     )
-    orchestrator._run_loop(ctx, global_proposal, global_alignment)
+
+    # Start the task dispatcher as a background daemon thread so queued
+    # tasks (e.g. research.plan) are consumed while the orchestrator runs.
+    stop_event = threading.Event()
+    dispatcher_thread = threading.Thread(
+        target=_run_task_dispatcher,
+        args=(stop_event, planspace, codespace),
+        name="task-dispatcher",
+        daemon=True,
+    )
+    dispatcher_thread.start()
+
+    try:
+        orchestrator._run_loop(ctx, global_proposal, global_alignment)
+    finally:
+        stop_event.set()
+        dispatcher_thread.join(timeout=10)
 
 
 def main(argv: list[str] | None = None) -> int:

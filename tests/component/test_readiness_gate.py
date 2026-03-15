@@ -491,3 +491,127 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
     assert result.proposal_pass_result is not None
     assert result.proposal_pass_result.execution_ready is False
     assert result.proposal_pass_result.needs_reconciliation is True
+
+
+def test_resolve_and_route_persists_readiness_risk_when_blocked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    noop_communicator,
+) -> None:
+    """When readiness is false, an advisory risk package is written to artifacts/risk/."""
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    artifacts = planspace / "artifacts"
+    section = _section(planspace)
+    proposal_state_path = artifacts / "proposals" / "section-03-proposal-state.json"
+    proposal_state_path.write_text(
+        json.dumps(
+            {
+                "resolved_anchors": [],
+                "unresolved_contracts": ["CacheProtocol"],
+                "resolved_contracts": [],
+                "unresolved_anchors": ["client.cache"],
+                "user_root_questions": ["Choose retry policy"],
+                "shared_seam_candidates": [],
+                "new_section_candidates": [],
+                "research_questions": [],
+                "blocking_research_questions": ["Retry budget?"],
+                "execution_ready": False,
+                "readiness_rationale": "blocked",
+                "problem_ids": [],
+                "pattern_ids": [],
+                "profile_id": "",
+                "pattern_deviations": [],
+                "governance_questions": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "src.proposal.engine.readiness_gate.append_open_problem",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "src.reconciliation.repository.queue.Queue.queue_reconciliation_request",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "src.proposal.engine.readiness_gate.update_blocker_rollup",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "containers.ResearchOrchestratorService.compute_trigger_hash",
+        lambda self, questions: "hash-03",
+    )
+    monkeypatch.setattr(
+        "containers.ResearchOrchestratorService.is_complete_for_trigger",
+        lambda *_args, **_kwargs: True,
+    )
+
+    gate = _make_gate()
+    result = gate.resolve_and_route(section, planspace, "proposal")
+
+    assert result.ready is False
+
+    # Verify the readiness risk artifact was persisted
+    risk_artifact_path = artifacts / "risk" / "section-03-readiness-risk.json"
+    assert risk_artifact_path.exists(), (
+        "Expected readiness-risk artifact at artifacts/risk/section-03-readiness-risk.json"
+    )
+    risk_data = json.loads(risk_artifact_path.read_text(encoding="utf-8"))
+    assert risk_data["package_id"] == "pkg-readiness-section-03"
+    assert risk_data["layer"] == "readiness"
+    assert risk_data["scope"] == "section-03"
+    assert risk_data["origin_source"] == "readiness-gate"
+    assert len(risk_data["steps"]) > 0
+    # Each blocker type should produce a step
+    step_summaries = [s["summary"] for s in risk_data["steps"]]
+    assert any("blocker" in s.lower() for s in step_summaries)
+
+
+def test_resolve_and_route_skips_readiness_risk_when_ready(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    noop_communicator,
+) -> None:
+    """When readiness is true, no readiness risk artifact is written."""
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    artifacts = planspace / "artifacts"
+    section = _section(planspace)
+    proposal_state_path = artifacts / "proposals" / "section-03-proposal-state.json"
+    proposal_state_path.write_text(
+        json.dumps(
+            {
+                "resolved_anchors": ["cache.invalidate"],
+                "unresolved_contracts": [],
+                "resolved_contracts": ["CacheStore"],
+                "unresolved_anchors": [],
+                "user_root_questions": [],
+                "shared_seam_candidates": [],
+                "new_section_candidates": [],
+                "research_questions": [],
+                "blocking_research_questions": [],
+                "execution_ready": True,
+                "readiness_rationale": "ready",
+                "problem_ids": [],
+                "pattern_ids": [],
+                "profile_id": "",
+                "pattern_deviations": [],
+                "governance_questions": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    gate = _make_gate()
+    result = gate.resolve_and_route(section, planspace, "proposal")
+
+    assert result.ready is True
+    risk_artifact_path = artifacts / "risk" / "section-03-readiness-risk.json"
+    assert not risk_artifact_path.exists(), (
+        "Readiness risk artifact should not exist when section is ready"
+    )

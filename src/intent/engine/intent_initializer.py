@@ -144,10 +144,17 @@ class IntentInitializer:
             sec = ctx.section.number
             if blocking_state == BLOCKING_NEED_DECISION:
                 if self._is_qa_mode(ctx.planspace):
-                    self._logger.log(
-                        f"Section {sec}: QA mode auto-accepted spec-derived "
-                        f"philosophy without user review — {result['detail']}",
-                    )
+                    philosophy_path = result.get("philosophy_path")
+                    if philosophy_path and Path(str(philosophy_path)).exists() and Path(str(philosophy_path)).stat().st_size > 0:
+                        self._logger.log(
+                            f"Section {sec}: QA mode auto-accepted spec-derived "
+                            f"philosophy without user review — {result['detail']}",
+                        )
+                    else:
+                        self._logger.log(
+                            f"Section {sec}: continuing without philosophy "
+                            f"(QA mode) — {result['detail']}",
+                        )
                     return result
                 self._logger.log(
                     f"Section {sec}: philosophy bootstrap needs "

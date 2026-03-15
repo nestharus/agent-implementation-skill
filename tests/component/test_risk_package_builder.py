@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from containers import ArtifactIOService
+from containers import ArtifactIOService, Services
 from orchestrator.path_registry import PathRegistry
 from proposal.repository.state import ProposalState
 from risk.service.package_builder import (
@@ -14,6 +14,10 @@ from risk.service.package_builder import (
     _positional_assessment_class,
     build_package,
     refresh_package,
+)
+from risk.service.readiness_risk_bridge import (
+    ReadinessRiskBridge,
+    build_readiness_risk_package,
 )
 from risk.types import PackageStep, StepClass
 
@@ -325,3 +329,97 @@ def test_write_and_read_package_round_trip(tmp_path: Path) -> None:
 
     assert path == tmp_path / "artifacts" / "risk" / "section-03-risk-package.json"
     assert restored == package
+
+
+# ---------------------------------------------------------------------------
+# ReadinessRiskBridge tests
+# ---------------------------------------------------------------------------
+
+
+def test_build_readiness_risk_package_converts_blockers_to_steps() -> None:
+    blockers = [
+        {"type": "unresolved_contracts", "description": "CacheProtocol"},
+        {"type": "blocking_research_questions", "description": "Retry budget?"},
+        {"type": "user_root_questions", "description": "Choose retry policy"},
+    ]
+
+    package = build_readiness_risk_package("03", blockers)
+
+    assert package is not None
+    assert package.package_id == "pkg-readiness-section-03"
+    assert package.layer == "readiness"
+    assert package.scope == "section-03"
+    assert package.origin_source == "readiness-gate"
+    assert len(package.steps) == 3
+    assert package.steps[0].assessment_class == StepClass.COORDINATE
+    assert package.steps[1].assessment_class == StepClass.EXPLORE
+    assert package.steps[2].assessment_class == StepClass.STABILIZE
+    assert all("blocker" in step.summary.lower() for step in package.steps)
+
+
+def test_build_readiness_risk_package_returns_none_for_empty_blockers() -> None:
+    assert build_readiness_risk_package("03", []) is None
+
+
+def test_build_readiness_risk_package_deduplicates_blockers() -> None:
+    blockers = [
+        {"type": "unresolved_contracts", "description": "CacheProtocol"},
+        {"type": "unresolved_contracts", "description": "CacheProtocol"},
+    ]
+
+    package = build_readiness_risk_package("03", blockers)
+
+    assert package is not None
+    assert len(package.steps) == 1
+
+
+def test_build_readiness_risk_package_handles_governance_blocker_shape() -> None:
+    """Governance blockers use state/detail rather than type/description."""
+    blockers = [
+        {"state": "governance_deviation", "detail": "pattern mismatch"},
+    ]
+
+    package = build_readiness_risk_package("03", blockers)
+
+    assert package is not None
+    assert len(package.steps) == 1
+    assert "pattern mismatch" in package.steps[0].summary
+
+
+def test_readiness_risk_bridge_persists_artifact(tmp_path: Path) -> None:
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+
+    bridge = ReadinessRiskBridge(
+        artifact_io=ArtifactIOService(),
+        logger=Services.logger(),
+    )
+    blockers = [
+        {"type": "unresolved_contracts", "description": "CacheProtocol"},
+        {"type": "user_root_questions", "description": "Choose retry policy"},
+    ]
+
+    path = bridge.persist_readiness_risk("03", blockers, planspace)
+
+    assert path is not None
+    assert path.exists()
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["package_id"] == "pkg-readiness-section-03"
+    assert data["layer"] == "readiness"
+    assert len(data["steps"]) == 2
+
+
+def test_readiness_risk_bridge_returns_none_for_no_blockers(tmp_path: Path) -> None:
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+
+    bridge = ReadinessRiskBridge(
+        artifact_io=ArtifactIOService(),
+        logger=Services.logger(),
+    )
+
+    assert bridge.persist_readiness_risk("03", [], planspace) is None
+    risk_path = planspace / "artifacts" / "risk" / "section-03-readiness-risk.json"
+    assert not risk_path.exists()

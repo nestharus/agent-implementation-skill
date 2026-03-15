@@ -64,6 +64,15 @@ class SurfaceActionResult:
     action: str
     intent_mode: str
     reproposal_reason: str | None = None
+    intent_pack_stale: bool = False
+
+
+@dataclass(frozen=True)
+class MisalignedSurfaceResult:
+    """Result of misaligned surface handling."""
+
+    intent_mode: str
+    intent_pack_stale: bool = False
 
 
 class SurfaceHandler:
@@ -124,6 +133,21 @@ class SurfaceHandler:
             escalation_signal,
         )
 
+    def _invalidate_intent_pack_hash(
+        self,
+        planspace: Path,
+        section_number: str,
+    ) -> None:
+        """Delete the intent pack input hash so the next generation is forced."""
+        paths = PathRegistry(planspace)
+        hash_file = paths.intent_section_dir(section_number) / "intent-pack-input-hash.txt"
+        if hash_file.exists():
+            hash_file.unlink()
+            self._logger.log(
+                f"Section {section_number}: invalidated intent pack hash "
+                "for regeneration after mode escalation"
+            )
+
     # ---------------------------------------------------------------------------
     # Surface action handlers (aligned / misaligned paths)
     # ---------------------------------------------------------------------------
@@ -160,6 +184,7 @@ class SurfaceHandler:
                     "structured_surfaces_on_lightweight",
                     surface_count,
                 )
+                self._invalidate_intent_pack_hash(planspace, section_number)
                 return SurfaceActionResult(
                     action=ACTION_CONTINUE,
                     intent_mode=INTENT_MODE_FULL,
@@ -167,6 +192,7 @@ class SurfaceHandler:
                         "Lightweight section discovered structured surfaces; "
                         "re-propose under full intent mode."
                     ),
+                    intent_pack_stale=True,
                 )
 
             if intent_mode == INTENT_MODE_FULL:
@@ -201,18 +227,20 @@ class SurfaceHandler:
         intent_mode: str,
         intent_budgets: dict,
         expansion_counts: dict[str, int],
-    ) -> str:
+    ) -> MisalignedSurfaceResult:
         """Handle surface processing when the proposal is misaligned.
 
-        Returns the (possibly upgraded) intent_mode.
+        Returns a ``MisalignedSurfaceResult`` with the (possibly upgraded)
+        intent_mode and whether the intent pack needs regeneration.
         """
         misaligned_surfaces = self._load_combined_surfaces(
             section_number, planspace,
         )
         misaligned_surface_count = _count_surfaces(misaligned_surfaces)
         if not misaligned_surface_count:
-            return intent_mode
+            return MisalignedSurfaceResult(intent_mode=intent_mode)
 
+        intent_pack_stale = False
         misaligned_surfaces = self._persist_surfaces(
             section_number,
             planspace,
@@ -234,7 +262,9 @@ class SurfaceHandler:
                 "structured_surfaces_on_lightweight_misaligned",
                 misaligned_surface_count,
             )
+            self._invalidate_intent_pack_hash(planspace, section_number)
             intent_mode = INTENT_MODE_FULL
+            intent_pack_stale = True
 
         if intent_mode == INTENT_MODE_FULL and _has_definition_gap_surfaces(
             misaligned_surfaces,
@@ -244,4 +274,7 @@ class SurfaceHandler:
                 intent_budgets, expansion_counts,
             )
 
-        return intent_mode
+        return MisalignedSurfaceResult(
+            intent_mode=intent_mode,
+            intent_pack_stale=intent_pack_stale,
+        )
