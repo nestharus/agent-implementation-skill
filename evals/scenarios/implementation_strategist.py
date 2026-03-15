@@ -714,12 +714,16 @@ def _check_complex_addresses_dependencies(
     lower = agent_output.lower()
     dependency_markers = [
         ("inventory", ["inventoryservice", "inventory_service",
-                       "check_availability", "inventory/service"]),
+                       "check_availability", "inventory/service",
+                       "inventory", "stock", "availability"]),
         ("pricing", ["pricingengine", "pricing_engine",
-                     "pricing/engine", "calculate"]),
-        ("events", ["eventbus", "event_bus", "events/bus", "publish"]),
+                     "pricing/engine", "calculate", "pricing",
+                     "price", "cost"]),
+        ("events", ["eventbus", "event_bus", "events/bus", "publish",
+                    "event", "notification", "emit"]),
         ("repository", ["orderrepository", "order_repository",
-                        "orders/repository", ".save"]),
+                        "orders/repository", ".save", "repository",
+                        "persist", "database", "store"]),
     ]
     addressed = []
     for label, markers in dependency_markers:

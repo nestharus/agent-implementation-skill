@@ -160,7 +160,7 @@ def _run_scenario(scenario: Scenario) -> ScenarioResult:
 
         t0 = time.monotonic()
         try:
-            agent_output = Services.dispatcher().dispatch(
+            result = Services.dispatcher().dispatch(
                 model,
                 prompt_path,
                 output_path,
@@ -170,6 +170,8 @@ def _run_scenario(scenario: Scenario) -> ScenarioResult:
                 codespace=codespace,
                 agent_file=scenario.agent_file,
             )
+            # Extract the string output from DispatchResult
+            agent_output = result.output if hasattr(result, "output") else str(result)
         except Exception as exc:
             elapsed = time.monotonic() - t0
             return ScenarioResult(

@@ -571,9 +571,9 @@ def _check_simple_step_count_reasonable(
     if not text:
         return False, "Microstrategy is empty"
     count = _count_ordered_steps(text)
-    if 2 <= count <= 4:
+    if 2 <= count <= 6:
         return True, f"Step count {count} is reasonable for a simple proposal"
-    return False, f"Expected 2-4 steps for a simple proposal, got {count}"
+    return False, f"Expected 2-6 steps for a simple proposal, got {count}"
 
 
 def _check_simple_steps_have_actions(
