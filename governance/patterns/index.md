@@ -972,11 +972,11 @@ a false pass — either way it says nothing about whether the behavior is correc
 
 **Known instances**:
 - `tests/component/test_positive_contracts.py` — component-level positive
-  contract suite for doctrine, inventory truth, and registry saturation
+  contract suite for doctrine, inventory truth, boundary enforcement, and
+  PAT-0005 callsite centralization
 - `tests/component/test_model_policy.py` and
   `tests/component/test_scan_policy_coherence.py` — policy/default contract
-  surfaces; currently helpful but not sufficient to lock PAT-0005 callsite
-  centralization
+  surfaces complementary to the broader positive-contract suite
 - `evals/agentic/structural_checks.py` — positive assertions over current
   collected outputs (existence, JSON validity, keys, headings, DB rows,
   signal states)
@@ -1008,21 +1008,26 @@ positive test with realistic fixture or registry shapes.
 
 ## PAT-0016: Runtime Inventory Truth & Surface Retirement
 
-**Problem class**: Authoritative docs, audit prompts, governance self-reports,
-and inventory claims drift away from the live runtime, while retired execution
-surfaces remain in active discovery trees and silently reintroduce split-brain
-instructions.
+**Problem class**: Authoritative docs, audit prompts, governance/philosophy
+self-reports, and inventory claims drift away from the live runtime or the
+current governing intent, while retired execution surfaces remain in active
+discovery trees and silently reintroduce split-brain instructions.
 
-**Regions**: architecture docs, audit prompts, governance self-reports, agent
-inventory, route inventory, live-vs-legacy execution surfaces
+**Regions**: architecture docs, philosophy profiles/analysis, audit prompts,
+governance self-reports, agent inventory, route inventory,
+live-vs-legacy execution surfaces
 
 **Solution surfaces**: live registry derivation, generated or contract-checked
-inventory summaries, archive quarantine for retired surfaces, discovery-boundary
-enforcement, audit-time self-verification of present-tense runtime claims.
+inventory summaries, archive quarantine for retired surfaces,
+discovery-boundary enforcement, audit-time self-verification of present-tense
+runtime claims, faithful projection from verbatim philosophy into distilled
+profiles and synthesis surfaces.
 
 **Philosophy**: Accuracy over shortcuts. Context optimization. Migration must be
 atomic per surface. A retired path that remains in a live discovery tree is not
-retired. Governance cannot steer the system if its own state reports are stale.
+retired. Governance cannot steer the system if its own state reports are stale,
+and compressed philosophy profiles cannot safely guide the system if they omit
+material governing constraints.
 
 **Template**:
 1. Any document that claims live agent counts, task counts, namespaces,
@@ -1058,6 +1063,11 @@ retired. Governance cannot steer the system if its own state reports are stale.
     residue (for example container-touch site sets) are themselves
     authoritative self-report surfaces and must be updated atomically when the
     underlying code inventory changes.
+11. Distilled philosophy profiles, philosophy analyses, and architecture
+    syntheses that compress verbatim governing notes are authoritative
+    projection surfaces when they are used at runtime or audit time; they must
+    preserve priority ordering and materially active constraints or explicitly
+    scope what is omitted and point back to the fuller source.
 
 **Canonical instance**: `src/taskrouter/agents.py` +
 `src/taskrouter/discovery.py`
@@ -1067,6 +1077,9 @@ retired. Governance cannot steer the system if its own state reports are stale.
 - `src/taskrouter/discovery.py` and all `src/*/routes.py` — live task
   vocabulary
 - `system-synthesis.md` — published architecture + inventory summary
+- `philosophy/design-philosophy-analysis.md` and
+  `philosophy/profiles/PHI-global.md` — distilled philosophy-projection
+  surfaces
 - `governance/patterns/index.md` — authoritative pattern archive and health
   self-report surface
 - `governance/audit/prompt.md` — audit-facing codebase map
@@ -1082,11 +1095,12 @@ retired. Governance cannot steer the system if its own state reports are stale.
   `governance/audit/history.md` — governance self-report surfaces when they
   make present-tense runtime or migration claims
 
-**Conformance**: No authoritative runtime document or governance self-report
-may hand-wave counts, paths, or health/status claims that disagree with live
-registries and code. No retired surface may remain discoverable by live
-agent/path resolution. Migration rounds are incomplete until inventories,
-docs, executable adapters, and discovery boundaries agree.
+**Conformance**: No authoritative runtime document, philosophy profile, or
+governance self-report may hand-wave counts, paths, health/status claims, or
+governing constraints that disagree with live registries, code, or the current
+verbatim philosophy set. No retired surface may remain discoverable by live
+agent/path resolution. Migration rounds are incomplete until inventories, docs,
+executable adapters, and discovery boundaries agree.
 
 ---
 
@@ -1244,33 +1258,33 @@ classes such as `src/coordination/engine/global_coordinator.py`
 - `src/containers.py` — service-container definition and wiring root
 - `src/orchestrator/engine/pipeline_orchestrator.py`,
   `src/orchestrator/engine/section_pipeline.py`,
-  `src/risk/engine/risk_assessor.py`, and
-  `src/scan/cli.py` — sanctioned composition roots
-- `src/scan/scan_dispatcher.py` and
-  `src/scan/explore/deep_scanner.py` — explicitly scoped scan-stage
-  build-helper surfaces that may touch `Services` only for wiring
+  `src/risk/engine/risk_assessor.py`,
+  `src/scan/cli.py`, and
+  `src/flow/engine/task_dispatcher.py` — sanctioned composition roots / entry
+  surfaces
+- `src/scan/scan_dispatcher.py`,
+  `src/scan/explore/deep_scanner.py`,
+  `src/scan/substrate/substrate_discoverer.py`, and
+  `src/proposal/engine/proposal_phase.py` — explicitly scoped build/helper
+  surfaces that may touch `Services` only for wiring
 - `src/coordination/engine/global_coordinator.py`,
   `src/implementation/engine/implementation_phase.py`,
   `src/reconciliation/engine/reconciliation_phase.py`, and
   `src/coordination/engine/coordination_controller.py` — constructor-injected
   runtime classes
-- `src/scan/codemap/cache.py`, `src/pipeline/context.py`, and
-  `src/scan/substrate/substrate_discoverer.py` — constructor fallback residue
 - `src/staleness/service/section_alignment_checker.py` and
   `src/staleness/service/global_alignment_rechecker.py` — runtime method-level
-  container lookups
-- `src/flow/engine/task_dispatcher.py` — mixed surface: top-level composition
-  root plus helper-level `QaGate` construction via `Services`
-- `src/dispatch/engine/section_dispatcher.py`,
-  `src/proposal/engine/proposal_phase.py`, and
-  `src/flow/service/task_request_ingestor.py` — helper/module-level container
-  access that should converge on explicit wiring
+  container lookups (accepted residue)
+- `src/dispatch/engine/section_dispatcher.py` and
+  `src/flow/service/task_request_ingestor.py` — quarantined helper-level
+  residue
 - `src/signals/service/section_communicator.py`,
   `src/signals/service/message_poller.py`, and
   `src/signals/service/blocker_manager.py` — compatibility-wrapper /
   backward-compat residue
-- `system-synthesis.md` and `tests/component/test_positive_contracts.py` —
-  authoritative boundary-report surfaces that must agree with runtime
+- `system-synthesis.md`, `governance/risk-register.md`, and
+  `tests/component/test_positive_contracts.py` — authoritative boundary-report
+  surfaces that must agree with runtime
 
 **Conformance**: Production runtime code may not touch `Services` outside
 sanctioned composition roots or explicitly quarantined compatibility adapters.
@@ -1288,29 +1302,18 @@ must match the live boundary.
 - **PAT-0002 (Prompt Safety)**: Healthy. R109 clarified that payload-file
   contents are untrusted dynamic content even when delivered through internal
   tasks. QA interceptor now validates payload content before dispatch.
-- **PAT-0003 (Path Registry)**: Improved but not converged. Note-family and
-  decision-family repository helpers now exist
-  (`coordination/repository/notes.py`, `orchestrator/repository/decisions.py`),
-  so the catalog must stop reporting those helper surfaces as missing. The
-  remaining rule-11 gaps are discovery/listing islands rather than raw
-  filename construction: scope-delta enumeration in
-  `scope_delta_aggregator.py` and `problem_resolver.py`; recurrence discovery
-  in `problem_resolver.py`; proposal-attempt discovery in
-  `microstrategy_decider.py`; research-question aggregation in
-  `strategic_state_builder.py`; input-ref family listing in
-  `context_builder.py`, `input_hasher.py`, `roal_index.py`, and
-  `impact_analyzer.py`; impact/reconciliation evidence selection in
-  `risk/prompt/writers.py`; and section/proposal listing in
-  `philosophy_bootstrapper.py`. Flow relpath helpers remain a documented
-  by-design exception for DB storage.
+- **PAT-0003 (Path Registry)**: Healthy at runtime. R121 added the
+  remaining rule-11 helper surfaces (scope-delta, input-ref,
+  proposal-attempt, research-question, recurrence, section-spec/proposal,
+  scoped evidence) and migrated consumers atomically. Remaining exceptions are
+  by-design: `decisions.py` receives its directory from callers, and flow
+  relpath helpers remain for DB storage.
 - **PAT-0004 (Flow System)**: Healthy.
-- **PAT-0005 (Policy-Driven Models)**: Regressed. Most runtime callsites still
-  resolve models centrally, but `src/scan/related/related_file_resolver.py`
-  reintroduced local policy-fallback business logic with
-  `ctx.model_policy.get("exploration", ctx.model_policy["validation"])` for
-  validation escalation. The pattern is not healthy again until that choice is
-  pushed back through the authoritative resolver / policy contract and locked
-  by a positive test.
+- **PAT-0005 (Policy-Driven Models)**: Healthy. Runtime callsites resolve
+  models centrally or use the required-key contract.
+  `src/scan/related/related_file_resolver.py` now uses `resolve_model(...)`,
+  and `tests/component/test_positive_contracts.py` fails if operational
+  callsites reintroduce local `policy.get(...)` fallback chains.
 - **PAT-0006 (Freshness Computation)**: Healthy in mechanism. Governance packet
   overscoping fixed in R108 (no-match returns empty candidates, not full
   archive), reducing avoidable invalidation pressure.
@@ -1338,45 +1341,36 @@ must match the live boundary.
   `safety_blocked`); dispatcher logs `qa:degraded` distinctly from
   `qa:passed`; notifier carries reason_code through lifecycle events;
   reconciliation adjudicator references PAT-0014 degraded states in warnings.
-- **PAT-0015 (Positive Contract Testing)**: Improved but still under-scoped.
+- **PAT-0015 (Positive Contract Testing)**: Improved but still incomplete.
   The suite now covers doctrine projection, archive reference integrity,
-  system-synthesis count truth, and a bounded `Services` allowlist, but it does
-  not yet lock the two drift classes that reopened this round: governance
-  self-report truthfulness and policy-centralization regressions. In practice,
-  `tests/component/test_positive_contracts.py` now carries stale sanctioned /
-  quarantined container inventories, and no positive contract currently fails
-  on local `policy.get(...)` model-fallback logic such as the
-  `related_file_resolver.py` escalation path.
-- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Improved, but
-  governance self-report drift reopened. `system-synthesis.md` is broadly
-  runtime-true, but present-tense self-reports are stale in the PAT-0003,
-  PAT-0005, PAT-0015, and PAT-0019 health notes; PRB-0019/0020/0021; RISK-0008;
-  and the allowlist/quarantine inventories inside
-  `tests/component/test_positive_contracts.py`. The active drift is now about
-  published residue/health inventories, not agent/path counts.
+  system-synthesis count truth, bounded `Services` allowlisting, and
+  PAT-0005 callsite centralization. The remaining gap is rule-13 coverage:
+  no positive contract yet derives a live governance/self-report inventory and
+  compares it to the published summary surface that claims to describe it.
+- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Active.
+  Runtime counts and executable inventories are mostly current, but
+  present-tense self-report drift remains in the PAT-0003, PAT-0005,
+  PAT-0015, and PAT-0019 health notes, the PAT-0019 known-instances residue
+  taxonomy, `system-synthesis.md`'s DI residue prose, PRB-0017's remaining-gap
+  text, and the compressed philosophy projection in `PHI-global.md`. The
+  unstable class is summary truth, not runtime discovery.
 - **PAT-0017 (Proposal-State Contract Projection)**: Improved. R115 rolled
   back the three ungoverned required fields (`constraint_ids`,
   `governance_candidate_refs`, `design_decision_refs`) from the canonical
   schema, fail-closed default, and all test/eval fixtures. The runtime schema
   now matches the active agent file, dispatch template, and known eval
   surfaces, but PAT-0015 still lacks the positive projection locks that would
-  keep this from drifting again.
+  keep summary drift from reappearing elsewhere.
 - **PAT-0018 (Behavioral Doctrine Projection)**: Healthy. R116 synchronized
   10 live agent/template doctrine surfaces. R117 fixed the 11th surface
   (microstrategy-writer.md, missed in R116) and added it to the known
   instances and positive contract test list. All 11 live routed doctrine
   surfaces now match the authoritative wording in SKILL.md and implement.md.
 - **PAT-0019 (Constructor Dependency Injection / Composition-Root Boundary)**:
-  Cataloged, still not converged. Actual production `Services` import sites are
-  narrower than several governance surfaces report: `mailbox_service.py`,
-  `intent_initializer.py`, `orchestrator/service/pipeline_state.py`, and
-  `pipeline/middleware.py` should not be described as current residue. Real
-  residue remains in constructor fallbacks (`cache.py`, `pipeline/context.py`,
-  `substrate_discoverer.py`), runtime method/container lookups
-  (`section_alignment_checker.py`, `global_alignment_rechecker.py`),
-  helper-level wiring (`task_dispatcher.py`, `section_dispatcher.py`,
-  `proposal_phase.py`, `task_request_ingestor.py`), and compatibility wrappers
-  (`section_communicator.py`, `message_poller.py`, `blocker_manager.py`).
-  Sanctioned composition roots remain `containers.py`, `scan/cli.py`,
-  `pipeline_orchestrator.py`, `section_pipeline.py`, `risk_assessor.py`, and
-  the explicitly scoped scan build helpers.
+  Partially converged with bounded accepted residue. Constructor fallbacks are
+  eliminated. Live `Services` imports are limited to sanctioned composition
+  roots/build helpers plus quarantined residue in staleness services,
+  `section_dispatcher.py`, `task_request_ingestor.py`, and the signals
+  compatibility wrappers. Remaining work is limited to extracting runtime
+  method lookups from staleness services and retiring backward-compat wrappers
+  when compatibility is no longer required.

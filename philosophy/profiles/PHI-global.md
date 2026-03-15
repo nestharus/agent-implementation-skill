@@ -54,6 +54,33 @@ and are easy to lose when compressed into broad values:
   is sensitive to agent file definitions. Agent files impart a method of
   thinking. The choice of which model runs which agent file is a
   method-of-thinking decision, not a performance/cost decision.
+- **Problems, not features**: The system decomposes work as recursive
+  problem-solving, not feature delivery against a checklist. Explore →
+  recognize → propose → align → descend only as far as necessary → signal
+  upward if the local layer cannot contain the problem.
+- **Proposal as problem-state artifact**: Proposals are structured
+  problem-state artifacts, not file-change plans. They emit
+  resolved/unresolved anchors, contracts, research questions, user questions,
+  new-section candidates, shared seam candidates, and execution readiness
+  declarations.
+- **Fail-closed readiness before descent**: Descent into implementation
+  before anchors, contracts, and research are resolved produces brute-force
+  behavior and reopen cycles. The execution-readiness gate is fail-closed:
+  if any blocking field remains unresolved, implementation dispatch is blocked.
+- **Tool creation and upward reframing**: Agents can discover new problems,
+  new tools, or greenfield territory that cannot be solved locally. These must
+  bubble upward through blocking research questions, root reframing signals,
+  and shared seam candidates rather than being solved out of scope.
+- **Testing philosophy**: Tests are behavioral contracts, not source-text
+  archaeology. Positive contract tests lock recurring projection classes.
+  Bounded live-LLM end-to-end scenarios validate agent behavior at integration
+  seams. Test maintenance is subject to the same truth standards as governance
+  self-reports.
+- **ROAL mechanics**: Multi-step acceptance (build → assess → optimize →
+  threshold → persist), optimization feedback (posture adjustment based on
+  evidence), oscillation prevention (hysteresis bands, one-step movement,
+  asymmetric evidence, cooldown), brute-force-regression intervention (detect
+  and break retry loops before they consume the risk budget).
 
 ## Pattern Implications
 

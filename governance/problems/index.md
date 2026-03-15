@@ -200,9 +200,9 @@ Advisory surfaces (QA interception, reconciliation adjudication) are deliberatel
 **Provenance**: audit-inferred (R109)
 **Regions**: integration tests, regression tests, component tests, authoritative runtime surfaces
 
-Tests written as source-text archaeology create fragile regressions. R110 extended PAT-0015 to require representative round-trip contract tests. The suite has converged on positive contract testing. R112: PAT-0015 scope expanded to require that executable audit/eval surfaces themselves have positive current-layout contracts. R120 added governance archive reference-integrity checks and `Services.*` boundary allowlisting. R121: remaining gaps are governance self-report truth locks (present-tense residue/health claims must match live code) and PAT-0005 centralization locks (no local model-policy fallback chains at operational callsites).
+Tests written as source-text archaeology create fragile regressions. R110 extended PAT-0015 to require representative round-trip contract tests. The suite has converged on positive contract testing. R112: PAT-0015 scope expanded to require that executable audit/eval surfaces themselves have positive current-layout contracts. R120 added governance archive reference-integrity checks and `Services.*` boundary allowlisting. R121 added PAT-0005 centralization locks. R122 added derivation-based self-report truth locks (PAT-0015 rule 13): live Services-import inventory verification, DI boundary prose truthfulness, and philosophy projection presence checks. Remaining gap: governance self-report truth still requires manual refresh during audits; derivation tests reduce but do not eliminate the drift surface.
 
-**Solution surfaces**: PAT-0015 (Positive Contract Testing), positive behavioral assertions over source-grep absence tests, output-shape contracts, representative round-trip contract tests for high-risk handoffs (R110), executable eval/audit surface contracts (R112), governance reference-integrity and Services boundary allowlisting (R120), PAT-0005 centralization lock (R121).
+**Solution surfaces**: PAT-0015 (Positive Contract Testing), positive behavioral assertions over source-grep absence tests, output-shape contracts, representative round-trip contract tests for high-risk handoffs (R110), executable eval/audit surface contracts (R112), governance reference-integrity and Services boundary allowlisting (R120), PAT-0005 centralization lock (R121), derivation-based self-report truth locks (R122).
 
 ---
 
@@ -252,13 +252,13 @@ method-level lookups, and backward-compat wrappers in signals services.
 
 ## PRB-0020: Governance Self-Report Drift / False Health Reporting
 
-**Status**: active — substantially addressed (R112-R121)
+**Status**: active — substantially addressed (R112-R122)
 **Provenance**: audit-inferred (R112)
-**Regions**: governance/patterns/index.md, governance/risk-register.md, governance/problems/index.md, governance/audit/history.md, tests/component/test_positive_contracts.py
+**Regions**: governance/patterns/index.md, governance/risk-register.md, governance/problems/index.md, governance/audit/history.md, tests/component/test_positive_contracts.py, system-synthesis.md, philosophy/profiles/PHI-global.md
 
-Governance self-report surfaces (pattern health notes, risk register status, problem archive status, audit history counts, test allowlists) diverge from actual codebase state. R112-R119 corrected pattern health notes, risk register status, dead-path references, and stale counts. R120 repaired the philosophy projection gap (proposal-evaluation rule now in both analysis and PHI-global). R121: the active drift class is now false present-tense reporting — governance surfaces (PRB-0019, RISK-0008, test allowlists) still named cleaned files as residue. R121 refreshed all stale inventories atomically with the code changes that resolved them: removed `intent_initializer.py`, `mailbox_service.py`, `pipeline/middleware.py`, `pipeline_state.py` from residue/allowlist sets; corrected PAT-0003 health to reflect solved helper surfaces vs remaining family islands.
+Governance self-report surfaces (pattern health notes, risk register status, problem archive status, audit history counts, test allowlists, system-synthesis prose, compressed philosophy profiles) diverge from actual codebase state. R112-R119 corrected pattern health notes, risk register status, dead-path references, and stale counts. R120 repaired the philosophy projection gap (proposal-evaluation rule now in both analysis and PHI-global). R121: the active drift class is now false present-tense reporting — governance surfaces (PRB-0019, RISK-0008, test allowlists) still named cleaned files as residue. R121 refreshed all stale inventories atomically with the code changes that resolved them. R122: pattern health notes (PAT-0003, PAT-0005, PAT-0015, PAT-0016, PAT-0019) refreshed to post-R121 truth; `system-synthesis.md` DI boundary prose corrected to reference PAT-0019/RISK-0008 instead of restating volatile residue; `PHI-global.md` expanded to preserve 6 missing governing constraint bands; derivation-based truth locks added to positive contract suite.
 
-**Solution surfaces**: PAT-0016 scope expansion to governance self-reports (R112), truthful pattern health notes, audit-time verification of present-tense claims, dead-path and phantom-reference correction (R119), philosophy projection repair (R120), atomic truth-surface refresh (R121).
+**Solution surfaces**: PAT-0016 scope expansion to governance self-reports (R112), truthful pattern health notes, audit-time verification of present-tense claims, dead-path and phantom-reference correction (R119), philosophy projection repair (R120), atomic truth-surface refresh (R121), pattern health/synthesis/philosophy refresh and derivation-based truth locks (R122).
 
 ---
 

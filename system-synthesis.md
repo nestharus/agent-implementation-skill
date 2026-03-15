@@ -36,12 +36,12 @@ constructed dependencies downward.
 Only CLI entry points / `main()` functions / sanctioned composition helpers
 touch the container directly. After composition, production code works only
 with injected collaborators. The old free-function facade pattern — construct
-from the global container, delegate, return — is retired. Service-locator
-residue persists in constructor fallbacks, backward-compat factory methods,
-and a small number of helper-level container lookups (documented in PAT-0019
-known instances and RISK-0008). Scan-stage adapter surfaces
-(`scan_dispatcher.py`, `deep_scanner.py`) are explicitly scoped as
-composition helpers.
+from the global container, delegate, return — is retired. The service-locator
+boundary is formalized as PAT-0019 and tracked in RISK-0008; residue is
+limited to runtime method-level lookups in staleness services, backward-compat
+wrappers in signals services, and one quarantined circular-dependency site.
+Scan-stage adapter surfaces (`scan_dispatcher.py`, `deep_scanner.py`) are
+explicitly scoped as composition helpers.
 
 ### The bounded substrate
 
@@ -273,6 +273,7 @@ Agents expand work inside this vocabulary without inventing new execution primit
 - **Stabilization loop**: Post-impl assessment emits `accept_with_debt` → risk-register staging signal and `refactor_required` → structured blocker signal. R103 wired bounded stabilization consumer. R104 made promotion idempotent. R105 made dedup material-payload-aware: severity, mitigation, rationale, and governance lineage now affect the dedup key so changed risk re-promotes while unchanged debt stays idempotent.
 - **Per-region philosophy**: Region-profile-map exists but all regions currently use PHI-global. The infrastructure supports overrides when materially different values emerge.
 - **Governance bootstrap for new projects**: The governance design describes four entry paths (greenfield, brownfield, PRD, partial governance) but the bootstrap workflow isn't implemented yet.
+- **PRB-0020 (Governance Self-Report Drift)**: Pattern health notes, problem archive status, `system-synthesis.md` prose, and `PHI-global.md` compression drift faster than the runtime they describe. Derivation-based positive contracts (PAT-0015 rule 13) reduce but do not eliminate the manual refresh surface.
 
 ## Glossary
 

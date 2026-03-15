@@ -248,3 +248,85 @@ def test_no_local_model_policy_fallback_chains() -> None:
         f"Local model-policy fallback chain in {len(violations)} file(s): "
         f"{violations} — use resolve(policy, key) instead"
     )
+
+
+# ---------------------------------------------------------------------------
+# 7. PAT-0015 rule 13 — derivation-based self-report truth locks.
+# ---------------------------------------------------------------------------
+
+def _derive_services_import_sites() -> set[str]:
+    """Scan src/ for files that import 'from containers import ... Services'."""
+    import_pattern = re.compile(r"from\s+containers\s+import\s+.*Services")
+    sites: set[str] = set()
+    for py_file in sorted(SRC.rglob("*.py")):
+        rel = str(py_file.relative_to(SRC))
+        if rel.startswith("scripts/"):
+            continue
+        text = py_file.read_text(encoding="utf-8")
+        if import_pattern.search(text):
+            sites.add(rel)
+    return sites
+
+
+def test_sanctioned_and_quarantined_sets_match_live_code() -> None:
+    """Every file in the sanctioned/quarantined allowlists must actually
+    import Services, and every importing file must be in one of the sets.
+    This prevents dead entries from accumulating (PAT-0015 rule 13)."""
+    live_sites = _derive_services_import_sites()
+    published = _SANCTIONED_CONTAINER_SITES | _QUARANTINED_RESIDUE
+    dead = published - live_sites
+    assert not dead, (
+        f"Allowlist contains {len(dead)} file(s) that no longer import "
+        f"Services: {sorted(dead)}"
+    )
+    unlisted = live_sites - published
+    assert not unlisted, (
+        f"Unlisted Services import sites: {sorted(unlisted)}"
+    )
+
+
+def test_system_synthesis_di_boundary_is_truthful() -> None:
+    """system-synthesis.md must not claim constructor fallbacks persist,
+    and must reference PAT-0019/RISK-0008 as authoritative boundary
+    sources (PAT-0015 rule 13)."""
+    synthesis = ROOT / "system-synthesis.md"
+    if not synthesis.exists():
+        pytest.skip("system-synthesis.md not found")
+    text = synthesis.read_text(encoding="utf-8")
+    assert "constructor fallback" not in text.lower(), (
+        "system-synthesis.md still claims constructor fallbacks persist"
+    )
+    assert "PAT-0019" in text, (
+        "system-synthesis.md does not reference PAT-0019 for DI boundary"
+    )
+    assert "RISK-0008" in text, (
+        "system-synthesis.md does not reference RISK-0008 for DI boundary"
+    )
+
+
+# Key philosophy constraint bands that must be present in PHI-global.
+_PHI_GLOBAL_REQUIRED_CONSTRAINTS = [
+    "problems, not features",
+    "problem-state artifact",
+    "fail-closed readiness",
+    "tool creation",
+    "testing philosophy",
+    "roal mechanics",
+]
+
+
+def test_phi_global_preserves_governing_constraints() -> None:
+    """PHI-global.md must carry the material governing constraints,
+    not compress them away (PAT-0016 philosophy projection)."""
+    phi_global = ROOT / "philosophy" / "profiles" / "PHI-global.md"
+    if not phi_global.exists():
+        pytest.skip("PHI-global.md not found")
+    text = phi_global.read_text(encoding="utf-8").lower()
+    missing = [
+        c for c in _PHI_GLOBAL_REQUIRED_CONSTRAINTS
+        if c.lower() not in text
+    ]
+    assert not missing, (
+        f"PHI-global.md is missing {len(missing)} governing constraint(s): "
+        f"{missing}"
+    )
