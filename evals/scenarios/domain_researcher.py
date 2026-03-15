@@ -36,13 +36,31 @@ from evals.harness import Check, Scenario
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _extract_result_json(text: str) -> dict | None:
+def _extract_result_json(
+    text: str,
+    planspace: Path | None = None,
+    codespace: Path | None = None,
+) -> dict | None:
     """Extract the structured ticket-result JSON from agent output.
 
-    The agent is instructed to emit a JSON block with ticket_id and
-    findings.  Try fenced block first, then raw JSON with expected keys.
+    The agent writes its result to the ticket's ``output_path`` artifact
+    file (e.g. ``artifacts/research/T-01-result.json``).  Check the
+    artifact file first, then fall back to inline extraction from stdout.
     """
-    # Try fenced JSON block (```json ... ```)
+    # 1. Check the artifact file the agent was told to write
+    for base in (planspace, codespace):
+        if base is None:
+            continue
+        artifact = base / "artifacts" / "research" / "T-01-result.json"
+        if artifact.exists():
+            try:
+                data = json.loads(artifact.read_text(encoding="utf-8"))
+                if isinstance(data, dict) and "findings" in data:
+                    return data
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    # 2. Try fenced JSON block in stdout (```json ... ```)
     match = re.search(r"```(?:json)?\s*\n(\{.*?\})\s*\n```", text, re.DOTALL)
     if match:
         try:
@@ -51,23 +69,40 @@ def _extract_result_json(text: str) -> dict | None:
                 return data
         except json.JSONDecodeError:
             pass
-    # Fallback: find any JSON object containing "findings" key
-    # Use a greedy approach to capture nested structures
-    for m in re.finditer(r"\{[^{}]*\"findings\"\s*:\s*\[.*?\][^{}]*\}", text, re.DOTALL):
-        try:
-            data = json.loads(m.group(0))
-            if isinstance(data, dict):
-                return data
-        except json.JSONDecodeError:
+
+    # 3. Bracket-counted extraction from stdout
+    for i, ch in enumerate(text):
+        if ch != "{":
             continue
-    # Last resort: try to parse the largest JSON object in the text
-    for m in re.finditer(r"\{[\s\S]*?\"findings\"[\s\S]*?\}", text):
-        try:
-            data = json.loads(m.group(0))
-            if isinstance(data, dict) and "findings" in data:
-                return data
-        except json.JSONDecodeError:
-            continue
+        depth = 0
+        in_str = False
+        escape = False
+        for j in range(i, len(text)):
+            c = text[j]
+            if escape:
+                escape = False
+                continue
+            if c == "\\":
+                escape = True
+                continue
+            if c == '"':
+                in_str = not in_str
+                continue
+            if in_str:
+                continue
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    candidate = text[i : j + 1]
+                    try:
+                        data = json.loads(candidate)
+                        if isinstance(data, dict) and "findings" in data:
+                            return data
+                    except json.JSONDecodeError:
+                        pass
+                    break
     return None
 
 
@@ -221,7 +256,7 @@ def _check_has_result_json(
     planspace: Path, codespace: Path, agent_output: str,
 ) -> tuple[bool, str]:
     """Verify output contains a structured ticket-result JSON block."""
-    data = _extract_result_json(agent_output)
+    data = _extract_result_json(agent_output, planspace, codespace)
     if data is not None:
         return True, f"Result JSON found with keys: {list(data.keys())}"
     return False, "No structured ticket-result JSON block found in agent output"
@@ -254,7 +289,7 @@ def _check_provides_concrete_finding(
     production k8s manifests and the ORM engine).  The agent should
     state a clear recommendation, not hedge.
     """
-    data = _extract_result_json(agent_output)
+    data = _extract_result_json(agent_output, planspace, codespace)
     if data is None:
         # Fall back to checking the narrative text
         lower = agent_output.lower()
@@ -309,7 +344,7 @@ def _check_no_idk_when_answerable(
             return False, f"Agent punted with: '{phrase}'"
 
     # Also check the status field in JSON
-    data = _extract_result_json(agent_output)
+    data = _extract_result_json(agent_output, planspace, codespace)
     if data is not None:
         status = data.get("status", "")
         if status == "unanswerable":
@@ -346,11 +381,11 @@ def _check_cites_file_paths(
         return True, f"Output references file paths: {found}"
 
     # Also check structured findings citations
-    data = _extract_result_json(agent_output)
+    data = _extract_result_json(agent_output, planspace, codespace)
     if data is not None:
         for finding in data.get("findings", []):
             for citation in finding.get("citations", []):
-                citation_lower = citation.lower()
+                citation_lower = str(citation).lower()
                 for path in evidence_paths:
                     if path.lower() in citation_lower:
                         return True, f"Finding cites file path in citation: {citation}"
@@ -407,7 +442,7 @@ def _check_citations_in_findings(
     Per the domain-researcher contract: 'Every claim must have at least
     one citation.'
     """
-    data = _extract_result_json(agent_output)
+    data = _extract_result_json(agent_output, planspace, codespace)
     if data is None:
         # Fall back: check if the narrative text mentions file references
         lower = agent_output.lower()

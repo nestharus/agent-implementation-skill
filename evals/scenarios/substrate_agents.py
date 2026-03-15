@@ -564,7 +564,7 @@ SCENARIOS = [
     Scenario(
         name="substrate_seeder_anchor_contract",
         agent_file="substrate-seeder.md",
-        model_policy_key="scan",
+        model_policy_key="substrate_seeder",
         setup=_setup_anchor_contract,
         checks=[
             Check(
@@ -592,7 +592,7 @@ SCENARIOS = [
     Scenario(
         name="substrate_seeder_no_implementation",
         agent_file="substrate-seeder.md",
-        model_policy_key="scan",
+        model_policy_key="substrate_seeder",
         setup=_setup_no_implementation,
         checks=[
             Check(
