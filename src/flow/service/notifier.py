@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
-from flow.service.task_db_client import log_event, send_message, task_db
+from flow.service.task_db_client import log_event, send_message, update_task_routing
 
 if TYPE_CHECKING:
     from containers import LogService
@@ -89,9 +89,4 @@ def record_task_routing(
     resolved_db_path = (
         Path(db_path) if db_path is not None else PathRegistry(planspace).run_db()
     )
-    with task_db(resolved_db_path) as conn:
-        conn.execute(
-            "UPDATE tasks SET agent_file=?, model=? WHERE id=?",
-            (agent_file, model, int(task_id)),
-        )
-        conn.commit()
+    update_task_routing(resolved_db_path, task_id, agent_file, model)

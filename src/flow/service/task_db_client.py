@@ -284,6 +284,96 @@ def next_task(db_path: str | Path) -> dict[str, str] | None:
     return None
 
 
+def submit_task(db_path: str | Path, task) -> int:
+    """Insert a task into the queue. Returns the task ID.
+
+    *task* is a ``flow.types.routing.Task`` dataclass instance.
+    """
+    with task_db(db_path) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO tasks(submitted_by, task_type, problem_id, concern_scope,
+               payload_path, priority, depends_on,
+               instance_id, flow_id, chain_id, declared_by_task_id,
+               trigger_gate_id, flow_context_path, continuation_path,
+               result_manifest_path, freshness_token)
+               VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                task.submitted_by,
+                task.task_type,
+                task.problem_id,
+                task.concern_scope,
+                task.payload_path,
+                task.priority,
+                str(task.depends_on) if task.depends_on is not None else None,
+                task.instance_id,
+                task.flow_id,
+                task.chain_id,
+                task.declared_by_task_id,
+                task.trigger_gate_id,
+                task.flow_context_path,
+                task.continuation_path,
+                task.result_manifest_path,
+                task.freshness_token,
+            ),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_task_flow_paths(
+    db_path: str | Path,
+    task_id: int,
+    flow_context_path: str,
+    continuation_path: str,
+    result_manifest_path: str,
+) -> None:
+    """Update a task's flow-related paths after submission."""
+    with task_db(db_path) as conn:
+        conn.execute(
+            """UPDATE tasks
+               SET flow_context_path=?, continuation_path=?,
+                   result_manifest_path=?
+               WHERE id=?""",
+            (flow_context_path, continuation_path, result_manifest_path, task_id),
+        )
+        conn.commit()
+
+
+def update_task_dependency(
+    db_path: str | Path, task_id: int, depends_on: int,
+) -> None:
+    """Set the depends_on field for a task."""
+    with task_db(db_path) as conn:
+        conn.execute(
+            "UPDATE tasks SET depends_on=? WHERE id=?",
+            (str(depends_on), task_id),
+        )
+        conn.commit()
+
+
+def update_task_routing(
+    db_path: str | Path, task_id: str | int, agent_file: str, model: str,
+) -> None:
+    """Update the task row with the resolved agent file and model."""
+    with task_db(db_path) as conn:
+        conn.execute(
+            "UPDATE tasks SET agent_file=?, model=? WHERE id=?",
+            (agent_file, model, int(task_id)),
+        )
+        conn.commit()
+
+
+def load_task(db_path: str | Path, task_id: int) -> dict | None:
+    """Load a task row by ID. Returns a dict or None if not found."""
+    with task_db(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        row = cur.fetchone()
+    return dict(row) if row is not None else None
+
+
 def send_message(
     db_path: str | Path, target: str, body: str, *, sender: str = "",
 ) -> None:

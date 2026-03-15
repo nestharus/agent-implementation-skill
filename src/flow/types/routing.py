@@ -12,7 +12,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from flow.service.task_db_client import task_db
+from flow.service.task_db_client import (
+    submit_task as _db_submit_task,
+    update_task_flow_paths as _db_update_task_flow_paths,
+)
 
 if TYPE_CHECKING:
     from flow.types.schema import TaskSpec
@@ -62,46 +65,8 @@ class Task:
 
 
 def submit_task(db_path: Path, task: Task) -> int:
-    """Submit a task to the queue. Returns the task ID.
-
-    This is a Python-native alternative to shelling out to
-    ``db.sh submit-task``. Uses the same SQLite schema.
-
-    ``freshness_token`` (P4): lightweight hash of alignment artifacts
-    at submission time.  The dispatcher compares this against the
-    current hash before dispatch and rejects stale tasks.
-    """
-    with task_db(db_path) as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """INSERT INTO tasks(submitted_by, task_type, problem_id, concern_scope,
-               payload_path, priority, depends_on,
-               instance_id, flow_id, chain_id, declared_by_task_id,
-               trigger_gate_id, flow_context_path, continuation_path,
-               result_manifest_path, freshness_token)
-               VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                task.submitted_by,
-                task.task_type,
-                task.problem_id,
-                task.concern_scope,
-                task.payload_path,
-                task.priority,
-                str(task.depends_on) if task.depends_on is not None else None,
-                task.instance_id,
-                task.flow_id,
-                task.chain_id,
-                task.declared_by_task_id,
-                task.trigger_gate_id,
-                task.flow_context_path,
-                task.continuation_path,
-                task.result_manifest_path,
-                task.freshness_token,
-            ),
-        )
-        conn.commit()
-        task_id = cur.lastrowid
-    return task_id
+    """Submit a task to the queue. Returns the task ID."""
+    return _db_submit_task(db_path, task)
 
 
 def update_task_flow_paths(
@@ -112,12 +77,6 @@ def update_task_flow_paths(
     result_manifest_path: str,
 ) -> None:
     """Update a task's flow-related paths after submission."""
-    with task_db(db_path) as conn:
-        conn.execute(
-            """UPDATE tasks
-               SET flow_context_path=?, continuation_path=?,
-                   result_manifest_path=?
-               WHERE id=?""",
-            (flow_context_path, continuation_path, result_manifest_path, task_id),
-        )
-        conn.commit()
+    _db_update_task_flow_paths(
+        db_path, task_id, flow_context_path, continuation_path, result_manifest_path,
+    )

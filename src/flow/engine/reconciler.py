@@ -5,13 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import re
-import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
-from flow.service.task_db_client import task_db
+from flow.service.task_db_client import load_task, update_task_dependency
 from flow.types.context import FlowEnvelope, TaskStatus
 from flow.types.schema import ChainAction, FanoutAction, parse_flow_signal
 from research.engine.orchestrator import ResearchState
@@ -155,12 +154,7 @@ class Reconciler:
                     chain_id=chain_id,
                 )
                 if new_ids:
-                    with task_db(db_path) as conn:
-                        conn.execute(
-                            "UPDATE tasks SET depends_on=? WHERE id=?",
-                            (str(task_id), new_ids[0]),
-                        )
-                        conn.commit()
+                    update_task_dependency(db_path, new_ids[0], task_id)
                     gate_id = find_gate_for_chain(db_path, chain_id)
                     if gate_id:
                         update_gate_member_leaf(db_path, gate_id, chain_id, new_ids[-1])
@@ -414,20 +408,14 @@ class Reconciler:
         codespace: Path | None = None,
     ) -> None:
         """Called after a task completes or fails."""
-        with task_db(db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
-            cur.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
-            row = cur.fetchone()
+        task = load_task(db_path, task_id)
 
-        if row is None:
+        if task is None:
             logger.warning(
                 "reconcile_task_completion called with unknown task_id=%d, skipping",
                 task_id,
             )
             return
-
-        task = dict(row)
         instance_id = task["instance_id"] or ""
         flow_id = task["flow_id"] or ""
         chain_id = task["chain_id"] or ""
