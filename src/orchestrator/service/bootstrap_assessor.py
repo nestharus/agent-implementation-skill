@@ -6,6 +6,7 @@ presence, return the first actionable gap.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -15,15 +16,16 @@ from orchestrator.path_registry import PathRegistry
 STAGE_DECOMPOSE = "decompose"
 STAGE_CODEMAP = "codemap"
 STAGE_EXPLORE = "explore"
+STAGE_SUBSTRATE = "substrate"
 
-_ALL_STAGES = (STAGE_DECOMPOSE, STAGE_CODEMAP, STAGE_EXPLORE)
+_ALL_STAGES = (STAGE_DECOMPOSE, STAGE_CODEMAP, STAGE_EXPLORE, STAGE_SUBSTRATE)
 
 
 @dataclass
 class BootstrapStatus:
     """Result of a bootstrap readiness assessment."""
     ready: bool
-    next_stage: str | None = None  # "decompose" | "codemap" | "explore" | None
+    next_stage: str | None = None  # "decompose" | "codemap" | "explore" | "substrate" | None
     completed: list[str] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
 
@@ -35,7 +37,8 @@ class BootstrapAssessor:
     1. Sections + proposal + alignment exist? If not -> "decompose"
     2. Codemap exists and non-empty? If not -> "codemap"
     3. All section files have "## Related Files"? If not -> "explore"
-    4. All present -> ready=True
+    4. Substrate artifact or terminal status exists? If not -> "substrate"
+    5. All present -> ready=True
     """
 
     def assess(self, planspace: Path) -> BootstrapStatus:
@@ -87,6 +90,31 @@ class BootstrapAssessor:
         else:
             return BootstrapStatus(
                 ready=False, next_stage=STAGE_EXPLORE,
+                completed=completed, missing=missing,
+            )
+
+        # Stage D: substrate — SIS discovery artifact or terminal status
+        substrate_dir = registry.substrate_dir()
+        substrate_md = substrate_dir / "substrate.md"
+        status_json = substrate_dir / "status.json"
+
+        substrate_done = False
+        if substrate_md.is_file() and substrate_md.stat().st_size > 0:
+            substrate_done = True
+        elif status_json.is_file():
+            try:
+                data = json.loads(status_json.read_text(encoding="utf-8"))
+                if data.get("state") in ("complete", "skipped"):
+                    substrate_done = True
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        if substrate_done:
+            completed.append(STAGE_SUBSTRATE)
+        else:
+            missing.append("substrate artifacts")
+            return BootstrapStatus(
+                ready=False, next_stage=STAGE_SUBSTRATE,
                 completed=completed, missing=missing,
             )
 

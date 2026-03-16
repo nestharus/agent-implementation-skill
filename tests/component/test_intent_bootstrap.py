@@ -55,13 +55,24 @@ class _StubIntentPack:
 
 
 class _StubBootstrapper:
-    """Minimal stub for PhilosophyBootstrapper."""
+    """Minimal stub for PhilosophyBootstrapper.
 
-    def __init__(self, result: dict) -> None:
-        self._result = result
+    Accepts a single dict *or* a list of dicts.  When given a list,
+    successive calls to ``ensure_global_philosophy`` return successive
+    elements (the last element repeats forever).
+    """
+
+    def __init__(self, result: dict | list[dict]) -> None:
+        if isinstance(result, list):
+            self._results = list(result)
+        else:
+            self._results = [result]
+        self._call_index = 0
 
     def ensure_global_philosophy(self, *_args, **_kwargs):
-        return self._result
+        idx = min(self._call_index, len(self._results) - 1)
+        self._call_index += 1
+        return self._results[idx]
 
 
 class _StubPipelineControl:
@@ -81,7 +92,7 @@ def _make_initializer(
     triage_result: dict,
     governance: _StubGovernance | None = None,
     intent_pack: _StubIntentPack | None = None,
-    philosophy_result: dict | None = None,
+    philosophy_result: dict | list[dict] | None = None,
     pipeline_control: _StubPipelineControl | None = None,
 ) -> tuple[IntentInitializer, _StubGovernance, _StubIntentPack]:
     gov = governance or _StubGovernance()
@@ -212,11 +223,13 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
     )
 
     assert result is None
-    assert blocker_rollups == [planspace]
-    assert capturing_pipeline_control.pause_calls == [(
-        planspace,
-        "pause:need_decision:global:philosophy bootstrap requires user input",
-    )]
+    # The retry loop pauses twice (max_pause_retries=2) before giving up.
+    assert blocker_rollups == [planspace, planspace]
+    pause_msg = "pause:need_decision:global:philosophy bootstrap requires user input"
+    assert capturing_pipeline_control.pause_calls == [
+        (planspace, pause_msg),
+        (planspace, pause_msg),
+    ]
     assert not (
         planspace / "artifacts" / "signals" / "philosophy-blocker-01.json"
     ).exists()
@@ -229,10 +242,11 @@ def test_run_intent_bootstrap_qa_mode_blocks_for_external_responder(
     capturing_pipeline_control,
     noop_communicator,
 ) -> None:
-    """With QA shortcuts removed, qa_mode=True still pauses for philosophy.
+    """qa_mode=True pauses for philosophy, then retries after resume.
 
-    The QA harness monitor responds externally via the message bus rather
-    than bypassing the pause inline.
+    The retry loop in _step_philosophy calls ensure_global_philosophy a
+    second time after pause_for_parent returns.  The second call returns
+    READY, so the pipeline continues and returns budgets.
     """
     section = _make_section(planspace)
 
@@ -242,14 +256,24 @@ def test_run_intent_bootstrap_qa_mode_blocks_for_external_responder(
 
     triage_result = {"intent_mode": "lightweight", "budgets": {}}
 
+    philosophy_blocked = {
+        "status": "needs_user_input",
+        "blocking_state": "NEED_DECISION",
+        "philosophy_path": None,
+        "detail": "philosophy bootstrap needs user input",
+    }
+    philosophy_ready = {
+        "status": "ready",
+        "blocking_state": None,
+        "philosophy_path": (
+            planspace / "artifacts" / "intent" / "global" / "philosophy.md"
+        ),
+        "detail": "ready",
+    }
+
     initializer, _, _ = _make_initializer(
         triage_result,
-        philosophy_result={
-            "status": "needs_user_input",
-            "blocking_state": "NEED_DECISION",
-            "philosophy_path": None,
-            "detail": "philosophy bootstrap needs user input",
-        },
+        philosophy_result=[philosophy_blocked, philosophy_ready],
         pipeline_control=capturing_pipeline_control,
     )
 
@@ -272,8 +296,9 @@ def test_run_intent_bootstrap_qa_mode_blocks_for_external_responder(
         None,
     )
 
-    # Pipeline should halt — the QA harness responds externally.
-    assert result is None
+    # Pipeline should continue after resume — returns budgets (not None).
+    assert result is not None
+    assert "proposal_max" in result
     assert blocker_rollups == [planspace]
     assert capturing_pipeline_control.pause_calls == [(
         planspace,
@@ -327,13 +352,14 @@ def test_run_intent_bootstrap_qa_mode_false_still_blocks(
         None,
     )
 
-    # Pipeline should halt.
+    # Pipeline should halt after exhausting retries.
     assert result is None
-    assert blocker_rollups == [planspace]
-    assert capturing_pipeline_control.pause_calls == [(
-        planspace,
-        "pause:need_decision:global:philosophy bootstrap requires user input",
-    )]
+    assert blocker_rollups == [planspace, planspace]
+    pause_msg = "pause:need_decision:global:philosophy bootstrap requires user input"
+    assert capturing_pipeline_control.pause_calls == [
+        (planspace, pause_msg),
+        (planspace, pause_msg),
+    ]
 
 
 def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(

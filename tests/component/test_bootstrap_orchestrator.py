@@ -17,6 +17,7 @@ from orchestrator.service.bootstrap_assessor import (
     STAGE_CODEMAP,
     STAGE_DECOMPOSE,
     STAGE_EXPLORE,
+    STAGE_SUBSTRATE,
     BootstrapAssessor,
     BootstrapStatus,
 )
@@ -34,6 +35,8 @@ def _make_planspace(tmp_path: Path) -> Path:
 
 def _write_all_artifacts(planspace: Path, with_related: bool = True) -> None:
     """Write all bootstrap artifacts to make the assessor return ready."""
+    import json
+
     registry = PathRegistry(planspace)
     sections_dir = registry.sections_dir()
     sections_dir.mkdir(parents=True, exist_ok=True)
@@ -47,6 +50,11 @@ def _write_all_artifacts(planspace: Path, with_related: bool = True) -> None:
     codemap = registry.codemap()
     codemap.parent.mkdir(parents=True, exist_ok=True)
     codemap.write_text("# Codemap\n", encoding="utf-8")
+    substrate_dir = registry.substrate_dir()
+    substrate_dir.mkdir(parents=True, exist_ok=True)
+    (substrate_dir / "status.json").write_text(
+        json.dumps({"state": "skipped"}), encoding="utf-8",
+    )
 
 
 class TestConvergenceLoop:
@@ -101,7 +109,8 @@ class TestConvergenceLoop:
             BootstrapStatus(ready=False, next_stage=STAGE_DECOMPOSE, completed=[], missing=["sections"]),
             BootstrapStatus(ready=False, next_stage=STAGE_CODEMAP, completed=[STAGE_DECOMPOSE], missing=["codemap"]),
             BootstrapStatus(ready=False, next_stage=STAGE_EXPLORE, completed=[STAGE_DECOMPOSE, STAGE_CODEMAP], missing=["related files"]),
-            BootstrapStatus(ready=True, completed=[STAGE_DECOMPOSE, STAGE_CODEMAP, STAGE_EXPLORE], missing=[]),
+            BootstrapStatus(ready=False, next_stage=STAGE_SUBSTRATE, completed=[STAGE_DECOMPOSE, STAGE_CODEMAP, STAGE_EXPLORE], missing=["substrate artifacts"]),
+            BootstrapStatus(ready=True, completed=[STAGE_DECOMPOSE, STAGE_CODEMAP, STAGE_EXPLORE, STAGE_SUBSTRATE], missing=[]),
         ]
         mock_assessor = MagicMock()
         mock_assessor.assess.side_effect = statuses
@@ -111,7 +120,8 @@ class TestConvergenceLoop:
         section_explorer = MagicMock()
 
         with patch("scan.scan_dispatcher.dispatch_agent") as mock_dispatch, \
-             patch("scan.scan_dispatcher.read_scan_model_policy", return_value={}):
+             patch("scan.scan_dispatcher.read_scan_model_policy", return_value={}), \
+             patch("scan.substrate.substrate_discoverer.run_substrate_discovery", return_value=True) as mock_substrate:
             mock_dispatch.return_value = subprocess.CompletedProcess(args=[], returncode=0)
             # Simulate decompose writing artifacts
             registry = PathRegistry(planspace)
@@ -127,10 +137,11 @@ class TestConvergenceLoop:
             )
             assert orchestrator.run_bootstrap(planspace, codespace, spec_path)
 
-        assert mock_assessor.assess.call_count == 4
+        assert mock_assessor.assess.call_count == 5
         mock_dispatch.assert_called_once()  # decompose
         codemap_builder.run_codemap_build.assert_called_once()
         section_explorer.run_section_exploration.assert_called_once()
+        mock_substrate.assert_called_once_with(planspace, codespace)
 
     def test_retry_limit_aborts(self, tmp_path: Path) -> None:
         """Stage fails repeatedly -> returns False after MAX_RETRIES."""
@@ -197,3 +208,37 @@ class TestConvergenceLoop:
             planspace, tmp_path / "code", tmp_path / "spec.md",
         )
         assert codemap_builder.run_codemap_build.call_count == 2
+
+    def test_substrate_stage_calls_discovery(self, tmp_path: Path) -> None:
+        """Substrate stage dispatches to run_substrate_discovery."""
+        planspace = _make_planspace(tmp_path)
+        codespace = tmp_path / "code"
+        codespace.mkdir()
+        spec_path = tmp_path / "spec.md"
+        spec_path.write_text("# Spec", encoding="utf-8")
+
+        # Assessor returns substrate needed, then ready
+        statuses = [
+            BootstrapStatus(
+                ready=False, next_stage=STAGE_SUBSTRATE,
+                completed=[STAGE_DECOMPOSE, STAGE_CODEMAP, STAGE_EXPLORE],
+                missing=["substrate artifacts"],
+            ),
+            BootstrapStatus(
+                ready=True,
+                completed=[STAGE_DECOMPOSE, STAGE_CODEMAP, STAGE_EXPLORE, STAGE_SUBSTRATE],
+                missing=[],
+            ),
+        ]
+        mock_assessor = MagicMock()
+        mock_assessor.assess.side_effect = statuses
+
+        with patch("scan.substrate.substrate_discoverer.run_substrate_discovery", return_value=True) as mock_discovery:
+            orchestrator = BootstrapOrchestrator(
+                assessor=mock_assessor,
+                codemap_builder=MagicMock(),
+                section_explorer=MagicMock(),
+            )
+            assert orchestrator.run_bootstrap(planspace, codespace, spec_path)
+
+        mock_discovery.assert_called_once_with(planspace, codespace)

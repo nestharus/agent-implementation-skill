@@ -10,6 +10,7 @@ from orchestrator.service.bootstrap_assessor import (
     STAGE_CODEMAP,
     STAGE_DECOMPOSE,
     STAGE_EXPLORE,
+    STAGE_SUBSTRATE,
     BootstrapAssessor,
     BootstrapStatus,
 )
@@ -46,6 +47,21 @@ def _write_codemap(planspace: Path) -> None:
     codemap = PathRegistry(planspace).codemap()
     codemap.parent.mkdir(parents=True, exist_ok=True)
     codemap.write_text("# Codemap\n\n## src/\n- main.py\n", encoding="utf-8")
+
+
+def _write_substrate_md(planspace: Path) -> None:
+    substrate_dir = PathRegistry(planspace).substrate_dir()
+    substrate_dir.mkdir(parents=True, exist_ok=True)
+    (substrate_dir / "substrate.md").write_text("# Substrate\n\nShared seams.\n", encoding="utf-8")
+
+
+def _write_substrate_status(planspace: Path, state: str = "skipped") -> None:
+    import json
+    substrate_dir = PathRegistry(planspace).substrate_dir()
+    substrate_dir.mkdir(parents=True, exist_ok=True)
+    (substrate_dir / "status.json").write_text(
+        json.dumps({"state": state}), encoding="utf-8",
+    )
 
 
 class TestBootstrapAssessor:
@@ -86,17 +102,54 @@ class TestBootstrapAssessor:
         assert status.next_stage == STAGE_EXPLORE
         assert STAGE_CODEMAP in status.completed
 
-    def test_all_present_ready(self, tmp_path: Path) -> None:
+    def test_explore_complete_needs_substrate(self, tmp_path: Path) -> None:
+        """All explore artifacts present but no substrate -> needs substrate."""
         planspace = _make_planspace(tmp_path)
         _write_sections(planspace, with_related=True)
         _write_proposal(planspace)
         _write_alignment(planspace)
         _write_codemap(planspace)
         status = BootstrapAssessor().assess(planspace)
+        assert not status.ready
+        assert status.next_stage == STAGE_SUBSTRATE
+        assert STAGE_EXPLORE in status.completed
+
+    def test_substrate_complete_via_substrate_md(self, tmp_path: Path) -> None:
+        """substrate.md present -> ready=True."""
+        planspace = _make_planspace(tmp_path)
+        _write_sections(planspace, with_related=True)
+        _write_proposal(planspace)
+        _write_alignment(planspace)
+        _write_codemap(planspace)
+        _write_substrate_md(planspace)
+        status = BootstrapAssessor().assess(planspace)
+        assert status.ready
+        assert STAGE_SUBSTRATE in status.completed
+
+    def test_substrate_complete_via_status_json(self, tmp_path: Path) -> None:
+        """status.json with terminal state -> ready=True."""
+        planspace = _make_planspace(tmp_path)
+        _write_sections(planspace, with_related=True)
+        _write_proposal(planspace)
+        _write_alignment(planspace)
+        _write_codemap(planspace)
+        _write_substrate_status(planspace, state="skipped")
+        status = BootstrapAssessor().assess(planspace)
+        assert status.ready
+        assert STAGE_SUBSTRATE in status.completed
+
+    def test_all_present_ready(self, tmp_path: Path) -> None:
+        planspace = _make_planspace(tmp_path)
+        _write_sections(planspace, with_related=True)
+        _write_proposal(planspace)
+        _write_alignment(planspace)
+        _write_codemap(planspace)
+        _write_substrate_md(planspace)
+        status = BootstrapAssessor().assess(planspace)
         assert status.ready
         assert status.next_stage is None
         assert len(status.missing) == 0
-        assert len(status.completed) == 3
+        assert len(status.completed) == 4
 
     def test_partial_explore_needs_explore(self, tmp_path: Path) -> None:
         """Some sections explored, some not -> still needs explore."""

@@ -19,7 +19,9 @@ from src.intent.service import intent_triager
 from src.intent.service.intent_triager import (
     IntentTriager,
     _augment_risk_hints,
+    _backfill_signal,
     _full_default,
+    _try_parse_stdout,
 )
 from src.risk.repository.history import RiskHistory
 
@@ -229,3 +231,222 @@ def test_legacy_persisted_skip_artifact_normalizes_safely(
     # The signal passes through as-is (load_triage_result does not
     # normalize risk_mode — that happens downstream in determine_engagement).
     assert result["risk_mode"] == "skip"
+
+
+# -- Stdout fallback tests -------------------------------------------------
+
+def test_triage_stdout_json_backfills_signal(
+    tmp_path: Path,
+    noop_communicator,
+) -> None:
+    """Signal file missing, stdout has fenced JSON -> succeeds and writes signal."""
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    artifacts = planspace / "artifacts"
+    codespace = tmp_path / "codespace"
+    codespace.mkdir()
+
+    triage_payload = {
+        "section": "01",
+        "intent_mode": "lightweight",
+        "confidence": "high",
+        "risk_mode": "light",
+        "risk_budget_hint": 1,
+        "budgets": {"proposal_max": 3},
+        "reason": "narrow scope",
+    }
+
+    def _dispatch(*args, **kwargs):
+        # Agent writes stdout output with fenced JSON but does NOT write signal
+        output_path = artifacts / "intent-triage-01-output.md"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "Analyzing section 01...\n\n"
+            "```json\n"
+            + json.dumps(triage_payload, indent=2)
+            + "\n```\n\n"
+            "TRIAGE: 01 -> lightweight (narrow scope) expansion=0\n",
+            encoding="utf-8",
+        )
+        return ""
+
+    Services.policies.override(providers.Object(StubPolicies({
+        "intent_triage": "glm",
+        "intent_triage_escalation": "strong-model",
+    })))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+
+    try:
+        result = _make_triager().run_intent_triage("01", planspace, codespace)
+
+        assert result["intent_mode"] == "lightweight"
+        assert result["confidence"] == "high"
+        assert result["risk_mode"] == "light"
+
+        # Verify the signal file was backfilled
+        signal_path = artifacts / "signals" / "intent-triage-01.json"
+        assert signal_path.exists()
+        backfilled = json.loads(signal_path.read_text(encoding="utf-8"))
+        assert backfilled["intent_mode"] == "lightweight"
+    finally:
+        Services.dispatcher.reset_override()
+        Services.prompt_guard.reset_override()
+        Services.policies.reset_override()
+
+
+def test_triage_stdout_raw_json_backfills_signal(
+    tmp_path: Path,
+    noop_communicator,
+) -> None:
+    """Signal file missing, stdout has raw JSON with intent_mode -> succeeds."""
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    artifacts = planspace / "artifacts"
+    codespace = tmp_path / "codespace"
+    codespace.mkdir()
+
+    def _dispatch(*args, **kwargs):
+        output_path = artifacts / "intent-triage-01-output.md"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        # Raw JSON embedded in prose — no fencing
+        output_path.write_text(
+            'After analysis, the result is: '
+            '{"intent_mode": "full", "confidence": "medium", '
+            '"risk_mode": "full", "risk_budget_hint": 2, '
+            '"reason": "broad integration"}\n'
+            'Done.\n',
+            encoding="utf-8",
+        )
+        return ""
+
+    Services.policies.override(providers.Object(StubPolicies({
+        "intent_triage": "glm",
+        "intent_triage_escalation": "strong-model",
+    })))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+
+    try:
+        result = _make_triager().run_intent_triage("01", planspace, codespace)
+
+        assert result["intent_mode"] == "full"
+        assert result["confidence"] == "medium"
+
+        signal_path = artifacts / "signals" / "intent-triage-01.json"
+        assert signal_path.exists()
+    finally:
+        Services.dispatcher.reset_override()
+        Services.prompt_guard.reset_override()
+        Services.policies.reset_override()
+
+
+def test_triage_missing_signal_escalates(
+    tmp_path: Path,
+    noop_communicator,
+) -> None:
+    """Signal file missing, stdout empty -> escalates to stronger model."""
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    artifacts = planspace / "artifacts"
+    codespace = tmp_path / "codespace"
+    codespace.mkdir()
+
+    dispatch_calls: list[str] = []
+
+    def _dispatch(*args, **kwargs):
+        model = args[0] if args else kwargs.get("model", "")
+        dispatch_calls.append(model)
+        if model == "strong-model":
+            # Escalation attempt writes a proper signal file
+            signal_path = artifacts / "signals" / "intent-triage-01.json"
+            signal_path.parent.mkdir(parents=True, exist_ok=True)
+            signal_path.write_text(
+                json.dumps({
+                    "section": "01",
+                    "intent_mode": "full",
+                    "confidence": "medium",
+                    "risk_mode": "full",
+                    "risk_budget_hint": 3,
+                    "budgets": {"proposal_max": 5},
+                    "reason": "escalated — complex surface",
+                }),
+                encoding="utf-8",
+            )
+        else:
+            # First attempt: write empty output, no signal
+            output_path = artifacts / "intent-triage-01-output.md"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text("", encoding="utf-8")
+        return ""
+
+    Services.policies.override(providers.Object(StubPolicies({
+        "intent_triage": "glm",
+        "intent_triage_escalation": "strong-model",
+    })))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+
+    try:
+        result = _make_triager().run_intent_triage("01", planspace, codespace)
+
+        assert result["intent_mode"] == "full"
+        assert result["confidence"] == "medium"
+        # Verify both dispatches happened: initial + escalation
+        assert len(dispatch_calls) == 2
+        assert dispatch_calls[0] == "glm"
+        assert dispatch_calls[1] == "strong-model"
+    finally:
+        Services.dispatcher.reset_override()
+        Services.prompt_guard.reset_override()
+        Services.policies.reset_override()
+
+
+def test_triage_all_fail_defaults_full(
+    tmp_path: Path,
+    noop_communicator,
+) -> None:
+    """Both initial dispatch and escalation fail -> defaults to full."""
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    artifacts = planspace / "artifacts"
+    codespace = tmp_path / "codespace"
+    codespace.mkdir()
+
+    dispatch_calls: list[str] = []
+
+    def _dispatch(*args, **kwargs):
+        model = args[0] if args else kwargs.get("model", "")
+        dispatch_calls.append(model)
+        # Both attempts produce empty output, no signal
+        output_path = artifacts / "intent-triage-01-output.md"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("No useful output here.\n", encoding="utf-8")
+        return ""
+
+    Services.policies.override(providers.Object(StubPolicies({
+        "intent_triage": "glm",
+        "intent_triage_escalation": "strong-model",
+    })))
+    Services.prompt_guard.override(providers.Object(WritingGuard()))
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+
+    try:
+        result = _make_triager().run_intent_triage("01", planspace, codespace)
+
+        assert result["intent_mode"] == "full"
+        assert result["confidence"] == "low"
+        assert result["risk_mode"] == "full"
+        assert result["risk_budget_hint"] == 4
+        # Both dispatches happened
+        assert len(dispatch_calls) == 2
+        assert dispatch_calls[0] == "glm"
+        assert dispatch_calls[1] == "strong-model"
+    finally:
+        Services.dispatcher.reset_override()
+        Services.prompt_guard.reset_override()
+        Services.policies.reset_override()

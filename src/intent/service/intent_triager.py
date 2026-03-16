@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -70,6 +72,12 @@ class IntentTriager:
 
         Returns a dict with at least ``intent_mode`` and ``budgets``.
         Falls back to full on failure.
+
+        Recovery order when the signal file is missing:
+        1. Try parsing the agent stdout output for JSON.
+        2. If found, backfill the canonical signal file and use it.
+        3. If still missing, auto-escalate to a stronger model (one retry).
+        4. If escalation also fails, default to full.
         """
         policy = self._policies.load(planspace)
         paths = PathRegistry(planspace)
@@ -108,6 +116,13 @@ class IntentTriager:
         triage = self._signals.read(
             triage_signal_path, expected_fields=["intent_mode"],
         )
+
+        # -- Stdout fallback: try to recover triage from agent output ------
+        if triage is None:
+            triage = self._recover_from_stdout(
+                triage_output_path, triage_signal_path, section_number,
+            )
+
         if triage:
             escalated = self._try_escalation(
                 triage, section_number, planspace, codespace,
@@ -119,6 +134,20 @@ class IntentTriager:
 
             self._logger.log(
                 f"Section {section_number}: intent triage → "
+                f"{triage.get('intent_mode', 'unknown')}",
+            )
+            return _augment_risk_hints(
+                triage, section_number, planspace, self._risk_history, **risk_kw,
+            )
+
+        # -- Auto-escalation: signal still missing after stdout parse ------
+        triage = self._auto_escalate(
+            section_number, planspace, codespace,
+            triage_signal_path, triage_output_path,
+        )
+        if triage:
+            self._logger.log(
+                f"Section {section_number}: auto-escalated triage → "
                 f"{triage.get('intent_mode', 'unknown')}",
             )
             return _augment_risk_hints(
@@ -185,6 +214,69 @@ class IntentTriager:
             return escalated
         return None
 
+    def _recover_from_stdout(
+        self,
+        output_path: Path,
+        signal_path: Path,
+        section_number: str,
+    ) -> dict | None:
+        """Try to recover the triage signal from agent stdout output.
+
+        Returns the parsed dict (and backfills the signal file) or None.
+        """
+        parsed = _try_parse_stdout(output_path)
+        if parsed is None:
+            return None
+        self._logger.log(
+            f"Section {section_number}: recovered triage from stdout "
+            f"output — backfilling signal file",
+        )
+        _backfill_signal(parsed, signal_path)
+        return parsed
+
+    def _auto_escalate(
+        self,
+        section_number: str,
+        planspace: Path,
+        codespace: Path,
+        triage_signal_path: Path,
+        triage_output_path: Path,
+    ) -> dict | None:
+        """Auto-escalate to a stronger model when both signal and stdout fail."""
+        policy = self._policies.load(planspace)
+        paths = PathRegistry(planspace)
+        triage_prompt_path = paths.intent_triage_prompt(section_number)
+
+        self._logger.log(
+            f"Section {section_number}: triage signal and stdout both "
+            f"missing — auto-escalating to stronger model",
+        )
+        escalation_model = self._policies.resolve(policy, "intent_triage_escalation")
+        self._dispatcher.dispatch(
+            escalation_model,
+            triage_prompt_path,
+            triage_output_path,
+            planspace,
+            codespace=codespace,
+            section_number=section_number,
+            agent_file=self._task_router.agent_for("intent.triage"),
+        )
+
+        # Check signal file first
+        triage = self._signals.read(
+            triage_signal_path, expected_fields=["intent_mode"],
+        )
+        if triage:
+            return triage
+
+        # Stdout fallback on escalation output
+        parsed = _try_parse_stdout(triage_output_path)
+        if parsed:
+            _backfill_signal(parsed, triage_signal_path)
+            return parsed
+
+        return None
+
     def load_triage_result(
         self,
         section_number: str,
@@ -202,6 +294,71 @@ class IntentTriager:
 
 
 # -- Pure functions (no Services usage) ------------------------------------
+
+_FENCED_JSON_RE = re.compile(r"```json\s*\n(.*?)```", re.DOTALL)
+_RAW_JSON_RE = re.compile(r"\{[^{}]*\"intent_mode\"[^{}]*\}", re.DOTALL)
+_TRIAGE_LINE_RE = re.compile(
+    r"TRIAGE:\s*(\w+)(?:,\s*confidence:\s*(\w+))?",
+    re.IGNORECASE,
+)
+
+
+def _try_parse_stdout(output_path: Path) -> dict | None:
+    """Try to extract triage JSON from the agent stdout output file.
+
+    Attempts three strategies in order:
+    1. Fenced ``json`` code blocks.
+    2. Raw JSON containing an ``intent_mode`` key.
+    3. ``TRIAGE:`` summary lines (e.g. ``TRIAGE: lightweight, confidence: high``).
+
+    Returns the parsed dict (with at least ``intent_mode``) or *None*.
+    """
+    if not output_path.exists():
+        return None
+    try:
+        text = output_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if not text.strip():
+        return None
+
+    # Strategy 1: fenced ```json blocks
+    for match in _FENCED_JSON_RE.finditer(text):
+        try:
+            candidate = json.loads(match.group(1))
+            if isinstance(candidate, dict) and "intent_mode" in candidate:
+                return candidate
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+    # Strategy 2: raw JSON with intent_mode key
+    for match in _RAW_JSON_RE.finditer(text):
+        try:
+            candidate = json.loads(match.group(0))
+            if isinstance(candidate, dict) and "intent_mode" in candidate:
+                return candidate
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+    # Strategy 3: TRIAGE: summary line
+    m = _TRIAGE_LINE_RE.search(text)
+    if m:
+        mode = m.group(1).strip().lower()
+        confidence = (m.group(2) or "medium").strip().lower()
+        if mode in {"full", "lightweight", "cached"}:
+            return {"intent_mode": mode, "confidence": confidence}
+
+    return None
+
+
+def _backfill_signal(parsed: dict, signal_path: Path) -> None:
+    """Write *parsed* as canonical JSON to *signal_path*."""
+    signal_path.parent.mkdir(parents=True, exist_ok=True)
+    signal_path.write_text(
+        json.dumps(parsed, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
 
 def _gather_triage_refs(paths, section_number):
     triage_refs = []

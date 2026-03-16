@@ -92,6 +92,10 @@ You own the strategic handoff into ROAL.
 
 ## Output
 
+**The JSON signal file is authoritative — do not end the turn until it
+is written.** Also echo the exact same JSON in a fenced ```json block
+to stdout as backup so the pipeline can recover if the file write fails.
+
 Emit `intent-triage-NN.json`:
 
 ```json

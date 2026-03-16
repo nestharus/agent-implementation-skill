@@ -20,6 +20,7 @@ from orchestrator.service.bootstrap_assessor import (
     STAGE_CODEMAP,
     STAGE_DECOMPOSE,
     STAGE_EXPLORE,
+    STAGE_SUBSTRATE,
     BootstrapAssessor,
 )
 
@@ -144,6 +145,8 @@ class BootstrapOrchestrator:
             return self._run_codemap(codespace, registry)
         if stage == STAGE_EXPLORE:
             return self._run_explore(codespace, registry)
+        if stage == STAGE_SUBSTRATE:
+            return self._run_substrate(planspace, codespace)
         logger.error("Unknown bootstrap stage: %s", stage)
         return False
 
@@ -240,3 +243,12 @@ class BootstrapOrchestrator:
             scan_log_dir=scan_log_dir,
         )
         return True
+
+    # ------------------------------------------------------------------
+    # Stage D: Shared Integration Substrate (SIS) discovery
+    # ------------------------------------------------------------------
+
+    def _run_substrate(self, planspace: Path, codespace: Path) -> bool:
+        from scan.substrate.substrate_discoverer import run_substrate_discovery
+
+        return run_substrate_discovery(planspace, codespace)

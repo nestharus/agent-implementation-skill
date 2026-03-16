@@ -124,14 +124,24 @@ class IntentInitializer:
         return todo_entries or ""
 
     def _step_philosophy(self, ctx: PipelineContext) -> dict:
-        """Ensure global philosophy is bootstrapped."""
-        result = self._philosophy_bootstrapper.ensure_global_philosophy(
-            ctx.planspace, ctx.codespace,
-        )
+        """Ensure global philosophy is bootstrapped.
 
-        if result["status"] != BOOTSTRAP_READY:
+        If philosophy needs user input, pauses for parent and retries
+        once after resume. Non-NEED_DECISION blockers halt immediately.
+        """
+        sec = ctx.section.number
+        max_pause_retries = 2
+
+        for attempt in range(1, max_pause_retries + 1):
+            result = self._philosophy_bootstrapper.ensure_global_philosophy(
+                ctx.planspace, ctx.codespace,
+            )
+
+            if result["status"] == BOOTSTRAP_READY:
+                return result
+
             blocking_state = result.get("blocking_state")
-            sec = ctx.section.number
+
             if blocking_state == BLOCKING_NEED_DECISION:
                 self._logger.log(
                     f"Section {sec}: philosophy bootstrap needs "
@@ -142,7 +152,13 @@ class IntentInitializer:
                     ctx.planspace,
                     f"pause:{PauseType.NEED_DECISION}:global:philosophy bootstrap requires user input",
                 )
-            elif blocking_state == BLOCKING_NEEDS_PARENT:
+                self._logger.log(
+                    f"Section {sec}: resumed after philosophy input "
+                    f"(attempt {attempt}/{max_pause_retries})",
+                )
+                continue  # retry after parent responds
+
+            if blocking_state == BLOCKING_NEEDS_PARENT:
                 self._logger.log(
                     f"Section {sec}: philosophy bootstrap needs "
                     f"parent intervention — {result['detail']}",
@@ -152,9 +168,13 @@ class IntentInitializer:
                     f"Section {sec}: philosophy unavailable — "
                     f"{result['detail']}",
                 )
-            return None  # halt pipeline
+            return None  # halt pipeline for non-resumable blockers
 
-        return result
+        self._logger.log(
+            f"Section {sec}: philosophy still not ready after "
+            f"{max_pause_retries} pause/resume attempts",
+        )
+        return None
 
     def _step_governance(self, ctx: PipelineContext) -> str:
         """Build the section governance packet."""
